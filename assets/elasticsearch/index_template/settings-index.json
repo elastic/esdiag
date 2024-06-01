@@ -8,7 +8,19 @@
         "esdiag@settings"
     ],
     "priority": 100,
-    "template": {},
+    "template": {
+        "mappings": {
+            "properties": {
+                "index": {
+                    "properties": {
+                        "age": {
+                            "type": "long"
+                        }
+                    }
+                }
+            }
+        }
+    },
     "data_stream": {
         "hidden": false,
         "allow_custom_routing": false

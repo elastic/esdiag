@@ -10,6 +10,7 @@ include = ["assets/**/*"]
 
 [dependencies]
 async-std = { version = "1.12.0", features = ["tokio1", "attributes"] }
+chrono = "0.4.38"
 clap = { version = "4.5.4", features = ["derive"] }
 elasticsearch = "8.5.0-alpha.1"
 env_logger =  { version = "0.11.3" }

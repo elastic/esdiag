@@ -1,4 +1,5 @@
 use super::metadata::Metadata;
+use chrono::{DateTime, Duration, NaiveDate};
 use json_patch::merge;
 use rayon::prelude::*;
 use serde_json::{json, Value};
@@ -18,9 +19,28 @@ pub async fn enrich(metadata: &Metadata, data: Value) -> Vec<Value> {
         }
     });
 
+    let collection_date = DateTime::parse_from_rfc3339(&metadata.diagnostic.collection_date)
+        .unwrap()
+        .timestamp_millis();
     let index_settings: Vec<Value> = indices
         .par_iter()
         .map(|(index, settings)| {
+            let creation_date = match settings["settings"]["index"]["creation_date"].as_str() {
+                Some(date) => match date.parse::<i64>() {
+                    Ok(date) => date,
+                    Err(e) => {
+                        log::warn!("Failed to parse creation_date: {}", e);
+                        return Value::Null;
+                    }
+                },
+                None => {
+                    log::warn!(
+                        "Failed to parse creation_date from value {}",
+                        settings["settings"]["index"]["creation_date"]
+                    );
+                    return Value::Null;
+                }
+            };
             let mut doc = json!({
                 "@timestamp": metadata.diagnostic.collection_date,
                 "cluster": metadata.cluster,
@@ -30,6 +50,7 @@ pub async fn enrich(metadata: &Metadata, data: Value) -> Vec<Value> {
             });
             let doc_patch = json!({
                 "index": {
+                    "age": collection_date - creation_date,
                     "name": index
                 },
             });
