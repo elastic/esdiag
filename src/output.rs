@@ -101,7 +101,7 @@ impl Output {
     }
 
     pub fn save_to_file(&self, dataset: String, data: Value, filename: &PathBuf) {
-        match file::write_ndjson(dataset, data, &filename) {
+        match file::write_ndjson(&dataset, data, &filename) {
             Ok(_) => (),
             Err(e) => panic!("Failed to write to file - {}", e),
         }

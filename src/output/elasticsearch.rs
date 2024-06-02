@@ -1,4 +1,4 @@
-use crate::host::Host;
+use crate::{host::Host, output::file};
 use elasticsearch::{
     auth::Credentials,
     http::{
@@ -202,7 +202,8 @@ impl ElasticsearchClient {
                     let status = response.status_code().to_string().clone();
                     match response.json::<Value>().await {
                         Ok(json) => {
-                            println!("{}", &json);
+                            file::write_ndjson_if_debug(index, json, "responses.ndjson").ok();
+                            //println!("{}", &json);
                         }
                         Err(why) => {
                             log::error!("Failed to parse response: {:?}", &why);

@@ -18,6 +18,8 @@ use std::{collections::HashMap, env, panic, path::PathBuf, str::FromStr, sync::A
 use uri::Uri;
 use url::Url;
 
+use crate::output::file;
+
 // Define command line arguments
 #[derive(Parser)]
 #[command(name = "esdiag")]
@@ -215,15 +217,11 @@ async fn import_diagnostics(manifest: Manifest, input: Input, output: Output) {
 
     let processor = Processor::new(&manifest, &metadata_raw);
 
-    // If in debug mode, save metadata to file
-    if cfg!(debug_assertions) {
-        let metafile = match env::var("HOME") {
-            Ok(home) => PathBuf::from(home).join(".esdiag").join("metadata.ndjson"),
-            Err(_) => panic!("ERROR: No home directory found"),
-        };
-        log::info!("Writing metadata to file {}", &metafile.to_str().unwrap());
+    // If debug logging, save metadata to file
+    if log::log_enabled!(log::Level::Debug) {
         for (input, data) in processor.metadata.to_hashmap() {
-            output.save_to_file(input, data, &metafile);
+            file::write_ndjson_if_debug(&input, data, "metadata.ndjson").ok();
+            //output.save_to_file(input, data, &metafile);
         }
     }
 
