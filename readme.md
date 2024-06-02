@@ -6,13 +6,19 @@ The Elastic Stack Diagnostics (`esdiag`) tool simplifies processing and importin
 Installation
 --------------------
 1. Install the Rust toolchain from [rust-lang.org/tools/install]()
-    `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
+    ```
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+    ```
 
-2. Ensure your GitHub credentials are working from the command line
-    `ssh -T git@github.com`
+2. Ensure your GitHub `ssh` credentials are working from the command line
+    ```
+    ssh -T git@github.com
+    ```
     
-3. Install the crate (package) from GitHub
-    `cargo install --git http://github.com/elastic/esdiag`
+3. Install the crate (package) from GitHub using the `ssh` URL
+    ```
+    cargo install --git ssh://git@github.com/elastic/esdiag.git
+    ```
     
 4. Use it!
 
@@ -34,7 +40,7 @@ Usage
 
 ### Commands
 
-#### help
+#### Help
 
 `esdiag help` - Prints out the latest commands and usage guides
 `esdiag help <command>` or `esdiag <command> --help` - prints out specific help for each subcommand.
@@ -56,7 +62,7 @@ Options:
 
 ```
 
-#### host
+#### Host
 
 The `esdiag host` command allows you configure and test authentication information, then save it to your `~/esdiag/hosts.yml` file for easy re-use.
 
@@ -81,7 +87,7 @@ Options:
 
 ```
 
-#### setup
+#### Setup
 
 The `esdiag setup` command will send all the required index templates and other assets into the target host, this must be an Elasticsearch cluster!
 
@@ -97,7 +103,7 @@ Options:
   -h, --help  Print help
 ```
 
-#### import
+#### Import
 
 The `esdiag import` command allows these `target` and `source` options:
 
@@ -123,6 +129,13 @@ Options:
 
 ```
 
-#### collect
+#### Collect
 
 🚧 This command is not yet implemented! 🚧
+
+### Debugging
+
+Use environment variables to enable debug logging: `export LOG_LEVEL=debug`. This will enable debug-level messages and, when you import a diagnostic, writes two new files in your `~/.esdiag` directory:
+
+1. `metadata.ndjson` - This contains the diagnostic metadata and lookup tables generated while processing the diagnostic.
+2. `responses.ndjson` - This contains all the HTTP responses from the Elasticsearch output. Very useful when tracking down specific document errors returned from the `_bulk` API. 
