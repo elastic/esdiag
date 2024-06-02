@@ -1,9 +1,7 @@
 use serde_json::Value;
-use std::fs::OpenOptions;
-use std::io::Write;
-use std::path::PathBuf;
+use std::{env, fs::OpenOptions, io::Write, path::PathBuf};
 
-pub fn write_ndjson<'a>(input: String, value: Value, filename: &PathBuf) -> std::io::Result<()> {
+pub fn write_ndjson<'a>(input: &str, value: Value, filename: &PathBuf) -> std::io::Result<()> {
     let mut file = OpenOptions::new()
         .write(true)
         .create(true)
@@ -14,6 +12,18 @@ pub fn write_ndjson<'a>(input: String, value: Value, filename: &PathBuf) -> std:
     file.write_all(b"\n")?;
     log::info!("{}: appended {input}", filename.display());
     Ok(())
+}
+
+pub fn write_ndjson_if_debug<'a>(input: &str, value: Value, filename: &str) -> std::io::Result<()> {
+    let home = match env::var("HOME") {
+        Ok(home) => PathBuf::from(home).join(".esdiag"),
+        Err(_) => panic!("ERROR: No home directory found"),
+    };
+    if log::log_enabled!(log::Level::Debug) {
+        write_ndjson(input, value, &home.join(filename))
+    } else {
+        Ok(())
+    }
 }
 
 pub fn write_bulk_docs<'a>(docs: Vec<Value>, filename: &PathBuf) -> std::io::Result<()> {

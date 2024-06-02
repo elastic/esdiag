@@ -14,9 +14,11 @@ use log;
 use output::Output;
 use processor::Processor;
 use serde_json::Value;
-use std::{collections::HashMap, panic, path::PathBuf, str::FromStr, sync::Arc};
+use std::{collections::HashMap, env, panic, path::PathBuf, str::FromStr, sync::Arc};
 use uri::Uri;
 use url::Url;
+
+use crate::output::file;
 
 // Define command line arguments
 #[derive(Parser)]
@@ -215,9 +217,12 @@ async fn import_diagnostics(manifest: Manifest, input: Input, output: Output) {
 
     let processor = Processor::new(&manifest, &metadata_raw);
 
-    let metafile = PathBuf::from("metadata.ndjson");
-    for (input, data) in processor.metadata.to_hashmap() {
-        output.save_to_file(input, data, &metafile);
+    // If debug logging, save metadata to file
+    if log::log_enabled!(log::Level::Debug) {
+        for (input, data) in processor.metadata.to_hashmap() {
+            file::write_ndjson_if_debug(&input, data, "metadata.ndjson").ok();
+            //output.save_to_file(input, data, &metafile);
+        }
     }
 
     let data_sets = input.data_sets.clone();
