@@ -5,20 +5,28 @@ The Elastic Stack Diagnostics (`esdiag`) tool simplifies processing and importin
 
 Installation
 --------------------
+
+### MacOS
+
 1. Install the Rust toolchain from [rust-lang.org/tools/install]()
     ```
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
     ```
 
-2. Ensure your GitHub `ssh` credentials are working from the command line
+2. Ensure your GitHub `ssh` credentials are working from the command line. If you haven't set this up yet, follow the [GitHub guide](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/adding-a-new-ssh-key-to-your-github-account)
     ```
     ssh -T git@github.com
     ```
+    If it works, you will see this confirmation message:
+    ```
+    Hi ${username}! You've successfully authenticated, but GitHub does not provide shell access.
+    ```
     
-3. Install the crate (package) from GitHub using the `ssh` URL
+3. Install the crate (package) directly from the private GitHub using the `ssh` URL
     ```
     cargo install --git ssh://git@github.com/elastic/esdiag.git
     ```
+    This will kick off the build process. Ignore any warnings, report any errors.
     
 4. Use it!
 
@@ -135,7 +143,12 @@ Options:
 
 ### Debugging
 
-Use environment variables to enable debug logging: `export LOG_LEVEL=debug`. This will enable debug-level messages and, when you import a diagnostic, writes two new files in your `~/.esdiag` directory:
+Use shell environment variables to enable debug logging: 
+```
+export LOG_LEVEL=debug
+```
+
+ This will enable debug-level messages. Also, when you import a diagnostic `esdiag` will write two new files in your `~/.esdiag` directory:
 
 1. `metadata.ndjson` - This contains the diagnostic metadata and lookup tables generated while processing the diagnostic.
 2. `responses.ndjson` - This contains all the HTTP responses from the Elasticsearch output. Very useful when tracking down specific document errors returned from the `_bulk` API. 

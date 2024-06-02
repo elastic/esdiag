@@ -14,7 +14,7 @@ use log;
 use output::Output;
 use processor::Processor;
 use serde_json::Value;
-use std::{collections::HashMap, env, panic, path::PathBuf, str::FromStr, sync::Arc};
+use std::{collections::HashMap, panic, str::FromStr, sync::Arc};
 use uri::Uri;
 use url::Url;
 
