@@ -1,0 +1,137 @@
+{
+    "index_patterns": [
+        "metrics-node.adaptive_selection-esdiag*"
+    ],
+    "composed_of": [
+        "esdiag@mappings",
+        "esdiag@metadata",
+        "esdiag@settings"
+    ],
+    "allow_auto_create": true,
+    "data_stream": {
+        "hidden": false,
+        "allow_custom_routing": false
+    },
+    "priority": 310,
+    "template": {
+        "mappings": {
+            "_routing": {
+                "required": false
+            },
+            "properties": {
+                "data_stream": {
+                    "type": "object",
+                    "properties": {
+                        "dataset": {
+                            "type": "constant_keyword",
+                            "value": "node.adaptive_selection"
+                        }
+                    }
+                },
+                "adaptive_selection": {
+                    "properties": {
+                        "avg_queue_size": {
+                            "index": false,
+                            "type": "long"
+                        },
+                        "avg_response_time_ns": {
+                            "index": false,
+                            "type": "long"
+                        },
+                        "avg_service_time_ns": {
+                            "index": false,
+                            "type": "long"
+                        },
+                        "node": {
+                            "properties": {
+                                "attributes": {
+                                    "properties": {
+                                        "availability_zone": {
+                                            "ignore_above": 1024,
+                                            "type": "keyword"
+                                        },
+                                        "data": {
+                                            "ignore_above": 1024,
+                                            "type": "keyword"
+                                        },
+                                        "instance_configuration": {
+                                            "ignore_above": 1024,
+                                            "type": "keyword"
+                                        },
+                                        "logical_availability_zone": {
+                                            "ignore_above": 1024,
+                                            "type": "keyword"
+                                        },
+                                        "ml": {
+                                            "properties": {
+                                                "config_version": {
+                                                    "ignore_above": 1024,
+                                                    "type": "keyword"
+                                                }
+                                            }
+                                        },
+                                        "region": {
+                                            "ignore_above": 1024,
+                                            "type": "keyword"
+                                        },
+                                        "server_name": {
+                                            "ignore_above": 1024,
+                                            "type": "keyword"
+                                        },
+                                        "transform": {
+                                            "properties": {
+                                                "config_version": {
+                                                    "ignore_above": 1024,
+                                                    "type": "keyword"
+                                                }
+                                            }
+                                        },
+                                        "xpack": {
+                                            "properties": {
+                                                "installed": {
+                                                    "ignore_above": 1024,
+                                                    "type": "keyword"
+                                                }
+                                            }
+                                        }
+                                    }
+                                },
+                                "host": {
+                                    "ignore_above": 1024,
+                                    "type": "keyword"
+                                },
+                                "id": {
+                                    "ignore_above": 1024,
+                                    "type": "keyword"
+                                },
+                                "ip": {
+                                    "type": "ip"
+                                },
+                                "name": {
+                                    "ignore_above": 1024,
+                                    "type": "keyword"
+                                },
+                                "roles": {
+                                    "ignore_above": 1024,
+                                    "type": "keyword"
+                                },
+                                "version": {
+                                    "ignore_above": 1024,
+                                    "type": "keyword"
+                                }
+                            }
+                        },
+                        "outgoing_searches": {
+                            "index": false,
+                            "type": "long"
+                        },
+                        "rank": {
+                            "ignore_above": 1024,
+                            "type": "keyword"
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

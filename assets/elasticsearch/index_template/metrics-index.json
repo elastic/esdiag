@@ -7,11 +7,26 @@
         "esdiag@mappings",
         "esdiag@settings"
     ],
+    "allow_auto_create": true,
+    "data_stream": {
+        "hidden": false,
+        "allow_custom_routing": false
+    },
+    "priority": 300,
     "template": {
         "mappings": {
             "numeric_detection": false,
             "dynamic": true,
             "properties": {
+                "data_stream": {
+                    "type": "object",
+                    "properties": {
+                        "dataset": {
+                            "type": "constant_keyword",
+                            "value": "index"
+                        }
+                    }
+                },
                 "diagnostic.uuid": {
                     "type": "keyword"
                 },
@@ -25,10 +40,5 @@
                 }
             }
         }
-    },
-    "data_stream": {
-        "hidden": false,
-        "allow_custom_routing": false
-    },
-    "allow_auto_create": true
+    }
 }

@@ -7,10 +7,25 @@
         "esdiag@metadata",
         "esdiag@settings"
     ],
-    "template": {},
+    "allow_auto_create": true,
     "data_stream": {
         "hidden": false,
         "allow_custom_routing": false
     },
-    "allow_auto_create": true
+    "priority": 300,
+    "template": {
+        "mappings": {
+            "properties": {
+                "data_stream": {
+                    "type": "object",
+                    "properties": {
+                        "dataset": {
+                            "type": "constant_keyword",
+                            "value": "ingest.pipeline"
+                        }
+                    }
+                }
+            }
+        }
+    }
 }

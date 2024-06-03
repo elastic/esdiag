@@ -7,12 +7,30 @@
         "esdiag@metadata",
         "esdiag@settings"
     ],
-    "priority": 100,
+    "allow_auto_create": true,
+    "data_stream": {
+        "hidden": false,
+        "allow_custom_routing": false
+    },
+    "priority": 300,
     "template": {
         "mappings": {
             "numeric_detection": false,
             "dynamic": true,
             "properties": {
+                "data_stream": {
+                    "type": "object",
+                    "properties": {
+                        "dataset": {
+                            "type": "constant_keyword",
+                            "value": "node"
+                        },
+                        "type": {
+                            "type": "constant_keyword",
+                            "value": "settings"
+                        }
+                    }
+                },
                 "jvm.version": {
                     "type": "keyword"
                 },
@@ -48,10 +66,5 @@
                 }
             }
         }
-    },
-    "data_stream": {
-        "hidden": false,
-        "allow_custom_routing": false
-    },
-    "allow_auto_create": true
+    }
 }

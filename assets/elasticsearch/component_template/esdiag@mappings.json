@@ -5,7 +5,7 @@
             "_routing": {
                 "required": false
             },
-            "date_detection": true,
+            "date_detection": false,
             "numeric_detection": false,
             "dynamic_date_formats": [
                 "strict_date_optional_time",
@@ -18,6 +18,45 @@
             },
             "dynamic": true,
             "dynamic_templates": [
+                {
+                    "dont_index_human_time": {
+                        "mapping": {
+                            "type": "object",
+                            "enabled": false
+                        },
+                        "match": "*_time",
+                        "match_mapping_type": "*"
+                    }
+                },
+                {
+                    "dont_index_human_size": {
+                        "mapping": {
+                            "type": "object",
+                            "enabled": false
+                        },
+                        "match": "*size",
+                        "match_mapping_type": "string",
+                        "unmatch": "cache_size"
+                    }
+                },
+                {
+                    "dont_index_human_memory": {
+                        "mapping": {
+                            "type": "object",
+                            "enabled": false
+                        },
+                        "match": "*_memory",
+                        "match_mapping_type": "string"
+                    }
+                },
+                {
+                    "strings_as_keywords": {
+                        "mapping": {
+                            "type": "keyword"
+                        },
+                        "match_mapping_type": "string"
+                    }
+                },
                 {
                     "long_metrics": {
                         "mapping": {
@@ -47,7 +86,8 @@
                 {
                     "histogram_metrics": {
                         "mapping": {
-                            "type": "histogram"
+                            "type": "histogram",
+                            "ignore_malformed": true
                         }
                     }
                 },
@@ -60,55 +100,6 @@
                             ],
                             "type": "aggregate_metric_double",
                             "default_metric": "value_count"
-                        }
-                    }
-                },
-                {
-                    "dont_index_human_time_strings": {
-                        "match_mapping_type": "string",
-                        "match": "*_time",
-                        "mapping": {
-                            "type": "object",
-                            "enabled": false
-                        }
-                    }
-                },
-                {
-                    "dont_index_human_time_numbers": {
-                        "match_mapping_type": "double",
-                        "match": "*_time",
-                        "mapping": {
-                            "type": "object",
-                            "enabled": false
-                        }
-                    }
-                },
-                {
-                    "dont_index_human_size": {
-                        "match_mapping_type": "string",
-                        "match": "*size",
-                        "unmatch": "cache_size",
-                        "mapping": {
-                            "type": "object",
-                            "enabled": false
-                        }
-                    }
-                },
-                {
-                    "dont_index_human_memory": {
-                        "match_mapping_type": "string",
-                        "match": "*_memory",
-                        "mapping": {
-                            "type": "object",
-                            "enabled": false
-                        }
-                    }
-                },
-                {
-                    "strings_as_keywords": {
-                        "match_mapping_type": "string",
-                        "mapping": {
-                            "type": "keyword"
                         }
                     }
                 },
@@ -130,14 +121,6 @@
                             "type": "double"
                         }
                     }
-                },
-                {
-                    "strings_as_keywords": {
-                        "mapping": {
-                            "type": "keyword"
-                        },
-                        "match_mapping_type": "string"
-                    }
                 }
             ],
             "properties": {
@@ -146,7 +129,11 @@
                     "properties": {
                         "type": {
                             "type": "constant_keyword",
-                            "value": "settings"
+                            "value": "metrics"
+                        },
+                        "namespace": {
+                            "type": "constant_keyword",
+                            "value": "esdiag"
                         }
                     }
                 }
