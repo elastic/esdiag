@@ -23,7 +23,7 @@ pub async fn enrich(metadata: &Metadata, data: Value) -> Vec<Value> {
         .map(|(node_id, node)| {
             let mut doc = json!({
                 "@timestamp": metadata.diagnostic.collection_date,
-                "node": metadata.node_lookup.by_id(node_id.as_str()),
+                "node": metadata.lookup.node.by_id(node_id.as_str()),
                 "cluster": metadata.cluster,
                 "diagnostic": metadata.diagnostic,
             });

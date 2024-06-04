@@ -14,6 +14,18 @@ struct IndexStats {
     shards: Map<String, Value>,
 }
 
+fn divide_values(base: &Value, divisor: &Value) -> i64 {
+    let base = match base.as_i64() {
+        Some(start) => start,
+        None => return 0,
+    };
+    let divisor = match divisor.as_i64() {
+        Some(end) => end,
+        None => return 0,
+    };
+    base / divisor
+}
+
 pub async fn enrich(metadata: &Metadata, mut data: Value) -> Vec<Value> {
     let mut indices: HashMap<String, IndexStats> =
         match from_value(data.get_mut("indices").unwrap().take()) {
@@ -45,7 +57,9 @@ pub async fn enrich(metadata: &Metadata, mut data: Value) -> Vec<Value> {
             "namespace": "esdiag",
             "type": "metrics",
         },
-        "index": { "shards": null },
+        "index": {
+            "shards": null
+        }
     });
 
     let indices_stats: Vec<Value> = indices
@@ -54,11 +68,13 @@ pub async fn enrich(metadata: &Metadata, mut data: Value) -> Vec<Value> {
             let shard_stats: Vec<_> = index_stats.shards.clone().into_iter().collect();
             index_stats.shards.clear();
             let data_stream = metadata
-                .data_stream_lookup
+                .lookup
+                .data_stream
                 .by_index(index.as_str())
                 .unwrap_or(Value::Null);
             let alias = metadata
-                .alias_lookup
+                .lookup
+                .alias
                 .by_index(index.as_str())
                 .unwrap_or(Value::Null);
             let mut docs: Vec<_> = shard_stats
@@ -82,7 +98,7 @@ pub async fn enrich(metadata: &Metadata, mut data: Value) -> Vec<Value> {
                         .map(|shard_stats| {
                             let mut doc = json!({
                                 "shard":shard_stats,
-                                "node": metadata.node_lookup.by_id(
+                                "node": metadata.lookup.node.by_id(
                                     shard_stats["routing"]["node"].as_str().unwrap_or("")
                                 ).unwrap_or(Value::Null),
                             });
@@ -93,8 +109,31 @@ pub async fn enrich(metadata: &Metadata, mut data: Value) -> Vec<Value> {
                     shard_docs
                 })
                 .collect();
+
+            let indexing_patch = json!({
+                "index": {
+                    "primaries": {
+                        "indexing": {
+                            "index_time_per_shard_in_millis": divide_values(
+                                &index_stats.primaries["indexing"]["index_time_in_millis"],
+                                &index_stats.primaries["shard_stats"]["total_count"],
+                            ),
+                        }
+                    },
+                    "total": {
+                        "indexing": {
+                            "index_time_per_shard_in_millis": divide_values(
+                                &index_stats.total["indexing"]["index_time_in_millis"],
+                                &index_stats.total["shard_stats"]["total_count"],
+                            )
+                        }
+                    }
+                },
+            });
+
             let mut doc = json!({"index": index_stats});
             merge(&mut doc, &data_stream_index_patch);
+            merge(&mut doc, &indexing_patch);
             merge(
                 &mut doc,
                 &json!({

@@ -18,7 +18,7 @@ pub async fn enrich(metadata: &Metadata, data: Value) -> Vec<Value> {
                 "@timestamp": metadata.diagnostic.collection_date,
                 "cluster": metadata.cluster,
                 "diagnostic": metadata.diagnostic,
-                "node": metadata.node_lookup.by_id(node_id.as_str()),
+                "node": metadata.lookup.node.by_id(node_id.as_str()),
             });
 
             // Extract transport.actions
@@ -106,7 +106,7 @@ pub async fn enrich(metadata: &Metadata, data: Value) -> Vec<Value> {
 
                         let peer_node_patch = json!({
                             "adaptive_selection": {
-                                "node": metadata.node_lookup.by_id(peer_node_id.as_str()),
+                                "node": metadata.lookup.node.by_id(peer_node_id.as_str()),
                             },
                         });
 

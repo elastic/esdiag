@@ -18,13 +18,18 @@ pub struct DiagnosticMetadata {
 }
 
 #[derive(Clone, Debug, Serialize)]
+pub struct Lookups {
+    pub alias: Lookup,
+    pub data_stream: Lookup,
+    pub node: Lookup,
+}
+
+#[derive(Clone, Debug, Serialize)]
 pub struct Metadata {
     pub cluster: Value,
     pub diagnostic: DiagnosticMetadata,
     pub version: String,
-    pub alias_lookup: Lookup,
-    pub data_stream_lookup: Lookup,
-    pub node_lookup: Lookup,
+    pub lookup: Lookups,
 }
 
 impl Metadata {
@@ -63,12 +68,14 @@ impl Metadata {
             cluster,
             diagnostic,
             version: version["version"]["number"].as_str().unwrap().to_string(),
-            alias_lookup: Lookup::new(Elasticsearch(Alias), metadata["alias"].clone()),
-            data_stream_lookup: Lookup::new(
-                Elasticsearch(DataStreams),
-                metadata["data_stream"].clone(),
-            ),
-            node_lookup: Lookup::new(Elasticsearch(Nodes), metadata["nodes"].clone()),
+            lookup: Lookups {
+                alias: Lookup::new(Elasticsearch(Alias), metadata["alias"].clone()),
+                data_stream: Lookup::new(
+                    Elasticsearch(DataStreams),
+                    metadata["data_stream"].clone(),
+                ),
+                node: Lookup::new(Elasticsearch(Nodes), metadata["nodes"].clone()),
+            },
         }
     }
 
@@ -77,12 +84,12 @@ impl Metadata {
             ("cluster".to_string(), self.cluster.clone()),
             ("diagnostic".to_string(), json!(self.diagnostic)),
             //("version".to_string(), Value::from(self.version.clone())),
-            ("alias_lookup".to_string(), self.alias_lookup.to_value()),
+            ("alias_lookup".to_string(), self.lookup.alias.to_value()),
             (
                 "data_stream_lookup".to_string(),
-                self.data_stream_lookup.to_value(),
+                self.lookup.data_stream.to_value(),
             ),
-            ("node_lookup".to_string(), self.node_lookup.to_value()),
+            ("node_lookup".to_string(), self.lookup.node.to_value()),
         ]);
         hashmap
     }

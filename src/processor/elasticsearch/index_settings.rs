@@ -44,7 +44,7 @@ pub async fn enrich(metadata: &Metadata, data: Value) -> Vec<Value> {
             let mut doc = json!({
                 "@timestamp": metadata.diagnostic.collection_date,
                 "cluster": metadata.cluster,
-                "data_stream": metadata.data_stream_lookup.by_index(index.as_str()),
+                "data_stream": metadata.lookup.data_stream.by_index(index.as_str()),
                 "diagnostic": metadata.diagnostic,
                 "index": settings["settings"]["index"],
             });
