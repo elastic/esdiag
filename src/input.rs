@@ -80,7 +80,7 @@ pub struct Source {
 }
 
 impl Source {
-    pub fn with_dir(&self, name: String, dir: &PathBuf) -> PathBuf {
+    pub fn with_dir(&self, name: &str, dir: &PathBuf) -> PathBuf {
         let mut path: PathBuf = PathBuf::new();
         path.push(&dir);
         match &self.subdir {
@@ -88,8 +88,8 @@ impl Source {
             None => (),
         }
         let filename = match &self.extension {
-            Some(extension) => name.clone() + extension,
-            None => name.clone() + ".json",
+            Some(extension) => format!("{}{}", name, extension),
+            None => format!("{}.json", name),
         };
         path.push(filename);
         path
@@ -173,9 +173,19 @@ impl Input {
             None => panic!("ERROR: Source not found for {key}"),
         };
         match &self.uri {
-            Uri::Directory(dir) => match file::parse_json(&source.with_dir(key, dir)) {
+            Uri::Directory(dir) => match file::parse_json(&source.with_dir(&key, dir)) {
                 Ok(json) => json,
-                Err(e) => panic!("ERROR: Failed to parse JSON file - {e}"),
+                Err(_) => match file::read_first_line(&source.with_dir(&key, dir)) {
+                    Ok(line) => {
+                        log::error!(
+                            "Failed to parse {}, contains: \"{}\"",
+                            source.with_dir(&key, dir).to_str().unwrap(),
+                            &line
+                        );
+                        panic!("File did not have valid json");
+                    }
+                    Err(e) => panic!("Failed to read file - {}", e),
+                },
             },
             _ => {
                 unimplemented!("Input type no implemented!");

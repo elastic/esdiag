@@ -8,7 +8,7 @@ use serde_json::Value;
 use serde_yaml;
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::BufReader;
+use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 
 pub static ASSETS_DIR: Dir = include_dir!("assets");
@@ -24,6 +24,23 @@ pub fn parse_json(file_path: &PathBuf) -> Result<Value, Box<dyn std::error::Erro
     match json {
         Ok(json) => Ok(json),
         Err(e) => Err(Box::new(e)),
+    }
+}
+
+pub fn read_first_line(file_path: &PathBuf) -> Result<String, Box<dyn std::error::Error>> {
+    log::debug!("Reading file first line: {:?}", file_path);
+    let file = match File::open(file_path) {
+        Ok(file) => file,
+        Err(e) => return Err(Box::new(e)),
+    };
+    let reader = BufReader::new(file);
+    let mut lines = reader.lines();
+    match lines.next() {
+        Some(line) => Ok(line?),
+        None => Err(Box::new(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "No lines found",
+        ))),
     }
 }
 
