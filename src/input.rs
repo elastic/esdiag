@@ -12,8 +12,9 @@ use serde_json::Value;
 use std::{collections::HashMap, fmt, path::PathBuf, str::FromStr};
 
 pub trait Application {
-    fn get_metadata_sets(&self) -> Vec<DataSet>;
     fn get_data_sets(&self) -> Vec<DataSet>;
+    fn get_lookup_sets(&self) -> Vec<DataSet>;
+    fn get_metadata_sets(&self) -> Vec<DataSet>;
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -130,9 +131,15 @@ impl fmt::Display for Source {
 // Input struct to hold the product, sources, and version
 
 #[derive(Debug)]
+pub struct InputDataSets {
+    pub data: Vec<DataSet>,
+    pub lookup: Vec<DataSet>,
+    pub metadata: Vec<DataSet>,
+}
+
+#[derive(Debug)]
 pub struct Input {
-    pub data_sets: Vec<DataSet>,
-    pub metadata_sets: Vec<DataSet>,
+    pub dataset: InputDataSets,
     pub product: Product,
     pub sources: HashMap<String, Source>,
     pub uri: Uri,
@@ -158,8 +165,11 @@ impl Input {
 
         Self {
             product: manifest.product.clone(),
-            metadata_sets: application.get_metadata_sets(),
-            data_sets: application.get_data_sets(),
+            dataset: InputDataSets {
+                data: application.get_data_sets(),
+                lookup: application.get_lookup_sets(),
+                metadata: application.get_metadata_sets(),
+            },
             uri,
             sources,
             version: Some(version),

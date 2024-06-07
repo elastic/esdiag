@@ -213,12 +213,18 @@ async fn main() {
 
 async fn import_diagnostics(manifest: Manifest, input: Input, output: Output) {
     let metadata_raw: HashMap<String, Value> = input
-        .metadata_sets
+        .dataset
+        .metadata
         .iter()
         .map(|dataset| (dataset.to_string(), input.load(dataset)))
         .collect();
 
-    let processor = Processor::new(&manifest, &metadata_raw);
+    let mut processor = Processor::new(&manifest, &metadata_raw);
+
+    for lookup in &input.dataset.lookup {
+        let data = input.load(&lookup);
+        processor.enrich_lookup(&lookup, data).await;
+    }
 
     // If debug logging, save metadata to file
     if log::log_enabled!(log::Level::Debug) {
@@ -227,12 +233,12 @@ async fn import_diagnostics(manifest: Manifest, input: Input, output: Output) {
         }
     }
 
-    let data_sets = input.data_sets.clone();
-
+    let input = Arc::new(input);
     let futures = FuturesUnordered::new();
     let output = Arc::new(output);
     let processor = Arc::new(processor);
-    let input = Arc::new(input);
+
+    let data_sets = input.dataset.data.clone();
 
     // Process each data set in parallel and push the resulting futures into `futures`
     for data_set in data_sets {

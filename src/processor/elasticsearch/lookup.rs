@@ -1,10 +1,12 @@
-mod alias;
-mod data_stream;
-mod node;
+pub mod alias;
+pub mod data_stream;
+pub mod index;
+pub mod node;
 use super::EsDataSet::*;
 use crate::input::DataSet;
 use alias::AliasLookup;
 use data_stream::DataStreamLookup;
+use index::IndexLookup;
 use node::NodeLookup;
 use serde::Serialize;
 use serde_json::Value;
@@ -18,17 +20,27 @@ pub enum Lookup {
     DataStreamLookup(DataStreamLookup),
     #[serde(rename = "node")]
     NodeLookup(NodeLookup),
+    IndexLookup(IndexLookup),
 }
 
 impl Lookup {
-    pub fn new(data: DataSet, value: Value) -> Lookup {
-        match data {
+    pub fn from_value(data_set: DataSet, value: Value) -> Lookup {
+        match data_set {
             DataSet::Elasticsearch(Alias) => Lookup::AliasLookup(AliasLookup::from_value(value)),
             DataSet::Elasticsearch(DataStreams) => {
                 Lookup::DataStreamLookup(DataStreamLookup::from_value(value))
             }
             DataSet::Elasticsearch(Nodes) => Lookup::NodeLookup(NodeLookup::from_value(value)),
             _ => panic!("ERROR: Invalid lookup source"),
+        }
+    }
+
+    pub fn insert(&mut self, id: &String, value: &Value) {
+        match self {
+            Lookup::AliasLookup(_) => (),      //lookup.insert(id, value),
+            Lookup::DataStreamLookup(_) => (), // lookup.insert(id, value),
+            Lookup::NodeLookup(lookup) => lookup.insert(id, value),
+            Lookup::IndexLookup(lookup) => lookup.insert(id, value),
         }
     }
 
@@ -65,6 +77,10 @@ impl Lookup {
             },
             Lookup::DataStreamLookup(lookup) => match lookup.by_index.get(index) {
                 Some(data_stream) => Some(data_stream.clone()),
+                None => None,
+            },
+            Lookup::IndexLookup(lookup) => match lookup.by_index.get(index) {
+                Some(index) => Some(serde_json::to_value(index).expect("Failed to parse index")),
                 None => None,
             },
             _ => None,
