@@ -44,6 +44,21 @@ pub fn read_first_line(file_path: &PathBuf) -> Result<String, Box<dyn std::error
     }
 }
 
+pub fn read_string(file_path: &PathBuf) -> Result<String, Box<dyn std::error::Error>> {
+    log::debug!("Reading file: {:?}", file_path);
+    let file = match File::open(file_path) {
+        Ok(file) => file,
+        Err(e) => return Err(Box::new(e)),
+    };
+    let reader = BufReader::new(file);
+    let mut lines = reader.lines();
+    let mut string = String::new();
+    while let Some(line) = lines.next() {
+        string.push_str(&line?);
+    }
+    Ok(string)
+}
+
 pub fn parse_manifest(dir: &PathBuf) -> Result<Manifest, Box<dyn std::error::Error>> {
     let file_path = dir.as_path().join("manifest.json");
     let manifest = match File::open(&file_path) {

@@ -1,9 +1,9 @@
 pub mod elasticsearch;
-use elasticsearch::EsDataSet;
 pub mod kibana;
 pub mod logstash;
 use crate::input::{manifest::Manifest, DataSet};
 use elasticsearch::metadata::Metadata;
+use elasticsearch::EsDataSet;
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -12,16 +12,14 @@ pub struct Processor {
 }
 
 impl Processor {
-    pub fn new(manifest: &Manifest, metadata: &HashMap<String, Value>) -> Self {
+    pub fn new(manifest: &Manifest, metadata: &HashMap<String, String>) -> Self {
         Processor {
             metadata: Metadata::new(manifest, metadata),
         }
     }
-    pub async fn enrich_lookup(&mut self, dataset: &DataSet, data: Value) -> Option<Vec<Value>> {
+    pub async fn enrich_lookup(&mut self, dataset: &DataSet, data: String) -> Option<Vec<Value>> {
         match dataset {
             DataSet::Elasticsearch(es_dataset) => match es_dataset {
-                EsDataSet::Alias => None,
-                EsDataSet::DataStreams => None,
                 EsDataSet::Nodes => {
                     Some(elasticsearch::nodes::enrich_lookup(&mut self.metadata, data).await)
                 }

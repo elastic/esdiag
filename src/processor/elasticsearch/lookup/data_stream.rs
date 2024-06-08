@@ -1,54 +1,58 @@
-use serde::Serialize;
-use serde_json::Value;
-use std::collections::HashMap;
+use super::{Identifiers, Lookup};
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub struct DataStreamLookup {
-    pub by_index: HashMap<String, Value>,
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct DataStreamData {
+    name: String,
+    timestamp_field: TimestampField,
+    indices: Vec<Index>,
+    generation: u64,
+    status: String,
+    template: String,
+    ilm_policy: Option<String>,
+    next_generation_managed_by: Option<String>,
+    prefer_ilm: Option<bool>,
+    hidden: bool,
+    system: bool,
+    allow_custom_routing: Option<bool>,
+    replicated: Option<bool>,
+    rollover_on_write: Option<bool>,
 }
 
-impl DataStreamLookup {
-    pub fn new() -> DataStreamLookup {
-        DataStreamLookup {
-            by_index: HashMap::new(),
-        }
-    }
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct TimestampField {
+    name: String,
+}
 
-    pub fn from_value(data_streams: Value) -> DataStreamLookup {
-        let mut data_stream_lookup = DataStreamLookup::new();
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct DataStreamWrapper {
+    data_streams: Vec<DataStreamData>,
+}
 
-        for data_stream in data_streams["data_streams"]
-            .as_array()
-            .expect("Failed to get data_streams")
-            .clone()
-        {
-            for (i, index) in data_stream["indices"]
-                .as_array()
-                .expect("Failed to get indices")
-                .iter()
-                .cloned()
-                .enumerate()
-                .clone()
-            {
-                let last_index: usize = data_stream["indices"]
-                    .as_array()
-                    .expect("Failed to get indices array")
-                    .len()
-                    - 1;
-                let is_write_index: bool = i == last_index;
-                let mut data_stream_obj = data_stream.as_object().unwrap().clone();
-                data_stream_obj.insert(
-                    "is_write_index".to_string(),
-                    serde_json::Value::Bool(is_write_index),
-                );
-                data_stream_obj.remove("indices");
-                data_stream_lookup.by_index.insert(
-                    index["index_name"].as_str().unwrap().into(),
-                    serde_json::to_value(data_stream_obj)
-                        .expect("Failed to convert data_stream to Value"),
-                );
-            }
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Index {
+    index_name: String,
+    index_uuid: String,
+    prefer_ilm: Option<bool>,
+    ilm_policy: Option<String>,
+    managed_by: Option<String>,
+}
+
+impl From<String> for Lookup<DataStreamData> {
+    fn from(string: String) -> Self {
+        let data_streams: DataStreamWrapper =
+            serde_json::from_str(&string).expect("Failed to parse DataStreamData");
+
+        let mut lookup_data_stream: Lookup<DataStreamData> = Lookup::new();
+        for data_stream in data_streams.data_streams {
+            let ids = Identifiers {
+                id: None,
+                name: Some(data_stream.name.clone()),
+                host: None,
+                ip: None,
+            };
+            lookup_data_stream.insert(ids, data_stream);
         }
-        data_stream_lookup
+        lookup_data_stream
     }
 }

@@ -176,7 +176,7 @@ impl Input {
         }
     }
 
-    pub fn load(&self, dataset: &DataSet) -> Value {
+    pub fn load_value(&self, dataset: &DataSet) -> Value {
         let key = dataset.to_string();
         let source = match self.sources.get(&key) {
             Some(source) => source,
@@ -196,6 +196,23 @@ impl Input {
                     }
                     Err(e) => panic!("Failed to read file - {}", e),
                 },
+            },
+            _ => {
+                unimplemented!("Input type no implemented!");
+            }
+        }
+    }
+
+    pub fn load_string(&self, dataset: &DataSet) -> String {
+        let key = dataset.to_string();
+        let source = match self.sources.get(&key) {
+            Some(source) => source,
+            None => panic!("ERROR: Source not found for {key}"),
+        };
+        match &self.uri {
+            Uri::Directory(dir) => match file::read_string(&source.with_dir(&key, dir)) {
+                Ok(line) => line,
+                Err(e) => panic!("Failed to read file - {}", e),
             },
             _ => {
                 unimplemented!("Input type no implemented!");

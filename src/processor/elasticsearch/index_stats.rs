@@ -69,26 +69,45 @@ pub async fn enrich(metadata: &Metadata, mut data: Value) -> Vec<Value> {
         .par_iter_mut()
         .flat_map(|(index, ref mut index_stats)| {
             let shard_stats: Vec<_> = index_stats.shards.clone().into_iter().collect();
-            index_stats.shards.clear();
-            let data_stream = metadata
+            let data_stream = metadata.lookup.data_stream.by_name(index.as_str());
+            let alias = metadata.lookup.alias.by_name(index.as_str());
+            let ilm = metadata.lookup.ilm.by_name(index);
+            let index_data = metadata
                 .lookup
-                .data_stream
-                .by_index(index.as_str())
-                .unwrap_or(Value::Null);
-            let alias = metadata
-                .lookup
-                .alias
-                .by_index(index.as_str())
-                .unwrap_or(Value::Null);
+                .index
+                .by_name(index)
+                .expect("Failed to get index_data");
+            let since_creation = match ilm {
+                Some(ilm) => match ilm.index_creation_date_millis {
+                    Some(date) => Some(metadata.diagnostic.collection_date - date),
+                    None => match index_data.creation_date {
+                        Some(date) => Some(metadata.diagnostic.collection_date - date),
+                        None => None,
+                    },
+                },
+                None => None,
+            };
+            let since_rollover = match ilm {
+                Some(ilm) => match ilm.lifecycle_date_millis {
+                    Some(date) => Some(metadata.diagnostic.collection_date - date),
+                    None => None,
+                },
+                None => None,
+            };
             let mut docs: Vec<_> = shard_stats
                 .par_iter()
                 .flat_map(|(shard_id, shard_stats)| {
                     let mut shard_doc = json!({
                         "index": {
                             "alias": alias,
+                            "data_stream": data_stream,
+                            "ilm": ilm,
                             "name": index,
                             "uuid": index_stats.uuid,
-                            "data_stream": data_stream,
+                            "since_creation": since_creation,
+                            "since_rollover": since_rollover,
+                            "indexing_complete": index_data.indexing_complete,
+                            "creation_date": index_data.creation_date,
                         },
                     });
 
@@ -103,7 +122,7 @@ pub async fn enrich(metadata: &Metadata, mut data: Value) -> Vec<Value> {
                                 "shard":shard_stats,
                                 "node": metadata.lookup.node.by_id(
                                     shard_stats["routing"]["node"].as_str().unwrap_or("")
-                                ).unwrap_or(Value::Null),
+                                ),
                             });
                             merge(&mut doc, &shard_doc);
                             doc

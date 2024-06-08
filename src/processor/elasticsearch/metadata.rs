@@ -1,103 +1,112 @@
-use super::lookup::{index::IndexLookup, node::NodeLookup, Lookup};
-use super::EsDataSet::*;
+use super::lookup::{
+    alias::AliasData, data_stream::DataStreamData, ilm::IlmData, index::IndexData, node::NodeData,
+    Lookup,
+};
 use crate::input::manifest::Manifest;
-use crate::input::DataSet::Elasticsearch;
-use serde::Serialize;
+use chrono::DateTime;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use uuid::Uuid;
 
 #[derive(Clone, Debug, Serialize)]
 pub struct DiagnosticMetadata {
-    pub collection_date: String,
+    pub collection_date: i64,
     pub inputs: String,
     pub node: String,
     pub runner: String,
     pub uuid: String,
-    pub version: semver::Version,
+    pub version: Option<semver::Version>,
 }
 
 #[derive(Clone, Debug, Serialize)]
 pub struct Lookups {
-    pub alias: Lookup,
-    pub data_stream: Lookup,
-    pub index: Lookup,
-    pub node: Lookup,
+    pub alias: Lookup<AliasData>,
+    pub data_stream: Lookup<DataStreamData>,
+    pub index: Lookup<IndexData>,
+    pub node: Lookup<NodeData>,
+    pub ilm: Lookup<IlmData>,
 }
 
 #[derive(Clone, Debug, Serialize)]
 pub struct Metadata {
-    pub cluster: Value,
+    pub cluster: Cluster,
     pub diagnostic: DiagnosticMetadata,
-    pub version: String,
+    pub version: semver::Version,
     pub lookup: Lookups,
 }
 
-impl Metadata {
-    pub fn new(manifest: &Manifest, metadata: &HashMap<String, Value>) -> Metadata {
-        let version = &metadata["version"];
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Cluster {
+    #[serde(rename = "name")]
+    node_name: String,
+    #[serde(rename = "cluster_name")]
+    name: String,
+    #[serde(rename = "cluster_uuid")]
+    uuid: String,
+    version: Version,
+    tagline: String,
+}
 
-        let cluster = json!({
-            "name": version["cluster_name"],
-            "uuid": version["cluster_uuid"],
-            "version": version["version"]["number"],
-            "build": {
-                "flavor": version["version"]["build_flavor"],
-                "type": version["version"]["build_type"],
-                "hash": version["version"]["build_hash"],
-                "date": version["version"]["build_date"],
-                "snapshot": version["version"]["build_snapshot"],
-                "lucene_version": version["version"]["lucene_version"],
-                "minimum_wire_compatibility_version": version["version"]["minimum_wire_compatibility_version"],
-                "minimum_index_compatibility_version": version["version"]["minimum_index_compatibility_version"],
-            }
-        });
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct Version {
+    number: semver::Version,
+    build_flavor: String,
+    build_type: String,
+    build_hash: String,
+    build_date: String,
+    build_snapshot: bool,
+    lucene_version: String,
+    minimum_wire_compatibility_version: String,
+    minimum_index_compatibility_version: String,
+}
+
+impl Metadata {
+    pub fn new(manifest: &Manifest, metadata: &HashMap<String, String>) -> Metadata {
+        let version = metadata.get("version").expect("Failed to get version");
+        let cluster: Cluster =
+            serde_json::from_str(version).expect("Failed to deserialize version");
+
+        let collection_date = DateTime::parse_from_rfc3339(&manifest.collection_date)
+            .expect("Failed to parse collection_date")
+            .timestamp_millis();
 
         let diagnostic = DiagnosticMetadata {
-            collection_date: manifest.collection_date.clone(),
+            collection_date,
             inputs: manifest.diagnostic_inputs.clone(),
-            node: version["name"]
-                .as_str()
-                .expect("Failed to get version.name")
-                .to_string(),
+            node: cluster.name.clone(),
             runner: manifest.runner.clone(),
             uuid: Uuid::new_v4().to_string(),
-            version: manifest
-                .diag_version
-                .clone()
-                .unwrap_or(semver::Version::new(0, 0, 0)),
+            version: manifest.diag_version.clone(),
         };
 
+        let version = cluster.version.number.clone();
         Metadata {
             cluster,
             diagnostic,
-            version: version["version"]["number"]
-                .as_str()
-                .expect("Failed to get version.number")
-                .to_string(),
+            version: version,
             lookup: Lookups {
-                alias: Lookup::from_value(Elasticsearch(Alias), metadata["alias"].clone()),
-                data_stream: Lookup::from_value(
-                    Elasticsearch(DataStreams),
-                    metadata["data_stream"].clone(),
-                ),
-                index: Lookup::IndexLookup(IndexLookup::new()),
-                node: Lookup::NodeLookup(NodeLookup::new()),
+                alias: Lookup::<AliasData>::from(metadata["alias"].clone()),
+                data_stream: Lookup::<DataStreamData>::from(metadata["data_stream"].clone()),
+                index: Lookup::<IndexData>::new(),
+                ilm: Lookup::<IlmData>::from(metadata["ilm_explain"].clone()),
+                node: Lookup::<NodeData>::new(),
             },
         }
     }
 
     pub fn to_hashmap(&self) -> HashMap<String, Value> {
         let hashmap = HashMap::from([
-            ("cluster".to_string(), self.cluster.clone()),
+            ("cluster".to_string(), json!(self.cluster)),
             ("diagnostic".to_string(), json!(self.diagnostic)),
-            //("version".to_string(), Value::from(self.version.clone())),
+            ("version".to_string(), json!(self.version.clone())),
             ("alias_lookup".to_string(), self.lookup.alias.to_value()),
             (
                 "data_stream_lookup".to_string(),
                 self.lookup.data_stream.to_value(),
             ),
             ("index_lookup".to_string(), self.lookup.index.to_value()),
+            ("ilm_lookup".to_string(), self.lookup.ilm.to_value()),
             ("node_lookup".to_string(), self.lookup.node.to_value()),
         ]);
         hashmap

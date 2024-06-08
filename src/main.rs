@@ -212,17 +212,17 @@ async fn main() {
 }
 
 async fn import_diagnostics(manifest: Manifest, input: Input, output: Output) {
-    let metadata_raw: HashMap<String, Value> = input
+    let metadata_raw: HashMap<String, String> = input
         .dataset
         .metadata
         .iter()
-        .map(|dataset| (dataset.to_string(), input.load(dataset)))
+        .map(|dataset| (dataset.to_string(), input.load_string(dataset)))
         .collect();
 
     let mut processor = Processor::new(&manifest, &metadata_raw);
 
     for lookup in &input.dataset.lookup {
-        let data = input.load(&lookup);
+        let data = input.load_string(&lookup);
         processor.enrich_lookup(&lookup, data).await;
     }
 
@@ -245,7 +245,7 @@ async fn import_diagnostics(manifest: Manifest, input: Input, output: Output) {
         let input: Arc<Input> = Arc::clone(&input);
         let processor: Arc<Processor> = Arc::clone(&processor);
         let output: Arc<Output> = Arc::clone(&output);
-        let data: Value = input.load(&data_set);
+        let data: Value = input.load_value(&data_set);
 
         let future = async move {
             output.send(processor.enrich(&data_set, data).await).await;

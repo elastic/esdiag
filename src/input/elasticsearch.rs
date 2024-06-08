@@ -1,5 +1,5 @@
 use super::{Application, DataSet};
-use crate::processor::elasticsearch::{lookup, EsDataSet::*};
+use crate::processor::elasticsearch::EsDataSet::*;
 
 pub struct Elasticsearch {
     pub data_sets: Vec<DataSet>,
@@ -13,6 +13,7 @@ impl Elasticsearch {
             DataSet::Elasticsearch(Alias),
             DataSet::Elasticsearch(Version),
             DataSet::Elasticsearch(DataStreams),
+            DataSet::Elasticsearch(IlmExplain),
         ]);
         let lookup_sets: Vec<DataSet> = Vec::from([
             DataSet::Elasticsearch(Nodes),
