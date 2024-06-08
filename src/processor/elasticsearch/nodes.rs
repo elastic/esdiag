@@ -15,13 +15,21 @@ struct Nodes {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+struct ComponentVersion {
+    ml_config_version: i64,
+    transform_config_version: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 struct Node {
     name: String,
     transport_address: String,
     host: String,
     ip: String,
     version: semver::Version,
-    transport_version: Option<String>,
+    transport_version: Option<i64>,
+    index_version: Option<i64>,
+    component_version: Option<ComponentVersion>,
     build_flavor: String,
     build_type: String,
     build_hash: String,
