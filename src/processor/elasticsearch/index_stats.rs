@@ -1,4 +1,5 @@
 use super::metadata::Metadata;
+use crate::processor::elasticsearch::lookup::index::IndexData;
 use json_patch::merge;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -72,11 +73,10 @@ pub async fn enrich(metadata: &Metadata, mut data: Value) -> Vec<Value> {
             let data_stream = metadata.lookup.data_stream.by_name(index.as_str());
             let alias = metadata.lookup.alias.by_name(index.as_str());
             let ilm = metadata.lookup.ilm.by_name(index);
-            let index_data = metadata
-                .lookup
-                .index
-                .by_name(index)
-                .expect("Failed to get index_data");
+            let index_data = metadata.lookup.index.by_name(index).unwrap_or(&IndexData {
+                indexing_complete: None,
+                creation_date: None,
+            });
             let since_creation = match ilm {
                 Some(ilm) => match ilm.index_creation_date_millis {
                     Some(date) => Some(metadata.diagnostic.collection_date - date),
@@ -118,12 +118,36 @@ pub async fn enrich(metadata: &Metadata, mut data: Value) -> Vec<Value> {
                         .expect("Failed to get shard_stats array")
                         .iter()
                         .map(|shard_stats| {
+                            let index_time_in_millis = &shard_stats["indexing"]
+                                ["index_time_in_millis"]
+                                .as_i64()
+                                .expect("Failed to get index_time_in_millis");
+                            let index_total = &shard_stats["indexing"]["index_total"]
+                                .as_i64()
+                                .expect("Failed to get index_total");
+                            let duration = match since_creation {
+                                Some(millis) => millis / 1000,
+                                None => 1,
+                            };
+                            let avg_docs_sec = index_total / duration;
+                            let avg_cpu_millis = index_time_in_millis / duration;
+
+                            let indexing_patch = json!({
+                                "shard": {
+                                    "indexing": {
+                                        "avg_docs_sec": avg_docs_sec,
+                                        "avg_cpu_millis": avg_cpu_millis,
+                                    }
+                                }
+                            });
+
                             let mut doc = json!({
                                 "shard":shard_stats,
                                 "node": metadata.lookup.node.by_id(
                                     shard_stats["routing"]["node"].as_str().unwrap_or("")
                                 ),
                             });
+                            merge(&mut doc, &indexing_patch);
                             merge(&mut doc, &shard_doc);
                             doc
                         })
