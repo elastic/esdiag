@@ -128,8 +128,20 @@ async fn main() {
             source,
             pretty,
         } => {
-            let output_uri = uri::classify(target);
-            let input_uri = uri::classify(source);
+            let output_uri = match uri::classify(target) {
+                Ok(uri) => uri,
+                Err(e) => {
+                    log::debug!("Invalid target: {}", e);
+                    panic!("Invalid ouput: {}", target);
+                }
+            };
+            let input_uri = match uri::classify(source) {
+                Ok(uri) => uri,
+                Err(e) => {
+                    log::debug!("Invalid source: {}", e);
+                    panic!("Invalid input: {}", source);
+                }
+            };
             log::info!("input: {:?}", input_uri);
             log::info!("output: {:?}", output_uri);
 

@@ -103,7 +103,10 @@ impl Metadata {
         let hashmap = HashMap::from([
             ("cluster".to_string(), json!(self.cluster)),
             ("diagnostic".to_string(), json!(self.diagnostic)),
-            ("version".to_string(), json!(self.version.clone())),
+            (
+                "version".to_string(),
+                json!({"version": self.version.clone()}),
+            ),
             ("alias_lookup".to_string(), self.lookup.alias.to_value()),
             (
                 "data_stream_lookup".to_string(),
