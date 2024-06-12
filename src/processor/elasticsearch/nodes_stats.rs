@@ -3,7 +3,7 @@ use json_patch::merge;
 use rayon::prelude::*;
 use serde_json::{json, Value};
 
-pub async fn enrich(metadata: &Metadata, data: Value) -> Vec<Value> {
+pub fn enrich(metadata: &Metadata, data: Value) -> Vec<Value> {
     let nodes: Vec<_> = match data["nodes"].as_object() {
         Some(data) => data.iter().collect(),
         None => return Vec::new(),

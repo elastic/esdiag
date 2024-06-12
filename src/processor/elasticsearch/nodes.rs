@@ -50,7 +50,7 @@ struct Node {
     aggregations: Value,
 }
 
-pub async fn enrich_lookup(metadata: &mut Metadata, data: String) -> Vec<Value> {
+pub fn enrich_lookup(metadata: &mut Metadata, data: String) -> Vec<Value> {
     let nodes_data: Nodes = match serde_json::from_str(&data) {
         Ok(data) => data,
         Err(e) => {

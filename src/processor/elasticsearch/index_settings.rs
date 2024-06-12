@@ -58,7 +58,7 @@ struct IndexSettings {
     default_pipeline: Option<String>,
 }
 
-pub async fn enrich_lookup(metadata: &mut Metadata, data: String) -> Vec<Value> {
+pub fn enrich_lookup(metadata: &mut Metadata, data: String) -> Vec<Value> {
     let indices: HashMap<String, Settings> = match serde_json::from_str(&data) {
         Ok(data) => data,
         Err(e) => {

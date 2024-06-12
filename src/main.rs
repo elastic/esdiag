@@ -4,17 +4,17 @@ mod output;
 mod processor;
 mod setup;
 mod uri;
-use async_std::task;
+use async_std::task::{self, JoinHandle};
 use clap::{Parser, Subcommand};
 use futures::future::join_all;
 use futures::stream::FuturesUnordered;
 use host::Host;
-use input::{manifest::Manifest, Input};
+use input::Input;
 use log;
 use output::Output;
 use processor::Processor;
 use serde_json::Value;
-use std::{collections::HashMap, panic, str::FromStr, sync::Arc};
+use std::{collections::HashMap, panic, str::FromStr, sync::Arc, thread};
 use uri::Uri;
 use url::Url;
 
@@ -152,9 +152,9 @@ async fn main() {
                 },
                 _ => panic!("Diagnostic manifest can only load from a directory input"),
             };
-            let input = Input::new(input_uri, &manifest);
+            let input = Input::new(input_uri, manifest);
             let output = Output::from_uri(output_uri, *pretty);
-            import_diagnostics(manifest, input, output).await;
+            import_diagnostics(input, output).await;
         }
         Commands::Host {
             name,
@@ -223,8 +223,8 @@ async fn main() {
     }
 }
 
-async fn import_diagnostics(manifest: Manifest, input: Input, output: Output) {
-    let metadata_raw: HashMap<String, String> = input
+async fn import_diagnostics(input: Input, output: Output) {
+    let metadata_content: HashMap<String, String> = input
         .dataset
         .metadata
         .iter()
@@ -237,21 +237,28 @@ async fn import_diagnostics(manifest: Manifest, input: Input, output: Output) {
         })
         .collect();
 
-    log::debug!("metadata_raw: {:?}", metadata_raw.keys());
+    log::debug!("metadata_content keys: {:?}", metadata_content.keys());
 
-    let mut processor = Processor::new(&manifest, &metadata_raw);
+    let mut processor = Processor::new(&input.manifest, metadata_content);
+
+    let futures = FuturesUnordered::new();
+    let input = Arc::new(input);
+    let output = Arc::new(output);
 
     for lookup in &input.dataset.lookup {
-        let data = match input.load_string(&lookup) {
-            Some(data) => data,
-            None => {
-                log::warn!("Failed to load lookup data for {}", lookup.to_string());
-                continue;
+        match input.load_string(&lookup) {
+            Some(data) => {
+                if let Some(docs) = processor.enrich_lookup(&lookup, data) {
+                    let output: Arc<Output> = Arc::clone(&output);
+                    let future = async move {
+                        output.send(docs).await;
+                    };
+                    futures.push(task::spawn(future));
+                }
             }
-        };
-        match processor.enrich_lookup(&lookup, data).await {
-            Some(docs) => output.send(docs).await,
-            None => log::debug!("No docs for lookup {}", lookup.to_string()),
+            None => {
+                log::debug!("No docs for lookup {}", lookup.to_string());
+            }
         }
     }
 
@@ -262,12 +269,8 @@ async fn import_diagnostics(manifest: Manifest, input: Input, output: Output) {
         }
     }
 
-    let input = Arc::new(input);
-    let futures = FuturesUnordered::new();
-    let output = Arc::new(output);
-    let processor = Arc::new(processor);
-
     let data_sets = input.dataset.data.clone();
+    let processor = Arc::new(processor);
 
     // Process each data set in parallel and push the resulting futures into `futures`
     for data_set in data_sets {
@@ -277,7 +280,7 @@ async fn import_diagnostics(manifest: Manifest, input: Input, output: Output) {
         let data: Value = input.load_value(&data_set);
 
         let future = async move {
-            output.send(processor.enrich(&data_set, data).await).await;
+            output.send(processor.enrich(&data_set, data)).await;
         };
 
         futures.push(task::spawn(future));

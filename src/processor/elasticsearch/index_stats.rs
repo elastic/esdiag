@@ -27,7 +27,7 @@ fn divide_values(base: &Value, divisor: &Value) -> i64 {
     base / divisor
 }
 
-pub async fn enrich(metadata: &Metadata, mut data: Value) -> Vec<Value> {
+pub fn enrich(metadata: &Metadata, mut data: Value) -> Vec<Value> {
     let mut indices: HashMap<String, IndexStats> = match from_value(
         data.get_mut("indices")
             .expect("Failed to get indices")

@@ -35,6 +35,7 @@ pub struct Metadata {
     pub diagnostic: DiagnosticMetadata,
     pub version: semver::Version,
     pub lookup: Lookups,
+    pub as_doc: MetadataDoc,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -62,40 +63,95 @@ struct Version {
     minimum_index_compatibility_version: String,
 }
 
+#[derive(Clone, Debug, Serialize)]
+pub struct ClusterDoc {
+    node_name: String,
+    name: String,
+    uuid: String,
+    version: String,
+}
+
+impl ClusterDoc {
+    pub fn from(cluster: &Cluster) -> Self {
+        Self {
+            node_name: cluster.node_name.clone(),
+            name: cluster.name.clone(),
+            uuid: cluster.uuid.clone(),
+            version: cluster.version.number.to_string(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct MetadataDoc {
+    #[serde(rename = "@timestamp")]
+    timestamp: i64,
+    cluster: ClusterDoc,
+    diagnostic: DiagnosticMetadata,
+}
+
 impl Metadata {
-    pub fn new(manifest: &Manifest, metadata: &HashMap<String, String>) -> Metadata {
+    pub fn new(manifest: &Manifest, metadata: HashMap<String, String>) -> Metadata {
         let version = metadata.get("version").expect("Failed to get version");
         let cluster: Cluster =
             serde_json::from_str(version).expect("Failed to deserialize version");
 
-        let collection_date = DateTime::parse_from_rfc3339(&manifest.collection_date)
-            .expect("Failed to parse collection_date")
-            .timestamp_millis();
+        let collection_date = {
+            if let Ok(date) = DateTime::parse_from_rfc3339(&manifest.collection_date) {
+                date.timestamp_millis()
+            } else if let Ok(date) =
+                DateTime::parse_from_str(&manifest.collection_date, "%Y-%m-%dT%H:%M:%S%.3f%z")
+            {
+                date.timestamp_millis()
+            } else {
+                log::warn!(
+                    "Failed to parse collection date: {}",
+                    manifest.collection_date
+                );
+                chrono::Utc::now().timestamp_millis()
+            }
+        };
+
+        let runner = match &manifest.runner {
+            Some(runner) => runner.clone(),
+            None => "Unknown".to_string(),
+        };
 
         let diagnostic = DiagnosticMetadata {
             collection_date,
             inputs: manifest.diagnostic_inputs.clone(),
             node: cluster.name.clone(),
-            runner: manifest.runner.clone(),
+            runner,
             uuid: Uuid::new_v4().to_string(),
             version: manifest.diag_version.clone(),
+        };
+
+        let as_doc = MetadataDoc {
+            timestamp: diagnostic.collection_date,
+            cluster: ClusterDoc::from(&cluster),
+            diagnostic: diagnostic.clone(),
         };
 
         let version = cluster.version.number.clone();
         Metadata {
             cluster,
             diagnostic,
-            version: version,
+            version,
             lookup: Lookups {
                 alias: Lookup::<AliasData>::from(metadata["alias"].clone()),
-                data_stream: Lookup::<DataStreamData>::from(metadata["data_stream"].clone()),
+                data_stream: match metadata.get("data_stream").clone() {
+                    Some(data_stream) => Lookup::<DataStreamData>::from(data_stream),
+                    None => Lookup::<DataStreamData>::new(),
+                },
                 index: Lookup::<IndexData>::new(),
                 ilm: Lookup::<IlmData>::from(metadata["ilm_explain"].clone()),
                 node: Lookup::<NodeData>::new(),
-                shared_cache: Lookup::<SharedCacheStats>::from(
-                    metadata["searchable_snapshots_cache_stats"].clone(),
-                ),
+                shared_cache: match metadata.get("searchable_snapshots_cache_stats").clone() {
+                    Some(cache) => Lookup::<SharedCacheStats>::from(cache),
+                    None => Lookup::<SharedCacheStats>::new(),
+                },
             },
+            as_doc,
         }
     }
 

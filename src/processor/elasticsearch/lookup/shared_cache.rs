@@ -24,8 +24,8 @@ struct Nodes {
     nodes: HashMap<String, SharedCache>,
 }
 
-impl From<String> for Lookup<SharedCacheStats> {
-    fn from(string: String) -> Self {
+impl From<&String> for Lookup<SharedCacheStats> {
+    fn from(string: &String) -> Self {
         let nodes: Nodes = serde_json::from_str(&string).expect("Failed to parse SharedCacheStats");
         let mut lookup_shared_cache: Lookup<SharedCacheStats> = Lookup::new();
 

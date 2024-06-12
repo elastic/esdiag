@@ -15,7 +15,7 @@ struct Indices {
     indices: HashMap<String, Value>,
 }
 
-pub async fn enrich(metadata: &Metadata, data: String) -> Vec<Value> {
+pub fn enrich(metadata: &Metadata, data: String) -> Vec<Value> {
     let mut searchable_snapshot_stats = Vec::<Value>::new();
     let indices: Indices = match serde_json::from_str(&data) {
         Ok(data) => data,

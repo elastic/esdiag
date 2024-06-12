@@ -12,22 +12,24 @@ pub struct Processor {
 }
 
 impl Processor {
-    pub fn new(manifest: &Manifest, metadata: &HashMap<String, String>) -> Self {
+    pub fn new(manifest: &Manifest, metadata_content: HashMap<String, String>) -> Self {
         Processor {
-            metadata: Metadata::new(manifest, metadata),
+            metadata: Metadata::new(manifest, metadata_content),
         }
     }
-    pub async fn enrich_lookup(&mut self, dataset: &DataSet, data: String) -> Option<Vec<Value>> {
+    pub fn enrich_lookup(&mut self, dataset: &DataSet, data: String) -> Option<Vec<Value>> {
         match dataset {
             DataSet::Elasticsearch(es_dataset) => match es_dataset {
-                EsDataSet::Nodes => {
-                    Some(elasticsearch::nodes::enrich_lookup(&mut self.metadata, data).await)
-                }
-                EsDataSet::IndexSettings => Some(
-                    elasticsearch::index_settings::enrich_lookup(&mut self.metadata, data).await,
-                ),
+                EsDataSet::Nodes => Some(elasticsearch::nodes::enrich_lookup(
+                    &mut self.metadata,
+                    data,
+                )),
+                EsDataSet::IndexSettings => Some(elasticsearch::index_settings::enrich_lookup(
+                    &mut self.metadata,
+                    data,
+                )),
                 EsDataSet::SearchableSnapshotStats => Some(
-                    elasticsearch::searchable_snapshots_stats::enrich(&self.metadata, data).await,
+                    elasticsearch::searchable_snapshots_stats::enrich(&self.metadata, data),
                 ),
                 _ => None,
             },
@@ -40,20 +42,16 @@ impl Processor {
         }
     }
 
-    pub async fn enrich(&self, dataset: &DataSet, data: Value) -> Vec<Value> {
+    pub fn enrich(&self, dataset: &DataSet, data: Value) -> Vec<Value> {
         let empty = Vec::<Value>::new();
         match dataset {
             DataSet::Elasticsearch(es_dataset) => match es_dataset {
                 EsDataSet::ClusterSettings => {
-                    elasticsearch::cluster_settings::enrich(&self.metadata, data).await
+                    elasticsearch::cluster_settings::enrich(&self.metadata, data)
                 }
-                EsDataSet::IndexStats => {
-                    elasticsearch::index_stats::enrich(&self.metadata, data).await
-                }
-                EsDataSet::NodesStats => {
-                    elasticsearch::nodes_stats::enrich(&self.metadata, data).await
-                }
-                EsDataSet::Tasks => elasticsearch::tasks::enrich(&self.metadata, data).await,
+                EsDataSet::IndexStats => elasticsearch::index_stats::enrich(&self.metadata, data),
+                EsDataSet::NodesStats => elasticsearch::nodes_stats::enrich(&self.metadata, data),
+                EsDataSet::Tasks => elasticsearch::tasks::enrich(&self.metadata, data),
                 _ => empty,
             },
             DataSet::Kibana(kb_dataset) => match kb_dataset {

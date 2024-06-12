@@ -144,11 +144,12 @@ pub struct Input {
     pub sources: HashMap<String, Source>,
     pub uri: Uri,
     pub version: Option<Version>,
+    pub manifest: Manifest,
 }
 
 impl Input {
-    pub fn new(uri: Uri, manifest: &Manifest) -> Self {
-        let application = match manifest.product {
+    pub fn new(uri: Uri, manifest: Manifest) -> Self {
+        let application = match &manifest.product {
             Product::Elasticsearch => elasticsearch::Elasticsearch::new(),
             Product::Kibana => kibana::Kibana::new(),
             Product::Logstash => logstash::Logstash::new(),
@@ -170,6 +171,7 @@ impl Input {
                 lookup: application.get_lookup_sets(),
                 metadata: application.get_metadata_sets(),
             },
+            manifest,
             uri,
             sources,
             version: Some(version),

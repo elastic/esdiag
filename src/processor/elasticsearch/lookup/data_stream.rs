@@ -12,8 +12,8 @@ pub struct DataStreamData {
     ilm_policy: Option<String>,
     next_generation_managed_by: Option<String>,
     prefer_ilm: Option<bool>,
-    hidden: bool,
-    system: bool,
+    hidden: Option<bool>,
+    system: Option<bool>,
     allow_custom_routing: Option<bool>,
     replicated: Option<bool>,
     rollover_on_write: Option<bool>,
@@ -38,8 +38,8 @@ pub struct Index {
     managed_by: Option<String>,
 }
 
-impl From<String> for Lookup<DataStreamData> {
-    fn from(string: String) -> Self {
+impl From<&String> for Lookup<DataStreamData> {
+    fn from(string: &String) -> Self {
         let data_streams: DataStreamWrapper =
             serde_json::from_str(&string).expect("Failed to parse DataStreamData");
 
