@@ -1,9 +1,9 @@
 pub mod elasticsearch;
-use elasticsearch::EsDataSet;
 pub mod kibana;
 pub mod logstash;
 use crate::input::{manifest::Manifest, DataSet};
 use elasticsearch::metadata::Metadata;
+use elasticsearch::EsDataSet;
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -12,33 +12,47 @@ pub struct Processor {
 }
 
 impl Processor {
-    pub fn new(manifest: &Manifest, metadata: &HashMap<String, Value>) -> Self {
+    pub fn new(manifest: &Manifest, metadata_content: HashMap<String, String>) -> Self {
         Processor {
-            metadata: Metadata::new(manifest, metadata),
+            metadata: Metadata::new(manifest, metadata_content),
+        }
+    }
+    pub fn enrich_lookup(&mut self, dataset: &DataSet, data: String) -> Option<Vec<Value>> {
+        match dataset {
+            DataSet::Elasticsearch(es_dataset) => match es_dataset {
+                EsDataSet::Nodes => Some(elasticsearch::nodes::enrich_lookup(
+                    &mut self.metadata,
+                    data,
+                )),
+                EsDataSet::IndexSettings => Some(elasticsearch::index_settings::enrich_lookup(
+                    &mut self.metadata,
+                    data,
+                )),
+                EsDataSet::SearchableSnapshotStats => Some(
+                    elasticsearch::searchable_snapshots_stats::enrich(&self.metadata, data),
+                ),
+                _ => None,
+            },
+            DataSet::Kibana(kb_dataset) => match kb_dataset {
+                _ => unimplemented!("Kibana"),
+            },
+            DataSet::Logstash(ls_dataset) => match ls_dataset {
+                _ => unimplemented!("Logstash"),
+            },
         }
     }
 
-    pub async fn enrich(&self, dataset: &DataSet, data: Value) -> Vec<Value> {
+    pub fn enrich(&self, dataset: &DataSet, data: Value) -> Vec<Value> {
         let empty = Vec::<Value>::new();
         match dataset {
             DataSet::Elasticsearch(es_dataset) => match es_dataset {
-                EsDataSet::Alias => empty,
                 EsDataSet::ClusterSettings => {
-                    elasticsearch::cluster_settings::enrich(&self.metadata, data).await
+                    elasticsearch::cluster_settings::enrich(&self.metadata, data)
                 }
-                EsDataSet::DataStreams => empty,
-                EsDataSet::IndexSettings => {
-                    elasticsearch::index_settings::enrich(&self.metadata, data).await
-                }
-                EsDataSet::IndexStats => {
-                    elasticsearch::index_stats::enrich(&self.metadata, data).await
-                }
-                EsDataSet::Nodes => elasticsearch::nodes::enrich(&self.metadata, data).await,
-                EsDataSet::NodesStats => {
-                    elasticsearch::nodes_stats::enrich(&self.metadata, data).await
-                }
-                EsDataSet::Tasks => elasticsearch::tasks::enrich(&self.metadata, data).await,
-                EsDataSet::Version => empty,
+                EsDataSet::IndexStats => elasticsearch::index_stats::enrich(&self.metadata, data),
+                EsDataSet::NodesStats => elasticsearch::nodes_stats::enrich(&self.metadata, data),
+                EsDataSet::Tasks => elasticsearch::tasks::enrich(&self.metadata, data),
+                _ => empty,
             },
             DataSet::Kibana(kb_dataset) => match kb_dataset {
                 _ => unimplemented!("Kibana"),
@@ -49,21 +63,3 @@ impl Processor {
         }
     }
 }
-
-//
-//    pub fn enrich(&self, dataset: &DataSet, data: Value) -> serde_json::Value {
-//        match &source {
-//            EsDataSet::Elasticsearch(_, source) => match source {
-//                EsDataSet::ClusterSettings => return cluster_settings::enrich(&metadata, data),
-//                elasticsearch::EsDataSet::IndexSettings => {
-//                    return index_settings::enrich(&metadata, data)
-//                }
-//                elasticsearch::EsDataSet::IndicesStats => {
-//                    return indices_stats::enrich(&metadata, data)
-//                }
-//                elasticsearch::EsDataSet::Nodes => return nodes::enrich(&metadata, data),
-//                elasticsearch::EsDataSet::Tasks => return tasks::enrich(&metadata, data),
-//            },
-//            EsDataSet::Lookup(lookup) => serde_json::Value::Null,
-//        }
-//    }

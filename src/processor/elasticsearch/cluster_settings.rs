@@ -2,7 +2,7 @@ use super::metadata::Metadata;
 use json_patch::merge;
 use serde_json::{json, Value};
 
-pub async fn enrich(metadata: &Metadata, data: Value) -> Vec<Value> {
+pub fn enrich(metadata: &Metadata, data: Value) -> Vec<Value> {
     let scopes: Vec<_> = match data.as_object() {
         Some(data) => data.into_iter().collect(),
         None => return Vec::new(),

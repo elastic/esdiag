@@ -1,44 +1,54 @@
+use super::{Identifiers, Lookup};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use std::collections::HashMap;
 
-#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct IndexAlias {
+    aliases: HashMap<String, AliasData>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct AliasData {
     alias: Option<String>,
     is_hidden: Option<bool>,
     is_write_index: Option<bool>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub struct AliasLookup {
-    pub by_index: HashMap<String, Option<AliasData>>,
-}
-
-impl AliasLookup {
-    pub fn new() -> AliasLookup {
-        AliasLookup {
-            by_index: HashMap::new(),
+impl AliasData {
+    pub fn new(
+        alias: Option<String>,
+        is_hidden: Option<bool>,
+        is_write_index: Option<bool>,
+    ) -> Self {
+        Self {
+            alias,
+            is_hidden,
+            is_write_index,
         }
     }
+}
 
-    pub fn from_value(aliases: Value) -> AliasLookup {
-        let mut alias_lookup: AliasLookup = AliasLookup::new();
+impl From<String> for Lookup<AliasData> {
+    fn from(string: String) -> Self {
+        let index_alias: HashMap<String, IndexAlias> =
+            serde_json::from_str(&string).expect("Failed to parse AliasData");
+        let mut lookup_alias: Lookup<AliasData> = Lookup::new();
 
-        for (index, data) in aliases.as_object().cloned().expect("aliases not an object") {
-            //println!("{:?}, {:?}", index, data);
-            if let Some(aliases) = data["aliases"].as_object() {
-                for (name, props) in aliases {
-                    let alias_data = Some(AliasData {
-                        alias: Some(String::from(name)),
-                        is_write_index: props["is_write_index"].as_bool(),
-                        is_hidden: props["is_hidden"].as_bool(),
-                    });
-                    alias_lookup
-                        .by_index
-                        .insert(index.clone(), alias_data.clone());
-                }
+        for (index, data) in index_alias {
+            for (alias, data) in data.aliases {
+                let ids = Identifiers {
+                    id: None,
+                    name: Some(index.clone()),
+                    host: None,
+                    ip: None,
+                };
+                lookup_alias.insert(
+                    ids,
+                    AliasData::new(Some(alias), data.is_hidden, data.is_write_index),
+                );
             }
         }
-        alias_lookup
+        log::debug!("lookup_alias entries: {}", lookup_alias.entries.len());
+        lookup_alias
     }
 }

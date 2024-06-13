@@ -167,13 +167,7 @@ impl Host {
                 .collect::<Vec<String>>()
                 .join(", ")
         );
-        match hosts.get(host) {
-            Some(host) => Some(host.clone()),
-            None => {
-                log::info!("No known host: {}", host);
-                None
-            }
-        }
+        hosts.get(host).cloned()
     }
 
     pub fn from_url(url: &Url) -> Self {
@@ -198,7 +192,9 @@ impl Host {
                     .default_headers(
                         std::iter::once((
                             reqwest::header::AUTHORIZATION,
-                            format!("ApiKey {}", apikey).parse().unwrap(),
+                            format!("ApiKey {}", apikey)
+                                .parse()
+                                .expect("Failed to parse apikey"),
                         ))
                         .collect(),
                     )

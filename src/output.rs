@@ -7,8 +7,7 @@ use crate::input::Product;
 use crate::uri::Uri;
 use elasticsearch::ElasticsearchClient;
 use serde_json::Value;
-use std::fmt;
-use std::path::PathBuf;
+use std::{fmt, path::PathBuf};
 use url::Url;
 
 #[derive(Debug)]
@@ -47,11 +46,17 @@ impl Output {
         match response.status_code().is_success() {
             true => {
                 log::info!("Elasticsearch connection: {}", &response.status_code());
-                Ok(response.json::<Value>().await.unwrap())
+                Ok(response
+                    .json::<Value>()
+                    .await
+                    .expect("Failed to parse response"))
             }
             false => {
                 log::error!("Elasticsearch connection: {}", response.status_code());
-                Err(response.json::<Value>().await.unwrap())
+                Err(response
+                    .json::<Value>()
+                    .await
+                    .expect("Failed to parse response"))
             }
         }
     }
@@ -100,18 +105,20 @@ impl Output {
         }
     }
 
-    pub async fn send(&self, docs: Vec<Value>) {
+    pub async fn send(&self, docs: Vec<Value>) -> Result<usize, Box<dyn std::error::Error>> {
+        let doc_count = docs.len();
         match &self.target {
             Target::Stdout => {
                 stdout::print_docs(docs);
+                Ok(doc_count)
             }
-            Target::File(filename) => match file::write_bulk_docs(docs, &filename) {
-                Ok(_) => (),
-                Err(e) => panic!("ERROR: Failed to write to file - {}", e),
+            Target::File(filename) => match file::append_bulk_docs(docs, &filename) {
+                Ok(_) => Ok(doc_count),
+                Err(e) => Err(Box::new(e)),
             },
             Target::Elasticsearch(client) => match client.bulk_index(docs).await {
-                Ok(_) => (),
-                Err(e) => panic!("ERROR: Failed to index document {}", e),
+                Ok(_) => Ok(doc_count),
+                Err(e) => Err(e),
             },
         }
     }
@@ -121,7 +128,11 @@ impl fmt::Display for Target {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Target::Elasticsearch(_) => write!(f, "elasticsearch"),
-            Target::File(filename) => write!(f, "{}", filename.to_str().unwrap()),
+            Target::File(filename) => write!(
+                f,
+                "{}",
+                filename.to_str().expect("Failed to get filename as str")
+            ),
             Target::Stdout => write!(f, "stdout"),
         }
     }

@@ -18,6 +18,14 @@
             "numeric_detection": false,
             "dynamic": true,
             "properties": {
+                "shard": {
+                    "type": "object",
+                    "properties": {
+                        "number": {
+                            "type": "integer"
+                        }
+                    }
+                },
                 "data_stream": {
                     "type": "object",
                     "properties": {

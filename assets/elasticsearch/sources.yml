@@ -491,7 +491,12 @@ rollup_index_caps:
 searchable_snapshots_cache_stats:
   subdir: "commercial"
   versions:
-    ">= 7.13.0": "/_searchable_snapshots/cache/stats?human"
+    ">= 7.13.0": "/_searchable_snapshots/cache/stats"
+
+searchable_snapshots_stats:
+  subdir: "commercial"
+  versions:
+    ">= 7.13.0": "/_searchable_snapshots/stats"
 
 security_priv:
   subdir: "commercial"

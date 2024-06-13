@@ -12,8 +12,9 @@ use serde_json::Value;
 use std::{collections::HashMap, fmt, path::PathBuf, str::FromStr};
 
 pub trait Application {
-    fn get_metadata_sets(&self) -> Vec<DataSet>;
     fn get_data_sets(&self) -> Vec<DataSet>;
+    fn get_lookup_sets(&self) -> Vec<DataSet>;
+    fn get_metadata_sets(&self) -> Vec<DataSet>;
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -80,7 +81,7 @@ pub struct Source {
 }
 
 impl Source {
-    pub fn with_dir(&self, name: String, dir: &PathBuf) -> PathBuf {
+    pub fn with_dir(&self, name: &str, dir: &PathBuf) -> PathBuf {
         let mut path: PathBuf = PathBuf::new();
         path.push(&dir);
         match &self.subdir {
@@ -88,8 +89,8 @@ impl Source {
             None => (),
         }
         let filename = match &self.extension {
-            Some(extension) => name.clone() + extension,
-            None => name.clone() + ".json",
+            Some(extension) => format!("{}{}", name, extension),
+            None => format!("{}.json", name),
         };
         path.push(filename);
         path
@@ -130,18 +131,54 @@ impl fmt::Display for Source {
 // Input struct to hold the product, sources, and version
 
 #[derive(Debug)]
+pub struct InputDataSets {
+    pub data: Vec<DataSet>,
+    pub lookup: Vec<DataSet>,
+    pub metadata: Vec<DataSet>,
+}
+impl InputDataSets {
+    pub fn len(&self) -> usize {
+        &self.data.len() + &self.lookup.len() + &self.metadata.len()
+    }
+}
+
+impl fmt::Display for InputDataSets {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            fmt,
+            "Data: [{}], Lookup: [{}], Metadata: [{}]",
+            self.data
+                .iter()
+                .map(|d| d.to_string())
+                .collect::<Vec<_>>()
+                .join(", "),
+            self.lookup
+                .iter()
+                .map(|d| d.to_string())
+                .collect::<Vec<_>>()
+                .join(", "),
+            self.metadata
+                .iter()
+                .map(|d| d.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    }
+}
+
+#[derive(Debug)]
 pub struct Input {
-    pub data_sets: Vec<DataSet>,
-    pub metadata_sets: Vec<DataSet>,
+    pub dataset: InputDataSets,
     pub product: Product,
     pub sources: HashMap<String, Source>,
     pub uri: Uri,
     pub version: Option<Version>,
+    pub manifest: Manifest,
 }
 
 impl Input {
-    pub fn new(uri: Uri, manifest: &Manifest) -> Self {
-        let application = match manifest.product {
+    pub fn new(uri: Uri, manifest: Manifest) -> Self {
+        let application = match &manifest.product {
             Product::Elasticsearch => elasticsearch::Elasticsearch::new(),
             Product::Kibana => kibana::Kibana::new(),
             Product::Logstash => logstash::Logstash::new(),
@@ -158,24 +195,62 @@ impl Input {
 
         Self {
             product: manifest.product.clone(),
-            metadata_sets: application.get_metadata_sets(),
-            data_sets: application.get_data_sets(),
+            dataset: InputDataSets {
+                data: application.get_data_sets(),
+                lookup: application.get_lookup_sets(),
+                metadata: application.get_metadata_sets(),
+            },
+            manifest,
             uri,
             sources,
             version: Some(version),
         }
     }
 
-    pub fn load(&self, dataset: &DataSet) -> Value {
-        let key = dataset.to_string();
-        let source = match self.sources.get(&key) {
+    pub fn load_value(&self, dataset: &DataSet) -> Value {
+        let name = dataset.to_string();
+        let source = match self.sources.get(&name) {
             Some(source) => source,
-            None => panic!("ERROR: Source not found for {key}"),
+            None => panic!("ERROR: Source not found for {name}"),
         };
         match &self.uri {
-            Uri::Directory(dir) => match file::parse_json(&source.with_dir(key, dir)) {
+            Uri::Directory(dir) => match file::parse_json(&source.with_dir(&name, dir)) {
                 Ok(json) => json,
-                Err(e) => panic!("ERROR: Failed to parse JSON file - {e}"),
+                Err(_) => match file::read_first_line(&source.with_dir(&name, dir)) {
+                    Ok(line) => {
+                        log::error!(
+                            "Failed to parse {}, contains: \"{}\"",
+                            source.with_dir(&name, dir).to_str().unwrap(),
+                            &line
+                        );
+                        panic!("File did not have valid json");
+                    }
+                    Err(e) => {
+                        log::debug!("Error reading file '{:?}'", e);
+                        log::warn!("Failed to read file '{}'", name);
+                        Value::Null
+                    }
+                },
+            },
+            _ => {
+                unimplemented!("Input type no implemented!");
+            }
+        }
+    }
+
+    pub fn load_string(&self, dataset: &DataSet) -> Option<String> {
+        let name = dataset.to_string();
+        let source = match self.sources.get(&name) {
+            Some(source) => source,
+            None => panic!("ERROR: Source not found for {name}"),
+        };
+        match &self.uri {
+            Uri::Directory(dir) => match file::read_string(&source.with_dir(&name, dir)) {
+                Ok(line) => Some(line),
+                Err(e) => {
+                    log::debug!("Error reading file '{:?}'", e);
+                    None
+                }
             },
             _ => {
                 unimplemented!("Input type no implemented!");

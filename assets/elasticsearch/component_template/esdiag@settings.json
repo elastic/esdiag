@@ -1,9 +1,13 @@
 {
     "version": 1,
     "template": {
+        "lifecycle": {
+            "data_retention": "15d"
+        },
         "settings": {
             "index": {
                 "lifecycle": {
+                    "prefer_ilm": false,
                     "name": "metrics"
                 },
                 "mapping": {

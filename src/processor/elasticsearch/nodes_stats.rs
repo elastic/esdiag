@@ -3,7 +3,7 @@ use json_patch::merge;
 use rayon::prelude::*;
 use serde_json::{json, Value};
 
-pub async fn enrich(metadata: &Metadata, data: Value) -> Vec<Value> {
+pub fn enrich(metadata: &Metadata, data: Value) -> Vec<Value> {
     let nodes: Vec<_> = match data["nodes"].as_object() {
         Some(data) => data.iter().collect(),
         None => return Vec::new(),
@@ -92,8 +92,6 @@ pub async fn enrich(metadata: &Metadata, data: Value) -> Vec<Value> {
                 }
             });
 
-            //for (peer_node_id, adaptive_selection) in node["adaptive_selection"].as_object().unwrap() {
-
             let adaptive_selections: Vec<_> = match node["adaptive_selection"].as_object() {
                 Some(data) => data
                     .into_iter()
@@ -135,7 +133,10 @@ pub async fn enrich(metadata: &Metadata, data: Value) -> Vec<Value> {
                 }
             });
             let ingest_role: Value = Value::from("ingest");
-            let is_ingest = node["roles"].as_array().unwrap().contains(&ingest_role);
+            let is_ingest = node["roles"]
+                .as_array()
+                .expect("Failed get node.roles array")
+                .contains(&ingest_role);
 
             let pipelines: Vec<_> = if is_ingest {
                 match node["ingest"]["pipelines"].as_object() {
@@ -213,7 +214,6 @@ pub async fn enrich(metadata: &Metadata, data: Value) -> Vec<Value> {
                 }
             });
 
-            //for recording in node["discovery"]["cluster_applier_stats"]["recordings"]
             let recordings: Vec<_> =
                 match node["discovery"]["cluster_applier_stats"]["recordings"].as_array() {
                     Some(data) => data
@@ -241,7 +241,7 @@ pub async fn enrich(metadata: &Metadata, data: Value) -> Vec<Value> {
                 "node": node,
             });
 
-            // Remove extracted datasets
+            // Remove extracted datasets, add enriched datasets
             let omit_patch = json!({
                 "node" : {
                     "http": { "clients": null },
@@ -249,6 +249,7 @@ pub async fn enrich(metadata: &Metadata, data: Value) -> Vec<Value> {
                     "ingest": { "pipelines": null },
                     "discovery": { "cluster_applier_stats": null },
                     "transport": { "actions": null },
+                    "shared_cache": metadata.lookup.shared_cache.by_id(node_id.as_str()),
                 }
             });
 

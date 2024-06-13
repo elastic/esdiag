@@ -13,7 +13,7 @@ pub struct Manifest {
     pub product: Product,
     #[serde(rename = "Product Version")]
     pub product_version: ProductVersion,
-    pub runner: String,
+    pub runner: Option<String>,
     pub collection_date: String,
 }
 
@@ -34,7 +34,7 @@ impl Manifest {
             diagnostic_inputs: "Unknown".to_string(),
             product,
             product_version,
-            runner: "Unknown".to_string(),
+            runner: Some("Unknown".to_string()),
         }
     }
 }

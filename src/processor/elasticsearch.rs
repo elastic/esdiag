@@ -5,6 +5,7 @@ pub mod lookup;
 pub mod metadata;
 pub mod nodes;
 pub mod nodes_stats;
+pub mod searchable_snapshots_stats;
 pub mod tasks;
 use serde::{Deserialize, Serialize};
 
@@ -15,9 +16,12 @@ pub enum EsDataSet {
     Nodes,
     Version,
     ClusterSettings,
+    IlmExplain,
     IndexSettings,
     IndexStats,
     NodesStats,
+    SharedCacheStats,
+    SearchableSnapshotStats,
     Tasks,
 }
 
@@ -29,9 +33,12 @@ impl ToString for EsDataSet {
             EsDataSet::Nodes => "nodes".to_string(),
             EsDataSet::Version => "version".to_string(),
             EsDataSet::ClusterSettings => "cluster_settings_defaults".to_string(),
+            EsDataSet::IlmExplain => "ilm_explain".to_string(),
             EsDataSet::IndexSettings => "settings".to_string(),
             EsDataSet::IndexStats => "indices_stats".to_string(),
             EsDataSet::NodesStats => "nodes_stats".to_string(),
+            EsDataSet::SharedCacheStats => "searchable_snapshots_cache_stats".to_string(),
+            EsDataSet::SearchableSnapshotStats => "searchable_snapshots_stats".to_string(),
             EsDataSet::Tasks => "tasks".to_string(),
         }
     }

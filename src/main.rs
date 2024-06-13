@@ -4,17 +4,17 @@ mod output;
 mod processor;
 mod setup;
 mod uri;
-use async_std::task;
+use async_std::{sync::Mutex, task};
 use clap::{Parser, Subcommand};
 use futures::future::join_all;
 use futures::stream::FuturesUnordered;
 use host::Host;
-use input::{manifest::Manifest, Input};
+use input::Input;
 use log;
 use output::Output;
 use processor::Processor;
 use serde_json::Value;
-use std::{collections::HashMap, panic, str::FromStr, sync::Arc};
+use std::{collections::HashMap, ops::Add, panic, str::FromStr, sync::Arc};
 use uri::Uri;
 use url::Url;
 
@@ -128,8 +128,20 @@ async fn main() {
             source,
             pretty,
         } => {
-            let output_uri = uri::classify(target);
-            let input_uri = uri::classify(source);
+            let output_uri = match uri::classify(target) {
+                Ok(uri) => uri,
+                Err(e) => {
+                    log::debug!("Invalid target: {}", e);
+                    panic!("Invalid ouput: {}", target);
+                }
+            };
+            let input_uri = match uri::classify(source) {
+                Ok(uri) => uri,
+                Err(e) => {
+                    log::debug!("Invalid source: {}", e);
+                    panic!("Invalid input: {}", source);
+                }
+            };
             log::info!("input: {:?}", input_uri);
             log::info!("output: {:?}", output_uri);
 
@@ -140,9 +152,9 @@ async fn main() {
                 },
                 _ => panic!("Diagnostic manifest can only load from a directory input"),
             };
-            let input = Input::new(input_uri, &manifest);
+            let input = Input::new(input_uri, manifest);
             let output = Output::from_uri(output_uri, *pretty);
-            import_diagnostics(manifest, input, output).await;
+            import_diagnostics(input, output).await;
         }
         Commands::Host {
             name,
@@ -190,7 +202,10 @@ async fn main() {
                 match host.save(name.to_string()) {
                     Ok(_) => {
                         let hosts_file = host::get_hosts_path();
-                        log::info!("Host '{name}' saved to {}", hosts_file.to_str().unwrap());
+                        log::info!(
+                            "Host '{name}' saved to {}",
+                            hosts_file.to_str().expect("Failed to get hosts file path")
+                        );
                     }
                     Err(e) => log::error!("Failed to save host configuration: {}", e),
                 }
@@ -208,39 +223,99 @@ async fn main() {
     }
 }
 
-async fn import_diagnostics(manifest: Manifest, input: Input, output: Output) {
-    let metadata_raw: HashMap<String, Value> = input
-        .metadata_sets
+async fn import_diagnostics(input: Input, output: Output) {
+    let metadata_content: HashMap<String, String> = input
+        .dataset
+        .metadata
         .iter()
-        .map(|dataset| (dataset.to_string(), input.load(dataset)))
+        .filter_map(|dataset| match input.load_string(dataset) {
+            Some(data) => Some((dataset.to_string(), data)),
+            None => {
+                log::warn!("Failed to load metadata for {}", dataset.to_string());
+                None
+            }
+        })
         .collect();
 
-    let processor = Processor::new(&manifest, &metadata_raw);
+    log::debug!("metadata_content keys: {:?}", metadata_content.keys());
+
+    let mut processor = Processor::new(&input.manifest, metadata_content);
+
+    let futures = FuturesUnordered::new();
+    let input = Arc::new(input);
+    let output = Arc::new(output);
+    let doc_count: Arc<Mutex<usize>> = Arc::new(Mutex::new(0));
+
+    for lookup in &input.dataset.lookup {
+        let doc_count: Arc<Mutex<usize>> = Arc::clone(&doc_count);
+        let lookup_name = lookup.to_string();
+        match input.load_string(&lookup) {
+            Some(data) => {
+                if let Some(docs) = processor.enrich_lookup(&lookup, data) {
+                    let output: Arc<Output> = Arc::clone(&output);
+                    let future = async move {
+                        let mut guard = doc_count.lock().await;
+                        *guard = guard.add(match output.send(docs).await {
+                            Ok(count) => {
+                                log::info!(
+                                    "Sent {} docs for {} to {}",
+                                    &count,
+                                    lookup_name,
+                                    output.target,
+                                );
+                                count
+                            }
+                            Err(e) => {
+                                log::error!("Failed to send data to output: {}", e);
+                                0
+                            }
+                        });
+                    };
+                    futures.push(task::spawn(future));
+                }
+            }
+            None => {
+                log::info!("No docs for lookup: {}", lookup.to_string());
+            }
+        }
+    }
 
     // If debug logging, save metadata to file
     if log::log_enabled!(log::Level::Debug) {
         for (input, data) in processor.metadata.to_hashmap() {
-            file::write_ndjson_if_debug(&input, data, "metadata.ndjson").ok();
-            //output.save_to_file(input, data, &metafile);
+            file::write_ndjson_if_debug(data, "metadata.ndjson", true).ok();
+            log::info!("metadata.json - added {}", input);
         }
     }
 
-    let data_sets = input.data_sets.clone();
-
-    let futures = FuturesUnordered::new();
-    let output = Arc::new(output);
+    let data_sets = input.dataset.data.clone();
     let processor = Arc::new(processor);
-    let input = Arc::new(input);
 
     // Process each data set in parallel and push the resulting futures into `futures`
     for data_set in data_sets {
         let input: Arc<Input> = Arc::clone(&input);
         let processor: Arc<Processor> = Arc::clone(&processor);
         let output: Arc<Output> = Arc::clone(&output);
-        let data: Value = input.load(&data_set);
+        let data: Value = input.load_value(&data_set);
+        let doc_count: Arc<Mutex<usize>> = Arc::clone(&doc_count);
 
         let future = async move {
-            output.send(processor.enrich(&data_set, data).await).await;
+            let mut guard = doc_count.lock().await;
+            *guard = guard.add(match output.send(processor.enrich(&data_set, data)).await {
+                Ok(count) => {
+                    log::info!(
+                        "Sent {} docs for {} to {}",
+                        &count,
+                        data_set.to_string(),
+                        output.target,
+                    );
+                    count
+                }
+                Err(e) => {
+                    log::error!("Failed to send data to output: {}", e);
+                    0
+                }
+            })
         };
 
         futures.push(task::spawn(future));
@@ -248,4 +323,13 @@ async fn import_diagnostics(manifest: Manifest, input: Input, output: Output) {
 
     // Await all futures to complete before terminating the program
     join_all(futures).await;
+
+    let doc_count = doc_count.lock().await;
+    log::debug!("{}", input.dataset,);
+    log::info!(
+        "Import complete! Sent {} docs from {} sources for diagnostic: {}",
+        doc_count,
+        input.dataset.len(),
+        &processor.metadata.diagnostic.uuid
+    );
 }

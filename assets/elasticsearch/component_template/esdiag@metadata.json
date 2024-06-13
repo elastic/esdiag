@@ -6,6 +6,21 @@
                 "yyyy/MM/dd HH:mm:ss Z||yyyy/MM/dd Z"
             ],
             "properties": {
+                "cluster": {
+                    "type": "object",
+                    "properties": {
+                        "name": {
+                            "type": "keyword"
+                        },
+                        "uuid": {
+                            "type": "keyword"
+                        },
+                        "tagline": {
+                            "type": "object",
+                            "enabled": false
+                        }
+                    }
+                },
                 "diagnostic": {
                     "type": "object",
                     "properties": {

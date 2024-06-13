@@ -2,7 +2,7 @@ use super::metadata::Metadata;
 use json_patch::merge;
 use serde_json::{json, Value};
 
-pub async fn enrich(metadata: &Metadata, data: Value) -> Vec<Value> {
+pub fn enrich(metadata: &Metadata, data: Value) -> Vec<Value> {
     let mut tasks = Vec::<Value>::new();
     let data = match data["nodes"].as_object() {
         Some(data) => data,
@@ -16,7 +16,10 @@ pub async fn enrich(metadata: &Metadata, data: Value) -> Vec<Value> {
         }
     });
     for (node_id, node) in data {
-        for (id, task) in node["tasks"].as_object().unwrap() {
+        for (id, task) in node["tasks"]
+            .as_object()
+            .expect("Failed to get tasks object")
+        {
             let task_patch = json!({
                 "@timestamp": metadata.diagnostic.collection_date,
                 "node": metadata.lookup.node.by_id(node_id.as_str()),
