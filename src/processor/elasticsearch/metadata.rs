@@ -1,5 +1,5 @@
 use super::lookup::{
-    alias::AliasData, data_stream::DataStreamData, ilm::IlmData, index::IndexData, node::NodeData,
+    alias::AliasData, data_stream::DataStreamDoc, ilm::IlmData, index::IndexData, node::NodeData,
     shared_cache::SharedCacheStats, Lookup,
 };
 use crate::input::manifest::Manifest;
@@ -22,7 +22,7 @@ pub struct DiagnosticMetadata {
 #[derive(Clone, Debug, Serialize)]
 pub struct Lookups {
     pub alias: Lookup<AliasData>,
-    pub data_stream: Lookup<DataStreamData>,
+    pub data_stream: Lookup<DataStreamDoc>,
     pub index: Lookup<IndexData>,
     pub node: Lookup<NodeData>,
     pub ilm: Lookup<IlmData>,
@@ -140,8 +140,8 @@ impl Metadata {
             lookup: Lookups {
                 alias: Lookup::<AliasData>::from(metadata["alias"].clone()),
                 data_stream: match metadata.get("data_stream").clone() {
-                    Some(data_stream) => Lookup::<DataStreamData>::from(data_stream),
-                    None => Lookup::<DataStreamData>::new(),
+                    Some(data_stream) => Lookup::<DataStreamDoc>::from(data_stream),
+                    None => Lookup::<DataStreamDoc>::new(),
                 },
                 index: Lookup::<IndexData>::new(),
                 ilm: Lookup::<IlmData>::from(metadata["ilm_explain"].clone()),

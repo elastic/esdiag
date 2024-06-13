@@ -83,6 +83,27 @@ where
         self.entries.push(entry);
     }
 
+    pub fn append(&mut self, entry: T) -> usize {
+        let index = self.entries.len();
+        self.entries.push(entry);
+        index
+    }
+
+    pub fn link(&mut self, index: usize, identifiers: Identifiers) {
+        if let Some(id) = identifiers.id {
+            self.by_id.insert(id.clone(), index);
+        }
+        if let Some(name) = identifiers.name {
+            self.by_name.insert(name.clone(), index);
+        }
+        if let Some(host) = identifiers.host {
+            self.by_host.insert(host.clone(), index);
+        }
+        if let Some(ip) = identifiers.ip {
+            self.by_ip.insert(ip.clone(), index);
+        }
+    }
+
     pub fn update_id(&mut self, id: &String, value: &T)
     where
         T: Clone,
