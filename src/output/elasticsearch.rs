@@ -205,7 +205,7 @@ impl ElasticsearchClient {
         {
             Ok(response) => {
                 if response.status_code().is_success() {
-                    log::debug!("Sent {} docs for {}", batch_size, index);
+                    log::info!("Sent {} docs for {}", batch_size, index);
                     let status = response.status_code().to_string().clone();
                     match response.json::<Value>().await {
                         Ok(json) => {

@@ -283,7 +283,7 @@ async fn import_diagnostics(input: Input, output: Output) {
     // If debug logging, save metadata to file
     if log::log_enabled!(log::Level::Debug) {
         for (input, data) in processor.metadata.to_hashmap() {
-            file::write_ndjson_if_debug(data, "metadata.ndjson", false).ok();
+            file::write_ndjson_if_debug(data, "metadata.ndjson", true).ok();
             log::info!("metadata.json - added {}", input);
         }
     }
