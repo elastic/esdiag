@@ -163,7 +163,10 @@ impl ElasticsearchClient {
             .await
     }
 
-    pub async fn bulk_index(&self, mut docs: Vec<Value>) -> Result<String, String> {
+    pub async fn bulk_index(
+        &self,
+        mut docs: Vec<Value>,
+    ) -> Result<String, Box<dyn std::error::Error>> {
         let index = format!(
             "{}-{}-{}",
             docs[0]["data_stream"]["type"].as_str().unwrap(),
@@ -190,7 +193,7 @@ impl ElasticsearchClient {
         &self,
         index: &str,
         ops: Vec<BulkOperation<Value>>,
-    ) -> Result<String, String> {
+    ) -> Result<String, Box<dyn std::error::Error>> {
         // Index the batch
         let batch_size = &ops.len();
         match self
@@ -202,15 +205,15 @@ impl ElasticsearchClient {
         {
             Ok(response) => {
                 if response.status_code().is_success() {
-                    log::info!("{}: indexed {} documents", batch_size, index);
+                    log::debug!("Sent {} docs for {}", batch_size, index);
                     let status = response.status_code().to_string().clone();
                     match response.json::<Value>().await {
                         Ok(json) => {
-                            file::write_ndjson_if_debug(index, json, "responses.ndjson").ok();
-                            //println!("{}", &json);
+                            file::write_ndjson_if_debug(json, "responses.ndjson", true).ok();
+                            log::debug!("responses.ndjson created");
                         }
-                        Err(why) => {
-                            log::error!("Failed to parse response: {:?}", &why);
+                        Err(e) => {
+                            log::error!("Failed to parse response: {:?}", &e);
                         }
                     };
                     Ok(status)
@@ -221,17 +224,20 @@ impl ElasticsearchClient {
                         Ok(json) => {
                             log::error!("{:?}", json);
                         }
-                        Err(why) => {
-                            log::error!("Failed to parse response: {:?}", why);
+                        Err(e) => {
+                            log::error!("Failed to parse response: {:?}", e);
                         }
                     };
                     log::error!("{:?}", body);
                     Ok(status)
                 }
             }
-            Err(why) => {
-                log::error!("Failed to index document to {}: {:?}", index, why);
-                Err(format!("Failed to index document into {index}"))
+            Err(e) => {
+                log::error!("Failed to index document to {}: {:?}", index, e);
+                Err(Box::new(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("Failed to index document into {index}"),
+                )))
             }
         }
     }

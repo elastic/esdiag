@@ -83,7 +83,7 @@ impl ClusterDoc {
 }
 
 #[derive(Clone, Debug, Serialize)]
-struct MetadataDoc {
+pub struct MetadataDoc {
     #[serde(rename = "@timestamp")]
     timestamp: i64,
     cluster: ClusterDoc,

@@ -63,7 +63,7 @@ pub fn parse_manifest(dir: &PathBuf) -> Result<Manifest, Box<dyn std::error::Err
     let file_path = dir.as_path().join("manifest.json");
     let manifest = match File::open(&file_path) {
         Ok(file) => {
-            log::info!("Parsing manifest.json {:?}", &file_path);
+            log::debug!("Parsing manifest.json {:?}", &file_path);
             let reader = BufReader::new(file);
             match serde_json::from_reader(reader) {
                 Ok(manifest) => manifest,
@@ -75,7 +75,7 @@ pub fn parse_manifest(dir: &PathBuf) -> Result<Manifest, Box<dyn std::error::Err
         Err(_) => {
             log::warn!("Failed to parse manifest.json file, falling back to version.json");
             let file_path = dir.as_path().join("version.json");
-            log::info!("Parsing version.json {:?}", &file_path);
+            log::debug!("Parsing version.json {:?}", &file_path);
             let version = match File::open(&file_path) {
                 Ok(file) => {
                     let reader = BufReader::new(file);
@@ -98,7 +98,7 @@ pub fn parse_manifest(dir: &PathBuf) -> Result<Manifest, Box<dyn std::error::Err
 pub fn parse_sources_yml(
     product: &Product,
 ) -> Result<HashMap<String, Source>, Box<dyn std::error::Error>> {
-    log::info!("Parsing sources.yml");
+    log::debug!("Parsing sources.yml");
     let file = match product {
         Product::Elasticsearch => ASSETS_DIR
             .get_file("elasticsearch/sources.yml")

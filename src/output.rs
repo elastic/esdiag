@@ -7,8 +7,7 @@ use crate::input::Product;
 use crate::uri::Uri;
 use elasticsearch::ElasticsearchClient;
 use serde_json::Value;
-use std::fmt;
-use std::path::PathBuf;
+use std::{fmt, path::PathBuf};
 use url::Url;
 
 #[derive(Debug)]
@@ -106,18 +105,20 @@ impl Output {
         }
     }
 
-    pub async fn send(&self, docs: Vec<Value>) {
+    pub async fn send(&self, docs: Vec<Value>) -> Result<usize, Box<dyn std::error::Error>> {
+        let doc_count = docs.len();
         match &self.target {
             Target::Stdout => {
                 stdout::print_docs(docs);
+                Ok(doc_count)
             }
             Target::File(filename) => match file::append_bulk_docs(docs, &filename) {
-                Ok(_) => (),
-                Err(e) => panic!("ERROR: Failed to write to file - {}", e),
+                Ok(_) => Ok(doc_count),
+                Err(e) => Err(Box::new(e)),
             },
             Target::Elasticsearch(client) => match client.bulk_index(docs).await {
-                Ok(_) => (),
-                Err(e) => panic!("ERROR: Failed to index document {}", e),
+                Ok(_) => Ok(doc_count),
+                Err(e) => Err(e),
             },
         }
     }

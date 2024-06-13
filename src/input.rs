@@ -136,6 +136,35 @@ pub struct InputDataSets {
     pub lookup: Vec<DataSet>,
     pub metadata: Vec<DataSet>,
 }
+impl InputDataSets {
+    pub fn len(&self) -> usize {
+        &self.data.len() + &self.lookup.len() + &self.metadata.len()
+    }
+}
+
+impl fmt::Display for InputDataSets {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            fmt,
+            "Data: [{}], Lookup: [{}], Metadata: [{}]",
+            self.data
+                .iter()
+                .map(|d| d.to_string())
+                .collect::<Vec<_>>()
+                .join(", "),
+            self.lookup
+                .iter()
+                .map(|d| d.to_string())
+                .collect::<Vec<_>>()
+                .join(", "),
+            self.metadata
+                .iter()
+                .map(|d| d.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    }
+}
 
 #[derive(Debug)]
 pub struct Input {

@@ -4,7 +4,7 @@ mod output;
 mod processor;
 mod setup;
 mod uri;
-use async_std::task::{self, JoinHandle};
+use async_std::{sync::Mutex, task};
 use clap::{Parser, Subcommand};
 use futures::future::join_all;
 use futures::stream::FuturesUnordered;
@@ -14,7 +14,7 @@ use log;
 use output::Output;
 use processor::Processor;
 use serde_json::Value;
-use std::{collections::HashMap, panic, str::FromStr, sync::Arc, thread};
+use std::{collections::HashMap, ops::Add, panic, str::FromStr, sync::Arc};
 use uri::Uri;
 use url::Url;
 
@@ -244,20 +244,38 @@ async fn import_diagnostics(input: Input, output: Output) {
     let futures = FuturesUnordered::new();
     let input = Arc::new(input);
     let output = Arc::new(output);
+    let doc_count: Arc<Mutex<usize>> = Arc::new(Mutex::new(0));
 
     for lookup in &input.dataset.lookup {
+        let doc_count: Arc<Mutex<usize>> = Arc::clone(&doc_count);
+        let lookup_name = lookup.to_string();
         match input.load_string(&lookup) {
             Some(data) => {
                 if let Some(docs) = processor.enrich_lookup(&lookup, data) {
                     let output: Arc<Output> = Arc::clone(&output);
                     let future = async move {
-                        output.send(docs).await;
+                        let mut guard = doc_count.lock().await;
+                        *guard = guard.add(match output.send(docs).await {
+                            Ok(count) => {
+                                log::info!(
+                                    "Sent {} docs for {} to {}",
+                                    &count,
+                                    lookup_name,
+                                    output.target,
+                                );
+                                count
+                            }
+                            Err(e) => {
+                                log::error!("Failed to send data to output: {}", e);
+                                0
+                            }
+                        });
                     };
                     futures.push(task::spawn(future));
                 }
             }
             None => {
-                log::debug!("No docs for lookup {}", lookup.to_string());
+                log::info!("No docs for lookup: {}", lookup.to_string());
             }
         }
     }
@@ -265,7 +283,8 @@ async fn import_diagnostics(input: Input, output: Output) {
     // If debug logging, save metadata to file
     if log::log_enabled!(log::Level::Debug) {
         for (input, data) in processor.metadata.to_hashmap() {
-            file::write_ndjson_if_debug(&input, data, "metadata.ndjson").ok();
+            file::write_ndjson_if_debug(data, "metadata.ndjson", false).ok();
+            log::info!("metadata.json - added {}", input);
         }
     }
 
@@ -278,9 +297,25 @@ async fn import_diagnostics(input: Input, output: Output) {
         let processor: Arc<Processor> = Arc::clone(&processor);
         let output: Arc<Output> = Arc::clone(&output);
         let data: Value = input.load_value(&data_set);
+        let doc_count: Arc<Mutex<usize>> = Arc::clone(&doc_count);
 
         let future = async move {
-            output.send(processor.enrich(&data_set, data)).await;
+            let mut guard = doc_count.lock().await;
+            *guard = guard.add(match output.send(processor.enrich(&data_set, data)).await {
+                Ok(count) => {
+                    log::info!(
+                        "Sent {} docs for {} to {}",
+                        &count,
+                        data_set.to_string(),
+                        output.target,
+                    );
+                    count
+                }
+                Err(e) => {
+                    log::error!("Failed to send data to output: {}", e);
+                    0
+                }
+            })
         };
 
         futures.push(task::spawn(future));
@@ -288,4 +323,13 @@ async fn import_diagnostics(input: Input, output: Output) {
 
     // Await all futures to complete before terminating the program
     join_all(futures).await;
+
+    let doc_count = doc_count.lock().await;
+    log::debug!("{}", input.dataset,);
+    log::info!(
+        "Import complete! Sent {} docs from {} sources for diagnostic: {}",
+        doc_count,
+        input.dataset.len(),
+        &processor.metadata.diagnostic.uuid
+    );
 }
