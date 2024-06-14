@@ -158,7 +158,7 @@ pub fn enrich(metadata: &Metadata, mut data: Value) -> Vec<Value> {
                                 .expect("Failed to get store.size_in_bytes");
                             let bulk_size = &shard_stats["bulk"]["total_size_in_bytes"]
                                 .as_i64()
-                                .expect("Failed to get bulk.total_size_in_bytes");
+                                .unwrap_or(0);
 
                             let avg_docs_sec = match write_phase_sec {
                                 0 => 0,

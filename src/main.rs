@@ -4,7 +4,6 @@ mod output;
 mod processor;
 mod setup;
 mod uri;
-use async_std::{sync::Mutex, task};
 use clap::{Parser, Subcommand};
 use futures::future::join_all;
 use futures::stream::FuturesUnordered;
@@ -14,14 +13,8 @@ use log;
 use output::Output;
 use processor::Processor;
 use serde_json::Value;
-use std::{
-    collections::HashMap,
-    ops::Add,
-    panic,
-    str::FromStr,
-    sync::Arc,
-    thread::{JoinHandle, Thread},
-};
+use std::{collections::HashMap, panic, str::FromStr, sync::Arc};
+use tokio::task;
 use uri::Uri;
 use url::Url;
 
@@ -103,7 +96,7 @@ enum Commands {
     },
 }
 
-#[async_std::main]
+#[tokio::main(flavor = "multi_thread", worker_threads = 8)]
 async fn main() {
     let env = env_logger::Env::default().filter_or("LOG_LEVEL", "info");
     env_logger::Builder::from_env(env)
@@ -248,7 +241,7 @@ async fn import_diagnostics(input: Input, output: Output) {
 
     let mut processor = Processor::new(&input.manifest, metadata_content);
 
-    let mut futures = FuturesUnordered::new();
+    let futures = FuturesUnordered::new();
     let input = Arc::new(input);
     let output = Arc::new(output);
 
@@ -304,7 +297,11 @@ async fn import_diagnostics(input: Input, output: Output) {
                 let value: Value = input.load_value(&data_set);
                 processor.enrich(&data_set, value)
             })
-            .await;
+            .await
+            .unwrap_or_else(|e| {
+                log::error!("Failed to enrich data: {}", e);
+                Vec::new()
+            });
 
             let count = output.send(data).await.unwrap_or_else(|e| {
                 log::error!("Failed to send data to output: {}", e);
@@ -316,9 +313,14 @@ async fn import_diagnostics(input: Input, output: Output) {
         futures.push(future);
     }
 
-    // Await all futures to complete before terminating the program
-    join_all(futures).await;
+    // Await all futures to complete, and sum the total count of docs processed
+    let doc_count = join_all(futures).await;
 
     log::debug!("{}", input.dataset,);
-    log::info!("Import complete!");
+    log::info!(
+        "Import complete! Sent {} docs from {} sources for diagnostic: {}",
+        doc_count.into_iter().map(|x| x.unwrap_or(0)).sum::<usize>(),
+        input.dataset.len(),
+        &processor.metadata.diagnostic.uuid
+    );
 }
