@@ -3,8 +3,9 @@
         "metrics-shard-esdiag*"
     ],
     "composed_of": [
-        "esdiag@mappings",
         "esdiag@metadata",
+        "esdiag@mappings",
+        "esdiag@ilm",
         "esdiag@settings"
     ],
     "allow_auto_create": true,

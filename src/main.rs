@@ -4,7 +4,6 @@ mod output;
 mod processor;
 mod setup;
 mod uri;
-use async_std::{sync::Mutex, task};
 use clap::{Parser, Subcommand};
 use futures::future::join_all;
 use futures::stream::FuturesUnordered;
@@ -14,7 +13,8 @@ use log;
 use output::Output;
 use processor::Processor;
 use serde_json::Value;
-use std::{collections::HashMap, ops::Add, panic, str::FromStr, sync::Arc};
+use std::{collections::HashMap, panic, str::FromStr, sync::Arc};
+use tokio::task;
 use uri::Uri;
 use url::Url;
 
@@ -96,7 +96,7 @@ enum Commands {
     },
 }
 
-#[async_std::main]
+#[tokio::main(flavor = "multi_thread", worker_threads = 8)]
 async fn main() {
     let env = env_logger::Env::default().filter_or("LOG_LEVEL", "info");
     env_logger::Builder::from_env(env)
@@ -244,34 +244,28 @@ async fn import_diagnostics(input: Input, output: Output) {
     let futures = FuturesUnordered::new();
     let input = Arc::new(input);
     let output = Arc::new(output);
-    let doc_count: Arc<Mutex<usize>> = Arc::new(Mutex::new(0));
 
     for lookup in &input.dataset.lookup {
-        let doc_count: Arc<Mutex<usize>> = Arc::clone(&doc_count);
         let lookup_name = lookup.to_string();
+
         match input.load_string(&lookup) {
             Some(data) => {
                 if let Some(docs) = processor.enrich_lookup(&lookup, data) {
                     let output: Arc<Output> = Arc::clone(&output);
-                    let future = async move {
-                        let mut guard = doc_count.lock().await;
-                        *guard = guard.add(match output.send(docs).await {
-                            Ok(count) => {
-                                log::info!(
-                                    "Sent {} docs for {} to {}",
-                                    &count,
-                                    lookup_name,
-                                    output.target,
-                                );
-                                count
-                            }
-                            Err(e) => {
-                                log::error!("Failed to send data to output: {}", e);
-                                0
-                            }
+                    let future = task::spawn(async move {
+                        let count = output.send(docs).await.unwrap_or_else(|e| {
+                            log::error!("Failed to send data to output: {}", e);
+                            0
                         });
-                    };
-                    futures.push(task::spawn(future));
+                        log::info!(
+                            "Sent {} docs for {} to {}",
+                            &count,
+                            lookup_name,
+                            output.target,
+                        );
+                        count
+                    });
+                    futures.push(future);
                 }
             }
             None => {
@@ -293,42 +287,39 @@ async fn import_diagnostics(input: Input, output: Output) {
 
     // Process each data set in parallel and push the resulting futures into `futures`
     for data_set in data_sets {
+        let name = data_set.to_string();
         let input: Arc<Input> = Arc::clone(&input);
         let processor: Arc<Processor> = Arc::clone(&processor);
         let output: Arc<Output> = Arc::clone(&output);
-        let data: Value = input.load_value(&data_set);
-        let doc_count: Arc<Mutex<usize>> = Arc::clone(&doc_count);
 
-        let future = async move {
-            let mut guard = doc_count.lock().await;
-            *guard = guard.add(match output.send(processor.enrich(&data_set, data)).await {
-                Ok(count) => {
-                    log::info!(
-                        "Sent {} docs for {} to {}",
-                        &count,
-                        data_set.to_string(),
-                        output.target,
-                    );
-                    count
-                }
-                Err(e) => {
-                    log::error!("Failed to send data to output: {}", e);
-                    0
-                }
+        let future = task::spawn(async move {
+            let data = task::spawn_blocking(move || {
+                let value: Value = input.load_value(&data_set);
+                processor.enrich(&data_set, value)
             })
-        };
+            .await
+            .unwrap_or_else(|e| {
+                log::error!("Failed to enrich data: {}", e);
+                Vec::new()
+            });
 
-        futures.push(task::spawn(future));
+            let count = output.send(data).await.unwrap_or_else(|e| {
+                log::error!("Failed to send data to output: {}", e);
+                0
+            });
+            log::info!("Sent {} docs for {} to {}", count, name, output.target,);
+            count
+        });
+        futures.push(future);
     }
 
-    // Await all futures to complete before terminating the program
-    join_all(futures).await;
+    // Await all futures to complete, and sum the total count of docs processed
+    let doc_count = join_all(futures).await;
 
-    let doc_count = doc_count.lock().await;
     log::debug!("{}", input.dataset,);
     log::info!(
         "Import complete! Sent {} docs from {} sources for diagnostic: {}",
-        doc_count,
+        doc_count.into_iter().map(|x| x.unwrap_or(0)).sum::<usize>(),
         input.dataset.len(),
         &processor.metadata.diagnostic.uuid
     );

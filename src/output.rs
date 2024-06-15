@@ -105,21 +105,11 @@ impl Output {
         }
     }
 
-    pub async fn send(&self, docs: Vec<Value>) -> Result<usize, Box<dyn std::error::Error>> {
-        let doc_count = docs.len();
+    pub async fn send(&self, docs: Vec<Value>) -> std::io::Result<usize> {
         match &self.target {
-            Target::Stdout => {
-                stdout::print_docs(docs);
-                Ok(doc_count)
-            }
-            Target::File(filename) => match file::append_bulk_docs(docs, &filename) {
-                Ok(_) => Ok(doc_count),
-                Err(e) => Err(Box::new(e)),
-            },
-            Target::Elasticsearch(client) => match client.bulk_index(docs).await {
-                Ok(_) => Ok(doc_count),
-                Err(e) => Err(e),
-            },
+            Target::Stdout => stdout::print_docs(docs),
+            Target::File(filename) => file::append_bulk_docs(docs, &filename),
+            Target::Elasticsearch(client) => client.bulk_index(docs).await,
         }
     }
 }

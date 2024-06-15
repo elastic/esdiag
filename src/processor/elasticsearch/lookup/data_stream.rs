@@ -7,6 +7,7 @@ pub struct DataStreamDoc {
     generation: u64,
     hidden: Option<bool>,
     ilm_policy: Option<String>,
+    is_write_index: Option<bool>,
     name: String,
     next_generation_managed_by: Option<String>,
     prefer_ilm: Option<bool>,
@@ -18,6 +19,19 @@ pub struct DataStreamDoc {
     timestamp_field: TimestampField,
 }
 
+impl DataStreamDoc {
+    pub fn is_write_index(&self) -> bool {
+        match self.is_write_index {
+            Some(value) => value,
+            None => false,
+        }
+    }
+
+    pub fn set_write_index(&mut self, value: bool) {
+        self.is_write_index = Some(value);
+    }
+}
+
 impl From<&DataStreamData> for DataStreamDoc {
     fn from(data_stream: &DataStreamData) -> Self {
         Self {
@@ -25,6 +39,7 @@ impl From<&DataStreamData> for DataStreamDoc {
             generation: data_stream.generation,
             hidden: data_stream.hidden,
             ilm_policy: data_stream.ilm_policy.clone(),
+            is_write_index: None,
             name: data_stream.name.clone(),
             next_generation_managed_by: data_stream.next_generation_managed_by.clone(),
             prefer_ilm: data_stream.prefer_ilm,
@@ -82,22 +97,20 @@ impl From<&String> for Lookup<DataStreamDoc> {
 
         let mut lookup_data_stream: Lookup<DataStreamDoc> = Lookup::new();
         for data_stream in data_streams.data_streams {
-            let data_stream_doc = DataStreamDoc::from(&data_stream);
-            let indices: Vec<_> = data_stream
-                .indices
-                .into_iter()
-                .map(|index| (index.index_name, index.index_uuid))
-                .collect();
+            let mut data_stream_doc = DataStreamDoc::from(&data_stream);
+            let index_count = data_stream.indices.len() - 1;
+            let indices: Vec<_> = data_stream.indices.into_iter().enumerate().collect();
 
-            let i = lookup_data_stream.append(data_stream_doc);
-            for (name, uuid) in indices {
+            for (i, index) in indices {
                 let ids = Identifiers {
-                    id: Some(uuid.clone()),
-                    name: Some(name.clone()),
+                    id: Some(index.index_uuid.clone()),
+                    name: Some(index.index_name.clone()),
                     host: None,
                     ip: None,
                 };
-                lookup_data_stream.link(i, ids);
+                data_stream_doc.set_write_index(i == index_count);
+                let x = lookup_data_stream.append(data_stream_doc.clone());
+                lookup_data_stream.link(x, ids);
             }
         }
         log::debug!(

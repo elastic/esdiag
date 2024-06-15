@@ -1,6 +1,7 @@
 use serde_json::Value;
 
-pub fn print_docs<'a>(docs: Vec<Value>) {
+pub fn print_docs<'a>(docs: Vec<Value>) -> std::io::Result<usize> {
+    let len = docs.len();
     docs.iter().for_each(|doc| {
         let json = match serde_json::to_string(&doc) {
             Ok(json) => json,
@@ -8,4 +9,5 @@ pub fn print_docs<'a>(docs: Vec<Value>) {
         };
         println!("{}\n", json);
     });
+    Ok(len)
 }

@@ -26,6 +26,13 @@ impl AliasData {
             is_write_index,
         }
     }
+
+    pub fn is_write_index(&self) -> bool {
+        match self.is_write_index {
+            Some(value) => value,
+            None => false,
+        }
+    }
 }
 
 impl From<String> for Lookup<AliasData> {

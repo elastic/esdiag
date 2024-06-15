@@ -98,7 +98,7 @@ pub fn enrich_lookup(metadata: &mut Metadata, data: String) -> Vec<Value> {
                 ip: None,
             },
             IndexData {
-                indexing_complete: indexing_complete,
+                indexing_complete,
                 creation_date: Some(creation_date),
             },
         );
@@ -106,14 +106,14 @@ pub fn enrich_lookup(metadata: &mut Metadata, data: String) -> Vec<Value> {
         let mut doc = json!({
             "@timestamp": metadata.diagnostic.collection_date,
             "cluster": metadata.cluster,
-            "data_stream": metadata.lookup.data_stream.by_name(&index),
             "diagnostic": metadata.diagnostic,
             "index": settings.settings.index,
         });
         let doc_patch = json!({
             "index": {
                 "age": age,
-                "name": index
+                "name": index,
+                "data_stream": metadata.lookup.data_stream.by_name(&index),
             },
         });
         merge(&mut doc, &doc_patch);

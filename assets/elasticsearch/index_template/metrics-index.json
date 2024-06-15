@@ -5,6 +5,7 @@
     "composed_of": [
         "esdiag@metadata",
         "esdiag@mappings",
+        "esdiag@ilm",
         "esdiag@settings"
     ],
     "allow_auto_create": true,

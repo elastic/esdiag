@@ -1,6 +1,5 @@
 use super::metadata::Metadata;
 use crate::processor::elasticsearch::lookup::index::IndexData;
-use async_std::fs::write;
 use json_patch::merge;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -26,6 +25,21 @@ fn divide_values(base: &Value, divisor: &Value) -> i64 {
         None => return 0,
     };
     base / divisor
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct ShardDoc {
+    alias: Option<String>,
+    creation_date: Option<i64>,
+    data_stream: Option<String>,
+    ilm: Option<String>,
+    index: String,
+    indexing_complete: Option<bool>,
+    is_write_index: Option<bool>,
+    since_creation: Option<i64>,
+    since_rollover: Option<i64>,
+    uuid: String,
+    write_window_sec: Option<i64>,
 }
 
 pub fn enrich(metadata: &Metadata, mut data: Value) -> Vec<Value> {
@@ -78,27 +92,33 @@ pub fn enrich(metadata: &Metadata, mut data: Value) -> Vec<Value> {
                 indexing_complete: None,
                 creation_date: None,
             });
-            let since_creation = match ilm {
-                Some(ilm) => match ilm.index_creation_date_millis {
-                    Some(date) => Some(metadata.diagnostic.collection_date - date),
-                    None => match index_data.creation_date {
-                        Some(date) => Some(metadata.diagnostic.collection_date - date),
-                        None => None,
-                    },
-                },
-                None => None,
+            let is_write_index = {
+                data_stream.is_some_and(|ds| ds.is_write_index())
+                    || alias.is_some_and(|a| a.is_write_index())
             };
-            let since_rollover = match ilm {
-                Some(ilm) => match ilm.lifecycle_date_millis {
-                    Some(date) => Some(metadata.diagnostic.collection_date - date),
-                    None => None,
-                },
-                None => None,
-            };
-            let write_window_sec = match (since_creation, since_rollover) {
-                (Some(creation), Some(rollover)) => (creation - rollover) / 1000,
-                _ => 0,
-            };
+
+            let since_creation = index_data
+                .creation_date
+                .map(|date| metadata.diagnostic.collection_date - date);
+            let since_rollover = ilm
+                .and_then(|ilm| ilm.lifecycle_date_millis)
+                .map(|date| metadata.diagnostic.collection_date - date);
+            let is_before_rollover = ilm.is_some_and(|ilm| {
+                ilm.action
+                    .as_ref()
+                    .is_some_and(|action| action == "rollover")
+            });
+
+            let write_phase_sec =
+                if let (Some(creation), Some(rollover)) = (since_creation, since_rollover) {
+                    match creation == rollover {
+                        true if is_before_rollover => creation / 1000,
+                        true => 0,
+                        false => (rollover - creation) / 1000,
+                    }
+                } else {
+                    0
+                };
 
             let mut docs: Vec<_> = shard_stats
                 .par_iter()
@@ -106,15 +126,16 @@ pub fn enrich(metadata: &Metadata, mut data: Value) -> Vec<Value> {
                     let mut shard_doc = json!({
                         "index": {
                             "alias": alias,
+                            "creation_date": index_data.creation_date,
                             "data_stream": data_stream,
                             "ilm": ilm,
+                            "indexing_complete": index_data.indexing_complete,
+                            "is_write_index": is_write_index,
                             "name": index,
-                            "uuid": index_stats.uuid,
                             "since_creation": since_creation,
                             "since_rollover": since_rollover,
-                            "indexing_complete": index_data.indexing_complete,
-                            "creation_date": index_data.creation_date,
-                            "write_window_sec": write_window_sec,
+                            "uuid": index_stats.uuid,
+                            "write_phase_sec": write_phase_sec,
                         },
                     });
 
@@ -135,18 +156,28 @@ pub fn enrich(metadata: &Metadata, mut data: Value) -> Vec<Value> {
                             let total_size = &shard_stats["store"]["size_in_bytes"]
                                 .as_i64()
                                 .expect("Failed to get store.size_in_bytes");
+                            let bulk_size = &shard_stats["bulk"]["total_size_in_bytes"]
+                                .as_i64()
+                                .unwrap_or(0);
 
-                            let avg_docs_sec = match write_window_sec {
+                            let avg_docs_sec = match write_phase_sec {
                                 0 => 0,
                                 x => index_total / x,
                             };
-                            let avg_cpu_millis = match write_window_sec {
+                            let avg_cpu_millis = match write_phase_sec {
                                 0 => 0,
                                 x => index_time_in_millis / x,
                             };
-                            let avg_mb_sec: f64 = match write_window_sec {
-                                0 => 0.0,
-                                x => (*total_size as f64 / 1_048_576.0) / (x as f64),
+                            let indexing_avg_bytes_sec = match write_phase_sec {
+                                0 => 0,
+                                x => *total_size / x,
+                            };
+                            let bulk_avg_bytes_sec = {
+                                let time = shard_stats["bulk"]["total_time_in_millis"].as_i64();
+                                match time {
+                                    Some(time) if time / 1000 > 0 => bulk_size / (time / 1000),
+                                    _ => 0,
+                                }
                             };
 
                             let indexing_patch = json!({
@@ -154,7 +185,10 @@ pub fn enrich(metadata: &Metadata, mut data: Value) -> Vec<Value> {
                                     "indexing": {
                                         "avg_docs_sec": avg_docs_sec,
                                         "avg_cpu_millis": avg_cpu_millis,
-                                        "avg_mb_sec": avg_mb_sec,
+                                        "avg_bytes_sec": indexing_avg_bytes_sec,
+                                    },
+                                    "bulk": {
+                                        "avg_bytes_sec": bulk_avg_bytes_sec,
                                     }
                                 }
                             });
@@ -174,7 +208,7 @@ pub fn enrich(metadata: &Metadata, mut data: Value) -> Vec<Value> {
                 })
                 .collect();
 
-            let bytes_per_day_pri = match write_window_sec {
+            let bytes_per_day_pri = match write_phase_sec {
                 0 => 0,
                 x => {
                     (index_stats.primaries["store"]["size_in_bytes"]
@@ -185,7 +219,7 @@ pub fn enrich(metadata: &Metadata, mut data: Value) -> Vec<Value> {
                 }
             };
 
-            let bytes_per_day_total = match write_window_sec {
+            let bytes_per_day_total = match write_phase_sec {
                 0 => 0,
                 x => {
                     (index_stats.total["store"]["size_in_bytes"]
@@ -201,6 +235,8 @@ pub fn enrich(metadata: &Metadata, mut data: Value) -> Vec<Value> {
                     "alias": alias,
                     "data_stream": data_stream,
                     "name": index,
+                    "is_write_index": is_write_index,
+                    "ilm": ilm,
                     "primaries": {
                         "indexing": {
                             "est_bytes_per_day": bytes_per_day_pri,

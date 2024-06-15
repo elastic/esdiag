@@ -114,6 +114,15 @@
                     }
                 },
                 {
+                    "date_millis_as_date": {
+                        "match_mapping_type": "long",
+                        "match": "*date_millis",
+                        "mapping": {
+                            "type": "date"
+                        }
+                    }
+                },
+                {
                     "unsafe_timestamps": {
                         "match_mapping_type": "long",
                         "match": "*unsafe*",

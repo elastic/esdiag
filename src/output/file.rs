@@ -29,7 +29,8 @@ pub fn write_ndjson_if_debug<'a>(
     }
 }
 
-pub fn append_bulk_docs<'a>(docs: Vec<Value>, filename: &PathBuf) -> std::io::Result<()> {
+pub fn append_bulk_docs<'a>(docs: Vec<Value>, filename: &PathBuf) -> std::io::Result<usize> {
+    let len = docs.len();
     let mut file = OpenOptions::new()
         .write(true)
         .create(true)
@@ -39,5 +40,5 @@ pub fn append_bulk_docs<'a>(docs: Vec<Value>, filename: &PathBuf) -> std::io::Re
         file.write_all(doc.to_string().as_bytes())?;
         file.write_all(b"\n")?;
     }
-    Ok(())
+    Ok(len)
 }
