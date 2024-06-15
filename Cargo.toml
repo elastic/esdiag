@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 chrono = "0.4.38"
 clap = { version = "4.5.4", features = ["derive"] }
-elasticsearch = "8.5.0-alpha.1"
+elasticsearch = "8.6.0-alpha.1"
 env_logger = { version = "0.11.3" }
 futures = "0.3.30"
 include_dir = "0.7.3"
@@ -26,4 +26,4 @@ url = { version = "2.5.0", features = ["serde"] }
 uuid = { version = "1.8.0", features = ["v4", "fast-rng"] }
 
 [patch.crates-io]
-elasticsearch = { path = 'lib/elasticsearch-8.5.0-alpha.1' }
+elasticsearch = { git = "https://github.com/VimCommando/elasticsearch-rs.git" }
