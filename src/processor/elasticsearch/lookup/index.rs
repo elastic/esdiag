@@ -1,6 +1,7 @@
-use serde::{Deserialize, Serialize};
+use super::LookupDisplay;
+use serde::Serialize;
 
-#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+#[derive(Clone, Serialize)]
 pub struct IndexData {
     pub indexing_complete: Option<bool>,
     pub creation_date: Option<i64>,
@@ -18,5 +19,11 @@ impl IndexData {
 impl std::default::Default for IndexData {
     fn default() -> Self {
         IndexData::new()
+    }
+}
+
+impl LookupDisplay for IndexData {
+    fn display() -> &'static str {
+        "index_data"
     }
 }

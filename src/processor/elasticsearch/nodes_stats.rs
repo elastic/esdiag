@@ -1,33 +1,34 @@
-use super::metadata::Metadata;
+use super::lookup::node::NodeData;
+use super::metadata::{DataStream, Metadata, MetadataDoc};
 use json_patch::merge;
 use rayon::prelude::*;
+use serde::Serialize;
 use serde_json::{json, Value};
 
 pub fn enrich(metadata: &Metadata, data: Value) -> Vec<Value> {
+    let lookup = &metadata.lookup;
+    let metadata = &metadata.as_doc;
     let nodes: Vec<_> = match data["nodes"].as_object() {
         Some(data) => data.iter().collect(),
-        None => return Vec::new(),
+        None => {
+            log::error!("Failed to deserialize nodes stats");
+            return Vec::new();
+        }
     };
     log::debug!("nodes: {}", nodes.len());
 
-    //for (node_id, node) in nodes_stats_data {
     let nodes_stats: Vec<Value> = nodes
         .par_iter()
         .flat_map(|(node_id, node)| {
-            let metadata_patch = json!({
-                "@timestamp": metadata.diagnostic.collection_date,
-                "cluster": metadata.cluster,
-                "diagnostic": metadata.diagnostic,
-                "node": metadata.lookup.node.by_id(node_id.as_str()),
+            let node_doc = json!(NodeStatsDoc {
+                metadata: metadata.clone(),
+                data_stream: DataStream::from("metrics-node-esdiag"),
+                node: lookup.node.by_id(node_id.as_str()).cloned(),
             });
 
             // Extract transport.actions
             let data_stream_transport = json!({
-                "data_stream": {
-                    "dataset": "node.transport.actions",
-                    "namespace": "esdiag",
-                    "type": "metrics",
-                }
+                "data_stream": DataStream::from("metrics-node.transport.actions-esdiag"),
             });
 
             let transport_actions: Vec<_> = match node["transport"]["actions"].as_object() {
@@ -51,21 +52,18 @@ pub fn enrich(metadata: &Metadata, data: Value) -> Vec<Value> {
                         });
 
                         merge(&mut action, &action_patch);
-                        merge(&mut action, &metadata_patch);
+                        merge(&mut action, &node_doc);
                         merge(&mut action, &data_stream_transport);
                         action
                     })
                     .collect(),
                 None => Vec::new(),
             };
+            log::trace!("transport_actions: {}", transport_actions.len());
 
             // Extract http.clients
             let data_stream_http = json!({
-                "data_stream": {
-                    "dataset": "node.http.clients",
-                    "namespace": "esdiag",
-                    "type": "metrics",
-                }
+                "data_stream": DataStream::from("metrics-node.http.clients-esdiag"),
             });
 
             let clients: Vec<_> = match node["http"]["clients"].as_array() {
@@ -75,21 +73,18 @@ pub fn enrich(metadata: &Metadata, data: Value) -> Vec<Value> {
                     .par_iter()
                     .map(|client| {
                         let mut doc = json!({ "http": { "client": client, }, });
-                        merge(&mut doc, &metadata_patch);
+                        merge(&mut doc, &node_doc);
                         merge(&mut doc, &data_stream_http);
                         doc
                     })
                     .collect(),
-                None => return Vec::new(),
+                None => Vec::new(),
             };
+            log::trace!("clients: {}", clients.len());
 
             // Extract adaptive_selection
             let data_stream_adaptive = json!({
-                "data_stream": {
-                    "dataset": "node.adaptive_selection",
-                    "namespace": "esdiag",
-                    "type": "metrics",
-                }
+                "data_stream": DataStream::from("metrics-node.adaptive_selection-esdiag"),
             });
 
             let adaptive_selections: Vec<_> = match node["adaptive_selection"].as_object() {
@@ -104,33 +99,26 @@ pub fn enrich(metadata: &Metadata, data: Value) -> Vec<Value> {
 
                         let peer_node_patch = json!({
                             "adaptive_selection": {
-                                "node": metadata.lookup.node.by_id(peer_node_id.as_str()),
+                                "node": lookup.node.by_id(peer_node_id.as_str()),
                             },
                         });
 
                         merge(&mut doc, &peer_node_patch);
-                        merge(&mut doc, &metadata_patch);
+                        merge(&mut doc, &node_doc);
                         merge(&mut doc, &data_stream_adaptive);
                         doc
                     })
                     .collect(),
                 None => Vec::new(),
             };
+            log::trace!("adaptive_selections: {}", adaptive_selections.len());
 
             // Extract ingest.pipelines and ingest.processors
             let data_stream_processor = json!({
-                "data_stream": {
-                    "dataset": "ingest.processor",
-                    "namespace": "esdiag",
-                    "type": "metrics",
-                }
+                "data_stream": DataStream::from("metrics-ingest.processor-esdiag"),
             });
             let data_stream_pipeline = json!({
-                "data_stream": {
-                    "dataset": "ingest.pipeline",
-                    "namespace": "esdiag",
-                    "type": "metrics",
-                }
+                "data_stream": DataStream::from("metrics-ingest.pipeline-esdiag"),
             });
             let ingest_role: Value = Value::from("ingest");
             let is_ingest = node["roles"]
@@ -168,12 +156,12 @@ pub fn enrich(metadata: &Metadata, data: Value) -> Vec<Value> {
                                         });
 
                                         merge(&mut doc, &processor_patch);
-                                        merge(&mut doc, &metadata_patch);
+                                        merge(&mut doc, &node_doc);
                                         merge(&mut doc, &data_stream_processor);
                                         doc
                                     })
                                     .collect(),
-                                None => return Vec::new(),
+                                None => Vec::new(),
                             };
 
                             let mut doc = json!({
@@ -192,7 +180,7 @@ pub fn enrich(metadata: &Metadata, data: Value) -> Vec<Value> {
                             });
 
                             merge(&mut doc, &pipeline);
-                            merge(&mut doc, &metadata_patch);
+                            merge(&mut doc, &node_doc);
                             merge(&mut doc, &data_stream_pipeline);
                             let mut docs: Vec<Value> = vec![doc];
                             docs.extend(processors);
@@ -204,14 +192,11 @@ pub fn enrich(metadata: &Metadata, data: Value) -> Vec<Value> {
             } else {
                 Vec::new()
             };
+            log::trace!("pipelines: {}", pipelines.len());
 
             // Extract discovery.cluster_applier_stats.recordings dataset
             let data_stream_cluster_applier = json!({
-                "data_stream": {
-                    "dataset": "node.discovery.cluster_applier",
-                    "namespace": "esdiag",
-                    "type": "metrics",
-                }
+                "data_stream": DataStream::from("metrics-node.discovery.cluster_applier-esdiag"),
             });
 
             let recordings: Vec<_> =
@@ -223,23 +208,17 @@ pub fn enrich(metadata: &Metadata, data: Value) -> Vec<Value> {
                                 "cluster_applier_stats": recording,
                             });
 
-                            merge(&mut doc, &metadata_patch);
+                            merge(&mut doc, &node_doc);
                             merge(&mut doc, &data_stream_cluster_applier);
                             doc
                         })
                         .collect(),
                     None => Vec::new(),
                 };
+            log::trace!("recordings: {}", recordings.len());
 
             // Final node_stats document
-            let mut doc = json!({
-                "data_stream": {
-                    "dataset": "node",
-                    "namespace": "esdiag",
-                    "type": "metrics",
-                },
-                "node": node,
-            });
+            let mut doc = json!(node_doc);
 
             // Remove extracted datasets, add enriched datasets
             let omit_patch = json!({
@@ -249,22 +228,34 @@ pub fn enrich(metadata: &Metadata, data: Value) -> Vec<Value> {
                     "ingest": { "pipelines": null },
                     "discovery": { "cluster_applier_stats": null },
                     "transport": { "actions": null },
-                    "shared_cache": metadata.lookup.shared_cache.by_id(node_id.as_str()),
+                    "shared_cache": lookup.shared_cache.by_id(node_id.as_str()),
                 }
             });
 
             merge(&mut doc, &omit_patch);
-            merge(&mut doc, &metadata_patch);
+            merge(&mut doc, &node_doc);
+
             let mut docs: Vec<Value> = vec![doc];
             docs.extend(adaptive_selections);
             docs.extend(clients);
             docs.extend(pipelines);
             docs.extend(recordings);
             docs.extend(transport_actions);
+            log::trace!("node_stats docs for {}: {}", node_id, docs.len());
             docs
         })
         .collect();
 
     log::debug!("node_stats docs: {}", nodes_stats.len());
     nodes_stats
+}
+
+// Serializing data structures
+
+#[derive(Clone, Serialize)]
+struct NodeStatsDoc {
+    #[serde(flatten)]
+    metadata: MetadataDoc,
+    data_stream: DataStream,
+    node: Option<NodeData>,
 }

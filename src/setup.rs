@@ -4,7 +4,7 @@ use serde::Deserialize;
 use serde_json::{from_slice, Value};
 use std::path::PathBuf;
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 pub struct Asset {
     pub endpoint: String,
     pub file: Option<String>,

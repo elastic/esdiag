@@ -1,7 +1,7 @@
-use super::{Identifiers, Lookup};
+use super::{Lookup, LookupDisplay};
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Serialize)]
 pub struct DataStreamDoc {
     allow_custom_routing: Option<bool>,
     generation: u64,
@@ -53,7 +53,13 @@ impl From<&DataStreamData> for DataStreamDoc {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+impl LookupDisplay for DataStreamDoc {
+    fn display() -> &'static str {
+        "data_stream_doc"
+    }
+}
+
+#[derive(Clone, Deserialize, Serialize)]
 pub struct DataStreamData {
     allow_custom_routing: Option<bool>,
     generation: u64,
@@ -71,46 +77,23 @@ pub struct DataStreamData {
     timestamp_field: TimestampField,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct TimestampField {
-    name: String,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-struct DataStreamWrapper {
-    data_streams: Vec<DataStreamData>,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct Index {
-    index_name: String,
-    index_uuid: String,
-    prefer_ilm: Option<bool>,
-    ilm_policy: Option<String>,
-    managed_by: Option<String>,
-}
-
 impl From<&String> for Lookup<DataStreamDoc> {
     fn from(string: &String) -> Self {
         let data_streams: DataStreamWrapper =
             serde_json::from_str(&string).expect("Failed to parse DataStreamData");
-
         let mut lookup_data_stream: Lookup<DataStreamDoc> = Lookup::new();
+
         for data_stream in data_streams.data_streams {
             let mut data_stream_doc = DataStreamDoc::from(&data_stream);
             let index_count = data_stream.indices.len() - 1;
             let indices: Vec<_> = data_stream.indices.into_iter().enumerate().collect();
 
             for (i, index) in indices {
-                let ids = Identifiers {
-                    id: Some(index.index_uuid.clone()),
-                    name: Some(index.index_name.clone()),
-                    host: None,
-                    ip: None,
-                };
                 data_stream_doc.set_write_index(i == index_count);
-                let x = lookup_data_stream.append(data_stream_doc.clone());
-                lookup_data_stream.link(x, ids);
+                lookup_data_stream
+                    .add(data_stream_doc.clone())
+                    .with_id(&index.index_uuid)
+                    .with_name(&index.index_name);
             }
         }
         log::debug!(
@@ -119,4 +102,23 @@ impl From<&String> for Lookup<DataStreamDoc> {
         );
         lookup_data_stream
     }
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+pub struct TimestampField {
+    name: String,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+struct DataStreamWrapper {
+    data_streams: Vec<DataStreamData>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+pub struct Index {
+    index_name: String,
+    index_uuid: String,
+    prefer_ilm: Option<bool>,
+    ilm_policy: Option<String>,
+    managed_by: Option<String>,
 }
