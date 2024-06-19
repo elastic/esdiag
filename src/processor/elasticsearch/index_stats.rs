@@ -6,43 +6,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{from_value, json, Map, Value};
 use std::collections::HashMap;
 
-#[derive(Debug, Serialize, Deserialize)]
-struct IndexStats {
-    uuid: String,
-    health: Option<String>,
-    primaries: Value,
-    total: Value,
-    shards: Map<String, Value>,
-}
-
-fn divide_values(base: &Value, divisor: &Value) -> i64 {
-    let base = match base.as_i64() {
-        Some(start) => start,
-        None => return 0,
-    };
-    let divisor = match divisor.as_i64() {
-        Some(end) => end,
-        None => return 0,
-    };
-    base / divisor
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct ShardDoc {
-    alias: Option<String>,
-    creation_date: Option<i64>,
-    data_stream: Option<String>,
-    ilm: Option<String>,
-    index: String,
-    indexing_complete: Option<bool>,
-    is_write_index: Option<bool>,
-    since_creation: Option<i64>,
-    since_rollover: Option<i64>,
-    uuid: String,
-    write_window_sec: Option<i64>,
-}
-
 pub fn enrich(metadata: &Metadata, mut data: Value) -> Vec<Value> {
+    let lookup = &metadata.lookup;
+    let metadata = &metadata.as_doc;
     let mut indices: HashMap<String, IndexStats> = match from_value(
         data.get_mut("indices")
             .expect("Failed to get indices")
@@ -57,7 +23,7 @@ pub fn enrich(metadata: &Metadata, mut data: Value) -> Vec<Value> {
     log::debug!("index_stats indices: {}", indices.len());
 
     let data_stream_shard_patch = json!({
-        "@timestamp": metadata.diagnostic.collection_date,
+        "@timestamp": metadata.timestamp,
         "cluster": metadata.cluster,
         "diagnostic": metadata.diagnostic,
         "data_stream": {
@@ -68,7 +34,7 @@ pub fn enrich(metadata: &Metadata, mut data: Value) -> Vec<Value> {
     });
 
     let data_stream_index_patch = json!({
-        "@timestamp": metadata.diagnostic.collection_date,
+        "@timestamp": metadata.timestamp,
         "cluster": metadata.cluster,
         "diagnostic": metadata.diagnostic,
         "data_stream": {
@@ -85,10 +51,10 @@ pub fn enrich(metadata: &Metadata, mut data: Value) -> Vec<Value> {
         .par_iter_mut()
         .flat_map(|(index, ref mut index_stats)| {
             let shard_stats: Vec<_> = index_stats.shards.clone().into_iter().collect();
-            let data_stream = metadata.lookup.data_stream.by_name(index.as_str());
-            let alias = metadata.lookup.alias.by_name(index.as_str());
-            let ilm = metadata.lookup.ilm.by_name(index);
-            let index_data = metadata.lookup.index.by_name(index).unwrap_or(&IndexData {
+            let data_stream = lookup.data_stream.by_name(index.as_str());
+            let alias = lookup.alias.by_name(index.as_str());
+            let ilm = lookup.ilm.by_name(index);
+            let index_data = lookup.index.by_name(index).unwrap_or(&IndexData {
                 indexing_complete: None,
                 creation_date: None,
             });
@@ -195,7 +161,7 @@ pub fn enrich(metadata: &Metadata, mut data: Value) -> Vec<Value> {
 
                             let mut doc = json!({
                                 "shard":shard_stats,
-                                "node": metadata.lookup.node.by_id(
+                                "node": lookup.node.by_id(
                                     shard_stats["routing"]["node"].as_str().unwrap_or("")
                                 ),
                             });
@@ -268,4 +234,67 @@ pub fn enrich(metadata: &Metadata, mut data: Value) -> Vec<Value> {
 
     log::debug!("index_stats docs: {}", indices_stats.len());
     indices_stats
+}
+
+// Serializing data structures
+
+#[derive(Serialize)]
+pub struct ShardDoc {
+    alias: Option<String>,
+    creation_date: Option<i64>,
+    data_stream: Option<String>,
+    ilm: Option<String>,
+    index: String,
+    indexing_complete: Option<bool>,
+    is_write_index: Option<bool>,
+    since_creation: Option<i64>,
+    since_rollover: Option<i64>,
+    uuid: String,
+    write_window_sec: Option<i64>,
+}
+
+impl ShardDoc {
+    pub fn new(index: &str) -> Self {
+        ShardDoc {
+            alias: None,
+            creation_date: None,
+            data_stream: None,
+            ilm: None,
+            index: index.to_string(),
+            indexing_complete: None,
+            is_write_index: None,
+            since_creation: None,
+            since_rollover: None,
+            uuid: String::new(),
+            write_window_sec: None,
+        }
+    }
+}
+
+#[derive(Serialize)]
+pub struct IndexStatsDoc {}
+
+// Deserializing data structures
+
+#[derive(Deserialize, Serialize)]
+struct IndexStats {
+    uuid: String,
+    health: Option<String>,
+    primaries: Value,
+    total: Value,
+    shards: Map<String, Value>,
+}
+
+// Supporting functions
+
+fn divide_values(base: &Value, divisor: &Value) -> i64 {
+    let base = match base.as_i64() {
+        Some(start) => start,
+        None => return 0,
+    };
+    let divisor = match divisor.as_i64() {
+        Some(end) => end,
+        None => return 0,
+    };
+    base / divisor
 }

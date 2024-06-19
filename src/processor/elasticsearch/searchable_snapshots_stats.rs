@@ -1,8 +1,82 @@
-use super::metadata::Metadata;
-use json_patch::merge;
+use super::metadata::{DataStream, Metadata, MetadataDoc};
+use rayon::prelude::*;
 use serde::{self, Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
+
+pub fn enrich(metadata: &Metadata, data: String) -> Vec<Value> {
+    let data = match serde_json::from_str::<Indices>(&data) {
+        Ok(data) => data,
+        Err(e) => {
+            log::error!("Failed to deserialize searchable_snapshots_stats: {}", e);
+            return Vec::new();
+        }
+    };
+    let indices: Vec<_> = data.indices.into_iter().collect();
+
+    let searchable_snapshot_doc = SearchableSnapshotStatsDoc::new(
+        metadata.as_doc.clone(),
+        DataStream::from("metrics-searchable_snapshot-esdiag"),
+    );
+
+    let searchable_snapshot_stats: Vec<Value> = indices
+        .par_iter()
+        .flat_map(|(index, index_stats)| {
+            index_stats
+                .total
+                .par_iter()
+                .map(|index_stats| {
+                    json!(searchable_snapshot_doc
+                        .clone()
+                        .with(index.clone(), index_stats.clone()))
+                })
+                .collect::<Vec<Value>>()
+        })
+        .collect();
+
+    log::debug!(
+        "searchable_snapshot_stats docs: {}",
+        searchable_snapshot_stats.len()
+    );
+
+    searchable_snapshot_stats
+}
+
+// Serializing data structures
+
+#[derive(Clone, Serialize)]
+pub struct SearchableSnapshotStatsDoc {
+    #[serde(flatten)]
+    metadata: MetadataDoc,
+    data_stream: DataStream,
+    index: Option<IndexName>,
+    searchable_snapshot: Value,
+}
+
+#[derive(Clone, Serialize)]
+pub struct IndexName {
+    pub name: String,
+}
+
+impl SearchableSnapshotStatsDoc {
+    pub fn new(metadata: MetadataDoc, data_stream: DataStream) -> Self {
+        SearchableSnapshotStatsDoc {
+            data_stream,
+            index: None,
+            metadata,
+            searchable_snapshot: Value::Null,
+        }
+    }
+    pub fn with(mut self, index: String, searchable_snapshot: Value) -> Self {
+        self.index = Some(IndexName {
+            name: index.clone(),
+        });
+        self.searchable_snapshot = searchable_snapshot;
+        self
+    }
+}
+
+// Deserializing data structures
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Total {
@@ -11,65 +85,5 @@ struct Total {
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Indices {
-    // Ignores _shards and total from root API response
-    indices: HashMap<String, Value>,
-}
-
-pub fn enrich(metadata: &Metadata, data: String) -> Vec<Value> {
-    let mut searchable_snapshot_stats = Vec::<Value>::new();
-    let indices: Indices = match serde_json::from_str(&data) {
-        Ok(data) => data,
-        Err(e) => {
-            log::error!("Failed to deserialize searchable_snapshots_stats: {}", e);
-            return Vec::<Value>::new();
-        }
-    };
-
-    log::debug!(
-        "searchable_snapshot_stats indices: {}",
-        indices.indices.len()
-    );
-
-    let metadata_patch = json!({
-        "@timestamp": metadata.diagnostic.collection_date,
-        "cluster": metadata.cluster,
-        "diagnostic": metadata.diagnostic,
-        "data_stream": {
-            "dataset": "searchable_snapshot",
-            "namespace": "esdiag",
-            "type": "metrics",
-        },
-    });
-
-    for (index, mut index_stats) in indices.indices.into_iter() {
-        let total = index_stats["total"].take();
-        let stats: Vec<Value> = match total {
-            Value::Array(total) => total,
-            _ => {
-                log::warn!("No searchable_snapshot_stats for {index}");
-                continue;
-            }
-        };
-
-        let mut docs: Vec<Value> = stats
-            .iter()
-            .map(|index_stats| {
-                let mut doc = json!({
-                    "index": {
-                        "name": index,
-                    },
-                    "searchable_snapshot": index_stats,
-                });
-                merge(&mut doc, &metadata_patch);
-                doc
-            })
-            .collect();
-        searchable_snapshot_stats.append(&mut docs);
-    }
-
-    log::debug!(
-        "searchable_snapshot_stats docs: {}",
-        searchable_snapshot_stats.len()
-    );
-    searchable_snapshot_stats
+    indices: HashMap<String, Total>,
 }

@@ -1,11 +1,6 @@
-use super::{Identifiers, Lookup};
+use super::{Lookup, LookupDisplay};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-struct IlmExplain {
-    indices: HashMap<String, IlmData>,
-}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct IlmData {
@@ -25,12 +20,35 @@ pub struct IlmData {
     pub phase_execution: Option<PhaseExecution>,
 }
 
+impl From<String> for Lookup<IlmData> {
+    fn from(string: String) -> Self {
+        let ilm_explain: IlmExplain =
+            serde_json::from_str(&string).expect("Failed to deserialize ilm_explain");
+
+        let mut lookup_ilm: Lookup<IlmData> = Lookup::new();
+        for (index, ilm_data) in ilm_explain.indices {
+            lookup_ilm.add(ilm_data).with_name(&index);
+        }
+
+        log::debug!("lookup_ilm entries: {}", lookup_ilm.entries.len());
+        lookup_ilm
+    }
+}
+
+impl LookupDisplay for IlmData {
+    fn display() -> &'static str {
+        "ilm_data"
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct PhaseExecution {
-    policy: String,
-    phase_definition: Option<PhaseDefinition>,
-    version: i32,
-    modified_date_in_millis: i64,
+pub struct Actions {
+    searchable_snapshot: Option<SearchableSnapshot>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct IlmExplain {
+    indices: HashMap<String, IlmData>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -40,34 +58,15 @@ pub struct PhaseDefinition {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Actions {
-    searchable_snapshot: Option<SearchableSnapshot>,
+pub struct PhaseExecution {
+    policy: String,
+    phase_definition: Option<PhaseDefinition>,
+    version: i32,
+    modified_date_in_millis: i64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct SearchableSnapshot {
     snapshot_repository: String,
     force_merge_index: bool,
-}
-
-impl From<String> for Lookup<IlmData> {
-    fn from(string: String) -> Self {
-        let ilm_explain: IlmExplain =
-            serde_json::from_str(&string).expect("Failed to deserialize ilm_explain");
-
-        let mut lookup_ilm: Lookup<IlmData> = Lookup::new();
-        for (index, ilm_data) in ilm_explain.indices {
-            lookup_ilm.insert(
-                Identifiers {
-                    id: None,
-                    name: Some(index.clone()),
-                    host: None,
-                    ip: None,
-                },
-                ilm_data,
-            )
-        }
-        log::debug!("lookup_ilm entries: {}", lookup_ilm.entries.len());
-        lookup_ilm
-    }
 }

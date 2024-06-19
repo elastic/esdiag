@@ -9,85 +9,13 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use uuid::Uuid;
 
-#[derive(Clone, Debug, Serialize)]
-pub struct DiagnosticMetadata {
-    pub collection_date: i64,
-    pub inputs: String,
-    pub node: String,
-    pub runner: String,
-    pub uuid: String,
-    pub version: Option<semver::Version>,
-}
-
-#[derive(Clone, Debug, Serialize)]
-pub struct Lookups {
-    pub alias: Lookup<AliasData>,
-    pub data_stream: Lookup<DataStreamDoc>,
-    pub index: Lookup<IndexData>,
-    pub node: Lookup<NodeData>,
-    pub ilm: Lookup<IlmData>,
-    pub shared_cache: Lookup<SharedCacheStats>,
-}
-
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Serialize)]
 pub struct Metadata {
     pub cluster: Cluster,
-    pub diagnostic: DiagnosticMetadata,
+    pub diagnostic: DiagnosticDoc,
     pub version: semver::Version,
     pub lookup: Lookups,
     pub as_doc: MetadataDoc,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct Cluster {
-    #[serde(rename = "name")]
-    node_name: String,
-    #[serde(rename = "cluster_name")]
-    name: String,
-    #[serde(rename = "cluster_uuid")]
-    uuid: String,
-    version: Version,
-    tagline: String,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-struct Version {
-    number: semver::Version,
-    build_flavor: String,
-    build_type: String,
-    build_hash: String,
-    build_date: String,
-    build_snapshot: bool,
-    lucene_version: String,
-    minimum_wire_compatibility_version: String,
-    minimum_index_compatibility_version: String,
-}
-
-#[derive(Clone, Debug, Serialize)]
-pub struct ClusterDoc {
-    node_name: String,
-    name: String,
-    uuid: String,
-    version: String,
-}
-
-impl ClusterDoc {
-    pub fn from(cluster: &Cluster) -> Self {
-        Self {
-            node_name: cluster.node_name.clone(),
-            name: cluster.name.clone(),
-            uuid: cluster.uuid.clone(),
-            version: cluster.version.number.to_string(),
-        }
-    }
-}
-
-#[derive(Clone, Debug, Serialize)]
-pub struct MetadataDoc {
-    #[serde(rename = "@timestamp")]
-    timestamp: i64,
-    cluster: ClusterDoc,
-    diagnostic: DiagnosticMetadata,
 }
 
 impl Metadata {
@@ -117,9 +45,8 @@ impl Metadata {
             None => "Unknown".to_string(),
         };
 
-        let diagnostic = DiagnosticMetadata {
+        let diagnostic = DiagnosticDoc {
             collection_date,
-            inputs: manifest.diagnostic_inputs.clone(),
             node: cluster.name.clone(),
             runner,
             uuid: Uuid::new_v4().to_string(),
@@ -133,7 +60,9 @@ impl Metadata {
         };
 
         let version = cluster.version.number.clone();
+
         Metadata {
+            as_doc,
             cluster,
             diagnostic,
             version,
@@ -151,7 +80,6 @@ impl Metadata {
                     None => Lookup::<SharedCacheStats>::new(),
                 },
             },
-            as_doc,
         }
     }
 
@@ -178,4 +106,97 @@ impl Metadata {
         ]);
         hashmap
     }
+}
+
+#[derive(Clone, Serialize)]
+pub struct Lookups {
+    pub alias: Lookup<AliasData>,
+    pub data_stream: Lookup<DataStreamDoc>,
+    pub index: Lookup<IndexData>,
+    pub node: Lookup<NodeData>,
+    pub ilm: Lookup<IlmData>,
+    pub shared_cache: Lookup<SharedCacheStats>,
+}
+
+// Serializing data structures
+
+#[derive(Clone, Serialize)]
+pub struct ClusterDoc {
+    node_name: String,
+    name: String,
+    uuid: String,
+    version: Version,
+}
+
+impl ClusterDoc {
+    pub fn from(cluster: &Cluster) -> Self {
+        Self {
+            node_name: cluster.node_name.clone(),
+            name: cluster.name.clone(),
+            uuid: cluster.uuid.clone(),
+            version: cluster.version.clone(),
+        }
+    }
+}
+
+#[derive(Clone, Serialize)]
+pub struct MetadataDoc {
+    #[serde(rename = "@timestamp")]
+    pub timestamp: i64,
+    pub cluster: ClusterDoc,
+    pub diagnostic: DiagnosticDoc,
+}
+
+#[derive(Clone, Serialize)]
+pub struct DiagnosticDoc {
+    pub collection_date: i64,
+    pub node: String,
+    pub runner: String,
+    pub uuid: String,
+    pub version: Option<semver::Version>,
+}
+
+#[derive(Clone, Serialize)]
+pub struct DataStream {
+    dataset: String,
+    namespace: String,
+    r#type: String,
+}
+
+impl From<&str> for DataStream {
+    fn from(name: &str) -> Self {
+        let terms: Vec<&str> = name.split('-').collect();
+        DataStream {
+            r#type: terms[0].to_string(),
+            dataset: terms[1].to_string(),
+            namespace: terms[2].to_string(),
+        }
+    }
+}
+
+// Deserializing data structures
+
+#[derive(Clone, Deserialize, Serialize)]
+pub struct Cluster {
+    #[serde(rename = "name")]
+    node_name: String,
+    #[serde(rename = "cluster_name")]
+    name: String,
+    #[serde(rename = "cluster_uuid")]
+    uuid: String,
+    version: Version,
+    tagline: String,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+struct Version {
+    number: semver::Version,
+    build_flavor: String,
+    build_type: String,
+    build_hash: String,
+    build_date: String,
+    build_snapshot: bool,
+    lucene_version: String,
+    minimum_wire_compatibility_version: String,
+    minimum_index_compatibility_version: String,
 }

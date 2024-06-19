@@ -1,11 +1,6 @@
-use super::{Identifiers, Lookup};
+use super::{Lookup, LookupDisplay};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-struct IndexAlias {
-    aliases: HashMap<String, AliasData>,
-}
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct AliasData {
@@ -28,10 +23,7 @@ impl AliasData {
     }
 
     pub fn is_write_index(&self) -> bool {
-        match self.is_write_index {
-            Some(value) => value,
-            None => false,
-        }
+        self.is_write_index.unwrap_or(false)
     }
 }
 
@@ -41,21 +33,24 @@ impl From<String> for Lookup<AliasData> {
             serde_json::from_str(&string).expect("Failed to parse AliasData");
         let mut lookup_alias: Lookup<AliasData> = Lookup::new();
 
-        for (index, data) in index_alias {
+        for (name, data) in index_alias {
             for (alias, data) in data.aliases {
-                let ids = Identifiers {
-                    id: None,
-                    name: Some(index.clone()),
-                    host: None,
-                    ip: None,
-                };
-                lookup_alias.insert(
-                    ids,
-                    AliasData::new(Some(alias), data.is_hidden, data.is_write_index),
-                );
+                let alias_data = AliasData::new(Some(alias), data.is_hidden, data.is_write_index);
+                lookup_alias.add(alias_data).with_name(&name);
             }
         }
         log::debug!("lookup_alias entries: {}", lookup_alias.entries.len());
         lookup_alias
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct IndexAlias {
+    aliases: HashMap<String, AliasData>,
+}
+
+impl LookupDisplay for AliasData {
+    fn display() -> &'static str {
+        "alias_data"
     }
 }

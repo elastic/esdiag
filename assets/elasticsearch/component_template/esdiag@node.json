@@ -1,0 +1,39 @@
+{
+  "template": {
+    "mappings": {
+      "dynamic_date_formats": [
+        "strict_date_optional_time",
+        "yyyy/MM/dd HH:mm:ss Z||yyyy/MM/dd Z"
+      ],
+      "properties": {
+        "node": {
+          "type": "object",
+          "properties": {
+            "ip": {
+              "type": "ip"
+            },
+            "roles": {
+              "type": "keyword"
+            },
+            "host": {
+              "type": "keyword"
+            },
+            "name": {
+              "type": "keyword"
+            },
+            "attributes": {
+              "type": "object"
+            },
+            "id": {
+              "type": "keyword"
+            }
+          }
+        }
+      }
+    }
+  },
+  "_meta": {
+    "managed": false,
+    "description": "Common mappings for the esdiag metadata"
+  }
+}
