@@ -1,673 +1,654 @@
 {
-    "index_patterns": [
-        "metrics-node*-esdiag*"
-    ],
-    "composed_of": [
-        "esdiag@mappings",
-        "esdiag@metadata",
-        "esdiag@settings"
-    ],
-    "allow_auto_create": true,
-    "data_stream": {
-        "hidden": false,
-        "allow_custom_routing": false
-    },
-    "priority": 300,
-    "template": {
-        "mappings": {
-            "_routing": {
-                "required": false
-            },
-            "date_detection": true,
-            "numeric_detection": false,
-            "dynamic_date_formats": [
-                "strict_date_optional_time",
-                "yyyy/MM/dd HH:mm:ss Z||yyyy/MM/dd Z"
-            ],
-            "dynamic": true,
-            "properties": {
-                "indexing_pressure.memory.current": {
-                    "type": "object",
-                    "properties": {
-                        "all": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "coordinating": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "replica": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "combined_coordinating_and_primary": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "primary": {
-                            "type": "object",
-                            "enabled": false
-                        }
-                    }
+  "index_patterns": ["metrics-node*-esdiag*"],
+  "composed_of": [
+    "esdiag@mappings",
+    "esdiag@metadata",
+    "esdiag@settings",
+    "esdiag@node"
+  ],
+  "allow_auto_create": true,
+  "data_stream": {
+    "hidden": false,
+    "allow_custom_routing": false
+  },
+  "priority": 300,
+  "template": {
+    "mappings": {
+      "_routing": {
+        "required": false
+      },
+      "date_detection": true,
+      "numeric_detection": false,
+      "dynamic_date_formats": [
+        "strict_date_optional_time",
+        "yyyy/MM/dd HH:mm:ss Z||yyyy/MM/dd Z"
+      ],
+      "dynamic": true,
+      "properties": {
+        "node": {
+          "type": "object",
+          "properties": {
+            "indexing_pressure.memory.current": {
+              "type": "object",
+              "properties": {
+                "all": {
+                  "type": "object",
+                  "enabled": false
                 },
-                "discovery.cluster_state_update.success": {
-                    "type": "object",
-                    "properties": {
-                        "completion_time": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "master_apply_time": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "commit_time": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "context_construction_time": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "computation_time": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "notification_time": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "publication_time": {
-                            "type": "object",
-                            "enabled": false
-                        }
-                    }
+                "coordinating": {
+                  "type": "object",
+                  "enabled": false
                 },
-                "jvm.mem": {
-                    "type": "object",
-                    "properties": {
-                        "heap_committed": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "heap_used": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "non_heap_committed": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "pools.old.peak_used": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "pools.survivor.used": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "pools.old.peak_max": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "pools.survivor.max": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "pools.young.used": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "pools.survivor.peak_max": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "pools.old.max": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "pools.old.used": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "pools.young.peak_used": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "pools.young.max": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "non_heap_used": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "pools.survivor.peak_used": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "heap_max": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "pools.young.peak_max": {
-                            "type": "object",
-                            "enabled": false
-                        }
-                    }
+                "replica": {
+                  "type": "object",
+                  "enabled": false
                 },
-                "os.mem.free": {
-                    "type": "object",
-                    "enabled": false
+                "combined_coordinating_and_primary": {
+                  "type": "object",
+                  "enabled": false
                 },
-                "discovery.cluster_state_update.unchanged": {
-                    "type": "object",
-                    "properties": {
-                        "computation_time": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "notification_time": {
-                            "type": "object",
-                            "enabled": false
-                        }
-                    }
-                },
-                "os.cpu.load_average.15m": {
-                    "type": "float"
-                },
-                "discovery.serialized_cluster_states": {
-                    "type": "object",
-                    "properties": {
-                        "diffs.compressed_size": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "full_states.compressed_size": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "diffs.uncompressed_size": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "full_states.uncompressed_size": {
-                            "type": "object",
-                            "enabled": false
-                        }
-                    }
-                },
-                "indexing_pressure.memory.limit": {
-                    "type": "object",
-                    "enabled": false
-                },
-                "translog.size": {
-                    "type": "object",
-                    "enabled": false
-                },
-                "diagnostic.uid": {
-                    "type": "keyword"
-                },
-                "script_cache.contexts": {
-                    "type": "object",
-                    "enabled": false
-                },
-                "ingest.total.time": {
-                    "type": "object",
-                    "enabled": false
-                },
-                "os.swap.total": {
-                    "type": "object",
-                    "enabled": false
-                },
-                "os.swap.used": {
-                    "type": "object",
-                    "enabled": false
-                },
-                "discovery.cluster_state_update.failure": {
-                    "type": "object",
-                    "properties": {
-                        "completion_time": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "master_apply_time": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "commit_time": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "context_construction_time": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "computation_time": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "notification_time": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "publication_time": {
-                            "type": "object",
-                            "enabled": false
-                        }
-                    }
-                },
-                "fs.total": {
-                    "type": "object",
-                    "properties": {
-                        "total": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "available": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "free": {
-                            "type": "object",
-                            "enabled": false
-                        }
-                    }
-                },
-                "transport.outbound_handling_time_histogram": {
-                    "ignore_malformed": false,
-                    "type": "histogram"
-                },
-                "fs.io_stats.devices": {
-                    "eager_global_ordinals": false,
-                    "index": true,
-                    "type": "flattened",
-                    "split_queries_on_whitespace": false,
-                    "index_options": "docs",
-                    "doc_values": true
-                },
-                "jvm.gc.collectors": {
-                    "type": "object",
-                    "properties": {
-                        "young.collection_time": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "old.collection_time": {
-                            "type": "object",
-                            "enabled": false
-                        }
-                    }
-                },
-                "breakers": {
-                    "type": "object",
-                    "properties": {
-                        "eql_sequence.limit_size": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "model_inference.estimated_size": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "request.limit_size": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "parent.estimated_size": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "eql_sequence.estimated_size": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "request.estimated_size": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "parent.limit_size": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "inflight_requests.estimated_size": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "fielddata.estimated_size": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "fielddata.limit_size": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "model_inference.limit_size": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "inflight_requests.limit_size": {
-                            "type": "object",
-                            "enabled": false
-                        }
-                    }
-                },
-                "fs.data": {
-                    "eager_global_ordinals": false,
-                    "index": true,
-                    "type": "flattened",
-                    "split_queries_on_whitespace": false,
-                    "index_options": "docs",
-                    "doc_values": true
-                },
-                "process.cpu.total": {
-                    "type": "object",
-                    "enabled": false
-                },
-                "indexing_pressure.memory.total": {
-                    "type": "object",
-                    "properties": {
-                        "all": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "coordinating": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "replica": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "combined_coordinating_and_primary": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "primary": {
-                            "type": "object",
-                            "enabled": false
-                        }
-                    }
-                },
-                "os.cpu.load_average.1m": {
-                    "type": "float"
-                },
-                "transport.inbound_handling_time_histogram": {
-                    "ignore_malformed": false,
-                    "type": "histogram"
-                },
-                "discovery.cluster_applier_stats.recordings": {
-                    "type": "object",
-                    "enabled": false
-                },
-                "http.clients": {
-                    "dynamic": false,
-                    "type": "object",
-                    "enabled": false
-                },
-                "os.cpu.load_average.5m": {
-                    "type": "float"
-                },
-                "os.mem.used": {
-                    "type": "object",
-                    "enabled": false
-                },
-                "process.mem.total_virtual": {
-                    "type": "object",
-                    "enabled": false
-                },
-                "ingest.pipelines": {
-                    "type": "object",
-                    "enabled": false
-                },
-                "transport": {
-                    "type": "object",
-                    "properties": {
-                        "tx_size": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "rx_size": {
-                            "type": "object",
-                            "enabled": false
-                        }
-                    }
-                },
-                "jvm.buffer_pools": {
-                    "type": "object",
-                    "properties": {
-                        "mapped.total_capacity": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "mapped.used": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "direct.total_capacity": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "direct.used": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "mapped.count": {
-                            "type": "object",
-                            "enabled": false
-                        }
-                    }
-                },
-                "os.mem.total": {
-                    "type": "object",
-                    "enabled": false
-                },
-                "jvm.uptime": {
-                    "type": "object",
-                    "enabled": false
-                },
-                "os.swap.free": {
-                    "type": "object",
-                    "enabled": false
-                },
-                "transport.actions": {
-                    "type": "object",
-                    "enabled": false
-                },
-                "node": {
-                    "type": "object",
-                    "properties": {
-                        "ip": {
-                            "type": "ip"
-                        },
-                        "roles": {
-                            "type": "keyword"
-                        },
-                        "host": {
-                            "type": "keyword"
-                        },
-                        "name": {
-                            "type": "keyword"
-                        },
-                        "attributes": {
-                            "type": "object"
-                        },
-                        "id": {
-                            "type": "keyword"
-                        }
-                    }
-                },
-                "indices": {
-                    "type": "object",
-                    "properties": {
-                        "search.query_time": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "fielddata.memory_size": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "translog.uncommitted_size": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "segments.stored_fields_memory": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "store.total_data_set_size": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "indexing.index_time": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "indexing.delete_time": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "get.exists_time": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "segments.version_map_memory": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "bulk.avg_time": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "search.fetch_time": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "search.suggest_time": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "segments.fixed_bit_set": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "warmer.total_time": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "merges.total_stopped_time": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "segments.norms_memory": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "merges.current_size": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "merges.total_time": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "refresh.external_total_time": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "bulk.total_time": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "get.missing_time": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "query_cache.memory_size": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "flush.total_time": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "segments.doc_values_memory": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "merges.total_size": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "indexing.throttle_time": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "search.scroll_time": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "segments.index_writer_memory": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "merges.total_auto_throttle": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "segments.terms_memory": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "refresh.total_time": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "merges.total_throttled_time": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "query_cache.cache_size": {
-                            "type": "long"
-                        },
-                        "recovery.throttle_time": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "segments.points_memory": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "segments.term_vectors_memory": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "request_cache.memory_size": {
-                            "type": "object",
-                            "enabled": false
-                        }
-                    }
-                },
-                "indices.get.getTime": {
-                    "type": "keyword"
-                },
-                "indices.segments.max_unsafe_auto_id_timestamp": {
-                    "type": "object",
-                    "enabled": false
-                },
-                "adaptive_selection": {
-                    "dynamic": false,
-                    "type": "object",
-                    "enabled": false,
-                    "properties": {}
-                },
-                "script.contexts": {
-                    "type": "object",
-                    "enabled": false
+                "primary": {
+                  "type": "object",
+                  "enabled": false
                 }
+              }
+            },
+            "discovery.cluster_state_update.success": {
+              "type": "object",
+              "properties": {
+                "completion_time": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "master_apply_time": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "commit_time": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "context_construction_time": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "computation_time": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "notification_time": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "publication_time": {
+                  "type": "object",
+                  "enabled": false
+                }
+              }
+            },
+            "jvm.mem": {
+              "type": "object",
+              "properties": {
+                "heap_committed": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "heap_used": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "non_heap_committed": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "pools.old.peak_used": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "pools.survivor.used": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "pools.old.peak_max": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "pools.survivor.max": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "pools.young.used": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "pools.survivor.peak_max": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "pools.old.max": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "pools.old.used": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "pools.young.peak_used": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "pools.young.max": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "non_heap_used": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "pools.survivor.peak_used": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "heap_max": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "pools.young.peak_max": {
+                  "type": "object",
+                  "enabled": false
+                }
+              }
+            },
+            "os.mem.free": {
+              "type": "object",
+              "enabled": false
+            },
+            "discovery.cluster_state_update.unchanged": {
+              "type": "object",
+              "properties": {
+                "computation_time": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "notification_time": {
+                  "type": "object",
+                  "enabled": false
+                }
+              }
+            },
+            "os.cpu.load_average.15m": {
+              "type": "float"
+            },
+            "discovery.serialized_cluster_states": {
+              "type": "object",
+              "properties": {
+                "diffs.compressed_size": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "full_states.compressed_size": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "diffs.uncompressed_size": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "full_states.uncompressed_size": {
+                  "type": "object",
+                  "enabled": false
+                }
+              }
+            },
+            "indexing_pressure.memory.limit": {
+              "type": "object",
+              "enabled": false
+            },
+            "translog.size": {
+              "type": "object",
+              "enabled": false
+            },
+            "diagnostic.uid": {
+              "type": "keyword"
+            },
+            "script_cache.contexts": {
+              "type": "object",
+              "enabled": false
+            },
+            "ingest.total.time": {
+              "type": "object",
+              "enabled": false
+            },
+            "os.swap.total": {
+              "type": "object",
+              "enabled": false
+            },
+            "os.swap.used": {
+              "type": "object",
+              "enabled": false
+            },
+            "discovery.cluster_state_update.failure": {
+              "type": "object",
+              "properties": {
+                "completion_time": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "master_apply_time": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "commit_time": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "context_construction_time": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "computation_time": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "notification_time": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "publication_time": {
+                  "type": "object",
+                  "enabled": false
+                }
+              }
+            },
+            "fs.total": {
+              "type": "object",
+              "properties": {
+                "total": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "available": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "free": {
+                  "type": "object",
+                  "enabled": false
+                }
+              }
+            },
+            "fs.io_stats.devices": {
+              "eager_global_ordinals": false,
+              "index": true,
+              "type": "flattened",
+              "split_queries_on_whitespace": false,
+              "index_options": "docs",
+              "doc_values": true
+            },
+            "jvm.gc.collectors": {
+              "type": "object",
+              "properties": {
+                "young.collection_time": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "old.collection_time": {
+                  "type": "object",
+                  "enabled": false
+                }
+              }
+            },
+            "breakers": {
+              "type": "object",
+              "properties": {
+                "eql_sequence.limit_size": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "model_inference.estimated_size": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "request.limit_size": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "parent.estimated_size": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "eql_sequence.estimated_size": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "request.estimated_size": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "parent.limit_size": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "inflight_requests.estimated_size": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "fielddata.estimated_size": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "fielddata.limit_size": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "model_inference.limit_size": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "inflight_requests.limit_size": {
+                  "type": "object",
+                  "enabled": false
+                }
+              }
+            },
+            "fs.data": {
+              "eager_global_ordinals": false,
+              "index": true,
+              "type": "flattened",
+              "split_queries_on_whitespace": false,
+              "index_options": "docs",
+              "doc_values": true
+            },
+            "process.cpu.total": {
+              "type": "object",
+              "enabled": false
+            },
+            "indexing_pressure.memory.total": {
+              "type": "object",
+              "properties": {
+                "all": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "coordinating": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "replica": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "combined_coordinating_and_primary": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "primary": {
+                  "type": "object",
+                  "enabled": false
+                }
+              }
+            },
+            "os.cpu.load_average.1m": {
+              "type": "float"
+            },
+            "discovery.cluster_applier_stats.recordings": {
+              "type": "object",
+              "enabled": false
+            },
+            "http.clients": {
+              "dynamic": false,
+              "type": "object",
+              "enabled": false
+            },
+            "os.cpu.load_average.5m": {
+              "type": "float"
+            },
+            "os.mem.used": {
+              "type": "object",
+              "enabled": false
+            },
+            "process.mem.total_virtual": {
+              "type": "object",
+              "enabled": false
+            },
+            "ingest.pipelines": {
+              "type": "object",
+              "enabled": false
+            },
+            "transport": {
+              "type": "object",
+              "properties": {
+                "inbound_handling_time_histogram": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "outbound_handling_time_histogram": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "tx_size": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "rx_size": {
+                  "type": "object",
+                  "enabled": false
+                }
+              }
+            },
+            "jvm.buffer_pools": {
+              "type": "object",
+              "properties": {
+                "mapped.total_capacity": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "mapped.used": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "direct.total_capacity": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "direct.used": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "mapped.count": {
+                  "type": "object",
+                  "enabled": false
+                }
+              }
+            },
+            "os.mem.total": {
+              "type": "object",
+              "enabled": false
+            },
+            "jvm.uptime": {
+              "type": "object",
+              "enabled": false
+            },
+            "os.swap.free": {
+              "type": "object",
+              "enabled": false
+            },
+            "transport.actions": {
+              "type": "object",
+              "enabled": false
+            },
+            "indices": {
+              "type": "object",
+              "properties": {
+                "search.query_time": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "fielddata.memory_size": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "translog.uncommitted_size": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "segments.stored_fields_memory": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "store.total_data_set_size": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "indexing.index_time": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "indexing.delete_time": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "get.exists_time": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "segments.version_map_memory": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "bulk.avg_time": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "search.fetch_time": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "search.suggest_time": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "segments.fixed_bit_set": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "warmer.total_time": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "merges.total_stopped_time": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "segments.norms_memory": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "merges.current_size": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "merges.total_time": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "refresh.external_total_time": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "bulk.total_time": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "get.missing_time": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "query_cache.memory_size": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "flush.total_time": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "segments.doc_values_memory": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "merges.total_size": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "indexing.throttle_time": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "search.scroll_time": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "segments.index_writer_memory": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "merges.total_auto_throttle": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "segments.terms_memory": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "refresh.total_time": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "merges.total_throttled_time": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "query_cache.cache_size": {
+                  "type": "long"
+                },
+                "recovery.throttle_time": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "segments.points_memory": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "segments.term_vectors_memory": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "request_cache.memory_size": {
+                  "type": "object",
+                  "enabled": false
+                }
+              }
+            },
+            "indices.get.getTime": {
+              "type": "keyword"
+            },
+            "indices.segments.max_unsafe_auto_id_timestamp": {
+              "type": "object",
+              "enabled": false
+            },
+            "adaptive_selection": {
+              "dynamic": false,
+              "type": "object",
+              "enabled": false,
+              "properties": {}
+            },
+            "script.contexts": {
+              "type": "object",
+              "enabled": false
             }
+          }
         }
+      }
     }
+  }
 }

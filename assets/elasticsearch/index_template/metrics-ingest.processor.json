@@ -1,60 +1,59 @@
 {
-    "index_patterns": [
-        "metrics-ingest.processor-esdiag*"
-    ],
-    "composed_of": [
-        "esdiag@mappings",
-        "esdiag@metadata",
-        "esdiag@settings"
-    ],
-    "allow_auto_create": true,
-    "data_stream": {
-        "hidden": false,
-        "allow_custom_routing": false
-    },
-    "priority": 300,
-    "template": {
-        "mappings": {
-            "numeric_detection": false,
-            "dynamic": true,
-            "properties": {
-                "data_stream": {
-                    "type": "object",
-                    "properties": {
-                        "dataset": {
-                            "type": "constant_keyword",
-                            "value": "ingest.processor"
-                        }
-                    }
-                },
-                "pipeline": {
-                    "type": "keyword"
-                },
-                "current": {
-                    "type": "long"
-                },
-                "time_in_millis": {
-                    "type": "long"
-                },
-                "count": {
-                    "type": "long"
-                },
-                "failed": {
-                    "type": "long"
-                },
-                "time": {
-                    "enabled": false
-                },
-                "type": {
-                    "type": "keyword"
-                },
-                "processor": {
-                    "type": "keyword"
-                },
-                "order": {
-                    "type": "integer"
-                }
+  "index_patterns": ["metrics-ingest.processor-esdiag*"],
+  "composed_of": [
+    "esdiag@mappings",
+    "esdiag@metadata",
+    "esdiag@settings",
+    "esdiag@node"
+  ],
+  "allow_auto_create": true,
+  "data_stream": {
+    "hidden": false,
+    "allow_custom_routing": false
+  },
+  "priority": 300,
+  "template": {
+    "mappings": {
+      "numeric_detection": false,
+      "dynamic": true,
+      "properties": {
+        "data_stream": {
+          "type": "object",
+          "properties": {
+            "dataset": {
+              "type": "constant_keyword",
+              "value": "ingest.processor"
             }
+          }
+        },
+        "pipeline": {
+          "type": "keyword"
+        },
+        "current": {
+          "type": "long"
+        },
+        "time_in_millis": {
+          "type": "long"
+        },
+        "count": {
+          "type": "long"
+        },
+        "failed": {
+          "type": "long"
+        },
+        "time": {
+          "enabled": false
+        },
+        "type": {
+          "type": "keyword"
+        },
+        "processor": {
+          "type": "keyword"
+        },
+        "order": {
+          "type": "integer"
         }
+      }
     }
+  }
 }

@@ -1,156 +1,162 @@
 {
-    "version": 1,
-    "template": {
-        "mappings": {
-            "_routing": {
-                "required": false
+  "version": 1,
+  "template": {
+    "mappings": {
+      "_routing": {
+        "required": false
+      },
+      "date_detection": false,
+      "numeric_detection": false,
+      "dynamic_date_formats": [
+        "strict_date_optional_time",
+        "yyyy/MM/dd HH:mm:ss Z||yyyy/MM/dd Z"
+      ],
+      "_source": {
+        "excludes": [],
+        "includes": [],
+        "mode": "synthetic"
+      },
+      "dynamic": true,
+      "dynamic_templates": [
+        {
+          "dont_index_human_time": {
+            "mapping": {
+              "type": "object",
+              "enabled": false
             },
-            "date_detection": false,
-            "numeric_detection": false,
-            "dynamic_date_formats": [
-                "strict_date_optional_time",
-                "yyyy/MM/dd HH:mm:ss Z||yyyy/MM/dd Z"
-            ],
-            "_source": {
-                "excludes": [],
-                "includes": [],
-                "mode": "synthetic"
+            "match": "*_time",
+            "match_mapping_type": "*"
+          }
+        },
+        {
+          "dont_index_human_size": {
+            "mapping": {
+              "type": "object",
+              "enabled": false
             },
-            "dynamic": true,
-            "dynamic_templates": [
-                {
-                    "dont_index_human_time": {
-                        "mapping": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "match": "*_time",
-                        "match_mapping_type": "*"
-                    }
-                },
-                {
-                    "dont_index_human_size": {
-                        "mapping": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "match": "*size",
-                        "match_mapping_type": "string",
-                        "unmatch": "cache_size"
-                    }
-                },
-                {
-                    "dont_index_human_memory": {
-                        "mapping": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "match": "*_memory",
-                        "match_mapping_type": "string"
-                    }
-                },
-                {
-                    "strings_as_keywords": {
-                        "mapping": {
-                            "type": "keyword"
-                        },
-                        "match_mapping_type": "string"
-                    }
-                },
-                {
-                    "long_metrics": {
-                        "mapping": {
-                            "index": false,
-                            "type": "long"
-                        },
-                        "match_mapping_type": "long"
-                    }
-                },
-                {
-                    "float_metrics": {
-                        "mapping": {
-                            "index": false,
-                            "type": "float"
-                        },
-                        "match_mapping_type": "double"
-                    }
-                },
-                {
-                    "double_metrics": {
-                        "mapping": {
-                            "index": false,
-                            "type": "double"
-                        }
-                    }
-                },
-                {
-                    "histogram_metrics": {
-                        "mapping": {
-                            "type": "histogram",
-                            "ignore_malformed": true
-                        }
-                    }
-                },
-                {
-                    "summary_metrics": {
-                        "mapping": {
-                            "metrics": [
-                                "sum",
-                                "value_count"
-                            ],
-                            "type": "aggregate_metric_double",
-                            "default_metric": "value_count"
-                        }
-                    }
-                },
-                {
-                    "named_timestamps": {
-                        "match_mapping_type": "long",
-                        "match": "*timestamp",
-                        "unmatch": "*unsafe*",
-                        "mapping": {
-                            "type": "date"
-                        }
-                    }
-                },
-                {
-                    "date_millis_as_date": {
-                        "match_mapping_type": "long",
-                        "match": "*date_millis",
-                        "mapping": {
-                            "type": "date"
-                        }
-                    }
-                },
-                {
-                    "unsafe_timestamps": {
-                        "match_mapping_type": "long",
-                        "match": "*unsafe*",
-                        "mapping": {
-                            "type": "double"
-                        }
-                    }
-                }
-            ],
-            "properties": {
-                "data_stream": {
-                    "type": "object",
-                    "properties": {
-                        "type": {
-                            "type": "constant_keyword",
-                            "value": "metrics"
-                        },
-                        "namespace": {
-                            "type": "constant_keyword",
-                            "value": "esdiag"
-                        }
-                    }
-                }
+            "match": "*size",
+            "match_mapping_type": "string",
+            "unmatch": "cache_size"
+          }
+        },
+        {
+          "dont_index_human_memory": {
+            "mapping": {
+              "type": "object",
+              "enabled": false
+            },
+            "match": "*_memory",
+            "match_mapping_type": "string"
+          }
+        },
+        {
+          "strings_as_keywords": {
+            "mapping": {
+              "type": "keyword"
+            },
+            "match_mapping_type": "string"
+          }
+        },
+        {
+          "skip_histograms": {
+            "match": "*histogram",
+            "mapping": {
+              "type": "object",
+              "enabled": false
             }
+          }
+        },
+        {
+          "long_metrics": {
+            "mapping": {
+              "index": false,
+              "type": "long"
+            },
+            "match_mapping_type": "long"
+          }
+        },
+        {
+          "float_metrics": {
+            "mapping": {
+              "index": false,
+              "type": "float"
+            },
+            "match_mapping_type": "double"
+          }
+        },
+        {
+          "double_metrics": {
+            "mapping": {
+              "index": false,
+              "type": "double"
+            }
+          }
+        },
+        {
+          "histogram_metrics": {
+            "mapping": {
+              "type": "histogram",
+              "ignore_malformed": true
+            }
+          }
+        },
+        {
+          "summary_metrics": {
+            "mapping": {
+              "metrics": ["sum", "value_count"],
+              "type": "aggregate_metric_double",
+              "default_metric": "value_count"
+            }
+          }
+        },
+        {
+          "named_timestamps": {
+            "match_mapping_type": "long",
+            "match": "*timestamp",
+            "unmatch": "*unsafe*",
+            "mapping": {
+              "type": "date"
+            }
+          }
+        },
+        {
+          "date_millis_as_date": {
+            "match_mapping_type": "long",
+            "match": "*date_millis",
+            "mapping": {
+              "type": "date"
+            }
+          }
+        },
+        {
+          "unsafe_timestamps": {
+            "match_mapping_type": "long",
+            "match": "*unsafe*",
+            "mapping": {
+              "type": "double"
+            }
+          }
         }
-    },
-    "_meta": {
-        "managed": false,
-        "description": "Default mappings for the esdiag index templates"
+      ],
+      "properties": {
+        "data_stream": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "constant_keyword",
+              "value": "metrics"
+            },
+            "namespace": {
+              "type": "constant_keyword",
+              "value": "esdiag"
+            }
+          }
+        }
+      }
     }
+  },
+  "_meta": {
+    "managed": false,
+    "description": "Default mappings for the esdiag index templates"
+  }
 }
