@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use crate::{host::Host, output::file};
 use elasticsearch::{
     auth::Credentials,
@@ -14,6 +12,8 @@ use elasticsearch::{
 };
 use futures::{future::join_all, stream::FuturesUnordered};
 use serde_json::Value;
+use std::path::PathBuf;
+use std::sync::Arc;
 use tokio::sync::Semaphore;
 use url::Url;
 
@@ -238,8 +238,36 @@ impl ElasticsearchClient {
                     let status = response.status_code().to_string().clone();
                     match response.json::<Value>().await {
                         Ok(json) => {
+                            match json["errors"].as_bool().unwrap_or(false) {
+                                true => {
+                                    let errors = json["items"]
+                                        .as_array()
+                                        .unwrap()
+                                        .iter()
+                                        .filter(|item| {
+                                            item["create"]["status"].as_i64().unwrap_or(0) >= 400
+                                        })
+                                        .map(|item| item["create"].clone())
+                                        .collect::<Vec<Value>>();
+                                    let error_count = errors.len();
+                                    file::write_ndjson_if_debug(
+                                        Value::from(errors),
+                                        "errors.ndjson",
+                                        true,
+                                    )
+                                    .ok();
+                                    log::warn!(
+                                        "{} indexed {} documents with {} errors",
+                                        index,
+                                        batch_size - error_count,
+                                        error_count
+                                    );
+                                }
+                                false => {
+                                    log::info!("{} indexed {} documents", batch_size, index);
+                                }
+                            }
                             file::write_ndjson_if_debug(json, "responses.ndjson", true).ok();
-                            log::debug!("responses.ndjson created");
                         }
                         Err(e) => {
                             log::error!("Failed to parse response: {:?}", &e);
