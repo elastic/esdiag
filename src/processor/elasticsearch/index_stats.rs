@@ -68,7 +68,7 @@ pub fn enrich(metadata: &Metadata, data: String) -> Vec<Value> {
             });
             let is_write_index = {
                 data_stream.is_some_and(|ds| ds.is_write_index())
-                    || alias.is_some_and(|a| a.is_write_index())
+                    || alias.is_some_and(|a| a.is_write_index)
             };
 
             let since_creation = index_data
@@ -120,16 +120,15 @@ pub fn enrich(metadata: &Metadata, data: String) -> Vec<Value> {
                         .expect("Failed to get shard_stats array")
                         .iter()
                         .map(|shard_stats| {
+                            // Indexing stats
                             let index_time_in_millis = &shard_stats["indexing"]
                                 ["index_time_in_millis"]
                                 .as_i64()
-                                .expect("Failed to get index_time_in_millis");
-                            let index_total = &shard_stats["indexing"]["index_total"]
-                                .as_i64()
-                                .expect("Failed to get index_total");
-                            let total_size = &shard_stats["store"]["size_in_bytes"]
-                                .as_i64()
-                                .expect("Failed to get store.size_in_bytes");
+                                .unwrap_or(0);
+                            let index_total =
+                                &shard_stats["indexing"]["index_total"].as_i64().unwrap_or(0);
+                            let total_size =
+                                &shard_stats["store"]["size_in_bytes"].as_i64().unwrap_or(0);
                             let bulk_size = &shard_stats["bulk"]["total_size_in_bytes"]
                                 .as_i64()
                                 .unwrap_or(0);
@@ -138,7 +137,7 @@ pub fn enrich(metadata: &Metadata, data: String) -> Vec<Value> {
                                 0 => 0,
                                 x => index_total / x,
                             };
-                            let avg_cpu_millis = match write_phase_sec {
+                            let index_avg_cpu_millis = match write_phase_sec {
                                 0 => 0,
                                 x => index_time_in_millis / x,
                             };
@@ -154,15 +153,53 @@ pub fn enrich(metadata: &Metadata, data: String) -> Vec<Value> {
                                 }
                             };
 
+                            // Search stats
+                            let query_time_in_millis = &shard_stats["search"]
+                                ["query_time_in_millis"]
+                                .as_i64()
+                                .unwrap_or(0);
+                            let query_total =
+                                &shard_stats["search"]["query_total"].as_f64().unwrap_or(0.0);
+                            let fetch_time_in_millis = &shard_stats["search"]
+                                ["fetch_time_in_millis"]
+                                .as_i64()
+                                .unwrap_or(0);
+                            let fetch_total =
+                                &shard_stats["search"]["fetch_total"].as_f64().unwrap_or(0.0);
+                            let avg_query_cpu_millis = match since_creation {
+                                Some(x) => query_time_in_millis / (x / 1000),
+                                None => 0,
+                            };
+                            let avg_query_rate = match since_creation {
+                                Some(x) => query_total / (x as f64 / 1000.0),
+                                None => 0.0,
+                            };
+                            let avg_fetch_cpu_millis = match since_creation {
+                                Some(x) => fetch_time_in_millis / (x / 1000),
+                                None => 0,
+                            };
+                            let avg_fetch_rate = match since_creation {
+                                Some(x) => fetch_total / (x as f64 / 1000.0),
+                                None => 0.0,
+                            };
+
+                            // Patch new calculated stats
                             let indexing_patch = json!({
                                 "shard": {
                                     "indexing": {
                                         "avg_docs_sec": avg_docs_sec,
-                                        "avg_cpu_millis": avg_cpu_millis,
+                                        "avg_cpu_millis": index_avg_cpu_millis,
                                         "avg_bytes_sec": indexing_avg_bytes_sec,
                                     },
                                     "bulk": {
                                         "avg_bytes_sec": bulk_avg_bytes_sec,
+                                    },
+                                    "search": {
+                                        "avg_query_cpu_millis": avg_query_cpu_millis,
+                                        "avg_query_rate": avg_query_rate,
+                                        "avg_fetch_cpu_millis": avg_fetch_cpu_millis,
+                                        "avg_fetch_rate": avg_fetch_rate,
+
                                     }
                                 }
                             });

@@ -32,7 +32,6 @@ impl Processor {
     }
 
     pub fn enrich(&self, dataset: &DataSet, data: String) -> Vec<Value> {
-        let empty = Vec::<Value>::new();
         match dataset {
             DataSet::Elasticsearch(es_dataset) => match es_dataset {
                 EsDataSet::ClusterSettings => {
@@ -44,7 +43,7 @@ impl Processor {
                 EsDataSet::SearchableSnapshotStats => {
                     elasticsearch::searchable_snapshots_stats::enrich(&self.metadata, data)
                 }
-                _ => empty,
+                _ => Vec::<Value>::new(),
             },
         }
     }
