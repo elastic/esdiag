@@ -12,7 +12,6 @@ use elasticsearch::{
 };
 use futures::{future::join_all, stream::FuturesUnordered};
 use serde_json::Value;
-use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Semaphore;
 use url::Url;
@@ -234,8 +233,6 @@ impl ElasticsearchClient {
         {
             Ok(response) => {
                 if response.status_code().is_success() {
-                    log::info!("Sent {} docs for {}", batch_size, index);
-                    let status = response.status_code().to_string().clone();
                     match response.json::<Value>().await {
                         Ok(json) => {
                             match json["errors"].as_bool().unwrap_or(false) {
@@ -264,7 +261,7 @@ impl ElasticsearchClient {
                                     );
                                 }
                                 false => {
-                                    log::info!("{} indexed {} documents", batch_size, index);
+                                    log::info!("{} indexed {} documents", index, batch_size);
                                 }
                             }
                             file::write_ndjson_if_debug(json, "responses.ndjson", true).ok();
@@ -276,7 +273,6 @@ impl ElasticsearchClient {
                     Ok(*batch_size)
                 } else {
                     log::error!("Failed to index document to {}: {:?}", index, response);
-                    let status = response.status_code().to_string().clone();
                     let body = match response.json::<Value>().await {
                         Ok(json) => {
                             log::error!("{:?}", json);

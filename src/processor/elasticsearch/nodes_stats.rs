@@ -5,7 +5,14 @@ use rayon::prelude::*;
 use serde::Serialize;
 use serde_json::{json, Value};
 
-pub fn enrich(metadata: &Metadata, data: Value) -> Vec<Value> {
+pub fn enrich(metadata: &Metadata, data: String) -> Vec<Value> {
+    let data = match serde_json::from_str::<Value>(&data) {
+        Ok(data) => data,
+        Err(e) => {
+            log::error!("Failed to deserialize nodes stats: {}", e);
+            return Vec::new();
+        }
+    };
     let lookup = &metadata.lookup;
     let metadata = &metadata.as_doc;
     let nodes: Vec<_> = match data["nodes"].as_object() {

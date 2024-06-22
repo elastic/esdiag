@@ -17,17 +17,14 @@ pub enum Target {
     Stdout,
 }
 
-#[derive(Debug)]
 pub struct Output {
     pub target: Target,
-    pub pretty: Option<bool>,
 }
 
 impl Output {
-    pub fn new(pretty: bool) -> Self {
+    pub fn new() -> Self {
         Self {
             target: Target::Stdout,
-            pretty: Some(pretty),
         }
     }
 
@@ -64,7 +61,6 @@ impl Output {
     pub fn from_path(filename: PathBuf) -> Self {
         Self {
             target: Target::File(filename),
-            pretty: None,
         }
     }
 
@@ -73,7 +69,6 @@ impl Output {
         let host = Host::from_url(&url);
         Self {
             target: Target::Elasticsearch(ElasticsearchClient::new(host)),
-            pretty: None,
         }
     }
 
@@ -89,19 +84,16 @@ impl Output {
             _ => panic!("Output application can only be Elasticsearch"),
         };
 
-        Self {
-            target,
-            pretty: None,
-        }
+        Self { target }
     }
 
-    pub fn from_uri(uri: Uri, pretty: bool) -> Self {
+    pub fn from_uri(uri: Uri) -> Self {
         match uri {
             Uri::Host(host) => Self::from_host(host),
             Uri::Url(url) => Self::from_url(url),
             Uri::File(filename) => Self::from_path(filename),
             Uri::Directory(dir) => panic!("Cannout output to a directory: {:?}", dir),
-            Uri::Stream => Self::new(pretty),
+            Uri::Stream => Self::new(),
         }
     }
 

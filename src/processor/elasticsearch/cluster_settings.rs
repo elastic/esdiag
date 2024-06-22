@@ -7,7 +7,14 @@ const DEFAULT: &str = "default";
 const PERSISTENT: &str = "persistent";
 const TRANSIENT: &str = "transient";
 
-pub fn enrich(metadata: &Metadata, mut data: Value) -> Vec<Value> {
+pub fn enrich(metadata: &Metadata, data: String) -> Vec<Value> {
+    let mut data = match serde_json::from_str::<Value>(&data) {
+        Ok(data) => data,
+        Err(e) => {
+            log::error!("Failed to deserialize cluster_settings: {}", e);
+            return Vec::new();
+        }
+    };
     let metadata = &metadata.as_doc;
     let scopes: Vec<_> = vec![
         (DEFAULT, data["defaults"].take()),
@@ -20,6 +27,8 @@ pub fn enrich(metadata: &Metadata, mut data: Value) -> Vec<Value> {
 
     let cluster_settings: Vec<Value> = scopes.into_iter().map(|(priority, settings)| {
         let cluster_patch = json!({
+            "cluster.max_shards_per_node.frozen": null,
+            "cluster.max_shards_per_node": null,
             "cluster" : {
                 "max_shards_per_node_frozen": settings.get("cluster.max_shards_per_node.frozen").take(),
                 "max_shards_per_node": settings.get("cluster.max_shards_per_node").take(),
@@ -41,7 +50,21 @@ pub fn enrich(metadata: &Metadata, mut data: Value) -> Vec<Value> {
 
                     }
                 }
-            }
+            },
+            "http.type": null,
+            "http.type.default": null,
+            "http": {
+                "type.current": settings.get("http.type").take(),
+                "type.default": settings.get("http.type.default").take(),
+            },
+            "thread_pool.estimated_time_interval.warn_threshold": null,
+            "transport.type": null,
+            "transport.type.default": null,
+            "transport": {
+                "type.current": settings.get("transport.type").take(),
+                "type.default": settings.get("transport.type.default").take(),
+            },
+            "xpack.searchable.snapshot.shared_cache.size.max_headroom": null,
         });
         let mut cluster_settings_doc = cluster_settings_doc.clone().with(priority, settings);
         merge(&mut cluster_settings_doc.cluster, &cluster_patch);
@@ -61,6 +84,7 @@ struct ClusterSettingsDoc {
     metadata: MetadataDoc,
     data_stream: DataStream,
     priority: &'static str,
+    #[serde(flatten)]
     cluster: Value,
 }
 

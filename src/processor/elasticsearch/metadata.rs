@@ -1,5 +1,5 @@
 use super::lookup::{
-    alias::AliasData, data_stream::DataStreamDoc, ilm::IlmData, index::IndexData, node::NodeData,
+    alias::AliasDoc, data_stream::DataStreamDoc, ilm::IlmData, index::IndexData, node::NodeData,
     shared_cache::SharedCacheStats, Lookup,
 };
 use crate::input::manifest::Manifest;
@@ -67,7 +67,7 @@ impl Metadata {
             diagnostic,
             version,
             lookup: Lookups {
-                alias: Lookup::<AliasData>::from(metadata["alias"].clone()),
+                alias: Lookup::<AliasDoc>::from(metadata["alias"].clone()),
                 data_stream: match metadata.get("data_stream").clone() {
                     Some(data_stream) => Lookup::<DataStreamDoc>::from(data_stream),
                     None => Lookup::<DataStreamDoc>::new(),
@@ -110,7 +110,7 @@ impl Metadata {
 
 #[derive(Clone, Serialize)]
 pub struct Lookups {
-    pub alias: Lookup<AliasData>,
+    pub alias: Lookup<AliasDoc>,
     pub data_stream: Lookup<DataStreamDoc>,
     pub index: Lookup<IndexData>,
     pub node: Lookup<NodeData>,

@@ -1,140 +1,164 @@
 {
-    "index_patterns": [
-        "settings-cluster-esdiag*"
-    ],
-    "composed_of": [
-        "esdiag@mappings",
-        "esdiag@metadata",
-        "esdiag@settings"
-    ],
-    "allow_auto_create": true,
-    "data_stream": {
-        "hidden": false,
-        "allow_custom_routing": false
-    },
-    "priority": 300,
-    "template": {
-        "settings": {
-            "index": {
-                "mapping": {
-                    "total_fields": {
-                        "limit": "2000"
-                    }
-                }
-            }
-        },
-        "mappings": {
-            "_routing": {
-                "required": false
-            },
-            "date_detection": true,
-            "numeric_detection": false,
-            "dynamic_date_formats": [
-                "strict_date_optional_time",
-                "yyyy/MM/dd HH:mm:ss Z||yyyy/MM/dd Z"
-            ],
-            "dynamic": true,
-            "dynamic_templates": [
-                {
-                    "skip_unicast_hosts": {
-                        "mapping": {
-                            "type": "object",
-                            "enabled": false
-                        },
-                        "match": "*hosts"
-                    }
-                }
-            ],
-            "properties": {
-                "data_stream": {
-                    "type": "object",
-                    "properties": {
-                        "dataset": {
-                            "type": "constant_keyword",
-                            "value": "cluster"
-                        },
-                        "type": {
-                            "type": "constant_keyword",
-                            "value": "settings"
-                        }
-                    }
-                },
-                "cluster": {
-                    "type": "object",
-                    "properties": {
-                        "routing": {
-                            "type": "object",
-                            "properties": {
-                                "allocation": {
-                                    "type": "object",
-                                    "properties": {
-                                        "disk": {
-                                            "type": "object",
-                                            "properties": {
-                                                "watermark": {
-                                                    "dynamic": false,
-                                                    "type": "object",
-                                                    "properties": {
-                                                        "flood_stage.frozen.max_headroom": {
-                                                            "type": "keyword"
-                                                        },
-                                                        "flood_stage": {
-                                                            "type": "keyword"
-                                                        },
-                                                        "high": {
-                                                            "type": "keyword"
-                                                        },
-                                                        "low": {
-                                                            "type": "keyword"
-                                                        },
-                                                        "flood_stage.frozen": {
-                                                            "type": "keyword"
-                                                        },
-                                                        "low.max_headroom": {
-                                                            "type": "keyword"
-                                                        },
-                                                        "enable_for_single_data_node": {
-                                                            "type": "boolean"
-                                                        },
-                                                        "high.max_headroom": {
-                                                            "type": "keyword"
-                                                        }
-                                                    },
-                                                    "subobjects": false
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                },
-                "http.pipelining": {
-                    "enabled": false
-                },
-                "tribe.blocks.metadata": {
-                    "enabled": false
-                },
-                "tribe.blocks.write": {
-                    "enabled": false
-                },
-                "transport.port": {
-                    "type": "keyword"
-                },
-                "http.type": {
-                    "enabled": false
-                },
-                "diagnostic.uid": {
-                    "type": "keyword"
-                },
-                "transport.type": {
-                    "enabled": false
-                },
-                "transport.tcp.port": {
-                    "type": "keyword"
-                }
-            }
+  "index_patterns": ["settings-cluster-esdiag*"],
+  "composed_of": ["esdiag@mappings", "esdiag@metadata", "esdiag@settings"],
+  "allow_auto_create": true,
+  "data_stream": {
+    "hidden": false,
+    "allow_custom_routing": false
+  },
+  "priority": 300,
+  "template": {
+    "settings": {
+      "index": {
+        "mapping": {
+          "total_fields": {
+            "limit": "2000"
+          }
         }
+      }
+    },
+    "mappings": {
+      "_routing": {
+        "required": false
+      },
+      "date_detection": true,
+      "numeric_detection": false,
+      "dynamic_date_formats": [
+        "strict_date_optional_time",
+        "yyyy/MM/dd HH:mm:ss Z||yyyy/MM/dd Z"
+      ],
+      "dynamic": true,
+      "dynamic_templates": [
+        {
+          "skip_unicast_hosts": {
+            "mapping": {
+              "type": "object",
+              "enabled": false
+            },
+            "match": "*hosts"
+          }
+        }
+      ],
+      "properties": {
+        "data_stream": {
+          "type": "object",
+          "properties": {
+            "dataset": {
+              "type": "constant_keyword",
+              "value": "cluster"
+            },
+            "type": {
+              "type": "constant_keyword",
+              "value": "settings"
+            }
+          }
+        },
+        "cluster": {
+          "type": "object",
+          "properties": {
+            "routing": {
+              "type": "object",
+              "properties": {
+                "allocation": {
+                  "type": "object",
+                  "properties": {
+                    "disk": {
+                      "type": "object",
+                      "properties": {
+                        "watermark": {
+                          "dynamic": false,
+                          "type": "object",
+                          "subobjects": false,
+                          "properties": {
+                            "flood_stage.frozen.max_headroom": {
+                              "type": "keyword"
+                            },
+                            "flood_stage": {
+                              "type": "keyword"
+                            },
+                            "high": {
+                              "type": "keyword"
+                            },
+                            "low": {
+                              "type": "keyword"
+                            },
+                            "flood_stage.frozen": {
+                              "type": "keyword"
+                            },
+                            "low.max_headroom": {
+                              "type": "keyword"
+                            },
+                            "enable_for_single_data_node": {
+                              "type": "boolean"
+                            },
+                            "high.max_headroom": {
+                              "type": "keyword"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "http.pipelining": {
+          "enabled": false
+        },
+        "tribe.blocks.metadata": {
+          "enabled": false
+        },
+        "tribe.blocks.write": {
+          "enabled": false
+        },
+        "transport": {
+          "type": "object",
+          "properties": {
+            "port": {
+              "type": "keyword"
+            },
+            "type": {
+              "type": "object",
+              "properties": {
+                "current": {
+                  "type": "keyword"
+                },
+                "default": {
+                  "type": "keyword"
+                }
+              }
+            },
+            "tcp": {
+              "type": "object",
+              "properties": {
+                "port": {
+                  "type": "keyword"
+                }
+              }
+            }
+          }
+        },
+        "http.type": {
+          "type": "object",
+          "properties": {
+            "current": {
+              "type": "keyword"
+            },
+            "default": {
+              "type": "keyword"
+            }
+          }
+        },
+        "node.bandwidth.recovery.operator": {
+          "type": "object",
+          "subobjects": false
+        },
+        "xpack.searchable.snapshot.shared_cache.size": {
+          "type": "long"
+        }
+      }
     }
+  }
 }

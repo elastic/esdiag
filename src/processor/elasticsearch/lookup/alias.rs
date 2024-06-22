@@ -2,41 +2,39 @@ use super::{Lookup, LookupDisplay};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct AliasData {
-    alias: Option<String>,
-    is_hidden: Option<bool>,
-    is_write_index: Option<bool>,
+#[derive(Clone, Debug, Serialize)]
+pub struct AliasDoc {
+    pub name: String,
+    pub is_hidden: bool,
+    pub is_write_index: bool,
 }
 
-impl AliasData {
-    pub fn new(
-        alias: Option<String>,
-        is_hidden: Option<bool>,
-        is_write_index: Option<bool>,
-    ) -> Self {
+impl AliasDoc {
+    fn new(alias_name: String, data: AliasData) -> Self {
         Self {
-            alias,
-            is_hidden,
-            is_write_index,
+            name: alias_name,
+            is_hidden: data.is_hidden.unwrap_or(false),
+            is_write_index: data.is_write_index.unwrap_or(false),
         }
     }
+}
 
-    pub fn is_write_index(&self) -> bool {
-        self.is_write_index.unwrap_or(false)
+impl LookupDisplay for AliasDoc {
+    fn display() -> &'static str {
+        "alias_doc"
     }
 }
 
-impl From<String> for Lookup<AliasData> {
+impl From<String> for Lookup<AliasDoc> {
     fn from(string: String) -> Self {
         let index_alias: HashMap<String, IndexAlias> =
             serde_json::from_str(&string).expect("Failed to parse AliasData");
-        let mut lookup_alias: Lookup<AliasData> = Lookup::new();
+        let mut lookup_alias: Lookup<AliasDoc> = Lookup::new();
 
-        for (name, data) in index_alias {
-            for (alias, data) in data.aliases {
-                let alias_data = AliasData::new(Some(alias), data.is_hidden, data.is_write_index);
-                lookup_alias.add(alias_data).with_name(&name);
+        for (index_name, index_data) in index_alias {
+            for (alias_name, alias_data) in index_data.aliases {
+                let alias_doc = AliasDoc::new(alias_name, alias_data);
+                lookup_alias.add(alias_doc).with_name(&index_name);
             }
         }
         log::debug!("lookup_alias entries: {}", lookup_alias.entries.len());
@@ -44,13 +42,13 @@ impl From<String> for Lookup<AliasData> {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
-struct IndexAlias {
-    aliases: HashMap<String, AliasData>,
+#[derive(Clone, Debug, Deserialize)]
+struct AliasData {
+    is_hidden: Option<bool>,
+    is_write_index: Option<bool>,
 }
 
-impl LookupDisplay for AliasData {
-    fn display() -> &'static str {
-        "alias_data"
-    }
+#[derive(Clone, Debug, Deserialize)]
+struct IndexAlias {
+    aliases: HashMap<String, AliasData>,
 }

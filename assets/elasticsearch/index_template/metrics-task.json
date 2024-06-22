@@ -1,70 +1,64 @@
 {
-    "index_patterns": [
-        "metrics-task-esdiag*"
-    ],
-    "composed_of": [
-        "esdiag@mappings",
-        "esdiag@metadata",
-        "esdiag@settings"
-    ],
-    "allow_auto_create": true,
-    "data_stream": {
-        "hidden": false,
-        "allow_custom_routing": false
-    },
-    "priority": 300,
-    "template": {
-        "mappings": {
-            "numeric_detection": false,
-            "dynamic": true,
-            "dynamic_templates": [
-                {
-                    "strings_as_keywords": {
-                        "mapping": {
-                            "type": "keyword"
-                        },
-                        "match_mapping_type": "string"
-                    }
-                }
-            ],
-            "properties": {
-                "data_stream": {
-                    "type": "object",
-                    "properties": {
-                        "dataset": {
-                            "type": "constant_keyword",
-                            "value": "task"
-                        }
-                    }
-                },
-                "status.total_download_time": {
-                    "type": "long"
-                },
-                "start_time": {
-                    "type": "object",
-                    "enabled": false
-                },
-                "parent_task_id": {
-                    "type": "object",
-                    "enabled": false
-                },
-                "node.ip": {
-                    "type": "ip"
-                },
-                "description": {
-                    "type": "match_only_text"
-                },
-                "running_time": {
-                    "type": "object",
-                    "enabled": false
-                },
-                "start_time_in_millis": {
-                    "type": "date"
-                },
-                "id": {
-                    "type": "keyword"
-                }
-            }
+  "index_patterns": ["metrics-task-esdiag*"],
+  "composed_of": ["esdiag@mappings", "esdiag@metadata", "esdiag@settings"],
+  "allow_auto_create": true,
+  "data_stream": {
+    "hidden": false,
+    "allow_custom_routing": false
+  },
+  "priority": 300,
+  "template": {
+    "mappings": {
+      "numeric_detection": false,
+      "dynamic": true,
+      "dynamic_templates": [
+        {
+          "strings_as_keywords": {
+            "mapping": {
+              "type": "keyword"
+            },
+            "match_mapping_type": "string"
+          }
         }
+      ],
+      "properties": {
+        "data_stream": {
+          "type": "object",
+          "properties": {
+            "dataset": {
+              "type": "constant_keyword",
+              "value": "task"
+            }
+          }
+        },
+        "status.total_download_time": {
+          "type": "long"
+        },
+        "start_time": {
+          "type": "object",
+          "enabled": false
+        },
+        "parent_task_id": {
+          "type": "object",
+          "enabled": false
+        },
+        "node.ip": {
+          "type": "ip"
+        },
+        "description": {
+          "type": "match_only_text"
+        },
+        "running_time": {
+          "type": "object",
+          "enabled": false
+        },
+        "start_time_in_millis": {
+          "type": "date"
+        },
+        "id": {
+          "type": "keyword"
+        }
+      }
     }
+  }
 }

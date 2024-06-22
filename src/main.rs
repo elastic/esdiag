@@ -12,7 +12,6 @@ use input::Input;
 use log;
 use output::Output;
 use processor::Processor;
-use serde_json::Value;
 use std::{collections::HashMap, panic, str::FromStr, sync::Arc};
 use tokio::task;
 use uri::Uri;
@@ -49,10 +48,6 @@ enum Commands {
         /// The source to read diagnostic data from
         #[arg(help = "Source to read diagnostic data from")]
         source: String,
-
-        /// Pretty print JSON outputs, files and stdout only (default: false)
-        #[arg(default_value = "false", help = "Pretty print JSON", long, short)]
-        pretty: bool,
     },
     /// Configure and test a remote host connection
     Host {
@@ -123,11 +118,7 @@ async fn main() {
             //log::info!("Collecting diagnostics from {}", host);
             //collect_diagnostics(host, output).await;
         }
-        Commands::Import {
-            target,
-            source,
-            pretty,
-        } => {
+        Commands::Import { target, source } => {
             let output_uri = match uri::classify(target) {
                 Ok(uri) => uri,
                 Err(e) => {
@@ -153,7 +144,7 @@ async fn main() {
                 _ => panic!("Diagnostic manifest can only load from a directory input"),
             };
             let input = Input::new(input_uri, manifest);
-            let output = Output::from_uri(output_uri, *pretty);
+            let output = Output::from_uri(output_uri);
             import_diagnostics(input, output).await;
         }
         Commands::Host {
@@ -293,9 +284,12 @@ async fn import_diagnostics(input: Input, output: Output) {
         let output: Arc<Output> = Arc::clone(&output);
 
         let future = task::spawn(async move {
-            let data = task::spawn_blocking(move || {
-                let value: Value = input.load_value(&data_set);
-                processor.enrich(&data_set, value)
+            let data = task::spawn_blocking(move || match input.load_string(&data_set) {
+                Some(string) => processor.enrich(&data_set, string),
+                None => {
+                    log::warn!("Failed to load data for {}", data_set.to_string());
+                    Vec::new()
+                }
             })
             .await
             .unwrap_or_else(|e| {

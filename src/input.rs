@@ -3,12 +3,11 @@ pub mod file;
 pub mod kibana;
 pub mod logstash;
 pub mod manifest;
-use crate::processor::{elasticsearch::EsDataSet, kibana::KbDataSet, logstash::LsDataSet};
+use crate::processor::elasticsearch::EsDataSet;
 use crate::uri::Uri;
 use manifest::Manifest;
 use semver::Version;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use std::{collections::HashMap, fmt, path::PathBuf, str::FromStr};
 
 pub trait Application {
@@ -20,16 +19,16 @@ pub trait Application {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DataSet {
     Elasticsearch(EsDataSet),
-    Kibana(KbDataSet),
-    Logstash(LsDataSet),
+    //Kibana(KbDataSet),
+    //Logstash(LsDataSet),
 }
 
 impl ToString for DataSet {
     fn to_string(&self) -> String {
         match self {
             DataSet::Elasticsearch(data_set) => data_set.to_string(),
-            DataSet::Kibana(data_set) => data_set.to_string(),
-            DataSet::Logstash(data_set) => data_set.to_string(),
+            //DataSet::Kibana(data_set) => data_set.to_string(),
+            //DataSet::Logstash(data_set) => data_set.to_string(),
         }
     }
 }
@@ -204,37 +203,6 @@ impl Input {
             uri,
             sources,
             version: Some(version),
-        }
-    }
-
-    pub fn load_value(&self, dataset: &DataSet) -> Value {
-        let name = dataset.to_string();
-        let source = match self.sources.get(&name) {
-            Some(source) => source,
-            None => panic!("ERROR: Source not found for {name}"),
-        };
-        match &self.uri {
-            Uri::Directory(dir) => match file::parse_json(&source.with_dir(&name, dir)) {
-                Ok(json) => json,
-                Err(_) => match file::read_first_line(&source.with_dir(&name, dir)) {
-                    Ok(line) => {
-                        log::error!(
-                            "Failed to parse {}, contains: \"{}\"",
-                            source.with_dir(&name, dir).to_str().unwrap(),
-                            &line
-                        );
-                        panic!("File did not have valid json");
-                    }
-                    Err(e) => {
-                        log::debug!("Error reading file '{:?}'", e);
-                        log::warn!("Failed to read file '{}'", name);
-                        Value::Null
-                    }
-                },
-            },
-            _ => {
-                unimplemented!("Input type no implemented!");
-            }
         }
     }
 

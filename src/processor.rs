@@ -1,6 +1,4 @@
 pub mod elasticsearch;
-pub mod kibana;
-pub mod logstash;
 use crate::input::{manifest::Manifest, DataSet};
 use elasticsearch::metadata::Metadata;
 use elasticsearch::EsDataSet;
@@ -28,22 +26,12 @@ impl Processor {
                     &mut self.metadata,
                     data,
                 )),
-                EsDataSet::SearchableSnapshotStats => Some(
-                    elasticsearch::searchable_snapshots_stats::enrich(&self.metadata, data),
-                ),
                 _ => None,
-            },
-            DataSet::Kibana(kb_dataset) => match kb_dataset {
-                _ => unimplemented!("Kibana"),
-            },
-            DataSet::Logstash(ls_dataset) => match ls_dataset {
-                _ => unimplemented!("Logstash"),
             },
         }
     }
 
-    pub fn enrich(&self, dataset: &DataSet, data: Value) -> Vec<Value> {
-        let empty = Vec::<Value>::new();
+    pub fn enrich(&self, dataset: &DataSet, data: String) -> Vec<Value> {
         match dataset {
             DataSet::Elasticsearch(es_dataset) => match es_dataset {
                 EsDataSet::ClusterSettings => {
@@ -52,13 +40,10 @@ impl Processor {
                 EsDataSet::IndexStats => elasticsearch::index_stats::enrich(&self.metadata, data),
                 EsDataSet::NodesStats => elasticsearch::nodes_stats::enrich(&self.metadata, data),
                 EsDataSet::Tasks => elasticsearch::tasks::enrich(&self.metadata, data),
-                _ => empty,
-            },
-            DataSet::Kibana(kb_dataset) => match kb_dataset {
-                _ => unimplemented!("Kibana"),
-            },
-            DataSet::Logstash(ls_dataset) => match ls_dataset {
-                _ => unimplemented!("Logstash"),
+                EsDataSet::SearchableSnapshotStats => {
+                    elasticsearch::searchable_snapshots_stats::enrich(&self.metadata, data)
+                }
+                _ => Vec::<Value>::new(),
             },
         }
     }
