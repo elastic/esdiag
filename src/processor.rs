@@ -1,6 +1,4 @@
 pub mod elasticsearch;
-pub mod kibana;
-pub mod logstash;
 use crate::input::{manifest::Manifest, DataSet};
 use elasticsearch::metadata::Metadata;
 use elasticsearch::EsDataSet;
@@ -33,12 +31,12 @@ impl Processor {
                 ),
                 _ => None,
             },
-            DataSet::Kibana(kb_dataset) => match kb_dataset {
-                _ => unimplemented!("Kibana"),
-            },
-            DataSet::Logstash(ls_dataset) => match ls_dataset {
-                _ => unimplemented!("Logstash"),
-            },
+            //DataSet::Kibana(kb_dataset) => match kb_dataset {
+            //    _ => unimplemented!("Kibana"),
+            //},
+            //DataSet::Logstash(ls_dataset) => match ls_dataset {
+            //    _ => unimplemented!("Logstash"),
+            //},
         }
     }
 
@@ -54,12 +52,12 @@ impl Processor {
                 EsDataSet::Tasks => elasticsearch::tasks::enrich(&self.metadata, data),
                 _ => empty,
             },
-            DataSet::Kibana(kb_dataset) => match kb_dataset {
-                _ => unimplemented!("Kibana"),
-            },
-            DataSet::Logstash(ls_dataset) => match ls_dataset {
-                _ => unimplemented!("Logstash"),
-            },
+            //DataSet::Kibana(kb_dataset) => match kb_dataset {
+            //    _ => unimplemented!("Kibana"),
+            //},
+            //DataSet::Logstash(ls_dataset) => match ls_dataset {
+            //    _ => unimplemented!("Logstash"),
+            //},
         }
     }
 }

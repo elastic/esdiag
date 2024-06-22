@@ -3,6 +3,7 @@ use serde::Serialize;
 
 #[derive(Clone, Serialize)]
 pub struct IndexData {
+    pub age: Option<i64>,
     pub indexing_complete: Option<bool>,
     pub creation_date: Option<i64>,
 }
@@ -10,6 +11,7 @@ pub struct IndexData {
 impl IndexData {
     pub fn new() -> Self {
         IndexData {
+            age: None,
             indexing_complete: None,
             creation_date: None,
         }

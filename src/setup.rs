@@ -7,7 +7,7 @@ use std::path::PathBuf;
 #[derive(Deserialize)]
 pub struct Asset {
     pub endpoint: String,
-    pub file: Option<String>,
+    //pub file: Option<String>,
     pub method: String,
     pub name: String,
     pub subdir: Option<String>,

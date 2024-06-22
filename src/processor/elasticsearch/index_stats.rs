@@ -55,6 +55,7 @@ pub fn enrich(metadata: &Metadata, mut data: Value) -> Vec<Value> {
             let alias = lookup.alias.by_name(index.as_str());
             let ilm = lookup.ilm.by_name(index);
             let index_data = lookup.index.by_name(index).unwrap_or(&IndexData {
+                age: None,
                 indexing_complete: None,
                 creation_date: None,
             });
@@ -251,24 +252,6 @@ pub struct ShardDoc {
     since_rollover: Option<i64>,
     uuid: String,
     write_window_sec: Option<i64>,
-}
-
-impl ShardDoc {
-    pub fn new(index: &str) -> Self {
-        ShardDoc {
-            alias: None,
-            creation_date: None,
-            data_stream: None,
-            ilm: None,
-            index: index.to_string(),
-            indexing_complete: None,
-            is_write_index: None,
-            since_creation: None,
-            since_rollover: None,
-            uuid: String::new(),
-            write_window_sec: None,
-        }
-    }
 }
 
 #[derive(Serialize)]

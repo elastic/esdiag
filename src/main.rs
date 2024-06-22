@@ -49,10 +49,6 @@ enum Commands {
         /// The source to read diagnostic data from
         #[arg(help = "Source to read diagnostic data from")]
         source: String,
-
-        /// Pretty print JSON outputs, files and stdout only (default: false)
-        #[arg(default_value = "false", help = "Pretty print JSON", long, short)]
-        pretty: bool,
     },
     /// Configure and test a remote host connection
     Host {
@@ -123,11 +119,7 @@ async fn main() {
             //log::info!("Collecting diagnostics from {}", host);
             //collect_diagnostics(host, output).await;
         }
-        Commands::Import {
-            target,
-            source,
-            pretty,
-        } => {
+        Commands::Import { target, source } => {
             let output_uri = match uri::classify(target) {
                 Ok(uri) => uri,
                 Err(e) => {
@@ -153,7 +145,7 @@ async fn main() {
                 _ => panic!("Diagnostic manifest can only load from a directory input"),
             };
             let input = Input::new(input_uri, manifest);
-            let output = Output::from_uri(output_uri, *pretty);
+            let output = Output::from_uri(output_uri);
             import_diagnostics(input, output).await;
         }
         Commands::Host {

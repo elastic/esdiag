@@ -3,7 +3,7 @@ pub mod file;
 pub mod kibana;
 pub mod logstash;
 pub mod manifest;
-use crate::processor::{elasticsearch::EsDataSet, kibana::KbDataSet, logstash::LsDataSet};
+use crate::processor::elasticsearch::EsDataSet;
 use crate::uri::Uri;
 use manifest::Manifest;
 use semver::Version;
@@ -20,16 +20,16 @@ pub trait Application {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DataSet {
     Elasticsearch(EsDataSet),
-    Kibana(KbDataSet),
-    Logstash(LsDataSet),
+    //Kibana(KbDataSet),
+    //Logstash(LsDataSet),
 }
 
 impl ToString for DataSet {
     fn to_string(&self) -> String {
         match self {
             DataSet::Elasticsearch(data_set) => data_set.to_string(),
-            DataSet::Kibana(data_set) => data_set.to_string(),
-            DataSet::Logstash(data_set) => data_set.to_string(),
+            //DataSet::Kibana(data_set) => data_set.to_string(),
+            //DataSet::Logstash(data_set) => data_set.to_string(),
         }
     }
 }

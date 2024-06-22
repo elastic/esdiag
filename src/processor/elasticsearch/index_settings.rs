@@ -38,8 +38,9 @@ pub fn enrich_lookup(metadata: &mut Metadata, data: String) -> Vec<Value> {
             };
 
             let index_data = IndexData {
-                indexing_complete,
+                age: Some(age),
                 creation_date: Some(settings.creation_date),
+                indexing_complete,
             };
             lookup.index.add(index_data).with_name(&name);
 
