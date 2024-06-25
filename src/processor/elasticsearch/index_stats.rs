@@ -146,11 +146,23 @@ pub fn enrich(metadata: &Metadata, data: String) -> Vec<Value> {
                                 x => *total_size / x,
                             };
                             let bulk_avg_bytes_sec = {
-                                let time = shard_stats["bulk"]["total_time_in_millis"].as_i64();
+                                let time = match is_write_index {
+                                    true => since_creation,
+                                    false => None,
+                                };
                                 match time {
                                     Some(time) if time / 1000 > 0 => bulk_size / (time / 1000),
                                     _ => 0,
                                 }
+                            };
+                            let bulk_storage_ratio = match is_write_index
+                                && bulk_avg_bytes_sec > 262_144
+                                && indexing_avg_bytes_sec > 262_144
+                            {
+                                true => {
+                                    Some(indexing_avg_bytes_sec as f32 / bulk_avg_bytes_sec as f32)
+                                }
+                                false => None,
                             };
 
                             // Search stats
@@ -192,6 +204,7 @@ pub fn enrich(metadata: &Metadata, data: String) -> Vec<Value> {
                                         "avg_bytes_sec": indexing_avg_bytes_sec,
                                     },
                                     "bulk": {
+                                        "storage_ratio": bulk_storage_ratio,
                                         "avg_bytes_sec": bulk_avg_bytes_sec,
                                     },
                                     "search": {
@@ -235,7 +248,7 @@ pub fn enrich(metadata: &Metadata, data: String) -> Vec<Value> {
                 x => {
                     (index_stats.total["store"]["size_in_bytes"]
                         .as_i64()
-                        .expect("Failed to get total.store.size_in_bytes")
+                        .unwrap_or(0)
                         * 86_400)
                         / x
                 }
