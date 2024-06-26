@@ -9,26 +9,31 @@ Installation
 ### MacOS
 
 1. Install the Rust toolchain from [rust-lang.org/tools/install]()
-    ```
+    ```sh
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
     ```
 
 2. Ensure your GitHub `ssh` credentials are working from the command line. If you haven't set this up yet, follow the [GitHub guide](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/adding-a-new-ssh-key-to-your-github-account)
-    ```
+    ```sh
     ssh -T git@github.com
     ```
     If it works, you will see this confirmation message:
     ```
     Hi ${username}! You've successfully authenticated, but GitHub does not provide shell access.
     ```
-    
+
 3. Install the crate (package) directly from the private GitHub using the `ssh` URL
-    ```
+    ```sh
     cargo install --git ssh://git@github.com/elastic/esdiag.git
     ```
     This will kick off the build process. Ignore any warnings, report any errors.
-    
-4. Use it!
+
+4. Use it! If you need a simple, local, security-disabled Elasticsearch and Kibana environment, use the `docker-compose.yml` file in the `docker` directory.
+
+    ```sh
+    cd docker
+    docker compose up
+    ```
 
 Usage
 --------------------
@@ -36,13 +41,20 @@ Usage
 ### Examples
 
 1. Save a target Elasticsearch cluster to the hosts configuration
-    `esdiag host my_cluster elasticsearch http://localhost:9200 --auth None --save`
-    
+    ```sh
+    esdiag host my_cluster elasticsearch http://localhost:9200 --auth None --save
+    ```
+
+
 2. Setup the Elasticsearch cluster with the templates, data streams, etc.
-    `esdiag setup my_cluster`
-    
+    ```sh
+    esdiag setup my_cluster
+    ```
+
 3. Import a diagnostic bundle from a local directory
-    `esdiag import my_cluster api-diagnostic-20240506-0050225`
+    ```sh
+    esdiag import my_cluster ~/downloads/api-diagnostic-20240506-0050225
+    ```
 
 4. Open Kibana and explore!
 
@@ -67,7 +79,6 @@ Commands:
 
 Options:
   -h, --help  Print help
-
 ```
 
 #### Host
@@ -92,7 +103,6 @@ Options:
   -p, --password <PASSWORD>  Password for authentication
   -s, --save                 Save the host configuration
   -h, --help                 Print help
-
 ```
 
 #### Setup
@@ -115,13 +125,13 @@ Options:
 
 The `esdiag import` command allows these `target` and `source` options:
 
-- `target` 
+`target`
     1. stdout (use `-` as the target name)
     2. directory (the root directory of a diagnostic bundle)
     3. host (a known host saved to your `hosts.yml`)
-- `source` 
-    1. directory
 
+`source`
+    1. directory
 ```
 Process, enrich and import a diagnostic into Elasticsearch
 
@@ -134,7 +144,6 @@ Arguments:
 Options:
   -p, --pretty  Pretty print JSON
   -h, --help    Print help
-
 ```
 
 #### Collect
@@ -143,12 +152,14 @@ Options:
 
 ### Debugging
 
-Use shell environment variables to enable debug logging: 
-```
+Use a shell environment variables to enable debug logging:
+
+```sh
 export LOG_LEVEL=debug
 ```
 
- This will enable debug-level messages. Also, when you import a diagnostic `esdiag` will write two new files in your `~/.esdiag` directory:
+This will enable debug-level messages. Also, when you import a diagnostic `esdiag` will write two new files in your `~/.esdiag` directory:
 
 1. `metadata.ndjson` - This contains the diagnostic metadata and lookup tables generated while processing the diagnostic.
-2. `responses.ndjson` - This contains all the HTTP responses from the Elasticsearch output. Very useful when tracking down specific document errors returned from the `_bulk` API. 
+2. `responses.ndjson` - This contains all the HTTP responses from the Elasticsearch `_bulk` API.
+3. `errors.ndjson` - Only the errors from the `_bulk` API, very useful when tracking down specific document errors.

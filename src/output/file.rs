@@ -1,5 +1,6 @@
+use crate::env;
 use serde_json::Value;
-use std::{env, fs::OpenOptions, io::Write, path::PathBuf};
+use std::{fs::OpenOptions, io::Write, path::PathBuf};
 
 pub fn write_ndjson<'a>(value: Value, filename: &PathBuf, append: bool) -> std::io::Result<()> {
     let mut file = OpenOptions::new()
@@ -18,10 +19,7 @@ pub fn write_ndjson_if_debug<'a>(
     filename: &str,
     append: bool,
 ) -> std::io::Result<()> {
-    let home = match env::var("HOME") {
-        Ok(home) => PathBuf::from(home).join(".esdiag"),
-        Err(_) => panic!("ERROR: No home directory found"),
-    };
+    let home = PathBuf::from(env::get_string("HOME")?).join(env::get_string("ESDIAG_HOME")?);
     if log::log_enabled!(log::Level::Debug) {
         write_ndjson(value, &home.join(filename), append)
     } else {

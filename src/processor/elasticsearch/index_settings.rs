@@ -25,7 +25,8 @@ pub fn enrich_lookup(metadata: &mut Metadata, data: String) -> Vec<Value> {
         .into_iter()
         .map(|(name, settings)| {
             let settings = settings.settings.index;
-            let age = metadata.timestamp - settings.creation_date;
+            let creation_date = settings.creation_date.expect("creation_date not found");
+            let age = metadata.timestamp - creation_date;
             let indexing_complete = match &settings.lifecycle {
                 Some(l) => match l.get("indexing_complete") {
                     Some(Value::String(s)) => match s.as_str() {
@@ -39,7 +40,7 @@ pub fn enrich_lookup(metadata: &mut Metadata, data: String) -> Vec<Value> {
 
             let index_data = IndexData {
                 age: Some(age),
-                creation_date: Some(settings.creation_date),
+                creation_date: settings.creation_date,
                 indexing_complete,
             };
             lookup.index.add(index_data).with_name(&name);
@@ -85,22 +86,29 @@ impl IndexSettingsDoc {
 
 #[derive(Clone, Deserialize, Serialize)]
 pub struct IndexSettings {
+    allocation: Option<Value>,
+    auto_expand_replicas: Option<String>,
+    blocks: Option<Value>,
     codec: Option<String>,
     #[serde(deserialize_with = "number_from_string")]
-    creation_date: i64,
+    creation_date: Option<i64>,
     default_pipeline: Option<String>,
     final_pipeline: Option<String>,
     hidden: Option<String>,
     lifecycle: Option<Value>,
     mapping: Option<Value>,
     #[serde(deserialize_with = "number_from_string")]
-    number_of_replicas: i64,
+    number_of_replicas: Option<i64>,
     #[serde(deserialize_with = "number_from_string")]
-    number_of_shards: i64,
+    number_of_shards: Option<i64>,
     priority: Option<String>,
     provided_name: String,
     query: Option<Value>,
+    refresh_interval: Option<String>,
     routing: Option<Value>,
+    shard: Option<Value>,
+    shard_limit: Option<Value>,
+    store: Option<Value>,
     sort: Option<Value>,
     uuid: String,
     version: Value,
@@ -128,19 +136,16 @@ struct Index {
 // The standard deserializer from serde_json does not deserializing numbers from
 // strings. Unfortunately the _settings API frequently wraps numbers in quotes.
 
-fn number_from_string<'de, D>(deserializer: D) -> Result<i64, D::Error>
+fn number_from_string<'de, D>(deserializer: D) -> Result<Option<i64>, D::Error>
 where
     D: Deserializer<'de>,
 {
     let value: Value = Deserialize::deserialize(deserializer)?;
 
     match value {
-        Value::Number(num) => num
-            .as_i64()
-            .ok_or_else(|| serde::de::Error::custom("expected a number")),
-        Value::String(s) => s
-            .parse::<i64>()
-            .map_err(|_| serde::de::Error::custom("expected a string representing a number")),
+        Value::Number(num) => Ok(num.as_i64()),
+        Value::String(s) => Ok(s.parse::<i64>().ok()),
+        Value::Null => Ok(None),
         _ => Err(serde::de::Error::custom(
             "expected a number or a string representing a number",
         )),

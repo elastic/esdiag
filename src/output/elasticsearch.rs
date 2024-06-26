@@ -1,3 +1,4 @@
+use crate::env;
 use crate::{host::Host, output::file};
 use elasticsearch::{
     auth::Credentials,
@@ -15,9 +16,6 @@ use serde_json::Value;
 use std::sync::Arc;
 use tokio::sync::Semaphore;
 use url::Url;
-
-const BULK_SIZE: usize = 5_000;
-const ES_WORKERS: usize = 4;
 
 #[derive(Clone, Debug)]
 pub struct ElasticsearchClient {
@@ -171,7 +169,8 @@ impl ElasticsearchClient {
     }
 
     pub async fn bulk_index(&self, mut docs: Vec<Value>) -> std::io::Result<usize> {
-        let workers = ES_WORKERS;
+        let workers = env::get_int("ESDIAG_ES_WORKERS")?;
+        let bulk_size = env::get_int("ESDIAG_ES_BULK_SIZE")?;
         let semaphore = Arc::new(Semaphore::new(workers));
         let index = format!(
             "{}-{}-{}",
@@ -184,7 +183,7 @@ impl ElasticsearchClient {
 
         while !docs.is_empty() {
             let mut ops: Vec<BulkOperation<Value>> = Vec::new();
-            for _ in 0..BULK_SIZE {
+            for _ in 0..bulk_size {
                 if let Some(doc) = docs.pop() {
                     ops.push(BulkOperation::create(doc).pipeline("esdiag").into());
                 } else {

@@ -1,10 +1,13 @@
+mod env;
 mod host;
 mod input;
 mod output;
 mod processor;
 mod setup;
 mod uri;
+
 use clap::{Parser, Subcommand};
+use env::LOG_LEVEL;
 use futures::future::join_all;
 use futures::stream::FuturesUnordered;
 use host::Host;
@@ -93,7 +96,7 @@ enum Commands {
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 8)]
 async fn main() {
-    let env = env_logger::Env::default().filter_or("LOG_LEVEL", "info");
+    let env = env_logger::Env::default().filter_or("LOG_LEVEL", LOG_LEVEL);
     env_logger::Builder::from_env(env)
         .format_timestamp_millis()
         //.target(env_logger::Target::Stdout)
