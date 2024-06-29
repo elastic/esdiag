@@ -1,42 +1,42 @@
 {
-    "index_patterns": [
-        "settings-index-esdiag*"
-    ],
-    "composed_of": [
-        "esdiag@mappings",
-        "esdiag@metadata",
-        "esdiag@settings"
-    ],
-    "allow_auto_create": true,
-    "data_stream": {
-        "hidden": false,
-        "allow_custom_routing": false
-    },
-    "priority": 300,
-    "template": {
-        "mappings": {
-            "properties": {
-                "data_stream": {
-                    "type": "object",
-                    "properties": {
-                        "dataset": {
-                            "type": "constant_keyword",
-                            "value": "index"
-                        },
-                        "type": {
-                            "type": "constant_keyword",
-                            "value": "settings"
-                        }
-                    }
-                },
-                "index": {
-                    "properties": {
-                        "age": {
-                            "type": "long"
-                        }
-                    }
-                }
+  "index_patterns": ["settings-index-esdiag*"],
+  "composed_of": ["esdiag@mappings", "esdiag@metadata", "esdiag@settings"],
+  "allow_auto_create": true,
+  "data_stream": {
+    "hidden": false,
+    "allow_custom_routing": false
+  },
+  "priority": 300,
+  "template": {
+    "mappings": {
+      "properties": {
+        "data_stream": {
+          "type": "object",
+          "properties": {
+            "dataset": {
+              "type": "constant_keyword",
+              "value": "index"
+            },
+            "type": {
+              "type": "constant_keyword",
+              "value": "settings"
             }
+          }
+        },
+        "index": {
+          "properties": {
+            "age": {
+              "type": "long"
+            },
+            "codec": {
+              "type": "keyword"
+            },
+            "refresh_interval": {
+              "type": "keyword"
+            }
+          }
         }
+      }
     }
+  }
 }

@@ -25,14 +25,15 @@ pub fn classify(uri: &str) -> Result<Uri, std::io::Error> {
                 Err(_) => log::debug!("Not a valid URL {uri}"),
                 Ok(url) => return Ok(Uri::Url(url)),
             }
-            match Path::new(&uri).is_dir() {
+            let path = Path::new(&uri);
+            match path.is_dir() {
                 false => log::debug!("Not a directory {uri}"),
                 true => {
                     log::debug!("Directory {uri}");
                     return Ok(Uri::Directory(PathBuf::from_str(&uri).unwrap()));
                 }
             }
-            match Path::new(&uri).is_file() {
+            match path.is_file() {
                 false => log::debug!("Not a file {uri}"),
                 true => return Ok(Uri::File(PathBuf::from_str(&uri).unwrap())),
             }

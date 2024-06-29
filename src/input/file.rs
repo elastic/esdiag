@@ -1,8 +1,6 @@
-use super::manifest::Manifest;
 use super::{Product, Source};
 use crate::output::Target;
 use crate::setup::Asset;
-use core::panic;
 use include_dir::{include_dir, Dir};
 use serde_yaml;
 use std::collections::HashMap;
@@ -25,42 +23,6 @@ pub fn read_string(file_path: &PathBuf) -> Result<String, Box<dyn std::error::Er
         string.push_str(&line?);
     }
     Ok(string)
-}
-
-pub fn parse_manifest(dir: &PathBuf) -> Result<Manifest, Box<dyn std::error::Error>> {
-    let file_path = dir.as_path().join("manifest.json");
-    let manifest = match File::open(&file_path) {
-        Ok(file) => {
-            log::debug!("Parsing manifest.json {:?}", &file_path);
-            let reader = BufReader::new(file);
-            match serde_json::from_reader(reader) {
-                Ok(manifest) => manifest,
-                Err(e) => {
-                    panic!("ERROR: Failed to parse manifest.json file - {}", e);
-                }
-            }
-        }
-        Err(_) => {
-            log::warn!("Failed to parse manifest.json file, falling back to version.json");
-            let file_path = dir.as_path().join("version.json");
-            log::debug!("Parsing version.json {:?}", &file_path);
-            let version = match File::open(&file_path) {
-                Ok(file) => {
-                    let reader = BufReader::new(file);
-                    match serde_json::from_reader(reader) {
-                        Ok(version) => version,
-                        Err(e) => {
-                            panic!("ERROR: Failed to parse version.json file - {}", e);
-                        }
-                    }
-                }
-                Err(e) => panic!("ERROR: No version.json file - {}", e),
-            };
-            let date = std::fs::metadata(&file_path)?.created()?;
-            Manifest::from_es_version(version, date)
-        }
-    };
-    Ok(manifest)
 }
 
 pub fn parse_sources_yml(
