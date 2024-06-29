@@ -1,3 +1,4 @@
+pub mod archive;
 pub mod elasticsearch;
 pub mod file;
 pub mod kibana;
@@ -93,6 +94,23 @@ impl Source {
         };
         path.push(filename);
         path
+    }
+
+    fn as_path_string(&self, name: &str) -> String {
+        let mut string = String::new();
+        match self.subdir {
+            Some(ref subdir) => {
+                string.push_str(subdir);
+                string.push_str("/");
+            }
+            None => string.push_str(""),
+        }
+        string.push_str(name);
+        match self.extension {
+            Some(ref extension) => string.push_str(extension),
+            None => string.push_str(".json"),
+        }
+        string
     }
 
     //pub fn with_url(
@@ -214,7 +232,14 @@ impl Input {
         };
         match &self.uri {
             Uri::Directory(dir) => match file::read_string(&source.with_dir(&name, dir)) {
-                Ok(line) => Some(line),
+                Ok(string) => Some(string),
+                Err(e) => {
+                    log::debug!("Error reading file '{:?}'", e);
+                    None
+                }
+            },
+            Uri::File(file) => match archive::read_string(file, &source.as_path_string(&name)) {
+                Ok(string) => Some(string),
                 Err(e) => {
                     log::debug!("Error reading file '{:?}'", e);
                     None
