@@ -1,0 +1,36 @@
+{
+  "template": {
+    "mappings": {
+      "properties": {
+        "index": {
+          "type": "object",
+          "properties": {
+            "age": {
+              "type": "long"
+            },
+            "codec": {
+              "type": "keyword"
+            },
+            "creation_date": {
+              "format": "epoch_millis",
+              "type": "date"
+            },
+            "hidden": {
+              "type": "boolean"
+            },
+            "indexing_complete": {
+              "type": "boolean"
+            },
+            "refresh_interval": {
+              "type": "keyword"
+            }
+          }
+        }
+      }
+    }
+  },
+  "_meta": {
+    "managed": false,
+    "description": "esdiag common mappings for index metadata"
+  }
+}

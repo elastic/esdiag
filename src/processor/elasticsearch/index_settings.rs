@@ -40,8 +40,11 @@ pub fn enrich_lookup(metadata: &mut Metadata, data: String) -> Vec<Value> {
 
             let index_data = IndexData {
                 age: Some(age),
+                codec: settings.codec.clone(),
                 creation_date: settings.creation_date,
+                hidden: settings.hidden.clone(),
                 indexing_complete,
+                refresh_interval: settings.refresh_interval.clone(),
             };
             lookup.index.add(index_data).with_name(&name);
 
@@ -89,7 +92,8 @@ pub struct IndexSettings {
     allocation: Option<Value>,
     auto_expand_replicas: Option<String>,
     blocks: Option<Value>,
-    codec: Option<String>,
+    #[serde(default = "default_codec")]
+    codec: String,
     #[serde(deserialize_with = "number_from_string")]
     creation_date: Option<i64>,
     default_pipeline: Option<String>,
@@ -104,7 +108,8 @@ pub struct IndexSettings {
     priority: Option<String>,
     provided_name: String,
     query: Option<Value>,
-    refresh_interval: Option<String>,
+    #[serde(default = "default_refresh_interval")]
+    refresh_interval: String,
     routing: Option<Value>,
     shard: Option<Value>,
     shard_limit: Option<Value>,
@@ -119,6 +124,14 @@ pub struct IndexSettings {
     data_stream: Option<DataStreamDoc>,
     #[serde(skip_deserializing)]
     name: Option<String>,
+}
+
+fn default_codec() -> String {
+    String::from("best_speed")
+}
+
+fn default_refresh_interval() -> String {
+    String::from("default")
 }
 
 // Deserializing data structures

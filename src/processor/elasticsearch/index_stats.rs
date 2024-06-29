@@ -61,11 +61,10 @@ pub fn enrich(metadata: &Metadata, data: String) -> Vec<Value> {
             let data_stream = lookup.data_stream.by_name(index.as_str());
             let alias = lookup.alias.by_name(index.as_str());
             let ilm = lookup.ilm.by_name(index);
-            let index_data = lookup.index.by_name(index).unwrap_or(&IndexData {
-                age: None,
-                indexing_complete: None,
-                creation_date: None,
-            });
+            let index_data: IndexData = match lookup.index.by_name(index) {
+                Some(index) => index.clone(),
+                None => IndexData::default(),
+            };
             let is_write_index = {
                 data_stream.is_some_and(|ds| ds.is_write_index())
                     || alias.is_some_and(|a| a.is_write_index)
@@ -101,6 +100,7 @@ pub fn enrich(metadata: &Metadata, data: String) -> Vec<Value> {
                         "index": {
                             "alias": alias,
                             "creation_date": index_data.creation_date,
+                            "codec": index_data.codec,
                             "data_stream": data_stream,
                             "ilm": ilm,
                             "indexing_complete": index_data.indexing_complete,
@@ -257,6 +257,7 @@ pub fn enrich(metadata: &Metadata, data: String) -> Vec<Value> {
             let index_patch = json!({
                 "index": {
                     "alias": alias,
+                    "codec": index_data.codec,
                     "data_stream": data_stream,
                     "name": index,
                     "is_write_index": is_write_index,

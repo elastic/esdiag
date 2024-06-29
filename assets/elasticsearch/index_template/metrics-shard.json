@@ -3,8 +3,9 @@
   "composed_of": [
     "esdiag@metadata",
     "esdiag@mappings",
-    "esdiag@ilm",
     "esdiag@settings",
+    "esdiag@ilm",
+    "esdiag@index",
     "esdiag@node"
   ],
   "allow_auto_create": true,
