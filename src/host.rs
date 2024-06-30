@@ -231,34 +231,29 @@ impl Display for Host {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::ApiKey {
-                apikey,
-                app,
-                cloud_id,
-                url,
+                app, cloud_id, url, ..
             } => write!(
                 fmt,
-                "Host: {} {} {} {}",
+                "Host ApiKey: {} {} {}",
                 app,
                 url,
                 cloud_id.as_deref().unwrap_or(""),
-                apikey
             ),
             Self::Basic {
                 app,
                 cloud_id,
-                password,
                 url,
                 username,
+                ..
             } => write!(
                 fmt,
-                "Host: {} {} {} {} {}",
+                "Host Basic: {} {}@ {} {}",
                 app,
+                username,
                 url,
                 cloud_id.as_deref().unwrap_or(""),
-                username,
-                password
             ),
-            Self::None { app, url } => write!(fmt, "Host: {} {}", app, url),
+            Self::None { app, url } => write!(fmt, "Host None: {} {}", app, url),
         }
     }
 }

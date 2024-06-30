@@ -136,8 +136,8 @@ async fn main() {
                     panic!("Invalid input: {}", source);
                 }
             };
-            log::info!("input: {:?}", input_uri);
-            log::info!("output: {:?}", output_uri);
+            log::info!("input: {}", input_uri);
+            log::info!("output: {}", output_uri);
 
             let manifest: Manifest = match &input_uri {
                 Uri::Directory(dir) => {

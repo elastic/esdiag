@@ -94,3 +94,15 @@ pub fn classify(uri: &str) -> Result<Uri, std::io::Error> {
         }
     }
 }
+
+impl std::fmt::Display for Uri {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Uri::Host(host) => write!(f, "{}", host),
+            Uri::Url(url) => write!(f, "{}", url),
+            Uri::Directory(path) => write!(f, "{}", path.display()),
+            Uri::File(path) => write!(f, "{}", path.display()),
+            Uri::Stream => write!(f, "-"),
+        }
+    }
+}
