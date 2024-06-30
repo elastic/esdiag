@@ -278,9 +278,10 @@ impl ElasticsearchClient {
 
         // Create batches of operations
         while !docs.is_empty() {
+            let batch_size = std::cmp::min(docs.len(), bulk_size);
             // Slice the documents into a batch of operations
             let mut ops: Vec<BulkOperation<Value>> = Vec::new();
-            for doc in docs.drain(..bulk_size) {
+            for doc in docs.drain(..batch_size) {
                 ops.push(BulkOperation::create(doc).pipeline("esdiag").into());
             }
 
