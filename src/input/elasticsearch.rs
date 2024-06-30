@@ -1,6 +1,8 @@
 use super::{Application, DataSet};
 use crate::processor::elasticsearch::EsDataSet::*;
 
+/// Defines the data sets from an Elasticsearch diagnostic
+
 pub struct Elasticsearch {
     pub data_sets: Vec<DataSet>,
     pub lookup_sets: Vec<DataSet>,

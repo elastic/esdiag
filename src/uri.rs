@@ -3,14 +3,56 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use url::Url;
 
+/// Represents various types of URIs classified by the system.
 #[derive(Debug)]
 pub enum Uri {
+    /// Represents a host saved in the hosts.yml
     Host(Host),
+    /// Represents a standard URL
     Url(Url),
+    /// Represents a directory path on the local file system
     Directory(PathBuf),
+    /// Represents a file path on the local filesystem
     File(PathBuf),
+    /// Represents an input/output stream (e.g., stdin/stdout)
     Stream,
 }
+
+/// Classifies a URI string into a specific `Uri` variant based on its type.
+///
+/// This function takes a URI string and categorizes it into different types represented by the `Uri` enum.
+/// It supports classifying a URI as a stream, host, URL, directory, or file based on various checks.
+///
+/// # Arguments
+///
+/// * `uri` - A string slice representing the URI to classify.
+///
+/// # Returns
+///
+/// Returns a `Result` with a `Uri` enum variant:
+/// - `Ok(Uri::Stream)` if the URI is `"-"`.
+/// - `Ok(Uri::Host(host))` if the URI can be parsed into a `Host`.
+/// - `Ok(Uri::Url(url))` if the URI can be parsed into a `Url`.
+/// - `Ok(Uri::Directory(path))` if the URI is a valid directory path.
+/// - `Ok(Uri::File(path))` if the URI is a valid file path.
+/// - `Err(std::io::Error)` if there are errors during file creation or other I/O operations.
+///
+/// # Errors
+///
+/// Returns an `Err(std::io::Error)` if there are errors during file creation or other I/O operations.
+///
+/// # Examples
+///
+/// ```rust
+/// use std::path::PathBuf;
+///
+/// let uri = "-";
+/// match classify(uri) {
+///     Ok(Uri::Stream) => println!("URI is a stream"),
+///     Ok(_) => println!("URI classified successfully"),
+///     Err(e) => eprintln!("Failed to classify URI: {}", e),
+/// }
+/// ```
 
 pub fn classify(uri: &str) -> Result<Uri, std::io::Error> {
     match uri {

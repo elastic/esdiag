@@ -2,7 +2,7 @@
 # Only use this for running esdiag on a local machine!
 #
 # Ensure you've allocated Docker at least 8 GB of memory and as many
-# CPU cores as you can spare for faster performance.
+# CPU cores as you can spare for faster ingest performance.
 
 name: esdiag
 services:

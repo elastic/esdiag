@@ -18,6 +18,7 @@ pub struct Manifest {
 }
 
 impl Manifest {
+    /// Infers manifest details from the `version.json` if there was no manifest
     pub fn from_es_version(version: EsVersion, date: SystemTime) -> Self {
         let product = match version.tagline.as_str() {
             "You Know, for Search" => Product::Elasticsearch,

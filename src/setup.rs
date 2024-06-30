@@ -16,13 +16,7 @@ pub struct Asset {
 
 pub async fn assets(output: Output) -> Result<(), Box<dyn std::error::Error>> {
     // load asset list from ./assets/{product}/assets.yml
-    let assets = match file::parse_assets_yml(&output.target) {
-        Ok(assets) => assets,
-        Err(e) => {
-            log::error!("Failed to parse assets.yml: {:?}", &e);
-            Err(e)?
-        }
-    };
+    let assets = file::parse_assets_yml(&output.target)?;
     match output.test().await {
         Ok(body) => log::debug!("Elasticsearch response: {body}"),
         Err(e) => {
@@ -39,10 +33,12 @@ pub async fn assets(output: Output) -> Result<(), Box<dyn std::error::Error>> {
             &asset.subdir.unwrap_or("".to_string())
         );
         let subdir = PathBuf::from(dir_str);
-        let files = file::ASSETS_DIR
-            .get_dir(&subdir)
-            .expect(&format!("No assets directory found: {:?}", subdir))
-            .files();
+        let files = match file::ASSETS_DIR.get_dir(&subdir) {
+            Some(dir) => dir.files(),
+            None => {
+                return Err("No assets directory found".into());
+            }
+        };
 
         // send assets to Elasticsearch
         match output.target {
