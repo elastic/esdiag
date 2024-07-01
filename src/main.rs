@@ -150,12 +150,11 @@ async fn main() {
                                 "Failed to parse manifest.json file, falling back to version.json"
                             );
                             let version =
-                                input::file::read_string(&dir.with_file_name("version.json")).ok();
-                            let version = match version {
-                                Some(version) => serde_json::from_str(&version)
-                                    .expect("Failed to parse version.json file"),
-                                None => panic!("Failed to parse version.json file"),
-                            };
+                                input::file::read_string(&dir.with_file_name("version.json"))
+                                    .ok()
+                                    .expect("Failed to read version.json file");
+                            let version = serde_json::from_str(&version)
+                                .expect("Failed to parse version.json file");
 
                             let date = std::fs::metadata(&dir)
                                 .expect("No file metadata?")
