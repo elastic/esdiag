@@ -153,7 +153,7 @@ pub struct DiagnosticDoc {
     pub node: String,
     pub runner: String,
     pub uuid: String,
-    pub version: Option<semver::Version>,
+    pub version: Option<String>,
 }
 
 #[derive(Clone, Serialize)]

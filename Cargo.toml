@@ -15,6 +15,7 @@ include_dir = "^0.7"
 json-patch = "^1.2"
 log = "^0.4"
 rayon = "^1.10"
+regex = "1.10.5"
 reqwest = "^0.12"
 semver = { version = "^1.0.23", features = ["serde"] }
 serde = { version = "^1.0.199", features = ["derive"] }
