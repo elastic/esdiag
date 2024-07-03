@@ -580,6 +580,7 @@ dependencies = [
  "json-patch",
  "log",
  "rayon",
+ "regex",
  "reqwest 0.12.5",
  "semver 1.0.23",
  "serde",

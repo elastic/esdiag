@@ -125,55 +125,21 @@ async fn main() {
             let output_uri = match uri::classify(target) {
                 Ok(uri) => uri,
                 Err(e) => {
-                    log::debug!("Invalid target: {}", e);
+                    log::debug!("Invalid target: {:?}", e);
                     panic!("Invalid ouput: {}", target);
                 }
             };
             let input_uri = match uri::classify(source) {
                 Ok(uri) => uri,
                 Err(e) => {
-                    log::debug!("Invalid source: {}", e);
+                    log::debug!("Invalid source: {:?}", e);
                     panic!("Invalid input: {}", source);
                 }
             };
-            log::info!("input: {:?}", input_uri);
-            log::info!("output: {:?}", output_uri);
+            log::info!("input: {}", input_uri);
+            log::info!("output: {}", output_uri);
 
-            let manifest: Manifest = match &input_uri {
-                Uri::Directory(dir) => {
-                    let manifest =
-                        input::file::read_string(&dir.with_file_name("manifest.json")).ok();
-                    match manifest {
-                        Some(manifest) => serde_json::from_str(&manifest)
-                            .expect("Failed to parse manifest.json file"),
-                        None => {
-                            log::warn!(
-                                "Failed to parse manifest.json file, falling back to version.json"
-                            );
-                            let version =
-                                input::file::read_string(&dir.with_file_name("version.json")).ok();
-                            let version = match version {
-                                Some(version) => serde_json::from_str(&version)
-                                    .expect("Failed to parse version.json file"),
-                                None => panic!("Failed to parse version.json file"),
-                            };
-
-                            let date = std::fs::metadata(&dir)
-                                .expect("No file metadata?")
-                                .created()
-                                .expect("No created date");
-                            Manifest::from_es_version(version, date)
-                        }
-                    }
-                }
-                Uri::File(file) => match input::archive::read_string(&file, "manifest.json") {
-                    Ok(manifest) => {
-                        serde_json::from_str(&manifest).expect("Failed to parse manifest.json file")
-                    }
-                    Err(e) => panic!("Failed to parse manifest - {}", e),
-                },
-                _ => panic!("Diagnostic manifest can only load from a local input"),
-            };
+            let manifest = Manifest::from_uri(&input_uri).expect("Failed to parse manifest");
             let input = Input::new(input_uri, manifest);
             let output = Output::from_uri(output_uri);
             import_diagnostics(input, output).await;

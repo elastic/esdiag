@@ -42,6 +42,8 @@ impl ElasticsearchClient {
         }
     }
 
+    /// Craetes a new Elasticsearch client with no authentication
+
     fn new_none(url: Url) -> Self {
         // Create a connection pool with the Elasticsearch server URL
         let connection_pool = SingleNodeConnectionPool::new(url);
@@ -60,6 +62,8 @@ impl ElasticsearchClient {
 
         Self { client }
     }
+
+    /// Creates a new Elasticsearch client with basic authentication
 
     fn new_basic(url: Url, username: String, password: String, _cloud_id: Option<String>) -> Self {
         // Create a connection pool with the Elasticsearch server URL
@@ -82,6 +86,8 @@ impl ElasticsearchClient {
 
         Self { client }
     }
+
+    /// Creates a new Elasticsearch client with API key authentication
 
     fn new_apikey(url: Url, apikey: String, cloud_id: Option<String>) -> Self {
         let transport = match cloud_id {
@@ -126,6 +132,35 @@ impl ElasticsearchClient {
         Self { client }
     }
 
+    /// Sends an asset to a specified path using the provided HTTP method and optional JSON value.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - A string slice representing the URL path to which the request should be sent.
+    /// * `value` - An optional reference to a `serde_json::Value` representing the JSON payload to be sent.
+    /// * `method` - A string slice representing the HTTP method to be used (`"POST"`, `"PUT"`, `"DELETE"`, or other values for `"GET"`).
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing an `Response` if the request is successful,
+    /// or an `Error` if an error occurs during the request.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if:
+    /// - The HTTP request fails.
+    /// - The specified method is invalid (it defaults to `"GET"` if not `"POST"`, `"PUT"`, or `"DELETE"`).
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// let response = client.send_asset("/path/to/resource", &Some(json!({"key": "value"})), "POST").await;
+    /// match response {
+    ///     Ok(res) => println!("Request successful: {:?}", res),
+    ///     Err(e) => eprintln!("Request failed: {}", e),
+    /// }
+    /// ```
+
     pub async fn send_asset(
         &self,
         path: &str,
@@ -154,6 +189,28 @@ impl ElasticsearchClient {
             .await
     }
 
+    /// Sends a test request to the client's base URL to verify connectivity.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing a `Response` if the request is successful,
+    /// or an `Error` if an error occurs during the request.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if:
+    /// - The HTTP request fails.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// let response = client.test().await;
+    /// match response {
+    ///     Ok(res) => println!("Test request successful: {:?}", res),
+    ///     Err(e) => eprintln!("Test request failed: {}", e),
+    /// }
+    /// ```
+
     pub async fn test(&self) -> Result<Response, Error> {
         log::debug!("Testing client {:?}", self.client);
         self.client
@@ -168,6 +225,44 @@ impl ElasticsearchClient {
             .await
     }
 
+    /// Bulk indexes a collection of documents in parallel using asynchronous tasks.
+    ///
+    /// This function reads documents from the provided `docs` vector, splits them into batches, and
+    /// sends them to an Elasticsearch index in parallel using asynchronous tasks. The number of
+    /// parallel workers and the size of each batch are configurable through environment variables
+    /// `ESDIAG_ES_WORKERS` and `ESDIAG_ES_BULK_SIZE`, respectively.
+    ///
+    /// # Arguments
+    ///
+    /// * `docs` - A vector of `Value` representing the documents to be indexed.
+    ///
+    /// # Returns
+    ///
+    /// This function returns a `Result` containing the total number of documents indexed if successful,
+    /// or an `std::io::Error` if an error occurs during the indexing process.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if it fails to read the environment variables for the number
+    /// of workers or the bulk size, or if there is an error during the bulk indexing process.
+    ///
+    /// # Panics
+    ///
+    /// This function will panic if it fails to unwrap the `type`, `dataset`, or `namespace` fields from
+    /// the first document in the `docs` vector.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// let docs: Vec<Value> = ...; // your documents here
+    /// let es_client = ElasticsearchClient::new(...); // initialize your client
+    /// let result = es_client.bulk_index(docs).await;
+    /// match result {
+    ///     Ok(total) => println!("Successfully indexed {} documents", total),
+    ///     Err(e) => eprintln!("Failed to index documents: {}", e),
+    /// }
+    /// ```
+
     pub async fn bulk_index(&self, mut docs: Vec<Value>) -> std::io::Result<usize> {
         let workers = env::get_int("ESDIAG_ES_WORKERS")?;
         let bulk_size = env::get_int("ESDIAG_ES_BULK_SIZE")?;
@@ -181,16 +276,16 @@ impl ElasticsearchClient {
 
         let futures = FuturesUnordered::new();
 
+        // Create batches of operations
         while !docs.is_empty() {
+            let batch_size = std::cmp::min(docs.len(), bulk_size);
+            // Slice the documents into a batch of operations
             let mut ops: Vec<BulkOperation<Value>> = Vec::new();
-            for _ in 0..bulk_size {
-                if let Some(doc) = docs.pop() {
-                    ops.push(BulkOperation::create(doc).pipeline("esdiag").into());
-                } else {
-                    break;
-                }
+            for doc in docs.drain(..batch_size) {
+                ops.push(BulkOperation::create(doc).pipeline("esdiag").into());
             }
 
+            // Setup the future to run the bulk index operation
             let client = self.clone();
             let index = index.clone();
             let semaphore = semaphore.clone();
@@ -199,6 +294,7 @@ impl ElasticsearchClient {
                 client.bulk_index_batch(index, ops).await
             };
 
+            // Spawn the task
             futures.push(tokio::spawn(future));
         }
 
