@@ -15,6 +15,22 @@ pub struct NodeData {
     pub version: String,
 }
 
+impl NodeData {
+    pub fn rename(self, name: &String) -> Self {
+        NodeData {
+            name: name.clone(),
+            ..self
+        }
+    }
+
+    pub fn with_role(self, role: &String) -> Self {
+        NodeData {
+            role: role.clone(),
+            ..self
+        }
+    }
+}
+
 impl LookupDisplay for NodeData {
     fn display() -> &'static str {
         "node_data"

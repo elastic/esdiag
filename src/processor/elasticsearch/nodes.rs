@@ -27,18 +27,19 @@ pub fn enrich_lookup(metadata: &mut Metadata, data: String) -> Vec<Value> {
         .into_iter()
         .map(|(node_id, node)| {
             let role = abbreviate_roles(node.roles.clone());
+            let name = rename_node_with_role(&node.name, &role);
             let node_data = node.as_node_data(&node_id);
             lookup
                 .node
-                .add(node_data)
+                .add(node_data.rename(&name).with_role(&role))
                 .with_id(&node_id)
                 .with_ip(&node.ip)
                 .with_host(&node.host)
-                .with_name(&node.name);
+                .with_name(&name);
 
-            // Remove nested field names that cause mapping issues
             let patch = json!({
                 "node" : {
+                    "name": name,
                     "role": role,
                     "settings": {
                         "http": {
@@ -50,6 +51,7 @@ pub fn enrich_lookup(metadata: &mut Metadata, data: String) -> Vec<Value> {
                     }
                 }
             });
+
             let mut node_doc = json!(node_doc.clone().with(node));
             merge(&mut node_doc, &patch);
             node_doc
@@ -58,6 +60,34 @@ pub fn enrich_lookup(metadata: &mut Metadata, data: String) -> Vec<Value> {
 
     log::debug!("node settings docs: {}", nodes.len());
     nodes
+}
+
+fn rename_node_with_role(node: &String, role: &str) -> String {
+    if let Some((name, number)) = node.split_once('-') {
+        let number = number.trim_start_matches("000000");
+        match name {
+            "instance" => {
+                let role_name = match role {
+                    "-" => "coord",
+                    "cr" => "cold",
+                    "f" => "frozen",
+                    "hrst" | "hirst" | "himrst" => "hot_content",
+                    "i" | "ir" => "ingest",
+                    "l" | "lr" => "ml",
+                    "m" | "mr" => "master",
+                    "mv" => "tiebreaker",
+                    "wr" => "warm",
+                    _ => "instance",
+                };
+                log::trace!("Renaming node: {}-{}", role_name, number);
+                format!("{role_name}-{number}")
+            }
+            "tiebreaker" => format!("tiebreaker-{number}"),
+            _ => node.clone(),
+        }
+    } else {
+        node.clone()
+    }
 }
 
 fn abbreviate_roles(role_list: Vec<String>) -> String {
