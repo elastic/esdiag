@@ -259,9 +259,12 @@ pub fn enrich(metadata: &Metadata, data: String) -> Vec<Value> {
                     "alias": alias,
                     "codec": index_data.codec,
                     "data_stream": data_stream,
+                    "ilm": ilm,
                     "name": index,
                     "is_write_index": is_write_index,
-                    "ilm": ilm,
+                    "since_creation": since_creation,
+                    "since_rollover": since_rollover,
+                    "write_phase_sec": write_phase_sec,
                     "primaries": {
                         "indexing": {
                             "est_bytes_per_day": bytes_per_day_pri,
