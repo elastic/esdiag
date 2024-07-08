@@ -28,6 +28,9 @@
             "age": {
               "type": "long"
             },
+            "hidden": {
+              "type": "boolean"
+            },
             "codec": {
               "type": "keyword"
             },

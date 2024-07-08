@@ -252,7 +252,7 @@ impl Input {
                 }
             },
             _ => {
-                unimplemented!("Input type no implemented!");
+                unimplemented!("Only Directory and File input types implemented!");
             }
         }
     }

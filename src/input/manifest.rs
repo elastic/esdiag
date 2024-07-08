@@ -33,7 +33,7 @@ impl Manifest {
     pub fn from_es_version(version: EsVersion, date: SystemTime) -> Self {
         let product = match version.tagline.as_str() {
             "You Know, for Search" => Product::Elasticsearch,
-            _ => unimplemented!("ERROR: Application not yet implemented"),
+            _ => unimplemented!("ERROR: Application not implemented"),
         };
         let product_version = Some(ProductVersion::from(version.version));
         Self {
@@ -55,38 +55,34 @@ impl Manifest {
     /// Loads a manifest from a URI
     pub fn from_uri(input_uri: &Uri) -> Result<Manifest, Box<dyn std::error::Error>> {
         let manifest: Manifest = match &input_uri {
-            Uri::Directory(dir) => {
-                let string = input::file::read_string(&dir)?;
-                match serde_json::from_str::<Manifest>(&string) {
-                    Ok(manifest) => manifest.with_diag_type(),
-                    Err(e) => {
-                        log::warn!(
-                            "Failed to parse manifest.json file, falling back to version.json: {e}"
-                        );
-                        let string = input::file::read_string(&dir.with_file_name("version.json"))?;
-                        let version = serde_json::from_str(&string)
-                            .expect("Failed to parse version.json file");
-                        let date = std::fs::metadata(&dir)?.created()?;
-                        Manifest::from_es_version(version, date)
-                    }
+            Uri::Directory(dir) => match input::file::read_string(&dir) {
+                Ok(string) => serde_json::from_str::<Manifest>(&string)?.with_diag_type(),
+                Err(e) => {
+                    log::warn!(
+                        "Failed to read manifest.json file, falling back to version.json: {e}"
+                    );
+                    let file_path = &dir.with_file_name("version.json");
+                    let string = input::file::read_string(&file_path)?;
+                    let date = std::fs::metadata(&file_path)?.created()?;
+                    log::debug!("Got metadata for directory: {:?}", &date);
+                    let version =
+                        serde_json::from_str(&string).expect("Failed to parse version.json file");
+                    Manifest::from_es_version(version, date)
                 }
-            }
-            Uri::File(file) => {
-                let string = input::archive::read_string(&file, "manifest.json")?;
-                match serde_json::from_str::<Manifest>(&string) {
-                    Ok(manifest) => manifest.with_diag_type(),
-                    Err(_) => {
-                        log::warn!(
-                            "Failed to parse manifest.json file, falling back to version.json"
-                        );
-                        let string = input::archive::read_string(&file, "version.json")?;
-                        let version = serde_json::from_str(&string)
-                            .expect("Failed to parse version.json file");
-                        let date = std::fs::metadata(&file)?.created()?;
-                        Manifest::from_es_version(version, date)
-                    }
+            },
+            Uri::File(file) => match input::archive::read_string(&file, "manifest.json") {
+                Ok(string) => serde_json::from_str::<Manifest>(&string)?.with_diag_type(),
+                Err(e) => {
+                    log::warn!(
+                        "Failed to parse manifest.json file, falling back to version.json: {e}"
+                    );
+                    let string = input::archive::read_string(&file, "version.json")?;
+                    let version =
+                        serde_json::from_str(&string).expect("Failed to parse version.json file");
+                    let date = std::fs::metadata(&file)?.created()?;
+                    Manifest::from_es_version(version, date)
                 }
-            }
+            },
             _ => Err("Diagnostic manifest can only load from a local input")?,
         };
         Ok(manifest.with_product())
@@ -97,7 +93,7 @@ impl Manifest {
         log::debug!("Setting product from diag_type: {:?}", self.diag_type);
         self.product = match &self.diag_type {
             Some(diag_type) => match diag_type.as_str() {
-                "api" | "local" | "remote" => Product::Elasticsearch,
+                "api" | "local" | "remote" | "es-unknown" => Product::Elasticsearch,
                 "kibana-api" => Product::Kibana,
                 "logstash-api" => Product::Logstash,
                 "eck-diagnostics" => Product::ECK,
@@ -121,6 +117,7 @@ impl Manifest {
         let re = Regex::new(r"diagType='([^']*)'").unwrap();
         match &self.diagnostic_inputs {
             Some(inputs) => {
+                // Extract diag_type from diagnostic_inputs with regex
                 self.diag_type = re
                     .captures(inputs)
                     .and_then(|cap| cap.get(1).map(|m| m.as_str().to_string()));

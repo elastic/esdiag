@@ -179,24 +179,24 @@ impl From<&str> for DataStream {
 #[derive(Clone, Deserialize, Serialize)]
 pub struct Cluster {
     #[serde(rename = "name")]
-    node_name: String,
+    pub node_name: String,
     #[serde(rename = "cluster_name")]
-    name: String,
+    pub name: String,
     #[serde(rename = "cluster_uuid")]
-    uuid: String,
-    version: Version,
-    tagline: String,
+    pub uuid: String,
+    pub version: Version,
+    pub tagline: String,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
-struct Version {
-    number: semver::Version,
-    build_flavor: String,
-    build_type: String,
-    build_hash: String,
-    build_date: String,
-    build_snapshot: bool,
-    lucene_version: String,
-    minimum_wire_compatibility_version: String,
-    minimum_index_compatibility_version: String,
+pub struct Version {
+    pub number: semver::Version,
+    pub build_flavor: String,
+    pub build_type: String,
+    pub build_hash: String,
+    pub build_date: String,
+    pub build_snapshot: bool,
+    pub lucene_version: String,
+    pub minimum_wire_compatibility_version: String,
+    pub minimum_index_compatibility_version: String,
 }

@@ -1,5 +1,5 @@
 {
-  "index_patterns": ["metirics-index-esdiag*"],
+  "index_patterns": ["metrics-index-esdiag*"],
   "composed_of": [
     "esdiag@metadata",
     "esdiag@mappings",
