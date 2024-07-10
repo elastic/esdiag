@@ -76,7 +76,7 @@ fn rename_node_with_role(node: &String, role: &str) -> String {
                     "l" | "lr" => "ml",
                     "m" | "mr" => "master",
                     "mv" => "tiebreaker",
-                    "wr" => "warm",
+                    "w" | "wr" => "warm",
                     _ => "instance",
                 };
                 log::trace!("Renaming node: {}-{}", role_name, number);
