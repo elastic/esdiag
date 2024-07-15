@@ -31,32 +31,37 @@
             }
           }
         },
-        "status.total_download_time": {
-          "type": "long"
-        },
-        "start_time": {
+        "task": {
           "type": "object",
-          "enabled": false
-        },
-        "parent_task_id": {
-          "type": "object",
-          "enabled": false
-        },
-        "node.ip": {
-          "type": "ip"
-        },
-        "description": {
-          "type": "match_only_text"
-        },
-        "running_time": {
-          "type": "object",
-          "enabled": false
-        },
-        "start_time_in_millis": {
-          "type": "date"
-        },
-        "id": {
-          "type": "keyword"
+          "properties": {
+            "description": {
+              "type": "match_only_text"
+            },
+            "id": {
+              "type": "keyword"
+            },
+            "node.ip": {
+              "type": "ip"
+            },
+            "parent_task_id": {
+              "type": "object",
+              "enabled": false
+            },
+            "running_time": {
+              "type": "object",
+              "enabled": false
+            },
+            "start_time": {
+              "type": "object",
+              "enabled": false
+            },
+            "start_time_in_millis": {
+              "type": "date"
+            },
+            "status.total_download_time": {
+              "type": "long"
+            }
+          }
         }
       }
     }

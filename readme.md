@@ -6,34 +6,76 @@ The Elastic Stack Diagnostics (`esdiag`) tool simplifies processing and importin
 Installation
 --------------------
 
-### MacOS
+First install the Rust toolchain from [rust-lang.org/tools/install]()
 
-1. Install the Rust toolchain from [rust-lang.org/tools/install]()
+```sh
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+### Local `git clone` installation
+
+1. Clone this GitHub repository using [GitHub Desktop](https://github.com/apps/desktop) or the command line
+
     ```sh
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+    git clone https://github.com/elastic/esdiag.git
     ```
 
-2. Ensure your GitHub `ssh` credentials are working from the command line. If you haven't set this up yet, follow the [GitHub guide](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/adding-a-new-ssh-key-to-your-github-account)
+2. Install the `esdiag` tool using `cargo` from the local directory
+
+    ```sh
+    cargo install --path ~/GitHub/esdiag
+    ```
+
+    Where `~/GitHub/esdiag` is your local install directory. This will compile the `esdiag` tool and install it into your `~/.cargo/bin` directory created by the Rust toolchain.
+
+3. Updates can be pulled from the GitHub repository and re-installed using the same command
+
+    ```sh
+    cd ~/GitHub/esdiag
+    git pull
+    cargo install --path .
+    ```
+
+    This will recompile the tool and install the new version.
+
+### Alternative: install crate directly from GitHub
+
+If you have `ssh` authentication already configured, it possible to install directly from GitHub.
+
+1. Ensure your GitHub `ssh` credentials are working from the command line. If you haven't set this up yet, follow the [GitHub guide](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/adding-a-new-ssh-key-to-your-github-account)
+
     ```sh
     ssh -T git@github.com
     ```
+
     If it works, you will see this confirmation message:
+
     ```
     Hi ${username}! You've successfully authenticated, but GitHub does not provide shell access.
     ```
 
-3. Install the crate (package) directly from the private GitHub using the `ssh` URL
+2. Install the crate (package) directly from the private GitHub using the `ssh` URL
+
     ```sh
     cargo install --git ssh://git@github.com/elastic/esdiag.git
     ```
-    This will kick off the build process. Ignore any warnings, report any errors.
 
-4. Use it! If you need a simple, local, security-disabled Elasticsearch and Kibana environment, use the `docker-compose.yml` file in the `docker` directory.
+    This automatically kicks off the build process. Ignore any warnings, report any errors.
 
-    ```sh
-    cd docker
-    docker compose up
-    ```
+3. Updates with this method use `cargo install esdiag` without needing to `git pull` first.
+
+### Use it!
+
+Validate the installation is working by simply running `esdiag help`. If you see the help message, you're ready to configure some hosts, setup a cluster, and import some diagnostics!
+
+If you need a simple, local, security-disabled Elasticsearch and Kibana environment, use the `docker-compose.yml` file in the `docker` directory.
+
+```sh
+cd docker
+docker compose up -d
+```
+
+This will download the latest Elasticsearch and Kibana images, start them up, and expose the ports `9200` and `5601` on your local machine.
 
 Usage
 --------------------
