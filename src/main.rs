@@ -70,6 +70,9 @@ enum Commands {
             long
         )]
         auth: String,
+        /// Accept invalid certificates
+        #[arg(help = "Accept invalid certificates", long)]
+        accept_invalid_certs: bool,
         /// ApiKey for authentication
         #[arg(help = "ApiKey, passed as http header ", long, short)]
         apikey: Option<String>,
@@ -148,6 +151,7 @@ async fn main() {
             name,
             app,
             url,
+            accept_invalid_certs,
             auth,
             apikey,
             cloud_id,
@@ -156,6 +160,7 @@ async fn main() {
             save,
         } => {
             log::info!("Configuring host {name}");
+            // Fix misleading error message when either host and app are missing
             let host = match Host::get_known(name) {
                 Some(host) => host,
                 None => match app {
@@ -167,6 +172,7 @@ async fn main() {
                         url.clone().unwrap(),
                         app.clone(),
                         auth.clone(),
+                        accept_invalid_certs.clone(),
                         apikey.clone(),
                         cloud_id.clone(),
                         username.clone(),

@@ -1,5 +1,6 @@
 use crate::env;
 use crate::{host::Host, output::file};
+use elasticsearch::cert::CertificateValidation;
 use elasticsearch::{
     auth::Credentials,
     http::{
@@ -29,15 +30,17 @@ impl ElasticsearchClient {
                 url,
                 apikey,
                 cloud_id,
+                accept_invalid_certs,
                 ..
-            } => Self::new_apikey(url, apikey, cloud_id),
+            } => Self::new_apikey(url, apikey, accept_invalid_certs, cloud_id),
             Host::Basic {
                 url,
                 username,
                 password,
                 cloud_id,
+                accept_invalid_certs,
                 ..
-            } => Self::new_basic(url, username, password, cloud_id),
+            } => Self::new_basic(url, username, password, accept_invalid_certs, cloud_id),
             Host::None { url, .. } => Self::new_none(url),
         }
     }
@@ -65,13 +68,24 @@ impl ElasticsearchClient {
 
     /// Creates a new Elasticsearch client with basic authentication
 
-    fn new_basic(url: Url, username: String, password: String, _cloud_id: Option<String>) -> Self {
+    fn new_basic(
+        url: Url,
+        username: String,
+        password: String,
+        accept_invalid_certs: Option<bool>,
+        _cloud_id: Option<String>,
+    ) -> Self {
         // Create a connection pool with the Elasticsearch server URL
         let connection_pool = SingleNodeConnectionPool::new(url);
+        let cert_validation = match accept_invalid_certs.unwrap_or(false) {
+            true => CertificateValidation::None,
+            false => CertificateValidation::Default,
+        };
 
         // Create a transport builder with the connection pool
         let transport = match TransportBuilder::new(connection_pool)
             .auth(Credentials::Basic(username, password))
+            .cert_validation(cert_validation)
             .build()
         {
             Ok(transport) => transport,
@@ -89,12 +103,21 @@ impl ElasticsearchClient {
 
     /// Creates a new Elasticsearch client with API key authentication
 
-    fn new_apikey(url: Url, apikey: String, cloud_id: Option<String>) -> Self {
+    fn new_apikey(
+        url: Url,
+        apikey: String,
+        accept_invalid_certs: Option<bool>,
+        cloud_id: Option<String>,
+    ) -> Self {
         let transport = match cloud_id {
             Some(_cloud_id) => {
                 // When using cloud_id I couldn't get the apikey to work ¯\_(ツ)_/¯
                 log::debug!("Cloud ID provided, but not used: {_cloud_id}");
                 let connection_pool = SingleNodeConnectionPool::new(url);
+                let cert_validation = match accept_invalid_certs.unwrap_or(false) {
+                    true => CertificateValidation::None,
+                    false => CertificateValidation::Default,
+                };
                 TransportBuilder::new(connection_pool)
                     .header(
                         headers::AUTHORIZATION,
@@ -102,11 +125,16 @@ impl ElasticsearchClient {
                             .parse()
                             .expect("Failed to parse apikey"),
                     )
+                    .cert_validation(cert_validation)
                     .build()
                     .ok()
             }
             None => {
                 let connection_pool = SingleNodeConnectionPool::new(url);
+                let cert_validation = match accept_invalid_certs.unwrap_or(false) {
+                    true => CertificateValidation::None,
+                    false => CertificateValidation::Default,
+                };
                 TransportBuilder::new(connection_pool)
                     .header(headers::ACCEPT_ENCODING, "gzip".parse().unwrap())
                     .header(
@@ -115,6 +143,7 @@ impl ElasticsearchClient {
                             .parse()
                             .expect("Failed to parse apikey"),
                     )
+                    .cert_validation(cert_validation)
                     .build()
                     .ok()
             }

@@ -62,6 +62,7 @@ pub fn write_hosts_yml(hosts: &BTreeMap<String, Host>) -> Result<(), Box<dyn std
 #[serde(tag = "auth")]
 pub enum Host {
     ApiKey {
+        accept_invalid_certs: Option<bool>,
         apikey: String,
         app: Product,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -69,6 +70,7 @@ pub enum Host {
         url: Url,
     },
     Basic {
+        accept_invalid_certs: Option<bool>,
         app: Product,
         #[serde(skip_serializing_if = "Option::is_none")]
         cloud_id: Option<String>,
@@ -87,6 +89,7 @@ impl Host {
         url: Url,
         app: String,
         auth: String,
+        accept_invalid_certs: bool,
         apikey: Option<String>,
         cloud_id: Option<String>,
         username: Option<String>,
@@ -96,11 +99,13 @@ impl Host {
             Ok(Auth::ApiKey) => Host::ApiKey {
                 apikey: apikey.expect("ApiKey auth requires an API key!"),
                 app: Product::from_str(&app).expect("A valid application is required!"),
+                accept_invalid_certs: Some(accept_invalid_certs),
                 cloud_id,
                 url,
             },
             Ok(Auth::Basic) => Host::Basic {
                 app: Product::from_str(&app).expect("A valid application is required!"),
+                accept_invalid_certs: Some(accept_invalid_certs),
                 cloud_id,
                 password: password.expect("Basic auth requires a password!"),
                 url,
@@ -182,6 +187,7 @@ impl Host {
             Self::ApiKey {
                 apikey,
                 app,
+                accept_invalid_certs,
                 cloud_id: _,
                 url,
             } => {
@@ -198,12 +204,14 @@ impl Host {
                         ))
                         .collect(),
                     )
+                    .danger_accept_invalid_certs(accept_invalid_certs.unwrap_or(false))
                     .build()?;
                 log::debug!("Reqwest client: {:?}", client);
                 client.get(url.as_str()).send().await
             }
             Self::Basic {
                 app,
+                accept_invalid_certs,
                 cloud_id: _,
                 password,
                 url,
@@ -211,7 +219,9 @@ impl Host {
             } => {
                 // test the connection
                 log::info!("Testing {} connection", &app);
-                let client = reqwest::Client::new();
+                let client = reqwest::Client::builder()
+                    .danger_accept_invalid_certs(accept_invalid_certs.unwrap_or(false))
+                    .build()?;
                 client
                     .get(url.as_str())
                     .basic_auth(username, Some(password))
