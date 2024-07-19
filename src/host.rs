@@ -182,7 +182,29 @@ impl Host {
         }
     }
 
-    pub async fn test(&self) -> Result<reqwest::Response, reqwest::Error> {
+    async fn validate_application(&self, response: reqwest::Response) -> (bool, String) {
+        let status = response.status();
+        let body = response.text().await.expect("Failed to read test body");
+        let json = serde_json::from_str(&body).unwrap_or(serde_json::Value::Null);
+        let app = match self {
+            Self::ApiKey { app, .. } | Self::Basic { app, .. } | Self::None { app, .. } => app,
+        };
+        match app {
+            Product::Elasticsearch => match json.get("tagline") {
+                Some(_) => (true, format!("{} ✅ Elasticsearch", status)),
+                None => (
+                    false,
+                    format!(
+                        "{} ❌ No tagline? Host is not an Elasticsearch cluster!",
+                        status
+                    ),
+                ),
+            },
+            _ => (false, format!("{} ⛔️ Unsupported application", status)),
+        }
+    }
+
+    pub async fn test(&self) -> Result<(bool, String), reqwest::Error> {
         match self {
             Self::ApiKey {
                 apikey,
@@ -206,8 +228,12 @@ impl Host {
                     )
                     .danger_accept_invalid_certs(accept_invalid_certs.unwrap_or(false))
                     .build()?;
-                log::debug!("Reqwest client: {:?}", client);
-                client.get(url.as_str()).send().await
+                log::trace!("Reqwest client: {:?}", client);
+                let response = client.get(url.as_str()).send().await;
+                match response {
+                    Ok(response) => Ok(self.validate_application(response).await),
+                    Err(e) => Err(e),
+                }
             }
             Self::Basic {
                 app,
@@ -222,16 +248,24 @@ impl Host {
                 let client = reqwest::Client::builder()
                     .danger_accept_invalid_certs(accept_invalid_certs.unwrap_or(false))
                     .build()?;
-                client
+                let response = client
                     .get(url.as_str())
                     .basic_auth(username, Some(password))
                     .send()
-                    .await
+                    .await;
+                match response {
+                    Ok(response) => Ok(self.validate_application(response).await),
+                    Err(e) => Err(e),
+                }
             }
             Self::None { app, url } => {
                 // test the connection
                 log::info!("Testing {} connection", &app);
-                reqwest::get(url.as_str()).await
+                let response = reqwest::get(url.as_str()).await;
+                match response {
+                    Ok(response) => Ok(self.validate_application(response).await),
+                    Err(e) => Err(e),
+                }
             }
         }
     }
