@@ -241,7 +241,8 @@ impl ElasticsearchClient {
     /// ```
 
     pub async fn test(&self) -> Result<Response, Error> {
-        log::debug!("Testing client {:?}", self.client);
+        log::debug!("Testing Elasticsearch client");
+        log::trace!("{:?}", self.client);
         self.client
             .send(
                 Method::Get,

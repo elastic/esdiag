@@ -161,6 +161,7 @@ async fn main() {
         } => {
             log::info!("Configuring host {name}");
             // Fix misleading error message when either host and app are missing
+            let url = url.clone().expect("Host URL must be specified");
             let host = match Host::get_known(name) {
                 Some(host) => host,
                 None => match app {
@@ -169,7 +170,7 @@ async fn main() {
                         return;
                     }
                     Some(app) => Host::new(
-                        url.clone().unwrap(),
+                        url,
                         app.clone(),
                         auth.clone(),
                         accept_invalid_certs.clone(),
@@ -182,12 +183,17 @@ async fn main() {
             };
 
             let valid_connection = match host.test().await {
-                Ok(response) => {
-                    log::info!("Host connection {name}: {}", response.status());
-                    true
+                Ok((is_valid, message)) => {
+                    match is_valid {
+                        true => log::info!("Host {name}: {}", &message),
+                        false => log::warn!("Host {name}: {}", &message),
+                    }
+                    is_valid
                 }
                 Err(e) => {
-                    log::error!("Host connection: FAILED {:?}", e);
+                    log::error!("Host connection: FAILED ❌ {}", &e);
+                    log::debug!("{:?}", e);
+                    log::warn!("Check your certificates!");
                     false
                 }
             };
