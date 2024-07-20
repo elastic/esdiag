@@ -160,26 +160,26 @@ async fn main() {
             save,
         } => {
             log::info!("Configuring host {name}");
-            // Fix misleading error message when either host and app are missing
-            let url = url.clone().expect("Host URL must be specified");
-            let host = match Host::get_known(name) {
-                Some(host) => host,
-                None => match app {
+            let host = match app.is_some() && url.is_some() {
+                false => match Host::get_known(&name) {
+                    Some(host) => host,
                     None => {
-                        log::error!("Application must be specified for new host configurations");
+                        log::error!(
+                            "Application and URL must be specified for new host configurations"
+                        );
                         return;
                     }
-                    Some(app) => Host::new(
-                        url,
-                        app.clone(),
-                        auth.clone(),
-                        accept_invalid_certs.clone(),
-                        apikey.clone(),
-                        cloud_id.clone(),
-                        username.clone(),
-                        password.clone(),
-                    ),
                 },
+                true => Host::new(
+                    url.clone().unwrap(),
+                    app.clone().unwrap(),
+                    auth.clone(),
+                    accept_invalid_certs.clone(),
+                    apikey.clone(),
+                    cloud_id.clone(),
+                    username.clone(),
+                    password.clone(),
+                ),
             };
 
             let valid_connection = match host.test().await {
@@ -193,7 +193,7 @@ async fn main() {
                 Err(e) => {
                     log::error!("Host connection: FAILED ❌ {}", &e);
                     log::debug!("{:?}", e);
-                    log::warn!("Check your certificates!");
+                    log::warn!("Check your URL and certificates!");
                     false
                 }
             };

@@ -34,9 +34,20 @@ pub fn get_hosts_path() -> PathBuf {
 pub fn parse_hosts_yml() -> Result<BTreeMap<String, Host>, Box<dyn std::error::Error>> {
     let path = get_hosts_path();
     log::debug!("Parsing {:?}", path);
-    let file = File::open(path)?;
-    let reader = BufReader::new(file);
-    let hosts: Result<BTreeMap<String, Host>, serde_yaml::Error> = serde_yaml::from_reader(reader);
+    let hosts = match path.is_file() {
+        true => {
+            let file = File::open(path)?;
+            let reader = BufReader::new(file);
+            let hosts: Result<BTreeMap<String, Host>, serde_yaml::Error> =
+                serde_yaml::from_reader(reader);
+            hosts
+        }
+        false => {
+            log::info!("No hosts, file creating {:?}", path);
+            File::create(path)?;
+            Ok(BTreeMap::new())
+        }
+    };
     Ok(hosts?)
 }
 
