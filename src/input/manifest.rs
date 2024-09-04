@@ -138,28 +138,30 @@ pub enum Version {
 #[derive(Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProductVersion {
-    pub original_value: String,
-    pub value: String,
+    pub original_value: Option<String>,
+    pub value: Option<String>,
     pub major: u64,
     pub minor: u64,
     pub patch: u64,
-    pub suffix_tokens: Vec<String>,
-    pub build: Option<String>,
-    pub r#type: String,
+    pub suffix_tokens: Option<Vec<String>>,
+    pub pre_release: Option<Vec<String>>,
+    //pub build: Option<String>,
+    pub r#type: Option<String>,
     pub stable: bool,
 }
 
 impl ProductVersion {
     pub fn from(version: EsVersionDetails) -> Self {
         Self {
-            original_value: version.number.to_string(),
-            value: version.number.to_string(),
+            original_value: Some(version.number.to_string()),
+            value: Some(version.number.to_string()),
             major: version.number.major,
             minor: version.number.minor,
             patch: version.number.patch,
-            suffix_tokens: vec![],
-            build: Some(version.build_flavor),
-            r#type: version.build_type,
+            suffix_tokens: Some(vec![]),
+            pre_release: None,
+            //build: Some(version.build_flavor),
+            r#type: Some(version.build_type),
             stable: true,
         }
     }
