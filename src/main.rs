@@ -1,24 +1,18 @@
-mod data;
-mod env;
-mod host;
-mod input;
-mod output;
-mod processor;
-mod setup;
-mod uri;
-
-use crate::output::file;
 use clap::{Parser, Subcommand};
 use color_eyre::Result;
-use env::LOG_LEVEL;
+use esdiag::{
+    env::LOG_LEVEL,
+    host::Host,
+    input::{manifest::Manifest, Input},
+    output::file,
+    output::Output,
+    processor::Processor,
+    setup,
+    uri::Uri,
+};
 use futures::{future::join_all, stream::FuturesUnordered};
-use host::Host;
-use input::{manifest::Manifest, Input};
-use output::Output;
-use processor::Processor;
 use std::{collections::HashMap, panic, str::FromStr, sync::Arc};
 use tokio::task;
-use uri::Uri;
 use url::Url;
 
 // Define command line arguments
@@ -124,14 +118,14 @@ async fn main() {
             //collect_diagnostics(host, output).await;
         }
         Commands::Import { target, source } => {
-            let output_uri = match uri::classify(target) {
+            let output_uri = match Uri::parse(target) {
                 Ok(uri) => uri,
                 Err(e) => {
                     log::debug!("Invalid target: {:?}", e);
                     panic!("Invalid ouput: {}", target);
                 }
             };
-            let input_uri = match uri::classify(source) {
+            let input_uri = match Uri::parse(source) {
                 Ok(uri) => uri,
                 Err(e) => {
                     log::debug!("Invalid source: {:?}", e);
@@ -202,7 +196,7 @@ async fn main() {
             if valid_connection && *save {
                 match host.save(name.to_string()) {
                     Ok(_) => {
-                        let hosts_file = host::get_hosts_path();
+                        let hosts_file = Host::get_hosts_path();
                         log::info!(
                             "Host '{name}' saved to {}",
                             hosts_file.to_str().expect("Failed to get hosts file path")

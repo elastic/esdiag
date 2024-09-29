@@ -11,64 +11,6 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use url::Url;
 
-pub fn get_hosts_path() -> PathBuf {
-    match env::var("ESDIAG_HOSTS") {
-        Ok(path) => PathBuf::from(path),
-        Err(_) => {
-            let home = match env::var("HOME") {
-                Ok(home) => PathBuf::from(home),
-                Err(_) => panic!("ERROR: No home directory found"),
-            };
-            // Check if the `.esdiag` directory exists, if not, create it
-            let esdiag = home.join(".esdiag");
-            if !esdiag.exists() {
-                std::fs::create_dir(&esdiag).expect("Failed to create ~/.esdiag directory");
-            }
-            let path = home.join(".esdiag").join("hosts.yml");
-            path
-        }
-    }
-}
-
-/// loads hosts from the resources directory
-pub fn parse_hosts_yml() -> Result<BTreeMap<String, Host>, Box<dyn std::error::Error>> {
-    let path = get_hosts_path();
-    log::debug!("Parsing {:?}", path);
-    let hosts = match path.is_file() {
-        true => {
-            let file = File::open(path)?;
-            let reader = BufReader::new(file);
-            let hosts: Result<BTreeMap<String, Host>, serde_yaml::Error> =
-                serde_yaml::from_reader(reader);
-            hosts
-        }
-        false => {
-            log::info!("No hosts, file creating {:?}", path);
-            File::create(path)?;
-            Ok(BTreeMap::new())
-        }
-    };
-    Ok(hosts?)
-}
-
-pub fn write_hosts_yml(hosts: &BTreeMap<String, Host>) -> Result<(), Box<dyn std::error::Error>> {
-    let path = get_hosts_path();
-    log::debug!(
-        "Writing hosts: {} to {:?}",
-        hosts
-            .clone()
-            .into_iter()
-            .map(|(k, _)| k)
-            .collect::<Vec<String>>()
-            .join(", "),
-        path
-    );
-    let file = File::create(path)?;
-    let writer = BufWriter::new(file);
-    let hosts = serde_yaml::to_writer(writer, hosts);
-    Ok(hosts?)
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "auth")]
 pub enum Host {
@@ -132,7 +74,7 @@ impl Host {
 
     pub fn save(self, name: String) -> Result<(), std::io::Error> {
         // parse the ~/.esdiag/hosts.yml file into a HashMap<String, Host>
-        let mut hosts = match parse_hosts_yml() {
+        let mut hosts = match Host::parse_hosts_yml() {
             Ok(hosts) => hosts,
             Err(e) => {
                 log::error!("Error parsing hosts.yml: {}", e);
@@ -153,7 +95,7 @@ impl Host {
                 hosts.insert(name.clone(), self);
             }
         }
-        match write_hosts_yml(&hosts) {
+        match Host::write_hosts_yml(&hosts) {
             Ok(_) => Ok(()),
             Err(e) => {
                 log::error!("Error writing hosts.yml: {}", e);
@@ -167,7 +109,7 @@ impl Host {
 
     pub fn get_known(host: &String) -> Option<Self> {
         // parse the ~/.esdiag/hosts.yml file into a HashMap<String, Host>
-        let hosts = match parse_hosts_yml() {
+        let hosts = match Host::parse_hosts_yml() {
             Ok(hosts) => hosts,
             Err(e) => {
                 log::error!("Error parsing hosts.yml: {}", e);
@@ -279,6 +221,66 @@ impl Host {
                 }
             }
         }
+    }
+
+    pub fn get_hosts_path() -> PathBuf {
+        match env::var("ESDIAG_HOSTS") {
+            Ok(path) => PathBuf::from(path),
+            Err(_) => {
+                let home = match env::var("HOME") {
+                    Ok(home) => PathBuf::from(home),
+                    Err(_) => panic!("ERROR: No home directory found"),
+                };
+                // Check if the `.esdiag` directory exists, if not, create it
+                let esdiag = home.join(".esdiag");
+                if !esdiag.exists() {
+                    std::fs::create_dir(&esdiag).expect("Failed to create ~/.esdiag directory");
+                }
+                let path = home.join(".esdiag").join("hosts.yml");
+                path
+            }
+        }
+    }
+
+    /// loads hosts from the resources directory
+    pub fn parse_hosts_yml() -> Result<BTreeMap<String, Host>, Box<dyn std::error::Error>> {
+        let path = Host::get_hosts_path();
+        log::debug!("Parsing {:?}", path);
+        let hosts = match path.is_file() {
+            true => {
+                let file = File::open(path)?;
+                let reader = BufReader::new(file);
+                let hosts: Result<BTreeMap<String, Host>, serde_yaml::Error> =
+                    serde_yaml::from_reader(reader);
+                hosts
+            }
+            false => {
+                log::info!("No hosts, file creating {:?}", path);
+                File::create(path)?;
+                Ok(BTreeMap::new())
+            }
+        };
+        Ok(hosts?)
+    }
+
+    pub fn write_hosts_yml(
+        hosts: &BTreeMap<String, Host>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let path = Host::get_hosts_path();
+        log::debug!(
+            "Writing hosts: {} to {:?}",
+            hosts
+                .clone()
+                .into_iter()
+                .map(|(k, _)| k)
+                .collect::<Vec<String>>()
+                .join(", "),
+            path
+        );
+        let file = File::create(path)?;
+        let writer = BufWriter::new(file);
+        let hosts = serde_yaml::to_writer(writer, hosts);
+        Ok(hosts?)
     }
 }
 

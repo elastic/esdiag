@@ -54,42 +54,44 @@ pub enum Uri {
 /// }
 /// ```
 
-pub fn classify(uri: &str) -> Result<Uri, std::io::Error> {
-    match uri {
-        "-" => Ok(Uri::Stream),
-        _ => {
-            let host = Host::from_str(&uri);
-            match host {
-                Err(_) => log::debug!("No known host {uri}"),
-                Ok(host) => return Ok(Uri::Host(host)),
-            }
-            match Url::parse(&uri) {
-                Err(_) => log::debug!("Not a valid URL {uri}"),
-                Ok(url) => return Ok(Uri::Url(url)),
-            }
-            let path = Path::new(&uri);
-            match path.is_dir() {
-                false => log::debug!("Not a directory {uri}"),
-                true => {
-                    log::debug!("Directory {uri}");
-                    let mut path_buf = PathBuf::from_str(&uri).unwrap();
-                    // Push manifest.json so we can later replace with `.with_file_name()`
-                    path_buf.push("manifest.json");
-                    return Ok(Uri::Directory(path_buf));
+impl Uri {
+    pub fn parse(uri: &str) -> Result<Self, std::io::Error> {
+        match uri {
+            "-" => Ok(Uri::Stream),
+            _ => {
+                let host = Host::from_str(&uri);
+                match host {
+                    Err(_) => log::debug!("No known host {uri}"),
+                    Ok(host) => return Ok(Uri::Host(host)),
                 }
-            }
-            match path.is_file() {
-                false => log::debug!("Not a file {uri}"),
-                true => return Ok(Uri::File(PathBuf::from_str(&uri).unwrap())),
-            }
-            match std::fs::File::create(&uri) {
-                Ok(_) => {
-                    log::info!("No existing output target, created file {uri}");
-                    Ok(Uri::File(
-                        PathBuf::from_str(&uri).expect("Failed to create file"),
-                    ))
+                match Url::parse(&uri) {
+                    Err(_) => log::debug!("Not a valid URL {uri}"),
+                    Ok(url) => return Ok(Uri::Url(url)),
                 }
-                Err(e) => return Err(e),
+                let path = Path::new(&uri);
+                match path.is_dir() {
+                    false => log::debug!("Not a directory {uri}"),
+                    true => {
+                        log::debug!("Directory {uri}");
+                        let mut path_buf = PathBuf::from_str(&uri).unwrap();
+                        // Push manifest.json so we can later replace with `.with_file_name()`
+                        path_buf.push("manifest.json");
+                        return Ok(Uri::Directory(path_buf));
+                    }
+                }
+                match path.is_file() {
+                    false => log::debug!("Not a file {uri}"),
+                    true => return Ok(Uri::File(PathBuf::from_str(&uri).unwrap())),
+                }
+                match std::fs::File::create(&uri) {
+                    Ok(_) => {
+                        log::info!("No existing output target, created file {uri}");
+                        Ok(Uri::File(
+                            PathBuf::from_str(&uri).expect("Failed to create file"),
+                        ))
+                    }
+                    Err(e) => return Err(e),
+                }
             }
         }
     }

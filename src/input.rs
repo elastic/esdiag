@@ -1,6 +1,8 @@
+/// Read from a `.zip` archive file
 pub mod archive;
 pub mod eck;
 pub mod elasticsearch;
+/// Read from a directory the local file system
 pub mod file;
 pub mod kibana;
 pub mod logstash;

@@ -1,6 +1,6 @@
 use super::Product;
 use crate::processor::elasticsearch::{EsVersion, EsVersionDetails};
-use crate::{input, Uri};
+use crate::{input, uri::Uri};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::time::SystemTime;

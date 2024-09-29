@@ -1,7 +1,11 @@
 extern crate elasticsearch as es_client;
+/// Export to an Elasticsearch cluster with the `_bulk` API
 pub mod elasticsearch;
+/// Write to an `.ndjson` file
 pub mod file;
+/// Write `ndjson` to std out
 pub mod stdout;
+
 use crate::host::Host;
 use crate::input::Product;
 use crate::uri::Uri;

@@ -1,4 +1,6 @@
+/// Processors for Elasticsearch diagnostics
 pub mod elasticsearch;
+
 use crate::input::{manifest::Manifest, DataSet};
 use elasticsearch::metadata::Metadata;
 use elasticsearch::EsDataSet;
