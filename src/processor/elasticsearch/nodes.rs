@@ -35,8 +35,6 @@ pub fn enrich_lookup(metadata: &mut Metadata, data: String) -> Vec<Value> {
                 .node
                 .add(node_data.rename(&name).with_role(&role))
                 .with_id(&node_id)
-                .with_ip(&node.ip)
-                .with_host(&node.host)
                 .with_name(&name);
 
             let patch = json!({

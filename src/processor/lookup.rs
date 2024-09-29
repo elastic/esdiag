@@ -44,20 +44,6 @@ where
         }
     }
 
-    // pub fn by_host(&self, host: &str) -> Option<&T> {
-    //     match self.by_host.get(host) {
-    //         Some(index) => Some(&self.entries[*index]),
-    //         None => None,
-    //     }
-    // }
-
-    // pub fn by_ip(&self, ip: &str) -> Option<&T> {
-    //     match self.by_ip.get(ip) {
-    //         Some(index) => Some(&self.entries[*index]),
-    //         None => None,
-    //     }
-    // }
-
     /// Number of entries in the lookup table
     pub fn len(&self) -> usize {
         self.entries.len()
@@ -72,19 +58,6 @@ where
     /// Associate an id with the last entry added
     pub fn with_id(&mut self, id: &str) -> &mut Self {
         self.by_id.insert(id.to_string(), self.entries.len() - 1);
-        self
-    }
-
-    /// Associate an ip with the last entry added
-    pub fn with_ip(&mut self, ip: &str) -> &mut Self {
-        self.by_ip.insert(ip.to_string(), self.entries.len() - 1);
-        self
-    }
-
-    /// Associate a hostname with the last entry added
-    pub fn with_host(&mut self, host: &str) -> &mut Self {
-        self.by_host
-            .insert(host.to_string(), self.entries.len() - 1);
         self
     }
 
