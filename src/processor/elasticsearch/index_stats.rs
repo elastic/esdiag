@@ -60,8 +60,8 @@ pub fn enrich(metadata: &Metadata, data: String) -> Vec<Value> {
             let shard_stats: Vec<_> = index_stats.shards.clone().into_iter().collect();
             let data_stream = lookup.data_stream.by_name(index.as_str());
             let alias = lookup.alias.by_name(index.as_str());
-            let ilm = lookup.ilm.by_name(index);
-            let index_data: IndexData = match lookup.index.by_name(index) {
+            let ilm = lookup.ilm_explain.by_name(index);
+            let index_data: IndexData = match lookup.index_settings.by_name(index) {
                 Some(index) => index.clone(),
                 None => IndexData::default(),
             };

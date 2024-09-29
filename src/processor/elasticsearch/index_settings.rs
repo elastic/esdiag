@@ -47,7 +47,7 @@ pub fn enrich_lookup(metadata: &mut Metadata, data: String) -> Vec<Value> {
                 indexing_complete,
                 refresh_interval: index.refresh_interval.clone(),
             };
-            lookup.index.add(index_data).with_name(&name);
+            lookup.index_settings.add(index_data).with_name(&name);
 
             let mut index_settings_doc = index_settings_doc.clone().with(index);
             index_settings_doc.index.as_mut().map(|index| {

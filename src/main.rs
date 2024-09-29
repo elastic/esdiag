@@ -1,22 +1,13 @@
 use clap::{Parser, Subcommand};
-use color_eyre::Result;
 use esdiag::{
-    data::diagnostic::Manifest,
-    env::LOG_LEVEL,
-    exporter::{self, Output},
-    host::Host,
-    processor::Processor,
-    receiver::Input,
-    setup,
-    uri::Uri,
+    data::diagnostic::Manifest, env::LOG_LEVEL, exporter::Output, host::Host, processor,
+    receiver::Input, setup, uri::Uri,
 };
-use futures::{future::join_all, stream::FuturesUnordered};
-use std::{collections::HashMap, panic, str::FromStr, sync::Arc};
-use tokio::task;
+use std::{panic, str::FromStr};
 use url::Url;
 
 // Define command line arguments
-#[derive(Parser)]
+#[derive(Debug, Parser)]
 #[command(name = "esdiag")]
 #[command(about = "Elastic Stack Diagnostics (esdiag) - collect diagnostics and import into Elasticsearch", long_about = None)]
 struct Cli {
@@ -24,7 +15,7 @@ struct Cli {
     command: Commands,
 }
 
-#[derive(Subcommand)]
+#[derive(Debug, Subcommand)]
 enum Commands {
     /// [NOT IMPLEMENTED] Collects diagnostics from a host's API endpoints
     Collect {
@@ -34,16 +25,6 @@ enum Commands {
         /// The output directory to save the diagnostics to
         #[arg(help = "Theoutput to save the diagnostics to (file, directory)")]
         output: String,
-    },
-    /// Process, enrich and import a diagnostic into Elasticsearch
-    Import {
-        /// The target to write processed diagnostic data to
-        #[arg(help = "Target to write processed diagnostic documents to (`-` for stdout)")]
-        target: String,
-
-        /// The source to read diagnostic data from
-        #[arg(help = "Source to read diagnostic data from")]
-        source: String,
     },
     /// Configure and test a remote host connection
     Host {
@@ -82,6 +63,16 @@ enum Commands {
         #[arg(help = "Save the host configuration", long, short)]
         save: bool,
     },
+    /// Process, enrich and import a diagnostic into Elasticsearch
+    Import {
+        /// The target to write processed diagnostic data to
+        #[arg(help = "Target to write processed diagnostic documents to (`-` for stdout)")]
+        target: String,
+
+        /// The source to read diagnostic data from
+        #[arg(help = "Source to read diagnostic data from")]
+        source: String,
+    },
     /// Setup required assets to visualize diagnostic imports
     Setup {
         /// Known host to setup assets in, only supports Elasticsearch or Kibana
@@ -106,6 +97,7 @@ async fn main() {
 
     // use clap to parse command line arguments
     let cli = Cli::parse();
+    log::debug!("{:?}", cli);
 
     match &cli.command {
         Commands::Collect { host, output } => {
@@ -114,33 +106,6 @@ async fn main() {
                 host,
                 output
             );
-            //log::info!("Collecting diagnostics from {}", host);
-            //collect_diagnostics(host, output).await;
-        }
-        Commands::Import { target, source } => {
-            let output_uri = match Uri::parse(target) {
-                Ok(uri) => uri,
-                Err(e) => {
-                    log::debug!("Invalid target: {:?}", e);
-                    panic!("Invalid ouput: {}", target);
-                }
-            };
-            let input_uri = match Uri::parse(source) {
-                Ok(uri) => uri,
-                Err(e) => {
-                    log::debug!("Invalid source: {:?}", e);
-                    panic!("Invalid input: {}", source);
-                }
-            };
-            log::info!("input: {}", input_uri);
-            log::info!("output: {}", output_uri);
-
-            let manifest = Manifest::from_uri(&input_uri).expect("Failed to parse manifest");
-            let input = Input::new(input_uri, manifest);
-            let output = Output::from_uri(output_uri);
-            import_diagnostics(input, output)
-                .await
-                .expect("Failed to import diagnostics");
         }
         Commands::Host {
             name,
@@ -206,6 +171,31 @@ async fn main() {
                 }
             }
         }
+        Commands::Import { target, source } => {
+            let output_uri = match Uri::parse(target) {
+                Ok(uri) => uri,
+                Err(e) => {
+                    log::debug!("Invalid target: {:?}", e);
+                    panic!("Invalid ouput: {}", target);
+                }
+            };
+            let input_uri = match Uri::parse(source) {
+                Ok(uri) => uri,
+                Err(e) => {
+                    log::debug!("Invalid source: {:?}", e);
+                    panic!("Invalid input: {}", source);
+                }
+            };
+            log::info!("input: {}", input_uri);
+            log::info!("output: {}", output_uri);
+
+            let manifest = Manifest::from_uri(&input_uri).expect("Failed to parse manifest");
+            let input = Input::new(input_uri, manifest);
+            let output = Output::from_uri(output_uri);
+            processor::diagnostic::import(input, output)
+                .await
+                .expect("Failed to import diagnostics");
+        }
         Commands::Setup { host } => {
             log::info!("Setting up Elasticsearch assets in {host}");
             let host = Host::from_str(host).expect("Failed to parse host for setup");
@@ -216,105 +206,4 @@ async fn main() {
             };
         }
     }
-}
-
-async fn import_diagnostics(input: Input, output: Output) -> Result<()> {
-    let metadata_content: HashMap<String, String> = input
-        .dataset
-        .metadata
-        .iter()
-        .filter_map(|dataset| match input.load_string(dataset) {
-            Some(data) => Some((dataset.to_string(), data)),
-            None => {
-                log::warn!("Failed to load metadata for {}", dataset.to_string());
-                None
-            }
-        })
-        .collect();
-
-    log::debug!("metadata_content keys: {:?}", metadata_content.keys());
-
-    let mut processor = Processor::new(&input.manifest, metadata_content);
-
-    let futures = FuturesUnordered::new();
-    let input = Arc::new(input);
-    let output = Arc::new(output);
-
-    for lookup in &input.dataset.lookup {
-        let lookup_name = lookup.to_string();
-
-        match input.load_string(&lookup) {
-            Some(data) => {
-                if let Some(docs) = processor.enrich_lookup(&lookup, data) {
-                    let output: Arc<Output> = Arc::clone(&output);
-                    let future = task::spawn(async move {
-                        let count = output.send(docs).await.unwrap_or_else(|e| {
-                            log::error!("Failed to send data to output: {}", e);
-                            0
-                        });
-                        log::info!(
-                            "Sent {} docs for {} to {}",
-                            &count,
-                            lookup_name,
-                            output.target,
-                        );
-                        count
-                    });
-                    futures.push(future);
-                }
-            }
-            None => {
-                log::info!("No docs for lookup: {}", lookup.to_string());
-            }
-        }
-    }
-
-    // If debug logging, save metadata to file
-    exporter::file::debug_save("metadata.json", &processor.metadata)?;
-
-    let data_sets = input.dataset.data.clone();
-    let processor = Arc::new(processor);
-
-    // Process each data set in parallel and push the resulting futures into `futures`
-    for data_set in data_sets {
-        let name = data_set.to_string();
-        let input: Arc<Input> = Arc::clone(&input);
-        let processor: Arc<Processor> = Arc::clone(&processor);
-        let output: Arc<Output> = Arc::clone(&output);
-
-        let future = task::spawn(async move {
-            let data = task::spawn_blocking(move || match input.load_string(&data_set) {
-                Some(string) => processor.enrich(&data_set, string),
-                None => {
-                    log::warn!("Failed to load data for {}", data_set.to_string());
-                    Vec::new()
-                }
-            })
-            .await
-            .unwrap_or_else(|e| {
-                log::error!("Failed to enrich data: {}", e);
-                Vec::new()
-            });
-
-            let count = output.send(data).await.unwrap_or_else(|e| {
-                log::error!("Failed to send data to output: {}", e);
-                0
-            });
-            log::info!("Sent {} docs for {} to {}", count, name, output.target,);
-            count
-        });
-        futures.push(future);
-    }
-
-    // Await all futures to complete, and sum the total count of docs processed
-    let doc_count = join_all(futures).await;
-
-    log::debug!("{}", input.dataset,);
-    log::info!(
-        "Import complete! Sent {} docs from {} sources for diagnostic: {}",
-        doc_count.into_iter().map(|x| x.unwrap_or(0)).sum::<usize>(),
-        input.dataset.len(),
-        &processor.metadata.diagnostic.uuid
-    );
-    Ok(())
 }

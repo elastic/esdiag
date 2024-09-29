@@ -1,5 +1,9 @@
+/// Processors for diagnostic bundles
+pub mod diagnostic;
 /// Processors for Elasticsearch diagnostics
 pub mod elasticsearch;
+/// Lookup processors
+pub mod lookup;
 
 use crate::data::diagnostic::{elasticsearch::EsDataSet, DataSet, Manifest};
 use elasticsearch::metadata::Metadata;

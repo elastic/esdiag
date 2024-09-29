@@ -71,8 +71,8 @@ impl Metadata {
                     Some(data_stream) => Lookup::<DataStream>::from(data_stream),
                     None => Lookup::<DataStream>::new(),
                 },
-                index: Lookup::<IndexData>::new(),
-                ilm: Lookup::<IlmStats>::from(metadata["ilm_explain"].clone()),
+                index_settings: Lookup::<IndexData>::new(),
+                ilm_explain: Lookup::<IlmStats>::from(metadata["ilm_explain"].clone()),
                 node: Lookup::<NodeData>::new(),
                 shared_cache: match metadata.get("searchable_snapshots_cache_stats").clone() {
                     Some(cache) => Lookup::<SharedCacheStats>::from(cache),
@@ -87,9 +87,9 @@ impl Metadata {
 pub struct Lookups {
     pub alias: Lookup<Alias>,
     pub data_stream: Lookup<DataStream>,
-    pub index: Lookup<IndexData>,
+    pub index_settings: Lookup<IndexData>,
     pub node: Lookup<NodeData>,
-    pub ilm: Lookup<IlmStats>,
+    pub ilm_explain: Lookup<IlmStats>,
     pub shared_cache: Lookup<SharedCacheStats>,
 }
 

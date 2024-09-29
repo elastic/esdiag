@@ -1,15 +1,10 @@
-pub mod alias;
-pub mod data_stream;
-pub mod ilm;
-pub mod index;
-pub mod node;
-pub mod shared_cache;
+/// Lookups for Elasticsearch data
+pub mod elasticsearch;
 
 use serde::Serialize;
 use std::collections::HashMap;
 
 /// A lookup table that allows for retrieving by four different keys: host, id, ip, and name
-
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct Lookup<T> {
     by_host: HashMap<String, usize>,
