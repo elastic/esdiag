@@ -1,5 +1,5 @@
-use super::lookup::{index::IndexData, node::NodeData, shared_cache::SharedCacheStats, Lookup};
-use crate::data::elasticsearch::{Alias, Cluster, DataStream, IlmStats};
+use super::lookup::{index::IndexData, node::NodeData, Lookup};
+use crate::data::elasticsearch::{Alias, Cluster, DataStream, IlmStats, SharedCacheStats};
 use crate::input::manifest::Manifest;
 use chrono::DateTime;
 use serde::Serialize;
