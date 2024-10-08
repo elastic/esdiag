@@ -53,7 +53,7 @@ pub struct Nodes {
 impl DataSource for Nodes {
     fn source(uri: &Uri) -> Result<&'static str> {
         match uri {
-            Uri::Directory(_) => Ok("nodes.json"),
+            Uri::Directory(_) | Uri::File(_) => Ok("nodes.json"),
             Uri::Host(_) | Uri::Url(_) => Ok("_nodes"),
             _ => Err(eyre!("Unsupported source for nodes")),
         }

@@ -30,8 +30,8 @@ impl From<Arc<ElasticsearchDiagnostic>> for NodesProcessor {
 }
 impl DataProcessor for NodesProcessor {
     async fn process(&self) -> (String, Vec<Value>) {
-        let data_stream = "settings-nodes-esdiag".to_string();
-        let node_lookup = &self.diagnostic.lookups.node;
+        let data_stream = "settings-node-esdiag".to_string();
+        let lookup_node = &self.diagnostic.lookups.node;
         let metadata = self
             .diagnostic
             .metadata
@@ -55,7 +55,6 @@ impl DataProcessor for NodesProcessor {
         let node_docs: Vec<Value> = nodes
             .par_drain()
             .map(|(node_id, node)| {
-                let node_summary = node_lookup.by_id(&node_id).cloned();
                 let patch = json!({
                     "node" : {
                         "settings": {
@@ -69,11 +68,11 @@ impl DataProcessor for NodesProcessor {
                     }
                 });
 
+                let node_summary = json!({"node": lookup_node.by_id(&node_id)});
                 let mut node_doc = json!(node_doc.clone().with_node(node));
+
                 merge(&mut node_doc, &patch);
-                if let Ok(node_summary) = serde_json::to_value(node_summary) {
-                    merge(&mut node_doc, &node_summary)
-                }
+                merge(&mut node_doc, &node_summary);
                 node_doc
             })
             .collect();

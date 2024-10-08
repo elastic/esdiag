@@ -46,12 +46,12 @@ impl Receive for ArchiveReceiver {
     where
         T: DeserializeOwned + DataSource,
     {
-        let mut archive_path = zip::ZipArchive::new(File::open(self.path.as_path())?)?;
-        let filename = &self.path.join(T::source(&self.uri)?);
+        let mut archive = zip::ZipArchive::new(File::open(self.path.as_path())?)?;
+        let filename = T::source(&self.uri)?;
 
         // Use the first file in the archive to determine the path
         let file_path = {
-            let mut path = PathBuf::from(archive_path.by_index(0)?.name().to_string());
+            let mut path = PathBuf::from(archive.by_index(0)?.name().to_string());
             if path.extension() != None {
                 path.pop();
             }
@@ -62,8 +62,8 @@ impl Receive for ArchiveReceiver {
         };
 
         // Read lines directly from the compressed file
-        log::debug!("From archive {:?}, file \"{}\"", archive_path, file_path);
-        let file = archive_path.by_name(&file_path)?;
+        log::debug!("Reading {}", file_path);
+        let file = archive.by_name(&file_path)?;
         let reader = BufReader::new(file);
         let data: T = serde_json::from_reader(reader)?;
         Ok(data)

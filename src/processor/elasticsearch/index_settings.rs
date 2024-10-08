@@ -56,7 +56,7 @@ impl DataProcessor for IndexSettingsProcessor {
                 let index = settings.index();
                 let creation_date = index.creation_date.expect("creation_date not found");
                 let age = collection_date - creation_date;
-                let data_stream = data_stream_lookup.by_name(&name).cloned();
+                let data_stream = data_stream_lookup.by_id(&name).cloned();
                 let index_settings_doc = IndexSettingsDoc::from(index).with(
                     name,
                     age,

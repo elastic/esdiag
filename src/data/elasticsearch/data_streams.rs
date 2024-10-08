@@ -59,7 +59,7 @@ pub struct Index {
 impl DataSource for DataStreams {
     fn source(uri: &Uri) -> Result<&'static str> {
         match uri {
-            Uri::Directory(_) => Ok("commercial/data_stream.json"),
+            Uri::Directory(_) | Uri::File(_) => Ok("commercial/data_stream.json"),
             Uri::Host(_) | Uri::Url(_) => Ok("_data_stream"),
             _ => Err(eyre!("Unsuppored source for data_stream")),
         }

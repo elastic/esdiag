@@ -27,7 +27,7 @@ impl From<Arc<ElasticsearchDiagnostic>> for NodesStatsProcessor {
 
 impl DataProcessor for NodesStatsProcessor {
     async fn process(&self) -> (String, Vec<Value>) {
-        let data_stream = "metrics-nodes-esdiag".to_string();
+        let data_stream = "metrics-node-esdiag".to_string();
         let node_stats_metadata = self
             .diagnostic
             .metadata
@@ -257,7 +257,10 @@ impl DataProcessor for NodesStatsProcessor {
                     }
                 });
 
+                let node_summary_patch = json!({"node": lookup_node.by_id(&node_id)});
+
                 merge(&mut doc, &node_stats_metadata);
+                merge(&mut doc, &node_summary_patch);
                 merge(&mut doc, &omit_patch);
 
                 // Start a vec with the top-level node_stats doc

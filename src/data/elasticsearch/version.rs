@@ -4,14 +4,14 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Deserialize, Serialize)]
 pub struct Cluster {
-    #[serde(rename = "name")]
+    #[serde(alias = "name")]
     pub node_name: String,
-    #[serde(rename = "cluster_name")]
+    #[serde(alias = "cluster_name")]
     pub name: String,
-    #[serde(rename = "cluster_uuid")]
+    #[serde(alias = "cluster_uuid")]
     pub uuid: String,
     pub version: Version,
-    //pub tagline: String,
+    pub tagline: String,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -30,7 +30,7 @@ pub struct Version {
 impl DataSource for Cluster {
     fn source(uri: &Uri) -> Result<&'static str> {
         match uri {
-            Uri::Directory(_) => Ok("version.json"),
+            Uri::Directory(_) | Uri::File(_) => Ok("version.json"),
             Uri::Host(_) | Uri::Url(_) => Ok("/"),
             _ => Err(eyre!("Unsupported source for version")),
         }

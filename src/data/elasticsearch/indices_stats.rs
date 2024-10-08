@@ -24,7 +24,7 @@ pub struct IndexStats {
 impl DataSource for IndicesStats {
     fn source(uri: &Uri) -> Result<&'static str> {
         match uri {
-            Uri::Directory(_) => Ok("indices_stats.json"),
+            Uri::Directory(_) | Uri::File(_) => Ok("indices_stats.json"),
             Uri::Host(_) | Uri::Url(_) => Ok("_index/stats?level=shards"),
             _ => Err(eyre!("Unsuppored source for indices stats")),
         }

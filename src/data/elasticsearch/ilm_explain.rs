@@ -54,7 +54,7 @@ struct SearchableSnapshot {
 impl DataSource for IlmExplain {
     fn source(uri: &Uri) -> Result<&'static str> {
         match uri {
-            Uri::Directory(_) => Ok("commercial/ilm_explain.json"),
+            Uri::Directory(_) | Uri::File(_) => Ok("commercial/ilm_explain.json"),
             Uri::Host(_) | Uri::Url(_) => Ok("_ilm/explain"),
             _ => Err(eyre!("Unsuppored source for ILM explain")),
         }

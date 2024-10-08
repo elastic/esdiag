@@ -105,7 +105,7 @@ where
 impl DataSource for IndicesSettings {
     fn source(uri: &Uri) -> Result<&'static str> {
         match uri {
-            Uri::Directory(_) => Ok("settings.json"),
+            Uri::Directory(_) | Uri::File(_) => Ok("settings.json"),
             Uri::Host(_) | Uri::Url(_) => Ok("_all/_settings"),
             _ => Err(eyre!("Unsuppored source for index settings")),
         }

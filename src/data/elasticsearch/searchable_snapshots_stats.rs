@@ -19,7 +19,7 @@ pub struct Total {
 impl DataSource for SearchableSnapshotsStats {
     fn source(uri: &Uri) -> Result<&'static str> {
         match uri {
-            Uri::Directory(_) => Ok("commercial/searchable_snapshots_stats.json"),
+            Uri::Directory(_) | Uri::File(_) => Ok("commercial/searchable_snapshots_stats.json"),
             Uri::Host(_) | Uri::Url(_) => Ok("_searchable_snapshots/stats"),
             _ => Err(eyre!("Unsupported source for searchable snapshots stats")),
         }

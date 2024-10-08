@@ -2,7 +2,7 @@ use clap::{Parser, Subcommand};
 use color_eyre::eyre::{eyre, Result};
 use esdiag::{
     client::Host,
-    data::{diagnostic::Manifest, Uri},
+    data::{diagnostic::Manifest, elasticsearch::Cluster, Uri},
     env::LOG_LEVEL,
     exporter::Exporter,
     processor::{diagnostic::DiagnosticProcessor, elasticsearch::ElasticsearchDiagnostic},
@@ -184,7 +184,13 @@ async fn run() -> Result<&'static str> {
 
             let receiver = Receiver::try_from(input_uri.clone())?;
             let exporter = Exporter::try_from(output_uri.clone())?;
-            let manifest = receiver.get::<Manifest>().await?;
+            let manifest = if let Ok(manifest) = receiver.get::<Manifest>().await {
+                manifest
+            } else {
+                // Fallback to building a manifest if one doesn't exist
+                let version = receiver.get::<Cluster>().await?;
+                Manifest::try_from(version)?
+            };
             log::trace!("{}", serde_json::to_string(&manifest).unwrap());
             let diagnostic_processor =
                 ElasticsearchDiagnostic::new(manifest, receiver, exporter).await?;

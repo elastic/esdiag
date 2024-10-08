@@ -1,13 +1,8 @@
-use super::{
-    data_source::DataSource,
-    elasticsearch::{EsVersion, EsVersionDetails},
-    Product,
-};
-use crate::{data::Uri, receiver};
+use super::{data_source::DataSource, elasticsearch::EsVersion, Product};
+use crate::{data::elasticsearch, data::Uri};
 use color_eyre::eyre::{eyre, Result};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use std::time::SystemTime;
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -33,65 +28,6 @@ pub struct DiagPath {
 }
 
 impl Manifest {
-    /// Infers manifest details from the `version.json` if there was no manifest
-    pub fn from_es_version(version: EsVersion, date: SystemTime) -> Self {
-        let product = match version.tagline.as_str() {
-            "You Know, for Search" => Product::Elasticsearch,
-            _ => unimplemented!("ERROR: Application not implemented"),
-        };
-        let product_version = Some(ProductVersion::from(version.version));
-        Self {
-            diag_type: Some(String::from("es-unknown")),
-            collection_date: date
-                .duration_since(SystemTime::UNIX_EPOCH)
-                .unwrap()
-                .as_millis()
-                .to_string(),
-            diag_version: None,
-            diagnostic_inputs: None,
-            included_diagnostics: None,
-            product,
-            product_version,
-            runner: Some("Unknown".to_string()),
-        }
-    }
-
-    /// Loads a manifest from a URI
-    pub fn from_uri(input_uri: &Uri) -> Result<Manifest, Box<dyn std::error::Error>> {
-        let manifest: Manifest = match &input_uri {
-            Uri::Directory(dir) => match receiver::file::read_string(&dir) {
-                Ok(string) => serde_json::from_str::<Manifest>(&string)?.with_diag_type(),
-                Err(e) => {
-                    log::warn!(
-                        "Failed to read manifest.json file, falling back to version.json: {e}"
-                    );
-                    let file_path = &dir.with_file_name("version.json");
-                    let string = receiver::file::read_string(&file_path)?;
-                    let date = std::fs::metadata(&file_path)?.created()?;
-                    log::debug!("Got metadata for directory: {:?}", &date);
-                    let version =
-                        serde_json::from_str(&string).expect("Failed to parse version.json file");
-                    Manifest::from_es_version(version, date)
-                }
-            },
-            Uri::File(file) => match receiver::archive::read_string(&file, "manifest.json") {
-                Ok(string) => serde_json::from_str::<Manifest>(&string)?.with_diag_type(),
-                Err(e) => {
-                    log::warn!(
-                        "Failed to parse manifest.json file, falling back to version.json: {e}"
-                    );
-                    let string = receiver::archive::read_string(&file, "version.json")?;
-                    let version =
-                        serde_json::from_str(&string).expect("Failed to parse version.json file");
-                    let date = std::fs::metadata(&file)?.created()?;
-                    Manifest::from_es_version(version, date)
-                }
-            },
-            _ => Err("Diagnostic manifest can only load from a local input")?,
-        };
-        Ok(manifest.with_product())
-    }
-
     /// Updates product based on diag_type
     pub fn with_product(mut self) -> Self {
         log::debug!("Setting product from diag_type: {:?}", self.diag_type);
@@ -154,11 +90,11 @@ pub struct ProductVersion {
     pub stable: bool,
 }
 
-impl ProductVersion {
-    pub fn from(version: EsVersionDetails) -> Self {
+impl From<elasticsearch::Version> for ProductVersion {
+    fn from(version: elasticsearch::Version) -> Self {
         Self {
-            original_value: Some(version.number.to_string()),
-            value: Some(version.number.to_string()),
+            original_value: Some(version.number.to_string().clone()),
+            value: Some(version.number.to_string().clone()),
             major: version.number.major,
             minor: version.number.minor,
             patch: version.number.patch,
@@ -171,6 +107,22 @@ impl ProductVersion {
     }
 }
 
+impl TryFrom<elasticsearch::Cluster> for Manifest {
+    type Error = color_eyre::eyre::Error;
+
+    fn try_from(cluster: elasticsearch::Cluster) -> Result<Self, Self::Error> {
+        Ok(Self {
+            diag_type: None,
+            diagnostic_inputs: None,
+            diag_version: None,
+            product: Product::Elasticsearch,
+            product_version: Some(ProductVersion::from(cluster.version)),
+            runner: None,
+            collection_date: chrono::Utc::now().to_rfc3339(),
+            included_diagnostics: None,
+        })
+    }
+}
 impl DataSource for Manifest {
     fn source(uri: &Uri) -> Result<&'static str> {
         match uri {

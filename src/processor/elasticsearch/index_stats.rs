@@ -56,7 +56,7 @@ impl DataProcessor for IndexStatsProcessor {
             .par_drain()
             .flat_map(|(index, ref mut index_stats)| {
                 let mut shard_stats: Vec<_> = index_stats.shards.par_drain().collect();
-                let data_stream = lookup.data_stream.by_name(&index);
+                let data_stream = lookup.data_stream.by_id(&index);
                 let alias = lookup.alias.by_name(&index);
                 let ilm = lookup.ilm_explain.by_name(&index);
                 let index_settings = match lookup.index_settings.by_name(&index) {

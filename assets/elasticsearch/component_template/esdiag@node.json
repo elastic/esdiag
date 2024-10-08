@@ -10,7 +10,8 @@
           "type": "object",
           "properties": {
             "ip": {
-              "type": "ip"
+              "type": "ip",
+              "ignore_malformed": true
             },
             "roles": {
               "type": "keyword"

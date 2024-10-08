@@ -36,7 +36,7 @@ pub struct Task {
 impl DataSource for Tasks {
     fn source(uri: &Uri) -> Result<&'static str> {
         match uri {
-            Uri::Directory(_) => Ok("tasks.json"),
+            Uri::Directory(_) | Uri::File(_) => Ok("tasks.json"),
             Uri::Host(_) | Uri::Url(_) => Ok("_tasks"),
             _ => Err(eyre!("Unsupported source for tasks")),
         }

@@ -66,7 +66,10 @@ impl From<Nodes> for Lookup<NodeSummary> {
         nodes.nodes.drain().for_each(|(id, node)| {
             let role = abbreviate_roles(&node.roles);
             let name = rename_with_role(&node.name, &role);
-            let node_summary = NodeSummary::from(&node).rename(&name).with_id(&id);
+            let node_summary = NodeSummary::from(&node)
+                .with_id(&id)
+                .with_role(&role)
+                .rename(&name);
             let name = node.name.clone();
             lookup.add(node_summary).with_name(&name).with_id(&id);
         });

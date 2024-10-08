@@ -6,10 +6,6 @@ mod nodes_stats;
 mod searchable_snapshots_stats;
 mod tasks;
 use cluster_settings::ClusterSettingsProcessor;
-use futures::{
-    future::{join_all, BoxFuture},
-    stream::FuturesUnordered,
-};
 use index_settings::IndexSettingsProcessor;
 use index_stats::IndexStatsProcessor;
 use nodes::NodesProcessor;
@@ -34,6 +30,10 @@ use crate::exporter::Exporter;
 use crate::receiver::Receiver;
 use chrono::DateTime;
 use color_eyre::eyre::Result;
+use futures::{
+    future::{join_all, BoxFuture},
+    stream::FuturesUnordered,
+};
 use serde::Serialize;
 use std::{collections::HashMap, sync::Arc};
 use tokio::{sync::RwLock, task};
@@ -98,9 +98,12 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
         let mut doc_count: usize = 0;
         for (index, docs) in queue_guard.drain() {
             log::debug!("Processing queue {index}");
+            if docs.is_empty() {
+                continue;
+            }
             match exporter.write(index, docs).await {
                 Ok(count) => doc_count += count,
-                Err(_) => {}
+                Err(e) => log::error!("Elasticsearch exporter: {e}"),
             }
         }
         doc_count

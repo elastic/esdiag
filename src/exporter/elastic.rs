@@ -1,11 +1,14 @@
 use super::Export;
 use crate::client::{Auth, ElasticsearchBuilder, Host};
-use color_eyre::eyre::Result;
+use color_eyre::eyre::{eyre, Result};
 use elasticsearch::{
     http::{headers, request::JsonBody, response::Response, Method},
     BulkOperation, BulkParts, Elasticsearch,
 };
+use futures::{future::join_all, stream::FuturesUnordered};
 use serde_json::Value;
+use std::sync::Arc;
+use tokio::sync::Semaphore;
 use url::Url;
 
 pub struct ElasticsearchExporter {
@@ -61,22 +64,44 @@ impl TryFrom<Host> for ElasticsearchExporter {
 }
 
 impl Export for ElasticsearchExporter {
-    async fn write(&self, index: String, docs: Vec<Value>) -> Result<usize> {
-        let doc_count = docs.len();
-        let ops: Vec<BulkOperation<serde_json::Value>> = docs
+    async fn write(&self, index: String, mut docs: Vec<Value>) -> Result<usize> {
+        let client = Arc::new(self.client.clone());
+        let workers = 4;
+        let bulk_size = 5000;
+        let semaphore = Arc::new(Semaphore::new(workers));
+
+        let futures = FuturesUnordered::new();
+
+        while !docs.is_empty() {
+            let client = client.clone();
+            let index = index.clone();
+            let batch_size = std::cmp::min(docs.len(), bulk_size);
+            let ops: Vec<BulkOperation<serde_json::Value>> = docs
+                .drain(..batch_size)
+                .map(|doc| BulkOperation::create(doc).pipeline("esdiag").into())
+                .collect();
+            let semaphore = semaphore.clone();
+            let future = async move {
+                let _permit = semaphore.acquire().await;
+                let response = client.bulk(BulkParts::Index(&index)).body(ops).send().await;
+                parse_response(index, response).await
+            };
+
+            futures.push(tokio::spawn(future));
+        }
+        let doc_count = join_all(futures)
+            .await
             .into_iter()
-            .map(|doc| BulkOperation::create(doc).pipeline("esdiag").into())
-            .collect();
+            .filter_map(Result::ok)
+            .filter_map(|result| match result {
+                Ok(count) => Some(count),
+                Err(e) => {
+                    log::error!("{}", e);
+                    None
+                }
+            })
+            .sum();
 
-        let response = self
-            .client
-            .bulk(BulkParts::Index(&index))
-            .body(ops)
-            .send()
-            .await?;
-
-        let body = response.text().await?;
-        log::trace!("{}", body);
         Ok(doc_count)
     }
 
@@ -111,4 +136,50 @@ impl std::fmt::Display for ElasticsearchExporter {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.url)
     }
+}
+
+async fn parse_response(
+    index: String,
+    response: Result<Response, elasticsearch::Error>,
+) -> Result<usize> {
+    let response = response?;
+    log::trace!("{:?}", &response);
+    let status_code = response.status_code().as_u16();
+    let body: Value = response.json().await?;
+    let mut items: Vec<Value> = body["items"].as_array().unwrap_or(&Vec::new()).clone();
+    let item_count = items.len();
+
+    let error_items: Vec<Value> = items
+        .drain(..)
+        .filter(|item| match item["create"]["status"].as_u64() {
+            Some(s) => s != 201,
+            None => false,
+        })
+        .collect();
+    let error_count = error_items.len();
+    let doc_count = item_count - error_count;
+
+    match status_code {
+        200 if error_count == 0 => log::info!("{}, wrote {} docs", index, doc_count),
+        200 => log::warn!(
+            "{}, wrote {} docs with {} errors",
+            index,
+            doc_count,
+            error_count
+        ),
+        401 => return Err(eyre!("{} - http 401 unauthorized", index)),
+        403 => return Err(eyre!("{} - http 403 forbidden", index)),
+        404 => return Err(eyre!("{} - http 404 not found", index)),
+        413 => return Err(eyre!("{} - http 413 request too large", index)),
+        429 => return Err(eyre!("{} - http 429 too many requests", index)),
+        500..=599 => return Err(eyre!("{} - server errors: http {}", status_code, index)),
+        _ => log::warn!("unexpected http response: {}", status_code),
+    }
+
+    if log::max_level() >= log::Level::Debug {
+        println!("{}", serde_json::json!({"index":index}));
+        println!("{}", serde_json::json!(error_items));
+    }
+
+    Ok(doc_count)
 }
