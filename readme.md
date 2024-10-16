@@ -1,7 +1,7 @@
 Elastic Stack Diagnostics
 ==============================
 
-The Elastic Stack Diagnostics (`esdiag`) tool simplifies processing and importing diagnostic bundles into Elasticsearch. By pre-processing, splitting, and enriching the raw API outputs, building Kibana dashboards and ES|QL queries on diagnostic data is easy.
+The Elastic Stack Diagnostics (esdiag) tool simplifies troubleshooting by providing a visual snapshot of your Elasticsearch cluster's status at a specific point in time. By pre-processing and enriching raw API data, esdiag enables you to easily view cluster state through Kibana dashboards and use ES|QL queries for diagnosing issues, understanding cluster behavior, and optimizing performance.
 
 Installation
 --------------------
