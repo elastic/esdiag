@@ -110,4 +110,8 @@ impl DataSource for IndicesSettings {
             _ => Err(eyre!("Unsuppored source for index settings")),
         }
     }
+
+    fn name() -> &'static str {
+        "index_settings"
+    }
 }

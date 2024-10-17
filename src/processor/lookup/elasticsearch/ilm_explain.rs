@@ -1,8 +1,5 @@
 use super::Lookup;
-use crate::{
-    data::elasticsearch::{IlmExplain, IlmStats},
-    processor::lookup::LookupTable,
-};
+use crate::data::elasticsearch::{IlmExplain, IlmStats};
 
 impl From<String> for Lookup<IlmStats> {
     fn from(string: String) -> Self {
@@ -23,5 +20,3 @@ impl From<IlmExplain> for Lookup<IlmStats> {
         lookup
     }
 }
-
-impl LookupTable for Lookup<IlmStats> {}

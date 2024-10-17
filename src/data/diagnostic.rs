@@ -1,5 +1,7 @@
 /// Trait for receiving data from a source
 pub mod data_source;
+/// Modern diagnostic bundle manifest file
+pub mod diagnostic_manifest;
 /// Elastic Cloud Kubernetes diagnostic bundle
 pub mod eck;
 /// Elasticsearch diagnostic bundle
@@ -8,9 +10,12 @@ pub mod elasticsearch;
 pub mod kibana;
 /// Logstash diagnostic bundle
 pub mod logstash;
-/// Diagnostic bundle manifest file
+/// Legacy diagnostic bundle manifest file
 pub mod manifest;
 
+use std::str::FromStr;
+
+pub use diagnostic_manifest::DiagnosticManifest;
 pub use eck::ElasticCloudKubernetes;
 pub use elasticsearch::Elasticsearch;
 pub use kibana::Kibana;
@@ -18,7 +23,7 @@ pub use logstash::Logstash;
 pub use manifest::Manifest;
 
 use elasticsearch::ElasticsearchDataSet;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 pub trait DataFamilies {
     fn get_data_sets(&self) -> Vec<DataSet>;
@@ -45,7 +50,8 @@ impl ToString for DataSet {
 
 // Product enum to hold the Elasticsearch, Kibana, or Logstash product
 
-#[derive(Debug, PartialEq, Hash, Clone, Eq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Hash, Clone, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Product {
     Agent,
     ECE,
@@ -71,7 +77,7 @@ impl std::fmt::Display for Product {
 }
 
 impl std::str::FromStr for Product {
-    type Err = ();
+    type Err = String;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
             "agent" => Ok(Self::Agent),
@@ -80,8 +86,23 @@ impl std::str::FromStr for Product {
             "es" | "elasticsearch" => Ok(Self::Elasticsearch),
             "kb" | "kibana" => Ok(Self::Kibana),
             "ls" | "logstash" => Ok(Self::Logstash),
-            _ => Err(()),
+            _ => Err("Unknown product".to_string()),
         }
+    }
+}
+
+// Custom case-insensitve deserialization for the Product enum
+impl<'de> Deserialize<'de> for Product {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        // Deserialize as a string
+        let s: String = Deserialize::deserialize(deserializer)?;
+
+        // Normalize the string to lowercase to match
+        Product::from_str(&s.to_lowercase())
+            .map_err(|e| serde::de::Error::custom(format!("Unknown product: {}", e)))
     }
 }
 
@@ -89,4 +110,11 @@ impl Default for Product {
     fn default() -> Self {
         Self::Unknown
     }
+}
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiagPath {
+    pub diag_type: String,
+    pub diag_path: String,
 }

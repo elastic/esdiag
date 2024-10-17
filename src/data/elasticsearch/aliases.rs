@@ -46,4 +46,8 @@ impl DataSource for AliasList {
             _ => Err(eyre!("Unsuppored source for alias")),
         }
     }
+
+    fn name() -> &'static str {
+        "alias"
+    }
 }

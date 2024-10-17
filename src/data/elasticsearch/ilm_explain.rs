@@ -59,4 +59,8 @@ impl DataSource for IlmExplain {
             _ => Err(eyre!("Unsuppored source for ILM explain")),
         }
     }
+
+    fn name() -> &'static str {
+        "ilm_explain"
+    }
 }

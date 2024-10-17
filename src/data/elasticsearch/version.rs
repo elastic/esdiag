@@ -47,4 +47,8 @@ impl DataSource for Cluster {
             _ => Err(eyre!("Unsupported source for version")),
         }
     }
+
+    fn name() -> &'static str {
+        "version"
+    }
 }

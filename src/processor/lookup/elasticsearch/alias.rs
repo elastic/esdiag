@@ -1,8 +1,5 @@
 use super::Lookup;
-use crate::{
-    data::elasticsearch::{Alias, AliasList},
-    processor::lookup::LookupTable,
-};
+use crate::data::elasticsearch::{Alias, AliasList};
 
 impl From<String> for Lookup<Alias> {
     fn from(string: String) -> Self {
@@ -28,5 +25,3 @@ impl From<AliasList> for Lookup<Alias> {
         lookup
     }
 }
-
-impl LookupTable for Lookup<Alias> {}

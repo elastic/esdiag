@@ -1,53 +1,24 @@
-use super::{DataProcessor, ElasticsearchDiagnostic, Receiver};
+use super::{DataProcessor, ElasticsearchMetadata, Lookups};
 use crate::{data::elasticsearch::IndicesStats, processor::Metadata};
 use json_patch::merge;
 use rayon::prelude::*;
 use serde_json::{json, Value};
 use std::sync::Arc;
 
-pub struct IndexStatsProcessor {
-    diagnostic: Arc<ElasticsearchDiagnostic>,
-    receiver: Arc<Receiver>,
-}
-
-impl IndexStatsProcessor {
-    fn new(diagnostic: Arc<ElasticsearchDiagnostic>, receiver: Arc<Receiver>) -> Self {
-        IndexStatsProcessor {
-            diagnostic,
-            receiver,
-        }
-    }
-}
-
-impl From<Arc<ElasticsearchDiagnostic>> for IndexStatsProcessor {
-    fn from(diagnostic: Arc<ElasticsearchDiagnostic>) -> Self {
-        IndexStatsProcessor::new(diagnostic.clone(), diagnostic.receiver.clone())
-    }
-}
-
-impl DataProcessor for IndexStatsProcessor {
-    async fn process(&self) -> (String, Vec<Value>) {
-        let data_stream = "metrics-index-esdiag".to_string();
-        let index_metadata = self
-            .diagnostic
-            .metadata
-            .clone()
-            .for_data_stream(&data_stream)
-            .as_meta_doc();
-        let collection_date = self.diagnostic.metadata.timestamp;
-        let lookup = &self.diagnostic.lookups;
-        let mut indices_stats = match self.receiver.get::<IndicesStats>().await {
-            Ok(data) => data.indices,
-            Err(e) => {
-                log::warn!("{e}");
-                return (data_stream, Vec::<Value>::new());
-            }
-        };
-
+impl DataProcessor<ElasticsearchMetadata> for IndicesStats {
+    fn generate_docs(
+        self,
+        lookups: Arc<Lookups>,
+        metadata: Arc<ElasticsearchMetadata>,
+    ) -> (String, Vec<Value>) {
+        let mut indices_stats = self.indices;
         log::debug!("index_stats indices: {}", indices_stats.len());
-        let shard_metadata = self
-            .diagnostic
-            .metadata
+        let data_stream = "metrics-index-esdiag".to_string();
+        let index_metadata = metadata.for_data_stream(&data_stream).as_meta_doc();
+        let collection_date = metadata.timestamp;
+        let lookup = lookups;
+
+        let shard_metadata = metadata
             .clone()
             .for_data_stream("metrics-shard-esdiag")
             .as_meta_doc();

@@ -58,4 +58,8 @@ impl DataSource for Nodes {
             _ => Err(eyre!("Unsupported source for nodes")),
         }
     }
+
+    fn name() -> &'static str {
+        "nodes"
+    }
 }

@@ -29,4 +29,8 @@ impl DataSource for IndicesStats {
             _ => Err(eyre!("Unsuppored source for indices stats")),
         }
     }
+
+    fn name() -> &'static str {
+        "indices_stats"
+    }
 }

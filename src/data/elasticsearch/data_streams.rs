@@ -64,6 +64,10 @@ impl DataSource for DataStreams {
             _ => Err(eyre!("Unsuppored source for data_stream")),
         }
     }
+
+    fn name() -> &'static str {
+        "data_stream"
+    }
 }
 
 #[derive(Clone, Serialize)]

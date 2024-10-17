@@ -1,8 +1,5 @@
 use super::Lookup;
-use crate::{
-    data::elasticsearch::{DataStream, DataStreams, Indices},
-    processor::lookup::LookupTable,
-};
+use crate::data::elasticsearch::{DataStream, DataStreams, Indices};
 
 impl From<&String> for Lookup<DataStream> {
     fn from(string: &String) -> Self {
@@ -35,5 +32,3 @@ impl From<DataStreams> for Lookup<DataStream> {
         lookup
     }
 }
-
-impl LookupTable for Lookup<DataStream> {}

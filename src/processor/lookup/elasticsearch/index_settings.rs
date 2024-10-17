@@ -1,8 +1,5 @@
 use super::Lookup;
-use crate::{
-    data::elasticsearch::{IndexSettings, IndicesSettings},
-    processor::lookup::LookupTable,
-};
+use crate::data::elasticsearch::{IndexSettings, IndicesSettings};
 use serde::Serialize;
 
 #[derive(Clone, Serialize)]
@@ -51,5 +48,3 @@ impl From<IndicesSettings> for Lookup<IndexSettings> {
         lookup
     }
 }
-
-impl LookupTable for Lookup<IndexSettings> {}

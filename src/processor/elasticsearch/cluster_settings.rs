@@ -1,4 +1,4 @@
-use super::{DataProcessor, ElasticsearchDiagnostic, Receiver};
+use super::{DataProcessor, ElasticsearchMetadata, Lookups};
 use crate::{
     data::elasticsearch::{ClusterSettings, DataStreamName},
     processor::Metadata,
@@ -12,43 +12,20 @@ const DEFAULT: &str = "default";
 const PERSISTENT: &str = "persistent";
 const TRANSIENT: &str = "transient";
 
-pub struct ClusterSettingsProcessor {
-    diagnostic: Arc<ElasticsearchDiagnostic>,
-    receiver: Arc<Receiver>,
-}
-
-impl ClusterSettingsProcessor {
-    pub fn new(diagnostic: Arc<ElasticsearchDiagnostic>, receiver: Arc<Receiver>) -> Self {
-        ClusterSettingsProcessor {
-            diagnostic,
-            receiver,
-        }
-    }
-}
-
-impl From<Arc<ElasticsearchDiagnostic>> for ClusterSettingsProcessor {
-    fn from(diagnostic: Arc<ElasticsearchDiagnostic>) -> Self {
-        ClusterSettingsProcessor::new(diagnostic.clone(), diagnostic.receiver.clone())
-    }
-}
-
-impl DataProcessor for ClusterSettingsProcessor {
-    async fn process(&self) -> (String, Vec<Value>) {
+impl DataProcessor<ElasticsearchMetadata> for ClusterSettings {
+    fn generate_docs(
+        self,
+        _lookups: Arc<Lookups>,
+        metadata: Arc<ElasticsearchMetadata>,
+    ) -> (String, Vec<Value>) {
         let data_stream = "settings-cluster-esdiag".to_string();
         let data_stream_name = DataStreamName::from(data_stream.as_str());
-        let metadata = self.diagnostic.metadata.as_meta_doc();
-        let data = match self.receiver.get::<ClusterSettings>().await {
-            Ok(data) => data,
-            Err(_) => {
-                log::error!("Failed to process cluster settings");
-                return (data_stream_name.to_string(), Vec::new());
-            }
-        };
+        let metadata = metadata.for_data_stream(&data_stream).as_meta_doc();
 
         let scopes: Vec<_> = vec![
-            (DEFAULT, data.defaults),
-            (TRANSIENT, data.transient),
-            (PERSISTENT, data.persistent),
+            (DEFAULT, self.defaults),
+            (TRANSIENT, self.transient),
+            (PERSISTENT, self.persistent),
         ];
         log::debug!("cluster_settings scopes: {}", scopes.len());
         let cluster_settings_doc = ClusterSettingsDoc::new(metadata.clone(), data_stream_name);

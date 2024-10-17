@@ -37,4 +37,7 @@ impl DataSource for SearchableSnapshotsCacheStats {
             )),
         }
     }
+    fn name() -> &'static str {
+        "searchable_snapshots_cache_stats"
+    }
 }

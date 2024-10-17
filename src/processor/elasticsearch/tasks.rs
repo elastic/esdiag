@@ -1,6 +1,6 @@
-use super::{DataProcessor, ElasticsearchDiagnostic, Receiver};
+use super::{DataProcessor, ElasticsearchMetadata, Lookups};
 use crate::{
-    data::elasticsearch::{ParentTask, Task, Tasks},
+    data::elasticsearch::{NodeTasks, ParentTask, Task, Tasks},
     processor::{lookup::elasticsearch::node::NodeSummary, Metadata},
 };
 use rayon::prelude::*;
@@ -8,44 +8,18 @@ use serde::Serialize;
 use serde_json::Value;
 use std::sync::Arc;
 
-pub struct TasksProcessor {
-    diagnostic: Arc<ElasticsearchDiagnostic>,
-    receiver: Arc<Receiver>,
-}
-
-impl TasksProcessor {
-    fn new(diagnostic: Arc<ElasticsearchDiagnostic>, receiver: Arc<Receiver>) -> Self {
-        TasksProcessor {
-            diagnostic,
-            receiver,
-        }
-    }
-}
-
-impl From<Arc<ElasticsearchDiagnostic>> for TasksProcessor {
-    fn from(diagnostic: Arc<ElasticsearchDiagnostic>) -> Self {
-        TasksProcessor::new(diagnostic.clone(), diagnostic.receiver.clone())
-    }
-}
-
-impl DataProcessor for TasksProcessor {
-    async fn process(&self) -> (String, Vec<Value>) {
+impl DataProcessor<ElasticsearchMetadata> for Tasks {
+    fn generate_docs(
+        self,
+        lookups: Arc<Lookups>,
+        metadata: Arc<ElasticsearchMetadata>,
+    ) -> (String, Vec<Value>) {
+        log::debug!("processing tasks");
         let data_stream = "metrics-task-esdiag".to_string();
-        let tasks = match self.receiver.get::<Tasks>().await {
-            Ok(tasks) => tasks,
-            Err(e) => {
-                log::error!("Failed to deserialize tasks: {}", e);
-                return (data_stream, Vec::new());
-            }
-        };
-        let lookup_node = &self.diagnostic.lookups.node;
-        let task_metadata = self
-            .diagnostic
-            .metadata
-            .for_data_stream(&data_stream)
-            .as_meta_doc();
+        let lookup_node = &lookups.node;
+        let task_metadata = metadata.for_data_stream(&data_stream).as_meta_doc();
 
-        let nodes: Vec<(_, _)> = tasks.nodes.into_par_iter().collect();
+        let nodes: Vec<(String, NodeTasks)> = self.nodes.into_par_iter().collect();
 
         let tasks: Vec<Value> = nodes
             .into_par_iter()

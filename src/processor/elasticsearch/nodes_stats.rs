@@ -4,7 +4,7 @@ mod http_clients;
 mod ingest_pipelines;
 mod transport_actions;
 
-use super::{DataProcessor, ElasticsearchDiagnostic, ElasticsearchMetadata, Receiver};
+use super::{DataProcessor, ElasticsearchMetadata, Lookups};
 use crate::{data::elasticsearch::NodesStats, processor::Metadata};
 use json_patch::merge;
 use rayon::prelude::*;
@@ -13,44 +13,18 @@ use std::sync::{Arc, LazyLock};
 
 static INGEST_ROLE: LazyLock<String> = LazyLock::new(|| String::from("ingest"));
 
-pub struct NodesStatsProcessor {
-    diagnostic: Arc<ElasticsearchDiagnostic>,
-    receiver: Arc<Receiver>,
-}
-
-impl NodesStatsProcessor {
-    fn new(diagnostic: Arc<ElasticsearchDiagnostic>, receiver: Arc<Receiver>) -> Self {
-        NodesStatsProcessor {
-            diagnostic,
-            receiver,
-        }
-    }
-}
-
-impl From<Arc<ElasticsearchDiagnostic>> for NodesStatsProcessor {
-    fn from(diagnostic: Arc<ElasticsearchDiagnostic>) -> Self {
-        NodesStatsProcessor::new(diagnostic.clone(), diagnostic.receiver.clone())
-    }
-}
-
-impl DataProcessor for NodesStatsProcessor {
-    async fn process(&self) -> (String, Vec<Value>) {
-        let data_stream = "metrics-node-esdiag".to_string();
-        let node_stats_metadata = self
-            .diagnostic
-            .metadata
-            .for_data_stream(&data_stream)
-            .as_meta_doc();
-        let lookup_node = &self.diagnostic.lookups.node;
-        let lookup_shared_cache = &self.diagnostic.lookups.shared_cache;
-        let mut nodes_stats = match self.receiver.get::<NodesStats>().await {
-            Ok(nodes) => nodes.nodes,
-            Err(e) => {
-                log::error!("Failed to deserialize nodes stats: {e}");
-                return (data_stream, Vec::new());
-            }
-        };
+impl DataProcessor<ElasticsearchMetadata> for NodesStats {
+    fn generate_docs(
+        self,
+        lookups: Arc<Lookups>,
+        metadata: Arc<ElasticsearchMetadata>,
+    ) -> (String, Vec<Value>) {
+        let mut nodes_stats = self.nodes;
         log::debug!("nodes: {}", nodes_stats.len());
+        let data_stream = "metrics-node-esdiag".to_string();
+        let node_stats_metadata = metadata.for_data_stream(&data_stream).as_meta_doc();
+        let lookup_node = &lookups.node;
+        let lookup_shared_cache = &lookups.shared_cache;
 
         let node_stats_docs: Vec<Value> = nodes_stats
             .par_drain()
@@ -59,33 +33,33 @@ impl DataProcessor for NodesStatsProcessor {
 
                 let transport_actions_docs = transport_actions::extract(
                     node_stats.transport["actions"].take(),
-                    &self.diagnostic.metadata,
+                    &metadata,
                     node_summary,
                 );
 
                 let http_clients_docs = http_clients::extract(
                     node_stats.http["clients"].take(),
-                    &self.diagnostic.metadata,
+                    &metadata,
                     node_summary,
                 );
 
                 let adaptive_selection_docs = adaptive_selections::extract(
                     node_stats.adaptive_selection.take(),
-                    &self.diagnostic.metadata,
+                    &metadata,
                     node_summary,
                     lookup_node,
                 );
 
                 let recording_docs = cluster_applier_stats::extract(
                     node_stats.discovery["cluster_applier_stats"].take(),
-                    &self.diagnostic.metadata,
+                    &metadata,
                     node_summary,
                 );
 
                 let ingest_pipelines_docs = match node_stats.roles.contains(&*INGEST_ROLE) {
                     true => ingest_pipelines::extract(
                         node_stats.ingest.pipelines.take(),
-                        &self.diagnostic.metadata,
+                        &metadata,
                         node_summary,
                     ),
                     false => Vec::new(),

@@ -26,4 +26,8 @@ impl DataSource for ClusterSettings {
             _ => Err(eyre!("Unsuppored source for cluster settings")),
         }
     }
+
+    fn name() -> &'static str {
+        "cluster_settings"
+    }
 }

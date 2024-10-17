@@ -1,4 +1,4 @@
-use super::{DataProcessor, ElasticsearchDiagnostic, Receiver};
+use super::{DataProcessor, ElasticsearchMetadata, Lookups};
 use crate::{
     data::elasticsearch::{DataStream, IndexSettings, IndicesSettings},
     processor::Metadata,
@@ -8,49 +8,19 @@ use serde::Serialize;
 use serde_json::Value;
 use std::sync::Arc;
 
-pub struct IndexSettingsProcessor {
-    diagnostic: Arc<ElasticsearchDiagnostic>,
-    receiver: Arc<Receiver>,
-}
-
-impl IndexSettingsProcessor {
-    fn new(diagnostic: Arc<ElasticsearchDiagnostic>, receiver: Arc<Receiver>) -> Self {
-        IndexSettingsProcessor {
-            diagnostic,
-            receiver,
-        }
-    }
-}
-
-impl From<Arc<ElasticsearchDiagnostic>> for IndexSettingsProcessor {
-    fn from(diagnostic: Arc<ElasticsearchDiagnostic>) -> Self {
-        IndexSettingsProcessor::new(diagnostic.clone(), diagnostic.receiver.clone())
-    }
-}
-
-impl DataProcessor for IndexSettingsProcessor {
-    async fn process(&self) -> (String, Vec<Value>) {
+impl DataProcessor<ElasticsearchMetadata> for IndicesSettings {
+    fn generate_docs(
+        mut self,
+        lookups: Arc<Lookups>,
+        metadata: Arc<ElasticsearchMetadata>,
+    ) -> (String, Vec<Value>) {
+        log::debug!("processing indices: {}", self.len());
         let data_stream = "settings-index-esdiag".to_string();
-        let index_metadata = self
-            .diagnostic
-            .metadata
-            .clone()
-            .for_data_stream(&data_stream)
-            .as_meta_doc();
-        let collection_date = self.diagnostic.metadata.timestamp;
-        let data_stream_lookup = self.diagnostic.lookups.data_stream.clone();
-        let mut indices_settings = match self.receiver.get::<IndicesSettings>().await {
-            Ok(indices_settings) => {
-                log::debug!("indices: {}", indices_settings.len());
-                indices_settings
-            }
-            Err(e) => {
-                log::error!("Failed to receive indices_settings: {}", e);
-                return (data_stream, Vec::new());
-            }
-        };
+        let index_metadata = metadata.for_data_stream(&data_stream).as_meta_doc();
+        let collection_date = metadata.timestamp;
+        let data_stream_lookup = lookups.data_stream.clone();
 
-        let index_settings: Vec<Value> = indices_settings
+        let index_settings: Vec<Value> = self
             .par_drain()
             .filter_map(|(name, settings)| {
                 let index = settings.index();

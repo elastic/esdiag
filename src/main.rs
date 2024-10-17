@@ -2,10 +2,14 @@ use clap::{Parser, Subcommand};
 use color_eyre::eyre::{eyre, Result};
 use esdiag::{
     client::Host,
-    data::{diagnostic::Manifest, elasticsearch::Cluster, Uri},
+    data::{
+        diagnostic::{DiagnosticManifest, Manifest},
+        elasticsearch::Cluster,
+        Uri,
+    },
     env::LOG_LEVEL,
     exporter::Exporter,
-    processor::{diagnostic::DiagnosticProcessor, elasticsearch::ElasticsearchDiagnostic},
+    processor::Diagnostic,
     receiver::Receiver,
     setup,
 };
@@ -186,16 +190,20 @@ async fn run() -> Result<&'static str> {
 
             let receiver = Receiver::try_from(input_uri.clone())?;
             let exporter = Exporter::try_from(output_uri.clone())?;
-            let manifest = if let Ok(manifest) = receiver.get::<Manifest>().await {
+            let manifest = if let Ok(manifest) = receiver.get::<DiagnosticManifest>().await {
+                log::debug!("Using diagnostic_manifest.json");
                 manifest
+            } else if let Ok(manifest) = receiver.get::<Manifest>().await {
+                log::warn!("Falling back to manifest.json");
+                manifest.try_into()?
             } else {
-                // Fallback to building a manifest if one doesn't exist
+                log::warn!("Falling back to version.json");
                 let version = receiver.get::<Cluster>().await?;
-                Manifest::try_from(version)?
+                Manifest::try_from(version)?.try_into()?
             };
             log::trace!("{}", serde_json::to_string(&manifest).unwrap());
             let diagnostic_processor =
-                ElasticsearchDiagnostic::new(manifest, receiver, exporter).await?;
+                Diagnostic::try_new_processor(manifest, receiver, exporter).await?;
             let (diag_id, doc_count) = diagnostic_processor.run().await?;
             log::info!(
                 "Created {} documents for diagnostic: {}",

@@ -1,48 +1,20 @@
-use super::{DataProcessor, ElasticsearchDiagnostic, Receiver};
+use super::{DataProcessor, ElasticsearchMetadata, Lookups};
 use crate::{data::elasticsearch::SearchableSnapshotsStats, processor::Metadata};
 use rayon::prelude::*;
 use serde::Serialize;
 use serde_json::Value;
 use std::sync::Arc;
-
-pub struct SearchableSnapshotsStatsProcessor {
-    diagnostic: Arc<ElasticsearchDiagnostic>,
-    receiver: Arc<Receiver>,
-}
-
-impl SearchableSnapshotsStatsProcessor {
-    fn new(diagnostic: Arc<ElasticsearchDiagnostic>, receiver: Arc<Receiver>) -> Self {
-        SearchableSnapshotsStatsProcessor {
-            diagnostic,
-            receiver,
-        }
-    }
-}
-
-impl From<Arc<ElasticsearchDiagnostic>> for SearchableSnapshotsStatsProcessor {
-    fn from(diagnostic: Arc<ElasticsearchDiagnostic>) -> Self {
-        SearchableSnapshotsStatsProcessor::new(diagnostic.clone(), diagnostic.receiver.clone())
-    }
-}
-
-impl DataProcessor for SearchableSnapshotsStatsProcessor {
-    async fn process(&self) -> (String, Vec<Value>) {
+impl DataProcessor<ElasticsearchMetadata> for SearchableSnapshotsStats {
+    fn generate_docs(
+        self,
+        _lookups: Arc<Lookups>,
+        metadata: Arc<ElasticsearchMetadata>,
+    ) -> (String, Vec<Value>) {
         let data_stream = "metrics-searchable_snapshot-esdiag".to_string();
-        let searchable_snapshots_stats_metadata = self
-            .diagnostic
-            .metadata
-            .for_data_stream(&data_stream)
-            .as_meta_doc();
-        let searchable_snapshots_stats = match self.receiver.get::<SearchableSnapshotsStats>().await
-        {
-            Ok(stats) => stats,
-            Err(e) => {
-                log::warn!("{e}");
-                return (data_stream, Vec::new());
-            }
-        };
+        let searchable_snapshots_stats_metadata =
+            metadata.for_data_stream(&data_stream).as_meta_doc();
 
-        let mut indices: Vec<_> = searchable_snapshots_stats.indices.into_par_iter().collect();
+        let mut indices: Vec<_> = self.indices.into_par_iter().collect();
 
         let searchable_snapshot_stats: Vec<Value> = indices
             .par_drain(..)

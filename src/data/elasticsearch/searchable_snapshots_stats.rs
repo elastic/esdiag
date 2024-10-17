@@ -24,4 +24,7 @@ impl DataSource for SearchableSnapshotsStats {
             _ => Err(eyre!("Unsupported source for searchable snapshots stats")),
         }
     }
+    fn name() -> &'static str {
+        "searchable_snapshots_stats"
+    }
 }

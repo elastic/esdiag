@@ -1,8 +1,5 @@
 use super::Lookup;
-use crate::{
-    data::elasticsearch::{Node, Nodes},
-    processor::lookup::LookupTable,
-};
+use crate::data::elasticsearch::{Node, Nodes};
 use serde::Serialize;
 use serde_json::Value;
 
@@ -41,8 +38,6 @@ impl NodeSummary {
         }
     }
 }
-
-impl LookupTable for Lookup<NodeSummary> {}
 
 impl From<&Node> for NodeSummary {
     fn from(node: &Node) -> Self {

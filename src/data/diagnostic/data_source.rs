@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 
 pub trait DataSource {
     fn source(uri: &Uri) -> Result<&'static str>;
+    fn name() -> &'static str;
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq)]

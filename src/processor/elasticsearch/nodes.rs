@@ -1,4 +1,4 @@
-use super::{DataProcessor, ElasticsearchDiagnostic, Receiver};
+use super::{DataProcessor, ElasticsearchMetadata, Lookups};
 use crate::{
     data::elasticsearch::{Node, Nodes},
     processor::Metadata,
@@ -9,43 +9,17 @@ use serde::Serialize;
 use serde_json::{json, Value};
 use std::sync::Arc;
 
-pub struct NodesProcessor {
-    diagnostic: Arc<ElasticsearchDiagnostic>,
-    receiver: Arc<Receiver>,
-}
-
-impl NodesProcessor {
-    fn new(diagnostic: Arc<ElasticsearchDiagnostic>, receiver: Arc<Receiver>) -> Self {
-        NodesProcessor {
-            diagnostic,
-            receiver,
-        }
-    }
-}
-
-impl From<Arc<ElasticsearchDiagnostic>> for NodesProcessor {
-    fn from(diagnostic: Arc<ElasticsearchDiagnostic>) -> Self {
-        NodesProcessor::new(diagnostic.clone(), diagnostic.receiver.clone())
-    }
-}
-impl DataProcessor for NodesProcessor {
-    async fn process(&self) -> (String, Vec<Value>) {
-        let data_stream = "settings-node-esdiag".to_string();
-        let lookup_node = &self.diagnostic.lookups.node;
-        let metadata = self
-            .diagnostic
-            .metadata
-            .for_data_stream(&data_stream)
-            .as_meta_doc();
-        let mut nodes = match self.receiver.get::<Nodes>().await {
-            Ok(nodes) => nodes.nodes,
-            Err(e) => {
-                log::warn!("Failed to deserialize nodes: {}", e);
-                return (data_stream, Vec::new());
-            }
-        };
-
+impl DataProcessor<ElasticsearchMetadata> for Nodes {
+    fn generate_docs(
+        self,
+        lookups: Arc<Lookups>,
+        metadata: Arc<ElasticsearchMetadata>,
+    ) -> (String, Vec<Value>) {
+        let mut nodes = self.nodes;
         log::debug!("nodes: {}", nodes.len());
+        let data_stream = "settings-node-esdiag".to_string();
+        let lookup_node = &lookups.node;
+        let metadata = metadata.for_data_stream(&data_stream).as_meta_doc();
 
         let node_doc = NodeDoc {
             metadata,

@@ -41,6 +41,10 @@ impl DataSource for Tasks {
             _ => Err(eyre!("Unsupported source for tasks")),
         }
     }
+
+    fn name() -> &'static str {
+        "tasks"
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]

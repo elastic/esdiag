@@ -4,6 +4,8 @@ mod cluster_settings;
 mod index_settings;
 /// Processor for the `_stats` API
 mod index_stats;
+/// Processor for Elasticsearch diagnostics metadata
+mod metadata;
 /// Processor for the `_nodes` API
 mod nodes;
 /// Processor for the `_nodes/stats` API
@@ -13,58 +15,49 @@ mod searchable_snapshots_stats;
 /// Processor for the `_tasks` API
 mod tasks;
 
-use cluster_settings::ClusterSettingsProcessor;
-use index_settings::IndexSettingsProcessor;
-use index_stats::IndexStatsProcessor;
-use nodes::NodesProcessor;
-use nodes_stats::NodesStatsProcessor;
-use searchable_snapshots_stats::SearchableSnapshotsStatsProcessor;
-use tasks::TasksProcessor;
-
 use super::{
-    diagnostic::DiagnosticProcessor,
-    lookup::{elasticsearch::node::NodeSummary, Lookup, LookupTable},
-    DataProcessor, Metadata,
+    lookup::{elasticsearch::node::NodeSummary, Lookup},
+    DataProcessor, DiagnosticProcessor, Metadata,
 };
 use crate::{
     data::{
         self,
-        diagnostic::Manifest,
+        diagnostic::{data_source::DataSource, DiagnosticManifest},
         elasticsearch::{
-            Alias, AliasList, Cluster, ClusterSettings, DataStream, DataStreamName, DataStreams,
-            IlmExplain, IlmStats, IndexSettings, IndicesSettings, Nodes,
-            SearchableSnapshotsCacheStats, SharedCacheStats,
+            Alias, AliasList, Cluster, ClusterSettings, DataStream, DataStreams, IlmExplain,
+            IlmStats, IndexSettings, IndicesSettings, IndicesStats, Nodes, NodesStats,
+            SearchableSnapshotsCacheStats, SearchableSnapshotsStats, SharedCacheStats, Tasks,
         },
     },
     exporter::Exporter,
     receiver::Receiver,
 };
-use chrono::{DateTime, SecondsFormat, TimeZone, Utc};
 use color_eyre::eyre::Result;
-use futures::{
-    future::{join_all, BoxFuture},
-    stream::FuturesUnordered,
-};
-use serde::Serialize;
+use futures::{future::join_all, stream::FuturesUnordered};
+use metadata::ElasticsearchMetadata;
+use serde::{de::DeserializeOwned, Serialize};
 use serde_json::Value;
-use std::{collections::HashMap, sync::Arc};
-use tokio::{sync::RwLock, task};
-use uuid::Uuid;
+use std::{pin::Pin, sync::Arc};
+use tokio::{sync::RwLock, task::JoinHandle};
 
 #[derive(Serialize)]
 pub struct ElasticsearchDiagnostic {
-    lookups: Lookups,
-    metadata: ElasticsearchMetadata,
+    lookups: Arc<Lookups>,
+    metadata: Arc<ElasticsearchMetadata>,
     #[serde(skip)]
     exporter: Arc<Exporter>,
     #[serde(skip)]
     receiver: Arc<Receiver>,
     #[serde(skip)]
-    queue: Arc<RwLock<HashMap<String, Vec<Value>>>>,
+    queue: Arc<RwLock<Vec<(String, Vec<Value>)>>>,
 }
 
 impl DiagnosticProcessor for ElasticsearchDiagnostic {
-    async fn new(manifest: Manifest, receiver: Receiver, exporter: Exporter) -> Result<Box<Self>> {
+    async fn new(
+        manifest: DiagnosticManifest,
+        receiver: Receiver,
+        exporter: Exporter,
+    ) -> Result<Box<Self>> {
         let cluster = receiver.get::<Cluster>().await?;
         let display_name = receiver.get::<ClusterSettings>().await?.get_display_name();
         let metadata =
@@ -81,23 +74,11 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
 
         Ok(Box::new(Self {
             exporter: Arc::new(exporter),
-            lookups,
-            metadata,
-            queue: Arc::new(RwLock::new(HashMap::new())),
+            lookups: Arc::new(lookups),
+            metadata: Arc::new(metadata),
+            queue: Arc::new(RwLock::new(Vec::<(String, Vec<Value>)>::new())),
             receiver: Arc::new(receiver),
         }))
-    }
-
-    fn get_lookup(&self, key: &str) -> Option<Arc<dyn LookupTable>> {
-        match key {
-            "alias" => Some(Arc::new(self.lookups.alias.clone())),
-            "data_stream" => Some(Arc::new(self.lookups.data_stream.clone())),
-            "index_settings" => Some(Arc::new(self.lookups.index_settings.clone())),
-            "node" => Some(Arc::new(self.lookups.node.clone())),
-            "ilm_explain" => Some(Arc::new(self.lookups.ilm_explain.clone())),
-            "shared_cache" => Some(Arc::new(self.lookups.shared_cache.clone())),
-            _ => None,
-        }
     }
 
     async fn process_queue(&self) -> usize {
@@ -106,7 +87,7 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
 
         let mut queue_guard = queue.write().await;
         let mut doc_count: usize = 0;
-        for (index, docs) in queue_guard.drain() {
+        for (index, docs) in queue_guard.drain(..) {
             log::debug!("Processing queue {index}");
             if docs.is_empty() {
                 continue;
@@ -125,46 +106,57 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
             data::save_file("diagnostic.json", &self)?;
         }
 
-        let diagnostic = Arc::new(self);
-
-        // Run some processors and add docs to the queue
-        let mut processors: Vec<BoxFuture<_>> = vec![
-            Box::pin(process::<ClusterSettingsProcessor>(diagnostic.clone())),
-            Box::pin(process::<IndexSettingsProcessor>(diagnostic.clone())),
-            Box::pin(process::<IndexStatsProcessor>(diagnostic.clone())),
-            Box::pin(process::<NodesProcessor>(diagnostic.clone())),
-            Box::pin(process::<NodesStatsProcessor>(diagnostic.clone())),
-            Box::pin(process::<SearchableSnapshotsStatsProcessor>(
-                diagnostic.clone(),
-            )),
-            Box::pin(process::<TasksProcessor>(diagnostic.clone())),
-        ];
+        let diag = Arc::new(self);
 
         let futures = FuturesUnordered::new();
-        for processor in processors.drain(..) {
-            let diagnostic = diagnostic.clone();
-            futures.push(task::spawn(async move {
-                processor.await;
-                diagnostic.process_queue().await
-            }))
-        }
+        let mut tasks = vec![
+            spawn_processor::<ClusterSettings>(diag.clone()),
+            spawn_processor::<IndicesSettings>(diag.clone()),
+            spawn_processor::<IndicesStats>(diag.clone()),
+            spawn_processor::<Nodes>(diag.clone()),
+            spawn_processor::<NodesStats>(diag.clone()),
+            spawn_processor::<SearchableSnapshotsStats>(diag.clone()),
+            spawn_processor::<Tasks>(diag.clone()),
+        ];
+        tasks.drain(..).map(|task| futures.push(task)).count();
+
         let doc_count = join_all(futures)
             .await
             .into_iter()
             .filter_map(Result::ok)
             .sum();
-        let diag_id = diagnostic.metadata.diagnostic.id.clone();
+        let diag_id = diag.metadata.diagnostic.id.clone();
 
         Ok((diag_id, doc_count))
     }
 }
 
-async fn process<T>(diag: Arc<ElasticsearchDiagnostic>)
+type DataProcessorTask = Pin<Box<JoinHandle<usize>>>;
+
+fn spawn_processor<T>(diagnostic: Arc<ElasticsearchDiagnostic>) -> DataProcessorTask
 where
-    T: DataProcessor + From<Arc<ElasticsearchDiagnostic>> + 'static,
+    T: DataSource + DataProcessor<ElasticsearchMetadata> + DeserializeOwned + Send + Sync,
 {
-    let (index_name, docs) = T::from(diag.clone()).process().await;
-    diag.queue.write().await.insert(index_name, docs);
+    let lookups = diagnostic.lookups.clone();
+    let metadata = diagnostic.metadata.clone();
+    Box::pin(tokio::task::spawn(async move {
+        let docs = diagnostic
+            .receiver
+            .get::<T>()
+            .await
+            .ok()
+            .map(|data| data.generate_docs(lookups, metadata));
+        match docs {
+            Some(docs) => {
+                diagnostic.queue.write().await.push(docs);
+                diagnostic.process_queue().await
+            }
+            None => {
+                log::warn!("No {} data found", T::name());
+                0
+            }
+        }
+    }))
 }
 
 #[derive(Serialize)]
@@ -175,119 +167,4 @@ pub struct Lookups {
     pub node: Lookup<NodeSummary>,
     pub ilm_explain: Lookup<IlmStats>,
     pub shared_cache: Lookup<SharedCacheStats>,
-}
-
-#[derive(Clone, Serialize)]
-pub struct ElasticsearchMetadata {
-    pub cluster: Cluster,
-    pub diagnostic: DiagnosticDoc,
-    pub timestamp: i64,
-    pub as_doc: MetadataDoc,
-}
-
-impl ElasticsearchMetadata {
-    pub fn for_data_stream(&self, data_stream: &str) -> MetadataDoc {
-        MetadataDoc {
-            data_stream: DataStreamName::from(data_stream),
-            ..self.as_doc.clone()
-        }
-    }
-}
-
-impl Metadata for ElasticsearchMetadata {
-    fn as_meta_doc(&self) -> Value {
-        serde_json::to_value(&self.as_doc).expect("Failed to serialize metadata")
-    }
-}
-
-impl ElasticsearchMetadata {
-    pub fn try_new(manifest: Manifest, cluster: Cluster) -> Result<Self> {
-        let collection_date = {
-            if let Ok(date) = DateTime::parse_from_rfc3339(&manifest.collection_date) {
-                date.timestamp_millis()
-            } else if let Ok(date) =
-                DateTime::parse_from_str(&manifest.collection_date, "%Y-%m-%dT%H:%M:%S%.3f%z")
-            {
-                date.timestamp_millis()
-            } else {
-                log::warn!(
-                    "Failed to parse collection date: {}",
-                    manifest.collection_date
-                );
-                chrono::Utc::now().timestamp_millis()
-            }
-        };
-
-        let runner = match &manifest.runner {
-            Some(runner) => runner.clone(),
-            None => "Unknown".to_string(),
-        };
-
-        let collection_date_string = Utc
-            .timestamp_millis_opt(collection_date)
-            .map(|dt| dt.to_rfc3339_opts(SecondsFormat::Secs, true))
-            .unwrap();
-
-        // Create a human readable diagnostic ID
-        let name = match &cluster.display_name {
-            Some(name) if &runner == "ess" => {
-                let mut parts = name.split_whitespace().collect::<Vec<&str>>();
-                parts.pop();
-                parts.join("_")
-            }
-            Some(name) => name.replace(" ", "_"),
-            None => cluster.name.replace(" ", "_"),
-        };
-        let uuid = Uuid::new_v4().to_string();
-        let hash = uuid.chars().take(4).collect::<String>();
-        let id = format!("{}@{}#{}", name, collection_date_string, hash);
-
-        let diagnostic = DiagnosticDoc {
-            collection_date: collection_date.clone(),
-            id,
-            node: cluster.name.clone(),
-            runner,
-            uuid,
-            version: manifest.diag_version.clone(),
-        };
-
-        let as_doc = MetadataDoc {
-            timestamp: collection_date.clone(),
-            cluster: cluster.clone(),
-            diagnostic: diagnostic.clone(),
-            data_stream: DataStreamName::from("metrics-default-esdiag"),
-        };
-
-        Ok(Self {
-            as_doc,
-            cluster,
-            diagnostic,
-            timestamp: collection_date.clone(),
-        })
-    }
-}
-
-#[derive(Clone, Serialize)]
-pub struct MetadataDoc {
-    #[serde(rename = "@timestamp")]
-    pub timestamp: i64,
-    pub cluster: Cluster,
-    pub diagnostic: DiagnosticDoc,
-    pub data_stream: DataStreamName,
-}
-
-impl Metadata for MetadataDoc {
-    fn as_meta_doc(&self) -> Value {
-        serde_json::to_value(&self).expect("Failed to serialize metadata")
-    }
-}
-
-#[derive(Clone, Serialize)]
-pub struct DiagnosticDoc {
-    pub collection_date: i64,
-    pub node: String,
-    pub runner: String,
-    pub id: String,
-    pub uuid: String,
-    pub version: Option<String>,
 }

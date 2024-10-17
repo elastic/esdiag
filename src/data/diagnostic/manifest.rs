@@ -1,4 +1,4 @@
-use super::{data_source::DataSource, elasticsearch::ElasticsearchVersion, Product};
+use super::{data_source::DataSource, elasticsearch::ElasticsearchVersion, DiagPath, Product};
 use crate::{data::elasticsearch, data::Uri};
 use color_eyre::eyre::{eyre, Result};
 use regex::Regex;
@@ -20,13 +20,6 @@ pub struct Manifest {
     pub included_diagnostics: Option<Vec<DiagPath>>,
 }
 
-#[derive(Debug, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DiagPath {
-    pub diag_type: String,
-    pub diag_path: String,
-}
-
 impl Manifest {
     /// Updates product based on diag_type
     pub fn with_product(mut self) -> Self {
@@ -39,7 +32,14 @@ impl Manifest {
                 "eck-diagnostics" => Product::ECK,
                 _ => Product::Unknown,
             },
-            None => Product::Unknown,
+            None => match &self.runner {
+                Some(runner) => match runner.as_str() {
+                    "ess" => Product::Elasticsearch,
+                    "eck" => Product::ECK,
+                    _ => Product::Unknown,
+                },
+                None => Product::Unknown,
+            },
         };
         self
     }
@@ -132,5 +132,9 @@ impl DataSource for Manifest {
             Uri::File(_) => Ok("manifest.json"),
             _ => Err(eyre!("Unsupported source for manifest")),
         }
+    }
+
+    fn name() -> &'static str {
+        "manifest"
     }
 }
