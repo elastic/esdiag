@@ -111,7 +111,7 @@ pub struct Filesystem {
 #[derive(Deserialize, Serialize)]
 struct IoStats {
     //devices: Vec<Value>,
-    total: Value,
+    total: Option<Value>,
 }
 
 #[derive(Deserialize, Serialize)]

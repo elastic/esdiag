@@ -79,7 +79,7 @@ impl<'de> Deserialize<'de> for Product {
 
 impl Default for Product {
     fn default() -> Self {
-        Self::Unknown
+        Self::Elasticsearch
     }
 }
 
