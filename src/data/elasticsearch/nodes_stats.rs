@@ -77,6 +77,9 @@ impl Default for LoadPercent {
 pub struct OsStats {
     timestamp: usize,
     cpu: CpuStats,
+    mem: Value,
+    swap: Option<Value>,
+    cgroup: Option<Value>,
 }
 
 #[derive(Deserialize, Serialize)]
