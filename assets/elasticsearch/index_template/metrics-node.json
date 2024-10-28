@@ -208,7 +208,7 @@
               "type": "object",
               "enabled": false
             },
-            "diagnostic.uid": {
+            "diagnostic.uuid": {
               "type": "keyword"
             },
             "script_cache.contexts": {

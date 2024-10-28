@@ -13,6 +13,12 @@
               "type": "ip",
               "ignore_malformed": true
             },
+            "tier": {
+              "type": "keyword"
+            },
+            "role": {
+              "type": "keyword"
+            },
             "roles": {
               "type": "keyword"
             },

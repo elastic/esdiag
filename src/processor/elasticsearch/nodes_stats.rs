@@ -87,7 +87,7 @@ impl DataProcessor<ElasticsearchMetadata> for NodesStats {
                     }
                 });
 
-                let node_summary_patch = json!({"node": lookup_node.by_id(&node_id)});
+                let node_summary_patch = json!({"node": node_summary});
 
                 merge(&mut doc, &node_stats_metadata);
                 merge(&mut doc, &node_summary_patch);
