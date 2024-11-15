@@ -7,24 +7,9 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Serialize, Debug)]
 pub struct LogstashPlugins {
-    host: String,
-    version: String,
-    http_address: String,
-    id: String,
-    name: String,
-    ephemeral_id: String,
-    status: String,
-    snapshot: bool,
-    pipeline: Pipeline,
+    // Omitted duplicate metadata fields from deserialization
     total: u32,
     plugins: Vec<Plugin>,
-}
-
-#[derive(Deserialize, Serialize, Debug)]
-struct Pipeline {
-    workers: u32,
-    batch_size: u32,
-    batch_delay: u32,
 }
 
 #[derive(Deserialize, Serialize, Debug)]

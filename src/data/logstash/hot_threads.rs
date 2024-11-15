@@ -7,34 +7,19 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Serialize)]
 pub struct LogstashHotThreads {
-    host: String,
-    version: String,
-    http_address: String,
-    id: String,
-    name: String,
-    ephemeral_id: String,
-    status: String,
-    snapshot: bool,
-    pipeline: Pipeline,
+    // Omitted duplicate metadata fields from deserialization
     hot_threads: HotThreads,
-}
-
-#[derive(Deserialize, Serialize)]
-struct Pipeline {
-    workers: u32,
-    batch_size: u32,
-    batch_delay: u32,
 }
 
 #[derive(Deserialize, Serialize)]
 struct HotThreads {
     time: String,
     busiest_threads: u32,
-    threads: Vec<ThreadInfo>,
+    threads: Vec<Thread>,
 }
 
 #[derive(Deserialize, Serialize)]
-struct ThreadInfo {
+struct Thread {
     name: String,
     thread_id: u32,
     percent_of_cpu_time: f32,

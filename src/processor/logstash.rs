@@ -1,4 +1,4 @@
-use super::{lookup::Lookup, DiagnosticProcessor};
+use super::DiagnosticProcessor;
 use crate::{
     data::{
         self,
@@ -16,7 +16,6 @@ use std::sync::Arc;
 
 #[derive(Serialize)]
 pub struct LogstashDiagnostic {
-    lookups: Arc<Lookups>,
     #[serde(skip)]
     exporter: Arc<Exporter>,
     #[serde(skip)]
@@ -29,10 +28,7 @@ impl DiagnosticProcessor for LogstashDiagnostic {
         receiver: Receiver,
         exporter: Exporter,
     ) -> Result<Box<Self>> {
-        let lookups = Arc::new(Lookups {});
-
         Ok(Box::new(Self {
-            lookups,
             exporter: Arc::new(exporter),
             receiver: Arc::new(receiver),
         }))
@@ -76,6 +72,3 @@ impl DiagnosticProcessor for LogstashDiagnostic {
         0
     }
 }
-
-#[derive(Serialize)]
-pub struct Lookups {}

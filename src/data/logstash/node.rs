@@ -8,29 +8,14 @@ use std::collections::HashMap;
 
 #[derive(Deserialize, Serialize)]
 pub struct LogstashNode {
-    host: String,
-    version: String,
-    http_address: String,
-    id: String,
-    name: String,
-    ephemeral_id: String,
-    status: String,
-    snapshot: bool,
-    pipeline: Pipeline,
-    pipelines: HashMap<String, PipelineConfig>,
-    os: OS,
-    jvm: JVM,
+    // Omitted duplicate metadata fields from deserialization
+    pipelines: HashMap<String, Pipeline>,
+    os: Os,
+    jvm: Jvm,
 }
 
 #[derive(Deserialize, Serialize)]
 struct Pipeline {
-    workers: u32,
-    batch_size: u32,
-    batch_delay: u32,
-}
-
-#[derive(Deserialize, Serialize)]
-struct PipelineConfig {
     ephemeral_id: String,
     hash: String,
     workers: u32,
@@ -39,10 +24,12 @@ struct PipelineConfig {
     config_reload_automatic: bool,
     config_reload_interval: u64,
     dead_letter_queue_enabled: bool,
+    // Not in source file
+    name: Option<String>,
 }
 
 #[derive(Deserialize, Serialize)]
-struct OS {
+struct Os {
     name: String,
     arch: String,
     version: String,
@@ -50,7 +37,7 @@ struct OS {
 }
 
 #[derive(Deserialize, Serialize)]
-struct JVM {
+struct Jvm {
     pid: u32,
     version: String,
     vm_version: String,

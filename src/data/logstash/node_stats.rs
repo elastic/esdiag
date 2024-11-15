@@ -8,30 +8,15 @@ use std::collections::HashMap;
 
 #[derive(Deserialize, Serialize)]
 pub struct LogstashNodeStats {
-    host: String,
-    version: String,
-    http_address: String,
-    id: String,
-    name: String,
-    ephemeral_id: String,
-    status: String,
-    snapshot: bool,
-    pipeline: PipelineStats,
+    // Omitted duplicate metadata fields from deserialization
     jvm: JvmStats,
     process: ProcessStats,
     events: EventStats,
-    flow: FlowStats,
-    pipelines: HashMap<String, PipelineDetails>,
+    flow: HashMap<String, StatsHistory>,
+    pipelines: HashMap<String, PipelineStats>,
     reloads: ReloadStats,
     os: OsStats,
     queue: QueueStats,
-}
-
-#[derive(Deserialize, Serialize)]
-struct PipelineStats {
-    workers: u32,
-    batch_size: u32,
-    batch_delay: u32,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -119,27 +104,18 @@ struct LoadAverageStats {
 
 #[derive(Deserialize, Serialize)]
 struct EventStats {
-    r#in: usize,
-    filtered: usize,
-    out: usize,
-    duration_in_millis: usize,
-    queue_push_duration_in_millis: usize,
+    r#in: Option<usize>,
+    out: Option<usize>,
+    filtered: Option<usize>,
+    duration_in_millis: Option<usize>,
+    queue_push_duration_in_millis: Option<usize>,
 }
 
 #[derive(Deserialize, Serialize)]
-struct FlowStats {
-    input_throughput: TrailingStats,
-    filter_throughput: TrailingStats,
-    output_throughput: TrailingStats,
-    queue_backpressure: TrailingStats,
-    worker_concurrency: TrailingStats,
-}
-
-#[derive(Deserialize, Serialize)]
-struct PipelineDetails {
-    r#events: PipelineEventsStats,
-    flow: PipelineFlowStats,
-    plugins: PipelinePlugins,
+struct PipelineStats {
+    r#events: EventStats,
+    flow: HashMap<String, StatsHistory>,
+    plugins: Option<Plugins>,
     reloads: PipelineReloadStats,
     queue: PipelineQueueStats,
     hash: String,
@@ -147,55 +123,24 @@ struct PipelineDetails {
 }
 
 #[derive(Deserialize, Serialize)]
-struct PipelineEventsStats {
-    out: usize,
-    duration_in_millis: usize,
-    filtered: usize,
-    r#in: usize,
-    queue_push_duration_in_millis: usize,
+struct Plugins {
+    inputs: Vec<InputPlugin>,
+    codecs: Vec<CodecPlugin>,
+    filters: Vec<FilterPlugin>,
+    outputs: Vec<OutputPlugin>,
 }
 
 #[derive(Deserialize, Serialize)]
-struct PipelineFlowStats {
-    queue_backpressure: TrailingStats,
-    output_throughput: TrailingStats,
-    input_throughput: TrailingStats,
-    queue_persisted_growth_bytes: Option<TrailingStats>,
-    filter_throughput: TrailingStats,
-    worker_concurrency: TrailingStats,
-    queue_persisted_growth_events: Option<TrailingStats>,
-}
-
-#[derive(Deserialize, Serialize)]
-struct PipelinePlugins {
-    inputs: Vec<PluginDetails>,
-    codecs: Vec<CodecDetails>,
-    filters: Vec<FilterDetails>,
-    outputs: Vec<OutputDetails>,
-}
-
-#[derive(Deserialize, Serialize)]
-struct PluginDetails {
+struct InputPlugin {
     id: String,
-    flow: PluginFlowStats,
+    flow: HashMap<String, StatsHistory>,
     name: String,
-    events: PluginEventsStats,
+    events: EventStats,
     address: Option<String>,
 }
 
 #[derive(Deserialize, Serialize)]
-struct PluginFlowStats {
-    throughput: TrailingStats,
-}
-
-#[derive(Deserialize, Serialize)]
-struct PluginEventsStats {
-    out: usize,
-    queue_push_duration_in_millis: usize,
-}
-
-#[derive(Deserialize, Serialize)]
-struct CodecDetails {
+struct CodecPlugin {
     id: String,
     encode: CodecStats,
     name: String,
@@ -209,21 +154,15 @@ struct CodecStats {
 }
 
 #[derive(Deserialize, Serialize)]
-struct FilterDetails {
+struct FilterPlugin {
     id: String,
-    flow: FilterFlowStats,
+    flow: HashMap<String, StatsHistory>,
     name: String,
-    r#events: FilterEventsStats,
+    r#events: EventStats,
 }
 
 #[derive(Deserialize, Serialize)]
-struct FilterFlowStats {
-    worker_millis_per_event: TrailingStats,
-    worker_utilization: TrailingStats,
-}
-
-#[derive(Deserialize, Serialize)]
-struct TrailingStats {
+struct StatsHistory {
     current: OptionF64,
     last_1_minute: OptionF64,
     last_5_minutes: OptionF64,
@@ -233,33 +172,13 @@ struct TrailingStats {
 }
 
 #[derive(Deserialize, Serialize)]
-struct FilterEventsStats {
-    out: usize,
-    duration_in_millis: usize,
-    r#in: usize,
-}
-
-#[derive(Deserialize, Serialize)]
-struct OutputDetails {
+struct OutputPlugin {
     id: String,
-    flow: OutputFlowStats,
+    flow: HashMap<String, StatsHistory>,
     name: String,
-    r#events: OutputEventsStats,
+    r#events: EventStats,
     documents: Option<OutputDocumentsStats>,
     bulk_requests: Option<OutputBulkRequestsStats>,
-}
-
-#[derive(Deserialize, Serialize)]
-struct OutputFlowStats {
-    worker_millis_per_event: TrailingStats,
-    worker_utilization: TrailingStats,
-}
-
-#[derive(Deserialize, Serialize)]
-struct OutputEventsStats {
-    out: usize,
-    duration_in_millis: usize,
-    r#in: usize,
 }
 
 #[derive(Deserialize, Serialize)]

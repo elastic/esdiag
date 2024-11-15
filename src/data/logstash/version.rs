@@ -6,13 +6,6 @@ use color_eyre::eyre::{eyre, Result};
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Serialize)]
-struct Pipeline {
-    workers: u32,
-    batch_size: u32,
-    batch_delay: u32,
-}
-
-#[derive(Deserialize, Serialize)]
 pub struct LogstashVersion {
     host: String,
     version: String,
@@ -26,6 +19,13 @@ pub struct LogstashVersion {
     build_date: String,
     build_sha: String,
     build_snapshot: bool,
+}
+
+#[derive(Deserialize, Serialize)]
+struct Pipeline {
+    workers: u32,
+    batch_size: u32,
+    batch_delay: u32,
 }
 
 impl DataSource for LogstashVersion {
