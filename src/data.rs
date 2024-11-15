@@ -2,6 +2,8 @@
 pub mod diagnostic;
 /// Elasticsearch data types and structures
 pub mod elasticsearch;
+/// Logstash data types and structures
+pub mod logstash;
 /// Classify an input string as a type of univeral resource identifier (URI)
 pub mod uri;
 
