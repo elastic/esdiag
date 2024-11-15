@@ -1,4 +1,7 @@
-use super::DiagnosticProcessor;
+/// Logstash diagnostic metadata
+mod metadata;
+
+use super::{DiagnosticProcessor, Metadata};
 use crate::{
     data::{
         self,
@@ -11,11 +14,13 @@ use crate::{
     receiver::Receiver,
 };
 use color_eyre::eyre::Result;
+use metadata::LogstashMetadata;
 use serde::Serialize;
 use std::sync::Arc;
 
 #[derive(Serialize)]
 pub struct LogstashDiagnostic {
+    metadata: Arc<LogstashMetadata>,
     #[serde(skip)]
     exporter: Arc<Exporter>,
     #[serde(skip)]
@@ -28,7 +33,11 @@ impl DiagnosticProcessor for LogstashDiagnostic {
         receiver: Receiver,
         exporter: Exporter,
     ) -> Result<Box<Self>> {
+        let logstash_version = receiver.get::<LogstashVersion>().await?;
+        let metadata = LogstashMetadata::try_new(manifest, logstash_version)?;
+
         Ok(Box::new(Self {
+            metadata: Arc::new(metadata),
             exporter: Arc::new(exporter),
             receiver: Arc::new(receiver),
         }))
@@ -40,11 +49,6 @@ impl DiagnosticProcessor for LogstashDiagnostic {
             data::save_file("diagnostic.json", &self)?;
         }
 
-        let output = self.receiver.get::<LogstashVersion>().await?;
-        log::debug!(
-            "Logstash version: {}",
-            serde_json::to_string(&output).unwrap()
-        );
         let output = self.receiver.get::<LogstashNode>().await?;
         log::debug!(
             "Logstash version: {}",

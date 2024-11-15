@@ -1,6 +1,6 @@
 use super::{DataProcessor, ElasticsearchMetadata, Lookups};
 use crate::{
-    data::elasticsearch::{ClusterSettings, DataStreamName},
+    data::{diagnostic::DataStreamName, elasticsearch::ClusterSettings},
     processor::Metadata,
 };
 use json_patch::merge;

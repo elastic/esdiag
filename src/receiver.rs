@@ -10,7 +10,7 @@ use directory::DirectoryReceiver;
 use elasticsearch::ElasticsearchReceiver;
 
 use crate::data::{
-    diagnostic::{data_source::DataSource, DiagnosticManifest, Manifest},
+    diagnostic::{DataSource, DiagnosticManifest, Manifest},
     elasticsearch::Cluster,
     Uri,
 };

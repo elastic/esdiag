@@ -1,5 +1,5 @@
 use crate::data::{
-    diagnostic::{data_source::DataSource, logstash::DataSet},
+    diagnostic::{logstash::DataSet, DataSource},
     Uri,
 };
 use color_eyre::eyre::{eyre, Result};

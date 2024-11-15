@@ -1,6 +1,4 @@
-use super::{
-    data_source::DataSource, elasticsearch::ElasticsearchVersion, DataSet, DiagPath, Product,
-};
+use super::{elasticsearch::ElasticsearchVersion, DataSet, DataSource, DiagPath, Product};
 use crate::{data::elasticsearch, data::Uri};
 use color_eyre::eyre::{eyre, Result};
 use regex::Regex;

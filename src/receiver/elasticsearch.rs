@@ -1,6 +1,6 @@
 use super::Receive;
 use crate::client::Host;
-use crate::data::{diagnostic::data_source::DataSource, Uri};
+use crate::data::{diagnostic::DataSource, Uri};
 use color_eyre::eyre::{eyre, Result};
 use elasticsearch::{http, Elasticsearch};
 use serde::de::DeserializeOwned;

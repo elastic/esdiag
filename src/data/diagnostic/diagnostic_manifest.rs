@@ -1,4 +1,4 @@
-use super::{data_source::DataSource, DiagPath, Manifest, Product};
+use super::{DataSource, DiagPath, Manifest, Product};
 use crate::data::{diagnostic::DataSet, Uri};
 use color_eyre::eyre::{eyre, Result};
 use serde::{Deserialize, Serialize};
@@ -16,6 +16,17 @@ pub struct DiagnosticManifest {
     pub collection_date: String,
     /// ECK diagnostic bunldes can contain multiple stack diagnostics
     pub included_diagnostics: Option<Vec<DiagPath>>,
+    /// Name for human-readable IDs
+    pub name: Option<String>,
+}
+
+impl DiagnosticManifest {
+    pub fn with_name(self, name: String) -> Self {
+        Self {
+            name: Some(name),
+            ..self
+        }
+    }
 }
 
 impl DataSource for DiagnosticManifest {
@@ -50,6 +61,7 @@ impl From<Manifest> for DiagnosticManifest {
                 .map(|v| v.original_value.map(|v| v.to_string()).unwrap_or_default()),
             collection_date: manifest.collection_date,
             included_diagnostics: manifest.included_diagnostics,
+            name: None,
         }
     }
 }

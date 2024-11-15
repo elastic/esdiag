@@ -1,17 +1,17 @@
 use crate::data::{
-    diagnostic::{data_source::DataSource, logstash::DataSet},
+    diagnostic::{logstash::DataSet, DataSource},
     Uri,
 };
 use color_eyre::eyre::{eyre, Result};
 use serde::{Deserialize, Serialize};
 
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct LogstashVersion {
     host: String,
     version: String,
     http_address: String,
     id: String,
-    name: String,
+    pub name: String,
     ephemeral_id: String,
     status: String,
     snapshot: bool,
@@ -21,7 +21,7 @@ pub struct LogstashVersion {
     build_snapshot: bool,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 struct Pipeline {
     workers: u32,
     batch_size: u32,

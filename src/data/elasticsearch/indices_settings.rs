@@ -1,6 +1,6 @@
 use super::DataStream;
 use crate::data::{
-    diagnostic::{data_source::DataSource, elasticsearch::DataSet},
+    diagnostic::{elasticsearch::DataSet, DataSource},
     Uri,
 };
 use color_eyre::eyre::{eyre, Result};

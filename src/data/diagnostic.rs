@@ -2,8 +2,12 @@
 pub mod data_set;
 /// Trait for receiving data from a source
 pub mod data_source;
+/// Data stream naming
+pub mod data_stream_name;
 /// Modern diagnostic bundle manifest file
 pub mod diagnostic_manifest;
+/// Diagnostic metada doc
+pub mod doc;
 /// Elastic Cloud Kubernetes diagnostic bundle
 pub mod eck;
 /// Elasticsearch diagnostic bundle
@@ -16,7 +20,10 @@ pub mod logstash;
 pub mod manifest;
 
 pub use data_set::DataSet;
+pub use data_source::DataSource;
+pub use data_stream_name::DataStreamName;
 pub use diagnostic_manifest::DiagnosticManifest;
+pub use doc::DiagnosticDoc;
 pub use manifest::Manifest;
 use serde::{Deserialize, Deserializer, Serialize};
 use std::str::FromStr;

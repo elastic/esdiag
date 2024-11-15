@@ -21,7 +21,7 @@ use super::{lookup::Lookup, DataProcessor, DiagnosticProcessor, Metadata};
 use crate::{
     data::{
         self,
-        diagnostic::{data_source::DataSource, elasticsearch::DataSet, DiagnosticManifest},
+        diagnostic::{elasticsearch::DataSet, DataSource, DiagnosticManifest},
         elasticsearch::{
             Alias, AliasList, Cluster, ClusterSettings, DataStream, DataStreams, IlmExplain,
             IlmStats, IndexSettings, IndicesSettings, IndicesStats, Nodes, NodesStats,
