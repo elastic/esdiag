@@ -1,0 +1,52 @@
+{
+  "template": {
+    "mappings": {
+      "dynamic_date_formats": [
+        "strict_date_optional_time",
+        "yyyy/MM/dd HH:mm:ss Z||yyyy/MM/dd Z"
+      ],
+      "properties": {
+        "diagnostic": {
+          "type": "object",
+          "properties": {
+            "node": {
+              "ignore_above": 1024,
+              "type": "keyword"
+            },
+            "inputs": {
+              "type": "match_only_text"
+            },
+            "runner": {
+              "ignore_above": 1024,
+              "type": "keyword"
+            },
+            "collection_date": {
+              "format": "strict_date_optional_time||epoch_millis",
+              "index": true,
+              "ignore_malformed": false,
+              "store": false,
+              "type": "date",
+              "doc_values": true
+            },
+            "uuid": {
+              "ignore_above": 1024,
+              "type": "keyword"
+            }
+          }
+        },
+        "event": {
+          "type": "object",
+          "properties": {
+            "ingested": {
+              "type": "date"
+            }
+          }
+        }
+      }
+    }
+  },
+  "_meta": {
+    "managed": false,
+    "description": "Common mappings for the esdiag metadata"
+  }
+}

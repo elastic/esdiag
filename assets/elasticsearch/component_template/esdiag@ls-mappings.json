@@ -1,0 +1,77 @@
+{
+  "version": 1,
+  "template": {
+    "mappings": {
+      "_routing": {
+        "required": false
+      },
+      "date_detection": false,
+      "numeric_detection": false,
+      "dynamic_date_formats": [
+        "strict_date_optional_time",
+        "yyyy/MM/dd HH:mm:ss Z||yyyy/MM/dd Z"
+      ],
+      "_source": {
+        "excludes": [],
+        "includes": [],
+        "mode": "synthetic"
+      },
+      "dynamic": true,
+      "dynamic_templates": [
+        {
+          "strings_as_keywords": {
+            "mapping": {
+              "type": "keyword"
+            },
+            "match_mapping_type": "string"
+          }
+        },
+        {
+          "long_metrics": {
+            "mapping": {
+              "index": false,
+              "type": "long"
+            },
+            "match_mapping_type": "long"
+          }
+        },
+        {
+          "float_metrics": {
+            "mapping": {
+              "index": false,
+              "type": "float"
+            },
+            "match_mapping_type": "double"
+          }
+        },
+        {
+          "double_metrics": {
+            "mapping": {
+              "index": false,
+              "type": "double"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "data_stream": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "constant_keyword",
+              "value": "metrics"
+            },
+            "namespace": {
+              "type": "constant_keyword",
+              "value": "esdiag"
+            }
+          }
+        }
+      }
+    }
+  },
+  "_meta": {
+    "managed": false,
+    "description": "Default metadat mapping for esdiag Logstash templates"
+  }
+}
