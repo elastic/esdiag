@@ -6,7 +6,7 @@ use color_eyre::eyre::{eyre, Result};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Deserialize, Serialize)]
-pub struct LogstashVersion {
+pub struct Version {
     host: String,
     version: String,
     http_address: String,
@@ -31,7 +31,7 @@ struct Pipeline {
     batch_delay: u32,
 }
 
-impl DataSource for LogstashVersion {
+impl DataSource for Version {
     fn source(uri: &Uri) -> Result<&'static str> {
         match uri {
             Uri::Directory(_) | Uri::File(_) => Ok("logstash_version.json"),

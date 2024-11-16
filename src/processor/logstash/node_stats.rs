@@ -1,13 +1,13 @@
 use super::{DataProcessor, LogstashMetadata, Lookups};
 use crate::{
-    data::logstash::{LogstashNodeStats, PipelinePlugins, PipelineStats},
+    data::logstash::{NodeStats, PipelinePlugins, PipelineStats},
     processor::Metadata,
 };
 use serde::Serialize;
 use serde_json::{json, Value};
 use std::{collections::HashMap, sync::Arc};
 
-impl DataProcessor<Lookups, LogstashMetadata> for LogstashNodeStats {
+impl DataProcessor<Lookups, LogstashMetadata> for NodeStats {
     fn generate_docs(
         mut self,
         _: Arc<Lookups>,
@@ -36,7 +36,7 @@ struct NodeStatsDoc {
 }
 
 impl NodeStatsDoc {
-    fn new(node: LogstashNodeStats, metadata: Value) -> Self {
+    fn new(node: NodeStats, metadata: Value) -> Self {
         let mut node_with_metadata = json!(metadata.get("node").take());
         json_patch::merge(&mut node_with_metadata, &json!(node));
 

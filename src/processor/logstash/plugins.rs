@@ -1,13 +1,13 @@
 use super::{DataProcessor, LogstashMetadata, Lookups};
 use crate::{
-    data::logstash::{LogstashPlugins, Plugin},
+    data::logstash::{Plugin, Plugins},
     processor::Metadata,
 };
 use serde::Serialize;
 use serde_json::{json, Value};
 use std::sync::Arc;
 
-impl DataProcessor<Lookups, LogstashMetadata> for LogstashPlugins {
+impl DataProcessor<Lookups, LogstashMetadata> for Plugins {
     fn generate_docs(
         self,
         _: Arc<Lookups>,

@@ -10,7 +10,7 @@ mod lookup;
 use std::sync::Arc;
 
 use elastic_cloud_kubernetes::ElasticCloudKubernetesDiagnostic;
-use elasticsearch::{ElasticsearchDiagnostic, Lookups};
+use elasticsearch::ElasticsearchDiagnostic;
 use logstash::LogstashDiagnostic;
 
 use crate::{

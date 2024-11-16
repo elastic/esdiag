@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 #[derive(Deserialize, Serialize)]
-pub struct LogstashNodeStats {
+pub struct NodeStats {
     // Omitted duplicate metadata fields from deserialization
     jvm: JvmStats,
     process: ProcessStats,
@@ -20,7 +20,7 @@ pub struct LogstashNodeStats {
     queue: QueueStats,
 }
 
-impl LogstashNodeStats {
+impl NodeStats {
     pub fn take_pipelines(&mut self) -> Option<HashMap<String, PipelineStats>> {
         self.pipelines.take()
     }
@@ -286,7 +286,7 @@ struct QueueStats {
     events_count: usize,
 }
 
-impl DataSource for LogstashNodeStats {
+impl DataSource for NodeStats {
     fn source(uri: &Uri) -> Result<&'static str> {
         match uri {
             Uri::Directory(_) | Uri::File(_) => Ok("logstash_node_stats.json"),

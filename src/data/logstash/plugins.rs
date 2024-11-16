@@ -6,7 +6,7 @@ use color_eyre::eyre::{eyre, Result};
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Serialize)]
-pub struct LogstashPlugins {
+pub struct Plugins {
     // Omitted duplicate metadata fields from deserialization
     pub total: u32,
     pub plugins: Vec<Plugin>,
@@ -18,7 +18,7 @@ pub struct Plugin {
     version: String,
 }
 
-impl DataSource for LogstashPlugins {
+impl DataSource for Plugins {
     fn source(uri: &Uri) -> Result<&'static str> {
         match uri {
             Uri::Directory(_) | Uri::File(_) => Ok("logstash_plugins.json"),

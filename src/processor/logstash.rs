@@ -11,17 +11,15 @@ use super::{DataProcessor, DiagnosticProcessor, Metadata};
 use crate::{
     data::{
         self,
-        diagnostic::DiagnosticManifest,
-        logstash::{
-            LogstashHotThreads, LogstashNode, LogstashNodeStats, LogstashPlugins, LogstashVersion,
-        },
+        diagnostic::{DataSource, DiagnosticManifest},
+        logstash::{Node, NodeStats, Plugins, Version},
     },
     exporter::Exporter,
     receiver::Receiver,
 };
 use color_eyre::eyre::Result;
 use metadata::LogstashMetadata;
-use serde::Serialize;
+use serde::{de::DeserializeOwned, Serialize};
 use std::sync::Arc;
 
 #[derive(Serialize)]
@@ -34,15 +32,32 @@ pub struct LogstashDiagnostic {
     receiver: Arc<Receiver>,
 }
 
+impl LogstashDiagnostic {
+    async fn process<T>(&self) -> Result<usize>
+    where
+        T: DataSource + DataProcessor<Lookups, LogstashMetadata> + DeserializeOwned + Send + Sync,
+    {
+        match self
+            .receiver
+            .get::<T>()
+            .await
+            .map(|data| data.generate_docs(self.lookups.clone(), self.metadata.clone()))
+        {
+            Ok((index, docs)) => self.exporter.write(index, docs).await,
+            Err(e) => Err(e.into()),
+        }
+    }
+}
+
 impl DiagnosticProcessor for LogstashDiagnostic {
     async fn new(
         manifest: DiagnosticManifest,
         receiver: Receiver,
         exporter: Exporter,
     ) -> Result<Box<Self>> {
-        let logstash_version = receiver.get::<LogstashVersion>().await?;
+        let logstash_version = receiver.get::<Version>().await?;
         let metadata = LogstashMetadata::try_new(manifest, logstash_version)?;
-        let plugins = receiver.get::<LogstashPlugins>().await?;
+        let plugins = receiver.get::<Plugins>().await?;
 
         Ok(Box::new(Self {
             lookups: Arc::new(Lookups {
@@ -59,43 +74,11 @@ impl DiagnosticProcessor for LogstashDiagnostic {
         if log::max_level() >= log::Level::Debug {
             data::save_file("diagnostic.json", &self)?;
         }
+
         let mut doc_count = 0;
-
-        if let Ok((index, docs)) = self
-            .receiver
-            .get::<LogstashNode>()
-            .await
-            .map(|data| data.generate_docs(self.lookups.clone(), self.metadata.clone()))
-        {
-            match self.exporter.write(index, docs).await {
-                Ok(count) => doc_count += count,
-                Err(e) => log::error!("Elasticsearch exporter: {e}"),
-            }
-        };
-
-        if let Ok((index, docs)) = self
-            .receiver
-            .get::<LogstashPlugins>()
-            .await
-            .map(|data| data.generate_docs(self.lookups.clone(), self.metadata.clone()))
-        {
-            match self.exporter.write(index, docs).await {
-                Ok(count) => doc_count += count,
-                Err(e) => log::error!("Elasticsearch exporter: {e}"),
-            }
-        };
-
-        if let Ok((index, docs)) = self
-            .receiver
-            .get::<LogstashNodeStats>()
-            .await
-            .map(|data| data.generate_docs(self.lookups.clone(), self.metadata.clone()))
-        {
-            match self.exporter.write(index, docs).await {
-                Ok(count) => doc_count += count,
-                Err(e) => log::error!("Elasticsearch exporter: {e}"),
-            }
-        };
+        doc_count += self.process::<Node>().await?;
+        doc_count += self.process::<NodeStats>().await?;
+        doc_count += self.process::<Plugins>().await?;
 
         Ok((String::from("Logstash"), doc_count))
     }

@@ -6,7 +6,7 @@ use color_eyre::eyre::{eyre, Result};
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Serialize)]
-pub struct LogstashHotThreads {
+pub struct NodeHotThreads {
     // Omitted duplicate metadata fields from deserialization
     hot_threads: HotThreads,
 }
@@ -27,7 +27,7 @@ struct Thread {
     traces: Vec<String>,
 }
 
-impl DataSource for LogstashHotThreads {
+impl DataSource for NodeHotThreads {
     fn source(uri: &Uri) -> Result<&'static str> {
         match uri {
             Uri::Directory(_) | Uri::File(_) => Ok("logstash_nodes_hot_threads.json"),
