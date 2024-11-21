@@ -29,7 +29,7 @@ pub struct DataStream {
     pub rollover_on_write: Option<bool>,
     pub status: String,
     pub system: Option<bool>,
-    pub template: String,
+    pub template: Option<String>,
     pub timestamp_field: TimestampField,
 }
 

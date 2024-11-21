@@ -29,7 +29,7 @@ pub struct IndexSettings {
     #[serde(deserialize_with = "number_from_string")]
     pub number_of_shards: Option<i64>,
     pub priority: Option<String>,
-    pub provided_name: String,
+    pub provided_name: Option<String>,
     pub query: Option<Value>,
     #[serde(default = "default_refresh_interval")]
     pub refresh_interval: String,
