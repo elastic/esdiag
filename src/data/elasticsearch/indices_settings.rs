@@ -15,7 +15,7 @@ pub struct IndexSettings {
     pub allocation: Option<Value>,
     pub auto_expand_replicas: Option<String>,
     pub blocks: Option<Value>,
-    #[serde(default = "default_codec")]
+    #[serde(default = "default_codec", deserialize_with = "deserialize_codec")]
     pub codec: String,
     #[serde(deserialize_with = "number_from_string")]
     pub creation_date: Option<i64>,
@@ -61,14 +61,6 @@ impl IndexSettings {
     }
 }
 
-fn default_codec() -> String {
-    String::from("best_speed")
-}
-
-fn default_refresh_interval() -> String {
-    String::from("default")
-}
-
 #[derive(Deserialize)]
 pub struct Settings {
     settings: Index,
@@ -84,6 +76,29 @@ impl Settings {
 #[derive(Deserialize)]
 struct Index {
     index: IndexSettings,
+}
+
+fn default_codec() -> String {
+    String::from("best_speed")
+}
+
+fn default_refresh_interval() -> String {
+    String::from("default")
+}
+
+/// Returns the codec string if present, or "best_speed" if missing or null.
+fn deserialize_codec<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value: Option<Value> = Deserialize::deserialize(deserializer)?;
+
+    match value {
+        Some(Value::String(s)) => Ok(s),
+        Some(Value::Null) => Ok(default_codec()),
+        Some(_) => Err(serde::de::Error::custom("codec expects a string or null")),
+        None => Ok(default_codec()),
+    }
 }
 
 /// The standard deserializer from serde_json does not deserializing numbers from

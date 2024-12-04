@@ -520,12 +520,12 @@ checksum = "60b1af1c220855b6ceac025d3f6ecdd2b7c4894bfe9cd9bda4fbb4bc7c0d4cf0"
 [[package]]
 name = "elasticsearch"
 version = "8.15.0-alpha.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d99147dd351d320432ec103a20804cbb593d3d08fd2eed0ee86f21a0f5137a3c"
+source = "git+https://github.com/VimCommando/elasticsearch-rs.git?branch=gzip-body#dbc2ccc26d778aad1eec8c66c6c9cf67ccdab0ee"
 dependencies = [
  "base64",
  "bytes",
  "dyn-clone",
+ "flate2",
  "lazy_static",
  "percent-encoding",
  "reqwest",

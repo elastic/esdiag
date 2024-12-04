@@ -78,6 +78,7 @@ impl ElasticsearchBuilder {
         let transport = TransportBuilder::new(self.connection_pool)
             .headers(self.headers)
             .cert_validation(self.cert_validation)
+            .request_body_compression(true)
             .build()?;
         Ok(elasticsearch::Elasticsearch::new(transport))
     }

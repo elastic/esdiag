@@ -83,6 +83,7 @@ enum Commands {
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 8)]
 async fn main() -> Result<()> {
+    let start_time = std::time::Instant::now();
     let env = env_logger::Env::default().filter_or("LOG_LEVEL", LOG_LEVEL);
     env_logger::Builder::from_env(env)
         .format_timestamp_millis()
@@ -99,7 +100,10 @@ async fn main() -> Result<()> {
 
     match run().await {
         Ok(cmd) => {
-            log::info!("{cmd} complete");
+            log::info!(
+                "{cmd} complete in {:.3} seconds",
+                start_time.elapsed().as_secs_f32()
+            );
             Ok(())
         }
         Err(e) => {
