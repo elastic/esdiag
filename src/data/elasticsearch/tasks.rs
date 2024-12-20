@@ -37,7 +37,7 @@ impl DataSource for Tasks {
     fn source(path: PathType) -> Result<&'static str> {
         match path {
             PathType::File => Ok("tasks.json"),
-            PathType::Url => Ok("_tasks"),
+            PathType::Url => Ok("_tasks?detailed=true"),
         }
     }
 
