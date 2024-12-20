@@ -1,10 +1,14 @@
-use crate::data::Uri;
 use color_eyre::eyre::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
+pub enum PathType {
+    Url,
+    File,
+}
+
 pub trait DataSource {
-    fn source(uri: &Uri) -> Result<&'static str>;
+    fn source(path: PathType) -> Result<&'static str>;
     fn name() -> String;
 }
 

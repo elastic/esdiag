@@ -104,10 +104,10 @@ impl TryFrom<Uri> for Receiver {
     type Error = color_eyre::Report;
     fn try_from(uri: Uri) -> std::result::Result<Self, Self::Error> {
         match uri {
-            Uri::Directory(_) => Ok(Receiver::Directory(DirectoryReceiver::try_from(uri)?)),
-            Uri::File(_) => Ok(Receiver::Archive(ArchiveReceiver::try_from(uri)?)),
-            Uri::Host(_) => Ok(Receiver::Elasticsearch(ElasticsearchReceiver::try_from(
-                uri,
+            Uri::Directory(dir) => Ok(Receiver::Directory(DirectoryReceiver::try_from(dir)?)),
+            Uri::File(file) => Ok(Receiver::Archive(ArchiveReceiver::try_from(file)?)),
+            Uri::Host(host) => Ok(Receiver::Elasticsearch(ElasticsearchReceiver::try_from(
+                host,
             )?)),
             _ => Err(eyre!("Unsupported URI")),
         }

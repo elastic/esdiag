@@ -1,8 +1,5 @@
-use crate::data::{
-    diagnostic::{logstash::DataSet, DataSource},
-    Uri,
-};
-use color_eyre::eyre::{eyre, Result};
+use crate::data::diagnostic::{data_source::PathType, logstash::DataSet, DataSource};
+use color_eyre::eyre::Result;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -32,11 +29,10 @@ struct Pipeline {
 }
 
 impl DataSource for Version {
-    fn source(uri: &Uri) -> Result<&'static str> {
-        match uri {
-            Uri::Directory(_) | Uri::File(_) => Ok("logstash_version.json"),
-            Uri::Host(_) | Uri::Url(_) => Ok("/"),
-            _ => Err(eyre!("Unsupported source for Logstash version")),
+    fn source(path: PathType) -> Result<&'static str> {
+        match path {
+            PathType::File => Ok("logstash_version.json"),
+            PathType::Url => Ok("/"),
         }
     }
 

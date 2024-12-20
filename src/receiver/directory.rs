@@ -1,5 +1,5 @@
 use super::Receive;
-use crate::data::{diagnostic::DataSource, Uri};
+use crate::data::diagnostic::{data_source::PathType, DataSource};
 use color_eyre::eyre::{eyre, Result};
 use serde::de::DeserializeOwned;
 use std::{fs::File, io::BufReader, path::PathBuf};
@@ -7,33 +7,28 @@ use std::{fs::File, io::BufReader, path::PathBuf};
 #[derive(Clone)]
 pub struct DirectoryReceiver {
     path: PathBuf,
-    uri: Uri,
     work_dir: String,
 }
 
-impl TryFrom<Uri> for DirectoryReceiver {
+impl TryFrom<PathBuf> for DirectoryReceiver {
     type Error = color_eyre::eyre::Report;
 
-    fn try_from(uri: Uri) -> Result<Self> {
-        match uri {
-            Uri::Directory(ref path) => match path.is_dir() {
-                true => {
-                    log::debug!("Directory is valid: {}", path.display());
-                    Ok(Self {
-                        path: path.clone(),
-                        uri,
-                        work_dir: String::from(""),
-                    })
-                }
-                false => {
-                    log::debug!("Directory is invalid: {}", path.display());
-                    Err(eyre!(
-                        "Directory input must be a directory: {}",
-                        path.display()
-                    ))
-                }
-            },
-            _ => Err(eyre!("URI is not a directory")),
+    fn try_from(path: PathBuf) -> Result<Self> {
+        match path.is_dir() {
+            true => {
+                log::debug!("Directory is valid: {}", path.display());
+                Ok(Self {
+                    path: path.clone(),
+                    work_dir: String::from(""),
+                })
+            }
+            false => {
+                log::debug!("Directory is invalid: {}", path.display());
+                Err(eyre!(
+                    "Directory input must be a directory: {}",
+                    path.display()
+                ))
+            }
         }
     }
 }
@@ -50,7 +45,10 @@ impl Receive for DirectoryReceiver {
     where
         T: DeserializeOwned + DataSource,
     {
-        let filename = &self.path.join(&self.work_dir).join(T::source(&self.uri)?);
+        let filename = &self
+            .path
+            .join(&self.work_dir)
+            .join(T::source(PathType::File)?);
         log::debug!("Reading file: {}", &filename.display());
         let file = File::open(&filename)?;
         let reader = BufReader::new(file);

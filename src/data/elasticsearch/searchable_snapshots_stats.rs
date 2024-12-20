@@ -1,8 +1,5 @@
-use crate::data::{
-    diagnostic::{elasticsearch::DataSet, DataSource},
-    Uri,
-};
-use color_eyre::eyre::{eyre, Result};
+use crate::data::diagnostic::{data_source::PathType, elasticsearch::DataSet, DataSource};
+use color_eyre::eyre::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -20,11 +17,10 @@ pub struct Total {
 }
 
 impl DataSource for SearchableSnapshotsStats {
-    fn source(uri: &Uri) -> Result<&'static str> {
-        match uri {
-            Uri::Directory(_) | Uri::File(_) => Ok("commercial/searchable_snapshots_stats.json"),
-            Uri::Host(_) | Uri::Url(_) => Ok("_searchable_snapshots/stats"),
-            _ => Err(eyre!("Unsupported source for searchable snapshots stats")),
+    fn source(path: PathType) -> Result<&'static str> {
+        match path {
+            PathType::File => Ok("commercial/searchable_snapshots_stats.json"),
+            PathType::Url => Ok("_searchable_snapshots/stats"),
         }
     }
 

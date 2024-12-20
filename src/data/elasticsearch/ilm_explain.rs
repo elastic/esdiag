@@ -1,8 +1,5 @@
-use crate::data::{
-    diagnostic::{elasticsearch::DataSet, DataSource},
-    Uri,
-};
-use color_eyre::eyre::{eyre, Result};
+use crate::data::diagnostic::{data_source::PathType, elasticsearch::DataSet, DataSource};
+use color_eyre::eyre::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -55,11 +52,10 @@ struct SearchableSnapshot {
 }
 
 impl DataSource for IlmExplain {
-    fn source(uri: &Uri) -> Result<&'static str> {
-        match uri {
-            Uri::Directory(_) | Uri::File(_) => Ok("commercial/ilm_explain.json"),
-            Uri::Host(_) | Uri::Url(_) => Ok("_ilm/explain"),
-            _ => Err(eyre!("Unsuppored source for ILM explain")),
+    fn source(path: PathType) -> Result<&'static str> {
+        match path {
+            PathType::File => Ok("commercial/ilm_explain.json"),
+            PathType::Url => Ok("_ilm/explain"),
         }
     }
 

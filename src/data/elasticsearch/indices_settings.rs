@@ -1,9 +1,6 @@
 use super::DataStream;
-use crate::data::{
-    diagnostic::{elasticsearch::DataSet, DataSource},
-    Uri,
-};
-use color_eyre::eyre::{eyre, Result};
+use crate::data::diagnostic::{data_source::PathType, elasticsearch::DataSet, DataSource};
+use color_eyre::eyre::Result;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -127,11 +124,10 @@ where
 }
 
 impl DataSource for IndicesSettings {
-    fn source(uri: &Uri) -> Result<&'static str> {
-        match uri {
-            Uri::Directory(_) | Uri::File(_) => Ok("settings.json"),
-            Uri::Host(_) | Uri::Url(_) => Ok("_all/_settings"),
-            _ => Err(eyre!("Unsuppored source for index settings")),
+    fn source(path: PathType) -> Result<&'static str> {
+        match path {
+            PathType::File => Ok("settings.json"),
+            PathType::Url => Ok("_all/_settings"),
         }
     }
 

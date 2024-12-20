@@ -1,8 +1,5 @@
-use crate::data::{
-    diagnostic::{elasticsearch::DataSet, DataSource},
-    Uri,
-};
-use color_eyre::eyre::{eyre, Result};
+use crate::data::diagnostic::{data_source::PathType, elasticsearch::DataSet, DataSource};
+use color_eyre::eyre::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -42,11 +39,10 @@ impl From<AliasSettings> for Alias {
 }
 
 impl DataSource for AliasList {
-    fn source(uri: &Uri) -> Result<&'static str> {
-        match uri {
-            Uri::Directory(_) | Uri::File(_) => Ok("alias.json"),
-            Uri::Host(_) | Uri::Url(_) => Ok("_alias"),
-            _ => Err(eyre!("Unsuppored source for alias")),
+    fn source(kind: PathType) -> Result<&'static str> {
+        match kind {
+            PathType::File => Ok("alias.json"),
+            PathType::Url => Ok("_alias"),
         }
     }
 

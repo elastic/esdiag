@@ -1,8 +1,5 @@
-use crate::data::{
-    diagnostic::{logstash::DataSet, DataSource},
-    Uri,
-};
-use color_eyre::eyre::{eyre, Result};
+use crate::data::diagnostic::{data_source::PathType, logstash::DataSet, DataSource};
+use color_eyre::eyre::Result;
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Serialize)]
@@ -19,11 +16,10 @@ pub struct Plugin {
 }
 
 impl DataSource for Plugins {
-    fn source(uri: &Uri) -> Result<&'static str> {
-        match uri {
-            Uri::Directory(_) | Uri::File(_) => Ok("logstash_plugins.json"),
-            Uri::Host(_) | Uri::Url(_) => Ok("_node/plugins"),
-            _ => Err(eyre!("Unsupported source for Logstash plugins ")),
+    fn source(path: PathType) -> Result<&'static str> {
+        match path {
+            PathType::File => Ok("logstash_plugins.json"),
+            PathType::Url => Ok("_node/plugins"),
         }
     }
 

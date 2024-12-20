@@ -1,9 +1,6 @@
 #![allow(unreachable_patterns)] // supresses a warning about the `name` alias
-use crate::data::{
-    diagnostic::{elasticsearch::DataSet, DataSource},
-    Uri,
-};
-use color_eyre::eyre::{eyre, Result};
+use crate::data::diagnostic::{data_source::PathType, elasticsearch::DataSet, DataSource};
+use color_eyre::eyre::Result;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -56,11 +53,10 @@ pub struct Version {
 }
 
 impl DataSource for Cluster {
-    fn source(uri: &Uri) -> Result<&'static str> {
-        match uri {
-            Uri::Directory(_) | Uri::File(_) => Ok("version.json"),
-            Uri::Host(_) | Uri::Url(_) => Ok("/"),
-            _ => Err(eyre!("Unsupported source for version")),
+    fn source(path: PathType) -> Result<&'static str> {
+        match path {
+            PathType::File => Ok("version.json"),
+            PathType::Url => Ok("/"),
         }
     }
 

@@ -1,8 +1,5 @@
-use crate::data::{
-    diagnostic::{elasticsearch::DataSet, DataSource},
-    Uri,
-};
-use color_eyre::eyre::{eyre, Result};
+use crate::data::diagnostic::{data_source::PathType, elasticsearch::DataSet, DataSource};
+use color_eyre::eyre::Result;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -57,11 +54,10 @@ pub struct Index {
 }
 
 impl DataSource for DataStreams {
-    fn source(uri: &Uri) -> Result<&'static str> {
-        match uri {
-            Uri::Directory(_) | Uri::File(_) => Ok("commercial/data_stream.json"),
-            Uri::Host(_) | Uri::Url(_) => Ok("_data_stream"),
-            _ => Err(eyre!("Unsuppored source for data_stream")),
+    fn source(path: PathType) -> Result<&'static str> {
+        match path {
+            PathType::File => Ok("commercial/data_stream.json"),
+            PathType::Url => Ok("_data_stream"),
         }
     }
 

@@ -1,6 +1,8 @@
 use super::Receive;
-use crate::client::Host;
-use crate::data::{diagnostic::DataSource, Uri};
+use crate::{
+    client::Host,
+    data::diagnostic::{data_source::PathType, DataSource},
+};
 use color_eyre::eyre::{eyre, Result};
 use elasticsearch::{http, Elasticsearch};
 use serde::de::DeserializeOwned;
@@ -10,51 +12,22 @@ use url::Url;
 pub struct ElasticsearchReceiver {
     client: Elasticsearch,
     url: Url,
-    uri: Uri,
 }
 
 impl ElasticsearchReceiver {
-    pub fn new(url: Url, uri: Uri) -> Result<Self> {
+    pub fn new(url: Url) -> Result<Self> {
         let client = Elasticsearch::default();
-        Ok(Self { client, url, uri })
+        Ok(Self { client, url })
     }
 }
 
-impl TryFrom<Uri> for ElasticsearchReceiver {
+impl TryFrom<Host> for ElasticsearchReceiver {
     type Error = color_eyre::eyre::Report;
 
-    #[allow(unreachable_code, unused_variables)]
-    fn try_from(uri: Uri) -> Result<Self> {
-        match uri {
-            Uri::Host(host) => {
-                let (client, url) = match host {
-                    Host::ApiKey {
-                        accept_invalid_certs,
-                        apikey,
-                        app,
-                        url,
-                        ..
-                    } => {
-                        unimplemented!("ElasticsearchReceiver ApiKey")
-                    }
-                    Host::Basic {
-                        accept_invalid_certs,
-                        app,
-                        password,
-                        url,
-                        username,
-                        ..
-                    } => {
-                        unimplemented!("ElasticsearchReceiver Basic")
-                    }
-                    Host::None { app, url } => {
-                        unimplemented!("ElasticsearchReceiver None")
-                    }
-                };
-                Ok(Self { client, url, uri })
-            }
-            _ => Err(eyre!("Input host was not an Elasticsearch cluster")),
-        }
+    fn try_from(host: Host) -> Result<Self> {
+        let url = host.get_url();
+        let client = Elasticsearch::try_from(host)?;
+        Ok(Self { client, url })
     }
 }
 
@@ -94,7 +67,7 @@ impl Receive for ElasticsearchReceiver {
         T: DataSource + DeserializeOwned,
     {
         // Get the API URL path for the provided type
-        let path = T::source(&self.uri)?;
+        let path = T::source(PathType::Url)?;
         log::debug!("Getting API: {}", &path);
 
         // Send a simple GET request to the API path

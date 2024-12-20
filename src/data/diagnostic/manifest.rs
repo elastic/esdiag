@@ -1,5 +1,8 @@
-use super::{elasticsearch::ElasticsearchVersion, DataSet, DataSource, DiagPath, Product};
-use crate::{data::elasticsearch, data::Uri};
+use super::{
+    data_source::PathType, elasticsearch::ElasticsearchVersion, DataSet, DataSource, DiagPath,
+    Product,
+};
+use crate::data::elasticsearch;
 use color_eyre::eyre::{eyre, Result};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -126,10 +129,9 @@ impl TryFrom<elasticsearch::Cluster> for Manifest {
 }
 
 impl DataSource for Manifest {
-    fn source(uri: &Uri) -> Result<&'static str> {
-        match uri {
-            Uri::Directory(_) => Ok("manifest.json"),
-            Uri::File(_) => Ok("manifest.json"),
+    fn source(path: PathType) -> Result<&'static str> {
+        match path {
+            PathType::File => Ok("manifest.json"),
             _ => Err(eyre!("Unsupported source for manifest")),
         }
     }

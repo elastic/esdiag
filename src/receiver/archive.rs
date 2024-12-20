@@ -1,5 +1,5 @@
 use super::Receive;
-use crate::data::{diagnostic::DataSource, Uri};
+use crate::data::diagnostic::{data_source::PathType, DataSource};
 use color_eyre::{eyre::eyre, Result};
 use serde::de::DeserializeOwned;
 use std::{fs::File, io::BufReader, path::PathBuf, sync::Arc};
@@ -9,8 +9,8 @@ use zip::ZipArchive;
 #[derive(Clone)]
 pub struct ArchiveReceiver {
     archive: Arc<RwLock<ZipArchive<File>>>,
+    filename: String,
     subdir: Option<PathBuf>,
-    uri: Uri,
 }
 
 impl ArchiveReceiver {
@@ -24,27 +24,24 @@ impl ArchiveReceiver {
     }
 }
 
-impl TryFrom<Uri> for ArchiveReceiver {
+impl TryFrom<PathBuf> for ArchiveReceiver {
     type Error = color_eyre::eyre::Report;
 
-    /// Create a new ArchiveReceiver from a Uri
-    fn try_from(uri: Uri) -> Result<Self> {
-        match uri {
-            Uri::File(ref path) => match path.is_file() {
-                true => {
-                    log::debug!("File is valid: {}", path.display());
-                    Ok(Self {
-                        archive: Arc::new(RwLock::new(ZipArchive::new(File::open(path)?)?)),
-                        uri,
-                        subdir: None,
-                    })
-                }
-                false => {
-                    log::debug!("File is invalid: {}", path.display());
-                    Err(eyre!("Archive input must be a file: {}", path.display()))
-                }
-            },
-            _ => Err(eyre!("Input must be a file")),
+    fn try_from(path: PathBuf) -> Result<Self> {
+        let filename = format!("{}", path.display());
+        match path.is_file() {
+            true => {
+                log::debug!("File is valid: {}", path.display());
+                Ok(Self {
+                    archive: Arc::new(RwLock::new(ZipArchive::new(File::open(path)?)?)),
+                    filename,
+                    subdir: None,
+                })
+            }
+            false => {
+                log::debug!("File is invalid: {}", path.display());
+                Err(eyre!("Archive input must be a file: {}", path.display()))
+            }
         }
     }
 }
@@ -58,8 +55,7 @@ impl Receive for ArchiveReceiver {
                 archive.file_names().map(|name| name.to_string()).collect();
             log::trace!("Files in archive: {:?}", file_names);
         }
-        let filename = self.uri.to_string();
-        log::debug!("Directory {filename} is valid: {is_empty}");
+        log::debug!("Directory {} is valid: {is_empty}", &self.filename);
         is_empty
     }
 
@@ -68,7 +64,7 @@ impl Receive for ArchiveReceiver {
     where
         T: DeserializeOwned + DataSource,
     {
-        let filename = T::source(&self.uri)?;
+        let filename = T::source(PathType::File)?;
         let file_str = match &self.subdir {
             // Ugly hack to make ECK bundles with double-slashed paths work
             // This will break if the sub-paths are fixed in the ECK bundles
@@ -97,6 +93,6 @@ impl Receive for ArchiveReceiver {
 
 impl std::fmt::Display for ArchiveReceiver {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{}", self.uri)
+        write!(f, "{}", self.filename)
     }
 }

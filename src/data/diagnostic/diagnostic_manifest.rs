@@ -1,5 +1,5 @@
-use super::{DataSource, DiagPath, Manifest, Product};
-use crate::data::{diagnostic::DataSet, Uri};
+use super::{data_source::PathType, DataSource, DiagPath, Manifest, Product};
+use crate::data::diagnostic::DataSet;
 use color_eyre::eyre::{eyre, Result};
 use serde::{Deserialize, Serialize};
 
@@ -30,10 +30,9 @@ impl DiagnosticManifest {
 }
 
 impl DataSource for DiagnosticManifest {
-    fn source(uri: &Uri) -> Result<&'static str> {
-        match uri {
-            Uri::Directory(_) => Ok("diagnostic_manifest.json"),
-            Uri::File(_) => Ok("diagnostic_manifest.json"),
+    fn source(path: PathType) -> Result<&'static str> {
+        match path {
+            PathType::File => Ok("diagnostic_manifest.json"),
             _ => Err(eyre!("Unsupported source for manifest")),
         }
     }
