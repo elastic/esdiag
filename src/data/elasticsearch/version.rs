@@ -1,3 +1,4 @@
+#![allow(unreachable_patterns)] // supresses a warning about the `name` alias
 use crate::data::{
     diagnostic::{elasticsearch::DataSet, DataSource},
     Uri,
