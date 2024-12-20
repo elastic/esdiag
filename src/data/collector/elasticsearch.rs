@@ -1,3 +1,4 @@
+use super::CollectionResult;
 use crate::{
     data::{
         diagnostic::{data_source::PathType, DataSource, DiagnosticManifest, Product},
@@ -7,34 +8,10 @@ use crate::{
             SearchableSnapshotsStats, Tasks,
         },
     },
-    exporter::DirectoryExporter,
-    receiver::Receiver,
+    {exporter::DirectoryExporter, receiver::Receiver},
 };
-use color_eyre::eyre::{eyre, Result};
+use color_eyre::eyre::Result;
 use std::path::PathBuf;
-
-pub enum Collector {
-    Elasticsearch(ElasticsearchCollector),
-}
-
-impl Collector {
-    pub async fn try_new(receiver: Receiver, exporter: DirectoryExporter) -> Result<Self> {
-        if let Receiver::Elasticsearch(_) = &receiver {
-            let collector = ElasticsearchCollector::new(receiver, exporter).await?;
-            Ok(Self::Elasticsearch(collector))
-        } else {
-            Err(eyre!(
-                "Collect is only implemented from Elasticsearch to a Directory"
-            ))
-        }
-    }
-
-    pub async fn collect(&self) -> Result<usize> {
-        match self {
-            Self::Elasticsearch(collector) => collector.collect().await,
-        }
-    }
-}
 
 pub struct ElasticsearchCollector {
     receiver: Receiver,
@@ -46,29 +23,28 @@ impl ElasticsearchCollector {
         Ok(Self { receiver, exporter })
     }
 
-    pub async fn collect(&self) -> Result<usize> {
-        let mut file_count = 0;
-        let total = 13;
+    pub async fn collect(&self) -> Result<CollectionResult> {
+        let mut result = CollectionResult {
+            path: self.exporter.to_string().clone(),
+            success: 0,
+            total: 13,
+        };
 
-        file_count += self.save_diagnostic_manifest().await?;
-        file_count += self.save::<AliasList>().await?;
-        file_count += self.save::<Cluster>().await?;
-        file_count += self.save::<ClusterSettings>().await?;
-        file_count += self.save::<DataStreams>().await?;
-        file_count += self.save::<IlmExplain>().await?;
-        file_count += self.save::<IndicesSettings>().await?;
-        file_count += self.save::<IndicesStats>().await?;
-        file_count += self.save::<Nodes>().await?;
-        file_count += self.save::<NodesStats>().await?;
-        file_count += self.save::<SearchableSnapshotsCacheStats>().await?;
-        file_count += self.save::<SearchableSnapshotsStats>().await?;
-        file_count += self.save::<Tasks>().await?;
+        result.success += self.save_diagnostic_manifest().await?;
+        result.success += self.save::<AliasList>().await?;
+        result.success += self.save::<Cluster>().await?;
+        result.success += self.save::<ClusterSettings>().await?;
+        result.success += self.save::<DataStreams>().await?;
+        result.success += self.save::<IlmExplain>().await?;
+        result.success += self.save::<IndicesSettings>().await?;
+        result.success += self.save::<IndicesStats>().await?;
+        result.success += self.save::<Nodes>().await?;
+        result.success += self.save::<NodesStats>().await?;
+        result.success += self.save::<SearchableSnapshotsCacheStats>().await?;
+        result.success += self.save::<SearchableSnapshotsStats>().await?;
+        result.success += self.save::<Tasks>().await?;
 
-        log::info!(
-            "Collected {file_count} of {total} files into {}",
-            self.exporter
-        );
-        Ok(file_count)
+        Ok(result)
     }
 
     async fn save<T>(&self) -> Result<usize>
@@ -79,7 +55,10 @@ impl ElasticsearchCollector {
         let path = PathBuf::from(T::source(PathType::File)?);
         let filename = format!("{}", path.display());
         match self.exporter.save(path, content).await {
-            Ok(()) => Ok(1),
+            Ok(()) => {
+                log::info!("Saved {filename}");
+                Ok(1)
+            }
             Err(e) => {
                 log::error!("Failed to save {filename}: {e}");
                 Ok(0)
@@ -90,23 +69,24 @@ impl ElasticsearchCollector {
     async fn save_diagnostic_manifest(&self) -> Result<usize> {
         let cluster = self.receiver.get::<Cluster>().await?;
         let manifest = DiagnosticManifest {
-            name: Some(cluster.diagnostic_node.clone()),
             collection_date: chrono::Utc::now()
                 .to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
             diagnostic: Some(format!("esdiag-{}", env!("CARGO_PKG_VERSION"))),
             flags: None,
             included_diagnostics: None,
-            mode: Some("esdiag".to_string()),
+            mode: Some("standard".to_string()),
+            name: Some(cluster.diagnostic_node.clone()),
             product: Product::Elasticsearch,
             r#type: Some("elasticsearch_diagnostic".to_string()),
             runner: Some("esdiag".to_string()),
             version: Some(cluster.version.number.to_string()),
         };
+
         let path = PathBuf::from(DiagnosticManifest::source(PathType::File)?);
         let filename = format!("{}", path.display());
         let content = serde_json::to_string_pretty(&manifest)?;
         self.exporter.save(path, content).await?;
-        log::debug!("Saved {filename}.json");
+        log::info!("Saved {filename}");
         Ok(1)
     }
 }

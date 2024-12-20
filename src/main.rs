@@ -2,8 +2,7 @@ use clap::{Parser, Subcommand};
 use color_eyre::eyre::{eyre, Result};
 use esdiag::{
     client::Host,
-    collector::Collector,
-    data::Uri,
+    data::{Collector, Uri},
     env::LOG_LEVEL,
     exporter::{DirectoryExporter, Exporter},
     processor::Diagnostic,

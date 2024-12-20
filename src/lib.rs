@@ -1,7 +1,5 @@
 /// Shared client libraries for remote connections
 pub mod client;
-/// Collect diagnostic data from applications
-pub mod collector;
 /// Data structures and types for serializing and deserializing
 pub mod data;
 /// Environment variables
