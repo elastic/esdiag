@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 pub struct NodesStats {
     _nodes: Value,
     //cluster_name: String,

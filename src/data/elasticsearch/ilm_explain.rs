@@ -55,7 +55,7 @@ impl DataSource for IlmExplain {
     fn source(path: PathType) -> Result<&'static str> {
         match path {
             PathType::File => Ok("commercial/ilm_explain.json"),
-            PathType::Url => Ok("_ilm/explain"),
+            PathType::Url => Ok("_all/_ilm/explain"),
         }
     }
 

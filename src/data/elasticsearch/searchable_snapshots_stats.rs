@@ -4,14 +4,14 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct SearchableSnapshotsStats {
     pub _shards: Value,
     pub total: Vec<Value>,
     pub indices: HashMap<String, Total>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Total {
     pub total: Vec<Value>,
 }

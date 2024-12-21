@@ -1,3 +1,5 @@
+/// Collect diagnostic data from applications
+pub mod collector;
 /// Diagnostic bundle types and data structures
 pub mod diagnostic;
 /// Elasticsearch data types and structures
@@ -7,6 +9,7 @@ pub mod logstash;
 /// Classify an input string as a type of univeral resource identifier (URI)
 pub mod uri;
 
+pub use collector::Collector;
 pub use uri::Uri;
 
 // ------ Utility Function -------

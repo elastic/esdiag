@@ -1,8 +1,13 @@
 use clap::{Parser, Subcommand};
 use color_eyre::eyre::{eyre, Result};
 use esdiag::{
-    client::Host, data::Uri, env::LOG_LEVEL, exporter::Exporter, processor::Diagnostic,
-    receiver::Receiver, setup,
+    client::Host,
+    data::{Collector, Uri},
+    env::LOG_LEVEL,
+    exporter::{DirectoryExporter, Exporter},
+    processor::Diagnostic,
+    receiver::Receiver,
+    setup,
 };
 use url::Url;
 
@@ -17,13 +22,13 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Commands {
-    /// [NOT IMPLEMENTED] Collects diagnostics from a host's API endpoints
+    /// Collects diagnostics from an Elasticsearch host's API endpoints, saves to a directory
     Collect {
         /// The host to collect diagnostics from
-        #[arg(help = "The host to collect diagnostics from")]
+        #[arg(help = "The Elasticsearch host to collect diagnostics from")]
         host: String,
         /// The output directory to save the diagnostics to
-        #[arg(help = "Theoutput to save the diagnostics to (file, directory)")]
+        #[arg(help = "The directory to save the diagnostics files to")]
         output: String,
     },
     /// Configure and test a remote host connection
@@ -118,11 +123,21 @@ async fn run() -> Result<&'static str> {
     let cli = Cli::parse();
 
     match &cli.command {
-        Commands::Collect { host, output } => Err(eyre!(
-            "Collect command not yet implemented! host: {}, output: {}",
-            host,
-            output
-        )),
+        Commands::Collect { host, output } => {
+            let host = Uri::parse(host)?;
+            let output = Uri::parse(output)?;
+            match host {
+                Uri::Host(_) => {
+                    log::info!("Collecting diagnostic from {host}");
+                    let receiver = Receiver::try_from(host)?;
+                    let exporter = DirectoryExporter::try_from(output)?;
+                    let collector = Collector::try_new(receiver, exporter).await?;
+                    collector.collect().await?;
+                    Ok("collect")
+                }
+                _ => Err(eyre!("Collect requires a known host")),
+            }
+        }
         Commands::Host {
             name,
             app,

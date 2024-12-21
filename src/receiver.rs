@@ -7,7 +7,7 @@ mod elasticsearch;
 
 use archive::ArchiveReceiver;
 use directory::DirectoryReceiver;
-use elasticsearch::ElasticsearchReceiver;
+pub use elasticsearch::ElasticsearchReceiver;
 
 use crate::data::{
     diagnostic::{DataSource, DiagnosticManifest, Manifest},
@@ -24,6 +24,9 @@ trait Receive {
     async fn get<T>(&self) -> Result<T>
     where
         T: DataSource + DeserializeOwned;
+    async fn get_raw<T>(&self) -> Result<String>
+    where
+        T: DataSource;
 }
 
 /// The different types of receivers for data input.
@@ -55,6 +58,19 @@ impl Receiver {
             Receiver::Directory(directory_receiver) => directory_receiver.get::<T>().await,
             Receiver::Elasticsearch(elasticsearch_receiver) => {
                 elasticsearch_receiver.get::<T>().await
+            }
+        }
+    }
+
+    pub async fn get_raw<T>(&self) -> Result<String>
+    where
+        T: DataSource,
+    {
+        match self {
+            Receiver::Archive(archive_receiver) => archive_receiver.get_raw::<T>().await,
+            Receiver::Directory(directory_receiver) => directory_receiver.get_raw::<T>().await,
+            Receiver::Elasticsearch(elasticsearch_receiver) => {
+                elasticsearch_receiver.get_raw::<T>().await
             }
         }
     }

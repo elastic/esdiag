@@ -2,7 +2,11 @@ use super::Receive;
 use crate::data::diagnostic::{data_source::PathType, DataSource};
 use color_eyre::eyre::{eyre, Result};
 use serde::de::DeserializeOwned;
-use std::{fs::File, io::BufReader, path::PathBuf};
+use std::{
+    fs::File,
+    io::{BufReader, Read},
+    path::PathBuf,
+};
 
 #[derive(Clone)]
 pub struct DirectoryReceiver {
@@ -53,6 +57,22 @@ impl Receive for DirectoryReceiver {
         let file = File::open(&filename)?;
         let reader = BufReader::new(file);
         let data: T = serde_json::from_reader(reader)?;
+        Ok(data)
+    }
+
+    async fn get_raw<T>(&self) -> Result<String>
+    where
+        T: DataSource,
+    {
+        let filename = &self
+            .path
+            .join(&self.work_dir)
+            .join(T::source(PathType::File)?);
+        log::debug!("Reading file: {}", &filename.display());
+        let file = File::open(&filename)?;
+        let mut reader = BufReader::new(file);
+        let mut data = String::new();
+        reader.read_to_string(&mut data)?;
         Ok(data)
     }
 

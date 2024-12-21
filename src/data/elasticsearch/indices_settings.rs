@@ -60,7 +60,41 @@ impl IndexSettings {
     }
 }
 
-#[derive(Deserialize)]
+impl std::default::Default for IndexSettings {
+    fn default() -> Self {
+        IndexSettings {
+            allocation: None,
+            auto_expand_replicas: None,
+            blocks: None,
+            codec: "unkown".to_string(),
+            creation_date: None,
+            default_pipeline: None,
+            final_pipeline: None,
+            hidden: None,
+            lifecycle: None,
+            mapping: None,
+            mode: "unkown".to_string(),
+            number_of_replicas: None,
+            number_of_shards: None,
+            priority: None,
+            provided_name: None,
+            query: None,
+            refresh_interval: "unkown".to_string(),
+            routing: None,
+            shard: None,
+            shard_limit: None,
+            store: None,
+            sort: None,
+            uuid: "".to_string(),
+            version: Value::Null,
+            age: None,
+            data_stream: None,
+            name: None,
+        }
+    }
+}
+
+#[derive(Deserialize, Serialize)]
 pub struct Settings {
     settings: Index,
 }
@@ -72,7 +106,7 @@ impl Settings {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 struct Index {
     index: IndexSettings,
 }

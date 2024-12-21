@@ -113,7 +113,7 @@ Elastic Stack Diagnostics (esdiag) - collect diagnostics and import into Elastic
 Usage: esdiag <COMMAND>
 
 Commands:
-  collect  [NOT IMPLEMENTED] Collects diagnostics from a host's API endpoints
+  collect  Collects diagnostics from an Elasticsearch host's API endpoints, saves to a directory
   import   Process, enrich and import a diagnostic into Elasticsearch
   host     Configure and test a remote host connection
   setup    Setup required assets to visualize diagnostic imports
@@ -174,6 +174,7 @@ The `esdiag import` command allows these `target` and `source` options:
 
 `source`
     1. directory
+
 ```
 Process, enrich and import a diagnostic into Elasticsearch
 
@@ -190,7 +191,22 @@ Options:
 
 #### Collect
 
-🚧 This command is not yet implemented! 🚧
+The `esdiag collect` command pulls the minimum required diagnostics from an Elasticsearch host and saves them to a directory. These are JSON-only, not pretty-printed, and do not include human-readable metrics. This bunlde captures only what is needed to then import with `esdiag`.
+
+Authentication must be setup in advance with the `esdiag host` command or `hosts.yml` file. Direct access to the clsuter is required, this cannot be done through any Elastic Cloud API.
+
+```
+Collects diagnostics from an Elasticsearch host's API endpoints, saves to a directory
+
+Usage: esdiag collect <HOST> <OUTPUT>
+
+Arguments:
+  <HOST>    The Elasticsearch host to collect diagnostics from
+  <OUTPUT>  The directory to save the diagnostics files to
+
+Options:
+  -h, --help  Print help
+```
 
 ### Debugging
 

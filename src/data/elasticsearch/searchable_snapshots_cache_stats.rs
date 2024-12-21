@@ -3,12 +3,12 @@ use color_eyre::eyre::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct SearchableSnapshotsCacheStats {
     pub nodes: HashMap<String, SharedCache>,
 }
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct SharedCache {
     pub shared_cache: SharedCacheStats,
 }

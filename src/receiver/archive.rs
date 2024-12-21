@@ -2,7 +2,12 @@ use super::Receive;
 use crate::data::diagnostic::{data_source::PathType, DataSource};
 use color_eyre::{eyre::eyre, Result};
 use serde::de::DeserializeOwned;
-use std::{fs::File, io::BufReader, path::PathBuf, sync::Arc};
+use std::{
+    fs::File,
+    io::{BufReader, Read},
+    path::PathBuf,
+    sync::Arc,
+};
 use tokio::sync::RwLock;
 use zip::ZipArchive;
 
@@ -81,6 +86,31 @@ impl Receive for ArchiveReceiver {
         let file = archive.by_name(&file_str)?;
         let reader = BufReader::new(file);
         let data: T = serde_json::from_reader(reader)?;
+        Ok(data)
+    }
+
+    async fn get_raw<T>(&self) -> Result<String>
+    where
+        T: DataSource,
+    {
+        let filename = T::source(PathType::File)?;
+        let file_str = match &self.subdir {
+            // Ugly hack to make ECK bundles with double-slashed paths work
+            // This will break if the sub-paths are fixed in the ECK bundles
+            Some(subdir) => &format!("{}//{}", subdir.display(), filename),
+            None => {
+                let subdir = self.get_subdir().await.map(|s| s.join(filename))?;
+                &format!("{}", subdir.display())
+            }
+        };
+        let mut archive = self.archive.write().await;
+
+        // Read lines directly from the compressed file
+        log::debug!("Reading {}", file_str);
+        let file = archive.by_name(&file_str)?;
+        let mut reader = BufReader::new(file);
+        let mut data = String::new();
+        reader.read_to_string(&mut data)?;
         Ok(data)
     }
 

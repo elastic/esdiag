@@ -1,3 +1,5 @@
+/// Write to a directory
+mod directory;
 /// Export to an Elasticsearch cluster with the `_bulk` API
 mod elasticsearch;
 /// Write to an `.ndjson` file
@@ -5,6 +7,7 @@ mod file;
 /// Write `ndjson` to std out
 mod stream;
 
+pub use directory::DirectoryExporter;
 use elasticsearch::ElasticsearchExporter;
 use file::FileExporter;
 use stream::StreamExporter;

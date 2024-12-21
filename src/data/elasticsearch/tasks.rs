@@ -4,12 +4,12 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Tasks {
     pub nodes: HashMap<String, NodeTasks>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct NodeTasks {
     pub tasks: HashMap<String, Task>,
 }
@@ -19,7 +19,7 @@ pub struct Task {
     action: String,
     cancellable: bool,
     cancelled: Option<bool>,
-    description: String,
+    description: Option<String>,
     headers: Option<Value>,
     id: u64,
     //node: Option<String>, // omitted in favor of enriched node field
@@ -37,7 +37,7 @@ impl DataSource for Tasks {
     fn source(path: PathType) -> Result<&'static str> {
         match path {
             PathType::File => Ok("tasks.json"),
-            PathType::Url => Ok("_tasks"),
+            PathType::Url => Ok("_tasks?detailed=true"),
         }
     }
 

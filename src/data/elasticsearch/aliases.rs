@@ -5,11 +5,11 @@ use std::collections::HashMap;
 
 pub type AliasList = HashMap<String, Aliases>;
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Aliases {
     pub aliases: HashMap<String, AliasSettings>,
 }
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct AliasSettings {
     pub is_hidden: Option<bool>,
     pub is_write_index: Option<bool>,

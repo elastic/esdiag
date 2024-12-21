@@ -83,8 +83,31 @@ impl Receive for ElasticsearchReceiver {
             )
             .await?;
 
-        // turbo-fish serde deserialization of the JSON response
         response.json::<T>().await.map_err(Into::into)
+    }
+
+    async fn get_raw<T>(&self) -> Result<String>
+    where
+        T: DataSource,
+    {
+        // Get the API URL path for the provided type
+        let path = T::source(PathType::Url)?;
+        log::debug!("Getting API: {}", &path);
+
+        // Send a simple GET request to the API path
+        let response = self
+            .client
+            .send(
+                http::Method::Get,
+                &path,
+                http::headers::HeaderMap::new(),
+                Option::<&String>::None,
+                Option::<&String>::None,
+                None,
+            )
+            .await?;
+
+        response.text().await.map_err(Into::into)
     }
 
     fn set_work_dir(&mut self, work_dir: &str) -> Result<()> {

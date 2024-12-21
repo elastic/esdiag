@@ -25,7 +25,7 @@ impl DataSource for IndicesStats {
     fn source(path: PathType) -> Result<&'static str> {
         match path {
             PathType::File => Ok("indices_stats.json"),
-            PathType::Url => Ok("_index/stats?level=shards"),
+            PathType::Url => Ok("_all/_stats?level=shards"),
         }
     }
 
