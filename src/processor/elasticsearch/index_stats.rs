@@ -1,5 +1,8 @@
 use super::{DataProcessor, ElasticsearchMetadata, Lookups};
-use crate::{data::elasticsearch::IndicesStats, processor::Metadata};
+use crate::{
+    data::elasticsearch::{IndexSettings, IndicesStats},
+    processor::Metadata,
+};
 use json_patch::merge;
 use rayon::prelude::*;
 use serde_json::{json, Value};
@@ -32,14 +35,7 @@ impl DataProcessor<Lookups, ElasticsearchMetadata> for IndicesStats {
                 let ilm = lookup.ilm_explain.by_name(&index);
                 let index_settings = match lookup.index_settings.by_name(&index) {
                     Some(settings) => settings,
-                    None if &index == ".geoip_databases" || &index == ".tasks" => {
-                        log::debug!("Skipping index: {}", index);
-                        return Vec::new();
-                    }
-                    None => {
-                        log::debug!("No index settings found for index: {}", index);
-                        return Vec::new();
-                    }
+                    None => &IndexSettings::default(),
                 };
                 let is_write_index = {
                     data_stream.is_some_and(|ds| ds.is_write_index)

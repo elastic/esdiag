@@ -44,10 +44,10 @@ struct ComponentVersion {
 #[derive(Clone, Deserialize, Serialize)]
 pub struct OsDetails {
     pub refresh_interval_in_millis: usize,
-    pub name: String,
-    pub pretty_name: String,
-    pub arch: String,
-    pub version: String,
+    pub name: Option<String>,
+    pub pretty_name: Option<String>,
+    pub arch: Option<String>,
+    pub version: Option<String>,
     pub available_processors: usize,
     pub allocated_processors: usize,
 }
