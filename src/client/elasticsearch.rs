@@ -1,4 +1,4 @@
-use super::{auth::Auth, host::Host};
+use super::{auth::Auth, known_host::KnownHost};
 use base64::{engine::general_purpose::STANDARD, Engine};
 use color_eyre::eyre::Result;
 use elasticsearch::{
@@ -84,12 +84,12 @@ impl ElasticsearchBuilder {
     }
 }
 
-impl TryFrom<Host> for Elasticsearch {
+impl TryFrom<KnownHost> for Elasticsearch {
     type Error = color_eyre::eyre::Report;
 
-    fn try_from(host: Host) -> Result<Elasticsearch> {
+    fn try_from(host: KnownHost) -> Result<Elasticsearch> {
         let client = match host {
-            Host::ApiKey {
+            KnownHost::ApiKey {
                 apikey,
                 url,
                 accept_invalid_certs,
@@ -98,7 +98,7 @@ impl TryFrom<Host> for Elasticsearch {
                 .apikey(apikey)
                 .insecure(accept_invalid_certs.unwrap_or(false))
                 .build()?,
-            Host::Basic {
+            KnownHost::Basic {
                 accept_invalid_certs,
                 username,
                 password,
@@ -108,7 +108,7 @@ impl TryFrom<Host> for Elasticsearch {
                 .basic_auth(username, password)
                 .insecure(accept_invalid_certs.unwrap_or(false))
                 .build()?,
-            Host::None { url, .. } => ElasticsearchBuilder::new(url).build()?,
+            KnownHost::None { url, .. } => ElasticsearchBuilder::new(url).build()?,
         };
         Ok(client)
     }

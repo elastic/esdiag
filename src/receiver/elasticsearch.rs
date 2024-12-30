@@ -1,6 +1,6 @@
 use super::Receive;
 use crate::{
-    client::Host,
+    client::KnownHost,
     data::diagnostic::{data_source::PathType, DataSource},
 };
 use color_eyre::eyre::{eyre, Result};
@@ -21,10 +21,10 @@ impl ElasticsearchReceiver {
     }
 }
 
-impl TryFrom<Host> for ElasticsearchReceiver {
+impl TryFrom<KnownHost> for ElasticsearchReceiver {
     type Error = color_eyre::eyre::Report;
 
-    fn try_from(host: Host) -> Result<Self> {
+    fn try_from(host: KnownHost) -> Result<Self> {
         let url = host.get_url();
         let client = Elasticsearch::try_from(host)?;
         Ok(Self { client, url })

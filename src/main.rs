@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand};
 use color_eyre::eyre::{eyre, Result};
 use esdiag::{
-    client::Host,
+    client::KnownHost,
     data::{Collector, Uri},
     env::LOG_LEVEL,
     exporter::{DirectoryExporter, Exporter},
@@ -78,6 +78,15 @@ enum Commands {
         #[arg(help = "Source to read diagnostic data from")]
         source: String,
     },
+    Process {
+        /// The source to read diagnostic data from
+        #[arg(help = "The source to read diagnostic data from")]
+        input: String,
+
+        /// The target to write processed diagnostic data to
+        #[arg(help = "The target to send processed diagnostic documents to")]
+        output: String,
+    },
     /// Setup required assets to visualize diagnostic imports
     Setup {
         /// Known host to setup assets in, only supports Elasticsearch or Kibana
@@ -124,12 +133,13 @@ async fn run() -> Result<&'static str> {
 
     match &cli.command {
         Commands::Collect { host, output } => {
-            let host = Uri::parse(host)?;
-            let output = Uri::parse(output)?;
-            match host {
-                Uri::Host(_) => {
-                    log::info!("Collecting diagnostic from {host}");
-                    let receiver = Receiver::try_from(host)?;
+            let known_host = Uri::try_from(host)?;
+            let output = Uri::try_from(output)?;
+            match known_host {
+                Uri::KnownHost(_) => {
+                    log::info!("Collecting diagnostic from {known_host}");
+                    log::info!("Saving diagnostic to {output}");
+                    let receiver = Receiver::try_from(known_host)?;
                     let exporter = DirectoryExporter::try_from(output)?;
                     let collector = Collector::try_new(receiver, exporter).await?;
                     collector.collect().await?;
@@ -152,10 +162,10 @@ async fn run() -> Result<&'static str> {
         } => {
             log::info!("Configuring host {name}");
             let host = match app.is_some() && url.is_some() {
-                false => Host::get_known(&name).ok_or(eyre!(
+                false => KnownHost::get_known(&name).ok_or(eyre!(
                     "Host {name} not found, include `app` and `url` to setup a new host."
                 ))?,
-                true => Host::new(
+                true => KnownHost::new(
                     url.clone().unwrap(),
                     app.clone().unwrap(),
                     auth.clone(),
@@ -192,18 +202,41 @@ async fn run() -> Result<&'static str> {
                 false => Err(eyre!("Host connection failed")),
             }
         }
-        Commands::Import { target, source } => {
-            let output_uri = Uri::parse(target)?;
-            let input_uri = Uri::parse(source)?;
+        Commands::Process { input, output } => {
+            let input_uri = Uri::try_from(input)?;
+            let output_uri = Uri::try_from(output)?;
             log::info!("input: {}", input_uri);
             log::info!("output: {}", output_uri);
 
-            let receiver = Receiver::try_from(input_uri.clone())?;
-            let exporter = Exporter::try_from(output_uri.clone())?;
+            let receiver = Receiver::try_from(input_uri)?;
+            let exporter = Exporter::try_from(output_uri)?;
 
             let manifest = receiver.try_get_manifest().await?;
 
-            log::trace!("{}", serde_json::to_string(&manifest).unwrap());
+            log::trace!("{}", serde_json::to_string(&manifest)?);
+            let diagnostic_processor =
+                Diagnostic::try_new_processor(manifest, receiver, exporter).await?;
+            let (diag_id, doc_count) = diagnostic_processor.run().await?;
+            log::info!(
+                "Created {} documents for diagnostic: {}",
+                doc_count,
+                diag_id
+            );
+            Ok("process")
+        }
+        Commands::Import { target, source } => {
+            let output_uri = Uri::try_from(target)?;
+            let input_uri = Uri::try_from(source)?;
+            log::info!("input: {}", input_uri);
+            log::info!("output: {}", output_uri);
+            log::warn!("The `import` command is deprecated, please use `process` instead");
+
+            let receiver = Receiver::try_from(input_uri)?;
+            let exporter = Exporter::try_from(output_uri)?;
+
+            let manifest = receiver.try_get_manifest().await?;
+
+            log::trace!("{}", serde_json::to_string(&manifest)?);
             let diagnostic_processor =
                 Diagnostic::try_new_processor(manifest, receiver, exporter).await?;
             let (diag_id, doc_count) = diagnostic_processor.run().await?;
@@ -216,7 +249,7 @@ async fn run() -> Result<&'static str> {
         }
         Commands::Setup { host } => {
             log::info!("Setting up Elasticsearch assets in {host}");
-            let uri = Uri::parse(host)?;
+            let uri = Uri::try_from(host)?;
             let exporter = Exporter::try_from(uri)?;
             setup::assets(exporter).await?;
             Ok("setup")

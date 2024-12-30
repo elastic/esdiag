@@ -1,5 +1,5 @@
-use crate::client::Host;
-use color_eyre::eyre::Result;
+use crate::client::KnownHost;
+use color_eyre::eyre::{Report, Result};
 use std::{
     path::{Path, PathBuf},
     str::FromStr,
@@ -10,7 +10,7 @@ use url::Url;
 #[derive(Clone, Debug)]
 pub enum Uri {
     /// Represents a host saved in the hosts.yml
-    Host(Host),
+    KnownHost(KnownHost),
     /// Represents a standard URL
     Url(Url),
     /// Represents a directory path on the local file system
@@ -21,14 +21,14 @@ pub enum Uri {
     Stream,
 }
 
-/// Classifies a URI string into a specific `Uri` variant based on its type.
+/// Converts a string slice into a specific `Uri` variant based on its type.
 ///
-/// This function takes a URI string and categorizes it into different types represented by the `Uri` enum.
-/// It supports classifying a URI as a stream, host, URL, directory, or file based on various checks.
+/// This implementation of the `TryFrom` trait takes a URI string and categorizes it into different types represented by the `Uri` enum.
+/// It supports converting a URI string into a stream, host, URL, directory, or file based on various checks.
 ///
 /// # Arguments
 ///
-/// * `uri` - A string slice representing the URI to classify.
+/// * `uri` - A string slice representing the URI to convert.
 ///
 /// # Returns
 ///
@@ -38,11 +38,11 @@ pub enum Uri {
 /// - `Ok(Uri::Url(url))` if the URI can be parsed into a `Url`.
 /// - `Ok(Uri::Directory(path))` if the URI is a valid directory path.
 /// - `Ok(Uri::File(path))` if the URI is a valid file path.
-/// - `Err(std::io::Error)` if there are errors during file creation or other I/O operations.
+/// - `Err(Report)` if there are errors during file creation or other I/O operations.
 ///
 /// # Errors
 ///
-/// Returns an `Err(std::io::Error)` if there are errors during file creation or other I/O operations.
+/// Returns an `Err(Report)` if there are errors during file creation or other I/O operations.
 ///
 /// # Examples
 ///
@@ -50,22 +50,24 @@ pub enum Uri {
 /// use std::path::PathBuf;
 ///
 /// let uri = "-";
-/// match classify(uri) {
+/// match Uri::try_from(uri) {
 ///     Ok(Uri::Stream) => println!("URI is a stream"),
 ///     Ok(_) => println!("URI classified successfully"),
-///     Err(e) => eprintln!("Failed to classify URI: {}", e),
+///     Err(e) => eprintln!("Failed to parse URI: {}", e),
 /// }
 /// ```
 
-impl Uri {
-    pub fn parse(uri: &str) -> Result<Self> {
+impl TryFrom<&str> for Uri {
+    type Error = Report;
+
+    fn try_from(uri: &str) -> Result<Self> {
         match uri {
             "-" => Ok(Uri::Stream),
             _ => {
-                let host = Host::from_str(&uri);
+                let host = KnownHost::from_str(&uri);
                 match host {
                     Err(_) => log::debug!("No known host {uri}"),
-                    Ok(host) => return Ok(Uri::Host(host)),
+                    Ok(host) => return Ok(Uri::KnownHost(host)),
                 }
                 match Url::parse(&uri) {
                     Err(_) => log::debug!("Not a valid URL {uri}"),
@@ -92,10 +94,26 @@ impl Uri {
     }
 }
 
+impl TryFrom<&String> for Uri {
+    type Error = Report;
+
+    fn try_from(uri: &String) -> Result<Self> {
+        Uri::try_from(uri.as_str())
+    }
+}
+
+impl TryFrom<String> for Uri {
+    type Error = Report;
+
+    fn try_from(uri: String) -> Result<Self> {
+        Uri::try_from(uri.as_str())
+    }
+}
+
 impl std::fmt::Display for Uri {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            Uri::Host(host) => write!(f, "{}", host),
+            Uri::KnownHost(host) => write!(f, "{}", host),
             Uri::Url(url) => write!(f, "{}", url),
             Uri::Directory(path) => write!(f, "{}", path.display()),
             Uri::File(path) => write!(f, "{}", path.display()),

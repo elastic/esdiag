@@ -122,7 +122,7 @@ impl TryFrom<Uri> for Receiver {
         match uri {
             Uri::Directory(dir) => Ok(Receiver::Directory(DirectoryReceiver::try_from(dir)?)),
             Uri::File(file) => Ok(Receiver::Archive(ArchiveReceiver::try_from(file)?)),
-            Uri::Host(host) => Ok(Receiver::Elasticsearch(ElasticsearchReceiver::try_from(
+            Uri::KnownHost(host) => Ok(Receiver::Elasticsearch(ElasticsearchReceiver::try_from(
                 host,
             )?)),
             _ => Err(eyre!("Unsupported URI")),
