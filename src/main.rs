@@ -22,7 +22,7 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Commands {
-    /// Collects diagnostics from an Elasticsearch host's API endpoints, saves to a directory
+    /// Collect a diagnostic bundle from a known host's API endpoints, writes output to a directory
     Collect {
         /// The host to collect diagnostics from
         #[arg(help = "The Elasticsearch host to collect diagnostics from")]
@@ -65,10 +65,14 @@ enum Commands {
         #[arg(help = "Password for authentication", long, short)]
         password: Option<String>,
         /// Save the host configuration
-        #[arg(help = "Save the host configuration", long, short)]
-        save: bool,
+        #[arg(
+            help = "Don't save the host configuration on succesful connection",
+            long,
+            short
+        )]
+        nosave: bool,
     },
-    /// Process, enrich and import a diagnostic into Elasticsearch
+    /// [DEPRECATED] Process, enrich and import a diagnostic into Elasticsearch
     Import {
         /// The target to write processed diagnostic data to
         #[arg(help = "Target to write processed diagnostic documents to (`-` for stdout)")]
@@ -78,19 +82,22 @@ enum Commands {
         #[arg(help = "Source to read diagnostic data from")]
         source: String,
     },
+    /// Receives a diagnostic from the input, processes it, and sends processed docs to the output
     Process {
-        /// The source to read diagnostic data from
-        #[arg(help = "The source to read diagnostic data from")]
+        /// Source to read diagnostic data from
+        #[arg(help = "Source to read diagnostic data from (archive, directory, or known host)")]
         input: String,
 
-        /// The target to write processed diagnostic data to
-        #[arg(help = "The target to send processed diagnostic documents to")]
+        /// Target to send processed diagnostic documents to
+        #[arg(
+            help = "Target to send processed diagnostic documents to (known host, file, or stdout)"
+        )]
         output: String,
     },
-    /// Setup required assets to visualize diagnostic imports
+    /// Import assets (templates, ingest pipelines, etc.) to a known Elasticsearch host
     Setup {
-        /// Known host to setup assets in, only supports Elasticsearch or Kibana
-        #[arg(help = "Host to setup assets in")]
+        /// Known Elasticsaerch host to import assets into
+        #[arg(help = "Known Elasticsearch host to import assets into")]
         host: String,
     },
 }
@@ -131,7 +138,7 @@ async fn run() -> Result<&'static str> {
     // use clap to parse command line arguments
     let cli = Cli::parse();
 
-    match &cli.command {
+    match cli.command {
         Commands::Collect { host, output } => {
             let known_host = Uri::try_from(host)?;
             let output = Uri::try_from(output)?;
@@ -158,23 +165,24 @@ async fn run() -> Result<&'static str> {
             cloud_id,
             username,
             password,
-            save,
+            nosave,
         } => {
             log::info!("Configuring host {name}");
-            let host = match app.is_some() && url.is_some() {
-                false => KnownHost::get_known(&name).ok_or(eyre!(
-                    "Host {name} not found, include `app` and `url` to setup a new host."
-                ))?,
-                true => KnownHost::new(
-                    url.clone().unwrap(),
-                    app.clone().unwrap(),
-                    auth.clone(),
-                    accept_invalid_certs.clone(),
-                    apikey.clone(),
-                    cloud_id.clone(),
-                    username.clone(),
-                    password.clone(),
-                ),
+            let host = if let (Some(app), Some(url)) = (app, url) {
+                KnownHost::new(
+                    url,
+                    app,
+                    auth,
+                    accept_invalid_certs,
+                    apikey,
+                    cloud_id,
+                    username,
+                    password,
+                )
+            } else {
+                KnownHost::get_known(&name).ok_or(eyre!(
+                    "Host {name} not found, must include `url` and `app` to setup a new host."
+                ))?
             };
 
             let valid_connection = match host.test().await {
@@ -193,13 +201,14 @@ async fn run() -> Result<&'static str> {
                 }
             };
 
-            if *save {
-                let hostfile = host.save(name.to_string())?;
-                log::info!("Host {name} successfully saved to {hostfile}");
-            }
-            match valid_connection {
-                true => Ok("host"),
-                false => Err(eyre!("Host connection failed")),
+            if valid_connection {
+                if !nosave {
+                    let hostfile = host.save(&name)?;
+                    log::info!("Host {name} successfully saved to {hostfile}");
+                }
+                Ok("host")
+            } else {
+                Err(eyre!("Host connection failed"))
             }
         }
         Commands::Process { input, output } => {
@@ -266,6 +275,7 @@ fn clear_last_run_files() -> Result<()> {
     for file in files {
         let file = last_run.join(file);
         log::debug!("Removing {}", &file.display());
+        // Ignore "file not found" errors on delete
         let _ = std::fs::remove_file(file);
     }
     Ok(())

@@ -83,7 +83,7 @@ impl KnownHost {
         }
     }
 
-    pub fn save(self, name: String) -> Result<String> {
+    pub fn save(self, name: &String) -> Result<String> {
         // parse the ~/.esdiag/hosts.yml file into a HashMap<String, Host>
         let mut hosts = match KnownHost::parse_hosts_yml() {
             Ok(hosts) => hosts,
