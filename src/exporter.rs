@@ -68,7 +68,7 @@ impl TryFrom<Uri> for Exporter {
     fn try_from(uri: Uri) -> std::result::Result<Self, Self::Error> {
         match uri {
             Uri::File(file) => Ok(Exporter::File(FileExporter::try_from(file)?)),
-            Uri::Host(host) => Ok(Exporter::Elasticsearch(ElasticsearchExporter::try_from(
+            Uri::KnownHost(host) => Ok(Exporter::Elasticsearch(ElasticsearchExporter::try_from(
                 host,
             )?)),
             Uri::Stream => Ok(Exporter::Stream(StreamExporter::new())),

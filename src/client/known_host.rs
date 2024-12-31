@@ -16,7 +16,7 @@ use url::Url;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "auth")]
-pub enum Host {
+pub enum KnownHost {
     /// A host using API key authentication
     ApiKey {
         accept_invalid_certs: Option<bool>,
@@ -40,7 +40,7 @@ pub enum Host {
     None { app: Product, url: Url },
 }
 
-impl Host {
+impl KnownHost {
     pub fn new(
         url: Url,
         app: String,
@@ -52,14 +52,14 @@ impl Host {
         password: Option<String>,
     ) -> Self {
         match Auth::from_str(&auth) {
-            Ok(Auth::ApiKey) => Host::ApiKey {
+            Ok(Auth::ApiKey) => KnownHost::ApiKey {
                 apikey: apikey.expect("ApiKey auth requires an API key!"),
                 app: Product::from_str(&app).expect("A valid application is required!"),
                 accept_invalid_certs: Some(accept_invalid_certs),
                 cloud_id,
                 url,
             },
-            Ok(Auth::Basic) => Host::Basic {
+            Ok(Auth::Basic) => KnownHost::Basic {
                 app: Product::from_str(&app).expect("A valid application is required!"),
                 accept_invalid_certs: Some(accept_invalid_certs),
                 cloud_id,
@@ -67,7 +67,7 @@ impl Host {
                 url,
                 username: username.expect("Basic auth requires a username!"),
             },
-            Ok(Auth::None) => Host::None {
+            Ok(Auth::None) => KnownHost::None {
                 app: Product::from_str(&app).expect("A valid application is required!"),
                 url,
             },
@@ -83,9 +83,9 @@ impl Host {
         }
     }
 
-    pub fn save(self, name: String) -> Result<String> {
+    pub fn save(self, name: &String) -> Result<String> {
         // parse the ~/.esdiag/hosts.yml file into a HashMap<String, Host>
-        let mut hosts = match Host::parse_hosts_yml() {
+        let mut hosts = match KnownHost::parse_hosts_yml() {
             Ok(hosts) => hosts,
             Err(e) => {
                 log::error!("Error parsing hosts.yml: {}", e);
@@ -103,12 +103,12 @@ impl Host {
                 hosts.insert(name.clone(), self);
             }
         }
-        Host::write_hosts_yml(&hosts)
+        KnownHost::write_hosts_yml(&hosts)
     }
 
     pub fn get_known(host: &String) -> Option<Self> {
         // parse the ~/.esdiag/hosts.yml file into a HashMap<String, Host>
-        let hosts = match Host::parse_hosts_yml() {
+        let hosts = match KnownHost::parse_hosts_yml() {
             Ok(hosts) => hosts,
             Err(e) => {
                 log::error!("Error parsing hosts.yml: {}", e);
@@ -128,7 +128,7 @@ impl Host {
     }
 
     pub fn from_url(url: &Url) -> Self {
-        Host::None {
+        KnownHost::None {
             app: Product::Elasticsearch,
             url: url.clone(),
         }
@@ -242,14 +242,14 @@ impl Host {
     }
 
     /// loads hosts from the resources directory
-    pub fn parse_hosts_yml() -> Result<BTreeMap<String, Host>> {
-        let path = Host::get_hosts_path();
+    pub fn parse_hosts_yml() -> Result<BTreeMap<String, KnownHost>> {
+        let path = KnownHost::get_hosts_path();
         log::debug!("Parsing {:?}", path);
         match path.is_file() {
             true => {
                 let file = File::open(path)?;
                 let reader = BufReader::new(file);
-                let hosts: BTreeMap<String, Host> = serde_yaml::from_reader(reader)?;
+                let hosts: BTreeMap<String, KnownHost> = serde_yaml::from_reader(reader)?;
                 Ok(hosts)
             }
             false => {
@@ -260,8 +260,8 @@ impl Host {
         }
     }
 
-    pub fn write_hosts_yml(hosts: &BTreeMap<String, Host>) -> Result<String> {
-        let path = Host::get_hosts_path();
+    pub fn write_hosts_yml(hosts: &BTreeMap<String, KnownHost>) -> Result<String> {
+        let path = KnownHost::get_hosts_path();
         log::debug!(
             "Writing hosts: {} to {:?}",
             hosts
@@ -279,7 +279,7 @@ impl Host {
     }
 }
 
-impl Display for Host {
+impl Display for KnownHost {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::ApiKey {
@@ -310,10 +310,10 @@ impl Display for Host {
     }
 }
 
-impl FromStr for Host {
+impl FromStr for KnownHost {
     type Err = ();
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match Host::get_known(&s.to_string()) {
+        match KnownHost::get_known(&s.to_string()) {
             Some(host) => Ok(host),
             None => Err(()),
         }

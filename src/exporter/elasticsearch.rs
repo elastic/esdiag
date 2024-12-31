@@ -1,6 +1,6 @@
 use super::Export;
 use crate::{
-    client::{Auth, ElasticsearchBuilder, Host},
+    client::{Auth, ElasticsearchBuilder, KnownHost},
     data,
 };
 use color_eyre::eyre::{eyre, Result};
@@ -57,10 +57,10 @@ impl ElasticsearchExporter {
     }
 }
 
-impl TryFrom<Host> for ElasticsearchExporter {
+impl TryFrom<KnownHost> for ElasticsearchExporter {
     type Error = color_eyre::eyre::Report;
 
-    fn try_from(host: Host) -> Result<Self> {
+    fn try_from(host: KnownHost) -> Result<Self> {
         let url = host.get_url();
         let client = Elasticsearch::try_from(host)?;
         Ok(Self { client, url })

@@ -1,7 +1,7 @@
 Elastic Stack Diagnostics
 ==============================
 
-The Elastic Stack Diagnostics (`esdiag`) tool simplifies processing and importing diagnostic bundles into Elasticsearch. By pre-processing, splitting, and enriching the raw API outputs, building Kibana dashboards and ES|QL queries on diagnostic data is easy.
+The Elastic Stack Diagnostics (`esdiag`) tool simplifies processing and importing diagnostic bundles into Elasticsearch. It pre-processes, split and enriches the raw API outputs into Elasticsearch-friendly documents. This makes building diagnostic Kibana dashboards, ES|QL queries, and more, easy.
 
 Installation
 --------------------
@@ -84,18 +84,17 @@ Usage
 
 1. Save a target Elasticsearch cluster to the hosts configuration
     ```sh
-    esdiag host my_cluster elasticsearch http://localhost:9200 --auth None --save
+    esdiag host my_cluster elasticsearch http://localhost:9200 --auth none
     ```
-
 
 2. Setup the Elasticsearch cluster with the templates, data streams, etc.
     ```sh
     esdiag setup my_cluster
     ```
 
-3. Import a diagnostic bundle from a local directory
+3. Process a diagnostic bundle from a local directory to `my_cluster`
     ```sh
-    esdiag import my_cluster ~/downloads/api-diagnostic-20240506-0050225
+    esdiag process ~/downloads/api-diagnostic-20240506-0050225 my_cluster
     ```
 
 4. Open Kibana and explore!
@@ -113,10 +112,11 @@ Elastic Stack Diagnostics (esdiag) - collect diagnostics and import into Elastic
 Usage: esdiag <COMMAND>
 
 Commands:
-  collect  Collects diagnostics from an Elasticsearch host's API endpoints, saves to a directory
-  import   Process, enrich and import a diagnostic into Elasticsearch
+  collect  Collect a diagnostic bundle from a known host's API endpoints, writes output to a directory
   host     Configure and test a remote host connection
-  setup    Setup required assets to visualize diagnostic imports
+  import   [DEPRECATED] Process, enrich and import a diagnostic into Elasticsearch
+  process  Receives a diagnostic from the input, processes it, and sends processed docs to the output
+  setup    Import assets (templates, ingest pipelines, etc.) to a known Elasticsearch host
   help     Print this message or the help of the given subcommand(s)
 
 Options:
@@ -125,10 +125,10 @@ Options:
 
 #### Host
 
-The `esdiag host` command allows you configure and test authentication information, then save it to your `~/esdiag/hosts.yml` file for easy re-use.
+The `esdiag host` command allows you configure and test authentication information. On a succesful connection test, it writes the configuration to your `~/esdiag/hosts.yml` file for easy re-use.
 
 ```
-Configure and test a remote host connection
+Configure, test and save a remote host connection to `~/.esdiag/hosts.yml`
 
 Usage: esdiag host [OPTIONS] <NAME> [APP] [URL]
 
@@ -138,26 +138,27 @@ Arguments:
   [URL]   A host URL to connect to
 
 Options:
-      --auth <AUTH>          Authentication method to use (none, basic, apikey, etc.) [default: none]
-  -a, --apikey <APIKEY>      ApiKey, passed as http header
-  -c, --cloud-id <CLOUD_ID>  Elastic Cloud ID (optional)
-  -u, --username <USERNAME>  Username for authentication
-  -p, --password <PASSWORD>  Password for authentication
-  -s, --save                 Save the host configuration
-  -h, --help                 Print help
+      --auth <AUTH>           Authentication method to use (none, basic, apikey, etc.) [default: none]
+      --accept-invalid-certs  Accept invalid certificates
+  -a, --apikey <APIKEY>       ApiKey, passed as http header
+  -c, --cloud-id <CLOUD_ID>   Elastic Cloud ID (optional)
+  -u, --username <USERNAME>   Username for authentication
+  -p, --password <PASSWORD>   Password for authentication
+  -n, --nosave                Don't save the host configuration on succesful connection
+  -h, --help                  Print help
 ```
 
 #### Setup
 
-The `esdiag setup` command will send all the required index templates and other assets into the target host, this must be an Elasticsearch cluster!
+You must setup a known host to use the `esdiag setup` command. It will send the required index templates and other assets into your Elasticsearch cluster.
 
 ```
-Setup required assets to visualize diagnostic imports
+Import assets (templates, ingest pipelines, etc.) to a known Elasticsearch host
 
 Usage: esdiag setup <HOST>
 
 Arguments:
-  <HOST>  Host to setup assets in
+  <HOST>  Known Elasticsearch host to import assets into
 
 Options:
   -h, --help  Print help
@@ -165,28 +166,57 @@ Options:
 
 #### Import
 
-The `esdiag import` command allows these `target` and `source` options:
+> ⚠️ DEPRECATED: This command will be removed in a future version.
 
-`target`
-    1. stdout (use `-` as the target name)
-    2. directory (the root directory of a diagnostic bundle)
-    3. host (a known host saved to your `hosts.yml`)
+#### Process
 
-`source`
-    1. directory
+The `esdiag process <input> <output>` will read the diagnostic data from `<input>`, run the source documents through a series of processors, and send the enriched documents to the `<output>` target.
+
+The `<input>` may be:
+    1. Archive file - a `.zip` output from the [support diangostic](https://github.com/elastic/support-diagnostics) tool
+    2. Directory - the uncompressed directory from an archive
+    3. Known host - saved in the `hosts.yml`
+
+The `<output>` may be:
+    1. Known host - Must be an Elasticsearch host saved in the `hosts.yml`
+    2. File - writes in an `.ndjson` format
+    3. `stdout` - use `-` as the output name
 
 ```
-Process, enrich and import a diagnostic into Elasticsearch
+Receives a diagnostic from the input, processes it, and sends processed docs to the output
 
-Usage: esdiag import [OPTIONS] <TARGET> <SOURCE>
+Usage: esdiag process <INPUT> <OUTPUT>
 
 Arguments:
-  <TARGET>  Target to write processed diagnostic documents to (`-` for stdout)
-  <SOURCE>  Source to read diagnostic data from
+  <INPUT>   Source to read diagnostic data from (archive, directory, or known host)
+  <OUTPUT>  Target to send processed diagnostic documents to (known host, file, or stdout)
 
 Options:
-  -p, --pretty  Pretty print JSON
-  -h, --help    Print help
+  -h, --help  Print help
+```
+
+Once you have known hosts configured, you can add a simple shell commands shortcuts to your `~/.bashrc` or `~/.zshrc`. For example if you have `diag-cluster` as a known host:
+
+```sh
+esd() { esdiag process $1 diag-cluster }
+```
+
+Allows you to process diagnostics into the remote cluster with only:
+
+```sh
+esd ~/Downloads/api-diagnostic-20240506-0050225.zip
+```
+
+And a second function for an Elasticsearch cluster on your local machine, with `localhost` as a configured known host:
+
+```sh
+esdl() { esdiag process $1 localhost }
+```
+
+To pull a diagnostic into your local cluster directly from `diag-cluster`:
+
+```sh
+esdl diag-cluster
 ```
 
 #### Collect
@@ -196,7 +226,7 @@ The `esdiag collect` command pulls the minimum required diagnostics from an Elas
 Authentication must be setup in advance with the `esdiag host` command or `hosts.yml` file. Direct access to the clsuter is required, this cannot be done through any Elastic Cloud API.
 
 ```
-Collects diagnostics from an Elasticsearch host's API endpoints, saves to a directory
+Collect a diagnostic bundle from a known host's API endpoints, writes output to a directory
 
 Usage: esdiag collect <HOST> <OUTPUT>
 
@@ -216,7 +246,7 @@ Use a shell environment variables to enable debug logging:
 export LOG_LEVEL=debug
 ```
 
-This will enable debug-level messages. Also, when you import a diagnostic `esdiag` will write two new files in your `~/.esdiag` directory:
+This will enable debug-level log messages and when processing a diagnostic, `esdiag` will write debugging files into an `~/.esdiag/last_run` directory:
 
 1. `metadata.ndjson` - This contains the diagnostic metadata and lookup tables generated while processing the diagnostic.
 2. `responses.ndjson` - This contains all the HTTP responses from the Elasticsearch `_bulk` API.

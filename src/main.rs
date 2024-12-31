@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand};
 use color_eyre::eyre::{eyre, Result};
 use esdiag::{
-    client::Host,
+    client::KnownHost,
     data::{Collector, Uri},
     env::LOG_LEVEL,
     exporter::{DirectoryExporter, Exporter},
@@ -22,7 +22,7 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Commands {
-    /// Collects diagnostics from an Elasticsearch host's API endpoints, saves to a directory
+    /// Collect a diagnostic bundle from a known host's API endpoints, writes output to a directory
     Collect {
         /// The host to collect diagnostics from
         #[arg(help = "The Elasticsearch host to collect diagnostics from")]
@@ -31,7 +31,7 @@ enum Commands {
         #[arg(help = "The directory to save the diagnostics files to")]
         output: String,
     },
-    /// Configure and test a remote host connection
+    /// Configure, test and save a remote host connection to `~/.esdiag/hosts.yml`
     Host {
         /// A name to identify this host
         #[arg(help = "A name to identify this host")]
@@ -65,10 +65,14 @@ enum Commands {
         #[arg(help = "Password for authentication", long, short)]
         password: Option<String>,
         /// Save the host configuration
-        #[arg(help = "Save the host configuration", long, short)]
-        save: bool,
+        #[arg(
+            help = "Don't save the host configuration on succesful connection",
+            long,
+            short
+        )]
+        nosave: bool,
     },
-    /// Process, enrich and import a diagnostic into Elasticsearch
+    /// [DEPRECATED] Process, enrich and import a diagnostic into Elasticsearch
     Import {
         /// The target to write processed diagnostic data to
         #[arg(help = "Target to write processed diagnostic documents to (`-` for stdout)")]
@@ -78,10 +82,22 @@ enum Commands {
         #[arg(help = "Source to read diagnostic data from")]
         source: String,
     },
-    /// Setup required assets to visualize diagnostic imports
+    /// Receives a diagnostic from the input, processes it, and sends processed docs to the output
+    Process {
+        /// Source to read diagnostic data from
+        #[arg(help = "Source to read diagnostic data from (archive, directory, or known host)")]
+        input: String,
+
+        /// Target to send processed diagnostic documents to
+        #[arg(
+            help = "Target to send processed diagnostic documents to (known host, file, or stdout)"
+        )]
+        output: String,
+    },
+    /// Import assets (templates, ingest pipelines, etc.) to a known Elasticsearch host
     Setup {
-        /// Known host to setup assets in, only supports Elasticsearch or Kibana
-        #[arg(help = "Host to setup assets in")]
+        /// Known Elasticsaerch host to import assets into
+        #[arg(help = "Known Elasticsearch host to import assets into")]
         host: String,
     },
 }
@@ -122,14 +138,15 @@ async fn run() -> Result<&'static str> {
     // use clap to parse command line arguments
     let cli = Cli::parse();
 
-    match &cli.command {
+    match cli.command {
         Commands::Collect { host, output } => {
-            let host = Uri::parse(host)?;
-            let output = Uri::parse(output)?;
-            match host {
-                Uri::Host(_) => {
-                    log::info!("Collecting diagnostic from {host}");
-                    let receiver = Receiver::try_from(host)?;
+            let known_host = Uri::try_from(host)?;
+            let output = Uri::try_from(output)?;
+            match known_host {
+                Uri::KnownHost(_) => {
+                    log::info!("Collecting diagnostic from {known_host}");
+                    log::info!("Saving diagnostic to {output}");
+                    let receiver = Receiver::try_from(known_host)?;
                     let exporter = DirectoryExporter::try_from(output)?;
                     let collector = Collector::try_new(receiver, exporter).await?;
                     collector.collect().await?;
@@ -148,23 +165,24 @@ async fn run() -> Result<&'static str> {
             cloud_id,
             username,
             password,
-            save,
+            nosave,
         } => {
             log::info!("Configuring host {name}");
-            let host = match app.is_some() && url.is_some() {
-                false => Host::get_known(&name).ok_or(eyre!(
-                    "Host {name} not found, include `app` and `url` to setup a new host."
-                ))?,
-                true => Host::new(
-                    url.clone().unwrap(),
-                    app.clone().unwrap(),
-                    auth.clone(),
-                    accept_invalid_certs.clone(),
-                    apikey.clone(),
-                    cloud_id.clone(),
-                    username.clone(),
-                    password.clone(),
-                ),
+            let host = if let (Some(app), Some(url)) = (app, url) {
+                KnownHost::new(
+                    url,
+                    app,
+                    auth,
+                    accept_invalid_certs,
+                    apikey,
+                    cloud_id,
+                    username,
+                    password,
+                )
+            } else {
+                KnownHost::get_known(&name).ok_or(eyre!(
+                    "Host {name} not found, must include `url` and `app` to setup a new host."
+                ))?
             };
 
             let valid_connection = match host.test().await {
@@ -183,27 +201,51 @@ async fn run() -> Result<&'static str> {
                 }
             };
 
-            if *save {
-                let hostfile = host.save(name.to_string())?;
-                log::info!("Host {name} successfully saved to {hostfile}");
-            }
-            match valid_connection {
-                true => Ok("host"),
-                false => Err(eyre!("Host connection failed")),
+            if valid_connection {
+                if !nosave {
+                    let hostfile = host.save(&name)?;
+                    log::info!("Host {name} successfully saved to {hostfile}");
+                }
+                Ok("host")
+            } else {
+                Err(eyre!("Host connection failed"))
             }
         }
-        Commands::Import { target, source } => {
-            let output_uri = Uri::parse(target)?;
-            let input_uri = Uri::parse(source)?;
+        Commands::Process { input, output } => {
+            let input_uri = Uri::try_from(input)?;
+            let output_uri = Uri::try_from(output)?;
             log::info!("input: {}", input_uri);
             log::info!("output: {}", output_uri);
 
-            let receiver = Receiver::try_from(input_uri.clone())?;
-            let exporter = Exporter::try_from(output_uri.clone())?;
+            let receiver = Receiver::try_from(input_uri)?;
+            let exporter = Exporter::try_from(output_uri)?;
 
             let manifest = receiver.try_get_manifest().await?;
 
-            log::trace!("{}", serde_json::to_string(&manifest).unwrap());
+            log::trace!("{}", serde_json::to_string(&manifest)?);
+            let diagnostic_processor =
+                Diagnostic::try_new_processor(manifest, receiver, exporter).await?;
+            let (diag_id, doc_count) = diagnostic_processor.run().await?;
+            log::info!(
+                "Created {} documents for diagnostic: {}",
+                doc_count,
+                diag_id
+            );
+            Ok("process")
+        }
+        Commands::Import { target, source } => {
+            let output_uri = Uri::try_from(target)?;
+            let input_uri = Uri::try_from(source)?;
+            log::info!("input: {}", input_uri);
+            log::info!("output: {}", output_uri);
+            log::warn!("The `import` command is deprecated, please use `process` instead");
+
+            let receiver = Receiver::try_from(input_uri)?;
+            let exporter = Exporter::try_from(output_uri)?;
+
+            let manifest = receiver.try_get_manifest().await?;
+
+            log::trace!("{}", serde_json::to_string(&manifest)?);
             let diagnostic_processor =
                 Diagnostic::try_new_processor(manifest, receiver, exporter).await?;
             let (diag_id, doc_count) = diagnostic_processor.run().await?;
@@ -216,7 +258,7 @@ async fn run() -> Result<&'static str> {
         }
         Commands::Setup { host } => {
             log::info!("Setting up Elasticsearch assets in {host}");
-            let uri = Uri::parse(host)?;
+            let uri = Uri::try_from(host)?;
             let exporter = Exporter::try_from(uri)?;
             setup::assets(exporter).await?;
             Ok("setup")
@@ -233,6 +275,7 @@ fn clear_last_run_files() -> Result<()> {
     for file in files {
         let file = last_run.join(file);
         log::debug!("Removing {}", &file.display());
+        // Ignore "file not found" errors on delete
         let _ = std::fs::remove_file(file);
     }
     Ok(())
