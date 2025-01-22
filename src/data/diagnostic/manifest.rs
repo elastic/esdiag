@@ -69,6 +69,12 @@ impl Manifest {
             None => self,
         }
     }
+
+    /// Updates runner with provided String
+    pub fn with_runner(mut self, runner: &str) -> Self {
+        self.runner = Some(runner.to_string());
+        self
+    }
 }
 
 // Deserializing structs

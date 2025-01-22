@@ -111,7 +111,11 @@ impl Receiver {
         } else {
             log::warn!("Falling back to version.json");
             let version = self.get::<Cluster>().await?;
-            Ok(Manifest::try_from(version)?.try_into()?)
+            let manifest = match self {
+                Receiver::Elasticsearch(_) => Manifest::try_from(version)?.with_runner("esdiag"),
+                _ => Manifest::try_from(version)?,
+            };
+            Ok(manifest.try_into()?)
         }
     }
 }
