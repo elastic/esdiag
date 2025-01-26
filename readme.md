@@ -138,7 +138,6 @@ Arguments:
   [URL]   A host URL to connect to
 
 Options:
-      --auth <AUTH>           Authentication method to use (none, basic, apikey, etc.) [default: none]
       --accept-invalid-certs  Accept invalid certificates
   -a, --apikey <APIKEY>       ApiKey, passed as http header
   -c, --cloud-id <CLOUD_ID>   Elastic Cloud ID (optional)

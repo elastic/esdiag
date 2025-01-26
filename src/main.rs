@@ -42,18 +42,11 @@ enum Commands {
         /// A host URL to connect to
         #[arg(help = "A host URL to connect to")]
         url: Option<Url>,
-        /// Authentication method to use (none, basic, apikey, etc.)
-        #[arg(
-            default_value = "none",
-            help = "Authentication method to use (none, basic, apikey, etc.)",
-            long
-        )]
-        auth: String,
         /// Accept invalid certificates
         #[arg(help = "Accept invalid certificates", long)]
         accept_invalid_certs: bool,
         /// ApiKey for authentication
-        #[arg(help = "ApiKey, passed as http header ", long, short)]
+        #[arg(help = "ApiKey, passed as http header ", long, short, conflicts_with_all = &["username", "password"])]
         apikey: Option<String>,
         /// Elastic Cloud ID (optional)
         #[arg(help = "Elastic Cloud ID (optional)", long, short)]
@@ -160,7 +153,6 @@ async fn run() -> Result<&'static str> {
             app,
             url,
             accept_invalid_certs,
-            auth,
             apikey,
             cloud_id,
             username,
@@ -169,16 +161,15 @@ async fn run() -> Result<&'static str> {
         } => {
             log::info!("Configuring host {name}");
             let host = if let (Some(app), Some(url)) = (app, url) {
-                KnownHost::new(
+                KnownHost::try_new(
                     url,
                     app,
-                    auth,
                     accept_invalid_certs,
                     apikey,
                     cloud_id,
                     username,
                     password,
-                )
+                )?
             } else {
                 KnownHost::get_known(&name).ok_or(eyre!(
                     "Host {name} not found, must include `url` and `app` to setup a new host."

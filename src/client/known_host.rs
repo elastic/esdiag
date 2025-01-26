@@ -41,37 +41,36 @@ pub enum KnownHost {
 }
 
 impl KnownHost {
-    pub fn new(
+    pub fn try_new(
         url: Url,
         app: String,
-        auth: String,
         accept_invalid_certs: bool,
         apikey: Option<String>,
         cloud_id: Option<String>,
         username: Option<String>,
         password: Option<String>,
-    ) -> Self {
-        match Auth::from_str(&auth) {
-            Ok(Auth::ApiKey) => KnownHost::ApiKey {
-                apikey: apikey.expect("ApiKey auth requires an API key!"),
+    ) -> Result<Self> {
+        match (apikey, username, password) {
+            (Some(apikey), None, None) => Ok(KnownHost::ApiKey {
+                apikey,
                 app: Product::from_str(&app).expect("A valid application is required!"),
                 accept_invalid_certs: Some(accept_invalid_certs),
                 cloud_id,
                 url,
-            },
-            Ok(Auth::Basic) => KnownHost::Basic {
+            }),
+            (None, Some(username), Some(password)) => Ok(KnownHost::Basic {
                 app: Product::from_str(&app).expect("A valid application is required!"),
                 accept_invalid_certs: Some(accept_invalid_certs),
                 cloud_id,
-                password: password.expect("Basic auth requires a password!"),
+                password,
                 url,
-                username: username.expect("Basic auth requires a username!"),
-            },
-            Ok(Auth::None) => KnownHost::None {
+                username,
+            }),
+            (None, None, None) => Ok(KnownHost::None {
                 app: Product::from_str(&app).expect("A valid application is required!"),
                 url,
-            },
-            Err(_) => panic!("Invalid auth type: {}", auth),
+            }),
+            _ => Err(eyre!("Invalid combination of authentication properties")),
         }
     }
 
@@ -316,24 +315,6 @@ impl FromStr for KnownHost {
         match KnownHost::get_known(&s.to_string()) {
             Some(host) => Ok(host),
             None => Err(()),
-        }
-    }
-}
-
-enum Auth {
-    ApiKey,
-    Basic,
-    None,
-}
-
-impl FromStr for Auth {
-    type Err = ();
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "apikey" => Ok(Self::ApiKey),
-            "basic" => Ok(Self::Basic),
-            "none" => Ok(Self::None),
-            _ => Err(()),
         }
     }
 }
