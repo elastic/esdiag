@@ -1,4 +1,4 @@
-use super::Receive;
+use super::{Receive, ReceiveMultiple, ReceiveRaw};
 use crate::data::diagnostic::{data_source::PathType, DataSource};
 use color_eyre::eyre::{eyre, Result};
 use serde::de::DeserializeOwned;
@@ -59,7 +59,9 @@ impl Receive for DirectoryReceiver {
         let data: T = serde_json::from_reader(reader)?;
         Ok(data)
     }
+}
 
+impl ReceiveRaw for DirectoryReceiver {
     async fn get_raw<T>(&self) -> Result<String>
     where
         T: DataSource,
@@ -75,7 +77,9 @@ impl Receive for DirectoryReceiver {
         reader.read_to_string(&mut data)?;
         Ok(data)
     }
+}
 
+impl ReceiveMultiple for DirectoryReceiver {
     fn set_work_dir(&mut self, work_dir: &str) -> Result<()> {
         self.work_dir = String::from(work_dir);
         Ok(())

@@ -1,4 +1,4 @@
-use super::Receive;
+use super::{Receive, ReceiveMultiple, ReceiveRaw};
 use crate::data::diagnostic::{data_source::PathType, DataSource};
 use color_eyre::{eyre::eyre, Result};
 use serde::de::DeserializeOwned;
@@ -75,7 +75,7 @@ impl Receive for ArchiveReceiver {
             // This will break if the sub-paths are fixed in the ECK bundles
             Some(subdir) => &format!("{}//{}", subdir.display(), filename),
             None => {
-                let subdir = self.get_subdir().await.map(|s| s.join(filename))?;
+                let subdir = self.get_subdir().await?.join(filename);
                 &format!("{}", subdir.display())
             }
         };
@@ -88,7 +88,9 @@ impl Receive for ArchiveReceiver {
         let data: T = serde_json::from_reader(reader)?;
         Ok(data)
     }
+}
 
+impl ReceiveRaw for ArchiveReceiver {
     async fn get_raw<T>(&self) -> Result<String>
     where
         T: DataSource,
@@ -113,7 +115,9 @@ impl Receive for ArchiveReceiver {
         reader.read_to_string(&mut data)?;
         Ok(data)
     }
+}
 
+impl ReceiveMultiple for ArchiveReceiver {
     fn set_work_dir(&mut self, work_dir: &str) -> Result<()> {
         log::trace!("Setting subdir: {}", work_dir);
         self.subdir = Some(PathBuf::from(work_dir));

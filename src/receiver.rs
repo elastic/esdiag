@@ -2,11 +2,14 @@
 mod archive;
 /// Read from a direcotry in the local file system
 mod directory;
+/// Get file from Elastic Uploader service
+mod elastic_uploader;
 /// Request API calls from Elasticsearch
 mod elasticsearch;
 
 use archive::ArchiveReceiver;
 use directory::DirectoryReceiver;
+use elastic_uploader::ElasticUploaderReceiver;
 pub use elasticsearch::ElasticsearchReceiver;
 
 use crate::data::{
@@ -18,12 +21,17 @@ use color_eyre::eyre::{eyre, Result};
 use serde::de::DeserializeOwned;
 
 trait Receive {
-    #[allow(dead_code)]
     async fn is_connected(&self) -> bool;
-    fn set_work_dir(&mut self, work_dir: &str) -> Result<()>;
     async fn get<T>(&self) -> Result<T>
     where
         T: DataSource + DeserializeOwned;
+}
+
+trait ReceiveMultiple {
+    fn set_work_dir(&mut self, work_dir: &str) -> Result<()>;
+}
+
+trait ReceiveRaw {
     async fn get_raw<T>(&self) -> Result<String>
     where
         T: DataSource;
@@ -46,6 +54,8 @@ pub enum Receiver {
     Directory(DirectoryReceiver),
     /// Request API calls from Elasticsearch
     Elasticsearch(ElasticsearchReceiver),
+    /// Get file from Elastic Uploader service
+    ElasticUploader(ElasticUploaderReceiver),
 }
 
 impl Receiver {
@@ -54,11 +64,10 @@ impl Receiver {
         T: DataSource + DeserializeOwned,
     {
         match self {
-            Receiver::Archive(archive_receiver) => archive_receiver.get::<T>().await,
-            Receiver::Directory(directory_receiver) => directory_receiver.get::<T>().await,
-            Receiver::Elasticsearch(elasticsearch_receiver) => {
-                elasticsearch_receiver.get::<T>().await
-            }
+            Receiver::Archive(receiver) => receiver.get::<T>().await,
+            Receiver::Directory(receiver) => receiver.get::<T>().await,
+            Receiver::Elasticsearch(receiver) => receiver.get::<T>().await,
+            Receiver::ElasticUploader(receiver) => receiver.get::<T>().await,
         }
     }
 
@@ -67,11 +76,9 @@ impl Receiver {
         T: DataSource,
     {
         match self {
-            Receiver::Archive(archive_receiver) => archive_receiver.get_raw::<T>().await,
-            Receiver::Directory(directory_receiver) => directory_receiver.get_raw::<T>().await,
-            Receiver::Elasticsearch(elasticsearch_receiver) => {
-                elasticsearch_receiver.get_raw::<T>().await
-            }
+            Receiver::Archive(receiver) => receiver.get_raw::<T>().await,
+            Receiver::Elasticsearch(receiver) => receiver.get_raw::<T>().await,
+            _ => Err(eyre!("Raw data is not supported for this receiver")),
         }
     }
 
@@ -82,6 +89,9 @@ impl Receiver {
             Receiver::Elasticsearch(elasticsearch_receiver) => {
                 elasticsearch_receiver.is_connected().await
             }
+            Receiver::ElasticUploader(elastic_uploader_receiver) => {
+                elastic_uploader_receiver.is_connected().await
+            }
         }
     }
 
@@ -89,9 +99,7 @@ impl Receiver {
         match self {
             Receiver::Archive(archive_receiver) => archive_receiver.set_work_dir(work_dir),
             Receiver::Directory(directory_receiver) => directory_receiver.set_work_dir(work_dir),
-            Receiver::Elasticsearch(elasticsearch_receiver) => {
-                elasticsearch_receiver.set_work_dir(work_dir)
-            }
+            _ => Err(eyre!("Cannot set working directly on {}", self)),
         }
     }
 
@@ -129,7 +137,10 @@ impl TryFrom<Uri> for Receiver {
             Uri::KnownHost(host) => Ok(Receiver::Elasticsearch(ElasticsearchReceiver::try_from(
                 host,
             )?)),
-            _ => Err(eyre!("Unsupported URI")),
+            Uri::ElasticUploader(url) => Ok(Receiver::ElasticUploader(
+                ElasticUploaderReceiver::try_from(url)?,
+            )),
+            _ => Err(eyre!("Unsupported URI: {uri}")),
         }
     }
 }
@@ -137,10 +148,15 @@ impl TryFrom<Uri> for Receiver {
 impl std::fmt::Display for Receiver {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Receiver::Archive(archive_receiver) => write!(f, "file {}", archive_receiver),
-            Receiver::Directory(directory_receiver) => write!(f, "file {}", directory_receiver),
+            Receiver::Archive(archive_receiver) => write!(f, "File {}", archive_receiver),
+            Receiver::Directory(directory_receiver) => {
+                write!(f, "Directory {}", directory_receiver)
+            }
             Receiver::Elasticsearch(elasticsearch_receiver) => {
-                write!(f, "elasticsearch {}", elasticsearch_receiver)
+                write!(f, "Elasticsearch {}", elasticsearch_receiver)
+            }
+            Receiver::ElasticUploader(elastic_uploader_receiver) => {
+                write!(f, "Elastic Uploader {}", elastic_uploader_receiver)
             }
         }
     }

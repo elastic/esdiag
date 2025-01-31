@@ -205,11 +205,11 @@ async fn run() -> Result<&'static str> {
         Commands::Process { input, output } => {
             let input_uri = Uri::try_from(input)?;
             let output_uri = Uri::try_from(output)?;
-            log::info!("input: {}", input_uri);
-            log::info!("output: {}", output_uri);
 
             let receiver = Receiver::try_from(input_uri)?;
             let exporter = Exporter::try_from(output_uri)?;
+            log::info!("input: {}", receiver);
+            log::info!("output: {}", exporter);
 
             let manifest = receiver.try_get_manifest().await?;
 

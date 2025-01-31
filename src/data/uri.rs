@@ -1,5 +1,5 @@
 use crate::client::KnownHost;
-use color_eyre::eyre::{Report, Result};
+use color_eyre::eyre::{eyre, OptionExt, Report, Result};
 use std::{
     path::{Path, PathBuf},
     str::FromStr,
@@ -11,6 +11,8 @@ use url::Url;
 pub enum Uri {
     /// Represents a host saved in the hosts.yml
     KnownHost(KnownHost),
+    /// Represents an Elastic Uploader service URL
+    ElasticUploader(Url),
     /// Represents a standard URL
     Url(Url),
     /// Represents a directory path on the local file system
@@ -70,8 +72,29 @@ impl TryFrom<&str> for Uri {
                     Ok(host) => return Ok(Uri::KnownHost(host)),
                 }
                 match Url::parse(&uri) {
-                    Err(_) => log::debug!("Not a valid URL {uri}"),
-                    Ok(url) => return Ok(Uri::Url(url)),
+                    Err(_) => log::error!("Not a valid URL {uri}"),
+                    Ok(url) => {
+                        let domain = url.domain().ok_or_eyre("URL is missing a domain")?;
+                        log::debug!(
+                            "Domain: {domain} Username: {} Password: {}",
+                            url.username(),
+                            url.password().is_some()
+                        );
+                        match (domain, url.username(), url.password()) {
+                            ("upload.elastic.co", "token", Some(_)) => {
+                                log::debug!("Creating Uri::ElasticUploader");
+                                return Ok(Uri::ElasticUploader(url));
+                            }
+                            ("upload.elastic.co", _, None) => {
+                                log::debug!("Missing auth token for Elastic Uploader");
+                                return Err(eyre!("Elastic Uploader URLs require an auth token"));
+                            }
+                            _ => {
+                                log::debug!("Creating Uri::Url");
+                                return Ok(Uri::Url(url));
+                            }
+                        }
+                    }
                 }
                 let path = Path::new(&uri);
                 match path.is_dir() {
@@ -114,6 +137,7 @@ impl std::fmt::Display for Uri {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
             Uri::KnownHost(host) => write!(f, "{}", host),
+            Uri::ElasticUploader(url) => write!(f, "{}", url),
             Uri::Url(url) => write!(f, "{}", url),
             Uri::Directory(path) => write!(f, "{}", path.display()),
             Uri::File(path) => write!(f, "{}", path.display()),

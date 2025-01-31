@@ -76,3 +76,13 @@ impl TryFrom<Uri> for Exporter {
         }
     }
 }
+
+impl std::fmt::Display for Exporter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Exporter::Elasticsearch(exporter) => write!(f, "Elasticsearch {}", exporter),
+            Exporter::File(exporter) => write!(f, "File {}", exporter),
+            Exporter::Stream(exporter) => write!(f, "Stream {}", exporter),
+        }
+    }
+}

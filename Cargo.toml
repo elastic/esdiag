@@ -6,6 +6,7 @@ rust-version = "1.80"
 
 [dependencies]
 base64 = "0.22.1"
+bytes = "1.9.0"
 chrono = "^0.4"
 clap = { version = "^4.5", features = ["derive"] }
 color-eyre = "0.6.3"
