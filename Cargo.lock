@@ -592,6 +592,7 @@ name = "esdiag"
 version = "0.3.2"
 dependencies = [
  "base64",
+ "bytes",
  "chrono",
  "clap",
  "color-eyre",

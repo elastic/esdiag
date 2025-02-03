@@ -78,7 +78,9 @@ enum Commands {
     /// Receives a diagnostic from the input, processes it, and sends processed docs to the output
     Process {
         /// Source to read diagnostic data from
-        #[arg(help = "Source to read diagnostic data from (archive, directory, or known host)")]
+        #[arg(
+            help = "Source to read diagnostic data from (archive, directory, known host or uploader URL)"
+        )]
         input: String,
 
         /// Target to send processed diagnostic documents to

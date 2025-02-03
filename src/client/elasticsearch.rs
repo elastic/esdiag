@@ -108,7 +108,7 @@ impl TryFrom<KnownHost> for Elasticsearch {
                 .basic_auth(username, password)
                 .insecure(accept_invalid_certs.unwrap_or(false))
                 .build()?,
-            KnownHost::None { url, .. } => ElasticsearchBuilder::new(url).build()?,
+            KnownHost::NoAuth { url, .. } => ElasticsearchBuilder::new(url).build()?,
         };
         Ok(client)
     }

@@ -1,9 +1,9 @@
-use super::Receive;
+use super::{Receive, ReceiveRaw};
 use crate::{
     client::KnownHost,
     data::diagnostic::{data_source::PathType, DataSource},
 };
-use color_eyre::eyre::{eyre, Result};
+use color_eyre::eyre::Result;
 use elasticsearch::{http, Elasticsearch};
 use serde::de::DeserializeOwned;
 use url::Url;
@@ -85,7 +85,9 @@ impl Receive for ElasticsearchReceiver {
 
         response.json::<T>().await.map_err(Into::into)
     }
+}
 
+impl ReceiveRaw for ElasticsearchReceiver {
     async fn get_raw<T>(&self) -> Result<String>
     where
         T: DataSource,
@@ -108,12 +110,6 @@ impl Receive for ElasticsearchReceiver {
             .await?;
 
         response.text().await.map_err(Into::into)
-    }
-
-    fn set_work_dir(&mut self, work_dir: &str) -> Result<()> {
-        Err(eyre!(
-            "ElasticsearchReceiver does not support setting a working directory: {work_dir}"
-        ))
     }
 }
 

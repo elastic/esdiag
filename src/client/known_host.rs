@@ -37,7 +37,7 @@ pub enum KnownHost {
         username: String,
     },
     /// A host with no authentication
-    None { app: Product, url: Url },
+    NoAuth { app: Product, url: Url },
 }
 
 impl KnownHost {
@@ -66,7 +66,7 @@ impl KnownHost {
                 url,
                 username,
             }),
-            (None, None, None) => Ok(KnownHost::None {
+            (None, None, None) => Ok(KnownHost::NoAuth {
                 app: Product::from_str(&app).expect("A valid application is required!"),
                 url,
             }),
@@ -78,7 +78,7 @@ impl KnownHost {
         match self {
             Self::ApiKey { url, .. } => url.clone(),
             Self::Basic { url, .. } => url.clone(),
-            Self::None { url, .. } => url.clone(),
+            Self::NoAuth { url, .. } => url.clone(),
         }
     }
 
@@ -98,7 +98,7 @@ impl KnownHost {
             Self::Basic { .. } => {
                 hosts.insert(name.clone(), self);
             }
-            Self::None { .. } => {
+            Self::NoAuth { .. } => {
                 hosts.insert(name.clone(), self);
             }
         }
@@ -127,7 +127,7 @@ impl KnownHost {
     }
 
     pub fn from_url(url: &Url) -> Self {
-        KnownHost::None {
+        KnownHost::NoAuth {
             app: Product::Elasticsearch,
             url: url.clone(),
         }
@@ -138,7 +138,7 @@ impl KnownHost {
         let body = response.text().await.expect("Failed to read test body");
         let json = serde_json::from_str(&body).unwrap_or(serde_json::Value::Null);
         let app = match self {
-            Self::ApiKey { app, .. } | Self::Basic { app, .. } | Self::None { app, .. } => app,
+            Self::ApiKey { app, .. } | Self::Basic { app, .. } | Self::NoAuth { app, .. } => app,
         };
         match app {
             Product::Elasticsearch => match json.get("tagline") {
@@ -209,7 +209,7 @@ impl KnownHost {
                     Err(e) => Err(e),
                 }
             }
-            Self::None { app, url } => {
+            Self::NoAuth { app, url } => {
                 // test the connection
                 log::info!("Testing {} connection", &app);
                 let response = reqwest::get(url.as_str()).await;
@@ -240,7 +240,7 @@ impl KnownHost {
         }
     }
 
-    /// loads hosts from the resources directory
+    /// Loads hosts from the ~/.esdiag/hosts.yml (defalt) file
     pub fn parse_hosts_yml() -> Result<BTreeMap<String, KnownHost>> {
         let path = KnownHost::get_hosts_path();
         log::debug!("Parsing {:?}", path);
@@ -285,7 +285,7 @@ impl Display for KnownHost {
                 app, cloud_id, url, ..
             } => write!(
                 fmt,
-                "Host ApiKey: {} {} {}",
+                "KnownHost ApiKey: {} {} {}",
                 app,
                 url,
                 cloud_id.as_deref().unwrap_or(""),
@@ -298,13 +298,13 @@ impl Display for KnownHost {
                 ..
             } => write!(
                 fmt,
-                "Host Basic: {} {}@ {} {}",
+                "KnownHost Basic: {} {}@ {} {}",
                 app,
                 username,
                 url,
                 cloud_id.as_deref().unwrap_or(""),
             ),
-            Self::None { app, url } => write!(fmt, "Host None: {} {}", app, url),
+            Self::NoAuth { app, url } => write!(fmt, "KnownHost NoAuth: {} {}", app, url),
         }
     }
 }

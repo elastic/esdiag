@@ -175,6 +175,7 @@ The `<input>` may be:
     1. Archive file - a `.zip` output from the [support diangostic](https://github.com/elastic/support-diagnostics) tool
     2. Directory - the uncompressed directory from an archive
     3. Known host - saved in the `hosts.yml`
+    4. Elastic Uploader link - A url with auth token formated as `https://token:0123456789@upload.elastic.co/d/abcdefghijklmnopqrstuvwxyz`
 
 The `<output>` may be:
     1. Known host - Must be an Elasticsearch host saved in the `hosts.yml`
@@ -187,7 +188,7 @@ Receives a diagnostic from the input, processes it, and sends processed docs to 
 Usage: esdiag process <INPUT> <OUTPUT>
 
 Arguments:
-  <INPUT>   Source to read diagnostic data from (archive, directory, or known host)
+  <INPUT>   Source to read diagnostic data from (archive, directory, known host, or uploader URL)
   <OUTPUT>  Target to send processed diagnostic documents to (known host, file, or stdout)
 
 Options:
