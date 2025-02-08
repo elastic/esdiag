@@ -37,6 +37,7 @@ pub enum KnownHost {
         username: String,
     },
     /// A host with no authentication
+    #[serde(alias = "None")]
     NoAuth { app: Product, url: Url },
 }
 

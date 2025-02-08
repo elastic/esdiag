@@ -56,10 +56,10 @@ impl DataProcessor<Lookups, ElasticsearchMetadata> for IndicesStats {
 
                 let write_phase_sec =
                     if let (Some(creation), Some(rollover)) = (since_creation, since_rollover) {
-                        match creation == rollover {
-                            true if is_before_rollover => creation / 1000,
-                            true => 0,
-                            false => (creation - rollover) / 1000,
+                        match creation > rollover {
+                            true => (creation - rollover) / 1000,
+                            false if is_before_rollover => creation / 1000,
+                            _ => 0,
                         }
                     } else {
                         0
