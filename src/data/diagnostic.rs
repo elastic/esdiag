@@ -30,7 +30,7 @@ pub use diagnostic_manifest::DiagnosticManifest;
 pub use doc::DiagnosticMetadata;
 pub use lookup::Lookup;
 pub use manifest::Manifest;
-pub use report::DiagnosticReport;
+pub use report::{DiagnosticReport, DiagnosticReportBuilder};
 use serde::{Deserialize, Deserializer, Serialize};
 use std::str::FromStr;
 

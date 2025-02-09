@@ -1,6 +1,8 @@
 use super::{DiagnosticProcessor, ElasticsearchDiagnostic};
 use crate::{
-    data::diagnostic::{DiagPath, DiagnosticManifest, DiagnosticReport, Lookup, Product},
+    data::diagnostic::{
+        DiagPath, DiagnosticManifest, DiagnosticReport, DiagnosticReportBuilder, Lookup, Product,
+    },
     exporter::Exporter,
     receiver::Receiver,
 };
@@ -41,8 +43,10 @@ impl DiagnosticProcessor for ElasticCloudKubernetesDiagnostic {
             None => vec![],
         };
 
-        let report = DiagnosticReport::try_new(Product::ECK, manifest)
-            .expect("Failed to create ECK diagnostic report");
+        let report = DiagnosticReportBuilder::try_from(manifest)?
+            .product(Product::ECK)
+            .receiver(receiver.to_string())
+            .build()?;
 
         Ok(Box::new(Self {
             lookups,

@@ -23,7 +23,7 @@ use crate::{
         self,
         diagnostic::{
             elasticsearch::DataSet, report::ProcessorSummary, DataSource, DiagnosticManifest,
-            DiagnosticReport, Lookup, Product,
+            DiagnosticReport, DiagnosticReportBuilder, Lookup, Product,
         },
         elasticsearch::{
             Alias, AliasList, Cluster, ClusterSettings, DataStream, DataStreams, IlmExplain,
@@ -60,14 +60,18 @@ pub struct ElasticsearchDiagnostic {
 }
 
 impl ElasticsearchDiagnostic {
-    async fn process_queue(&self) -> Option<ProcessorSummary> {
+    async fn process_queue(&self, name: String) -> Option<ProcessorSummary> {
         let queue = self.queue.clone();
         let exporter = self.exporter.clone();
 
         let mut queue_guard = queue.write().await;
         if let Some((index, docs)) = queue_guard.pop() {
             log::debug!("Processing queue {index}");
-            exporter.write(index, docs).await.ok()
+            exporter
+                .write(index, docs)
+                .await
+                .ok()
+                .map(|summary| summary.rename(name).was_parsed())
         } else {
             log::warn!("Queue was empty");
             None
@@ -85,8 +89,10 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
         let display_name = receiver.get::<ClusterSettings>().await?.get_display_name();
         let metadata =
             ElasticsearchMetadata::try_new(manifest, cluster.with_display_name(display_name))?;
-        let mut report = DiagnosticReport::from(metadata.diagnostic.clone())
-            .with_product(Product::Elasticsearch);
+        let mut report = DiagnosticReportBuilder::from(metadata.diagnostic.clone())
+            .product(Product::Elasticsearch)
+            .receiver(receiver.to_string())
+            .build()?;
 
         let lookups = Lookups {
             alias: Lookup::from(receiver.get::<AliasList>().await),
@@ -181,11 +187,11 @@ where
         match docs {
             Ok(docs) => {
                 diagnostic.queue.write().await.push(docs);
-                diagnostic.process_queue().await
+                diagnostic.process_queue(T::name()).await
             }
             Err(e) => {
                 log::warn!("No {} data found: {e}", T::name());
-                None
+                Some(ProcessorSummary::new(T::name()))
             }
         }
     }))

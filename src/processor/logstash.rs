@@ -12,7 +12,8 @@ use crate::{
     data::{
         self,
         diagnostic::{
-            report::ProcessorSummary, DataSource, DiagnosticManifest, DiagnosticReport, Product,
+            report::ProcessorSummary, DataSource, DiagnosticManifest, DiagnosticReport,
+            DiagnosticReportBuilder, Product,
         },
         logstash::{Node, NodeStats, Plugins, Version},
     },
@@ -63,8 +64,9 @@ impl DiagnosticProcessor for LogstashDiagnostic {
         let logstash_version = receiver.get::<Version>().await?;
         let metadata = LogstashMetadata::try_new(manifest, logstash_version)?;
         let plugins = receiver.get::<Plugins>().await?;
-        let report =
-            DiagnosticReport::from(metadata.diagnostic.clone()).with_product(Product::Logstash);
+        let report = DiagnosticReportBuilder::from(metadata.diagnostic.clone())
+            .product(Product::Logstash)
+            .build()?;
 
         Ok(Box::new(Self {
             lookups: Arc::new(Lookups {
