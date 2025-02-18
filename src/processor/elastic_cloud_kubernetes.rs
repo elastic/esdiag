@@ -87,7 +87,7 @@ impl DiagnosticProcessor for ElasticCloudKubernetesDiagnostic {
         let report = self.report.write().await;
         log::info!(
             "Created {} documents for diagnostic: {}",
-            report.docs_total,
+            report.docs.created,
             report.metadata.id,
         );
         self.exporter.save_report(&*report).await?;

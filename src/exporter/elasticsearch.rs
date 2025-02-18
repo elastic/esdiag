@@ -134,6 +134,10 @@ impl Export for ElasticsearchExporter {
         let body = json!({
             "@timestamp": chrono::Utc::now().timestamp_millis(),
             "diagnostic": report ,
+            "agent": {
+                "type": "esdiag",
+                "version": semver::Version::parse(env!("CARGO_PKG_VERSION"))?,
+            }
         });
         match self
             .client

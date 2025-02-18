@@ -151,8 +151,8 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
                 DataSet::NodesStats,
                 spawn_processor::<NodesStats>(diag.clone()),
             ),
-            // Temporarily omitting in favor of an include/exclude/diag_type
-            // filter to prevent the "expected" error
+            // Temporarily omitting in favor of an include/exclude/diag_type filter to
+            // prevent the expected error
             // (
             // DataSet::SearchableSnapshotsStats,
             // spawn_processor::<SearchableSnapshotsStats>(diag.clone()),
@@ -174,7 +174,7 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
 
         log::info!(
             "Created {} documents for diagnostic: {}",
-            report.docs_total,
+            report.docs.created,
             report.metadata.id,
         );
         diag.exporter.save_report(&*report).await?;

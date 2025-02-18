@@ -92,7 +92,7 @@ impl DiagnosticProcessor for LogstashDiagnostic {
 
         log::info!(
             "Created {} documents for diagnostic: {}",
-            report.docs_total,
+            report.docs.created,
             report.metadata.id,
         );
         self.exporter.save_report(&*report).await?;

@@ -4,7 +4,6 @@ use serde::Serialize;
 use std::collections::HashMap;
 
 pub struct DiagnosticReportBuilder {
-    lookups: HashMap<String, LookupSummary>,
     processors: HashMap<String, ProcessorSummary>,
     product: Option<Product>,
     metadata: DiagnosticMetadata,
@@ -34,7 +33,6 @@ impl DiagnosticReportBuilder {
 impl From<DiagnosticMetadata> for DiagnosticReportBuilder {
     fn from(metadata: DiagnosticMetadata) -> Self {
         Self {
-            lookups: HashMap::new(),
             metadata,
             processors: HashMap::new(),
             product: None,
@@ -49,7 +47,6 @@ impl TryFrom<DiagnosticManifest> for DiagnosticReportBuilder {
     fn try_from(manifest: DiagnosticManifest) -> Result<Self> {
         let metadata = DiagnosticMetadata::try_from(manifest)?;
         Ok(Self {
-            lookups: HashMap::new(),
             metadata,
             processors: HashMap::new(),
             product: None,
@@ -62,44 +59,56 @@ impl TryFrom<DiagnosticManifest> for DiagnosticReportBuilder {
 pub struct DiagnosticReport {
     product: Product,
     origin: Origin,
-    pub docs_total: u32,
-    doc_errors: u32,
-    lookups: HashMap<String, LookupSummary>,
-    processor: ProcessorStats,
+    pub docs: Docs,
+    lookup: NestedStats<LookupSummary>,
+    processor: NestedStats<ProcessorSummary>,
     #[serde(flatten)]
     pub metadata: DiagnosticMetadata,
 }
 
 #[derive(Serialize, Clone)]
-struct ProcessorStats {
+pub struct Docs {
+    pub created: u32,
+    pub errors: u32,
+    pub total: u32,
+}
+#[derive(Serialize, Clone)]
+struct NestedStats<T> {
     count: u32,
     errors: u32,
     failures: Vec<String>,
-    stats: HashMap<String, ProcessorSummary>,
+    stats: HashMap<String, T>,
+}
+
+impl<T> NestedStats<T> {
+    fn push(&mut self, name: String, summary: T) {
+        self.count += 1;
+        self.stats.insert(name, summary);
+    }
 }
 
 impl DiagnosticReport {
     pub fn add_processor_summary(&mut self, summary: ProcessorSummary) {
-        self.processor.count += 1;
         if !summary.source.parsed {
             self.processor.errors += 1;
-            self.processor.failures.push(summary.processor.clone());
+            self.processor.failures.push(summary.index.clone());
         }
-        self.docs_total += summary.docs;
-        self.doc_errors += summary.doc_errors;
-        self.processor
-            .stats
-            .insert(summary.processor.clone(), summary);
+        self.docs.created += summary.docs;
+        self.docs.errors += summary.doc_errors;
+        self.docs.total += summary.docs + summary.doc_errors;
+        self.processor.push(summary.processor.clone(), summary);
     }
 
     pub fn add_lookup<T>(&mut self, name: &str, lookup: &Lookup<T>)
     where
         T: Clone + Serialize,
     {
-        let summary = LookupSummary {
-            count: lookup.len() as u32,
-        };
-        self.lookups.insert(name.to_string(), summary);
+        self.lookup.push(
+            name.to_string(),
+            LookupSummary {
+                docs: lookup.len() as u32,
+            },
+        );
     }
 }
 
@@ -108,12 +117,20 @@ impl TryFrom<DiagnosticReportBuilder> for DiagnosticReport {
 
     fn try_from(builder: DiagnosticReportBuilder) -> Result<Self> {
         Ok(Self {
-            docs_total: 0,
-            doc_errors: 0,
-            lookups: builder.lookups,
+            docs: Docs {
+                created: 0,
+                errors: 0,
+                total: 0,
+            },
+            lookup: NestedStats::<LookupSummary> {
+                count: 0,
+                errors: 0,
+                failures: Vec::new(),
+                stats: HashMap::<String, LookupSummary>::new(),
+            },
             metadata: builder.metadata,
             origin: builder.origin.ok_or_else(|| eyre!("Origin not set"))?,
-            processor: ProcessorStats {
+            processor: NestedStats::<ProcessorSummary> {
                 count: 0,
                 errors: 0,
                 failures: Vec::new(),
@@ -148,6 +165,11 @@ impl BatchResponse {
 }
 
 #[derive(Serialize, Clone)]
+pub struct LookupSummary {
+    docs: u32,
+}
+
+#[derive(Serialize, Clone)]
 pub struct ProcessorSummary {
     batch: BatchStats,
     pub docs: u32,
@@ -161,7 +183,6 @@ pub struct ProcessorSummary {
 #[derive(Serialize, Clone)]
 pub struct BatchStats {
     count: u32,
-    errors: u32,
     retries: u16,
     status_codes: HashMap<u16, u32>,
     #[serde(skip_serializing)]
@@ -178,7 +199,6 @@ impl ProcessorSummary {
         Self {
             batch: BatchStats {
                 count: 0,
-                errors: 0,
                 retries: 0,
                 status_codes: HashMap::new(),
                 responses: Vec::new(),
@@ -193,7 +213,6 @@ impl ProcessorSummary {
 
     pub fn add_batch(&mut self, batch: BatchResponse) {
         self.batch.count += 1;
-        self.batch.errors += batch.errors;
         self.batch.retries += batch.retries;
         self.batch
             .status_codes
@@ -201,6 +220,7 @@ impl ProcessorSummary {
             .and_modify(|count| *count += 1)
             .or_insert(1);
         self.docs += batch.docs;
+        self.doc_errors += batch.errors;
         self.batch.responses.push(batch);
     }
 
@@ -217,11 +237,6 @@ impl ProcessorSummary {
             ..self
         }
     }
-}
-
-#[derive(Serialize, Clone)]
-pub struct LookupSummary {
-    count: u32,
 }
 
 #[derive(Serialize, Clone)]
