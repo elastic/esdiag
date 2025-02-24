@@ -14,12 +14,84 @@ use std::{
 };
 use url::Url;
 
+pub struct KnownHostBuilder {
+    accept_invalid_certs: bool,
+    apikey: Option<String>,
+    product: Product,
+    cloud_id: Option<String>,
+    password: Option<String>,
+    url: Url,
+    username: Option<String>,
+}
+
+impl KnownHostBuilder {
+    pub fn new(url: Url) -> Self {
+        KnownHostBuilder {
+            accept_invalid_certs: false,
+            apikey: None,
+            product: Product::Elasticsearch,
+            cloud_id: None,
+            password: None,
+            url,
+            username: None,
+        }
+    }
+
+    pub fn accept_invalid_certs(self, accept_invalid_certs: bool) -> Self {
+        Self {
+            accept_invalid_certs,
+            ..self
+        }
+    }
+
+    pub fn apikey(self, apikey: Option<String>) -> Self {
+        Self { apikey, ..self }
+    }
+
+    pub fn password(self, password: Option<String>) -> Self {
+        Self { password, ..self }
+    }
+
+    pub fn product(self, product: Product) -> Self {
+        Self { product, ..self }
+    }
+
+    pub fn username(self, username: Option<String>) -> Self {
+        Self { username, ..self }
+    }
+
+    pub fn build(self) -> Result<KnownHost> {
+        match (self.apikey, self.username, self.password) {
+            (None, Some(username), Some(password)) => Ok(KnownHost::Basic {
+                accept_invalid_certs: self.accept_invalid_certs,
+                app: self.product,
+                cloud_id: self.cloud_id,
+                password,
+                url: self.url,
+                username,
+            }),
+            (Some(apikey), None, None) => Ok(KnownHost::ApiKey {
+                accept_invalid_certs: self.accept_invalid_certs,
+                apikey,
+                app: self.product,
+                cloud_id: self.cloud_id,
+                url: self.url,
+            }),
+            (None, None, None) => Ok(KnownHost::NoAuth {
+                app: self.product,
+                url: self.url,
+            }),
+            _ => Err(eyre!("Invalid KnownHost configuration")),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "auth")]
 pub enum KnownHost {
     /// A host using API key authentication
     ApiKey {
-        accept_invalid_certs: Option<bool>,
+        accept_invalid_certs: bool,
         apikey: String,
         app: Product,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -28,7 +100,7 @@ pub enum KnownHost {
     },
     /// A host using basic username/password authentication
     Basic {
-        accept_invalid_certs: Option<bool>,
+        accept_invalid_certs: bool,
         app: Product,
         #[serde(skip_serializing_if = "Option::is_none")]
         cloud_id: Option<String>,
@@ -42,36 +114,11 @@ pub enum KnownHost {
 }
 
 impl KnownHost {
-    pub fn try_new(
-        url: Url,
-        app: String,
-        accept_invalid_certs: bool,
-        apikey: Option<String>,
-        cloud_id: Option<String>,
-        username: Option<String>,
-        password: Option<String>,
-    ) -> Result<Self> {
-        match (apikey, username, password) {
-            (Some(apikey), None, None) => Ok(KnownHost::ApiKey {
-                apikey,
-                app: Product::from_str(&app).expect("A valid application is required!"),
-                accept_invalid_certs: Some(accept_invalid_certs),
-                cloud_id,
-                url,
-            }),
-            (None, Some(username), Some(password)) => Ok(KnownHost::Basic {
-                app: Product::from_str(&app).expect("A valid application is required!"),
-                accept_invalid_certs: Some(accept_invalid_certs),
-                cloud_id,
-                password,
-                url,
-                username,
-            }),
-            (None, None, None) => Ok(KnownHost::NoAuth {
-                app: Product::from_str(&app).expect("A valid application is required!"),
-                url,
-            }),
-            _ => Err(eyre!("Invalid combination of authentication properties")),
+    pub fn app(&self) -> &Product {
+        match self {
+            Self::ApiKey { app, .. } => app,
+            Self::Basic { app, .. } => app,
+            Self::NoAuth { app, .. } => app,
         }
     }
 
@@ -178,7 +225,7 @@ impl KnownHost {
                         ))
                         .collect(),
                     )
-                    .danger_accept_invalid_certs(accept_invalid_certs.unwrap_or(false))
+                    .danger_accept_invalid_certs(*accept_invalid_certs)
                     .build()?;
                 log::trace!("Reqwest client: {:?}", client);
                 let response = client.get(url.as_str()).send().await;
@@ -198,7 +245,7 @@ impl KnownHost {
                 // test the connection
                 log::info!("Testing {} connection", &app);
                 let client = reqwest::Client::builder()
-                    .danger_accept_invalid_certs(accept_invalid_certs.unwrap_or(false))
+                    .danger_accept_invalid_certs(*accept_invalid_certs)
                     .build()?;
                 let response = client
                     .get(url.as_str())

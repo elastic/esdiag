@@ -12,9 +12,12 @@ use elasticsearch::ElasticsearchExporter;
 use file::FileExporter;
 use stream::StreamExporter;
 
-use crate::data::{
-    diagnostic::{report::ProcessorSummary, DiagnosticReport},
-    Uri,
+use crate::{
+    client::KnownHost,
+    data::{
+        diagnostic::{report::ProcessorSummary, DiagnosticReport, Product},
+        Uri,
+    },
 };
 use color_eyre::eyre::{eyre, Result};
 use serde_json::Value;
@@ -102,6 +105,18 @@ impl std::fmt::Display for Exporter {
             Exporter::Elasticsearch(exporter) => write!(f, "Elasticsearch {}", exporter),
             Exporter::File(exporter) => write!(f, "File {}", exporter),
             Exporter::Stream(exporter) => write!(f, "Stream {}", exporter),
+        }
+    }
+}
+
+impl TryFrom<KnownHost> for Exporter {
+    type Error = color_eyre::Report;
+    fn try_from(host: KnownHost) -> std::result::Result<Self, Self::Error> {
+        match host.app() {
+            Product::Elasticsearch => Ok(Exporter::Elasticsearch(ElasticsearchExporter::try_from(
+                host,
+            )?)),
+            _ => Err(eyre!("Unsupported product")),
         }
     }
 }
