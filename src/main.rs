@@ -1,8 +1,8 @@
 use clap::{Parser, Subcommand};
 use color_eyre::eyre::{eyre, Result};
 use esdiag::{
-    client::KnownHost,
-    data::{Collector, Uri},
+    client::{KnownHost, KnownHostBuilder},
+    data::{diagnostic::Product, Collector, Uri},
     env::LOG_LEVEL,
     exporter::{DirectoryExporter, Exporter},
     processor::Diagnostic,
@@ -38,7 +38,7 @@ enum Commands {
         name: String,
         /// Application of this host (elasticsearch, kibana, logstash, etc.)
         #[arg(help = "Application of this host (elasticsearch, kibana, logstash, etc.)")]
-        app: Option<String>,
+        app: Option<Product>,
         /// A host URL to connect to
         #[arg(help = "A host URL to connect to")]
         url: Option<Url>,
@@ -48,9 +48,6 @@ enum Commands {
         /// ApiKey for authentication
         #[arg(help = "ApiKey, passed as http header ", long, short, conflicts_with_all = &["username", "password"])]
         apikey: Option<String>,
-        /// Elastic Cloud ID (optional)
-        #[arg(help = "Elastic Cloud ID (optional)", long, short)]
-        cloud_id: Option<String>,
         /// Username for authentication
         #[arg(help = "Username for authentication", long, short)]
         username: Option<String>,
@@ -79,15 +76,15 @@ enum Commands {
     Process {
         /// Source to read diagnostic data from
         #[arg(
-            help = "Source to read diagnostic data from (archive, directory, known host or uploader URL)"
+            help = "Source to read diagnostic data from (archive, directory, known host or Elastic uploader URL)"
         )]
         input: String,
 
         /// Target to send processed diagnostic documents to
         #[arg(
-            help = "Target to send processed diagnostic documents to (known host, file, or stdout)"
+            long_help = "Target to send the processed diagnostic documents to (known host, file, stdout, or env). Strings will be checked against the known hosts stored in `~/.esdiag/hosts.yml` and will fallback to a filename if not found. Use `-` for stdout. If nothing is provided, the output will try using the environment variables: ESDIAG_OUTPUT_URL, ESDIAG_OUTPUT_APIKEY, ESDIAG_OUTPUT_USERNAME, and ESDIAG_OUTPUT_PASSWORD."
         )]
-        output: String,
+        output: Option<String>,
     },
     /// Import assets (templates, ingest pipelines, etc.) to a known Elasticsearch host
     Setup {
@@ -156,22 +153,19 @@ async fn run() -> Result<&'static str> {
             url,
             accept_invalid_certs,
             apikey,
-            cloud_id,
             username,
             password,
             nosave,
         } => {
             log::info!("Configuring host {name}");
             let host = if let (Some(app), Some(url)) = (app, url) {
-                KnownHost::try_new(
-                    url,
-                    app,
-                    accept_invalid_certs,
-                    apikey,
-                    cloud_id,
-                    username,
-                    password,
-                )?
+                KnownHostBuilder::new(url)
+                    .product(app)
+                    .accept_invalid_certs(accept_invalid_certs)
+                    .apikey(apikey)
+                    .username(username)
+                    .password(password)
+                    .build()?
             } else {
                 KnownHost::get_known(&name).ok_or(eyre!(
                     "Host {name} not found, must include `url` and `app` to setup a new host."
@@ -206,12 +200,30 @@ async fn run() -> Result<&'static str> {
         }
         Commands::Process { input, output } => {
             let input_uri = Uri::try_from(input)?;
-            let output_uri = Uri::try_from(output)?;
+            let output_uri = output.and_then(|o| Uri::try_from(o).ok());
+
             log::info!("input: {}", input_uri);
-            log::info!("output: {}", output_uri);
 
             let receiver = Receiver::try_from(input_uri)?;
-            let exporter = Exporter::try_from(output_uri)?;
+            let exporter = match output_uri {
+                Some(output_uri) => {
+                    log::info!("output: {}", output_uri);
+                    Exporter::try_from(output_uri)?
+                }
+                None => {
+                    let url = Url::parse(&std::env::var("ESDIAG_OUTPUT_URL")?)?;
+                    log::info!("output: Env {}", url);
+                    let apikey = std::env::var("ESDIAG_OUTPUT_APIKEY").ok();
+                    let username = std::env::var("ESDIAG_OUTPUT_USERNAME").ok();
+                    let password = std::env::var("ESDIAG_OUTPUT_PASSWORD").ok();
+                    let host = KnownHostBuilder::new(url)
+                        .apikey(apikey)
+                        .username(username)
+                        .password(password)
+                        .build()?;
+                    Exporter::try_from(host)?
+                }
+            };
 
             let manifest = receiver.try_get_manifest().await?;
             log::trace!("{}", serde_json::to_string(&manifest)?);

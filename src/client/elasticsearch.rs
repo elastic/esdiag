@@ -96,7 +96,7 @@ impl TryFrom<KnownHost> for Elasticsearch {
                 ..
             } => ElasticsearchBuilder::new(url)
                 .apikey(apikey)
-                .insecure(accept_invalid_certs.unwrap_or(false))
+                .insecure(accept_invalid_certs)
                 .build()?,
             KnownHost::Basic {
                 accept_invalid_certs,
@@ -106,7 +106,7 @@ impl TryFrom<KnownHost> for Elasticsearch {
                 ..
             } => ElasticsearchBuilder::new(url)
                 .basic_auth(username, password)
-                .insecure(accept_invalid_certs.unwrap_or(false))
+                .insecure(accept_invalid_certs)
                 .build()?,
             KnownHost::NoAuth { url, .. } => ElasticsearchBuilder::new(url).build()?,
         };

@@ -169,7 +169,7 @@ Options:
 
 #### Process
 
-The `esdiag process <input> <output>` will read the diagnostic data from `<input>`, run the source documents through a series of processors, and send the enriched documents to the `<output>` target.
+The `esdiag process <input> [output]` will read the diagnostic data from `<input>`, run the source documents through a series of processors, and send the enriched documents to the `<output>` target.
 
 The `<input>` may be:
     1. Archive file - a `.zip` output from the [support diangostic](https://github.com/elastic/support-diagnostics) tool
@@ -177,22 +177,27 @@ The `<input>` may be:
     3. Known host - saved in the `hosts.yml`
     4. Elastic Uploader link - A url with auth token formated as `https://token:0123456789@upload.elastic.co/d/abcdefghijklmnopqrstuvwxyz`
 
-The `<output>` may be:
+The optional `[output]` may be:
     1. Known host - Must be an Elasticsearch host saved in the `hosts.yml`
     2. File - writes in an `.ndjson` format
     3. `stdout` - use `-` as the output name
+    4. Omitted - Uses values read from `ESDIAG_OUTPUT_*` environment variables
 
 ```
 Receives a diagnostic from the input, processes it, and sends processed docs to the output
 
-Usage: esdiag process <INPUT> <OUTPUT>
+Usage: esdiag process <INPUT> [OUTPUT]
 
 Arguments:
-  <INPUT>   Source to read diagnostic data from (archive, directory, known host, or uploader URL)
-  <OUTPUT>  Target to send processed diagnostic documents to (known host, file, or stdout)
+  <INPUT>
+          Source to read diagnostic data from (archive, directory, known host or uploader URL)
+
+  [OUTPUT]
+          Target to send the processed diagnostic documents to (known host, file, stdout, or env). Strings will be checked against the known hosts stored in `~/.esdiag/hosts.yml` and will fallback to a filename if not found. Use `-` for stdout. If nothing is provided, the target will be determined based on the environment variables: ESDIAG_OUTPUT_URL, ESDIAG_OUTPUT_APIKEY, ESDIAG_OUTPUT_USERNAME, and ESDIAG_OUTPUT_PASSWORD.
 
 Options:
-  -h, --help  Print help
+  -h, --help
+          Print help (see a summary with '-h')
 ```
 
 Once you have known hosts configured, you can add a simple shell commands shortcuts to your `~/.bashrc` or `~/.zshrc`. For example if you have `diag-cluster` as a known host:
