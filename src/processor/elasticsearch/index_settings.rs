@@ -62,6 +62,8 @@ impl IndexSettingsDoc {
             index.age = Some(age);
             index.data_stream = data_stream;
             index.name = Some(name);
+            index.set_store_config();
+            index.set_indexing_complete();
             index
         });
 
