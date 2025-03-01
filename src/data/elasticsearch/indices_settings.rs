@@ -2,7 +2,7 @@ use super::DataStream;
 use crate::data::diagnostic::{data_source::PathType, elasticsearch::DataSet, DataSource};
 use color_eyre::eyre::Result;
 use serde::{Deserialize, Deserializer, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::collections::HashMap;
 
 pub type IndicesSettings = HashMap<String, Settings>;
@@ -12,7 +12,7 @@ pub struct IndexSettings {
     pub allocation: Option<Value>,
     pub auto_expand_replicas: Option<String>,
     pub blocks: Option<Value>,
-    #[serde(default = "default_codec", deserialize_with = "deserialize_codec")]
+    #[serde(default = "default_to_default", deserialize_with = "deserialize_codec")]
     pub codec: String,
     #[serde(deserialize_with = "number_from_string")]
     pub creation_date: Option<u64>,
@@ -21,7 +21,7 @@ pub struct IndexSettings {
     pub hidden: Option<String>,
     pub lifecycle: Option<Value>,
     pub mapping: Option<Value>,
-    #[serde(default = "default_mode")]
+    #[serde(default = "default_to_standard")]
     pub mode: String,
     #[serde(deserialize_with = "number_from_string")]
     pub number_of_replicas: Option<u64>,
@@ -30,13 +30,14 @@ pub struct IndexSettings {
     pub priority: Option<String>,
     pub provided_name: Option<String>,
     pub query: Option<Value>,
-    #[serde(default = "default_refresh_interval")]
+    #[serde(default = "default_to_default")]
     pub refresh_interval: String,
     pub routing: Option<Value>,
     pub shard: Option<Value>,
     pub shard_limit: Option<Value>,
-    pub store: Option<Value>,
     pub sort: Option<Value>,
+    pub source: Option<String>,
+    pub store: Option<Value>,
     pub uuid: String,
     pub version: Value,
     // Not in source json
@@ -46,17 +47,44 @@ pub struct IndexSettings {
     pub data_stream: Option<DataStream>,
     #[serde(skip_deserializing)]
     pub name: Option<String>,
+    #[serde(skip_deserializing)]
+    pub indexing_complete: bool,
 }
 
 impl IndexSettings {
     /// Returns `true` if indexing_complete is true
-    pub fn indexing_complete(&self) -> Option<bool> {
-        if let Some(lifecycle) = &self.lifecycle {
-            if let Some(Value::String(s)) = lifecycle.get("indexing_complete") {
-                return Some(s == "true");
-            }
+    fn indexing_complete(&self) -> Option<bool> {
+        self.lifecycle
+            .as_ref()
+            .and_then(|lifecycle| lifecycle.get("indexing_complete"))
+            .and_then(|value| value.as_str())
+            .map(|s| s == "true")
+    }
+
+    /// Returns the concatinated string of mode, mapping.source.mode and codec
+    fn source_mode(&self) -> String {
+        self.mapping
+            .as_ref()
+            .and_then(|mapping_settings| mapping_settings.as_object())
+            .and_then(|mapping| mapping.get("source"))
+            .and_then(|source| source.get("mode"))
+            .and_then(|mode| mode.as_str())
+            .unwrap_or("default")
+            .to_string()
+    }
+
+    pub fn set_store_config(&mut self) {
+        let source = self.source_mode();
+        let config = json!({"config": format!("{}-{}-{}", &self.mode, source, &self.codec)});
+        self.source = Some(source);
+        match self.store {
+            Some(ref mut store) => json_patch::merge(store, &config),
+            None => self.store = Some(config),
         }
-        None
+    }
+
+    pub fn set_indexing_complete(&mut self) {
+        self.indexing_complete = self.indexing_complete().unwrap_or(false);
     }
 }
 
@@ -83,6 +111,7 @@ impl std::default::Default for IndexSettings {
             routing: None,
             shard: None,
             shard_limit: None,
+            source: None,
             store: None,
             sort: None,
             uuid: "".to_string(),
@@ -90,6 +119,7 @@ impl std::default::Default for IndexSettings {
             age: None,
             data_stream: None,
             name: None,
+            indexing_complete: false,
         }
     }
 }
@@ -111,19 +141,14 @@ struct Index {
     index: IndexSettings,
 }
 
-fn default_codec() -> String {
+fn default_to_default() -> String {
     String::from("default")
 }
 
-fn default_mode() -> String {
+fn default_to_standard() -> String {
     String::from("standard")
 }
 
-fn default_refresh_interval() -> String {
-    String::from("default")
-}
-
-/// Returns the codec string if present, or "best_speed" if missing or null.
 fn deserialize_codec<'de, D>(deserializer: D) -> Result<String, D::Error>
 where
     D: Deserializer<'de>,
@@ -132,9 +157,9 @@ where
 
     match value {
         Some(Value::String(s)) => Ok(s),
-        Some(Value::Null) => Ok(default_codec()),
+        Some(Value::Null) => Ok(default_to_default()),
         Some(_) => Err(serde::de::Error::custom("codec expects a string or null")),
-        None => Ok(default_codec()),
+        None => Ok(default_to_default()),
     }
 }
 
