@@ -47,18 +47,37 @@ pub struct IndexSettings {
     pub data_stream: Option<DataStream>,
     #[serde(skip_deserializing)]
     pub name: Option<String>,
-    #[serde(skip_deserializing)]
-    pub indexing_complete: bool,
 }
 
 impl IndexSettings {
-    /// Returns `true` if indexing_complete is true
-    fn indexing_complete(&self) -> Option<bool> {
-        self.lifecycle
-            .as_ref()
-            .and_then(|lifecycle| lifecycle.get("indexing_complete"))
-            .and_then(|value| value.as_str())
-            .map(|s| s == "true")
+    /// Determines additional field values from previously deserialized data
+    pub fn build(mut self) -> Self {
+        let source = self.source_mode();
+        let config = json!({"config": format!("{}-{}-{}", &self.mode, source, &self.codec)});
+        self.source = Some(source);
+        match self.store {
+            Some(ref mut store) => json_patch::merge(store, &config),
+            None => self.store = Some(config),
+        };
+        self
+    }
+
+    /// Sets the age of the index in milliseconds to the given epoch time
+    pub fn age(mut self, epoch_millis: u64) -> Self {
+        self.age = self.creation_date.map(|date| epoch_millis - date);
+        self
+    }
+
+    /// Sets the data stream for the index
+    pub fn data_stream(mut self, data_stream: Option<DataStream>) -> Self {
+        self.data_stream = data_stream;
+        self
+    }
+
+    /// Adds the name of the index
+    pub fn name(mut self, name: String) -> Self {
+        self.name = Some(name);
+        self
     }
 
     /// Returns the concatinated string of mode, mapping.source.mode and codec
@@ -73,18 +92,13 @@ impl IndexSettings {
             .to_string()
     }
 
-    pub fn set_store_config(&mut self) {
-        let source = self.source_mode();
-        let config = json!({"config": format!("{}-{}-{}", &self.mode, source, &self.codec)});
-        self.source = Some(source);
-        match self.store {
-            Some(ref mut store) => json_patch::merge(store, &config),
-            None => self.store = Some(config),
-        }
-    }
-
-    pub fn set_indexing_complete(&mut self) {
-        self.indexing_complete = self.indexing_complete().unwrap_or(false);
+    /// Returns select lifecycle fields (name, rollover_alias and indexing_complete)
+    pub fn get_lifecycle(&self) -> Value {
+        json!({
+            "name": self.lifecycle.as_ref().and_then(|lifecycle| lifecycle.get("name")),
+            "rollover_alias": self.lifecycle.as_ref().and_then(|lifecycle| lifecycle.get("rollover_alias")),
+            "indexing_complete": self.lifecycle.as_ref().and_then(|lifecycle| lifecycle.get("indexing_complete")),
+        })
     }
 }
 
@@ -119,7 +133,6 @@ impl std::default::Default for IndexSettings {
             age: None,
             data_stream: None,
             name: None,
-            indexing_complete: false,
         }
     }
 }

@@ -19,6 +19,7 @@ impl From<DataStreams> for Lookup<DataStream> {
             .data_streams
             .drain(..)
             .for_each(|mut data_stream| {
+                data_stream.build();
                 let name = data_stream.name.clone();
                 let mut indices: Indices = data_stream.indices.drain(..).collect();
                 let write_index = indices.len() - 1;

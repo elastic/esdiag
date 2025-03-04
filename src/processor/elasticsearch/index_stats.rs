@@ -65,30 +65,39 @@ impl DataProcessor<Lookups, ElasticsearchMetadata> for IndicesStats {
                         0
                     };
 
+                let store_config = index_settings
+                    .store
+                    .as_ref()
+                    .map(|store| store.get("config"));
+
+                let index_doc = json!({
+                    "index" : {
+                        "age": index_settings.creation_date.map(|date| collection_date - date),
+                        "alias": alias,
+                        "codec": index_settings.codec,
+                        "creation_date": index_settings.creation_date,
+                        "data_stream": data_stream,
+                        "ilm": ilm,
+                        "is_write_index": is_write_index,
+                        "lifecycle": index_settings.get_lifecycle(),
+                        "mode": index_settings.mode,
+                        "name": index,
+                        "number_of_replicas": index_settings.number_of_replicas,
+                        "number_of_shards": index_settings.number_of_shards,
+                        "refresh_interval": index_settings.refresh_interval,
+                        "since_creation": since_creation,
+                        "since_rollover": since_rollover,
+                        "source": index_settings.source,
+                        "store": { "config": store_config, },
+                        "uuid": index_stats.uuid,
+                        "write_phase_sec": write_phase_sec,
+                    }
+                });
+
                 let mut docs: Vec<_> = shard_stats
                     .par_drain(..)
                     .flat_map(|(shard_id, shard_stats)| {
-                        let mut shard_doc = json!({
-                            "index": {
-                                "alias": alias,
-                                "creation_date": index_settings.creation_date,
-                                "codec": index_settings.codec,
-                                "mode": index_settings.mode,
-                                "source": index_settings.source,
-                                "store": {
-                                    "config": index_settings.store.as_ref().map(|store| store.get("config")),
-                                },
-                                "data_stream": data_stream,
-                                "ilm": ilm,
-                                "indexing_complete": index_settings.indexing_complete,
-                                "is_write_index": is_write_index,
-                                "name": index,
-                                "since_creation": since_creation,
-                                "since_rollover": since_rollover,
-                                "uuid": index_stats.uuid,
-                                "write_phase_sec": write_phase_sec,
-                            },
-                        });
+                        let mut shard_doc = index_doc.clone();
 
                         merge(&mut shard_doc, &shard_metadata);
                         merge(&mut shard_doc, &json!({"shard": { "number": shard_id, }}));
@@ -264,22 +273,8 @@ impl DataProcessor<Lookups, ElasticsearchMetadata> for IndicesStats {
                 };
                 let docs_deleted_percent = doc_deleted / (doc_count as f64 + doc_deleted);
 
-                let index_patch = json!({
+                let stats_patch = json!({
                     "index": {
-                        "alias": alias,
-                        "codec": index_settings.codec,
-                        "mode": index_settings.mode,
-                        "source": index_settings.source,
-                        "store": {
-                            "config": index_settings.store.as_ref().map(|store| store.get("config")),
-                        },
-                        "data_stream": data_stream,
-                        "ilm": ilm,
-                        "name": index,
-                        "is_write_index": is_write_index,
-                        "since_creation": since_creation,
-                        "since_rollover": since_rollover,
-                        "write_phase_sec": write_phase_sec,
                         "primaries": {
                             "indexing": {
                                 "est_bytes_per_day": bytes_per_day_pri,
@@ -307,8 +302,9 @@ impl DataProcessor<Lookups, ElasticsearchMetadata> for IndicesStats {
                 });
 
                 let mut doc = json!({"index": index_stats});
+                merge(&mut doc, &index_doc);
                 merge(&mut doc, &index_metadata);
-                merge(&mut doc, &index_patch);
+                merge(&mut doc, &stats_patch);
                 docs.insert(0, doc);
                 docs
             })

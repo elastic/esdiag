@@ -17,8 +17,6 @@ pub struct DataStream {
     pub ilm_policy: Option<String>,
     #[serde(skip_serializing)]
     pub indices: Indices,
-    #[serde(skip_deserializing)]
-    pub is_write_index: bool,
     pub name: String,
     pub next_generation_managed_by: Option<String>,
     pub prefer_ilm: Option<bool>,
@@ -28,9 +26,68 @@ pub struct DataStream {
     pub system: Option<bool>,
     pub template: Option<String>,
     pub timestamp_field: TimestampField,
+    #[serde(skip_deserializing)]
+    pub dataset: String,
+    #[serde(skip_deserializing)]
+    pub is_write_index: bool,
+    #[serde(skip_deserializing)]
+    pub namespace: String,
+    #[serde(skip_deserializing)]
+    pub r#type: String,
 }
 
 impl DataStream {
+    pub fn build(&mut self) {
+        let words: Vec<&str> = self.name.split('-').collect();
+        // Try to deconstruct the name into type, dataset, and namespace. If these
+        // fields ever get added to the data stream API, we can avoid this mess
+        match words.len() {
+            1 => self.dataset = words[0].to_string(),
+            2 if words[0] == ".fleet" => self.dataset = words[1..].join("-"),
+            2 if words[0] == ".items" || words[0] == ".lists" => {
+                self.namespace = words[1..].join("-");
+            }
+            3 => {
+                self.r#type = words[0].to_string();
+                self.dataset = words[1].to_string();
+                self.namespace = words[2].to_string();
+            }
+            _ => {
+                if words[0] == ".kibana" {
+                    self.r#type = words[0].to_string();
+                    match words[1] {
+                        "reporting" => self.dataset = words[1].to_string(),
+                        "elastic"
+                            if words.len() > 3
+                                && (words[4] == "anonymization"
+                                    || words[4] == "knowledge"
+                                    || words[4] == "attack") =>
+                        {
+                            self.dataset = words[1..6].join("-");
+                            self.namespace = words[6..].join("-");
+                        }
+                        "elastic" => {
+                            self.dataset = words[1..5].join("-");
+                            self.namespace = words[5..].join("-");
+                        }
+                        "event" => {
+                            self.dataset = words[1..3].join("-");
+                            self.namespace = words[3..].join("-");
+                        }
+                        _ => {
+                            self.dataset = words[1].to_string();
+                            self.namespace = words[2..].join("-");
+                        }
+                    }
+                } else {
+                    self.r#type = words[0].to_string();
+                    self.dataset = words[1].to_string();
+                    self.namespace = words[2..].join("-");
+                }
+            }
+        }
+    }
+
     pub fn set_write_index(self, value: bool) -> Self {
         Self {
             is_write_index: value,

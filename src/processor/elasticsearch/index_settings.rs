@@ -1,6 +1,6 @@
 use super::{DataProcessor, ElasticsearchMetadata, Lookups};
 use crate::{
-    data::elasticsearch::{DataStream, IndexSettings, IndicesSettings},
+    data::elasticsearch::{IndexSettings, IndicesSettings},
     processor::Metadata,
 };
 use rayon::prelude::*;
@@ -23,16 +23,14 @@ impl DataProcessor<Lookups, ElasticsearchMetadata> for IndicesSettings {
         let index_settings: Vec<Value> = self
             .par_drain()
             .filter_map(|(name, settings)| {
-                let index = settings.index();
-                let creation_date = index.creation_date.expect("creation_date not found");
-                let age = collection_date - creation_date;
-                let data_stream = data_stream_lookup.by_id(&name).cloned();
-                let index_settings_doc = IndexSettingsDoc::from(index).with(
-                    name,
-                    age,
-                    data_stream,
-                    index_metadata.clone(),
-                );
+                let index_settings = settings
+                    .index()
+                    .data_stream(data_stream_lookup.by_id(&name).cloned())
+                    .name(name)
+                    .age(collection_date)
+                    .build();
+                let index_settings_doc =
+                    IndexSettingsDoc::from(index_settings).with(index_metadata.clone());
 
                 serde_json::to_value(index_settings_doc).ok()
             })
@@ -51,21 +49,8 @@ struct IndexSettingsDoc {
 }
 
 impl IndexSettingsDoc {
-    fn with(
-        self,
-        name: String,
-        age: u64,
-        data_stream: Option<DataStream>,
-        metadata: Value,
-    ) -> Self {
-        let index = self.index.map(|mut index| {
-            index.age = Some(age);
-            index.data_stream = data_stream;
-            index.name = Some(name);
-            index.set_store_config();
-            index.set_indexing_complete();
-            index
-        });
+    fn with(self, metadata: Value) -> Self {
+        let index = self.index.map(|index| index);
 
         Self {
             metadata: Some(metadata),

@@ -8,10 +8,9 @@ impl From<IndicesSettings> for Lookup<IndexSettings> {
     fn from(mut indices_settings: IndicesSettings) -> Self {
         let mut lookup = Lookup::<IndexSettings>::new();
         indices_settings.drain().for_each(|(name, settings)| {
-            let mut index = settings.index();
-            index.set_store_config();
-            let id = index.uuid.clone();
-            lookup.add(index).with_name(&name).with_id(&id);
+            let index_settings = settings.index().build();
+            let id = index_settings.uuid.clone();
+            lookup.add(index_settings).with_name(&name).with_id(&id);
         });
         lookup
     }
