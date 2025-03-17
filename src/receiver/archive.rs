@@ -27,6 +27,17 @@ impl ArchiveReceiver {
         if path.extension() != None {
             path.pop();
         }
+        // Drop known subdirectories, we only want the root directory that
+        // contains the diagnostic_manifest.json or manifest.json
+        if path.ends_with("cat")
+            || path.ends_with("commercial")
+            || path.ends_with("docker")
+            || path.ends_with("syscalls")
+            || path.ends_with("java")
+            || path.ends_with("logs")
+        {
+            path.pop();
+        }
         Ok(path)
     }
 }
