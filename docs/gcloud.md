@@ -1,7 +1,6 @@
 # Google Cloud Artifact Repository
 
-Setup the Google Cloud Artificat Repository to publish container images to.
-
+Setup the Google Cloud Artifact Repository to publish container images to.
 ```sh
 # Initialize the local gcloud tools
 gcloud init
