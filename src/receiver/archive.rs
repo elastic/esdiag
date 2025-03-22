@@ -12,6 +12,23 @@ use std::{
 use tokio::sync::RwLock;
 use zip::ZipArchive;
 
+pub fn trim_to_working_directory(path: &mut PathBuf) {
+    // Drop any filename
+    if path.extension() != None {
+        path.pop();
+    }
+    // Drop any known subdirectories
+    if path.ends_with("cat")
+        || path.ends_with("commercial")
+        || path.ends_with("docker")
+        || path.ends_with("syscalls")
+        || path.ends_with("java")
+        || path.ends_with("logs")
+    {
+        path.pop();
+    }
+}
+
 #[derive(Clone)]
 pub struct ArchiveReceiver {
     archive: Arc<RwLock<ZipArchive<File>>>,
@@ -24,20 +41,7 @@ impl ArchiveReceiver {
     async fn get_subdir(&self) -> Result<PathBuf> {
         let mut archive = self.archive.write().await;
         let mut path = PathBuf::from(archive.by_index(0)?.name().to_string());
-        if path.extension() != None {
-            path.pop();
-        }
-        // Drop known subdirectories, we only want the root directory that
-        // contains the diagnostic_manifest.json or manifest.json
-        if path.ends_with("cat")
-            || path.ends_with("commercial")
-            || path.ends_with("docker")
-            || path.ends_with("syscalls")
-            || path.ends_with("java")
-            || path.ends_with("logs")
-        {
-            path.pop();
-        }
+        trim_to_working_directory(&mut path);
         Ok(path)
     }
 }

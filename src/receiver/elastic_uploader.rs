@@ -1,4 +1,4 @@
-use super::Receive;
+use super::{archive::trim_to_working_directory, Receive};
 use crate::data::diagnostic::{data_source::PathType, DataSource};
 use bytes::Bytes;
 use color_eyre::eyre::{eyre, Result};
@@ -57,9 +57,7 @@ impl Receive for ElasticUploaderReceiver {
         let data: T = if let Some(archive) = archive_lock.as_mut() {
             // Use the first file in the archive as the base path
             let mut path = PathBuf::from(archive.by_index(0)?.name().to_string());
-            if path.extension() != None {
-                path.pop();
-            }
+            trim_to_working_directory(&mut path);
             let filename = path.join(filename).display().to_string();
 
             // Read lines directly from the compressed file
@@ -68,7 +66,7 @@ impl Receive for ElasticUploaderReceiver {
             let reader = BufReader::new(file);
             serde_json::from_reader(reader)?
         } else {
-            return Err(eyre!("Archive as not downloaded and cached"));
+            return Err(eyre!("Archive was not downloaded and cached"));
         };
         Ok(data)
     }
