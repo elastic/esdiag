@@ -38,11 +38,23 @@ pub struct ArchiveReceiver {
 }
 
 impl ArchiveReceiver {
-    async fn get_subdir(&self) -> Result<PathBuf> {
-        let mut archive = self.archive.write().await;
-        let mut path = PathBuf::from(archive.by_index(0)?.name().to_string());
-        trim_to_working_directory(&mut path);
-        Ok(path)
+    fn resolve_archive_path(
+        &self,
+        archive: &mut ZipArchive<File>,
+        filename: &str,
+    ) -> Result<String> {
+        let full_path = match &self.subdir {
+            // Ugly hack to make ECK bundles with double-slashed paths work
+            // This will break if the sub-paths are fixed in the ECK bundles
+            Some(subdir) => format!("{}//{}", subdir.display(), filename),
+            None => {
+                let mut path = PathBuf::from(archive.by_index(0)?.name().to_string());
+                trim_to_working_directory(&mut path);
+                let path = path.join(filename);
+                format!("{}", path.display())
+            }
+        };
+        Ok(full_path)
     }
 }
 
@@ -94,21 +106,14 @@ impl Receive for ArchiveReceiver {
     where
         T: DeserializeOwned + DataSource,
     {
-        let filename = T::source(PathType::File)?;
-        let file_str = match &self.subdir {
-            // Ugly hack to make ECK bundles with double-slashed paths work
-            // This will break if the sub-paths are fixed in the ECK bundles
-            Some(subdir) => &format!("{}//{}", subdir.display(), filename),
-            None => {
-                let subdir = self.get_subdir().await?.join(filename);
-                &format!("{}", subdir.display())
-            }
-        };
         let mut archive = self.archive.write().await;
 
+        // Determine the fully-qualified filename within the archive
+        let filename = self.resolve_archive_path(&mut *archive, T::source(PathType::File)?)?;
+
         // Read lines directly from the compressed file
-        log::debug!("Reading {}", file_str);
-        let file = archive.by_name(&file_str)?;
+        log::debug!("Reading {}", filename);
+        let file = archive.by_name(&filename)?;
         let reader = BufReader::new(file);
         let data: T = serde_json::from_reader(reader)?;
         Ok(data)
@@ -120,21 +125,14 @@ impl ReceiveRaw for ArchiveReceiver {
     where
         T: DataSource,
     {
-        let filename = T::source(PathType::File)?;
-        let file_str = match &self.subdir {
-            // Ugly hack to make ECK bundles with double-slashed paths work
-            // This will break if the sub-paths are fixed in the ECK bundles
-            Some(subdir) => &format!("{}//{}", subdir.display(), filename),
-            None => {
-                let subdir = self.get_subdir().await.map(|s| s.join(filename))?;
-                &format!("{}", subdir.display())
-            }
-        };
         let mut archive = self.archive.write().await;
 
+        // Determine the fully-qualified filename within the archive
+        let filename = self.resolve_archive_path(&mut *archive, T::source(PathType::File)?)?;
+
         // Read lines directly from the compressed file
-        log::debug!("Reading {}", file_str);
-        let file = archive.by_name(&file_str)?;
+        log::debug!("Reading {}", filename);
+        let file = archive.by_name(&filename)?;
         let mut reader = BufReader::new(file);
         let mut data = String::new();
         reader.read_to_string(&mut data)?;

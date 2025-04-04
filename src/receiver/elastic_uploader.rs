@@ -23,6 +23,23 @@ pub struct ElasticUploaderReceiver {
     url: Url,
 }
 
+impl ElasticUploaderReceiver {
+    fn resolve_archive_path(&self, archive: &mut ArchiveCursor, filename: &str) -> Result<String> {
+        let full_path = match &self.subdir {
+            // Ugly hack to make ECK bundles with double-slashed paths work
+            // This will break if the sub-paths are fixed in the ECK bundles
+            Some(subdir) => format!("{}//{}", subdir.display(), filename),
+            None => {
+                let mut path = PathBuf::from(archive.by_index(0)?.name().to_string());
+                trim_to_working_directory(&mut path);
+                let path = path.join(filename);
+                format!("{}", path.display())
+            }
+        };
+        Ok(full_path)
+    }
+}
+
 /// A receiver for the Elastic Uploader service (https://upload.elastic.co).
 /// This will download the archive on first use and cache it in memory.
 impl Receive for ElasticUploaderReceiver {
@@ -52,28 +69,20 @@ impl Receive for ElasticUploaderReceiver {
             let archive = get_file_from_uploader(self.url.clone(), &self.token).await?;
             archive_lock.replace(archive);
         }
-        let filename = T::source(PathType::File)?;
-        let data: T = if let Some(archive) = archive_lock.as_mut() {
-            let filename = match &self.subdir {
-                // Ugly hack to make ECK bundles with double-slashed paths work
-                // This will break if the sub-paths are fixed in the ECK bundles
-                Some(subdir) => &format!("{}//{}", subdir.display(), filename),
-                None => {
-                    let mut path = PathBuf::from(archive.by_index(0)?.name().to_string());
-                    trim_to_working_directory(&mut path);
-                    let path = path.join(filename);
-                    &format!("{}", path.display())
-                }
-            };
 
-            // Read lines directly from the compressed file
-            log::debug!("Reading {}", filename);
-            let file = archive.by_name(&filename)?;
-            let reader = BufReader::new(file);
-            serde_json::from_reader(reader)?
-        } else {
-            return Err(eyre!("Archive was not downloaded and cached"));
+        // Early return if archive is not available
+        let Some(archive) = archive_lock.as_mut() else {
+            return Err(eyre!("Archive was not downloaded or cached"));
         };
+
+        // Determine the fully-qualified filename within in the archive
+        let filename = self.resolve_archive_path(archive, T::source(PathType::File)?)?;
+
+        // Read and deserialize the file from the archive
+        log::debug!("Reading {}", filename);
+        let file = archive.by_name(&filename)?;
+        let reader = BufReader::new(file);
+        let data: T = serde_json::from_reader(reader)?;
         Ok(data)
     }
 }
