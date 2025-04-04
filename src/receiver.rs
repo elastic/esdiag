@@ -134,7 +134,7 @@ impl Receiver {
                 return Ok(manifest.try_into()?);
             }
             Err(e) => {
-                log::debug!("Error reading diagnostic_manifest.json: {e}");
+                log::debug!("Error reading manifest.json: {e}");
             }
         }
 

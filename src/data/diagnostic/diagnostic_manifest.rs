@@ -76,7 +76,7 @@ impl DiagnosticManifest {
         let mut id = self
             .diagnostic_id
             .write()
-            .expect("Failed to obtain write lock ofr diagnsotic id");
+            .expect("Failed to obtain write lock for diagnostic id");
 
         match id.as_ref() {
             Some(id) => id.clone(),
