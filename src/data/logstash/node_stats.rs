@@ -194,13 +194,13 @@ pub struct OutputPlugin {
 
 #[derive(Deserialize, Serialize)]
 struct OutputDocumentsStats {
-    non_retryable_failures: usize,
+    non_retryable_failures: Option<usize>,
     successes: usize,
 }
 
 #[derive(Deserialize, Serialize)]
 struct OutputBulkRequestsStats {
-    with_errors: u32,
+    with_errors: Option<u32>,
     responses: HashMap<String, u32>,
     successes: u32,
 }
@@ -248,7 +248,7 @@ struct ReloadStats {
 
 #[derive(Deserialize, Serialize)]
 struct OsStats {
-    cgroup: CgroupStats,
+    cgroup: Option<CgroupStats>,
 }
 
 #[derive(Deserialize, Serialize)]

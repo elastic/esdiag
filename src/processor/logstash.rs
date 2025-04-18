@@ -66,6 +66,7 @@ impl DiagnosticProcessor for LogstashDiagnostic {
         let plugins = receiver.get::<Plugins>().await?;
         let report = DiagnosticReportBuilder::from(metadata.diagnostic.clone())
             .product(Product::Logstash)
+            .receiver(receiver.to_string())
             .build()?;
 
         Ok(Box::new(Self {
