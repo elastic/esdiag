@@ -1,10 +1,53 @@
 Elastic Stack Diagnostics
-==============================
+==========================
 
 The Elastic Stack Diagnostics (`esdiag`) tool simplifies processing and importing diagnostic bundles into Elasticsearch. It pre-processes, split and enriches the raw API outputs into Elasticsearch-friendly documents. This makes building diagnostic Kibana dashboards, ES|QL queries, and more, easy.
 
-Installation
---------------------
+Running locally with Docker Desktop
+------------------------------------
+
+Use the `bin/esdiag-docker.sh` wrapper script to run the tool in a local Docker container. This will build using the official Rust Docker image, and does not require any local tooling beyond Docker desktop (or Podman if you are adventurous).
+
+### Usage
+
+Start by building the container image:
+
+```sh
+docker build --tag esdiag:latest .
+```
+
+When running from a container, the output is controlled through environment variables. The default url is effectively `http://localhost:9200` with no authentication. This can be overridden by setting the `ESDIAG_OUTPUT_*` environment variables.
+
+```sh
+export ESDIAG_OUTPUT_URL="https://my-deployment.cloud.elastic.co"
+export ESDIAG_OUTPUT_APIKEY="<apikey>"
+export ESDIAG_OUTPUT_USERNAME="<username>"
+export ESDIAG_OUTPUT_PASSWORD="<password>"
+```
+
+You do not need the username or password with an API key.
+
+Then you can use the script to run ESDiag inside the container:
+
+```sh
+./esdiag-docker.sh <command> [arguments]
+```
+
+For example to run the `process` command:
+
+```sh
+./esdiag-docker.sh process /full/path/to/file.json
+```
+
+### Limitations
+
+* Be sure to include the fully-qualified path to an input file or directory. This must be mounted as a Docker volume, and relative paths will not work.
+* No `host` command support, it requires persistent storage and the container is run with `--rm` and removing it after every run.
+* No `collect` command support, it requires input configurations which are not configurable through environment variables.
+* No support for output to a local file or directory.
+
+Full Rust Installation with Cargo
+----------------------------------
 
 First install the Rust toolchain from [rust-lang.org/tools/install]()
 
@@ -149,15 +192,15 @@ Options:
 
 #### Setup
 
-You must setup a known host to use the `esdiag setup` command. It will send the required index templates and other assets into your Elasticsearch cluster.
+You must setup a host to use the `esdiag setup` command. It will send the required index templates and other assets into your Elasticsearch cluster. This may be either a pre-configured known host, or use the `ESDIAG_OUTPUT_*` environment variables.
 
 ```
 Import assets (templates, ingest pipelines, etc.) to a known Elasticsearch host
 
-Usage: esdiag setup <HOST>
+Usage: esdiag setup [HOST]
 
 Arguments:
-  <HOST>  Known Elasticsearch host to import assets into
+  [HOST]  Known Elasticsearch host to import assets into; if ommited the ESDIAG_OUTPUT_URL, ESDIAG_OUTPUT_APIKEY, ESDIAG_OUTPUT_USERNAME, ESDIAG_OUTPUT_PASSWORD variables will be checked.
 
 Options:
   -h, --help  Print help

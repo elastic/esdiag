@@ -1,8 +1,27 @@
 ESDiag Additional Executables
 =============================
 
+esdiag-docker.sh
+-----------------
+
+A simple wrapper script to run ESDiag from inside a Docker container. Avoids installing any local Rust dependencies.
+
+First build the container:
+
+```sh
+docker build --tag esdiag:latest .
+```
+
+Then process a diagnostic:
+
+```sh
+./esdiag-docker.sh process /full/path/to/file.json
+```
+
+See the full usage in the main [README.md](../README.md)
+
 min-diag.sh
------------
+------------
 
 A script to `collect` the minimum Elasticsearch diagnostic bundles required to
 import into ESDiag; with a `watch` function to periodically collect at intervals.
