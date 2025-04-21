@@ -1,10 +1,9 @@
 use super::{
-    data_source::PathType, elasticsearch::ElasticsearchVersion, DataSet, DataSource, DiagPath,
-    Product,
+    DataSet, DataSource, DiagPath, Product, data_source::PathType,
+    elasticsearch::ElasticsearchVersion,
 };
 use crate::data::elasticsearch;
-use eyre::{eyre, Result};
-use regex::Regex;
+use eyre::{Result, eyre};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -19,7 +18,7 @@ pub struct Manifest {
     pub product_version: Option<ProductVersion>,
     pub runner: Option<String>,
     pub collection_date: String,
-    /// ECK diagnostic bunldes can contain multiple stack diagnostics
+    /// Kubernetes diagnostic bundles can contain multiple stack diagnostics
     pub included_diagnostics: Option<Vec<DiagPath>>,
 }
 
@@ -58,52 +57,6 @@ impl ManifestBuilder {
             runner: self.runner,
             collection_date: self.collection_date,
             included_diagnostics: self.included_diagnostics,
-        }
-    }
-
-    /// Updates product based on diag_type
-    pub fn product(mut self) -> Self {
-        log::debug!("Setting product from diag_type: {:?}", self.diag_type);
-        self.product = match &self.diag_type {
-            Some(diag_type) => match diag_type.as_str() {
-                "api" | "local" | "remote" | "es-unknown" => Product::Elasticsearch,
-                "kibana-api" => Product::Kibana,
-                "logstash-api" => Product::Logstash,
-                "eck-diagnostics" => Product::ECK,
-                _ => Product::Unknown,
-            },
-            None => match &self.runner {
-                Some(runner) => match runner.as_str() {
-                    "ess" => Product::Elasticsearch,
-                    "eck" => Product::ECK,
-                    _ => Product::Unknown,
-                },
-                None => Product::Unknown,
-            },
-        };
-        self
-    }
-
-    /// Updates diag_type based on diagnostic_inputs
-    pub fn diag_type(mut self) -> Self {
-        if self.diag_type.is_some() {
-            log::trace!("diag_type already set {:?}", self.diag_type);
-            return self;
-        }
-        log::trace!(
-            "Setting diag_type from diagnostic_inputs: {:?}",
-            self.diagnostic_inputs
-        );
-        let re = Regex::new(r"diagType='([^']*)'").unwrap();
-        match &self.diagnostic_inputs {
-            Some(inputs) => {
-                // Extract diag_type from diagnostic_inputs with regex
-                self.diag_type = re
-                    .captures(inputs)
-                    .and_then(|cap| cap.get(1).map(|m| m.as_str().to_string()));
-                self
-            }
-            None => self,
         }
     }
 

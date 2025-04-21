@@ -2,6 +2,8 @@
 pub mod elastic_cloud_kubernetes;
 /// Processors for Elasticsearch diagnostics
 pub mod elasticsearch;
+/// Processors for Managed Kubernetes Infrastructure (MKI) platform diagnostics
+pub mod kubernetes_platform;
 /// Processors for Logstash diagnostics
 pub mod logstash;
 
@@ -9,6 +11,7 @@ use std::sync::Arc;
 
 use elastic_cloud_kubernetes::ElasticCloudKubernetesDiagnostic;
 use elasticsearch::ElasticsearchDiagnostic;
+use kubernetes_platform::KubernetesPlatformDiagnostic;
 use logstash::LogstashDiagnostic;
 
 use crate::{
@@ -16,11 +19,12 @@ use crate::{
     exporter::Exporter,
     receiver::Receiver,
 };
-use eyre::{eyre, Result};
+use eyre::{Result, eyre};
 
 pub enum Diagnostic {
     Elasticsearch(Box<ElasticsearchDiagnostic>),
     ElasticCloudKubernetes(Box<ElasticCloudKubernetesDiagnostic>),
+    KubernetesPlatform(Box<KubernetesPlatformDiagnostic>),
     //Kibana(KibanaDiagnostic)
     Logstash(Box<LogstashDiagnostic>),
 }
@@ -46,6 +50,11 @@ impl Diagnostic {
                     ElasticCloudKubernetesDiagnostic::new(manifest, receiver, exporter).await?;
                 Ok(Self::ElasticCloudKubernetes(diagnostic))
             }
+            Product::KubernetesPlatform => {
+                let diagnostic =
+                    KubernetesPlatformDiagnostic::new(manifest, receiver, exporter).await?;
+                Ok(Self::KubernetesPlatform(diagnostic))
+            }
             Product::Logstash => {
                 let diagnostic = LogstashDiagnostic::new(manifest, receiver, exporter).await?;
                 Ok(Self::Logstash(diagnostic))
@@ -58,6 +67,7 @@ impl Diagnostic {
         match self {
             Self::Elasticsearch(diagnostic) => diagnostic.run().await?,
             Self::ElasticCloudKubernetes(diagnostic) => diagnostic.run().await?,
+            Self::KubernetesPlatform(diagnostic) => diagnostic.run().await?,
             //Self::Kibana(diagnostic) => diagnostic.run().await?,
             Self::Logstash(diagnostic) => diagnostic.run().await?,
         };

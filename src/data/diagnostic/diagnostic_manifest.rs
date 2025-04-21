@@ -1,9 +1,9 @@
 use chrono::{DateTime, SecondsFormat, TimeZone, Utc};
 use std::sync::RwLock;
 
-use super::{data_source::PathType, DataSource, DiagPath, Manifest, Product};
+use super::{DataSource, DiagPath, Manifest, Product, data_source::PathType};
 use crate::data::diagnostic::DataSet;
-use eyre::{eyre, Result};
+use eyre::{Result, eyre};
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Serialize)]
@@ -120,6 +120,7 @@ impl From<Manifest> for DiagnosticManifest {
     fn from(manifest: Manifest) -> Self {
         let product = match manifest.diag_type.as_deref() {
             Some("eck-diagnostics") => Product::ECK,
+            Some("k8s-platform-diagnostics") => Product::KubernetesPlatform,
             _ => Product::Elasticsearch,
         };
         DiagnosticManifest::new(

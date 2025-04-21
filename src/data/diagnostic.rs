@@ -42,6 +42,7 @@ pub enum Product {
     ECK,
     Elasticsearch,
     Kibana,
+    KubernetesPlatform,
     Logstash,
     Unknown,
 }
@@ -54,6 +55,7 @@ impl std::fmt::Display for Product {
             Self::ECK => write!(fmt, "ECK"),
             Self::Elasticsearch => write!(fmt, "Elasticsearch"),
             Self::Kibana => write!(fmt, "Kibana"),
+            Self::KubernetesPlatform => write!(fmt, "KubernetesPlatform"),
             Self::Logstash => write!(fmt, "Logstash"),
             Self::Unknown => write!(fmt, "Unknown"),
         }
@@ -70,6 +72,7 @@ impl std::str::FromStr for Product {
             "es" | "elasticsearch" => Ok(Self::Elasticsearch),
             "kb" | "kibana" => Ok(Self::Kibana),
             "ls" | "logstash" => Ok(Self::Logstash),
+            "mki" => Ok(Self::KubernetesPlatform),
             _ => Err("Unknown product".to_string()),
         }
     }
