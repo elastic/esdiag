@@ -200,7 +200,7 @@ Import assets (templates, ingest pipelines, etc.) to a known Elasticsearch host
 Usage: esdiag setup [HOST]
 
 Arguments:
-  [HOST]  Known Elasticsearch host to import assets into; if ommited the ESDIAG_OUTPUT_URL, ESDIAG_OUTPUT_APIKEY, ESDIAG_OUTPUT_USERNAME, ESDIAG_OUTPUT_PASSWORD variables will be checked.
+  [HOST]  Known Elasticsearch host to import assets into; if omitted the ESDIAG_OUTPUT_URL, ESDIAG_OUTPUT_APIKEY, ESDIAG_OUTPUT_USERNAME, ESDIAG_OUTPUT_PASSWORD variables will be checked.
 
 Options:
   -h, --help  Print help
