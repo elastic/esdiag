@@ -1,5 +1,5 @@
 use crate::data::diagnostic::Product;
-use eyre::{eyre, Result};
+use eyre::{Result, eyre};
 use reqwest;
 use serde::{Deserialize, Serialize};
 use serde_yaml;
@@ -273,16 +273,18 @@ impl KnownHost {
         match env::var("ESDIAG_HOSTS") {
             Ok(path) => PathBuf::from(path),
             Err(_) => {
-                let home = match env::var("HOME") {
-                    Ok(home) => PathBuf::from(home),
-                    Err(_) => panic!("ERROR: No home directory found"),
+                let home_dir = match std::env::consts::OS {
+                    "windows" => std::env::var("USERPROFILE").expect("Failed to get USERPROFILE"),
+                    "linux" | "macos" => std::env::var("HOME").expect("Failed to get HOME"),
+                    os => panic!("Unknown home directory for operating system: {os} "),
                 };
+                let home_dir = PathBuf::from(home_dir);
                 // Check if the `.esdiag` directory exists, if not, create it
-                let esdiag = home.join(".esdiag");
+                let esdiag = home_dir.join(".esdiag");
                 if !esdiag.exists() {
                     std::fs::create_dir(&esdiag).expect("Failed to create ~/.esdiag directory");
                 }
-                let path = home.join(".esdiag").join("hosts.yml");
+                let path = home_dir.join(".esdiag").join("hosts.yml");
                 path
             }
         }
