@@ -11,11 +11,6 @@
         "strict_date_optional_time",
         "yyyy/MM/dd HH:mm:ss Z||yyyy/MM/dd Z"
       ],
-      "_source": {
-        "excludes": [],
-        "includes": [],
-        "mode": "synthetic"
-      },
       "dynamic": true,
       "dynamic_templates": [
         {
