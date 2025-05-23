@@ -8,6 +8,9 @@
   },
   "priority": 300,
   "template": {
+    "settings": {
+      "index.mapping.ignore_malformed": true
+    },
     "mappings": {
       "numeric_detection": false,
       "dynamic": true,
@@ -40,6 +43,10 @@
                 "logger": {
                   "type": "object",
                   "subobjects": false
+                },
+                "http.type": {
+                  "type": "object",
+                  "enabled": false
                 },
                 "xpack": {
                   "type": "object",
