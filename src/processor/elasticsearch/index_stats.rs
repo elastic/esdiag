@@ -22,12 +22,8 @@ impl DataProcessor<Lookups, ElasticsearchMetadata> for IndicesStats {
         log::debug!("index_stats indices: {}", indices_stats.len());
         let data_stream = "metrics-index-esdiag".to_string();
         let index_metadata = metadata.for_data_stream(&data_stream);
+        // let shard_metadata = metadata.for_data_stream("metrics-shard-esdiag");
         let lookup = lookups;
-
-        // let shard_metadata = metadata
-        //     .clone()
-        //     .for_data_stream("metrics-shard-esdiag")
-        //     .as_meta_doc();
 
         let indices_stats: Vec<Value> = indices_stats
             .par_drain()
@@ -327,6 +323,7 @@ struct EnrichedIndexStats {
     primaries: EnrichedStats,
     since_creation: Option<u64>,
     since_rollover: Option<u64>,
+    store: Option<StoreSettings>,
     source: Option<String>,
     total: EnrichedStats,
     uuid: Option<String>,
@@ -360,15 +357,14 @@ impl EnrichedIndexStats {
         Self { name, ..self }
     }
 
-    fn settings(mut self, settings: Option<IndexSettings>) -> Self {
+    fn settings(self, settings: Option<IndexSettings>) -> Self {
         if let Some(settings) = settings {
-            self.primaries.store = self.primaries.store.with_settings(settings.store.clone());
-            self.total.store = self.total.store.with_settings(settings.store);
             Self {
                 codec: Some(settings.codec),
                 creation_date: settings.creation_date,
                 lifecycle: settings.lifecycle,
                 mode: Some(settings.mode),
+                store: settings.store,
                 number_of_shards: settings.number_of_shards,
                 number_of_replicas: settings.number_of_replicas,
                 refresh_interval: Some(settings.refresh_interval),
@@ -408,6 +404,7 @@ impl TryFrom<IndexStats> for EnrichedIndexStats {
             refresh_interval: None,
             since_creation: None,
             since_rollover: None,
+            store: None,
             source: None,
             total,
             uuid,
@@ -497,13 +494,6 @@ impl From<Option<StoreStats>> for EnrichedStoreStats {
     }
 }
 
-impl EnrichedStoreStats {
-    fn with_settings(mut self, settings: Option<StoreSettings>) -> Self {
-        self.settings = settings;
-        self
-    }
-}
-
 #[derive(Deserialize, Serialize)]
 pub struct EnrichedDocs {
     pub count: u64,
@@ -534,7 +524,13 @@ struct EnrichedIndexing {
     index_time_in_millis: u64,
     index_current: u64,
     index_failed: u64,
+    delete_current: u64,
+    delete_time_in_millis: u64,
     delete_total: u64,
+    is_throttled: bool,
+    noop_update_total: u64,
+    throttle_time_in_millis: u64,
+    write_load: f64,
     // Calculated fields
     est_bytes_per_day: Option<u64>,
     index_time_per_shard_in_millis: Option<u64>,
@@ -544,11 +540,17 @@ impl From<Option<Indexing>> for EnrichedIndexing {
     fn from(indexing: Option<Indexing>) -> Self {
         match indexing {
             Some(indexing) => EnrichedIndexing {
-                index_total: indexing.index_total.unwrap_or(0),
-                index_time_in_millis: indexing.index_time_in_millis.unwrap_or(0),
+                delete_current: indexing.delete_current.unwrap_or(0),
+                delete_time_in_millis: indexing.delete_time_in_millis.unwrap_or(0),
+                delete_total: indexing.delete_total.unwrap_or(0),
                 index_current: indexing.index_current.unwrap_or(0),
                 index_failed: indexing.index_failed.unwrap_or(0),
-                delete_total: indexing.delete_total.unwrap_or(0),
+                index_time_in_millis: indexing.index_time_in_millis.unwrap_or(0),
+                index_total: indexing.index_total.unwrap_or(0),
+                is_throttled: indexing.is_throttled.unwrap_or(false),
+                noop_update_total: indexing.noop_update_total.unwrap_or(0),
+                throttle_time_in_millis: indexing.throttle_time_in_millis.unwrap_or(0),
+                write_load: indexing.write_load.unwrap_or(0.0),
                 // Calculated Fields
                 est_bytes_per_day: None,
                 index_time_per_shard_in_millis: None,
@@ -560,10 +562,11 @@ impl From<Option<Indexing>> for EnrichedIndexing {
 
 #[derive(Default, Deserialize, Serialize)]
 pub struct EnrichedBulk {
-    total_operations: u64,
-    total_time_in_millis: u64,
-    total_size_in_bytes: u64,
+    avg_size_in_bytes: u64,
     avg_time_in_millis: u64,
+    total_operations: u64,
+    total_size_in_bytes: u64,
+    total_time_in_millis: u64,
     // Calculated Fields
     est_bytes_per_day: Option<u64>,
 }
@@ -572,10 +575,11 @@ impl From<Option<Bulk>> for EnrichedBulk {
     fn from(bulk: Option<Bulk>) -> Self {
         match bulk {
             Some(bulk) => EnrichedBulk {
-                total_operations: bulk.total_operations.unwrap_or(0),
-                total_time_in_millis: bulk.total_time_in_millis.unwrap_or(0),
-                total_size_in_bytes: bulk.total_size_in_bytes.unwrap_or(0),
+                avg_size_in_bytes: bulk.avg_size_in_bytes.unwrap_or(0),
                 avg_time_in_millis: bulk.avg_time_in_millis.unwrap_or(0),
+                total_operations: bulk.total_operations.unwrap_or(0),
+                total_size_in_bytes: bulk.total_size_in_bytes.unwrap_or(0),
+                total_time_in_millis: bulk.total_time_in_millis.unwrap_or(0),
                 est_bytes_per_day: None,
             },
             None => EnrichedBulk::default(),

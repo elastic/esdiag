@@ -71,9 +71,19 @@ impl IndexSettings {
     /// Determines additional field values from previously deserialized data
     pub fn build(mut self) -> Self {
         let source = self.source_mode();
-        self.store.as_mut().map(|store| {
-            store.config = Some(format!("{}-{}-{}", &self.mode, source, &self.codec));
-        });
+        let config = format!("{}-{}-{}", &self.mode, source, &self.codec);
+        match self.store.as_mut() {
+            Some(store) => {
+                store.config = Some(config);
+            }
+            None => {
+                self.store = Some(StoreSettings {
+                    config: Some(config),
+                    store_type: None,
+                    snapshot: None,
+                });
+            }
+        }
         self.source = Some(source);
         self
     }
@@ -96,7 +106,7 @@ impl IndexSettings {
         self
     }
 
-    /// Returns the concatinated string of mode, mapping.source.mode and codec
+    /// Returns the mapping.source.mode
     fn source_mode(&self) -> String {
         self.mapping
             .as_ref()

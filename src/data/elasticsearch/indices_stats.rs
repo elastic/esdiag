@@ -66,132 +66,168 @@ pub struct StoreStats {
 
 #[derive(Deserialize, Serialize)]
 pub struct Indexing {
-    pub index_total: Option<u64>,
-    pub index_time_in_millis: Option<u64>,
+    pub delete_current: Option<u64>,
+    pub delete_time_in_millis: Option<u64>,
+    pub delete_total: Option<u64>,
     pub index_current: Option<u64>,
     pub index_failed: Option<u64>,
-    pub delete_total: Option<u64>,
+    pub index_time_in_millis: Option<u64>,
+    pub index_total: Option<u64>,
+    pub is_throttled: Option<bool>,
+    pub noop_update_total: Option<u64>,
+    pub throttle_time_in_millis: Option<u64>,
+    pub write_load: Option<f64>,
 }
 
 #[derive(Deserialize, Serialize)]
 pub struct Get {
-    pub total: Option<u64>,
-    pub time_in_millis: Option<u64>,
-    pub exists_total: Option<u64>,
-    pub exists_time_in_millis: Option<u64>,
-    pub missing_total: Option<u64>,
-    pub missing_time_in_millis: Option<u64>,
+    current: Option<u64>,
+    exists_time_in_millis: Option<u64>,
+    exists_total: Option<u64>,
+    missing_time_in_millis: Option<u64>,
+    missing_total: Option<u64>,
+    time_in_millis: Option<u64>,
+    total: Option<u64>,
 }
 
 #[derive(Deserialize, Serialize)]
 pub struct Search {
-    pub open_contexts: Option<u64>,
-    pub query_total: Option<u64>,
-    pub query_time_in_millis: Option<u64>,
-    pub query_current: Option<u64>,
-    pub query_failure: Option<u64>,
+    fetch_current: Option<u64>,
+    fetch_failure: Option<u64>,
+    fetch_time_in_millis: Option<u64>,
+    fetch_total: Option<u64>,
+    open_contexts: Option<u64>,
+    query_current: Option<u64>,
+    query_failure: Option<u64>,
+    query_time_in_millis: Option<u64>,
+    query_total: Option<u64>,
+    scroll_current: Option<u64>,
+    scroll_time_in_millis: Option<u64>,
+    scroll_total: Option<u64>,
+    suggest_current: Option<u64>,
+    suggest_time_in_millis: Option<u64>,
+    suggest_total: Option<u64>,
 }
 
 #[derive(Deserialize, Serialize)]
 pub struct Merges {
-    pub current: Option<u64>,
-    pub current_docs: Option<u64>,
-    pub current_size_in_bytes: Option<u64>,
-    pub total: Option<u64>,
-    pub total_time_in_millis: Option<u64>,
+    current: Option<u64>,
+    current_docs: Option<u64>,
+    current_size_in_bytes: Option<u64>,
+    total: Option<u64>,
+    total_time_in_millis: Option<u64>,
+    total_auto_throttle_in_bytes: Option<u64>,
+    total_docs: Option<u64>,
+    total_size_in_bytes: Option<u64>,
+    total_stopped_time_in_millis: Option<u64>,
+    total_throttled_time_in_millis: Option<u64>,
 }
 
 #[derive(Deserialize, Serialize)]
 pub struct Refresh {
-    pub total: Option<u64>,
-    pub total_time_in_millis: Option<u64>,
-    pub external_total: Option<u64>,
-    pub external_total_time_in_millis: Option<u64>,
+    external_total: Option<u64>,
+    external_total_time_in_millis: Option<u64>,
+    listeners: Option<u64>,
+    total: Option<u64>,
+    total_time_in_millis: Option<u64>,
 }
 
 #[derive(Deserialize, Serialize)]
 pub struct Flush {
-    pub total: Option<u64>,
-    pub periodic: Option<u64>,
-    pub total_time_in_millis: Option<u64>,
-    pub total_time_excluding_waiting_on_lock_in_millis: Option<u64>,
+    total: Option<u64>,
+    periodic: Option<u64>,
+    total_time_in_millis: Option<u64>,
+    total_time_excluding_waiting_on_lock_in_millis: Option<u64>,
 }
 
 #[derive(Deserialize, Serialize)]
 pub struct Warmer {
-    pub current: Option<u64>,
-    pub total: Option<u64>,
-    pub total_time_in_millis: Option<u64>,
+    current: Option<u64>,
+    total: Option<u64>,
+    total_time_in_millis: Option<u64>,
 }
 
 #[derive(Deserialize, Serialize)]
 pub struct QueryCache {
-    pub memory_size_in_bytes: Option<u64>,
-    pub total_count: Option<u64>,
-    pub hit_count: Option<u64>,
-    pub miss_count: Option<u64>,
-    pub cache_size: Option<u64>,
+    cache_count: Option<u64>,
+    cache_size: Option<u64>,
+    evictions: Option<u64>,
+    hit_count: Option<u64>,
+    memory_size_in_bytes: Option<u64>,
+    miss_count: Option<u64>,
+    total_count: Option<u64>,
 }
 
 #[derive(Deserialize, Serialize)]
 pub struct Fielddata {
-    pub memory_size_in_bytes: Option<u64>,
-    pub evictions: Option<u64>,
-    pub global_ordinals: Option<Value>,
+    memory_size_in_bytes: Option<u64>,
+    evictions: Option<u64>,
+    global_ordinals: Option<Value>,
 }
 
 #[derive(Deserialize, Serialize)]
 pub struct Completion {
-    pub size_in_bytes: Option<u64>,
+    size_in_bytes: Option<u64>,
 }
 
 #[derive(Deserialize, Serialize)]
 pub struct Segments {
-    pub count: Option<u64>,
-    pub memory_in_bytes: Option<u64>,
-    pub terms_memory_in_bytes: Option<u64>,
-    pub stored_fields_memory_in_bytes: Option<u64>,
+    count: Option<u64>,
+    doc_values_memory_in_bytes: Option<u64>,
+    // file_sizes
+    fixed_bit_set_memory_in_bytes: Option<u64>,
+    index_writer_memory_in_bytes: Option<u64>,
+    max_unsafe_auto_id_timestamp: Option<i64>,
+    memory_in_bytes: Option<u64>,
+    norms_memory_in_bytes: Option<u64>,
+    points_memory_in_bytes: Option<u64>,
+    stored_fields_memory_in_bytes: Option<u64>,
+    term_vectors_memory_in_bytes: Option<u64>,
+    terms_memory_in_bytes: Option<u64>,
+    version_map_memory_in_bytes: Option<u64>,
 }
 
 #[derive(Deserialize, Serialize)]
 pub struct Translog {
-    pub operations: Option<u64>,
-    pub size_in_bytes: Option<u64>,
-    pub uncommitted_operations: Option<u64>,
-    pub uncommitted_size_in_bytes: Option<u64>,
+    operations: Option<u64>,
+    size_in_bytes: Option<u64>,
+    uncommitted_operations: Option<u64>,
+    uncommitted_size_in_bytes: Option<u64>,
+    earliest_last_modified_age: Option<u64>,
 }
 
 #[derive(Deserialize, Serialize)]
 pub struct RequestCache {
-    pub memory_size_in_bytes: Option<u64>,
-    pub evictions: Option<u64>,
-    pub hit_count: Option<u64>,
-    pub miss_count: Option<u64>,
+    memory_size_in_bytes: Option<u64>,
+    evictions: Option<u64>,
+    hit_count: Option<u64>,
+    miss_count: Option<u64>,
 }
 
 #[derive(Deserialize, Serialize)]
 pub struct Recovery {
-    pub current_as_source: Option<u64>,
-    pub current_as_target: Option<u64>,
-    pub throttle_time_in_millis: Option<u64>,
+    current_as_source: Option<u64>,
+    current_as_target: Option<u64>,
+    throttle_time_in_millis: Option<u64>,
 }
 
 #[derive(Deserialize, Serialize)]
 pub struct Bulk {
-    pub total_operations: Option<u64>,
-    pub total_time_in_millis: Option<u64>,
-    pub total_size_in_bytes: Option<u64>,
+    pub avg_size_in_bytes: Option<u64>,
     pub avg_time_in_millis: Option<u64>,
+    pub total_operations: Option<u64>,
+    pub total_size_in_bytes: Option<u64>,
+    pub total_time_in_millis: Option<u64>,
 }
 
 #[derive(Deserialize, Serialize)]
 pub struct DenseVector {
-    pub value_count: Option<u64>,
+    value_count: Option<u64>,
 }
 
 #[derive(Deserialize, Serialize)]
 pub struct SparseVector {
-    pub value_count: Option<u64>,
+    value_count: Option<u64>,
 }
 
 impl DataSource for IndicesStats {
