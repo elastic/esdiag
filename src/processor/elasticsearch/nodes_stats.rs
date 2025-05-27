@@ -4,11 +4,11 @@ mod http_clients;
 mod ingest_pipelines;
 mod transport_actions;
 
-use super::{DataProcessor, ElasticsearchMetadata, Lookups, NodeSummary};
+use super::{DataProcessor, ElasticsearchMetadata, Lookups, NodeDocument};
 use crate::{data::elasticsearch::NodesStats, processor::Metadata};
 use json_patch::merge;
 use rayon::prelude::*;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::sync::{Arc, LazyLock};
 
 static INGEST_ROLE: LazyLock<String> = LazyLock::new(|| String::from("ingest"));

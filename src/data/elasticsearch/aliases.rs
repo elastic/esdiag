@@ -1,6 +1,7 @@
-use crate::data::diagnostic::{data_source::PathType, elasticsearch::DataSet, DataSource};
+use crate::data::diagnostic::{DataSource, data_source::PathType, elasticsearch::DataSet};
 use eyre::Result;
 use serde::{Deserialize, Serialize};
+use serde_with::skip_serializing_none;
 use std::collections::HashMap;
 
 pub type AliasList = HashMap<String, Aliases>;
@@ -9,6 +10,8 @@ pub type AliasList = HashMap<String, Aliases>;
 pub struct Aliases {
     pub aliases: HashMap<String, AliasSettings>,
 }
+
+#[skip_serializing_none]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct AliasSettings {
     pub is_hidden: Option<bool>,

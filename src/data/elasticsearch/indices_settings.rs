@@ -1,12 +1,14 @@
 use super::DataStream;
-use crate::data::diagnostic::{data_source::PathType, elasticsearch::DataSet, DataSource};
+use crate::data::diagnostic::{DataSource, data_source::PathType, elasticsearch::DataSet};
 use eyre::Result;
 use serde::{Deserialize, Deserializer, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
+use serde_with::skip_serializing_none;
 use std::collections::HashMap;
 
 pub type IndicesSettings = HashMap<String, Settings>;
 
+#[skip_serializing_none]
 #[derive(Clone, Deserialize, Serialize)]
 pub struct IndexSettings {
     pub allocation: Option<Value>,
@@ -19,6 +21,8 @@ pub struct IndexSettings {
     pub default_pipeline: Option<String>,
     pub final_pipeline: Option<String>,
     pub hidden: Option<String>,
+    #[serde(default)]
+    pub is_write_index: Option<bool>,
     pub lifecycle: Option<Value>,
     pub mapping: Option<Value>,
     #[serde(default = "default_to_standard")]
@@ -37,7 +41,7 @@ pub struct IndexSettings {
     pub shard_limit: Option<Value>,
     pub sort: Option<Value>,
     pub source: Option<String>,
-    pub store: Option<Value>,
+    pub store: Option<StoreSettings>,
     pub uuid: String,
     pub version: Value,
     // Not in source json
@@ -49,38 +53,75 @@ pub struct IndexSettings {
     pub name: Option<String>,
 }
 
+#[skip_serializing_none]
+#[derive(Clone, Serialize, Deserialize)]
+pub struct StoreSettings {
+    pub config: Option<String>,
+    pub store_type: Option<String>,
+    pub snapshot: Option<StoreSnapshot>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct StoreSnapshot {
+    pub snapshot_name: String,
+    pub index_uuid: String,
+    pub repository_uuid: String,
+    pub index_name: String,
+    pub partial: String,
+    pub repository_name: String,
+    pub snapshot_uuid: String,
+}
+
 impl IndexSettings {
     /// Determines additional field values from previously deserialized data
     pub fn build(mut self) -> Self {
         let source = self.source_mode();
-        let config = json!({"config": format!("{}-{}-{}", &self.mode, source, &self.codec)});
+        let config = format!("{}-{}-{}", &self.mode, source, &self.codec);
+        match self.store.as_mut() {
+            Some(store) => {
+                store.config = Some(config);
+            }
+            None => {
+                self.store = Some(StoreSettings {
+                    config: Some(config),
+                    store_type: None,
+                    snapshot: None,
+                });
+            }
+        }
         self.source = Some(source);
-        match self.store {
-            Some(ref mut store) => json_patch::merge(store, &config),
-            None => self.store = Some(config),
-        };
         self
     }
 
     /// Sets the age of the index in milliseconds to the given epoch time
-    pub fn age(mut self, epoch_millis: u64) -> Self {
-        self.age = self.creation_date.map(|date| epoch_millis - date);
-        self
+    pub fn age(self, epoch_millis: u64) -> Self {
+        Self {
+            age: self.creation_date.map(|date| epoch_millis - date),
+            ..self
+        }
     }
 
     /// Sets the data stream for the index
-    pub fn data_stream(mut self, data_stream: Option<DataStream>) -> Self {
-        self.data_stream = data_stream;
-        self
+    pub fn data_stream(self, data_stream: Option<DataStream>) -> Self {
+        let is_data_stream_write_index = data_stream.as_ref().map_or(false, |ds| ds.is_write_index);
+        Self {
+            data_stream,
+            is_write_index: Some(
+                self.is_write_index.unwrap_or(false) || is_data_stream_write_index,
+            ),
+            ..self
+        }
     }
 
     /// Adds the name of the index
-    pub fn name(mut self, name: String) -> Self {
-        self.name = Some(name);
-        self
+    pub fn name(self, name: String) -> Self {
+        Self {
+            name: Some(name),
+            ..self
+        }
     }
 
-    /// Returns the concatinated string of mode, mapping.source.mode and codec
+    /// Returns the mapping.source.mode
     fn source_mode(&self) -> String {
         self.mapping
             .as_ref()
@@ -108,11 +149,12 @@ impl std::default::Default for IndexSettings {
             allocation: None,
             auto_expand_replicas: None,
             blocks: None,
-            codec: "unkown".to_string(),
+            codec: "unknown".to_string(),
             creation_date: None,
             default_pipeline: None,
             final_pipeline: None,
             hidden: None,
+            is_write_index: None,
             lifecycle: None,
             mapping: None,
             mode: "unkown".to_string(),
@@ -139,19 +181,12 @@ impl std::default::Default for IndexSettings {
 
 #[derive(Deserialize, Serialize)]
 pub struct Settings {
-    settings: Index,
-}
-
-impl Settings {
-    /// Consume `self` and return the index settings, dropping the unnecessary parent data.
-    pub fn index(self) -> IndexSettings {
-        self.settings.index
-    }
+    pub settings: Index,
 }
 
 #[derive(Deserialize, Serialize)]
-struct Index {
-    index: IndexSettings,
+pub struct Index {
+    pub index: IndexSettings,
 }
 
 fn default_to_default() -> String {

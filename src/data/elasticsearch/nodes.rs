@@ -1,9 +1,11 @@
-use crate::data::diagnostic::{data_source::PathType, elasticsearch::DataSet, DataSource};
+use crate::data::diagnostic::{DataSource, data_source::PathType, elasticsearch::DataSet};
 use eyre::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use serde_with::skip_serializing_none;
 use std::collections::HashMap;
 
+#[skip_serializing_none]
 #[derive(Clone, Deserialize, Serialize)]
 pub struct Node {
     aggregations: Option<Value>,
@@ -41,6 +43,7 @@ struct ComponentVersion {
     transform_config_version: i64,
 }
 
+#[skip_serializing_none]
 #[derive(Clone, Deserialize, Serialize)]
 pub struct OsDetails {
     pub refresh_interval_in_millis: usize,

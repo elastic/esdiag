@@ -1,4 +1,4 @@
-use super::{DataProcessor, ElasticsearchMetadata, Lookups, NodeSummary};
+use super::{DataProcessor, ElasticsearchMetadata, Lookups, NodeDocument};
 use crate::{
     data::elasticsearch::{NodeTasks, ParentTask, Task, Tasks},
     processor::Metadata,
@@ -6,6 +6,7 @@ use crate::{
 use rayon::prelude::*;
 use serde::Serialize;
 use serde_json::Value;
+use serde_with::skip_serializing_none;
 use std::sync::Arc;
 
 impl DataProcessor<Lookups, ElasticsearchMetadata> for Tasks {
@@ -49,12 +50,12 @@ impl DataProcessor<Lookups, ElasticsearchMetadata> for Tasks {
 pub struct TaskDoc {
     #[serde(flatten)]
     metadata: Value,
-    node: NodeSummary,
+    node: NodeDocument,
     task: TaskWithParent,
 }
 
 impl TaskDoc {
-    pub fn new(task: &Task, metadata: Value, node: NodeSummary) -> Self {
+    pub fn new(task: &Task, metadata: Value, node: NodeDocument) -> Self {
         let parent = task
             .parent_task_id
             .as_ref()
@@ -70,6 +71,7 @@ impl TaskDoc {
     }
 }
 
+#[skip_serializing_none]
 #[derive(Clone, Serialize)]
 pub struct TaskWithParent {
     #[serde(flatten)]

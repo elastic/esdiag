@@ -1,4 +1,4 @@
-use super::{ElasticsearchMetadata, NodeSummary};
+use super::{ElasticsearchMetadata, NodeDocument};
 use crate::{
     data::elasticsearch::{
         IngestPipelines, IngestProcessor, IngestProcessorStats, IngestProcessors,
@@ -8,13 +8,13 @@ use crate::{
 use json_patch::merge;
 use rayon::prelude::*;
 use serde::Serialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// Extract ingest.pipelines
 pub fn extract(
     pipelines: Option<IngestPipelines>,
     metadata: &ElasticsearchMetadata,
-    node_summary: Option<&NodeSummary>,
+    node_summary: Option<&NodeDocument>,
 ) -> Vec<Value> {
     let ingest_pipeline_metadata = metadata
         .for_data_stream("metrics-ingest.pipeline-esdiag")
@@ -68,7 +68,7 @@ fn extract_ingest_processors(
     pipeline_name: &str,
     processors: Option<IngestProcessors>,
     metadata: &ElasticsearchMetadata,
-    node_summary: Option<NodeSummary>,
+    node_summary: Option<NodeDocument>,
 ) -> Vec<Value> {
     let ingest_processor_metadata = metadata
         .for_data_stream("metrics-ingest.processor-esdiag")
@@ -111,7 +111,7 @@ fn extract_ingest_processors(
 struct IngestDoc {
     #[serde(flatten)]
     metadata: Value,
-    node: Option<NodeSummary>,
+    node: Option<NodeDocument>,
     ingest: IngestProcessorDoc,
 }
 

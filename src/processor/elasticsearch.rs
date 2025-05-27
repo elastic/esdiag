@@ -36,7 +36,7 @@ use crate::{
 };
 use eyre::{Result, eyre};
 use futures::{future::join_all, stream::FuturesUnordered};
-use lookup::NodeSummary;
+use lookup::NodeDocument;
 use metadata::ElasticsearchMetadata;
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
@@ -215,7 +215,7 @@ pub struct Lookups {
     pub alias: Lookup<Alias>,
     pub data_stream: Lookup<DataStream>,
     pub index_settings: Lookup<IndexSettings>,
-    pub node: Lookup<NodeSummary>,
+    pub node: Lookup<NodeDocument>,
     pub ilm_explain: Lookup<IlmStats>,
     pub shared_cache: Lookup<SharedCacheStats>,
 }

@@ -1,15 +1,15 @@
-use super::{ElasticsearchMetadata, NodeSummary};
+use super::{ElasticsearchMetadata, NodeDocument};
 use crate::processor::Metadata;
 use json_patch::merge;
 use rayon::prelude::*;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// Extract transport.actions
 
 pub fn extract(
     actions: Value,
     metadata: &ElasticsearchMetadata,
-    node_summary: Option<&NodeSummary>,
+    node_summary: Option<&NodeDocument>,
 ) -> Vec<Value> {
     let metadata = metadata
         .for_data_stream("metrics-node.transport.actions-esdiag")

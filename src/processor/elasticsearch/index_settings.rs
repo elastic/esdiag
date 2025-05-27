@@ -15,55 +15,36 @@ impl DataProcessor<Lookups, ElasticsearchMetadata> for IndicesSettings {
         metadata: Arc<ElasticsearchMetadata>,
     ) -> (String, Vec<Value>) {
         log::debug!("processing indices: {}", self.len());
-        let data_stream = "settings-index-esdiag".to_string();
-        let index_metadata = metadata.for_data_stream(&data_stream).as_meta_doc();
+        let index_metadata = metadata.for_data_stream("settings-index-esdiag");
         let collection_date = metadata.timestamp;
-        let data_stream_lookup = lookups.data_stream.clone();
 
         let index_settings: Vec<Value> = self
             .par_drain()
             .filter_map(|(name, settings)| {
                 let index_settings = settings
-                    .index()
-                    .data_stream(data_stream_lookup.by_id(&name).cloned())
-                    .name(name)
+                    .settings
+                    .index
+                    .data_stream(lookups.data_stream.by_id(&name).cloned())
                     .age(collection_date)
+                    .name(name)
                     .build();
-                let index_settings_doc =
-                    IndexSettingsDoc::from(index_settings).with(index_metadata.clone());
 
-                serde_json::to_value(index_settings_doc).ok()
+                serde_json::to_value(EnrichedIndexSettings {
+                    index: index_settings,
+                    metadata: index_metadata.as_meta_doc(),
+                })
+                .ok()
             })
             .collect();
 
         log::debug!("index setting docs: {}", index_settings.len());
-        (data_stream, index_settings)
+        (index_metadata.data_stream.to_string(), index_settings)
     }
 }
 
 #[derive(Clone, Serialize)]
-struct IndexSettingsDoc {
+struct EnrichedIndexSettings {
+    index: IndexSettings,
     #[serde(flatten)]
-    metadata: Option<Value>,
-    index: Option<IndexSettings>,
-}
-
-impl IndexSettingsDoc {
-    fn with(self, metadata: Value) -> Self {
-        let index = self.index.map(|index| index);
-
-        Self {
-            metadata: Some(metadata),
-            index,
-        }
-    }
-}
-
-impl From<IndexSettings> for IndexSettingsDoc {
-    fn from(index: IndexSettings) -> Self {
-        IndexSettingsDoc {
-            metadata: None,
-            index: Some(index),
-        }
-    }
+    metadata: Value,
 }

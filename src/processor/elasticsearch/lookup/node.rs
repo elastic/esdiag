@@ -5,9 +5,11 @@ use crate::data::{
 use eyre::Result;
 use serde::Serialize;
 use serde_json::Value;
+use serde_with::skip_serializing_none;
 
+#[skip_serializing_none]
 #[derive(Clone, Serialize)]
-pub struct NodeSummary {
+pub struct NodeDocument {
     pub attributes: Option<Value>,
     pub host: Option<String>,
     pub id: Option<String>,
@@ -21,30 +23,30 @@ pub struct NodeSummary {
     pub version: Option<String>,
 }
 
-impl NodeSummary {
+impl NodeDocument {
     pub fn rename(self, name: &String) -> Self {
-        NodeSummary {
+        NodeDocument {
             name: name.clone(),
             ..self
         }
     }
 
     pub fn with_id(self, id: &String) -> Self {
-        NodeSummary {
+        NodeDocument {
             id: Some(id.clone()),
             ..self
         }
     }
 }
 
-impl From<&Node> for NodeSummary {
+impl From<&Node> for NodeDocument {
     fn from(node: &Node) -> Self {
         let role = get_roles_abbreviation(&node.roles);
         let tier = get_tier(&node.roles);
         let tier_order = get_tier_order(&tier);
         let name = get_tier_node_name(node.name.clone(), &tier);
 
-        NodeSummary {
+        NodeDocument {
             attributes: node.attributes.clone(),
             host: node.host.clone(),
             id: None,
@@ -60,12 +62,12 @@ impl From<&Node> for NodeSummary {
     }
 }
 
-impl From<Nodes> for Lookup<NodeSummary> {
+impl From<Nodes> for Lookup<NodeDocument> {
     fn from(mut nodes: Nodes) -> Self {
-        let mut lookup = Lookup::<NodeSummary>::new();
+        let mut lookup = Lookup::<NodeDocument>::new();
         nodes.nodes.drain().for_each(|(id, node)| {
             lookup
-                .add(NodeSummary::from(&node).with_id(&id))
+                .add(NodeDocument::from(&node).with_id(&id))
                 .with_name(&node.name)
                 .with_id(&id);
         });
@@ -73,10 +75,10 @@ impl From<Nodes> for Lookup<NodeSummary> {
     }
 }
 
-impl From<Result<Nodes>> for Lookup<NodeSummary> {
+impl From<Result<Nodes>> for Lookup<NodeDocument> {
     fn from(nodes_result: Result<Nodes>) -> Self {
         match nodes_result {
-            Ok(nodes) => Lookup::<NodeSummary>::from(nodes),
+            Ok(nodes) => Lookup::<NodeDocument>::from(nodes),
             Err(e) => {
                 log::warn!("Failed to parse Nodes: {}", e);
                 Lookup::new()

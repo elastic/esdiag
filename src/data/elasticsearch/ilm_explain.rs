@@ -1,6 +1,7 @@
-use crate::data::diagnostic::{data_source::PathType, elasticsearch::DataSet, DataSource};
+use crate::data::diagnostic::{DataSource, data_source::PathType, elasticsearch::DataSet};
 use eyre::Result;
 use serde::{Deserialize, Serialize};
+use serde_with::skip_serializing_none;
 use std::collections::HashMap;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -8,6 +9,7 @@ pub struct IlmExplain {
     pub indices: HashMap<String, IlmStats>,
 }
 
+#[skip_serializing_none]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct IlmStats {
     //pub index: String,
@@ -26,6 +28,7 @@ pub struct IlmStats {
     pub phase_execution: Option<PhaseExecution>,
 }
 
+#[skip_serializing_none]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct Actions {
     searchable_snapshot: Option<SearchableSnapshot>,
@@ -37,6 +40,7 @@ struct PhaseDefinition {
     actions: Actions,
 }
 
+#[skip_serializing_none]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PhaseExecution {
     policy: String,

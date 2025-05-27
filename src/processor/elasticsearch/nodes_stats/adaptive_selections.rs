@@ -1,15 +1,15 @@
-use super::{ElasticsearchMetadata, NodeSummary};
+use super::{ElasticsearchMetadata, NodeDocument};
 use crate::{data::diagnostic::Lookup, processor::Metadata};
 use json_patch::merge;
 use rayon::prelude::*;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// Extract adaptive_selection
 pub fn extract(
     adaptive_selection: Option<Value>,
     metadata: &ElasticsearchMetadata,
-    node_summary: Option<&NodeSummary>,
-    lookup_node: &Lookup<NodeSummary>,
+    node_summary: Option<&NodeDocument>,
+    lookup_node: &Lookup<NodeDocument>,
 ) -> Vec<Value> {
     let adaptive_selection_metadata = metadata
         .for_data_stream("metrics-node.adaptive_selection-esdiag")
