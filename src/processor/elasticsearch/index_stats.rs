@@ -14,6 +14,7 @@ use eyre::Report;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use serde_with::skip_serializing_none;
 use std::sync::Arc;
 
 impl DataProcessor<Lookups, ElasticsearchMetadata> for IndicesStats {
@@ -90,6 +91,7 @@ impl DataProcessor<Lookups, ElasticsearchMetadata> for IndicesStats {
     }
 }
 
+#[skip_serializing_none]
 #[derive(Serialize)]
 struct IndexDocument {
     index: EnrichedIndexStatsWithSettings,
@@ -185,6 +187,7 @@ impl IndexDocument {
     }
 }
 
+#[skip_serializing_none]
 #[derive(Serialize)]
 struct EnrichedIndexStats {
     pub age: Option<u64>,
@@ -198,6 +201,7 @@ struct EnrichedIndexStats {
     pub write_phase_sec: Option<u64>,
 }
 
+#[skip_serializing_none]
 #[derive(Serialize)]
 struct EnrichedIndexStatsWithSettings {
     #[serde(flatten)]
@@ -250,6 +254,7 @@ impl TryFrom<IndexStats> for EnrichedIndexStats {
     }
 }
 
+#[skip_serializing_none]
 #[derive(Deserialize, Serialize)]
 struct EnrichedShardStats {
     pub commit: Value,
@@ -288,6 +293,7 @@ impl TryFrom<ShardEntry> for EnrichedShardStats {
     }
 }
 
+#[skip_serializing_none]
 #[derive(Serialize)]
 struct ShardDocument {
     shard: EnrichedShardStats,
@@ -405,6 +411,7 @@ impl ShardDocument {
     }
 }
 
+#[skip_serializing_none]
 #[derive(Deserialize, Serialize)]
 struct EnrichedStats {
     bulk: EnrichedBulk,
@@ -458,6 +465,7 @@ impl TryFrom<Stats> for EnrichedStats {
     }
 }
 
+#[skip_serializing_none]
 #[derive(Default, Deserialize, Serialize)]
 struct EnrichedStoreStats {
     size_in_bytes: u64,
@@ -481,6 +489,7 @@ impl From<Option<StoreStats>> for EnrichedStoreStats {
     }
 }
 
+#[skip_serializing_none]
 #[derive(Deserialize, Serialize)]
 pub struct EnrichedDocs {
     pub count: u64,
@@ -505,6 +514,7 @@ impl From<Docs> for EnrichedDocs {
     }
 }
 
+#[skip_serializing_none]
 #[derive(Default, Deserialize, Serialize)]
 struct EnrichedIndexing {
     index_total: u64,
@@ -547,6 +557,7 @@ impl From<Option<Indexing>> for EnrichedIndexing {
     }
 }
 
+#[skip_serializing_none]
 #[derive(Default, Deserialize, Serialize)]
 pub struct EnrichedBulk {
     avg_size_in_bytes: u64,

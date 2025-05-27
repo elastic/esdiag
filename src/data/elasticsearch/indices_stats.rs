@@ -2,6 +2,7 @@ use crate::data::diagnostic::{DataSource, data_source::PathType, elasticsearch::
 use eyre::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use serde_with::skip_serializing_none;
 use std::collections::HashMap;
 
 #[derive(Deserialize)]
@@ -33,6 +34,7 @@ pub struct ShardEntry {
     pub stats: Stats,
 }
 
+#[skip_serializing_none]
 #[derive(Deserialize, Serialize)]
 pub struct ShardRouting {
     pub node: String,
@@ -41,6 +43,7 @@ pub struct ShardRouting {
     pub relocating_node: Option<String>,
 }
 
+#[skip_serializing_none]
 #[derive(Deserialize, Serialize)]
 pub struct Stats {
     pub bulk: Option<Bulk>,
@@ -65,6 +68,7 @@ pub struct Stats {
     pub warmer: Option<Warmer>,
 }
 
+#[skip_serializing_none]
 #[derive(Deserialize, Serialize)]
 pub struct Docs {
     pub count: u64,
@@ -81,6 +85,7 @@ pub struct ShardStats {
     pub total_count: u64,
 }
 
+#[skip_serializing_none]
 #[derive(Deserialize, Serialize)]
 pub struct StoreStats {
     pub size_in_bytes: u64,
@@ -88,6 +93,7 @@ pub struct StoreStats {
     pub reserved_in_bytes: Option<u64>,
 }
 
+#[skip_serializing_none]
 #[derive(Deserialize, Serialize)]
 pub struct Indexing {
     pub delete_current: u64,
@@ -107,6 +113,7 @@ pub struct Indexing {
     pub avg_bytes_sec: Option<u64>,
 }
 
+#[skip_serializing_none]
 #[derive(Deserialize, Serialize)]
 pub struct Get {
     current: Option<u64>,
@@ -118,6 +125,7 @@ pub struct Get {
     total: Option<u64>,
 }
 
+#[skip_serializing_none]
 #[derive(Deserialize, Serialize)]
 pub struct Search {
     pub fetch_current: Option<u64>,
@@ -142,6 +150,7 @@ pub struct Search {
     pub avg_query_rate: Option<f64>,
 }
 
+#[skip_serializing_none]
 #[derive(Deserialize, Serialize)]
 pub struct Merges {
     current: Option<u64>,
@@ -156,6 +165,7 @@ pub struct Merges {
     total_throttled_time_in_millis: Option<u64>,
 }
 
+#[skip_serializing_none]
 #[derive(Deserialize, Serialize)]
 pub struct Refresh {
     external_total: Option<u64>,
@@ -165,6 +175,7 @@ pub struct Refresh {
     total_time_in_millis: Option<u64>,
 }
 
+#[skip_serializing_none]
 #[derive(Deserialize, Serialize)]
 pub struct Flush {
     total: Option<u64>,
@@ -173,6 +184,7 @@ pub struct Flush {
     total_time_excluding_waiting_on_lock_in_millis: Option<u64>,
 }
 
+#[skip_serializing_none]
 #[derive(Deserialize, Serialize)]
 pub struct Warmer {
     current: Option<u64>,
@@ -180,6 +192,7 @@ pub struct Warmer {
     total_time_in_millis: Option<u64>,
 }
 
+#[skip_serializing_none]
 #[derive(Deserialize, Serialize)]
 pub struct QueryCache {
     cache_count: Option<u64>,
@@ -191,6 +204,7 @@ pub struct QueryCache {
     total_count: Option<u64>,
 }
 
+#[skip_serializing_none]
 #[derive(Deserialize, Serialize)]
 pub struct Fielddata {
     memory_size_in_bytes: Option<u64>,
@@ -198,11 +212,13 @@ pub struct Fielddata {
     global_ordinals: Option<Value>,
 }
 
+#[skip_serializing_none]
 #[derive(Deserialize, Serialize)]
 pub struct Completion {
     size_in_bytes: Option<u64>,
 }
 
+#[skip_serializing_none]
 #[derive(Deserialize, Serialize)]
 pub struct Segments {
     count: Option<u64>,
@@ -220,6 +236,7 @@ pub struct Segments {
     version_map_memory_in_bytes: Option<u64>,
 }
 
+#[skip_serializing_none]
 #[derive(Deserialize, Serialize)]
 pub struct Translog {
     operations: Option<u64>,
@@ -229,6 +246,7 @@ pub struct Translog {
     earliest_last_modified_age: Option<u64>,
 }
 
+#[skip_serializing_none]
 #[derive(Deserialize, Serialize)]
 pub struct RequestCache {
     memory_size_in_bytes: Option<u64>,
@@ -237,6 +255,7 @@ pub struct RequestCache {
     miss_count: Option<u64>,
 }
 
+#[skip_serializing_none]
 #[derive(Deserialize, Serialize)]
 pub struct Recovery {
     current_as_source: Option<u64>,
@@ -244,6 +263,7 @@ pub struct Recovery {
     throttle_time_in_millis: Option<u64>,
 }
 
+#[skip_serializing_none]
 #[derive(Deserialize, Serialize)]
 pub struct Bulk {
     pub avg_size_in_bytes: Option<u64>,
@@ -257,11 +277,13 @@ pub struct Bulk {
     pub storage_ratio: Option<f32>,
 }
 
+#[skip_serializing_none]
 #[derive(Deserialize, Serialize)]
 pub struct DenseVector {
     value_count: Option<u64>,
 }
 
+#[skip_serializing_none]
 #[derive(Deserialize, Serialize)]
 pub struct SparseVector {
     value_count: Option<u64>,

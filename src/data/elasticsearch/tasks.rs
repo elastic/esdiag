@@ -1,7 +1,8 @@
-use crate::data::diagnostic::{data_source::PathType, elasticsearch::DataSet, DataSource};
+use crate::data::diagnostic::{DataSource, data_source::PathType, elasticsearch::DataSet};
 use eyre::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use serde_with::skip_serializing_none;
 use std::collections::HashMap;
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -14,6 +15,7 @@ pub struct NodeTasks {
     pub tasks: HashMap<String, Task>,
 }
 
+#[skip_serializing_none]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Task {
     action: String,

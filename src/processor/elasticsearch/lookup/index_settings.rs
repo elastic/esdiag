@@ -4,6 +4,7 @@ use crate::data::{
 };
 use eyre::Result;
 use serde::Serialize;
+use serde_with::skip_serializing_none;
 
 impl From<IndicesSettings> for Lookup<IndexSettings> {
     fn from(mut indices_settings: IndicesSettings) -> Self {
@@ -29,6 +30,7 @@ impl From<Result<IndicesSettings>> for Lookup<IndexSettings> {
     }
 }
 
+#[skip_serializing_none]
 #[derive(Clone, Serialize)]
 pub struct IndexSettingsDocument {
     pub age: Option<u64>,

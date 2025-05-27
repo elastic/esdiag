@@ -1,6 +1,7 @@
 use crate::data::diagnostic::{DataSource, data_source::PathType, elasticsearch::DataSet};
 use eyre::Result;
 use serde::{Deserialize, Serialize};
+use serde_with::skip_serializing_none;
 
 #[derive(Clone, Deserialize, Serialize)]
 pub struct DataStreams {
@@ -9,6 +10,7 @@ pub struct DataStreams {
 
 pub type Indices = Vec<IndexEntry>;
 
+#[skip_serializing_none]
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct DataStream {
     pub allow_custom_routing: Option<bool>,
@@ -101,6 +103,7 @@ pub struct TimestampField {
     pub name: String,
 }
 
+#[skip_serializing_none]
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct IndexEntry {
     pub index_name: String,

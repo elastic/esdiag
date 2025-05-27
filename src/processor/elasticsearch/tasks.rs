@@ -6,6 +6,7 @@ use crate::{
 use rayon::prelude::*;
 use serde::Serialize;
 use serde_json::Value;
+use serde_with::skip_serializing_none;
 use std::sync::Arc;
 
 impl DataProcessor<Lookups, ElasticsearchMetadata> for Tasks {
@@ -70,6 +71,7 @@ impl TaskDoc {
     }
 }
 
+#[skip_serializing_none]
 #[derive(Clone, Serialize)]
 pub struct TaskWithParent {
     #[serde(flatten)]

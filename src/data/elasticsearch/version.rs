@@ -1,8 +1,10 @@
 #![allow(unreachable_patterns)] // supresses a warning about the `name` alias
-use crate::data::diagnostic::{data_source::PathType, elasticsearch::DataSet, DataSource};
+use crate::data::diagnostic::{DataSource, data_source::PathType, elasticsearch::DataSet};
 use eyre::Result;
 use serde::{Deserialize, Serialize};
+use serde_with::skip_serializing_none;
 
+#[skip_serializing_none]
 #[derive(Clone, Deserialize, Serialize)]
 pub struct Cluster {
     #[serde(skip_deserializing)]

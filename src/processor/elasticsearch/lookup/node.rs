@@ -5,7 +5,9 @@ use crate::data::{
 use eyre::Result;
 use serde::Serialize;
 use serde_json::Value;
+use serde_with::skip_serializing_none;
 
+#[skip_serializing_none]
 #[derive(Clone, Serialize)]
 pub struct NodeDocument {
     pub attributes: Option<Value>,

@@ -3,10 +3,12 @@ use crate::data::diagnostic::{DataSource, data_source::PathType, elasticsearch::
 use eyre::Result;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{Value, json};
+use serde_with::skip_serializing_none;
 use std::collections::HashMap;
 
 pub type IndicesSettings = HashMap<String, Settings>;
 
+#[skip_serializing_none]
 #[derive(Clone, Deserialize, Serialize)]
 pub struct IndexSettings {
     pub allocation: Option<Value>,
@@ -51,6 +53,7 @@ pub struct IndexSettings {
     pub name: Option<String>,
 }
 
+#[skip_serializing_none]
 #[derive(Clone, Serialize, Deserialize)]
 pub struct StoreSettings {
     pub config: Option<String>,

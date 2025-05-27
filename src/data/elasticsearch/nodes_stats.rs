@@ -1,7 +1,8 @@
-use crate::data::diagnostic::{data_source::PathType, elasticsearch::DataSet, DataSource};
+use crate::data::diagnostic::{DataSource, data_source::PathType, elasticsearch::DataSet};
 use eyre::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use serde_with::skip_serializing_none;
 use std::collections::HashMap;
 
 #[derive(Deserialize, Serialize)]
@@ -11,6 +12,7 @@ pub struct NodesStats {
     pub nodes: HashMap<String, NodeStats>,
 }
 
+#[skip_serializing_none]
 #[derive(Deserialize, Serialize)]
 pub struct NodeStats {
     #[serde(skip_serializing)] // Docs split into separate datastream
