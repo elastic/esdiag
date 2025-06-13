@@ -78,7 +78,7 @@ impl From<IndexSettings> for IndexSettingsDocument {
             data_stream: index_settings.data_stream,
             lifecycle: index_settings.lifecycle,
             ilm: None,
-            is_write_index: index_settings.is_write_index.unwrap_or(false),
+            is_write_index: index_settings.is_write_index,
             mode: index_settings.mode,
             name: index_settings.name.expect("Name is required"),
             store: index_settings.store,

@@ -105,6 +105,23 @@ impl IndexDocument {
     }
 
     fn calculate(mut self) -> Self {
+        let is_write_alias = self
+            .index
+            .stats
+            .alias
+            .as_ref()
+            .map(|a| a.is_write_index)
+            .unwrap_or(false);
+
+        let is_write_data_stream = self
+            .index
+            .settings
+            .as_ref()
+            .and_then(|s| s.data_stream.as_ref().map(|ds| ds.is_write_index))
+            .unwrap_or(false);
+
+        self.index.stats.is_write_index = is_write_alias || is_write_data_stream;
+
         let stats = &mut self.index.stats;
         let collection_date = self.metadata.diagnostic.collection_date;
 
@@ -193,7 +210,7 @@ struct EnrichedIndexStats {
     pub age: Option<u64>,
     pub alias: Option<Alias>,
     pub health: Option<String>,
-    pub is_write_index: Option<bool>,
+    pub is_write_index: bool,
     pub primaries: EnrichedStats,
     pub since_rollover: Option<u64>,
     pub total: EnrichedStats,
@@ -212,12 +229,7 @@ struct EnrichedIndexStatsWithSettings {
 
 impl EnrichedIndexStats {
     fn alias(self, alias: Option<Alias>) -> Self {
-        let is_alias_write_index = alias.as_ref().map_or(false, |a| a.is_write_index);
-        Self {
-            alias,
-            is_write_index: Some(self.is_write_index.unwrap_or(false) || is_alias_write_index),
-            ..self
-        }
+        Self { alias, ..self }
     }
 
     fn with_settings(
@@ -244,7 +256,7 @@ impl TryFrom<IndexStats> for EnrichedIndexStats {
             age: None,
             alias: None,
             health,
-            is_write_index: None,
+            is_write_index: false,
             primaries,
             since_rollover: None,
             total,

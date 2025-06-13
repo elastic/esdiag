@@ -22,7 +22,7 @@ pub struct IndexSettings {
     pub final_pipeline: Option<String>,
     pub hidden: Option<String>,
     #[serde(default)]
-    pub is_write_index: Option<bool>,
+    pub is_write_index: bool,
     pub lifecycle: Option<Value>,
     pub mapping: Option<Value>,
     #[serde(default = "default_to_standard")]
@@ -106,9 +106,7 @@ impl IndexSettings {
         let is_data_stream_write_index = data_stream.as_ref().map_or(false, |ds| ds.is_write_index);
         Self {
             data_stream,
-            is_write_index: Some(
-                self.is_write_index.unwrap_or(false) || is_data_stream_write_index,
-            ),
+            is_write_index: self.is_write_index || is_data_stream_write_index,
             ..self
         }
     }
@@ -154,7 +152,7 @@ impl std::default::Default for IndexSettings {
             default_pipeline: None,
             final_pipeline: None,
             hidden: None,
-            is_write_index: None,
+            is_write_index: false,
             lifecycle: None,
             mapping: None,
             mode: "unkown".to_string(),
