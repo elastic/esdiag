@@ -67,7 +67,7 @@ pub struct StoreSnapshot {
     pub index_uuid: String,
     pub repository_uuid: String,
     pub index_name: String,
-    pub partial: String,
+    pub partial: Option<String>,
     pub repository_name: String,
     pub snapshot_uuid: String,
 }
