@@ -6,45 +6,28 @@ The Elastic Stack Diagnostics (`esdiag`) tool simplifies processing and importin
 Running locally with Docker Desktop
 ------------------------------------
 
-Use the `bin/esdiag-docker.sh` wrapper script to run the tool in a local Docker container. This will build using the official Rust Docker image, and does not require any local tooling beyond Docker desktop (or Podman if you are adventurous).
+Use the `bin/stack-local-setup.sh` to quickly spin up a fully-local environment.
 
-### Usage
-
-Start by building the container image:
-
-```sh
-docker build --tag esdiag:latest .
-```
-
-When running from a container, the output is controlled through environment variables. The default url is effectively `http://localhost:9200` with no authentication. This can be overridden by setting the `ESDIAG_OUTPUT_*` environment variables.
+1. Clone this repository to your local machine using either `git` or [GitHub Desktop](https://desktop.github.com/download/)
+2. Be sure you have the dependencies installed: `docker`, `jq`, `curl`, `grep`, and `sed`.
+3. Download the latest version of `esdiag-dashboards.ndjson` from the [GitHub releases page](https://github.com/elastic/esdiag-dashboards/releases/latest) to the `assets/kibana` directory.
+4. Run the script from this repository's root directory:
 
 ```sh
-export ESDIAG_OUTPUT_URL="https://my-deployment.cloud.elastic.co"
-export ESDIAG_OUTPUT_APIKEY="<apikey>"
-export ESDIAG_OUTPUT_USERNAME="<username>"
-export ESDIAG_OUTPUT_PASSWORD="<password>"
+./bin/stack-local-setup.sh
 ```
 
-You do not need the username or password with an API key.
+Once the script is done, you will have:
+1. A single Elasticsearch node with all index templates installed.
+2. A fully-configured Kibana instance with dashboards, data views, and saved searches imported.
+3. A Docker container image to use with `bin/esdiag-docker.sh` for processing diagnostic bundles.
+4. A web browser opened to [http://localhost:5601]()
 
-Then you can use the script to run ESDiag inside the container:
+Then import your first diagnostic with:
 
 ```sh
-./esdiag-docker.sh <command> [arguments]
+./bin/esdiag-docker.sh process ~/Downloads/diagnostic-abc123-2025-Jun-20--12_30_01.zip
 ```
-
-For example to run the `process` command:
-
-```sh
-./esdiag-docker.sh process /full/path/to/file.json
-```
-
-### Limitations
-
-* Be sure to include the fully-qualified path to an input file or directory. This must be mounted as a Docker volume, and relative paths will not work.
-* No `host` command support, it requires persistent storage and the container is run with `--rm` and removing it after every run.
-* No `collect` command support, it requires input configurations which are not configurable through environment variables.
-* No support for output to a local file or directory.
 
 Full Rust Installation with Cargo
 ----------------------------------
@@ -170,6 +153,8 @@ Options:
 
 The `esdiag host` command allows you configure and test authentication information. On a succesful connection test, it writes the configuration to your `~/esdiag/hosts.yml` file for easy re-use.
 
+> ℹ️ Note: This command does not work with `bin/esdiag-docker.sh`
+
 ```
 Configure, test and save a remote host connection to `~/.esdiag/hosts.yml`
 
@@ -272,6 +257,8 @@ esdl diag-cluster
 The `esdiag collect` command pulls the minimum required diagnostics from an Elasticsearch host and saves them to a directory. These are JSON-only, not pretty-printed, and do not include human-readable metrics. This bunlde captures only what is needed to then import with `esdiag`.
 
 Authentication must be setup in advance with the `esdiag host` command or `hosts.yml` file. Direct access to the clsuter is required, this cannot be done through any Elastic Cloud API.
+
+> ℹ️ Note: This command does not work with `bin/esdiag-docker.sh`
 
 ```
 Collect a diagnostic bundle from a known host's API endpoints, writes output to a directory

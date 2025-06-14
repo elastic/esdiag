@@ -1,0 +1,1 @@
+Before running the `bin/stack-local-setup.sh` script, download the latest ESDiag dashboards `.ndjson` into this directory from [https://github.com/elastic/esdiag-dashboards/releases/latest](https://github.com/elastic/esdiag-dashboards/releases/latest)
