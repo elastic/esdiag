@@ -6,20 +6,60 @@ declare ESDIAG_OUTPUT_APIKEY=${ESDIAG_OUTPUT_APIKEY}
 declare ESDIAG_OUTPUT_USERNAME=${ESDIAG_OUTPUT_USERNAME}
 declare ESDIAG_OUTPUT_PASSWORD=${ESDIAG_OUTPUT_PASSWORD}
 
-function validate_image() {
-    # call docker inspect esdiag:latest, with jq check that .[].RepoTags[0] == "esdiag:latest"
+# ----- Logging Functions -----
+
+declare log_name="esdiag-docker"
+
+# Colorized echo statements
+function blue()    { echo -e -n "\033[94m${1}\033[39m"; }
+function cyan()    { echo -e -n "\033[36m${1}\033[39m"; }
+function gray()    { echo -e -n "\033[90m${1}\033[39m"; }
+function green()   { echo -e -n "\033[32m${1}\033[39m"; }
+function magenta() { echo -e -n "\033[35m${1}\033[39m"; }
+function red()     { echo -e -n "\033[31m${1}\033[39m"; }
+function white()   { echo -e -n "\033[97m${1}\033[39m"; }
+function yellow()  { echo -e -n "\033[33m${1}\033[39m"; }
+
+# Colorized log messages
+function timestamp() { echo -n $(date -u +"%Y-%m-%d %H:%M:%S"); }
+function log_error() { echo "[$(timestamp) $(red Error) ${log_name}] ${1}"; }
+function log_warn()  { echo "[$(timestamp) $(yellow Warn) ${log_name}] ${1}"; }
+function log_info()  { echo "[$(timestamp) $(green Info) ${log_name}] ${1}"; }
+function log_debug() {
+    if [[ $LOG_LEVEL == "debug" ]]; then
+        echo "[$(timestamp) $(blue Debug) ${log_name}] ${1}"
+    fi
+}
+# ----- Main Functions -----
+
+function dependencies_validate() {
+    local failures=0
+    if ! command -v docker &> /dev/null; then
+        log_error "$(white docker) is required to build and run Docker containers"
+        failures=$((failures + 1))
+    fi
+
     if ! command -v jq &> /dev/null; then
-        echo "'jq' is required to validate the container image"
-        echo "Check your distribution or homebrew package manager"
+        log_error "$(white jq) is required to validate the container image"
+        log_error "Check your linux distribution package manager or MacOS homebrew"
+        failures=$((failures + 1))
+    fi
+
+    if (( $failures > 0 )); then
+        log_error "Dependencies: $(white $failures) checks $(red failed)"
         exit 1
     fi
-    local is_valid=$(docker inspect esdiag:latest | jq '.[].RepoTags[0] == "esdiag:latest"')
+}
+
+function container_image_validate() {
+    # call docker inspect esdiag:latest, with jq check that .[].RepoTags[0] == "esdiag:latest"
+    local is_valid=$(docker inspect esdiag:latest | jq '.[].RepoTags | contains(["esdiag:latest"])')
     if [[ "${is_valid}" != "true" ]]; then
-        echo "NO container image found with tag: esdiag:latest"
-        echo "From the repository root, please run 'docker build --tag esdiag:latest .'"
+        log_error "Container image $(red "not found") with tag $(gray esdiag:latest)"
+        log_error "Please run $(white "docker build --tag esdiag:latest .")"
         exit 1
     else
-        echo "Container image found with tag: esdiag:latest"
+        log_info "Container image $(green found) with tag $(cyan esdiag:latest)"
     fi
 }
 
@@ -27,11 +67,11 @@ function validate_image() {
 function docker_run() {
     declare input="${1}"; shift
     if [[ -f "${input}" ]] || [[ -d "${input}" ]]; then
-        echo "Path ${input} is local file or directory, mounting to container"
+        log_info "Path $(gray ${input}) is local file or directory, mounting to container"
         declare diag_mount="/data/diagnostic"
     fi
 
-    echo "Running esdiag ${command} ${input} ${*}"
+    log_info "Running $(white "esdiag ${command} ${input} ${*}")"
 
     docker run --rm ${diag_mount:+--volume ${input}:${diag_mount}} \
         --env ESDIAG_OUTPUT_URL="${ESDIAG_OUTPUT_URL}" \
@@ -41,22 +81,24 @@ function docker_run() {
         esdiag:latest "${command}" ${diag_mount:-${input}} ${*}
 }
 
-validate_image
+# ----- Main -----
+
+dependencies_validate && container_image_validate
 declare command="${1}"; shift
 case "${command}" in
     "collect")
-        echo "The collect command is not supported in this Docker container"
+        log_warn "The $(white collect) command is not supported from this Docker container"
         exit 1
         ;;
     "host")
-        echo "The host command does not work with this Docker container."
-        echo "Instead, configure your output with these environment variables:"
+        log_warn "The $(white host) command is not supported from this Docker container."
+        echo "Instead, configure these environment variables that will pass through:"
         echo "    - ESDIAG_OUTPUT_URL"
         echo "    - ESDIAG_OUTPUT_APIKEY"
         echo "    - ESDIAG_OUTPUT_USERNAME"
         echo "    - ESDIAG_OUTPUT_PASSWORD"
         echo
-        echo " The URL is required, and either the APIKEY or USERNAME and PASSWORD."
+        echo " The $(gray URL) is required with either the $(gray APIKEY) or $(gray USERNAME) and $(gray PASSWORD)."
         exit 1
         ;;
     *)
