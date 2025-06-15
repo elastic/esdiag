@@ -34,7 +34,7 @@ pub struct ArchiveReceiver {
     archive: Arc<RwLock<ZipArchive<File>>>,
     filename: String,
     subdir: Option<PathBuf>,
-    created_date: SystemTime,
+    modified_date: SystemTime,
 }
 
 impl ArchiveReceiver {
@@ -67,11 +67,11 @@ impl TryFrom<PathBuf> for ArchiveReceiver {
             true => {
                 log::debug!("File is valid: {}", path.display());
                 let file = File::open(path)?;
-                let created_date = file.metadata()?.modified()?;
+                let modified_date = file.metadata()?.modified()?;
                 let archive = ZipArchive::new(file)?;
                 Ok(Self {
                     archive: Arc::new(RwLock::new(archive)),
-                    created_date,
+                    modified_date,
                     filename,
                     subdir: None,
                 })
@@ -86,7 +86,7 @@ impl TryFrom<PathBuf> for ArchiveReceiver {
 
 impl Receive for ArchiveReceiver {
     async fn collection_date(&self) -> String {
-        chrono::DateTime::<chrono::Utc>::from(self.created_date).to_rfc3339()
+        chrono::DateTime::<chrono::Utc>::from(self.modified_date).to_rfc3339()
     }
 
     async fn is_connected(&self) -> bool {

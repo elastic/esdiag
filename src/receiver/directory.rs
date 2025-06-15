@@ -13,7 +13,7 @@ use std::{
 pub struct DirectoryReceiver {
     path: PathBuf,
     work_dir: String,
-    created_date: SystemTime,
+    modified_date: SystemTime,
 }
 
 impl TryFrom<PathBuf> for DirectoryReceiver {
@@ -26,7 +26,7 @@ impl TryFrom<PathBuf> for DirectoryReceiver {
                 Ok(Self {
                     path: path.clone(),
                     work_dir: String::from(""),
-                    created_date: path.metadata()?.modified()?,
+                    modified_date: path.metadata()?.modified()?,
                 })
             }
             false => {
@@ -42,7 +42,7 @@ impl TryFrom<PathBuf> for DirectoryReceiver {
 
 impl Receive for DirectoryReceiver {
     async fn collection_date(&self) -> String {
-        chrono::DateTime::<chrono::Utc>::from(self.created_date).to_rfc3339()
+        chrono::DateTime::<chrono::Utc>::from(self.modified_date).to_rfc3339()
     }
 
     async fn is_connected(&self) -> bool {

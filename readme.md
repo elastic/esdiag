@@ -21,7 +21,7 @@ Once the script is done, you will have:
 1. A single Elasticsearch node with all index templates installed.
 2. A fully-configured Kibana instance with dashboards, data views, and saved searches imported.
 3. A Docker container image to use with `bin/esdiag-docker.sh` for processing diagnostic bundles.
-4. A web browser opened to [http://localhost:5601]()
+4. A web browser opened to http://localhost:5601
 
 Then import your first diagnostic with:
 
