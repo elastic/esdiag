@@ -92,20 +92,27 @@ Setup a complete, local, Docker container-powered Elastic Stack for ESDiag.
 4. Imports Kibana saved objects from an `.ndjson` file
 5. Opens Kibana in your web browser
 
-### Usage:
+### Dependencies
 
-```sh
-./bin/stack-local-setup.sh [path/to/dashboards.ndjson]
-```
+This script will check for the following dependencies:
 
-If no dashboard file is provided, the script will attempt to use the newest dashboard file in `assets/kibana/esdiag-dashboards*.ndjson`. Dashboard files can be downloaded from the [esdiag-dashboards](https://github.com/elastic/esdiag-dashboards/releases/latest) GitHub repository.
-
-### Dependencies:
-
-This script has the following dependencies:
-
-1. Docker with `docker compose` support
+1. `docker` - for containers, must include `docker compose` support
 2. `jq` - for json parsing
 3. `curl` - for http requests
 4. `grep` - for pattern matching
 5. `sed` - for text manipulation
+
+### Usage
+
+Before running the script, you'll need to either:
+1. Create a [GitHub personal access token](../docs/github_token.md) and add a line to a `.env` file in the repository root:
+   ```sh
+   export GITHUB_TOKEN="github_pat_123..."
+   ```
+2. Manually download the latest dashboard file from the [esdiag-dashboards](https://github.com/elastic/esdiag-dashboards/releases/latest) GitHub repository and place it in the `assets/kibana` directory.
+
+```sh
+./bin/stack-local-setup.sh
+```
+
+If you provide a GitHub token, the script will do a version check, and download the latest dashboard release if compatible. Without a GitHub token, the script will use the current repository clone and rely on the manual download.

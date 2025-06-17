@@ -3,27 +3,59 @@ Elastic Stack Diagnostics
 
 The Elastic Stack Diagnostics (`esdiag`) tool simplifies processing and importing diagnostic bundles into Elasticsearch. It pre-processes, split and enriches the raw API outputs into Elasticsearch-friendly documents. This makes building diagnostic Kibana dashboards, ES|QL queries, and more, easy.
 
-Running locally with Docker Desktop
-------------------------------------
+Running locally within containers
+----------------------------------
+
+### 1. Preparation
 
 Use the `bin/stack-local-setup.sh` to quickly spin up a fully-local environment.
 
 1. Clone this repository to your local machine using either `git` or [GitHub Desktop](https://desktop.github.com/download/)
 2. Be sure you have the dependencies installed: `docker`, `jq`, `curl`, `grep`, and `sed`.
-3. Download the latest version of `esdiag-dashboards.ndjson` from the [GitHub releases page](https://github.com/elastic/esdiag-dashboards/releases/latest) to the `assets/kibana` directory.
-4. Run the script from this repository's root directory:
+3. Pick either the **Automated** or **Manual** dashboard update method
+
+> ℹ️ Note: You can use any container runtime, as long as it supports the `docker compose` subcommand.
+
+### 2a. Automated dashboard updates
+
+To automate version checks and dashboard updates, you will need a GitHub personal access token.
+
+Detailed instructions are in [docs/github_token.md](docs/github_token.md).
+
+Once you've generated the token, add it to the `.env` file in the repository root:
+
+```sh
+export GITHUB_TOKEN="github_pat_123..."
+```
+
+This will allow the `esdiag` scripts like `bin/stack-local-setup.sh` to use your permissions to read directly from the private GitHub repositories.
+
+### 2b. Manual dashboard updates
+
+Each time you want to update the dashboards, you will have to download the latest [`esdiag-dashboards.ndjson release`](https://github.com/elastic/esdiag-dashboards/releases/latest) and move it to the `assets/kibana` directory.
+
+Without the GitHub token the script also cannot check the version of ESDiag itself. There will be a warning message about skipping version checks in the logs.
+
+You can add the GitHub token later at any time.
+
+### 3. Running
+
+Now run the script from this repository's root directory:
 
 ```sh
 ./bin/stack-local-setup.sh
 ```
 
-Once the script is done, you will have:
+Once the script is complete, you will have:
 1. A single Elasticsearch node with all index templates installed.
 2. A fully-configured Kibana instance with dashboards, data views, and saved searches imported.
 3. A Docker container image to use with `bin/esdiag-docker.sh` for processing diagnostic bundles.
 4. A web browser opened to http://localhost:5601
+5. If you configured `automated` dashboard updates, re-running the script will update and re-import the dashboards.
 
-Then import your first diagnostic with:
+### 4. Processing diagnostics
+
+Now import your first diagnostic with:
 
 ```sh
 ./bin/esdiag-docker.sh process ~/Downloads/diagnostic-abc123-2025-Jun-20--12_30_01.zip

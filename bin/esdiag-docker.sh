@@ -75,6 +75,7 @@ function docker_run() {
 
     docker run --rm ${diag_mount:+--volume ${input}:${diag_mount}} \
         --env ESDIAG_OUTPUT_URL="${ESDIAG_OUTPUT_URL}" \
+        ${LOG_LEVEL:+--env LOG_LEVEL="${LOG_LEVEL}"} \
         ${ESDIAG_OUTPUT_APIKEY:+--env ESDIAG_OUTPUT_APIKEY="${ESDIAG_OUTPUT_APIKEY}"} \
         ${ESDIAG_OUTPUT_USERNAME:+--env ESDIAG_OUTPUT_USERNAME="${ESDIAG_OUTPUT_USERNAME}"} \
         ${ESDIAG_OUTPUT_PASSWORD:+--env ESDIAG_OUTPUT_PASSWORD="${ESDIAG_OUTPUT_PASSWORD}"} \
