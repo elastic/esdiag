@@ -174,6 +174,7 @@ Commands:
   host     Configure and test a remote host connection
   import   [DEPRECATED] Process, enrich and import a diagnostic into Elasticsearch
   process  Receives a diagnostic from the input, processes it, and sends processed docs to the output
+  serve    Start a web server to receive diagnostic bundle uploads
   setup    Import assets (templates, ingest pipelines, etc.) to a known Elasticsearch host
   help     Print this message or the help of the given subcommand(s)
 
@@ -250,7 +251,7 @@ Usage: esdiag process <INPUT> [OUTPUT]
 
 Arguments:
   <INPUT>
-          Source to read diagnostic data from (archive, directory, known host or uploader URL)
+          Source to read diagnostic data from (archive, directory, known host, or uploader URL)
 
   [OUTPUT]
           Target to send the processed diagnostic documents to (known host, file, stdout, or env). Strings will be checked against the known hosts stored in `~/.esdiag/hosts.yml` and will fallback to a filename if not found. Use `-` for stdout. If nothing is provided, the target will be determined based on the environment variables: ESDIAG_OUTPUT_URL, ESDIAG_OUTPUT_APIKEY, ESDIAG_OUTPUT_USERNAME, and ESDIAG_OUTPUT_PASSWORD.
@@ -282,6 +283,42 @@ To pull a diagnostic into your local cluster directly from `diag-cluster`:
 
 ```sh
 esdl diag-cluster
+```
+
+#### Serve
+
+The `esdiag serve` command starts a web server that accepts diagnostic bundle uploads through a user-friendly interface. This makes it easy to receive and process diagnostics without requiring command-line access from the uploading user.
+
+```
+Start a web server to receive diagnostic bundle uploads
+
+Usage: esdiag serve [OPTIONS] [OUTPUT]
+
+Arguments:
+  [OUTPUT]
+          Target to send the processed diagnostic documents to (known host, file, stdout, or env). Strings will be checked against the known hosts stored in `~/.esdiag/hosts.yml` and will fallback to a filename if not found. Use `-` for stdout. If nothing is provided, the output will try using the environment variables: ESDIAG_OUTPUT_URL, ESDIAG_OUTPUT_APIKEY, ESDIAG_OUTPUT_USERNAME, and ESDIAG_OUTPUT_PASSWORD.
+
+Options:
+  -p, --port <PORT>
+          The port to bind the server to [default: 3000]
+  -h, --help
+          Print help
+```
+
+Example usage:
+
+```sh
+# Start a server on the default port 3000 that sends processed diagnostics to a known host
+esdiag serve localhost
+
+# Start a server on port 8080
+esdiag serve --port 8080 localhost
+```
+
+You can access the web interface at http://localhost:3000 (or your specified port) or use curl to upload a file:
+
+```sh
+curl -F "file=@/path/to/diagnostic.zip" http://localhost:3000/upload
 ```
 
 #### Collect

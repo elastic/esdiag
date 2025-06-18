@@ -1,3 +1,5 @@
+/// API server that accepts diagnostic uploads via HTTP form
+mod api_server;
 /// Read from a `.zip` archive file
 mod archive;
 /// Read from a direcotry in the local file system
@@ -7,20 +9,22 @@ mod elastic_uploader;
 /// Request API calls from Elasticsearch
 mod elasticsearch;
 
+pub use api_server::ApiReceiver;
 use archive::ArchiveReceiver;
 use directory::DirectoryReceiver;
 use elastic_uploader::ElasticUploaderReceiver;
 pub use elasticsearch::ElasticsearchReceiver;
 
 use crate::data::{
-    diagnostic::{manifest::ManifestBuilder, DataSource, DiagnosticManifest, Manifest},
-    elasticsearch::Cluster,
     Uri,
+    diagnostic::{DataSource, DiagnosticManifest, Manifest, manifest::ManifestBuilder},
+    elasticsearch::Cluster,
 };
-use eyre::{eyre, Result};
+use eyre::{Result, eyre};
 use serde::de::DeserializeOwned;
 
-trait Receive {
+#[allow(async_fn_in_trait)]
+pub trait Receive {
     async fn is_connected(&self) -> bool;
     async fn collection_date(&self) -> String;
     async fn get<T>(&self) -> Result<T>
@@ -28,11 +32,12 @@ trait Receive {
         T: DataSource + DeserializeOwned;
 }
 
-trait ReceiveMultiple {
+pub trait ReceiveMultiple {
     fn set_work_dir(&mut self, work_dir: &str) -> Result<()>;
 }
 
-trait ReceiveRaw {
+#[allow(async_fn_in_trait)]
+pub trait ReceiveRaw {
     async fn get_raw<T>(&self) -> Result<String>
     where
         T: DataSource;
@@ -48,6 +53,7 @@ trait ReceiveRaw {
 /// - `Directory`: Reads data from a directory in the local file system.
 /// - `ElasticUploader`: Downloads an archive file from the Elastic Uploader service.
 /// - `Elasticsearch`: Requests data via API calls from an Elasticsearch service.
+/// - `RestApi`: Provides a REST API server that accepts diagnostic uploads.
 #[derive(Clone)]
 pub enum Receiver {
     /// Read from a `.zip` archive file
@@ -58,9 +64,15 @@ pub enum Receiver {
     ElasticUploader(ElasticUploaderReceiver),
     /// Request API calls from Elasticsearch
     Elasticsearch(ElasticsearchReceiver),
+    /// REST API server that accepts diagnostic uploads
+    ApiServer(ApiReceiver),
 }
 
 impl Receiver {
+    pub fn new_api_server(port: u16) -> Self {
+        Receiver::ApiServer(ApiReceiver::new(port))
+    }
+
     pub async fn get<T>(&self) -> Result<T>
     where
         T: DataSource + DeserializeOwned,
@@ -70,6 +82,7 @@ impl Receiver {
             Receiver::Directory(receiver) => receiver.get::<T>().await,
             Receiver::ElasticUploader(receiver) => receiver.get::<T>().await,
             Receiver::Elasticsearch(receiver) => receiver.get::<T>().await,
+            Receiver::ApiServer(receiver) => receiver.get::<T>().await,
         }
     }
 
@@ -80,6 +93,7 @@ impl Receiver {
         match self {
             Receiver::Archive(receiver) => receiver.get_raw::<T>().await,
             Receiver::Elasticsearch(receiver) => receiver.get_raw::<T>().await,
+            Receiver::ApiServer(receiver) => receiver.get_raw::<T>().await,
             _ => Err(eyre!("Raw data is not supported for this receiver")),
         }
     }
@@ -90,6 +104,7 @@ impl Receiver {
             Receiver::Directory(receiver) => receiver.is_connected().await,
             Receiver::Elasticsearch(receiver) => receiver.is_connected().await,
             Receiver::ElasticUploader(receiver) => receiver.is_connected().await,
+            Receiver::ApiServer(receiver) => receiver.is_connected().await,
         }
     }
 
@@ -98,6 +113,7 @@ impl Receiver {
             Receiver::Archive(reciever) => reciever.set_work_dir(work_dir),
             Receiver::Directory(reciever) => reciever.set_work_dir(work_dir),
             Receiver::ElasticUploader(reciever) => reciever.set_work_dir(work_dir),
+            Receiver::ApiServer(reciever) => reciever.set_work_dir(work_dir),
             _ => Err(eyre!("Cannot set working directly on {}", self)),
         }
     }
@@ -114,6 +130,7 @@ impl Receiver {
             Receiver::Directory(receiver) => receiver.collection_date().await,
             Receiver::Elasticsearch(receiver) => receiver.collection_date().await,
             Receiver::ElasticUploader(receiver) => receiver.collection_date().await,
+            Receiver::ApiServer(receiver) => receiver.collection_date().await,
         }
     }
 
@@ -173,6 +190,7 @@ impl std::fmt::Display for Receiver {
             Receiver::Directory(receiver) => write!(f, "Directory {receiver}"),
             Receiver::ElasticUploader(receiver) => write!(f, "Elastic Uploader {receiver}"),
             Receiver::Elasticsearch(receiver) => write!(f, "Elasticsearch {receiver}"),
+            Receiver::ApiServer(receiver) => write!(f, "REST API {receiver}"),
         }
     }
 }

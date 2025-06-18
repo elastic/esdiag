@@ -42,6 +42,22 @@ enum Commands {
         #[arg(help = "An existing directory to create a diagnostic directory and files in")]
         output: String,
     },
+    /// Start a web server to receive diagnostic bundle uploads
+    Serve {
+        /// The port to bind the server to
+        #[arg(
+            help = "The port to bind the server to",
+            long,
+            short,
+            default_value = "3000"
+        )]
+        port: u16,
+        /// Target to send processed diagnostic documents to
+        #[arg(
+            long_help = "Target to send the processed diagnostic documents to (known host, file, stdout, or env). Strings will be checked against the known hosts stored in `~/.esdiag/hosts.yml` and will fallback to a filename if not found. Use `-` for stdout. If nothing is provided, the output will try using the environment variables: ESDIAG_OUTPUT_URL, ESDIAG_OUTPUT_APIKEY, ESDIAG_OUTPUT_USERNAME, and ESDIAG_OUTPUT_PASSWORD."
+        )]
+        output: Option<String>,
+    },
     /// Configure, test and save a remote host connection to `~/.esdiag/hosts.yml`
     Host {
         /// A name to identify this host
@@ -152,6 +168,52 @@ async fn main() -> Result<()> {
 
 async fn run(cli: Cli) -> Result<&'static str> {
     match cli.command {
+        Commands::Serve { port, output } => {
+            log::info!("Starting ESDiag API server");
+            let mut receiver = Receiver::new_api_server(port);
+            let output_uri = output.and_then(|o| Uri::try_from(o).ok());
+            let exporter = Exporter::try_from(output_uri)?;
+
+            log::info!("Press Ctrl+C to exit");
+
+            // This will process uploaded diagnostics until Ctrl+C is pressed
+            tokio::select! {
+                _ = tokio::signal::ctrl_c() => {
+                    log::info!("Shutting down server...");
+                }
+                _ = async {
+                    loop {
+                        log::debug!("Waiting for diagnostic bundle upload...");
+                        match receiver.try_get_manifest().await {
+                            Ok(manifest) => {
+                                log::info!("Received diagnostic bundle for {} @ {}", manifest.product, manifest.collection_date);
+                                match Diagnostic::try_new(
+                                    manifest,
+                                    receiver.clone(),
+                                    exporter.clone()
+                                ).await?.run().await {
+                                    Ok(_) => log::info!("Successfully processed diagnostic bundle"),
+                                    Err(e) => log::error!("Error processing diagnostic bundle: {}", e),
+                                };
+                            }
+                            Err(e) => log::error!("Error retrieving manifest: {}", e),
+                        }
+                        // Reset the receiver to clear the existing archive and wait for a new upload
+                        match receiver {
+                            Receiver::ApiServer(ref mut receiver) => receiver.clear_archive(),
+                            _ => log::warn!("Unsupported receiver type")
+                        }
+                    }
+
+                    #[allow(unreachable_code)]
+                    Ok::<_, eyre::Report>(())
+                } => {}
+            }
+
+            // Allow time for graceful shutdown
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            Ok("serve")
+        }
         Commands::Collect { host, output } => {
             let known_host = Uri::try_from(host)?;
             let output = Uri::try_from(output)?;
