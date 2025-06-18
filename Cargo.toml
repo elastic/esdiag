@@ -1,12 +1,12 @@
 [package]
 name = "esdiag"
-version = "0.6.5"
+version = "0.7.0"
 edition = "2024"
-rust-version = "1.86"
+rust-version = "1.87"
 
 [dependencies]
-axum = { version = "0.7.4", features = ["multipart"] }
-axum-server = "0.6.0"
+axum = { version = "^0.8.4", features = ["multipart"] }
+axum-server = "^0.7.0"
 base64 = "0.22.1"
 bytes = "1.9.0"
 chrono = "^0.4"
