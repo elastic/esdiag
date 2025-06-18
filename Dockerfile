@@ -1,4 +1,4 @@
-FROM rust:1.86 AS builder
+FROM rust:1.87 AS builder
 WORKDIR /usr/src/app
 COPY . .
 RUN cargo build --release
