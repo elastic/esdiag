@@ -26,18 +26,27 @@ pub struct IlmStats {
     pub repository_name: Option<String>,
     pub snapshot_name: Option<String>,
     pub phase_execution: Option<PhaseExecution>,
+    pub failed_step: Option<String>,
+    pub is_auto_retryable_error: Option<bool>,
+    pub failed_step_retry_count: Option<u32>,
+    pub step_info: Option<StepInfo>,
+    pub previous_step_info: Option<StepInfo>,
+    pub version: Option<u32>,
+    pub modified_date_in_millis: Option<u64>,
 }
 
 #[skip_serializing_none]
 #[derive(Clone, Debug, Serialize, Deserialize)]
-struct Actions {
-    searchable_snapshot: Option<SearchableSnapshot>,
+pub struct StepInfo {
+    pub r#type: Option<String>,
+    pub reason: Option<String>,
 }
 
+#[skip_serializing_none]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct PhaseDefinition {
-    min_age: String,
-    actions: Actions,
+    min_age: Option<String>,
+    actions: Option<serde_json::Value>,
 }
 
 #[skip_serializing_none]

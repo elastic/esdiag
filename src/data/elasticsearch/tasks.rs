@@ -18,10 +18,10 @@ pub struct NodeTasks {
 #[skip_serializing_none]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Task {
-    action: String,
+    pub action: String,
     cancellable: bool,
     cancelled: Option<bool>,
-    description: Option<String>,
+    pub description: Option<String>,
     headers: Option<Value>,
     id: u64,
     //node: Option<String>, // omitted in favor of enriched node field
