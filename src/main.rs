@@ -192,11 +192,29 @@ async fn run(cli: Cli) -> Result<&'static str> {
                                     receiver.clone(),
                                     exporter.clone()
                                 ).await?.run().await {
-                                    Ok(_) => log::info!("Successfully processed diagnostic bundle"),
-                                    Err(e) => log::error!("Error processing diagnostic bundle: {}", e),
+                                    Ok(report) => {
+                                        log::info!("Successfully processed diagnostic bundle");
+                                        // Set the status to complete if using the API server
+                                        if let Receiver::ApiServer(api_receiver) = &receiver {
+                                            api_receiver.set_complete(report).await;
+                                        }
+                                    },
+                                    Err(e) => {
+                                        log::error!("Error processing diagnostic bundle: {}", e);
+                                        // Set the status to failed if using the API server
+                                        if let Receiver::ApiServer(api_receiver) = &receiver {
+                                            api_receiver.set_failed(e.to_string()).await;
+                                        }
+                                    },
                                 };
                             }
-                            Err(e) => log::error!("Error retrieving manifest: {}", e),
+                            Err(e) =>{
+                                log::error!("Error retrieving manifest: {}", e);
+                                // Set the status to failed if using the API server
+                                if let Receiver::ApiServer(api_receiver) = &receiver {
+                                    api_receiver.set_failed(e.to_string()).await;
+                                }
+                            }
                         }
                         // Reset the receiver to clear the existing archive and wait for a new upload
                         match receiver {
