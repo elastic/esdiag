@@ -1,5 +1,5 @@
 use super::{DiagnosticManifest, DiagnosticMetadata, Lookup, Product};
-use eyre::{eyre, OptionExt, Report, Result};
+use eyre::{OptionExt, Report, Result, eyre};
 use serde::Serialize;
 use std::collections::HashMap;
 
@@ -57,7 +57,7 @@ impl TryFrom<DiagnosticManifest> for DiagnosticReportBuilder {
 
 #[derive(Serialize, Clone)]
 pub struct DiagnosticReport {
-    product: Product,
+    pub product: Product,
     origin: Origin,
     pub docs: Docs,
     lookup: NestedStats<LookupSummary>,

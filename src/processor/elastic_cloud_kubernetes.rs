@@ -57,7 +57,7 @@ impl DiagnosticProcessor for ElasticCloudKubernetesDiagnostic {
         }))
     }
 
-    async fn run(self) -> Result<()> {
+    async fn run(self) -> Result<DiagnosticReport> {
         self.receiver.is_connected().await;
         for diagnostic in self.included_diagnostics {
             match diagnostic.diag_type.as_str() {
@@ -85,13 +85,8 @@ impl DiagnosticProcessor for ElasticCloudKubernetesDiagnostic {
         }
 
         let report = self.report.write().await;
-        log::info!(
-            "Created {} documents for diagnostic (ECK): {}",
-            report.docs.created,
-            report.metadata.id,
-        );
         self.exporter.save_report(&*report).await?;
-        Ok(())
+        Ok(report.clone())
     }
 }
 

@@ -15,7 +15,7 @@ use kubernetes_platform::KubernetesPlatformDiagnostic;
 use logstash::LogstashDiagnostic;
 
 use crate::{
-    data::diagnostic::{DiagnosticManifest, Product},
+    data::diagnostic::{DiagnosticManifest, DiagnosticReport, Product},
     exporter::Exporter,
     receiver::Receiver,
 };
@@ -63,15 +63,21 @@ impl Diagnostic {
         }
     }
 
-    pub async fn run(self) -> Result<()> {
-        match self {
+    pub async fn run(self) -> Result<DiagnosticReport> {
+        let report = match self {
             Self::Elasticsearch(diagnostic) => diagnostic.run().await?,
             Self::ElasticCloudKubernetes(diagnostic) => diagnostic.run().await?,
             Self::KubernetesPlatform(diagnostic) => diagnostic.run().await?,
             //Self::Kibana(diagnostic) => diagnostic.run().await?,
             Self::Logstash(diagnostic) => diagnostic.run().await?,
         };
-        Ok(())
+        log::info!(
+            "Created {} documents for {} diagnostic: {}",
+            report.docs.created,
+            report.product,
+            report.metadata.id,
+        );
+        Ok(report)
     }
 }
 
@@ -85,7 +91,7 @@ trait DiagnosticProcessor {
         receiver: Receiver,
         exporter: Exporter,
     ) -> Result<Box<Self>>;
-    async fn run(self) -> Result<()>;
+    async fn run(self) -> Result<DiagnosticReport>;
 }
 
 trait Metadata {

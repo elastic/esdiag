@@ -12,8 +12,8 @@ use crate::{
     data::{
         self,
         diagnostic::{
-            report::ProcessorSummary, DataSource, DiagnosticManifest, DiagnosticReport,
-            DiagnosticReportBuilder, Product,
+            DataSource, DiagnosticManifest, DiagnosticReport, DiagnosticReportBuilder, Product,
+            report::ProcessorSummary,
         },
         logstash::{Node, NodeStats, Plugins, Version},
     },
@@ -22,7 +22,7 @@ use crate::{
 };
 use eyre::Result;
 use metadata::LogstashMetadata;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -80,7 +80,7 @@ impl DiagnosticProcessor for LogstashDiagnostic {
         }))
     }
 
-    async fn run(self) -> Result<()> {
+    async fn run(self) -> Result<DiagnosticReport> {
         log::debug!("Running Logstash diagnostic processors");
         if log::max_level() >= log::Level::Debug {
             data::save_file("diagnostic.json", &self)?;
@@ -91,13 +91,8 @@ impl DiagnosticProcessor for LogstashDiagnostic {
         report.add_processor_summary(self.process::<NodeStats>().await?);
         report.add_processor_summary(self.process::<Plugins>().await?);
 
-        log::info!(
-            "Created {} documents for diagnostic: {}",
-            report.docs.created,
-            report.metadata.id,
-        );
         self.exporter.save_report(&*report).await?;
-        Ok(())
+        Ok(report.clone())
     }
 }
 

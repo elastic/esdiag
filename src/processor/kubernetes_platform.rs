@@ -57,7 +57,7 @@ impl DiagnosticProcessor for KubernetesPlatformDiagnostic {
         }))
     }
 
-    async fn run(self) -> Result<()> {
+    async fn run(self) -> Result<DiagnosticReport> {
         self.receiver.is_connected().await;
         for diagnostic in self.included_diagnostics {
             let diag_type = diagnostic.diag_type.as_str().trim_end_matches("appconfig");
@@ -86,13 +86,9 @@ impl DiagnosticProcessor for KubernetesPlatformDiagnostic {
         }
 
         let report = self.report.write().await;
-        log::info!(
-            "Created {} documents for diagnostic (kubernetes platform): {}",
-            report.docs.created,
-            report.metadata.id,
-        );
+
         self.exporter.save_report(&*report).await?;
-        Ok(())
+        Ok(report.clone())
     }
 }
 

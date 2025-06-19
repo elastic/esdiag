@@ -120,7 +120,7 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
         }))
     }
 
-    async fn run(self) -> Result<()> {
+    async fn run(self) -> Result<DiagnosticReport> {
         log::debug!("Running Elasticsearch diagnostic processors");
         if let false = self.exporter.is_connected().await {
             return Err(eyre!("Exporter is not connected"));
@@ -172,14 +172,9 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
             .flatten()
             .for_each(|summary| report.add_processor_summary(summary));
 
-        log::info!(
-            "Created {} documents for diagnostic: {}",
-            report.docs.created,
-            report.metadata.id,
-        );
         diag.exporter.save_report(&*report).await?;
 
-        Ok(())
+        Ok(report.clone())
     }
 }
 
