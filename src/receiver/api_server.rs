@@ -1,27 +1,45 @@
 use super::{Receive, ReceiveMultiple, ReceiveRaw, archive::trim_to_working_directory};
-use crate::data::diagnostic::{DataSource, data_source::PathType};
+use crate::data::diagnostic::{DataSource, DiagnosticReport, data_source::PathType};
 
 use axum::extract::{DefaultBodyLimit, Multipart as AxumMultipart};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse};
 use axum::{
     Router,
+    extract::Path,
     routing::{get, post},
 };
 use bytes::Bytes;
 use eyre::{Result, eyre};
 use serde::de::DeserializeOwned;
 use std::{
+    collections::HashMap,
     io::{BufReader, Cursor},
     net::SocketAddr,
     path::PathBuf,
     sync::Arc,
 };
-use tokio::sync::{RwLock, mpsc};
+use tokio::sync::{RwLock, mpsc, oneshot};
 use zip::ZipArchive;
 
 type ArchiveCursor = ZipArchive<BufReader<Cursor<Bytes>>>;
 type ArchivePointer = Arc<RwLock<Option<ArchiveCursor>>>;
+
+// Status of a diagnostic processing job
+#[derive(Clone)]
+pub enum ProcessingStatus {
+    Processing,
+    Complete(DiagnosticReport),
+    Failed(String),
+}
+
+// Shared state for the API server
+pub struct ApiState {
+    upload_tx: mpsc::Sender<Bytes>,
+    processing_status: Arc<RwLock<HashMap<String, ProcessingStatus>>>,
+    current_upload_id: Arc<RwLock<Option<String>>>,
+    report_tx: Arc<RwLock<Option<oneshot::Sender<DiagnosticReport>>>>,
+}
 
 #[derive(Clone)]
 pub struct ApiReceiver {
@@ -30,6 +48,7 @@ pub struct ApiReceiver {
     server_handle: Option<Arc<tokio::task::JoinHandle<()>>>,
     rx: Option<Arc<RwLock<mpsc::Receiver<Bytes>>>>,
     port: u16,
+    state: Arc<ApiState>,
 }
 
 impl ApiReceiver {
@@ -38,17 +57,38 @@ impl ApiReceiver {
         let rx = Arc::new(RwLock::new(rx));
         let rx_clone = rx.clone();
 
+        // Create shared state
+        let state = Arc::new(ApiState {
+            upload_tx: tx.clone(),
+            processing_status: Arc::new(RwLock::new(HashMap::new())),
+            current_upload_id: Arc::new(RwLock::new(None)),
+            report_tx: Arc::new(RwLock::new(None)),
+        });
+
         // Start the Axum server
+        let state_clone = state.clone();
         let handle = tokio::spawn(async move {
+            // Handler closures
+            let upload_handler = {
+                let state = state_clone.clone();
+                move |multipart: AxumMultipart| {
+                    let state = state.clone();
+                    async move { Self::upload_handler(multipart, state).await }
+                }
+            };
+
+            let status_handler = {
+                let state = state_clone.clone();
+                move |Path(id): Path<String>| {
+                    let state = state.clone();
+                    async move { Self::status_handler(id, state).await }
+                }
+            };
+
             let app = Router::new()
                 .route("/", get(Self::index_handler))
-                .route(
-                    "/upload",
-                    post(move |multipart: AxumMultipart| {
-                        let tx = tx.clone();
-                        async move { Self::upload_handler(multipart, tx).await }
-                    }),
-                )
+                .route("/upload", post(upload_handler))
+                .route("/status/{id}", get(status_handler))
                 .layer(DefaultBodyLimit::max(1024 * 1024 * 50)); // 50 MB limit
 
             let addr = SocketAddr::from(([0, 0, 0, 0], port));
@@ -67,6 +107,31 @@ impl ApiReceiver {
             server_handle: Some(Arc::new(handle)),
             rx: Some(rx_clone),
             port,
+            state,
+        }
+    }
+
+    // Set the report channel
+    pub async fn set_report_receiver(&mut self, report_tx: oneshot::Sender<DiagnosticReport>) {
+        let mut tx_lock = self.state.report_tx.write().await;
+        *tx_lock = Some(report_tx);
+    }
+
+    // Update the processing status for a diagnostic
+    pub async fn update_status(&self, id: &str, status: ProcessingStatus) {
+        let mut status_map = self.state.processing_status.write().await;
+        status_map.insert(id.to_string(), status.clone());
+
+        // If this is the current upload and it's complete, send the report
+        if let Some(current_id) = self.state.current_upload_id.read().await.as_ref() {
+            if current_id == id {
+                if let ProcessingStatus::Complete(report) = status.clone() {
+                    let mut tx_lock = self.state.report_tx.write().await;
+                    if let Some(tx) = tx_lock.take() {
+                        let _ = tx.send(report);
+                    }
+                }
+            }
         }
     }
 
@@ -105,18 +170,223 @@ impl ApiReceiver {
                         .button:hover {
                             background-color: #00435a;
                         }
+                        #status-container {
+                            margin-top: 20px;
+                            padding: 15px;
+                            border-radius: 5px;
+                            display: none;
+                        }
+                        .success {
+                            background-color: #e6f4ea;
+                            border: 1px solid #34a853;
+                        }
+                        .error {
+                            background-color: #fce8e6;
+                            border: 1px solid #ea4335;
+                        }
+                        .processing {
+                            background-color: #e8f0fe;
+                            border: 1px solid #4285f4;
+                        }
+                        .spinner {
+                            display: inline-block;
+                            width: 20px;
+                            height: 20px;
+                            border: 3px solid rgba(0, 85, 113, 0.3);
+                            border-radius: 50%;
+                            border-top-color: #005571;
+                            animation: spin 1s ease-in-out infinite;
+                            margin-right: 10px;
+                            vertical-align: middle;
+                        }
+                        /* Specific styling for spinner in processing state */
+                        .processing .spinner {
+                            border: 3px solid rgba(66, 133, 244, 0.3);
+                            border-top-color: #4285f4;
+                        }
+                        @keyframes spin {
+                            to { transform: rotate(360deg); }
+                        }
+                        .hidden {
+                            display: none;
+                        }
+                        .diagnostic-info {
+                            margin-top: 10px;
+                            font-weight: bold;
+                        }
+                        .processing-status {
+                            margin-top: 5px;
+                            font-style: italic;
+                        }
                     </style>
                 </head>
                 <body>
                     <h1>Elasticsearch Diagnostics Upload</h1>
                     <div class="upload-form">
-                        <form action="/upload" method="post" enctype="multipart/form-data">
+                        <form id="upload-form" action="/upload" method="post" enctype="multipart/form-data">
                             <p>Select a diagnostic bundle (ZIP file):</p>
                             <input type="file" name="file" accept=".zip" required>
                             <br>
-                            <input type="submit" value="Upload" class="button">
+                            <input type="submit" value="Upload" class="button" id="upload-button">
                         </form>
                     </div>
+                    <div id="status-container"></div>
+
+                    <script>
+                        let processingId = null;
+                        let pollingInterval = null;
+
+                        // Function to poll for processing status
+                        function pollProcessingStatus(id) {
+                            return fetch(`/status/${id}`)
+                                .then(response => {
+                                    if (!response.ok) {
+                                        throw new Error(`HTTP error ${response.status}`);
+                                    }
+                                    return response.json();
+                                })
+                                .then(data => {
+                                    const statusContainer = document.getElementById('status-container');
+
+                                    switch (data.status) {
+                                        case 'processing':
+                                            // Show processing status in the status container
+                                            statusContainer.style.display = 'block';
+                                            // First clear all classes then add processing
+                                            statusContainer.className = '';
+                                            statusContainer.classList.add('processing');
+                                            // Set new HTML content with spinner
+                                            statusContainer.innerHTML = '';  // First clear all content
+                                            statusContainer.innerHTML = `
+                                                <div class="spinner"></div>
+                                                <span>Processing diagnostic bundle (${data.progress || 'in progress'})...</span>
+                                            `;
+                                            return false; // continue polling
+
+                                        case 'complete':
+                                            // Enable upload button
+                                            document.getElementById('upload-button').disabled = false;
+
+                                            // Show success message - completely replace content
+                                            statusContainer.style.display = 'block';
+                                            statusContainer.className = '';
+                                            statusContainer.classList.add('success');
+
+                                            // Display diagnostic ID and report information - no spinner
+                                            statusContainer.innerHTML = '';  // First clear all content
+                                            let message = `<p>Diagnostic processing complete!</p>`;
+                                            if (data.report) {
+                                                message += `<p class="diagnostic-info">Diagnostic ID: ${data.report.metadata.id}</p>`;
+                                                message += `<p>Created ${data.report.docs.created} documents for ${data.report.product} diagnostic</p>`;
+                                            }
+                                            statusContainer.innerHTML = message;
+                                            return true; // stop polling
+
+                                        case 'failed':
+                                            // Enable upload button
+                                            document.getElementById('upload-button').disabled = false;
+
+                                            // Show error message - completely replace content
+                                            statusContainer.style.display = 'block';
+                                            statusContainer.className = '';
+                                            statusContainer.classList.add('error');
+                                            // Make sure we completely replace the content
+                                            statusContainer.innerHTML = '';  // First clear all content
+                                            statusContainer.innerHTML = `<p>Error: ${data.error || 'Processing failed'}</p>`;
+                                            return true; // stop polling
+
+                                        default:
+                                            return false; // continue polling on unknown status
+                                    }
+                                })
+                                .catch(error => {
+                                    console.error('Polling error:', error);
+                                    return false; // continue polling on error
+                                });
+                        }
+
+                        document.getElementById('upload-form').addEventListener('submit', function(e) {
+                            e.preventDefault();
+
+                            // Disable upload button
+                            document.getElementById('upload-button').disabled = true;
+
+                            // Show status with spinner for upload
+                            const statusContainer = document.getElementById('status-container');
+                            statusContainer.innerHTML = '';  // First clear all content
+                            statusContainer.innerHTML = `
+                                <div class="spinner"></div>
+                                <span>Uploading diagnostic bundle...</span>
+                            `;
+                            statusContainer.className = '';
+                            statusContainer.classList.add('processing');
+                            statusContainer.style.display = 'block';
+
+                            // Clear any existing polling
+                            if (pollingInterval) {
+                                clearInterval(pollingInterval);
+                            }
+
+                            // Get form data
+                            const formData = new FormData(this);
+
+                            // Send the upload request
+                            fetch('/upload', {
+                                method: 'POST',
+                                body: formData
+                            })
+                            .then(response => {
+                                if (!response.ok) {
+                                    throw new Error(`HTTP error ${response.status}`);
+                                }
+                                return response.json();
+                            })
+                            .then(data => {
+                                // Update status container to show processing
+                                statusContainer.innerHTML = '';  // First clear all content
+                                statusContainer.innerHTML = `
+                                    <div class="spinner"></div>
+                                    <span>Processing diagnostic bundle...</span>
+                                `;
+
+                                // Start polling for status
+                                if (data.processingId) {
+                                    processingId = data.processingId;
+
+                                    pollingInterval = setInterval(() => {
+                                        pollProcessingStatus(processingId).then(shouldStop => {
+                                            if (shouldStop) {
+                                                clearInterval(pollingInterval);
+                                            }
+                                        });
+                                    }, 1000);
+                                } else {
+                                    // Fallback if no processing ID provided
+                                    document.getElementById('upload-button').disabled = false;
+
+                                    // Display success without spinner
+                                    statusContainer.style.display = 'block';
+                                    statusContainer.className = '';
+                                    statusContainer.classList.add('success');
+                                    // Completely replace HTML content
+                                    statusContainer.innerHTML = '';  // First clear all content
+                                    statusContainer.innerHTML = `<p>${data.message || 'Upload successful'}</p>`;
+                                }
+                            })
+                            .catch(error => {
+                                // Enable upload button
+                                document.getElementById('upload-button').disabled = false;
+
+                                // Show error message - clear everything
+                                statusContainer.style.display = 'block';
+                                statusContainer.className = '';
+                                statusContainer.classList.add('error');
+                                // Completely replace HTML content
+                                statusContainer.innerHTML = '';  // First clear all content
+                                statusContainer.innerHTML = `<p>Error: ${error.message}</p>`;
+                            });
+                        });
+                    </script>
                 </body>
             </html>
             "#,
@@ -125,7 +395,7 @@ impl ApiReceiver {
 
     async fn upload_handler(
         mut multipart: AxumMultipart,
-        tx: mpsc::Sender<Bytes>,
+        state: Arc<ApiState>,
     ) -> impl IntoResponse {
         // Process the multipart form
         while let Ok(Some(field)) = multipart.next_field().await {
@@ -135,12 +405,17 @@ impl ApiReceiver {
                     Some(file_name) if !file_name.ends_with(".zip") => {
                         return (
                             StatusCode::BAD_REQUEST,
-                            "Invalid file type. Only .zip files are allowed.".to_string(),
+                            axum::Json(serde_json::json!({
+                                "error": "Invalid file type. Only .zip files are allowed."
+                            })),
                         );
                     }
                     Some(file_name) => file_name.to_string(),
                     None => {
-                        return (StatusCode::BAD_REQUEST, "No file name provided".to_string());
+                        return (
+                            StatusCode::BAD_REQUEST,
+                            axum::Json(serde_json::json!({"error": "No file name provided"})),
+                        );
                     }
                 };
                 // Get the file data
@@ -153,13 +428,31 @@ impl ApiReceiver {
                         // Clone the data to avoid ownership issues
                         let bytes = Bytes::copy_from_slice(&data);
 
+                        // Generate a unique processing ID
+                        let processing_id = uuid::Uuid::new_v4().to_string();
+
+                        // Store the processing status
+                        let mut status_map = state.processing_status.write().await;
+                        status_map.insert(processing_id.clone(), ProcessingStatus::Processing);
+
+                        // Set as current upload
+                        *state.current_upload_id.write().await = Some(processing_id.clone());
+
                         // Send the bytes through the channel
-                        if tx.send(bytes).await.is_ok() {
-                            return (StatusCode::OK, message);
+                        if state.upload_tx.send(bytes).await.is_ok() {
+                            return (
+                                StatusCode::OK,
+                                axum::Json(serde_json::json!({
+                                    "message": message,
+                                    "processingId": processing_id
+                                })),
+                            );
                         } else {
                             return (
                                 StatusCode::INTERNAL_SERVER_ERROR,
-                                "Failed to process the upload".to_string(),
+                                axum::Json(serde_json::json!({
+                                    "error": "Failed to process the upload"
+                                })),
                             );
                         }
                     }
@@ -167,7 +460,9 @@ impl ApiReceiver {
                         log::error!("Failed to read upload data: {}", e);
                         return (
                             StatusCode::INTERNAL_SERVER_ERROR,
-                            format!("Failed to read upload data: {}", e),
+                            axum::Json(serde_json::json!({
+                                "error": format!("Failed to read upload data: {}", e)
+                            })),
                         );
                     }
                 }
@@ -176,8 +471,45 @@ impl ApiReceiver {
 
         (
             StatusCode::BAD_REQUEST,
-            "No file part in the request".to_string(),
+            axum::Json(serde_json::json!({"error": "No file part in the request"})),
         )
+    }
+
+    async fn status_handler(id: String, state: Arc<ApiState>) -> impl IntoResponse {
+        let status_map = state.processing_status.read().await;
+
+        if let Some(status) = status_map.get(&id) {
+            match status {
+                ProcessingStatus::Processing => (
+                    StatusCode::OK,
+                    axum::Json(serde_json::json!({
+                        "status": "processing",
+                        "progress": "analyzing diagnostic data"
+                    })),
+                ),
+                ProcessingStatus::Complete(report) => (
+                    StatusCode::OK,
+                    axum::Json(serde_json::json!({
+                        "status": "complete",
+                        "report": report
+                    })),
+                ),
+                ProcessingStatus::Failed(error) => (
+                    StatusCode::OK,
+                    axum::Json(serde_json::json!({
+                        "status": "failed",
+                        "error": error
+                    })),
+                ),
+            }
+        } else {
+            (
+                StatusCode::NOT_FOUND,
+                axum::Json(serde_json::json!({
+                    "error": "Processing ID not found"
+                })),
+            )
+        }
     }
 
     fn resolve_archive_path(&self, archive: &mut ArchiveCursor, filename: &str) -> Result<String> {
@@ -207,6 +539,22 @@ impl ApiReceiver {
 
     pub fn clear_archive(&mut self) {
         self.archive = Arc::new(RwLock::new(None));
+    }
+
+    // Updates processing status with the diagnostic report
+    pub async fn set_complete(&self, report: DiagnosticReport) {
+        if let Some(id) = self.state.current_upload_id.read().await.clone() {
+            self.update_status(&id, ProcessingStatus::Complete(report))
+                .await;
+        }
+    }
+
+    // Updates processing status with an error
+    pub async fn set_failed(&self, error: String) {
+        if let Some(id) = self.state.current_upload_id.read().await.clone() {
+            self.update_status(&id, ProcessingStatus::Failed(error))
+                .await;
+        }
     }
 }
 
