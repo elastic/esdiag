@@ -95,6 +95,6 @@ impl ReceiveMultiple for DirectoryReceiver {
 
 impl std::fmt::Display for DirectoryReceiver {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{}", self.path.display())
+        write!(f, "Directory {}", self.path.display())
     }
 }

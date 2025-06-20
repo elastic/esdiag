@@ -1,10 +1,15 @@
 use super::{Receive, ReceiveRaw};
 use crate::{
     client::KnownHost,
-    data::diagnostic::{data_source::PathType, DataSource},
+    data::{
+        diagnostic::{
+            DataSource, DiagnosticManifest, data_source::PathType, manifest::ManifestBuilder,
+        },
+        elasticsearch::Cluster,
+    },
 };
+use elasticsearch::{Elasticsearch, http};
 use eyre::Result;
-use elasticsearch::{http, Elasticsearch};
 use serde::de::DeserializeOwned;
 use url::Url;
 
@@ -89,6 +94,17 @@ impl Receive for ElasticsearchReceiver {
 
         response.json::<T>().await.map_err(Into::into)
     }
+
+    async fn try_get_manifest(&self) -> Result<DiagnosticManifest> {
+        let collection_date = chrono::Utc::now().to_rfc3339();
+        log::info!("Creating diagnostic manifest with collection date {collection_date}");
+        let cluster = self.get::<Cluster>().await?;
+        let manifest = ManifestBuilder::from(cluster)
+            .runner("esdiag")
+            .collection_date(collection_date)
+            .build();
+        Ok(manifest.try_into()?)
+    }
 }
 
 impl ReceiveRaw for ElasticsearchReceiver {
@@ -119,6 +135,6 @@ impl ReceiveRaw for ElasticsearchReceiver {
 
 impl std::fmt::Display for ElasticsearchReceiver {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{}", self.url)
+        write!(f, "Elasticsearch {}", self.url)
     }
 }
