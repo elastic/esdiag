@@ -1,0 +1,192 @@
+<!doctype html>
+<html>
+    <head>
+        <title>Elasticsearch Diagnostics Upload</title>
+        <style>
+            body {
+                font-family: "Inter", BlinkMacSystemFont, Helvetica, Arial,
+                    sans-serif;
+                max-width: 640px;
+                margin: 0 auto;
+                padding: 20px;
+            }
+            h1 {
+                color: #111c2c;
+                font-weight: 600;
+                font-size: 1.5em;
+            }
+            .upload-form {
+                border: 1px solid #e3e8f2;
+                padding: 20px;
+                border-radius: 4px;
+                background-color: #ffffff;
+            }
+            .button {
+                background-color: #d1e1ff;
+                color: #1339ab;
+                padding: 10px 15px;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+                margin-top: 10px;
+            }
+            .button:hover {
+                background-color: #b7d0fb;
+            }
+            #status-container {
+                margin-top: 15px;
+                padding: 15px;
+                border-radius: 4px;
+            }
+            .ready {
+                color: #516381;
+                background-color: #e3e8f2;
+            }
+            .success {
+                color: #09724d;
+                background-color: #c9f3e3;
+            }
+            .error {
+                color: #a71627;
+                background-color: #fdddd8;
+            }
+            .processing {
+                color: #0f658a;
+                background-color: #cfeef7;
+            }
+            .spinner {
+                display: inline-block;
+                width: 20px;
+                height: 20px;
+                border: 3px solid rgba(0, 85, 113, 0.3);
+                border-radius: 50%;
+                border-top-color: #005571;
+                animation: spin 1s ease-in-out infinite;
+                margin-right: 10px;
+                vertical-align: middle;
+            }
+            .hidden {
+                display: none;
+            }
+            /* Specific styling for spinner in processing state */
+            .processing .spinner {
+                border: 3px solid rgba(66, 133, 244, 0.3);
+                border-top-color: #4285f4;
+            }
+            @keyframes spin {
+                to {
+                    transform: rotate(360deg);
+                }
+            }
+        </style>
+    </head>
+
+    <body>
+        <h1>Elastic Stack Diagnostics Upload</h1>
+        <div class="upload-form">
+            <form
+                id="upload-form"
+                action="/upload"
+                method="post"
+                enctype="multipart/form-data"
+            >
+                <p>Select a diagnostic bundle (.zip file):</p>
+                <input type="file" name="file" accept=".zip" required />
+                <br />
+                <input
+                    type="submit"
+                    value="Upload"
+                    class="button"
+                    id="upload-button"
+                />
+            </form>
+        </div>
+        <div id="status-container" class="hidden"></div>
+
+        <script>
+            function setStatus({ status, report, error, message }) {
+                const statusContainer =
+                    document.getElementById("status-container");
+                const uploadButton = document.getElementById("upload-button");
+                statusContainer.className = "";
+
+                switch (status) {
+                    case "uploading":
+                        uploadButton.disabled = true;
+                        statusContainer.classList.add("processing");
+                        statusContainer.innerHTML = `<p>
+                            <div class="spinner"></div>
+                            <span>Uploading diagnostic bundle...</span>
+                        </p>`;
+                        break;
+                    case "processing":
+                        uploadButton.disabled = true;
+                        statusContainer.classList.add("processing");
+                        statusContainer.innerHTML = `<p>
+                            <div class="spinner"></div>
+                            <span>${message || "Processing diagnostic..."}</span>
+                        </p>`;
+                        setTimeout(pollStatus, 1000);
+                        break;
+                    case "complete":
+                        uploadButton.disabled = false;
+                        statusContainer.classList.add("success");
+                        let message_complete = `<p>✅ Diagnostic processing complete!</p>`;
+                        if (report) {
+                            message_complete += `<p><b>Diagnostic ID:</b> ${report.id}</p>`;
+                            message_complete += `<p><b>Product:</b> ${report.product}</p>`;
+                            message_complete += `<p><b>Ingested:</b> ${report.docs.created} documents</p>`;
+                        }
+                        statusContainer.innerHTML = message_complete;
+                        break;
+                    case "error":
+                        uploadButton.disabled = false;
+                        statusContainer.classList.add("error");
+                        statusContainer.innerHTML = `<p>🛑 <b>Error:</b> ${error || "Processing failed"}</p>`;
+                        break;
+                    case "ready":
+                        uploadButton.disabled = false;
+                        statusContainer.classList.add("ready");
+                        statusContainer.innerHTML = `<p>▶️ Ready for upload</p>`;
+                }
+            }
+
+            function pollStatus() {
+                fetch(`/status`)
+                    .then((response) => response.json())
+                    .then((data) => setStatus(data))
+                    .catch((error) => {
+                        console.error("Polling error:", error);
+                    });
+            }
+
+            document
+                .getElementById("upload-form")
+                .addEventListener("submit", function (e) {
+                    e.preventDefault();
+                    const statusContainer =
+                        document.getElementById("status-container");
+                    const formData = new FormData(this);
+                    setStatus({ status: "uploading" });
+                    fetch("/upload", {
+                        method: "POST",
+                        body: formData,
+                    })
+                        .then((response) => {
+                            if (!response.ok) {
+                                response
+                                    .json()
+                                    .then((error) => setStatus(error));
+                            } else {
+                                response.json().then((data) => setStatus(data));
+                            }
+                        })
+                        .catch((error) => {
+                            setStatus({ status: "error", error });
+                        });
+                });
+
+            setTimeout(pollStatus, 500);
+        </script>
+    </body>
+</html>
