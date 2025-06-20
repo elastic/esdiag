@@ -6,6 +6,7 @@ use esdiag::{
     exporter::{DirectoryExporter, Exporter},
     processor::Diagnostic,
     receiver::Receiver,
+    server::ApiServer,
     setup,
 };
 use eyre::{Result, eyre};
@@ -170,11 +171,17 @@ async fn run(cli: Cli) -> Result<&'static str> {
     match cli.command {
         Commands::Serve { port, output } => {
             log::info!("Starting ESDiag API server");
-            let mut receiver = Receiver::new_api_server(port);
+
             let output_uri = output.and_then(|o| Uri::try_from(o).ok());
             let exporter = Exporter::try_from(output_uri)?;
 
             log::info!("Press Ctrl+C to exit");
+            let mut server = ApiServer::new(port);
+
+            let rx = match &server.rx {
+                Some(rx) => rx.clone(),
+                None => return Err(eyre!("Server rx error")),
+            };
 
             // This will process uploaded diagnostics until Ctrl+C is pressed
             tokio::select! {
@@ -183,46 +190,32 @@ async fn run(cli: Cli) -> Result<&'static str> {
                 }
                 _ = async {
                     loop {
-                        log::debug!("Waiting for diagnostic bundle upload...");
-                        match receiver.try_get_manifest().await {
-                            Ok(manifest) => {
-                                log::info!("Received diagnostic bundle for {} @ {}", manifest.product, manifest.collection_date);
-                                match Diagnostic::try_new(
-                                    manifest,
-                                    receiver.clone(),
-                                    exporter.clone()
-                                ).await?.run().await {
-                                    Ok(report) => {
-                                        log::info!("Successfully processed diagnostic bundle");
-                                        // Set the status to complete if using the API server
-                                        if let Receiver::ApiServer(api_receiver) = &receiver {
-                                            api_receiver.set_complete(report).await;
-                                        }
-                                    },
-                                    Err(e) => {
-                                        log::error!("Error processing diagnostic bundle: {}", e);
-                                        // Set the status to failed if using the API server
-                                        if let Receiver::ApiServer(api_receiver) = &receiver {
-                                            api_receiver.set_failed(e.to_string()).await;
-                                        }
-                                    },
+                        let mut rx = rx.write().await;
+                        match rx.recv().await {
+                            Some(bytes) => {
+                                server.set_processing().await;
+                                let receiver = Receiver::try_from(bytes)?;
+                                let manifest = match receiver.try_get_manifest().await {
+                                    Ok(manifest) => manifest,
+                                    Err(err) => {
+                                        let message = format!("Failed to build manifest, invalid diagnostic archive");
+                                        log::error!("Failed to build manifest: {}", err);
+                                        server.set_error(message).await;
+                                        continue;
+                                    }
                                 };
+                                let report = Diagnostic::try_new(manifest, receiver, exporter.clone()).await?.run().await?;
+                                log::debug!("Diagnostic report generated: {}", serde_json::to_string(&report)?);
+                                server.set_complete(report).await;
                             }
-                            Err(e) =>{
-                                log::error!("Error retrieving manifest: {}", e);
-                                // Set the status to failed if using the API server
-                                if let Receiver::ApiServer(api_receiver) = &receiver {
-                                    api_receiver.set_failed(e.to_string()).await;
-                                }
+                            None => {
+                                let message = format!("Failed receiving archive bytes");
+                                log::error!("{}", message);
+                                server.set_error(message).await;
                             }
                         }
-                        // Reset the receiver to clear the existing archive and wait for a new upload
-                        match receiver {
-                            Receiver::ApiServer(ref mut receiver) => receiver.clear_archive(),
-                            _ => log::warn!("Unsupported receiver type")
-                        }
+                        log::info!("Waiting for next diagnostic...");
                     }
-
                     #[allow(unreachable_code)]
                     Ok::<_, eyre::Report>(())
                 } => {}

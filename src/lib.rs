@@ -10,5 +10,7 @@ pub mod exporter;
 pub mod processor;
 /// Receive data from various sources
 pub mod receiver;
+/// Serve the ESDiag http API
+pub mod server;
 /// Send pre-built assets (index templates, etc) to Elasticsearch
 pub mod setup;
