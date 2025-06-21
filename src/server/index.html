@@ -6,32 +6,47 @@
             body {
                 font-family: "Inter", BlinkMacSystemFont, Helvetica, Arial,
                     sans-serif;
-                max-width: 640px;
                 margin: 0 auto;
+                max-width: 640px;
                 padding: 20px;
             }
             h1 {
                 color: #111c2c;
-                font-weight: 600;
                 font-size: 1.5em;
+                font-weight: 600;
+            }
+            code {
+                background-color: rgb(246, 249, 252);
+                border-radius: 4px;
+                color: rgb(107, 60, 159);
+                font-family: "Roboto Mono", Menlo, Courier, monospace;
+                font-size: 0.9em;
+                font-weight: 600;
+                padding-block: 0.2em;
+                padding-inline: 0.5em;
             }
             .upload-form {
+                background-color: #ffffff;
+                border-radius: 4px;
                 border: 1px solid #e3e8f2;
                 padding: 20px;
-                border-radius: 4px;
-                background-color: #ffffff;
             }
             .button {
                 background-color: #d1e1ff;
-                color: #1339ab;
-                padding: 10px 15px;
-                border: none;
                 border-radius: 4px;
+                border: none;
+                color: #1339ab;
                 cursor: pointer;
                 margin-top: 10px;
+                padding: 10px 15px;
             }
             .button:hover {
                 background-color: #b7d0fb;
+            }
+            .button:disabled {
+                background-color: #ecebf9;
+                color: #798eaf;
+                cursor: not-allowed;
             }
             #status-container {
                 margin-top: 15px;
@@ -39,50 +54,118 @@
                 border-radius: 4px;
             }
             .ready {
-                color: #516381;
                 background-color: #e3e8f2;
+                color: #516381;
             }
             .success {
-                color: #09724d;
                 background-color: #c9f3e3;
+                color: #09724d;
             }
             .error {
-                color: #a71627;
                 background-color: #fdddd8;
+                color: #a71627;
             }
             .processing {
-                color: #0f658a;
                 background-color: #cfeef7;
+                color: #0f658a;
             }
             .spinner {
-                display: inline-block;
-                width: 20px;
-                height: 20px;
-                border: 3px solid rgba(0, 85, 113, 0.3);
+                animation: spin 1s ease-in-out infinite;
                 border-radius: 50%;
                 border-top-color: #005571;
-                animation: spin 1s ease-in-out infinite;
+                border: 3px solid rgba(0, 85, 113, 0.3);
+                display: inline-block;
+                height: 20px;
                 margin-right: 10px;
                 vertical-align: middle;
+                width: 20px;
             }
             .hidden {
                 display: none;
             }
             /* Specific styling for spinner in processing state */
             .processing .spinner {
-                border: 3px solid rgba(66, 133, 244, 0.3);
                 border-top-color: #4285f4;
+                border: 3px solid rgba(66, 133, 244, 0.3);
             }
             @keyframes spin {
                 to {
                     transform: rotate(360deg);
                 }
             }
+            .drop-area {
+                border-radius: 8px;
+                border: 2px dashed #e3e8f2;
+                cursor: pointer;
+                margin-bottom: 15px;
+                padding: 25px;
+                position: relative;
+                text-align: center;
+                transition: all 0.3s ease;
+            }
+            .drop-area.drag-over {
+                background-color: #f0f5ff;
+                border-color: #1339ab;
+            }
+            .file-input {
+                display: none;
+            }
+            .file-icon {
+                align-items: center;
+                color: #516381;
+                display: flex;
+                height: 60px;
+                justify-content: center;
+                margin: 0 auto 15px;
+                width: 60px;
+            }
+            .file-icon svg {
+                height: 40px;
+                width: 40px;
+            }
+            .subdued {
+                color: #516381;
+                font-size: 0.9em;
+                margin-top: 10px;
+            }
+            .file-info {
+                align-items: center;
+                background-color: rgb(246, 249, 252);
+                border-radius: 4px;
+                display: flex;
+                justify-content: center;
+                margin-top: 15px;
+                padding: 8px 12px;
+            }
+            .file-name {
+                margin-right: 10px;
+                max-width: 80%;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                word-break: break-all;
+            }
+            .clear-button {
+                align-items: center;
+                border-radius: 50%;
+                color: #1339ab;
+                cursor: pointer;
+                display: flex;
+                font-weight: bold;
+                height: 22px;
+                justify-content: center;
+                width: 22px;
+            }
+            .clear-button:hover {
+                background-color: #b7d0fb;
+            }
+            .hidden {
+                display: none;
+            }
         </style>
     </head>
 
     <body>
-        <h1>Elastic Stack Diagnostics Upload</h1>
+        <h1>Elastic Stack Diagnostics</h1>
         <div class="upload-form">
             <form
                 id="upload-form"
@@ -90,21 +173,177 @@
                 method="post"
                 enctype="multipart/form-data"
             >
-                <p>Select a diagnostic bundle (.zip file):</p>
-                <input type="file" name="file" accept=".zip" required />
-                <br />
+                <div class="drop-area" id="drop-area">
+                    <div class="file-icon">
+                        <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                        >
+                            <path
+                                d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"
+                            ></path>
+                            <polyline points="14 2 14 8 20 8"></polyline>
+                            <line x1="12" y1="18" x2="12" y2="12"></line>
+                            <line x1="9" y1="15" x2="15" y2="15"></line>
+                        </svg>
+                    </div>
+                    <div id="upload-instructions">
+                        <p>Select or drag and drop a <code>.zip</code> file</p>
+                    </div>
+                    <div id="file-info" class="file-info hidden">
+                        <span id="file-name" class="file-name"></span>
+                        <span id="clear-file" class="clear-button">✕</span>
+                    </div>
+                    <input
+                        type="file"
+                        name="file"
+                        id="file-input"
+                        class="file-input"
+                        accept=".zip"
+                        required
+                    />
+                </div>
                 <input
                     type="submit"
                     value="Upload"
                     class="button"
                     id="upload-button"
+                    disabled
                 />
             </form>
         </div>
         <div id="status-container" class="hidden"></div>
 
         <script>
-            function setStatus({ status, report, error, message }) {
+            // File upload handling
+            const dropArea = document.getElementById("drop-area");
+            const fileInput = document.getElementById("file-input");
+            const fileInfo = document.getElementById("file-info");
+            const fileName = document.getElementById("file-name");
+            const clearFile = document.getElementById("clear-file");
+            const uploadInstructions = document.getElementById(
+                "upload-instructions",
+            );
+
+            // Prevent default drag behaviors
+            ["dragenter", "dragover", "dragleave", "drop"].forEach(
+                (eventName) => {
+                    dropArea.addEventListener(
+                        eventName,
+                        preventDefaults,
+                        false,
+                    );
+                    document.body.addEventListener(
+                        eventName,
+                        preventDefaults,
+                        false,
+                    );
+                },
+            );
+
+            function preventDefaults(e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+
+            // Highlight drop area when item is dragged over it
+            ["dragenter", "dragover"].forEach((eventName) => {
+                dropArea.addEventListener(eventName, highlight, false);
+            });
+
+            ["dragleave", "drop"].forEach((eventName) => {
+                dropArea.addEventListener(eventName, unhighlight, false);
+            });
+
+            function highlight() {
+                dropArea.classList.add("drag-over");
+            }
+
+            function unhighlight() {
+                dropArea.classList.remove("drag-over");
+            }
+
+            // Handle dropped files
+            dropArea.addEventListener("drop", handleDrop, false);
+
+            function handleDrop(e) {
+                const dt = e.dataTransfer;
+                const files = dt.files;
+                handleFiles(files);
+            }
+
+            function handleFiles(files) {
+                if (files.length > 0) {
+                    fileInput.files = files;
+                    updateFileInfo(files[0]);
+                }
+            }
+
+            function updateFileInfo(file) {
+                const uploadButton = document.getElementById("upload-button");
+                const fileIcon = document.querySelector(".file-icon");
+
+                if (file) {
+                    fileName.textContent = file.name;
+                    fileInfo.classList.remove("hidden");
+                    uploadButton.disabled = false;
+                    uploadInstructions.classList.add("hidden");
+                    fileIcon.style.color = "#1339ab"; // Change to button text blue
+
+                    // Change the icon to a check mark
+                    document.querySelector(".file-icon svg").innerHTML = `
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                        <polyline points="14 2 14 8 20 8"></polyline>
+                        <path d="M9 15L11 17L15 13"></path>
+                    `;
+                } else {
+                    fileInput.value = "";
+                    fileInfo.classList.add("hidden");
+                    uploadButton.disabled = true;
+                    uploadInstructions.classList.remove("hidden");
+                    fileIcon.style.color = "#516381"; // Reset to original color
+
+                    // Reset to upload icon
+                    document.querySelector(".file-icon svg").innerHTML = `
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                        <polyline points="14 2 14 8 20 8"></polyline>
+                        <line x1="12" y1="18" x2="12" y2="12"></line>
+                        <line x1="9" y1="15" x2="15" y2="15"></line>
+                    `;
+                }
+            }
+
+            // Open file picker when clicking drop area
+            dropArea.addEventListener("click", () => {
+                fileInput.click();
+            });
+
+            // Handle selected file when using file picker
+            fileInput.addEventListener("change", function () {
+                if (this.files && this.files[0]) {
+                    updateFileInfo(this.files[0]);
+                }
+            });
+
+            // Clear selected file when clicking X button
+            clearFile.addEventListener("click", function (e) {
+                e.stopPropagation();
+                updateFileInfo(null);
+                updateStatus({ status: "ready" });
+            });
+
+            // Initialize button state when page loads
+            document.addEventListener("DOMContentLoaded", function () {
+                const uploadButton = document.getElementById("upload-button");
+                uploadButton.disabled = fileInput.files.length === 0;
+            });
+
+            function updateStatus({ status, report, error, message }) {
                 const statusContainer =
                     document.getElementById("status-container");
                 const uploadButton = document.getElementById("upload-button");
@@ -114,24 +353,24 @@
                     case "uploading":
                         uploadButton.disabled = true;
                         statusContainer.classList.add("processing");
-                        statusContainer.innerHTML = `<p>
+                        statusContainer.innerHTML = `
                             <div class="spinner"></div>
                             <span>Uploading diagnostic bundle...</span>
-                        </p>`;
+                        `;
                         break;
                     case "processing":
                         uploadButton.disabled = true;
                         statusContainer.classList.add("processing");
-                        statusContainer.innerHTML = `<p>
+                        statusContainer.innerHTML = `
                             <div class="spinner"></div>
                             <span>${message || "Processing diagnostic..."}</span>
-                        </p>`;
+                        `;
                         setTimeout(pollStatus, 1000);
                         break;
                     case "complete":
                         uploadButton.disabled = false;
                         statusContainer.classList.add("success");
-                        let message_complete = `<p>✅ Diagnostic processing complete!</p>`;
+                        let message_complete = `✅ Diagnostic processing complete!`;
                         if (report) {
                             message_complete += `<p><b>Diagnostic ID:</b> ${report.id}</p>`;
                             message_complete += `<p><b>Product:</b> ${report.product}</p>`;
@@ -142,19 +381,19 @@
                     case "error":
                         uploadButton.disabled = false;
                         statusContainer.classList.add("error");
-                        statusContainer.innerHTML = `<p>🛑 <b>Error:</b> ${error || "Processing failed"}</p>`;
+                        statusContainer.innerHTML = `🛑 <b>Error:</b> ${error || "Processing failed"}`;
                         break;
                     case "ready":
-                        uploadButton.disabled = false;
+                        uploadButton.disabled = true;
                         statusContainer.classList.add("ready");
-                        statusContainer.innerHTML = `<p>▶️ Ready for upload</p>`;
+                        statusContainer.innerHTML = `▶️ ESDiag Ready`;
                 }
             }
 
             function pollStatus() {
                 fetch(`/status`)
                     .then((response) => response.json())
-                    .then((data) => setStatus(data))
+                    .then((data) => updateStatus(data))
                     .catch((error) => {
                         console.error("Polling error:", error);
                     });
@@ -167,22 +406,16 @@
                     const statusContainer =
                         document.getElementById("status-container");
                     const formData = new FormData(this);
-                    setStatus({ status: "uploading" });
+                    updateStatus({ status: "uploading" });
                     fetch("/upload", {
                         method: "POST",
                         body: formData,
                     })
-                        .then((response) => {
-                            if (!response.ok) {
-                                response
-                                    .json()
-                                    .then((error) => setStatus(error));
-                            } else {
-                                response.json().then((data) => setStatus(data));
-                            }
-                        })
+                        .then((response) =>
+                            response.json().then((body) => updateStatus(body)),
+                        )
                         .catch((error) => {
-                            setStatus({ status: "error", error });
+                            updateStatus({ status: "error", error });
                         });
                 });
 
