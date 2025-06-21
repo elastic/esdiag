@@ -15,12 +15,6 @@ fi
 
 # ----- User Configuration -----
 
-<<<<<<< HEAD
-=======
-declare kibana_url="http://localhost:5601"
-declare elasticsearch_url="http://localhost:9200"
-declare esdiag_url="http://localhost:3000"
->>>>>>> 5679856 (Add esdiag webui service to Docker compose)
 declare github_token=${GITHUB_TOKEN}
 
 # ----- Advanced Configuration -----

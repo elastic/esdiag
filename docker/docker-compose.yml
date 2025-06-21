@@ -20,11 +20,7 @@ services:
       LOG_LEVEL: info
     command: ["serve"]
     networks:
-<<<<<<< HEAD
       - net
-=======
-      - esdiag-net
->>>>>>> 5679856 (Add esdiag webui service to Docker compose)
     ports:
       - 3000:3000
 
