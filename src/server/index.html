@@ -343,7 +343,13 @@
                 uploadButton.disabled = fileInput.files.length === 0;
             });
 
-            function updateStatus({ status, report, error, message }) {
+            function updateStatus({
+                status,
+                report,
+                error,
+                message,
+                exporter,
+            }) {
                 const statusContainer =
                     document.getElementById("status-container");
                 const uploadButton = document.getElementById("upload-button");
@@ -386,7 +392,7 @@
                     case "ready":
                         uploadButton.disabled = true;
                         statusContainer.classList.add("ready");
-                        statusContainer.innerHTML = `▶️ ESDiag Ready`;
+                        statusContainer.innerHTML = `▶️ Ready, exporting to: ${exporter}`;
                 }
             }
 

@@ -176,7 +176,7 @@ async fn run(cli: Cli) -> Result<&'static str> {
             let exporter = Exporter::try_from(output_uri)?;
 
             log::info!("Press Ctrl+C to exit");
-            let mut server = ApiServer::new(port);
+            let mut server = ApiServer::new(port, exporter.to_string());
 
             let rx = match &server.rx {
                 Some(rx) => rx.clone(),

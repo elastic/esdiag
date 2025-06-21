@@ -33,10 +33,11 @@ pub struct ApiServer {
 struct ApiState {
     upload_tx: mpsc::Sender<Bytes>,
     processing_status: Arc<RwLock<ProcessingStatus>>,
+    exporter: String,
 }
 
 impl ApiServer {
-    pub fn new(port: u16) -> Self {
+    pub fn new(port: u16, exporter: String) -> Self {
         let (tx, rx) = mpsc::channel::<Bytes>(1);
         let rx = Arc::new(RwLock::new(rx));
         let rx_clone = rx.clone();
@@ -45,6 +46,7 @@ impl ApiServer {
         let state = Arc::new(ApiState {
             upload_tx: tx.clone(),
             processing_status: Arc::new(RwLock::new(ProcessingStatus::Ready)),
+            exporter,
         });
 
         // Start the Axum server
@@ -200,7 +202,8 @@ impl ApiServer {
             ProcessingStatus::Ready => (
                 StatusCode::OK,
                 axum::Json(serde_json::json!({
-                    "status": "ready"
+                    "status": "ready",
+                    "exporter": state.exporter,
                 })),
             ),
         }
@@ -230,7 +233,7 @@ impl ApiServer {
 
 impl Default for ApiServer {
     fn default() -> Self {
-        Self::new(3000)
+        Self::new(3000, String::new())
     }
 }
 

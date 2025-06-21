@@ -17,6 +17,7 @@ fi
 
 declare kibana_url="http://localhost:5601"
 declare elasticsearch_url="http://localhost:9200"
+declare esdiag_url="http://localhost:3000"
 declare github_token=${GITHUB_TOKEN}
 declare assets_path="assets/kibana"
 
@@ -37,7 +38,7 @@ declare dashboard_file=${1:-$(ls -tr assets/kibana/esdiag-dashboards*.ndjson 2>/
 
 # Git repository information
 declare esdiag_dashboards_url="https://api.github.com/repos/elastic/esdiag-dashboards"
-declare esdiag_url="https://api.github.com/repos/elastic/esdiag"
+declare esdiag_github_url="https://api.github.com/repos/elastic/esdiag"
 declare esdiag_branch=${ESDIAG_BRANCH:-"main"}
 declare esdiag_version=$(grep -o '^version = ".*"' Cargo.toml | sed -E 's/^version = "(.*)"/\1/')
 
@@ -74,7 +75,7 @@ function github_token_check() {
         --header "Authorization: token ${github_token}" \
         --header "X-GitHub-Api-Version: 2022-11-28" \
         --write-out "%{http_code}" --output /dev/null \
-        "${esdiag_url}" )
+        "${esdiag_github_url}" )
 
     if [[ $token_status == "200" ]]; then
         log_info "GitHub token is $(green valid): http ${token_status}"
@@ -94,7 +95,7 @@ function esdiag_version_check() {
         --header "Accept: application/vnd.github+json" \
         --header "Authorization: token ${github_token}" \
         --header "X-GitHub-Api-Version: 2022-11-28" \
-          "${esdiag_url}/contents/Cargo.toml?ref=${esdiag_branch}" \
+          "${esdiag_github_url}/contents/Cargo.toml?ref=${esdiag_branch}" \
           | jq -r '.content' | base64 -d | grep "^version = " | sed 's/version = "\(.*\)"/\1/')
 
     log_info "latest version: $(cyan ${esdiag_latest}) on $(gray ${esdiag_branch})"
@@ -214,24 +215,13 @@ function kibana_objects_import() {
 }
 
 function browser_homepage_open() {
-    local homepage_url="${kibana_url}${kibana_homepage}"
-    log_info "Opening web browser to $(blue "${homepage_url}")"
-    open ${homepage_url}
+    log_info "Opening web browser to $(blue "${esdiag_url}")"
+    open ${esdiag_url}
 }
 
 # ----- Container Functions -----
 
-function stack_containers_run() {
-    log_info "Running $(white "docker compose up -d") in background"
-    docker compose --file docker/docker-compose.yml up --detach > /dev/null 2>&1 &
-    wait $!
-    if [[ $? -ne 0 ]]; then
-        log_error "$(white "docker compose up") $(red failed) with exit status ${?}"
-        exit $?
-    fi
-}
-
-function containers_build_and_run() {
+function esdiag_container_build() {
     stack_containers_run &
     if [[ $(docker images -q esdiag:${esdiag_version} 2> /dev/null) == "" ]]; then
         log_info "Building $(cyan "esdiag:${esdiag_version}") container image"
@@ -248,6 +238,21 @@ function containers_build_and_run() {
         log_error "$(white "docker build") $(red failed) with exit status ${?}"
         exit $?
     fi
+}
+
+function stack_containers_pull() {
+    log_info "Running $(white "docker compose pull esdiag-elasticsearch esdiag-kibana") in background"
+    docker compose --file docker/docker-compose.yml pull esdiag-elasticsearch esdiag-kibana > /dev/null 2>&1 &
+    wait $!
+    if [[ $? -ne 0 ]]; then
+        log_error "$(white "docker compose up") $(red failed) with exit status ${?}"
+        exit $?
+    fi
+}
+
+function containers_run () {
+    log_info "Running $(white "docker compose up --detach")"
+    docker compose --file docker/docker-compose.yml up --detach > /dev/null 2>&1 &
 }
 
 # ----- Elasticsearch Functions -----
@@ -347,7 +352,9 @@ fi
 
 # If we have a dashboard file, proceed with setup
 if [[ -f $dashboard_file ]]; then
-    containers_build_and_run \
+    stack_containers_pull \
+    && esdiag_container_build \
+    && containers_run \
     && elasticsearch_templates_setup \
     && kibana_objects_import \
     && browser_homepage_open \
