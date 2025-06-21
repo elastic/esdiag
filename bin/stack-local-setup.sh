@@ -15,13 +15,14 @@ fi
 
 # ----- User Configuration -----
 
-declare kibana_url="http://localhost:5601"
-declare elasticsearch_url="http://localhost:9200"
-declare esdiag_url="http://localhost:3000"
 declare github_token=${GITHUB_TOKEN}
-declare assets_path="assets/kibana"
 
 # ----- Advanced Configuration -----
+
+declare elasticsearch_url=${ESDIAG_OUTPUT_URL:-"http://localhost:9200"}
+declare kibana_url=${ESDIAG_KIBANA_URL:-"http://localhost:5601"}
+declare esdiag_url="http://localhost:3000"
+declare assets_path="assets/kibana"
 
 # Use ESDIAG_OUTPUT* environment variables to configure Elastic Stack authentication
 declare apikey=${ESDIAG_OUTPUT_APIKEY}
@@ -193,6 +194,8 @@ function kibana_objects_import() {
         fi
     done
     log_info "$(magenta Kibana) is $(green ready)!"
+    # Kibana's "ready" is overly optimistic and imports may fail, so give it another second
+    sleep 1
 
     # Import saved objects
 

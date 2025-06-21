@@ -378,7 +378,7 @@
                         statusContainer.classList.add("success");
                         let message_complete = `✅ Diagnostic processing complete!`;
                         if (report) {
-                            message_complete += `<p><b>Diagnostic ID:</b> ${report.id}</p>`;
+                            message_complete += `<p><b>Diagnostic ID:</b> <a target="_blank" href="${report.kibana_link}">${report.id}</a></p>`;
                             message_complete += `<p><b>Product:</b> ${report.product}</p>`;
                             message_complete += `<p><b>Ingested:</b> ${report.docs.created} documents</p>`;
                         }

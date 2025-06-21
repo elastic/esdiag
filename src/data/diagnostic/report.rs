@@ -64,6 +64,13 @@ pub struct DiagnosticReport {
     processor: NestedStats<ProcessorSummary>,
     #[serde(flatten)]
     pub metadata: DiagnosticMetadata,
+    pub kibana_link: Option<String>,
+}
+
+impl DiagnosticReport {
+    pub fn add_kibana_link(&mut self, link: String) {
+        self.kibana_link = Some(link);
+    }
 }
 
 #[derive(Serialize, Clone)]
@@ -137,6 +144,7 @@ impl TryFrom<DiagnosticReportBuilder> for DiagnosticReport {
                 stats: builder.processors,
             },
             product: builder.product.unwrap_or(Product::Unknown),
+            kibana_link: None,
         })
     }
 }

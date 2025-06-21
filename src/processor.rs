@@ -64,7 +64,7 @@ impl Diagnostic {
     }
 
     pub async fn run(self) -> Result<DiagnosticReport> {
-        let report = match self {
+        let mut report = match self {
             Self::Elasticsearch(diagnostic) => diagnostic.run().await?,
             Self::ElasticCloudKubernetes(diagnostic) => diagnostic.run().await?,
             Self::KubernetesPlatform(diagnostic) => diagnostic.run().await?,
@@ -77,6 +77,14 @@ impl Diagnostic {
             report.product,
             report.metadata.id,
         );
+        if let Ok(kibana_url) = std::env::var("ESDIAG_KIBANA_URL") {
+            let kibana_link = format!(
+                "{}/app/dashboards#/view/4e0a26b2-e5f8-4b58-b617-86f5cdd0edad?_g=(filters:!(('$state':(store:globalState),meta:(disabled:!f,index:'4319ebc4-df81-4b18-b8bd-6aaa55a1fd13',key:diagnostic.id,negate:!f,params:(query:'{}'),type:phrase),query:(match_phrase:(diagnostic.id:'{}')))),refreshInterval:(pause:!t,value:60000),time:(from:now-7d,to:now))",
+                kibana_url, report.metadata.id, report.metadata.id
+            );
+            log::info!("{}", kibana_link);
+            report.add_kibana_link(kibana_link);
+        }
         Ok(report)
     }
 }

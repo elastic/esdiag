@@ -157,6 +157,8 @@ Usage
 
 4. Open Kibana and explore!
 
+If you set the `ESDIAG_KIBANA_URL` environment variable with your target Kibana URL (no trailing `/`), ESDiag will log a link directly to a pre-filtered cluster report dashboard.
+
 ### Commands
 
 #### Help
