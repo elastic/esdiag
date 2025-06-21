@@ -20,7 +20,11 @@ services:
       LOG_LEVEL: info
     command: ["serve"]
     networks:
+<<<<<<< HEAD
       - net
+=======
+      - esdiag-net
+>>>>>>> 5679856 (Add esdiag webui service to Docker compose)
     ports:
       - 3000:3000
 
@@ -41,9 +45,15 @@ services:
         soft: -1
         hard: -1
     volumes:
+<<<<<<< HEAD
       - data:/usr/share/elasticsearch/data
     networks:
       - net
+=======
+      - esdiag-data:/usr/share/elasticsearch/data
+    networks:
+      - esdiag-net
+>>>>>>> 5679856 (Add esdiag webui service to Docker compose)
     ports:
       - 9200:9200
 

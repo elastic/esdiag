@@ -15,6 +15,12 @@ fi
 
 # ----- User Configuration -----
 
+<<<<<<< HEAD
+=======
+declare kibana_url="http://localhost:5601"
+declare elasticsearch_url="http://localhost:9200"
+declare esdiag_url="http://localhost:3000"
+>>>>>>> 5679856 (Add esdiag webui service to Docker compose)
 declare github_token=${GITHUB_TOKEN}
 
 # ----- Advanced Configuration -----
@@ -214,6 +220,7 @@ function kibana_objects_import() {
     export success_count=$(jq -r .successCount "${response_file}")
 }
 
+<<<<<<< HEAD
 function browser_open() {
     log_info "Opening web browser to $(blue "${esdiag_url}")"
     if [[ $(command -v explorer.exe) ]]; then
@@ -231,11 +238,20 @@ function browser_open() {
     else
         log_warn "No browser launcher found"
     fi
+=======
+function browser_homepage_open() {
+    log_info "Opening web browser to $(blue "${esdiag_url}")"
+    open ${esdiag_url}
+>>>>>>> 5679856 (Add esdiag webui service to Docker compose)
 }
 
 # ----- Container Functions -----
 
 function esdiag_container_build() {
+<<<<<<< HEAD
+=======
+    stack_containers_run &
+>>>>>>> 5679856 (Add esdiag webui service to Docker compose)
     if [[ $(docker images -q esdiag:${esdiag_version} 2> /dev/null) == "" ]]; then
         log_info "Building $(cyan "esdiag:${esdiag_version}") container image"
     else
@@ -256,11 +272,14 @@ function esdiag_container_build() {
 function stack_containers_pull() {
     log_info "Running $(white "docker compose pull esdiag-elasticsearch esdiag-kibana") in background"
     docker compose --file docker/docker-compose.yml pull esdiag-elasticsearch esdiag-kibana > /dev/null 2>&1 &
+<<<<<<< HEAD
 }
 
 function containers_run () {
     log_info "Running $(white "docker compose up --detach")"
     docker compose --file docker/docker-compose.yml up --detach > /dev/null 2>&1 &
+=======
+>>>>>>> 5679856 (Add esdiag webui service to Docker compose)
     wait $!
     if [[ $? -ne 0 ]]; then
         log_error "$(white "docker compose up") $(red failed) with exit status ${?}"
@@ -268,6 +287,14 @@ function containers_run () {
     fi
 }
 
+<<<<<<< HEAD
+=======
+function containers_run () {
+    log_info "Running $(white "docker compose up --detach")"
+    docker compose --file docker/docker-compose.yml up --detach > /dev/null 2>&1 &
+}
+
+>>>>>>> 5679856 (Add esdiag webui service to Docker compose)
 # ----- Elasticsearch Functions -----
 
 function elasticsearch_templates_setup() {
