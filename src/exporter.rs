@@ -98,12 +98,14 @@ impl TryFrom<Option<Uri>> for Exporter {
                 _ => Err(eyre!("Unsupported URI")),
             }
         } else {
-            let url = Url::parse(&std::env::var("ESDIAG_OUTPUT_URL")?)?;
-            log::info!("output: Env {}", url);
+            log::debug!("No output given, using ESDIAG_OUTPUT_URL");
+            let output_url = std::env::var("ESDIAG_OUTPUT_URL")
+                .map_err(|_| eyre!("ESDIAG_OUTPUT_URL is not defined"))?;
+            log::info!("output: Env {}", output_url);
             let apikey = std::env::var("ESDIAG_OUTPUT_APIKEY").ok();
             let username = std::env::var("ESDIAG_OUTPUT_USERNAME").ok();
             let password = std::env::var("ESDIAG_OUTPUT_PASSWORD").ok();
-            let host = KnownHostBuilder::new(url)
+            let host = KnownHostBuilder::new(Url::parse(&output_url)?)
                 .apikey(apikey)
                 .username(username)
                 .password(password)
