@@ -1,7 +1,13 @@
-Creating a GitHub Personal Access Token
-----------------------------------------
+GitHub Personal Access Tokens
+-----------------------------
 
-Step-by-step instructions:
+The GitHub personal access token is a way to grant fine-grained access control to your GitHub account. It allows you to specify which actions you want to perform and which resources you want to access. GitHub personal access tokens are used to authenticate API requests and can be used to automate tasks such as creating and managing repositories, managing issues and pull requests, and more.
+
+GitHub documentation: https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens
+
+For ESDiag, the token is only used for read-only automated version checks to the private repositories.
+
+### Generating a GitHub Personal Access Token
 
 1. Click on the top-right user icon, pick `⚙️ Settings` from the list (lower middle)
 
@@ -29,7 +35,7 @@ Step-by-step instructions:
 
 Now copy the token and save it somewhere safe, you will have to regenerate it if you lose it.
 
-For this repository, add it to the root `.env` file:
+For this repository, add it to the root `.env` file (see `example.env`):
 
 ```sh
 export GITHUB_TOKEN="github_pat_1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
