@@ -62,6 +62,13 @@ impl KnownHostBuilder {
 
     pub fn build(self) -> Result<KnownHost> {
         match (self.apikey, self.username, self.password) {
+            (Some(apikey), None, None) => Ok(KnownHost::ApiKey {
+                accept_invalid_certs: self.accept_invalid_certs,
+                apikey,
+                app: self.product,
+                cloud_id: self.cloud_id,
+                url: self.url,
+            }),
             (None, Some(username), Some(password)) => Ok(KnownHost::Basic {
                 accept_invalid_certs: self.accept_invalid_certs,
                 app: self.product,
@@ -69,13 +76,6 @@ impl KnownHostBuilder {
                 password,
                 url: self.url,
                 username,
-            }),
-            (Some(apikey), None, None) => Ok(KnownHost::ApiKey {
-                accept_invalid_certs: self.accept_invalid_certs,
-                apikey,
-                app: self.product,
-                cloud_id: self.cloud_id,
-                url: self.url,
             }),
             (None, None, None) => Ok(KnownHost::NoAuth {
                 app: self.product,
