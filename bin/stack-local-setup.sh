@@ -214,9 +214,23 @@ function kibana_objects_import() {
     export success_count=$(jq -r .successCount "${response_file}")
 }
 
-function browser_homepage_open() {
+function browser_open() {
     log_info "Opening web browser to $(blue "${esdiag_url}")"
-    open ${esdiag_url}
+    if [[ $(command -v explorer.exe) ]]; then
+        # Windows Subsystem for Linux (WSL)
+        explorer.exe ${esdiag_url}
+    elif [[ $(command -v open) ]]; then
+        # MacOS
+        open ${esdiag_url}
+    elif [[ $(command -v gnome-open) ]]; then
+        # Linux with Gnome
+        gnome-open ${esdiag_url}
+    elif [[ $(command -v xdg-open) ]]; then
+        # Linux, more generic
+        xdg-open ${esdiag_url}
+    else
+        log_warn "No browser launcher found"
+    fi
 }
 
 # ----- Container Functions -----
@@ -356,7 +370,7 @@ if [[ -f $dashboard_file ]]; then
     && containers_run \
     && elasticsearch_templates_setup \
     && kibana_objects_import \
-    && browser_homepage_open \
+    && browser_open \
     && log_info "$(white ${0}) is $(green complete)!"
 else
     log_error "ESDiag Dashboards file $(red "not found")"
