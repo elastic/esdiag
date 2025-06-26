@@ -273,7 +273,7 @@ struct EnrichedShardStats {
     pub number: u16,
     pub retention_leases: Value,
     pub routing: ShardRouting,
-    pub search_idle: bool,
+    pub search_idle: Option<bool>,
     pub search_idle_time: Option<u64>,
     pub seq_no: Value,
     pub shard_path: Value,
@@ -506,7 +506,7 @@ impl From<Option<StoreStats>> for EnrichedStoreStats {
 pub struct EnrichedDocs {
     pub count: u64,
     pub deleted: u64,
-    pub total_size_in_bytes: u64,
+    pub total_size_in_bytes: Option<u64>,
     // Calculated fields
     pub per_gb: Option<u64>,
     pub avg_size: Option<u64>,

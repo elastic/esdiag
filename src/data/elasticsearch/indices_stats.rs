@@ -28,7 +28,7 @@ pub struct ShardEntry {
     pub seq_no: Value,
     pub retention_leases: Value,
     pub shard_path: Value,
-    pub search_idle: bool,
+    pub search_idle: Option<bool>,
     pub search_idle_time: Option<u64>,
     #[serde(flatten)]
     pub stats: Stats,
@@ -73,7 +73,7 @@ pub struct Stats {
 pub struct Docs {
     pub count: u64,
     pub deleted: u64,
-    pub total_size_in_bytes: u64,
+    pub total_size_in_bytes: Option<u64>,
     // Calculated
     pub avg_size: Option<u64>,
     pub per_gb: Option<u64>,
