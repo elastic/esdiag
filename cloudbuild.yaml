@@ -1,0 +1,32 @@
+steps:
+  - name: "gcr.io/cloud-builders/docker"
+    id: "build"
+    args:
+      [
+        "build",
+        "-t",
+        "us-west2-docker.pkg.dev/elastic-customer-eng/esdiag/esdiag:latest",
+        "-t",
+        "us-west2-docker.pkg.dev/elastic-customer-eng/esdiag/esdiag:${_VERSION}",
+        ".",
+      ]
+
+  - name: "gcr.io/cloud-builders/docker"
+    id: "push-latest"
+    args:
+      [
+        "push",
+        "us-west2-docker.pkg.dev/elastic-customer-eng/esdiag/esdiag:latest",
+      ]
+
+  - name: "gcr.io/cloud-builders/docker"
+    id: "push-versioned"
+    args:
+      [
+        "push",
+        "us-west2-docker.pkg.dev/elastic-customer-eng/esdiag/esdiag:${_VERSION}",
+      ]
+
+# Defaults, override with --substitutions flag
+substitutions:
+  _VERSION: "latest"
