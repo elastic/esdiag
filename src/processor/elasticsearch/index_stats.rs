@@ -176,19 +176,26 @@ impl IndexDocument {
         stats.primaries.indexing.est_bytes_per_day = match stats.write_phase_sec {
             None => None,
             Some(0) => Some(0),
-            Some(seconds) => Some(stats.primaries.store.size_in_bytes * (86_400 / seconds)),
+            Some(seconds) => Some(
+                (stats.primaries.store.size_in_bytes as f64 * (86_400.0 / seconds as f64)) as u64,
+            ),
         };
 
         stats.total.indexing.est_bytes_per_day = match stats.write_phase_sec {
             None => None,
             Some(0) => Some(0),
-            Some(seconds) => Some(stats.total.store.size_in_bytes * (86_400 / seconds)),
+            Some(seconds) => {
+                Some((stats.total.store.size_in_bytes as f64 * (86_400.0 / seconds as f64)) as u64)
+            }
         };
 
         stats.primaries.bulk.est_bytes_per_day = match stats.write_phase_sec {
             None => None,
             Some(0) => Some(0),
-            Some(seconds) => Some(stats.primaries.bulk.total_size_in_bytes * (86_400 / seconds)),
+            Some(seconds) => Some(
+                (stats.primaries.bulk.total_size_in_bytes as f64 * (86_400.0 / seconds as f64))
+                    as u64,
+            ),
         };
 
         // Determine average index time per shard
