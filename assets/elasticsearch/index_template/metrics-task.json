@@ -40,6 +40,9 @@
             "id": {
               "type": "keyword"
             },
+            "parent.id": {
+              "type": "keyword"
+            },
             "node.ip": {
               "type": "ip"
             },
@@ -60,6 +63,9 @@
             },
             "status.total_download_time": {
               "type": "long"
+            },
+            "status.active_operators.operator": {
+              "type": "match_only_text"
             }
           }
         }

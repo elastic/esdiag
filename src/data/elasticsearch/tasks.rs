@@ -58,8 +58,8 @@ impl From<String> for ParentTask {
     fn from(parent_task: String) -> Self {
         let mut parts = parent_task.split(':');
         ParentTask {
-            id: parts.next().unwrap_or_default().parse().unwrap_or_default(),
             node: parts.next().unwrap_or_default().to_string(),
+            id: parts.next().unwrap_or_default().parse().unwrap_or_default(),
         }
     }
 }
