@@ -1,4 +1,7 @@
 {
+  "_meta": {
+    "description": "ESDiag Elasticsearch cluster settings"
+  },
   "index_patterns": ["settings-cluster-esdiag*"],
   "composed_of": ["esdiag@mappings", "esdiag@metadata", "esdiag@settings"],
   "allow_auto_create": true,

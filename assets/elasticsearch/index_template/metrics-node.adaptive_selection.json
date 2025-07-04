@@ -1,4 +1,7 @@
 {
+  "_meta": {
+    "description": "ESDiag Elasticsearch node adaptive selection stats"
+  },
   "index_patterns": ["metrics-node.adaptive_selection-esdiag*"],
   "composed_of": [
     "esdiag@mappings",

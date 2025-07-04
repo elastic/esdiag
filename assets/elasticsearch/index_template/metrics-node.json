@@ -1,4 +1,7 @@
 {
+  "_meta": {
+    "description": "ESDiag Elasticsearch node stats"
+  },
   "index_patterns": ["metrics-node*-esdiag*"],
   "composed_of": [
     "esdiag@mappings",
@@ -26,398 +29,3593 @@
       "dynamic": true,
       "properties": {
         "node": {
-          "type": "object",
           "properties": {
-            "indexing_pressure.memory.current": {
+            "adaptive_selection": {
               "type": "object",
+              "dynamic": "false",
+              "enabled": false
+            },
+            "allocations": {
               "properties": {
-                "all": {
-                  "type": "object",
-                  "enabled": false
+                "current_disk_usage": {
+                  "type": "keyword"
                 },
-                "coordinating": {
-                  "type": "object",
-                  "enabled": false
+                "current_disk_usage_in_bytes": {
+                  "type": "long",
+                  "index": false
                 },
-                "replica": {
-                  "type": "object",
-                  "enabled": false
+                "forecasted_disk_usage": {
+                  "type": "keyword"
                 },
-                "combined_coordinating_and_primary": {
-                  "type": "object",
-                  "enabled": false
+                "forecasted_disk_usage_in_bytes": {
+                  "type": "long",
+                  "index": false
                 },
-                "primary": {
-                  "type": "object",
-                  "enabled": false
+                "forecasted_ingest_load": {
+                  "type": "float",
+                  "index": false
+                },
+                "shards": {
+                  "type": "long",
+                  "index": false
+                },
+                "undesired_shards": {
+                  "type": "long",
+                  "index": false
                 }
               }
             },
-            "discovery.cluster_state_update.success": {
-              "type": "object",
+            "attributes": {
               "properties": {
-                "completion_time": {
-                  "type": "object",
-                  "enabled": false
+                "ml": {
+                  "properties": {
+                    "allocated_processors": {
+                      "type": "keyword"
+                    },
+                    "allocated_processors_double": {
+                      "type": "keyword"
+                    },
+                    "config_version": {
+                      "type": "keyword"
+                    },
+                    "machine_memory": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "max_jvm_size": {
+                      "type": "object",
+                      "enabled": false
+                    }
+                  }
                 },
-                "master_apply_time": {
-                  "type": "object",
-                  "enabled": false
+                "rack": {
+                  "type": "keyword"
                 },
-                "commit_time": {
-                  "type": "object",
-                  "enabled": false
+                "rack_id": {
+                  "type": "keyword"
                 },
-                "context_construction_time": {
-                  "type": "object",
-                  "enabled": false
+                "transform": {
+                  "properties": {
+                    "config_version": {
+                      "type": "keyword"
+                    }
+                  }
                 },
-                "computation_time": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "notification_time": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "publication_time": {
-                  "type": "object",
-                  "enabled": false
-                }
-              }
-            },
-            "jvm.mem": {
-              "type": "object",
-              "properties": {
-                "heap_committed": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "heap_used": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "non_heap_committed": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "pools.old.peak_used": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "pools.survivor.used": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "pools.old.peak_max": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "pools.survivor.max": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "pools.young.used": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "pools.survivor.peak_max": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "pools.old.max": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "pools.old.used": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "pools.young.peak_used": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "pools.young.max": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "non_heap_used": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "pools.survivor.peak_used": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "heap_max": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "pools.young.peak_max": {
-                  "type": "object",
-                  "enabled": false
-                }
-              }
-            },
-            "os.mem.free": {
-              "type": "object",
-              "enabled": false
-            },
-            "discovery.cluster_state_update.unchanged": {
-              "type": "object",
-              "properties": {
-                "computation_time": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "notification_time": {
-                  "type": "object",
-                  "enabled": false
-                }
-              }
-            },
-            "os.cpu.load_average.15m": {
-              "type": "float"
-            },
-            "discovery.serialized_cluster_states": {
-              "type": "object",
-              "properties": {
-                "diffs.compressed_size": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "full_states.compressed_size": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "diffs.uncompressed_size": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "full_states.uncompressed_size": {
-                  "type": "object",
-                  "enabled": false
-                }
-              }
-            },
-            "indexing_pressure.memory.limit": {
-              "type": "object",
-              "enabled": false
-            },
-            "translog.size": {
-              "type": "object",
-              "enabled": false
-            },
-            "diagnostic.uuid": {
-              "type": "keyword"
-            },
-            "script_cache.contexts": {
-              "type": "object",
-              "enabled": false
-            },
-            "ingest.total.time": {
-              "type": "object",
-              "enabled": false
-            },
-            "os.swap.total": {
-              "type": "object",
-              "enabled": false
-            },
-            "os.swap.used": {
-              "type": "object",
-              "enabled": false
-            },
-            "discovery.cluster_state_update.failure": {
-              "type": "object",
-              "properties": {
-                "completion_time": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "master_apply_time": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "commit_time": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "context_construction_time": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "computation_time": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "notification_time": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "publication_time": {
-                  "type": "object",
-                  "enabled": false
-                }
-              }
-            },
-            "fs.total": {
-              "type": "object",
-              "properties": {
-                "total": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "available": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "free": {
-                  "type": "object",
-                  "enabled": false
-                }
-              }
-            },
-            "fs.io_stats.devices": {
-              "eager_global_ordinals": false,
-              "index": true,
-              "type": "flattened",
-              "split_queries_on_whitespace": false,
-              "index_options": "docs",
-              "doc_values": true
-            },
-            "jvm.gc.collectors": {
-              "type": "object",
-              "properties": {
-                "young.collection_time": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "old.collection_time": {
-                  "type": "object",
-                  "enabled": false
+                "xpack": {
+                  "properties": {
+                    "installed": {
+                      "type": "keyword"
+                    }
+                  }
                 }
               }
             },
             "breakers": {
-              "type": "object",
               "properties": {
-                "eql_sequence.limit_size": {
+                "eql_sequence": {
+                  "properties": {
+                    "estimated_size": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "estimated_size_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "limit_size": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "limit_size_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "overhead": {
+                      "type": "float",
+                      "index": false
+                    },
+                    "tripped": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "fielddata": {
+                  "properties": {
+                    "estimated_size": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "estimated_size_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "limit_size": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "limit_size_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "overhead": {
+                      "type": "float",
+                      "index": false
+                    },
+                    "tripped": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "inflight_requests": {
+                  "properties": {
+                    "estimated_size": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "estimated_size_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "limit_size": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "limit_size_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "overhead": {
+                      "type": "float",
+                      "index": false
+                    },
+                    "tripped": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "model_inference": {
+                  "properties": {
+                    "estimated_size": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "estimated_size_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "limit_size": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "limit_size_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "overhead": {
+                      "type": "float",
+                      "index": false
+                    },
+                    "tripped": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "parent": {
+                  "properties": {
+                    "estimated_size": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "estimated_size_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "limit_size": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "limit_size_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "overhead": {
+                      "type": "float",
+                      "index": false
+                    },
+                    "tripped": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "request": {
+                  "properties": {
+                    "estimated_size": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "estimated_size_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "limit_size": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "limit_size_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "overhead": {
+                      "type": "float",
+                      "index": false
+                    },
+                    "tripped": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                }
+              }
+            },
+            "diagnostic": {
+              "properties": {
+                "uuid": {
+                  "type": "keyword"
+                }
+              }
+            },
+            "discovery": {
+              "properties": {
+                "cluster_applier_stats": {
+                  "properties": {
+                    "recordings": {
+                      "type": "object",
+                      "enabled": false
+                    }
+                  }
+                },
+                "cluster_state_queue": {
+                  "properties": {
+                    "committed": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "pending": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "cluster_state_update": {
+                  "properties": {
+                    "failure": {
+                      "properties": {
+                        "commit_time": {
+                          "type": "object",
+                          "enabled": false
+                        },
+                        "commit_time_millis": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "completion_time": {
+                          "type": "object",
+                          "enabled": false
+                        },
+                        "completion_time_millis": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "computation_time": {
+                          "type": "object",
+                          "enabled": false
+                        },
+                        "computation_time_millis": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "context_construction_time": {
+                          "type": "object",
+                          "enabled": false
+                        },
+                        "context_construction_time_millis": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "count": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "master_apply_time": {
+                          "type": "object",
+                          "enabled": false
+                        },
+                        "master_apply_time_millis": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "notification_time": {
+                          "type": "object",
+                          "enabled": false
+                        },
+                        "notification_time_millis": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "publication_time": {
+                          "type": "object",
+                          "enabled": false
+                        },
+                        "publication_time_millis": {
+                          "type": "long",
+                          "index": false
+                        }
+                      }
+                    },
+                    "success": {
+                      "properties": {
+                        "commit_time": {
+                          "type": "object",
+                          "enabled": false
+                        },
+                        "commit_time_millis": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "completion_time": {
+                          "type": "object",
+                          "enabled": false
+                        },
+                        "completion_time_millis": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "computation_time": {
+                          "type": "object",
+                          "enabled": false
+                        },
+                        "computation_time_millis": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "context_construction_time": {
+                          "type": "object",
+                          "enabled": false
+                        },
+                        "context_construction_time_millis": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "count": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "master_apply_time": {
+                          "type": "object",
+                          "enabled": false
+                        },
+                        "master_apply_time_millis": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "notification_time": {
+                          "type": "object",
+                          "enabled": false
+                        },
+                        "notification_time_millis": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "publication_time": {
+                          "type": "object",
+                          "enabled": false
+                        },
+                        "publication_time_millis": {
+                          "type": "long",
+                          "index": false
+                        }
+                      }
+                    },
+                    "unchanged": {
+                      "properties": {
+                        "computation_time": {
+                          "type": "object",
+                          "enabled": false
+                        },
+                        "computation_time_millis": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "count": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "notification_time": {
+                          "type": "object",
+                          "enabled": false
+                        },
+                        "notification_time_millis": {
+                          "type": "long",
+                          "index": false
+                        }
+                      }
+                    }
+                  }
+                },
+                "published_cluster_states": {
+                  "properties": {
+                    "compatible_diffs": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "full_states": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "incompatible_diffs": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "serialized_cluster_states": {
+                  "properties": {
+                    "diffs": {
+                      "properties": {
+                        "compressed_size": {
+                          "type": "object",
+                          "enabled": false
+                        },
+                        "compressed_size_in_bytes": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "count": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "uncompressed_size": {
+                          "type": "object",
+                          "enabled": false
+                        },
+                        "uncompressed_size_in_bytes": {
+                          "type": "long",
+                          "index": false
+                        }
+                      }
+                    },
+                    "full_states": {
+                      "properties": {
+                        "compressed_size": {
+                          "type": "object",
+                          "enabled": false
+                        },
+                        "compressed_size_in_bytes": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "count": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "uncompressed_size": {
+                          "type": "object",
+                          "enabled": false
+                        },
+                        "uncompressed_size_in_bytes": {
+                          "type": "long",
+                          "index": false
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "fs": {
+              "properties": {
+                "data": {
+                  "type": "flattened"
+                },
+                "io_stats": {
+                  "properties": {
+                    "devices": {
+                      "type": "flattened"
+                    },
+                    "total": {
+                      "properties": {
+                        "io_time_in_millis": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "operations": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "read_kilobytes": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "read_operations": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "write_kilobytes": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "write_operations": {
+                          "type": "long",
+                          "index": false
+                        }
+                      }
+                    }
+                  }
+                },
+                "timestamp": {
+                  "type": "long",
+                  "index": false
+                },
+                "total": {
+                  "properties": {
+                    "available": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "available_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "free": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "free_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "total_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "used_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "used_percent": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                }
+              }
+            },
+            "host": {
+              "type": "keyword"
+            },
+            "http": {
+              "properties": {
+                "clients": {
+                  "type": "object",
+                  "dynamic": "false",
+                  "enabled": false
+                },
+                "current_open": {
+                  "type": "long",
+                  "index": false
+                },
+                "total_opened": {
+                  "type": "long",
+                  "index": false
+                }
+              }
+            },
+            "id": {
+              "type": "keyword"
+            },
+            "indexing_pressure": {
+              "properties": {
+                "memory": {
+                  "properties": {
+                    "current": {
+                      "properties": {
+                        "all": {
+                          "type": "object",
+                          "enabled": false
+                        },
+                        "all_in_bytes": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "combined_coordinating_and_primary": {
+                          "type": "object",
+                          "enabled": false
+                        },
+                        "combined_coordinating_and_primary_in_bytes": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "coordinating": {
+                          "type": "object",
+                          "enabled": false
+                        },
+                        "coordinating_in_bytes": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "primary": {
+                          "type": "object",
+                          "enabled": false
+                        },
+                        "primary_in_bytes": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "replica": {
+                          "type": "object",
+                          "enabled": false
+                        },
+                        "replica_in_bytes": {
+                          "type": "long",
+                          "index": false
+                        }
+                      }
+                    },
+                    "limit": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "limit_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total": {
+                      "properties": {
+                        "all": {
+                          "type": "object",
+                          "enabled": false
+                        },
+                        "all_in_bytes": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "combined_coordinating_and_primary": {
+                          "type": "object",
+                          "enabled": false
+                        },
+                        "combined_coordinating_and_primary_in_bytes": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "coordinating": {
+                          "type": "object",
+                          "enabled": false
+                        },
+                        "coordinating_in_bytes": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "coordinating_rejections": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "primary": {
+                          "type": "object",
+                          "enabled": false
+                        },
+                        "primary_document_rejections": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "primary_in_bytes": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "primary_rejections": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "replica": {
+                          "type": "object",
+                          "enabled": false
+                        },
+                        "replica_in_bytes": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "replica_rejections": {
+                          "type": "long",
+                          "index": false
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "indices": {
+              "properties": {
+                "bulk": {
+                  "properties": {
+                    "avg_size_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "avg_time": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "avg_time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total_operations": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total_size_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total_time": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "total_time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "completion": {
+                  "properties": {
+                    "size": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "size_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "dense_vector": {
+                  "properties": {
+                    "value_count": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "docs": {
+                  "properties": {
+                    "count": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "deleted": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total_size": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "total_size_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "fielddata": {
+                  "properties": {
+                    "evictions": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "global_ordinals": {
+                      "properties": {
+                        "build_time": {
+                          "type": "object",
+                          "enabled": false
+                        },
+                        "build_time_in_millis": {
+                          "type": "long",
+                          "index": false
+                        }
+                      }
+                    },
+                    "memory_size": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "memory_size_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "flush": {
+                  "properties": {
+                    "periodic": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total_time": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "total_time_excluding_waiting": {
+                      "type": "keyword"
+                    },
+                    "total_time_excluding_waiting_on_lock_in_millis": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total_time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "get": {
+                  "properties": {
+                    "current": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "exists_time": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "exists_time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "exists_total": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "getTime": {
+                      "type": "keyword"
+                    },
+                    "missing_time": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "missing_time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "missing_total": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "indexing": {
+                  "properties": {
+                    "delete_current": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "delete_time": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "delete_time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "delete_total": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "index_current": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "index_failed": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "index_time": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "index_time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "index_total": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "is_throttled": {
+                      "type": "boolean"
+                    },
+                    "noop_update_total": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "throttle_time": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "throttle_time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "write_load": {
+                      "type": "float",
+                      "index": false
+                    }
+                  }
+                },
+                "mappings": {
+                  "properties": {
+                    "average_fields_per_segment": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total_count": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total_estimated_overhead": {
+                      "type": "keyword"
+                    },
+                    "total_estimated_overhead_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total_segment_fields": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total_segments": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "merges": {
+                  "properties": {
+                    "current": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "current_docs": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "current_size": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "current_size_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total_auto_throttle": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "total_auto_throttle_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total_docs": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total_size": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "total_size_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total_stopped_time": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "total_stopped_time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total_throttled_time": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "total_throttled_time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total_time": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "total_time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "query_cache": {
+                  "properties": {
+                    "cache_count": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "cache_size": {
+                      "type": "long"
+                    },
+                    "evictions": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "hit_count": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "memory_size": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "memory_size_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "miss_count": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total_count": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "recovery": {
+                  "properties": {
+                    "current_as_source": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "current_as_target": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "throttle_time": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "throttle_time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "refresh": {
+                  "properties": {
+                    "external_total": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "external_total_time": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "external_total_time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "listeners": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total_time": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "total_time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "request_cache": {
+                  "properties": {
+                    "evictions": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "hit_count": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "memory_size": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "memory_size_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "miss_count": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "search": {
+                  "properties": {
+                    "fetch_current": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "fetch_failure": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "fetch_time": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "fetch_time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "fetch_total": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "open_contexts": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "query_current": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "query_failure": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "query_time": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "query_time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "query_total": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "scroll_current": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "scroll_time": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "scroll_time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "scroll_total": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "suggest_current": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "suggest_time": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "suggest_time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "suggest_total": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "segments": {
+                  "properties": {
+                    "count": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "doc_values_memory": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "doc_values_memory_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "file_sizes": {
+                      "type": "object"
+                    },
+                    "fixed_bit_set": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "fixed_bit_set_memory_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "index_writer_memory": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "index_writer_memory_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "max_unsafe_auto_id_timestamp": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "memory": {
+                      "type": "keyword"
+                    },
+                    "memory_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "norms_memory": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "norms_memory_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "points_memory": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "points_memory_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "stored_fields_memory": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "stored_fields_memory_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "term_vectors_memory": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "term_vectors_memory_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "terms_memory": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "terms_memory_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "version_map_memory": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "version_map_memory_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "shard_stats": {
+                  "properties": {
+                    "total_count": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "sparse_vector": {
+                  "properties": {
+                    "value_count": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "store": {
+                  "properties": {
+                    "reserved": {
+                      "type": "keyword"
+                    },
+                    "reserved_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "size": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "size_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total_data_set_size": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "total_data_set_size_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "translog": {
+                  "properties": {
+                    "earliest_last_modified_age": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "operations": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "size": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "size_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "uncommitted_operations": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "uncommitted_size": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "uncommitted_size_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "warmer": {
+                  "properties": {
+                    "current": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total_time": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "total_time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                }
+              }
+            },
+            "ingest": {
+              "properties": {
+                "pipelines": {
                   "type": "object",
                   "enabled": false
                 },
-                "model_inference.estimated_size": {
+                "total": {
+                  "properties": {
+                    "count": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "current": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "failed": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "time": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                }
+              }
+            },
+            "ip": {
+              "type": "ip",
+              "ignore_malformed": true
+            },
+            "jvm": {
+              "properties": {
+                "buffer_pools": {
+                  "properties": {
+                    "direct": {
+                      "properties": {
+                        "count": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "total_capacity": {
+                          "type": "object",
+                          "enabled": false
+                        },
+                        "total_capacity_in_bytes": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "used": {
+                          "type": "object",
+                          "enabled": false
+                        },
+                        "used_in_bytes": {
+                          "type": "long",
+                          "index": false
+                        }
+                      }
+                    },
+                    "mapped": {
+                      "properties": {
+                        "count": {
+                          "type": "object",
+                          "enabled": false
+                        },
+                        "total_capacity": {
+                          "type": "object",
+                          "enabled": false
+                        },
+                        "total_capacity_in_bytes": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "used": {
+                          "type": "object",
+                          "enabled": false
+                        },
+                        "used_in_bytes": {
+                          "type": "long",
+                          "index": false
+                        }
+                      }
+                    },
+                    "mapped - 'non-volatile memory'": {
+                      "properties": {
+                        "count": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "total_capacity": {
+                          "type": "keyword"
+                        },
+                        "total_capacity_in_bytes": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "used": {
+                          "type": "keyword"
+                        },
+                        "used_in_bytes": {
+                          "type": "long",
+                          "index": false
+                        }
+                      }
+                    }
+                  }
+                },
+                "classes": {
+                  "properties": {
+                    "current_loaded_count": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total_loaded_count": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total_unloaded_count": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "gc": {
+                  "properties": {
+                    "collectors": {
+                      "properties": {
+                        "G1 Concurrent GC": {
+                          "properties": {
+                            "collection_count": {
+                              "type": "long",
+                              "index": false
+                            },
+                            "collection_time": {
+                              "type": "object",
+                              "enabled": false
+                            },
+                            "collection_time_in_millis": {
+                              "type": "long",
+                              "index": false
+                            }
+                          }
+                        },
+                        "old": {
+                          "properties": {
+                            "collection_count": {
+                              "type": "long",
+                              "index": false
+                            },
+                            "collection_time": {
+                              "type": "object",
+                              "enabled": false
+                            },
+                            "collection_time_in_millis": {
+                              "type": "long",
+                              "index": false
+                            }
+                          }
+                        },
+                        "young": {
+                          "properties": {
+                            "collection_count": {
+                              "type": "long",
+                              "index": false
+                            },
+                            "collection_time": {
+                              "type": "object",
+                              "enabled": false
+                            },
+                            "collection_time_in_millis": {
+                              "type": "long",
+                              "index": false
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "mem": {
+                  "properties": {
+                    "heap_committed": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "heap_committed_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "heap_max": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "heap_max_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "heap_used": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "heap_used_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "heap_used_percent": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "non_heap_committed": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "non_heap_committed_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "non_heap_used": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "non_heap_used_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "pools": {
+                      "properties": {
+                        "CodeHeap 'non-nmethods'": {
+                          "properties": {
+                            "max": {
+                              "type": "keyword"
+                            },
+                            "max_in_bytes": {
+                              "type": "long",
+                              "index": false
+                            },
+                            "peak_max": {
+                              "type": "keyword"
+                            },
+                            "peak_max_in_bytes": {
+                              "type": "long",
+                              "index": false
+                            },
+                            "peak_used": {
+                              "type": "keyword"
+                            },
+                            "peak_used_in_bytes": {
+                              "type": "long",
+                              "index": false
+                            },
+                            "used": {
+                              "type": "keyword"
+                            },
+                            "used_in_bytes": {
+                              "type": "long",
+                              "index": false
+                            }
+                          }
+                        },
+                        "CodeHeap 'non-profiled nmethods'": {
+                          "properties": {
+                            "max": {
+                              "type": "keyword"
+                            },
+                            "max_in_bytes": {
+                              "type": "long",
+                              "index": false
+                            },
+                            "peak_max": {
+                              "type": "keyword"
+                            },
+                            "peak_max_in_bytes": {
+                              "type": "long",
+                              "index": false
+                            },
+                            "peak_used": {
+                              "type": "keyword"
+                            },
+                            "peak_used_in_bytes": {
+                              "type": "long",
+                              "index": false
+                            },
+                            "used": {
+                              "type": "keyword"
+                            },
+                            "used_in_bytes": {
+                              "type": "long",
+                              "index": false
+                            }
+                          }
+                        },
+                        "CodeHeap 'profiled nmethods'": {
+                          "properties": {
+                            "max": {
+                              "type": "keyword"
+                            },
+                            "max_in_bytes": {
+                              "type": "long",
+                              "index": false
+                            },
+                            "peak_max": {
+                              "type": "keyword"
+                            },
+                            "peak_max_in_bytes": {
+                              "type": "long",
+                              "index": false
+                            },
+                            "peak_used": {
+                              "type": "keyword"
+                            },
+                            "peak_used_in_bytes": {
+                              "type": "long",
+                              "index": false
+                            },
+                            "used": {
+                              "type": "keyword"
+                            },
+                            "used_in_bytes": {
+                              "type": "long",
+                              "index": false
+                            }
+                          }
+                        },
+                        "Compressed Class Space": {
+                          "properties": {
+                            "max": {
+                              "type": "keyword"
+                            },
+                            "max_in_bytes": {
+                              "type": "long",
+                              "index": false
+                            },
+                            "peak_max": {
+                              "type": "keyword"
+                            },
+                            "peak_max_in_bytes": {
+                              "type": "long",
+                              "index": false
+                            },
+                            "peak_used": {
+                              "type": "keyword"
+                            },
+                            "peak_used_in_bytes": {
+                              "type": "long",
+                              "index": false
+                            },
+                            "used": {
+                              "type": "keyword"
+                            },
+                            "used_in_bytes": {
+                              "type": "long",
+                              "index": false
+                            }
+                          }
+                        },
+                        "Metaspace": {
+                          "properties": {
+                            "max": {
+                              "type": "keyword"
+                            },
+                            "max_in_bytes": {
+                              "type": "long",
+                              "index": false
+                            },
+                            "peak_max": {
+                              "type": "keyword"
+                            },
+                            "peak_max_in_bytes": {
+                              "type": "long",
+                              "index": false
+                            },
+                            "peak_used": {
+                              "type": "keyword"
+                            },
+                            "peak_used_in_bytes": {
+                              "type": "long",
+                              "index": false
+                            },
+                            "used": {
+                              "type": "keyword"
+                            },
+                            "used_in_bytes": {
+                              "type": "long",
+                              "index": false
+                            }
+                          }
+                        },
+                        "old": {
+                          "properties": {
+                            "max": {
+                              "type": "object",
+                              "enabled": false
+                            },
+                            "max_in_bytes": {
+                              "type": "long",
+                              "index": false
+                            },
+                            "peak_max": {
+                              "type": "object",
+                              "enabled": false
+                            },
+                            "peak_max_in_bytes": {
+                              "type": "long",
+                              "index": false
+                            },
+                            "peak_used": {
+                              "type": "object",
+                              "enabled": false
+                            },
+                            "peak_used_in_bytes": {
+                              "type": "long",
+                              "index": false
+                            },
+                            "used": {
+                              "type": "object",
+                              "enabled": false
+                            },
+                            "used_in_bytes": {
+                              "type": "long",
+                              "index": false
+                            }
+                          }
+                        },
+                        "survivor": {
+                          "properties": {
+                            "max": {
+                              "type": "object",
+                              "enabled": false
+                            },
+                            "max_in_bytes": {
+                              "type": "long",
+                              "index": false
+                            },
+                            "peak_max": {
+                              "type": "object",
+                              "enabled": false
+                            },
+                            "peak_max_in_bytes": {
+                              "type": "long",
+                              "index": false
+                            },
+                            "peak_used": {
+                              "type": "object",
+                              "enabled": false
+                            },
+                            "peak_used_in_bytes": {
+                              "type": "long",
+                              "index": false
+                            },
+                            "used": {
+                              "type": "object",
+                              "enabled": false
+                            },
+                            "used_in_bytes": {
+                              "type": "long",
+                              "index": false
+                            }
+                          }
+                        },
+                        "young": {
+                          "properties": {
+                            "max": {
+                              "type": "object",
+                              "enabled": false
+                            },
+                            "max_in_bytes": {
+                              "type": "long",
+                              "index": false
+                            },
+                            "peak_max": {
+                              "type": "object",
+                              "enabled": false
+                            },
+                            "peak_max_in_bytes": {
+                              "type": "long",
+                              "index": false
+                            },
+                            "peak_used": {
+                              "type": "object",
+                              "enabled": false
+                            },
+                            "peak_used_in_bytes": {
+                              "type": "long",
+                              "index": false
+                            },
+                            "used": {
+                              "type": "object",
+                              "enabled": false
+                            },
+                            "used_in_bytes": {
+                              "type": "long",
+                              "index": false
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "threads": {
+                  "properties": {
+                    "count": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "peak_count": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "timestamp": {
+                  "type": "long",
+                  "index": false
+                },
+                "uptime": {
                   "type": "object",
                   "enabled": false
                 },
-                "request.limit_size": {
-                  "type": "object",
-                  "enabled": false
+                "uptime_in_millis": {
+                  "type": "long",
+                  "index": false
+                }
+              }
+            },
+            "name": {
+              "type": "keyword"
+            },
+            "os": {
+              "properties": {
+                "allocated_processors": {
+                  "type": "long",
+                  "index": false
                 },
-                "parent.estimated_size": {
-                  "type": "object",
-                  "enabled": false
+                "arch": {
+                  "type": "keyword"
                 },
-                "eql_sequence.estimated_size": {
-                  "type": "object",
-                  "enabled": false
+                "available_processors": {
+                  "type": "long",
+                  "index": false
                 },
-                "request.estimated_size": {
-                  "type": "object",
-                  "enabled": false
+                "cgroup": {
+                  "properties": {
+                    "cpu": {
+                      "properties": {
+                        "cfs_period_micros": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "cfs_quota_micros": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "control_group": {
+                          "type": "keyword"
+                        },
+                        "stat": {
+                          "properties": {
+                            "number_of_elapsed_periods": {
+                              "type": "long",
+                              "index": false
+                            },
+                            "number_of_times_throttled": {
+                              "type": "long",
+                              "index": false
+                            },
+                            "time_throttled_nanos": {
+                              "type": "long",
+                              "index": false
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "cpuacct": {
+                      "properties": {
+                        "control_group": {
+                          "type": "keyword"
+                        },
+                        "usage_nanos": {
+                          "type": "long",
+                          "index": false
+                        }
+                      }
+                    },
+                    "memory": {
+                      "properties": {
+                        "control_group": {
+                          "type": "keyword"
+                        },
+                        "limit_in_bytes": {
+                          "type": "keyword"
+                        },
+                        "usage_in_bytes": {
+                          "type": "keyword"
+                        }
+                      }
+                    }
+                  }
                 },
-                "parent.limit_size": {
-                  "type": "object",
-                  "enabled": false
+                "cpu": {
+                  "properties": {
+                    "load_average": {
+                      "properties": {
+                        "15m": {
+                          "type": "float"
+                        },
+                        "1m": {
+                          "type": "float"
+                        },
+                        "5m": {
+                          "type": "float"
+                        }
+                      }
+                    },
+                    "load_percent": {
+                      "properties": {
+                        "15m": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "1m": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "5m": {
+                          "type": "long",
+                          "index": false
+                        }
+                      }
+                    },
+                    "percent": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
                 },
-                "inflight_requests.estimated_size": {
-                  "type": "object",
-                  "enabled": false
+                "mem": {
+                  "properties": {
+                    "adjusted_total": {
+                      "type": "keyword"
+                    },
+                    "adjusted_total_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "free": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "free_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "free_percent": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "total_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "used": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "used_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "used_percent": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
                 },
-                "fielddata.estimated_size": {
-                  "type": "object",
-                  "enabled": false
+                "name": {
+                  "type": "keyword"
                 },
-                "fielddata.limit_size": {
-                  "type": "object",
-                  "enabled": false
+                "pretty_name": {
+                  "type": "keyword"
                 },
-                "model_inference.limit_size": {
-                  "type": "object",
-                  "enabled": false
+                "refresh_interval_in_millis": {
+                  "type": "long",
+                  "index": false
                 },
-                "inflight_requests.limit_size": {
+                "swap": {
+                  "properties": {
+                    "free": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "free_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "total_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "used": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "used_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "timestamp": {
+                  "type": "long",
+                  "index": false
+                },
+                "version": {
+                  "type": "keyword"
+                }
+              }
+            },
+            "process": {
+              "properties": {
+                "cpu": {
+                  "properties": {
+                    "percent": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "total_in_millis": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "max_file_descriptors": {
+                  "type": "long",
+                  "index": false
+                },
+                "mem": {
+                  "properties": {
+                    "total_virtual": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "total_virtual_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "open_file_descriptors": {
+                  "type": "long",
+                  "index": false
+                },
+                "timestamp": {
+                  "type": "long",
+                  "index": false
+                }
+              }
+            },
+            "repositories": {
+              "properties": {
+                "backup-s3appcl4": {
+                  "properties": {
+                    "total_read_throttled_time": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "total_read_throttled_time_nanos": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total_write_throttled_time": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "total_write_throttled_time_nanos": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "esaas-snapshots-ipc2": {
+                  "properties": {
+                    "total_read_throttled_time": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "total_read_throttled_time_nanos": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total_write_throttled_time": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "total_write_throttled_time_nanos": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "minio_repository": {
+                  "properties": {
+                    "total_read_throttled_time": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "total_read_throttled_time_nanos": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total_write_throttled_time": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "total_write_throttled_time_nanos": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "my_minio_repository": {
+                  "properties": {
+                    "total_read_throttled_time": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "total_read_throttled_time_nanos": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total_write_throttled_time": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "total_write_throttled_time_nanos": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                }
+              }
+            },
+            "role": {
+              "type": "keyword"
+            },
+            "roles": {
+              "type": "keyword"
+            },
+            "script": {
+              "properties": {
+                "cache_evictions": {
+                  "type": "long",
+                  "index": false
+                },
+                "compilation_limit_triggered": {
+                  "type": "long",
+                  "index": false
+                },
+                "compilations": {
+                  "type": "long",
+                  "index": false
+                },
+                "compilations_history": {
+                  "properties": {
+                    "15m": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "24h": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "5m": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "contexts": {
                   "type": "object",
                   "enabled": false
                 }
               }
             },
-            "fs.data": {
-              "eager_global_ordinals": false,
-              "index": true,
-              "type": "flattened",
-              "split_queries_on_whitespace": false,
-              "index_options": "docs",
-              "doc_values": true
-            },
-            "process.cpu.total": {
-              "type": "object",
-              "enabled": false
-            },
-            "indexing_pressure.memory.total": {
-              "type": "object",
+            "script_cache": {
               "properties": {
-                "all": {
+                "contexts": {
                   "type": "object",
                   "enabled": false
                 },
-                "coordinating": {
-                  "type": "object",
-                  "enabled": false
+                "sum": {
+                  "properties": {
+                    "cache_evictions": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "compilation_limit_triggered": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "compilations": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                }
+              }
+            },
+            "settings": {
+              "properties": {
+                "http": {
+                  "properties": {
+                    "type": {
+                      "type": "keyword"
+                    }
+                  }
+                }
+              }
+            },
+            "thread_pool": {
+              "properties": {
+                "analyze": {
+                  "properties": {
+                    "active": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "completed": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "largest": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "rejected": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "threads": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
                 },
-                "replica": {
-                  "type": "object",
-                  "enabled": false
+                "auto_complete": {
+                  "properties": {
+                    "active": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "completed": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "largest": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "rejected": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "threads": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
                 },
-                "combined_coordinating_and_primary": {
-                  "type": "object",
-                  "enabled": false
+                "azure_event_loop": {
+                  "properties": {
+                    "active": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "completed": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "largest": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "rejected": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "threads": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
                 },
-                "primary": {
+                "ccr": {
+                  "properties": {
+                    "active": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "completed": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "largest": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "rejected": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "threads": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "cluster_coordination": {
+                  "properties": {
+                    "active": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "completed": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "largest": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "rejected": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "threads": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "downsample_indexing": {
+                  "properties": {
+                    "active": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "completed": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "largest": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "rejected": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "threads": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "esql": {
+                  "properties": {
+                    "active": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "completed": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "largest": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "rejected": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "threads": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "esql_worker": {
+                  "properties": {
+                    "active": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "completed": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "largest": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "rejected": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "threads": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "fetch_shard_started": {
+                  "properties": {
+                    "active": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "completed": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "largest": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "rejected": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "threads": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "fetch_shard_store": {
+                  "properties": {
+                    "active": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "completed": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "largest": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "rejected": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "threads": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "flush": {
+                  "properties": {
+                    "active": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "completed": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "largest": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "rejected": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "threads": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "force_merge": {
+                  "properties": {
+                    "active": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "completed": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "largest": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "rejected": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "threads": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "generic": {
+                  "properties": {
+                    "active": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "completed": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "largest": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "rejected": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "threads": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "get": {
+                  "properties": {
+                    "active": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "completed": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "largest": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "rejected": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "threads": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "inference_utility": {
+                  "properties": {
+                    "active": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "completed": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "largest": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "rejected": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "threads": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "management": {
+                  "properties": {
+                    "active": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "completed": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "largest": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "rejected": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "threads": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "ml_datafeed": {
+                  "properties": {
+                    "active": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "completed": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "largest": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "rejected": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "threads": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "ml_job_comms": {
+                  "properties": {
+                    "active": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "completed": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "largest": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "rejected": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "threads": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "ml_native_inference_comms": {
+                  "properties": {
+                    "active": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "completed": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "largest": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "rejected": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "threads": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "ml_utility": {
+                  "properties": {
+                    "active": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "completed": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "largest": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "rejected": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "threads": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "model_download": {
+                  "properties": {
+                    "active": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "completed": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "largest": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "rejected": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "threads": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "profiling": {
+                  "properties": {
+                    "active": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "completed": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "largest": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "rejected": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "threads": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "refresh": {
+                  "properties": {
+                    "active": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "completed": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "largest": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "rejected": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "threads": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "repository_azure": {
+                  "properties": {
+                    "active": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "completed": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "largest": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "rejected": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "threads": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "rollup_indexing": {
+                  "properties": {
+                    "active": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "completed": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "largest": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "rejected": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "threads": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "search": {
+                  "properties": {
+                    "active": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "completed": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "largest": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "rejected": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "threads": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "search_coordination": {
+                  "properties": {
+                    "active": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "completed": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "largest": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "rejected": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "threads": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "search_throttled": {
+                  "properties": {
+                    "active": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "completed": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "largest": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "rejected": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "threads": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "search_worker": {
+                  "properties": {
+                    "active": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "completed": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "largest": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "rejected": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "threads": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "searchable_snapshots_cache_fetch_async": {
+                  "properties": {
+                    "active": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "completed": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "largest": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "rejected": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "threads": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "searchable_snapshots_cache_prewarming": {
+                  "properties": {
+                    "active": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "completed": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "largest": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "rejected": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "threads": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "security-crypto": {
+                  "properties": {
+                    "active": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "completed": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "largest": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "rejected": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "threads": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "security-token-key": {
+                  "properties": {
+                    "active": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "completed": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "largest": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "rejected": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "threads": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "snapshot": {
+                  "properties": {
+                    "active": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "completed": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "largest": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "rejected": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "threads": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "snapshot_meta": {
+                  "properties": {
+                    "active": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "completed": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "largest": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "rejected": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "threads": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "system_critical_read": {
+                  "properties": {
+                    "active": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "completed": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "largest": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "rejected": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "threads": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "system_critical_write": {
+                  "properties": {
+                    "active": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "completed": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "largest": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "rejected": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "threads": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "system_read": {
+                  "properties": {
+                    "active": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "completed": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "largest": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "rejected": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "threads": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "system_write": {
+                  "properties": {
+                    "active": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "completed": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "largest": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "rejected": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "threads": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "warmer": {
+                  "properties": {
+                    "active": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "completed": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "largest": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "rejected": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "threads": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "watcher": {
+                  "properties": {
+                    "active": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "completed": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "largest": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "rejected": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "threads": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "write": {
+                  "properties": {
+                    "active": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "completed": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "largest": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "rejected": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "threads": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                }
+              }
+            },
+            "tier": {
+              "type": "keyword"
+            },
+            "tier_order": {
+              "type": "long",
+              "index": false
+            },
+            "timestamp": {
+              "type": "long",
+              "index": false
+            },
+            "translog": {
+              "properties": {
+                "size": {
                   "type": "object",
                   "enabled": false
                 }
               }
-            },
-            "os.cpu.load_average.1m": {
-              "type": "float"
-            },
-            "discovery.cluster_applier_stats.recordings": {
-              "type": "object",
-              "enabled": false
-            },
-            "http.clients": {
-              "dynamic": false,
-              "type": "object",
-              "enabled": false
-            },
-            "os.cpu.load_average.5m": {
-              "type": "float"
-            },
-            "os.mem.used": {
-              "type": "object",
-              "enabled": false
-            },
-            "process.mem.total_virtual": {
-              "type": "object",
-              "enabled": false
-            },
-            "ingest.pipelines": {
-              "type": "object",
-              "enabled": false
             },
             "transport": {
-              "type": "object",
               "properties": {
+                "actions": {
+                  "type": "object",
+                  "enabled": false
+                },
                 "inbound_handling_time_histogram": {
                   "type": "object",
                   "enabled": false
@@ -426,229 +3624,86 @@
                   "type": "object",
                   "enabled": false
                 },
-                "tx_size": {
-                  "type": "object",
-                  "enabled": false
+                "rx_count": {
+                  "type": "long",
+                  "index": false
                 },
                 "rx_size": {
                   "type": "object",
                   "enabled": false
+                },
+                "rx_size_in_bytes": {
+                  "type": "long",
+                  "index": false
+                },
+                "server_open": {
+                  "type": "long",
+                  "index": false
+                },
+                "total_outbound_connections": {
+                  "type": "long",
+                  "index": false
+                },
+                "tx_count": {
+                  "type": "long",
+                  "index": false
+                },
+                "tx_size": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "tx_size_in_bytes": {
+                  "type": "long",
+                  "index": false
                 }
               }
             },
-            "jvm.buffer_pools": {
-              "type": "object",
-              "properties": {
-                "mapped.total_capacity": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "mapped.used": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "direct.total_capacity": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "direct.used": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "mapped.count": {
-                  "type": "object",
-                  "enabled": false
-                }
-              }
-            },
-            "os.mem.total": {
-              "type": "object",
-              "enabled": false
-            },
-            "jvm.uptime": {
-              "type": "object",
-              "enabled": false
-            },
-            "os.swap.free": {
-              "type": "object",
-              "enabled": false
-            },
-            "transport.actions": {
-              "type": "object",
-              "enabled": false
-            },
-            "indices": {
-              "type": "object",
-              "properties": {
-                "search.query_time": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "fielddata.memory_size": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "translog.uncommitted_size": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "segments.stored_fields_memory": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "store.total_data_set_size": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "indexing.index_time": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "indexing.delete_time": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "get.exists_time": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "segments.version_map_memory": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "bulk.avg_time": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "search.fetch_time": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "search.suggest_time": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "segments.fixed_bit_set": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "warmer.total_time": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "merges.total_stopped_time": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "segments.norms_memory": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "merges.current_size": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "merges.total_time": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "refresh.external_total_time": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "bulk.total_time": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "get.missing_time": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "query_cache.memory_size": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "flush.total_time": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "segments.doc_values_memory": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "merges.total_size": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "indexing.throttle_time": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "search.scroll_time": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "segments.index_writer_memory": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "merges.total_auto_throttle": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "segments.terms_memory": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "refresh.total_time": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "merges.total_throttled_time": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "query_cache.cache_size": {
-                  "type": "long"
-                },
-                "recovery.throttle_time": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "segments.points_memory": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "segments.term_vectors_memory": {
-                  "type": "object",
-                  "enabled": false
-                },
-                "request_cache.memory_size": {
-                  "type": "object",
-                  "enabled": false
-                }
-              }
-            },
-            "indices.get.getTime": {
+            "transport_address": {
               "type": "keyword"
             },
-            "indices.segments.max_unsafe_auto_id_timestamp": {
-              "type": "object",
-              "enabled": false
+            "version": {
+              "type": "keyword"
+            }
+          }
+        },
+        "shared_cache": {
+          "properties": {
+            "bytes_read_in_bytes": {
+              "type": "long",
+              "index": false
             },
-            "adaptive_selection": {
-              "dynamic": false,
-              "type": "object",
-              "enabled": false,
-              "properties": {}
+            "bytes_written_in_bytes": {
+              "type": "long",
+              "index": false
             },
-            "script.contexts": {
-              "type": "object",
-              "enabled": false
+            "evictions": {
+              "type": "long",
+              "index": false
+            },
+            "num_regions": {
+              "type": "long",
+              "index": false
+            },
+            "reads": {
+              "type": "long",
+              "index": false
+            },
+            "region_size_in_bytes": {
+              "type": "long",
+              "index": false
+            },
+            "size_in_bytes": {
+              "type": "long",
+              "index": false
+            },
+            "writes": {
+              "type": "long",
+              "index": false
             }
           }
         }
       }
     }
-  }
+  },
+  "version": 2
 }

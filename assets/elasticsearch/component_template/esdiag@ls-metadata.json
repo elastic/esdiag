@@ -1,4 +1,8 @@
 {
+  "_meta": {
+    "managed": false,
+    "description": "ESDiag common Logstash metadata mappings"
+  },
   "template": {
     "mappings": {
       "dynamic_date_formats": [
@@ -45,8 +49,5 @@
       }
     }
   },
-  "_meta": {
-    "managed": false,
-    "description": "Common mappings for the esdiag metadata"
-  }
+  "version": 2
 }

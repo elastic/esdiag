@@ -1,4 +1,7 @@
 {
+  "_meta": {
+    "description": "ESDiag Elasticsearch node settings"
+  },
   "index_patterns": ["settings-node-esdiag*"],
   "composed_of": ["esdiag@mappings", "esdiag@metadata", "esdiag@settings"],
   "allow_auto_create": true,
@@ -28,40 +31,979 @@
             }
           }
         },
-        "jvm.version": {
-          "type": "keyword"
-        },
         "node": {
-          "type": "object",
           "properties": {
-            "ip": {
-              "type": "ip"
-            },
-            "settings": {
-              "type": "object",
+            "aggregations": {
               "properties": {
-                "logger": {
-                  "type": "object",
-                  "subobjects": false
+                "adjacency_matrix": {
+                  "properties": {
+                    "types": {
+                      "type": "keyword"
+                    }
+                  }
                 },
-                "http.type": {
+                "auto_date_histogram": {
                   "type": "object",
                   "enabled": false
                 },
-                "xpack": {
-                  "type": "object",
+                "avg": {
                   "properties": {
-                    "searchable": {
+                    "types": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "boxplot": {
+                  "properties": {
+                    "types": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "cardinality": {
+                  "properties": {
+                    "types": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "cartesian_bounds": {
+                  "properties": {
+                    "types": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "cartesian_centroid": {
+                  "properties": {
+                    "types": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "categorize_text": {
+                  "properties": {
+                    "types": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "children": {
+                  "properties": {
+                    "types": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "composite": {
+                  "properties": {
+                    "types": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "counted_terms": {
+                  "properties": {
+                    "types": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "date_histogram": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "date_range": {
+                  "properties": {
+                    "types": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "diversified_sampler": {
+                  "properties": {
+                    "types": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "extended_stats": {
+                  "properties": {
+                    "types": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "filter": {
+                  "properties": {
+                    "types": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "filters": {
+                  "properties": {
+                    "types": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "frequent_item_sets": {
+                  "properties": {
+                    "types": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "geo_bounds": {
+                  "properties": {
+                    "types": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "geo_centroid": {
+                  "properties": {
+                    "types": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "geo_distance": {
+                  "properties": {
+                    "types": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "geo_line": {
+                  "properties": {
+                    "types": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "geohash_grid": {
+                  "properties": {
+                    "types": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "geohex_grid": {
+                  "properties": {
+                    "types": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "geotile_grid": {
+                  "properties": {
+                    "types": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "global": {
+                  "properties": {
+                    "types": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "histogram": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "ip_prefix": {
+                  "properties": {
+                    "types": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "ip_range": {
+                  "properties": {
+                    "types": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "matrix_stats": {
+                  "properties": {
+                    "types": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "max": {
+                  "properties": {
+                    "types": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "median_absolute_deviation": {
+                  "properties": {
+                    "types": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "min": {
+                  "properties": {
+                    "types": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "missing": {
+                  "properties": {
+                    "types": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "multi_terms": {
+                  "properties": {
+                    "types": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "nested": {
+                  "properties": {
+                    "types": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "parent": {
+                  "properties": {
+                    "types": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "percentile_ranks": {
+                  "properties": {
+                    "types": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "percentiles": {
+                  "properties": {
+                    "types": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "random_sampler": {
+                  "properties": {
+                    "types": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "range": {
+                  "properties": {
+                    "types": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "rare_terms": {
+                  "properties": {
+                    "types": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "rate": {
+                  "properties": {
+                    "types": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "reverse_nested": {
+                  "properties": {
+                    "types": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "sampler": {
+                  "properties": {
+                    "types": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "scripted_metric": {
+                  "properties": {
+                    "types": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "significant_terms": {
+                  "properties": {
+                    "types": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "significant_text": {
+                  "properties": {
+                    "types": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "stats": {
+                  "properties": {
+                    "types": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "string_stats": {
+                  "properties": {
+                    "types": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "sum": {
+                  "properties": {
+                    "types": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "t_test": {
+                  "properties": {
+                    "types": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "terms": {
+                  "properties": {
+                    "types": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "time_series": {
+                  "properties": {
+                    "types": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "top_hits": {
+                  "properties": {
+                    "types": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "top_metrics": {
+                  "properties": {
+                    "types": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "value_count": {
+                  "properties": {
+                    "types": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "variable_width_histogram": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "weighted_avg": {
+                  "properties": {
+                    "types": {
+                      "type": "keyword"
+                    }
+                  }
+                }
+              }
+            },
+            "attributes": {
+              "properties": {
+                "ml": {
+                  "properties": {
+                    "allocated_processors": {
+                      "type": "keyword"
+                    },
+                    "allocated_processors_double": {
+                      "type": "keyword"
+                    },
+                    "config_version": {
+                      "type": "keyword"
+                    },
+                    "machine_memory": {
                       "type": "object",
+                      "enabled": false
+                    },
+                    "max_jvm_size": {
+                      "type": "object",
+                      "enabled": false
+                    }
+                  }
+                },
+                "rack": {
+                  "type": "keyword"
+                },
+                "transform": {
+                  "properties": {
+                    "config_version": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "xpack": {
+                  "properties": {
+                    "installed": {
+                      "type": "keyword"
+                    }
+                  }
+                }
+              }
+            },
+            "build_flavor": {
+              "type": "keyword"
+            },
+            "build_hash": {
+              "type": "keyword"
+            },
+            "build_type": {
+              "type": "keyword"
+            },
+            "host": {
+              "type": "keyword"
+            },
+            "http": {
+              "properties": {
+                "bound_address": {
+                  "type": "keyword"
+                },
+                "max_content_length": {
+                  "type": "keyword"
+                },
+                "max_content_length_in_bytes": {
+                  "type": "long",
+                  "index": false
+                },
+                "publish_address": {
+                  "type": "keyword"
+                }
+              }
+            },
+            "id": {
+              "type": "keyword"
+            },
+            "index_version": {
+              "type": "long",
+              "index": false
+            },
+            "ip": {
+              "type": "ip"
+            },
+            "jvm": {
+              "properties": {
+                "gc_collectors": {
+                  "type": "keyword"
+                },
+                "input_arguments": {
+                  "type": "keyword"
+                },
+                "mem": {
+                  "properties": {
+                    "direct_max": {
+                      "type": "keyword"
+                    },
+                    "direct_max_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "heap_init": {
+                      "type": "keyword"
+                    },
+                    "heap_init_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "heap_max": {
+                      "type": "keyword"
+                    },
+                    "heap_max_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "non_heap_init": {
+                      "type": "keyword"
+                    },
+                    "non_heap_init_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "non_heap_max": {
+                      "type": "keyword"
+                    },
+                    "non_heap_max_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "memory_pools": {
+                  "type": "keyword"
+                },
+                "pid": {
+                  "type": "long",
+                  "index": false
+                },
+                "start_time": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "start_time_in_millis": {
+                  "type": "long",
+                  "index": false
+                },
+                "using_bundled_jdk": {
+                  "type": "boolean"
+                },
+                "using_compressed_ordinary_object_pointers": {
+                  "type": "keyword"
+                },
+                "version": {
+                  "type": "keyword"
+                },
+                "vm_name": {
+                  "type": "keyword"
+                },
+                "vm_vendor": {
+                  "type": "keyword"
+                },
+                "vm_version": {
+                  "type": "keyword"
+                }
+              }
+            },
+            "name": {
+              "type": "keyword"
+            },
+            "os": {
+              "properties": {
+                "allocated_processors": {
+                  "type": "long",
+                  "index": false
+                },
+                "arch": {
+                  "type": "keyword"
+                },
+                "available_processors": {
+                  "type": "long",
+                  "index": false
+                },
+                "name": {
+                  "type": "keyword"
+                },
+                "pretty_name": {
+                  "type": "keyword"
+                },
+                "refresh_interval_in_millis": {
+                  "type": "long",
+                  "index": false
+                },
+                "version": {
+                  "type": "keyword"
+                }
+              }
+            },
+            "process": {
+              "properties": {
+                "id": {
+                  "type": "long",
+                  "index": false
+                },
+                "mlockall": {
+                  "type": "boolean"
+                },
+                "refresh_interval": {
+                  "type": "keyword"
+                },
+                "refresh_interval_in_millis": {
+                  "type": "long",
+                  "index": false
+                }
+              }
+            },
+            "role": {
+              "type": "keyword"
+            },
+            "roles": {
+              "type": "keyword"
+            },
+            "settings": {
+              "properties": {
+                "bootstrap": {
+                  "properties": {
+                    "memory_lock": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "cluster": {
+                  "properties": {
+                    "election": {
+                      "properties": {
+                        "strategy": {
+                          "type": "keyword"
+                        }
+                      }
+                    },
+                    "initial_master_nodes": {
+                      "type": "keyword"
+                    },
+                    "name": {
+                      "type": "keyword"
+                    },
+                    "routing": {
+                      "properties": {
+                        "allocation": {
+                          "properties": {
+                            "awareness": {
+                              "properties": {
+                                "attributes": {
+                                  "type": "keyword"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "discovery": {
+                  "properties": {
+                    "seed_hosts": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "http": {
+                  "properties": {
+                    "compression": {
+                      "type": "keyword"
+                    },
+                    "host": {
+                      "type": "keyword"
+                    },
+                    "port": {
+                      "type": "keyword"
+                    },
+                    "type": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "network": {
+                  "properties": {
+                    "host": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "node": {
+                  "properties": {
+                    "attr": {
+                      "properties": {
+                        "ml": {
+                          "properties": {
+                            "allocated_processors": {
+                              "type": "keyword"
+                            },
+                            "allocated_processors_double": {
+                              "type": "keyword"
+                            },
+                            "config_version": {
+                              "type": "keyword"
+                            },
+                            "machine_memory": {
+                              "type": "object",
+                              "enabled": false
+                            },
+                            "max_jvm_size": {
+                              "type": "object",
+                              "enabled": false
+                            }
+                          }
+                        },
+                        "rack": {
+                          "type": "keyword"
+                        },
+                        "transform": {
+                          "properties": {
+                            "config_version": {
+                              "type": "keyword"
+                            }
+                          }
+                        },
+                        "xpack": {
+                          "properties": {
+                            "installed": {
+                              "type": "keyword"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "name": {
+                      "type": "keyword"
+                    },
+                    "roles": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "path": {
+                  "properties": {
+                    "data": {
+                      "type": "keyword"
+                    },
+                    "home": {
+                      "type": "keyword"
+                    },
+                    "logs": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "s3": {
+                  "properties": {
+                    "client": {
+                      "properties": {
+                        "default": {
+                          "properties": {
+                            "endpoint": {
+                              "type": "keyword"
+                            },
+                            "path_style_access": {
+                              "type": "keyword"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "transport": {
+                  "properties": {
+                    "host": {
+                      "type": "keyword"
+                    },
+                    "port": {
+                      "type": "keyword"
+                    },
+                    "type": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "xpack": {
+                  "properties": {
+                    "ml": {
+                      "properties": {
+                        "enabled": {
+                          "type": "keyword"
+                        },
+                        "model_repository": {
+                          "type": "keyword"
+                        }
+                      }
+                    },
+                    "notification": {
+                      "properties": {
+                        "email": {
+                          "properties": {
+                            "account": {
+                              "properties": {
+                                "smtp_account": {
+                                  "properties": {
+                                    "profile": {
+                                      "type": "keyword"
+                                    },
+                                    "smtp": {
+                                      "properties": {
+                                        "host": {
+                                          "type": "keyword"
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            },
+                            "default_account": {
+                              "type": "keyword"
+                            },
+                            "html": {
+                              "properties": {
+                                "sanitization": {
+                                  "properties": {
+                                    "enabled": {
+                                      "type": "keyword"
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "searchable": {
                       "properties": {
                         "snapshot": {
-                          "type": "object",
                           "properties": {
                             "shared_cache": {
-                              "type": "object",
-                              "subobjects": false,
                               "properties": {
                                 "size": {
+                                  "type": "object",
+                                  "enabled": false
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "security": {
+                      "properties": {
+                        "authc": {
+                          "properties": {
+                            "realms": {
+                              "properties": {
+                                "ldap": {
+                                  "properties": {
+                                    "ldap1": {
+                                      "properties": {
+                                        "files": {
+                                          "properties": {
+                                            "role_mapping": {
+                                              "type": "keyword"
+                                            }
+                                          }
+                                        },
+                                        "follow_referrals": {
+                                          "type": "keyword"
+                                        },
+                                        "group_search": {
+                                          "properties": {
+                                            "base_dn": {
+                                              "type": "keyword"
+                                            },
+                                            "filter": {
+                                              "type": "keyword"
+                                            },
+                                            "scope": {
+                                              "type": "keyword"
+                                            },
+                                            "user_attribute": {
+                                              "type": "keyword"
+                                            }
+                                          }
+                                        },
+                                        "order": {
+                                          "type": "keyword"
+                                        },
+                                        "timeout": {
+                                          "properties": {
+                                            "ldap_search": {
+                                              "type": "keyword"
+                                            },
+                                            "tcp_connect": {
+                                              "type": "keyword"
+                                            },
+                                            "tcp_read": {
+                                              "type": "keyword"
+                                            }
+                                          }
+                                        },
+                                        "unmapped_groups_as_roles": {
+                                          "type": "keyword"
+                                        },
+                                        "url": {
+                                          "type": "keyword"
+                                        },
+                                        "user_search": {
+                                          "properties": {
+                                            "base_dn": {
+                                              "type": "keyword"
+                                            },
+                                            "filter": {
+                                              "type": "keyword"
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                },
+                                "native": {
+                                  "properties": {
+                                    "native1": {
+                                      "properties": {
+                                        "order": {
+                                          "type": "keyword"
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "enabled": {
+                          "type": "keyword"
+                        },
+                        "enrollment": {
+                          "properties": {
+                            "enabled": {
+                              "type": "keyword"
+                            }
+                          }
+                        },
+                        "http": {
+                          "properties": {
+                            "ssl": {
+                              "properties": {
+                                "enabled": {
+                                  "type": "keyword"
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "transport": {
+                          "properties": {
+                            "ssl": {
+                              "properties": {
+                                "enabled": {
                                   "type": "keyword"
                                 }
                               }
@@ -73,37 +1015,815 @@
                   }
                 }
               }
+            },
+            "thread_pool": {
+              "properties": {
+                "analyze": {
+                  "properties": {
+                    "queue_size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "type": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "auto_complete": {
+                  "properties": {
+                    "queue_size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "type": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "azure_event_loop": {
+                  "properties": {
+                    "core": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "keep_alive": {
+                      "type": "keyword"
+                    },
+                    "max": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue_size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "type": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "ccr": {
+                  "properties": {
+                    "queue_size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "type": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "cluster_coordination": {
+                  "properties": {
+                    "queue_size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "type": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "downsample_indexing": {
+                  "properties": {
+                    "queue_size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "type": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "esql": {
+                  "properties": {
+                    "queue_size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "type": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "esql_worker": {
+                  "properties": {
+                    "queue_size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "type": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "fetch_shard_started": {
+                  "properties": {
+                    "core": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "keep_alive": {
+                      "type": "keyword"
+                    },
+                    "max": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue_size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "type": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "fetch_shard_store": {
+                  "properties": {
+                    "core": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "keep_alive": {
+                      "type": "keyword"
+                    },
+                    "max": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue_size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "type": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "flush": {
+                  "properties": {
+                    "core": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "keep_alive": {
+                      "type": "keyword"
+                    },
+                    "max": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue_size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "type": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "force_merge": {
+                  "properties": {
+                    "queue_size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "type": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "generic": {
+                  "properties": {
+                    "core": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "keep_alive": {
+                      "type": "keyword"
+                    },
+                    "max": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue_size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "type": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "get": {
+                  "properties": {
+                    "queue_size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "type": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "inference_utility": {
+                  "properties": {
+                    "core": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "keep_alive": {
+                      "type": "keyword"
+                    },
+                    "max": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue_size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "type": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "management": {
+                  "properties": {
+                    "core": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "keep_alive": {
+                      "type": "keyword"
+                    },
+                    "max": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue_size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "type": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "ml_datafeed": {
+                  "properties": {
+                    "core": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "keep_alive": {
+                      "type": "keyword"
+                    },
+                    "max": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue_size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "type": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "ml_job_comms": {
+                  "properties": {
+                    "core": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "keep_alive": {
+                      "type": "keyword"
+                    },
+                    "max": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue_size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "type": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "ml_native_inference_comms": {
+                  "properties": {
+                    "core": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "keep_alive": {
+                      "type": "keyword"
+                    },
+                    "max": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue_size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "type": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "ml_utility": {
+                  "properties": {
+                    "core": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "keep_alive": {
+                      "type": "keyword"
+                    },
+                    "max": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue_size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "type": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "model_download": {
+                  "properties": {
+                    "queue_size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "type": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "profiling": {
+                  "properties": {
+                    "core": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "keep_alive": {
+                      "type": "keyword"
+                    },
+                    "max": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue_size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "type": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "refresh": {
+                  "properties": {
+                    "core": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "keep_alive": {
+                      "type": "keyword"
+                    },
+                    "max": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue_size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "type": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "repository_azure": {
+                  "properties": {
+                    "core": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "keep_alive": {
+                      "type": "keyword"
+                    },
+                    "max": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue_size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "type": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "rollup_indexing": {
+                  "properties": {
+                    "queue_size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "type": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "search": {
+                  "properties": {
+                    "queue_size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "type": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "search_coordination": {
+                  "properties": {
+                    "queue_size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "type": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "search_throttled": {
+                  "properties": {
+                    "queue_size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "type": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "search_worker": {
+                  "properties": {
+                    "queue_size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "type": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "searchable_snapshots_cache_fetch_async": {
+                  "properties": {
+                    "core": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "keep_alive": {
+                      "type": "keyword"
+                    },
+                    "max": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue_size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "type": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "searchable_snapshots_cache_prewarming": {
+                  "properties": {
+                    "core": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "keep_alive": {
+                      "type": "keyword"
+                    },
+                    "max": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue_size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "type": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "security-crypto": {
+                  "properties": {
+                    "queue_size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "type": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "security-token-key": {
+                  "properties": {
+                    "queue_size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "type": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "snapshot": {
+                  "properties": {
+                    "core": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "keep_alive": {
+                      "type": "keyword"
+                    },
+                    "max": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue_size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "type": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "snapshot_meta": {
+                  "properties": {
+                    "core": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "keep_alive": {
+                      "type": "keyword"
+                    },
+                    "max": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue_size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "type": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "system_critical_read": {
+                  "properties": {
+                    "queue_size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "type": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "system_critical_write": {
+                  "properties": {
+                    "queue_size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "type": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "system_read": {
+                  "properties": {
+                    "queue_size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "type": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "system_write": {
+                  "properties": {
+                    "queue_size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "type": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "warmer": {
+                  "properties": {
+                    "core": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "keep_alive": {
+                      "type": "keyword"
+                    },
+                    "max": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue_size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "type": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "watcher": {
+                  "properties": {
+                    "queue_size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "type": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "write": {
+                  "properties": {
+                    "queue_size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "type": {
+                      "type": "keyword"
+                    }
+                  }
+                }
+              }
+            },
+            "tier": {
+              "type": "keyword"
+            },
+            "tier_order": {
+              "type": "long",
+              "index": false
+            },
+            "total_indexing_buffer": {
+              "type": "long",
+              "index": false
+            },
+            "total_indexing_buffer_in_bytes": {
+              "type": "keyword"
+            },
+            "transport": {
+              "properties": {
+                "bound_address": {
+                  "type": "keyword"
+                },
+                "profiles": {
+                  "type": "object"
+                },
+                "publish_address": {
+                  "type": "keyword"
+                }
+              }
+            },
+            "transport_address": {
+              "type": "keyword"
+            },
+            "transport_version": {
+              "type": "long",
+              "index": false
+            },
+            "version": {
+              "type": "keyword"
             }
           }
-        },
-        "ingest.processors": {
-          "eager_global_ordinals": false,
-          "index": true,
-          "type": "flattened",
-          "split_queries_on_whitespace": false,
-          "index_options": "docs",
-          "doc_values": true
-        },
-        "diagnostic.uid": {
-          "type": "keyword"
-        },
-        "plugins": {
-          "eager_global_ordinals": false,
-          "index": true,
-          "type": "flattened",
-          "split_queries_on_whitespace": false,
-          "index_options": "docs",
-          "doc_values": true
-        },
-        "modules": {
-          "eager_global_ordinals": false,
-          "index": true,
-          "type": "flattened",
-          "split_queries_on_whitespace": false,
-          "index_options": "docs",
-          "doc_values": true
         }
       }
     }
-  }
+  },
+  "version": 2
 }

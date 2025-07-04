@@ -1,4 +1,7 @@
 {
+  "_meta": {
+    "description": "ESDiag Elasticsearch ingest processor stats"
+  },
   "index_patterns": ["metrics-ingest.processor-esdiag*"],
   "composed_of": [
     "esdiag@mappings",
@@ -26,34 +29,49 @@
             }
           }
         },
-        "pipeline": {
-          "type": "keyword"
-        },
-        "current": {
-          "type": "long"
-        },
-        "time_in_millis": {
-          "type": "long"
-        },
-        "count": {
-          "type": "long"
-        },
-        "failed": {
-          "type": "long"
-        },
-        "time": {
-          "enabled": false
-        },
-        "type": {
-          "type": "keyword"
-        },
-        "processor": {
-          "type": "keyword"
-        },
-        "order": {
-          "type": "integer"
+        "ingest": {
+          "properties": {
+            "pipeline": {
+              "properties": {
+                "name": {
+                  "type": "keyword"
+                }
+              }
+            },
+            "processor": {
+              "properties": {
+                "count": {
+                  "type": "long",
+                  "index": false
+                },
+                "current": {
+                  "type": "long",
+                  "index": false
+                },
+                "failed": {
+                  "type": "long",
+                  "index": false
+                },
+                "name": {
+                  "type": "keyword"
+                },
+                "order": {
+                  "type": "long",
+                  "index": false
+                },
+                "time_in_millis": {
+                  "type": "long",
+                  "index": false
+                },
+                "type": {
+                  "type": "keyword"
+                }
+              }
+            }
+          }
         }
       }
     }
-  }
+  },
+  "version": 2
 }

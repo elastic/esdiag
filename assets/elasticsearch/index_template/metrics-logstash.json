@@ -1,5 +1,8 @@
 {
-  "index_patterns": ["settings-logstash*-esdiag*"],
+  "_meta": {
+    "description": "ESDiag Logstash node stats"
+  },
+  "index_patterns": ["metrics-logstash*-esdiag*"],
   "composed_of": [
     "esdiag@ls-mappings",
     "esdiag@ls-metadata",
@@ -34,7 +37,7 @@
             },
             "type": {
               "type": "constant_keyword",
-              "value": "settings"
+              "value": "metrics"
             }
           }
         }

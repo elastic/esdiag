@@ -1,6 +1,14 @@
 {
+  "_meta": {
+    "description": "ESDiag Elasticsearch tasks stats"
+  },
   "index_patterns": ["metrics-task-esdiag*"],
-  "composed_of": ["esdiag@mappings", "esdiag@metadata", "esdiag@settings"],
+  "composed_of": [
+    "esdiag@node",
+    "esdiag@mappings",
+    "esdiag@metadata",
+    "esdiag@settings"
+  ],
   "allow_auto_create": true,
   "data_stream": {
     "hidden": false,
@@ -31,20 +39,94 @@
             }
           }
         },
-        "task": {
-          "type": "object",
+        "index": {
           "properties": {
+            "bulk": {
+              "properties": {
+                "docs": {
+                  "type": "long",
+                  "index": false
+                }
+              }
+            },
+            "count": {
+              "type": "long",
+              "index": false
+            },
+            "name": {
+              "type": "keyword"
+            }
+          }
+        },
+        "shard": {
+          "properties": {
+            "bulk": {
+              "properties": {
+                "docs": {
+                  "type": "long",
+                  "index": false
+                }
+              }
+            },
+            "number": {
+              "type": "long",
+              "index": false
+            },
+            "primary": {
+              "type": "boolean"
+            }
+          }
+        },
+        "task": {
+          "properties": {
+            "action": {
+              "type": "keyword"
+            },
+            "cancellable": {
+              "type": "boolean"
+            },
+            "cancelled": {
+              "type": "boolean"
+            },
             "description": {
               "type": "match_only_text"
+            },
+            "headers": {
+              "properties": {
+                "X-Opaque-Id": {
+                  "type": "keyword"
+                },
+                "X-elastic-product-origin": {
+                  "type": "keyword"
+                },
+                "trace": {
+                  "properties": {
+                    "id": {
+                      "type": "keyword"
+                    }
+                  }
+                }
+              }
             },
             "id": {
               "type": "keyword"
             },
-            "parent.id": {
-              "type": "keyword"
+            "node": {
+              "properties": {
+                "ip": {
+                  "type": "ip"
+                }
+              }
             },
-            "node.ip": {
-              "type": "ip"
+            "parent": {
+              "properties": {
+                "id": {
+                  "type": "keyword"
+                },
+                "node": {
+                  "type": "keyword"
+                }
+              }
             },
             "parent_task_id": {
               "type": "object",
@@ -54,6 +136,10 @@
               "type": "object",
               "enabled": false
             },
+            "running_time_in_nanos": {
+              "type": "long",
+              "index": false
+            },
             "start_time": {
               "type": "object",
               "enabled": false
@@ -61,11 +147,317 @@
             "start_time_in_millis": {
               "type": "date"
             },
-            "status.total_download_time": {
-              "type": "long"
+            "status": {
+              "properties": {
+                "active_operators": {
+                  "properties": {
+                    "operator": {
+                      "type": "text",
+                      "index": false
+                    },
+                    "status": {
+                      "properties": {
+                        "current": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "limit": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "limit_remaining": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "pages_accepted": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "pages_emitted": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "pages_processed": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "pages_waiting": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "process_nanos": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "process_time": {
+                          "type": "object",
+                          "enabled": false
+                        },
+                        "processed_queries": {
+                          "type": "keyword"
+                        },
+                        "processed_shards": {
+                          "type": "keyword"
+                        },
+                        "processed_slices": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "processing_nanos": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "processing_time": {
+                          "type": "object",
+                          "enabled": false
+                        },
+                        "readers_built": {
+                          "properties": {
+                            "process": {
+                              "properties": {
+                                "command_line:column_at_a_time:BlockDocValuesReader": {
+                                  "properties": {
+                                    "Bytes": {
+                                      "type": "long",
+                                      "index": false
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "slice_index": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "slice_max": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "slice_min": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "total_slices": {
+                          "type": "long",
+                          "index": false
+                        }
+                      }
+                    }
+                  }
+                },
+                "auth_state": {
+                  "properties": {
+                    "status": {
+                      "type": "keyword"
+                    },
+                    "timestamp": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "checkpoint": {
+                  "type": "long",
+                  "index": false
+                },
+                "cpu_nanos": {
+                  "type": "long",
+                  "index": false
+                },
+                "cpu_time": {
+                  "type": "object",
+                  "enabled": false
+                },
+                "databases_count": {
+                  "type": "long",
+                  "index": false
+                },
+                "expired_databases": {
+                  "type": "long",
+                  "index": false
+                },
+                "failed_downloads": {
+                  "type": "long",
+                  "index": false
+                },
+                "indexer_state": {
+                  "type": "keyword"
+                },
+                "iterations": {
+                  "type": "long",
+                  "index": false
+                },
+                "last_updated": {
+                  "type": "keyword"
+                },
+                "phase": {
+                  "type": "keyword"
+                },
+                "position": {
+                  "properties": {
+                    "bucket_position": {
+                      "properties": {
+                        "entity": {
+                          "properties": {
+                            "identity": {
+                              "properties": {
+                                "host": {
+                                  "properties": {
+                                    "name": {
+                                      "type": "keyword"
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "indexer_position": {
+                      "properties": {
+                        "@timestamp": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "event": {
+                          "properties": {
+                            "outcome": {
+                              "type": "keyword"
+                            }
+                          }
+                        },
+                        "kubernetes": {
+                          "properties": {
+                            "audit": {
+                              "properties": {
+                                "objectRef": {
+                                  "properties": {
+                                    "resource": {
+                                      "type": "keyword"
+                                    }
+                                  }
+                                },
+                                "verb": {
+                                  "type": "keyword"
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "user": {
+                          "properties": {
+                            "name": {
+                              "type": "keyword"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "progress": {
+                  "properties": {
+                    "docs_indexed": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "docs_processed": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "docs_remaining": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "percent_complete": {
+                      "type": "float",
+                      "index": false
+                    },
+                    "total_docs": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "reason": {
+                  "type": "keyword"
+                },
+                "sessionId": {
+                  "type": "keyword"
+                },
+                "should_stop_at_checkpoint": {
+                  "type": "boolean"
+                },
+                "skipped_updates": {
+                  "type": "long",
+                  "index": false
+                },
+                "sleeps": {
+                  "properties": {
+                    "counts": {
+                      "properties": {
+                        "exchange empty": {
+                          "type": "long",
+                          "index": false
+                        }
+                      }
+                    },
+                    "first": {
+                      "properties": {
+                        "reason": {
+                          "type": "keyword"
+                        },
+                        "sleep": {
+                          "type": "keyword"
+                        },
+                        "sleep_millis": {
+                          "type": "long",
+                          "index": false
+                        }
+                      }
+                    },
+                    "last": {
+                      "properties": {
+                        "reason": {
+                          "type": "keyword"
+                        },
+                        "sleep": {
+                          "type": "keyword"
+                        },
+                        "sleep_millis": {
+                          "type": "long",
+                          "index": false
+                        }
+                      }
+                    }
+                  }
+                },
+                "started": {
+                  "type": "keyword"
+                },
+                "state": {
+                  "type": "keyword"
+                },
+                "status": {
+                  "type": "keyword"
+                },
+                "successful_downloads": {
+                  "type": "long",
+                  "index": false
+                },
+                "task_state": {
+                  "type": "keyword"
+                },
+                "total_download_time": {
+                  "type": "long"
+                }
+              }
             },
-            "status.active_operators.operator": {
-              "type": "match_only_text"
+            "type": {
+              "type": "keyword"
             }
           }
         }

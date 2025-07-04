@@ -1,4 +1,7 @@
 {
+  "_meta": {
+    "description": "ESDiag Elasticsearch index settings"
+  },
   "index_patterns": ["settings-index-esdiag*"],
   "composed_of": ["esdiag@mappings", "esdiag@metadata", "esdiag@settings"],
   "allow_auto_create": true,
@@ -28,18 +31,281 @@
             "age": {
               "type": "long"
             },
-            "hidden": {
-              "type": "boolean"
+            "allocation": {
+              "properties": {
+                "existing_shards_allocator": {
+                  "type": "keyword"
+                }
+              }
+            },
+            "auto_expand_replicas": {
+              "type": "keyword"
+            },
+            "blocks": {
+              "properties": {
+                "write": {
+                  "type": "keyword"
+                }
+              }
             },
             "codec": {
               "type": "keyword"
             },
+            "creation_date": {
+              "type": "long",
+              "index": false
+            },
+            "data_stream": {
+              "properties": {
+                "allow_custom_routing": {
+                  "type": "boolean"
+                },
+                "dataset": {
+                  "type": "keyword"
+                },
+                "generation": {
+                  "type": "long",
+                  "index": false
+                },
+                "hidden": {
+                  "type": "boolean"
+                },
+                "ilm_policy": {
+                  "type": "keyword"
+                },
+                "is_write_index": {
+                  "type": "boolean"
+                },
+                "name": {
+                  "type": "keyword"
+                },
+                "namespace": {
+                  "type": "keyword"
+                },
+                "next_generation_managed_by": {
+                  "type": "keyword"
+                },
+                "prefer_ilm": {
+                  "type": "boolean"
+                },
+                "replicated": {
+                  "type": "boolean"
+                },
+                "rollover_on_write": {
+                  "type": "boolean"
+                },
+                "status": {
+                  "type": "keyword"
+                },
+                "system": {
+                  "type": "boolean"
+                },
+                "template": {
+                  "type": "keyword"
+                },
+                "timestamp_field": {
+                  "properties": {
+                    "name": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "type": {
+                  "type": "keyword"
+                }
+              }
+            },
+            "default_pipeline": {
+              "type": "keyword"
+            },
+            "final_pipeline": {
+              "type": "keyword"
+            },
+            "hidden": {
+              "type": "boolean"
+            },
+            "is_write_index": {
+              "type": "boolean"
+            },
+            "lifecycle": {
+              "properties": {
+                "indexing_complete": {
+                  "type": "keyword"
+                },
+                "name": {
+                  "type": "keyword"
+                },
+                "rollover_alias": {
+                  "type": "keyword"
+                }
+              }
+            },
+            "mapping": {
+              "properties": {
+                "ignore_malformed": {
+                  "type": "keyword"
+                },
+                "semantic_text": {
+                  "properties": {
+                    "use_legacy_format": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "source": {
+                  "properties": {
+                    "mode": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "total_fields": {
+                  "properties": {
+                    "ignore_dynamic_beyond_limit": {
+                      "type": "keyword"
+                    },
+                    "limit": {
+                      "type": "keyword"
+                    }
+                  }
+                }
+              }
+            },
+            "mode": {
+              "type": "keyword"
+            },
+            "name": {
+              "type": "keyword"
+            },
+            "number_of_replicas": {
+              "type": "long",
+              "index": false
+            },
+            "number_of_shards": {
+              "type": "long",
+              "index": false
+            },
+            "priority": {
+              "type": "keyword"
+            },
+            "provided_name": {
+              "type": "keyword"
+            },
+            "query": {
+              "properties": {
+                "default_field": {
+                  "type": "keyword"
+                }
+              }
+            },
             "refresh_interval": {
               "type": "keyword"
+            },
+            "routing": {
+              "properties": {
+                "allocation": {
+                  "properties": {
+                    "disk": {
+                      "properties": {
+                        "watermark": {
+                          "properties": {
+                            "ignore": {
+                              "type": "keyword"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "include": {
+                      "properties": {
+                        "_tier_preference": {
+                          "type": "keyword"
+                        }
+                      }
+                    },
+                    "total_shards_per_node": {
+                      "type": "keyword"
+                    }
+                  }
+                }
+              }
+            },
+            "shard": {
+              "properties": {
+                "check_on_startup": {
+                  "type": "keyword"
+                }
+              }
+            },
+            "shard_limit": {
+              "properties": {
+                "group": {
+                  "type": "keyword"
+                }
+              }
+            },
+            "sort": {
+              "properties": {
+                "field": {
+                  "type": "keyword"
+                },
+                "order": {
+                  "type": "keyword"
+                }
+              }
+            },
+            "source": {
+              "type": "keyword"
+            },
+            "store": {
+              "properties": {
+                "config": {
+                  "type": "keyword"
+                },
+                "snapshot": {
+                  "properties": {
+                    "index_name": {
+                      "type": "keyword"
+                    },
+                    "index_uuid": {
+                      "type": "keyword"
+                    },
+                    "partial": {
+                      "type": "keyword"
+                    },
+                    "repository_name": {
+                      "type": "keyword"
+                    },
+                    "repository_uuid": {
+                      "type": "keyword"
+                    },
+                    "snapshot_name": {
+                      "type": "keyword"
+                    },
+                    "snapshot_uuid": {
+                      "type": "keyword"
+                    }
+                  }
+                }
+              }
+            },
+            "uuid": {
+              "type": "keyword"
+            },
+            "version": {
+              "properties": {
+                "created": {
+                  "type": "keyword"
+                },
+                "created_string": {
+                  "type": "keyword"
+                }
+              }
             }
           }
         }
       }
     }
-  }
+  },
+  "version": 2
 }

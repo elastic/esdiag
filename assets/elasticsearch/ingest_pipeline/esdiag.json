@@ -1,15 +1,15 @@
 {
-    "description": "Ingest pipeline for documents shipped from the Elastic Stack Diagnostics tool (esdiag)",
-    "processors": [
-        {
-            "set": {
-                "ignore_failure": true,
-                "field": "event.ingested",
-                "value": "{{_ingest.timestamp}}"
-            }
-        },
-        {
-            "reroute": {}
-        }
-    ]
+  "description": "Ingest pipeline for documents shipped from the Elastic Stack Diagnostics tool (ESDiag)",
+  "processors": [
+    {
+      "set": {
+        "ignore_failure": true,
+        "field": "event.ingested",
+        "value": "{{_ingest.timestamp}}"
+      }
+    },
+    {
+      "reroute": {}
+    }
+  ]
 }

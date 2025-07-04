@@ -1,4 +1,7 @@
 {
+  "_meta": {
+    "description": "ESDiag common node metadata mappings"
+  },
   "template": {
     "mappings": {
       "dynamic_date_formats": [
@@ -7,14 +10,122 @@
       ],
       "properties": {
         "node": {
-          "type": "object",
           "properties": {
+            "attributes": {
+              "properties": {
+                "availability_zone": {
+                  "type": "keyword"
+                },
+                "az": {
+                  "type": "keyword"
+                },
+                "data": {
+                  "type": "keyword"
+                },
+                "instance_configuration": {
+                  "type": "keyword"
+                },
+                "k8s_node_name": {
+                  "type": "keyword"
+                },
+                "logical_availability_zone": {
+                  "type": "keyword"
+                },
+                "ml": {
+                  "properties": {
+                    "allocated_processors": {
+                      "type": "keyword"
+                    },
+                    "allocated_processors_double": {
+                      "type": "keyword"
+                    },
+                    "config_version": {
+                      "type": "keyword"
+                    },
+                    "machine_memory": {
+                      "type": "object",
+                      "enabled": false
+                    },
+                    "max_jvm_size": {
+                      "type": "object",
+                      "enabled": false
+                    }
+                  }
+                },
+                "profile": {
+                  "type": "keyword"
+                },
+                "rack": {
+                  "type": "keyword"
+                },
+                "region": {
+                  "type": "keyword"
+                },
+                "server_name": {
+                  "type": "keyword"
+                },
+                "transform": {
+                  "properties": {
+                    "config_version": {
+                      "type": "keyword"
+                    },
+                    "node": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "xpack": {
+                  "properties": {
+                    "installed": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "zone": {
+                  "type": "keyword"
+                }
+              }
+            },
+            "host": {
+              "type": "keyword"
+            },
+            "id": {
+              "type": "keyword"
+            },
             "ip": {
               "type": "ip",
               "ignore_malformed": true
             },
-            "tier": {
+            "name": {
               "type": "keyword"
+            },
+            "os": {
+              "properties": {
+                "allocated_processors": {
+                  "type": "long",
+                  "index": false
+                },
+                "arch": {
+                  "type": "keyword"
+                },
+                "available_processors": {
+                  "type": "long",
+                  "index": false
+                },
+                "name": {
+                  "type": "keyword"
+                },
+                "pretty_name": {
+                  "type": "keyword"
+                },
+                "refresh_interval_in_millis": {
+                  "type": "long",
+                  "index": false
+                },
+                "version": {
+                  "type": "keyword"
+                }
+              }
             },
             "role": {
               "type": "keyword"
@@ -22,16 +133,14 @@
             "roles": {
               "type": "keyword"
             },
-            "host": {
+            "tier": {
               "type": "keyword"
             },
-            "name": {
-              "type": "keyword"
+            "tier_order": {
+              "type": "long",
+              "index": false
             },
-            "attributes": {
-              "type": "object"
-            },
-            "id": {
+            "version": {
               "type": "keyword"
             }
           }
@@ -39,8 +148,5 @@
       }
     }
   },
-  "_meta": {
-    "managed": false,
-    "description": "Common mappings for the esdiag metadata"
-  }
+  "version": 2
 }

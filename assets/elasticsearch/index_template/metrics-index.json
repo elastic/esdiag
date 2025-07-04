@@ -1,10 +1,12 @@
 {
+  "_meta": {
+    "description": "ESDiag Elasticsearch index stats"
+  },
   "index_patterns": ["metrics-index-esdiag*"],
   "composed_of": [
     "esdiag@metadata",
     "esdiag@mappings",
     "esdiag@settings",
-    "esdiag@ilm",
     "esdiag@index"
   ],
   "allow_auto_create": true,
@@ -30,15 +32,1444 @@
         "diagnostic.uuid": {
           "type": "keyword"
         },
-        "retention_leases.leases": {
-          "eager_global_ordinals": false,
-          "index": true,
-          "type": "flattened",
-          "split_queries_on_whitespace": false,
-          "index_options": "docs",
-          "doc_values": true
+        "index": {
+          "properties": {
+            "age": {
+              "type": "long"
+            },
+            "alias": {
+              "properties": {
+                "is_hidden": {
+                  "type": "boolean"
+                },
+                "is_write_index": {
+                  "type": "boolean"
+                },
+                "name": {
+                  "type": "keyword"
+                }
+              }
+            },
+            "codec": {
+              "type": "keyword"
+            },
+            "creation_date": {
+              "type": "date",
+              "format": "epoch_millis"
+            },
+            "data_stream": {
+              "properties": {
+                "allow_custom_routing": {
+                  "type": "boolean"
+                },
+                "dataset": {
+                  "type": "keyword"
+                },
+                "generation": {
+                  "type": "long",
+                  "index": false
+                },
+                "hidden": {
+                  "type": "boolean"
+                },
+                "ilm_policy": {
+                  "type": "keyword"
+                },
+                "is_write_index": {
+                  "type": "boolean"
+                },
+                "name": {
+                  "type": "keyword"
+                },
+                "namespace": {
+                  "type": "keyword"
+                },
+                "next_generation_managed_by": {
+                  "type": "keyword"
+                },
+                "prefer_ilm": {
+                  "type": "boolean"
+                },
+                "replicated": {
+                  "type": "boolean"
+                },
+                "rollover_on_write": {
+                  "type": "boolean"
+                },
+                "status": {
+                  "type": "keyword"
+                },
+                "system": {
+                  "type": "boolean"
+                },
+                "template": {
+                  "type": "keyword"
+                },
+                "timestamp_field": {
+                  "properties": {
+                    "name": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "type": {
+                  "type": "keyword"
+                }
+              }
+            },
+            "health": {
+              "type": "keyword"
+            },
+            "hidden": {
+              "type": "boolean"
+            },
+            "ilm": {
+              "properties": {
+                "action": {
+                  "type": "keyword"
+                },
+                "action_time_millis": {
+                  "type": "long"
+                },
+                "failed_step": {
+                  "type": "keyword"
+                },
+                "failed_step_retry_count": {
+                  "type": "long",
+                  "index": false
+                },
+                "index": {
+                  "type": "keyword"
+                },
+                "index_creation_date_millis": {
+                  "type": "date"
+                },
+                "is_auto_retryable_error": {
+                  "type": "boolean"
+                },
+                "lifecycle_date_millis": {
+                  "type": "date"
+                },
+                "managed": {
+                  "type": "boolean"
+                },
+                "phase": {
+                  "type": "keyword"
+                },
+                "phase_execution": {
+                  "properties": {
+                    "modified_date_in_millis": {
+                      "type": "date"
+                    },
+                    "phase_definition": {
+                      "properties": {
+                        "actions": {
+                          "properties": {
+                            "allocate": {
+                              "properties": {
+                                "exclude": {
+                                  "type": "object"
+                                },
+                                "include": {
+                                  "type": "object"
+                                },
+                                "number_of_replicas": {
+                                  "type": "long",
+                                  "index": false
+                                },
+                                "require": {
+                                  "properties": {
+                                    "data": {
+                                      "type": "keyword"
+                                    }
+                                  }
+                                }
+                              }
+                            },
+                            "delete": {
+                              "properties": {
+                                "delete_searchable_snapshot": {
+                                  "type": "boolean"
+                                }
+                              }
+                            },
+                            "forcemerge": {
+                              "properties": {
+                                "max_num_segments": {
+                                  "type": "long",
+                                  "index": false
+                                }
+                              }
+                            },
+                            "freeze": {
+                              "type": "object"
+                            },
+                            "readonly": {
+                              "type": "object"
+                            },
+                            "rollover": {
+                              "properties": {
+                                "max_age": {
+                                  "type": "keyword"
+                                },
+                                "max_docs": {
+                                  "type": "long",
+                                  "index": false
+                                },
+                                "max_primary_shard_docs": {
+                                  "type": "long",
+                                  "index": false
+                                },
+                                "max_primary_shard_size": {
+                                  "type": "object",
+                                  "enabled": false
+                                },
+                                "max_size": {
+                                  "type": "object",
+                                  "enabled": false
+                                },
+                                "min_docs": {
+                                  "type": "long",
+                                  "index": false
+                                },
+                                "min_size": {
+                                  "type": "object",
+                                  "enabled": false
+                                }
+                              }
+                            },
+                            "searchable_snapshot": {
+                              "properties": {
+                                "force_merge_index": {
+                                  "type": "boolean"
+                                },
+                                "snapshot_repository": {
+                                  "type": "keyword"
+                                }
+                              }
+                            },
+                            "set_priority": {
+                              "properties": {
+                                "priority": {
+                                  "type": "long",
+                                  "index": false
+                                }
+                              }
+                            },
+                            "shrink": {
+                              "properties": {
+                                "allow_write_after_shrink": {
+                                  "type": "boolean"
+                                },
+                                "number_of_shards": {
+                                  "type": "long",
+                                  "index": false
+                                }
+                              }
+                            },
+                            "wait_for_snapshot": {
+                              "properties": {
+                                "policy": {
+                                  "type": "keyword"
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "min_age": {
+                          "type": "keyword"
+                        }
+                      }
+                    },
+                    "policy": {
+                      "type": "keyword"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                },
+                "phase_time_millis": {
+                  "type": "long"
+                },
+                "policy": {
+                  "type": "keyword"
+                },
+                "previous_step_info": {
+                  "properties": {
+                    "reason": {
+                      "type": "keyword"
+                    },
+                    "type": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "repository_name": {
+                  "type": "keyword"
+                },
+                "snapshot_name": {
+                  "type": "keyword"
+                },
+                "step": {
+                  "type": "keyword"
+                },
+                "step_info": {
+                  "properties": {
+                    "reason": {
+                      "type": "keyword"
+                    },
+                    "type": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "step_time_millis": {
+                  "type": "long"
+                }
+              }
+            },
+            "indexing_complete": {
+              "type": "boolean"
+            },
+            "is_write_index": {
+              "type": "boolean"
+            },
+            "lifecycle": {
+              "properties": {
+                "indexing_complete": {
+                  "type": "keyword"
+                },
+                "name": {
+                  "type": "keyword"
+                },
+                "origination_date": {
+                  "type": "keyword"
+                },
+                "parse_origination_date": {
+                  "type": "keyword"
+                },
+                "prefer_ilm": {
+                  "type": "keyword"
+                },
+                "rollover_alias": {
+                  "type": "keyword"
+                }
+              }
+            },
+            "mode": {
+              "type": "keyword"
+            },
+            "name": {
+              "type": "keyword"
+            },
+            "number_of_replicas": {
+              "type": "long",
+              "index": false
+            },
+            "number_of_shards": {
+              "type": "long",
+              "index": false
+            },
+            "primaries": {
+              "properties": {
+                "bulk": {
+                  "properties": {
+                    "avg_size_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "avg_time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "est_bytes_per_day": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total_operations": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total_size_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total_time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "completion": {
+                  "properties": {
+                    "size_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "dense_vector": {
+                  "properties": {
+                    "value_count": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "docs": {
+                  "properties": {
+                    "count": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "deleted": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total_size_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "fielddata": {
+                  "properties": {
+                    "evictions": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "global_ordinals": {
+                      "properties": {
+                        "build_time": {
+                          "type": "object",
+                          "enabled": false
+                        },
+                        "build_time_in_millis": {
+                          "type": "long",
+                          "index": false
+                        }
+                      }
+                    },
+                    "memory_size_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "flush": {
+                  "properties": {
+                    "periodic": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total_time_excluding_waiting_on_lock_in_millis": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total_time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "get": {
+                  "properties": {
+                    "current": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "exists_time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "exists_total": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "missing_time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "missing_total": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "indexing": {
+                  "properties": {
+                    "delete_current": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "delete_time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "delete_total": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "est_bytes_per_day": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "index_current": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "index_failed": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "index_time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "index_time_per_shard_in_millis": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "index_total": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "is_throttled": {
+                      "type": "boolean"
+                    },
+                    "noop_update_total": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "throttle_time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "write_load": {
+                      "type": "float",
+                      "index": false
+                    }
+                  }
+                },
+                "merges": {
+                  "properties": {
+                    "current": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "current_docs": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "current_size_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total_auto_throttle_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total_docs": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total_size_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total_stopped_time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total_throttled_time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total_time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "query_cache": {
+                  "properties": {
+                    "cache_count": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "cache_size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "evictions": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "hit_count": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "memory_size_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "miss_count": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total_count": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "recovery": {
+                  "properties": {
+                    "current_as_source": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "current_as_target": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "throttle_time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "refresh": {
+                  "properties": {
+                    "external_total": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "external_total_time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "listeners": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total_time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "request_cache": {
+                  "properties": {
+                    "evictions": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "hit_count": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "memory_size_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "miss_count": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "search": {
+                  "properties": {
+                    "fetch_current": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "fetch_failure": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "fetch_time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "fetch_total": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "open_contexts": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "query_current": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "query_failure": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "query_time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "query_total": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "scroll_current": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "scroll_time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "scroll_total": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "suggest_current": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "suggest_time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "suggest_total": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "segments": {
+                  "properties": {
+                    "count": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "doc_values_memory_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "fixed_bit_set_memory_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "index_writer_memory_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "max_unsafe_auto_id_timestamp": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "memory_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "norms_memory_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "points_memory_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "stored_fields_memory_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "term_vectors_memory_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "terms_memory_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "version_map_memory_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "shard_stats": {
+                  "properties": {
+                    "total_count": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "sparse_vector": {
+                  "properties": {
+                    "value_count": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "store": {
+                  "properties": {
+                    "reserved_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "size_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total_data_set_size_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "translog": {
+                  "properties": {
+                    "earliest_last_modified_age": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "operations": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "size_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "uncommitted_operations": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "uncommitted_size_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "warmer": {
+                  "properties": {
+                    "current": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total_time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                }
+              }
+            },
+            "refresh_interval": {
+              "type": "keyword"
+            },
+            "since_rollover": {
+              "type": "long",
+              "index": false
+            },
+            "source": {
+              "type": "keyword"
+            },
+            "store": {
+              "properties": {
+                "config": {
+                  "type": "keyword"
+                },
+                "snapshot": {
+                  "properties": {
+                    "index_name": {
+                      "type": "keyword"
+                    },
+                    "index_uuid": {
+                      "type": "keyword"
+                    },
+                    "partial": {
+                      "type": "keyword"
+                    },
+                    "repository_name": {
+                      "type": "keyword"
+                    },
+                    "repository_uuid": {
+                      "type": "keyword"
+                    },
+                    "snapshot_name": {
+                      "type": "keyword"
+                    },
+                    "snapshot_uuid": {
+                      "type": "keyword"
+                    }
+                  }
+                }
+              }
+            },
+            "total": {
+              "properties": {
+                "bulk": {
+                  "properties": {
+                    "avg_size_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "avg_time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total_operations": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total_size_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total_time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "completion": {
+                  "properties": {
+                    "size_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "dense_vector": {
+                  "properties": {
+                    "value_count": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "docs": {
+                  "properties": {
+                    "avg_size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "count": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "deleted": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "deleted_percent": {
+                      "type": "float",
+                      "index": false
+                    },
+                    "per_gb": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total_size_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "fielddata": {
+                  "properties": {
+                    "evictions": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "global_ordinals": {
+                      "properties": {
+                        "build_time": {
+                          "type": "object",
+                          "enabled": false
+                        },
+                        "build_time_in_millis": {
+                          "type": "long",
+                          "index": false
+                        }
+                      }
+                    },
+                    "memory_size_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "flush": {
+                  "properties": {
+                    "periodic": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total_time_excluding_waiting_on_lock_in_millis": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total_time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "get": {
+                  "properties": {
+                    "current": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "exists_time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "exists_total": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "missing_time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "missing_total": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "indexing": {
+                  "properties": {
+                    "delete_current": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "delete_time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "delete_total": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "est_bytes_per_day": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "index_current": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "index_failed": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "index_time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "index_time_per_shard_in_millis": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "index_total": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "is_throttled": {
+                      "type": "boolean"
+                    },
+                    "noop_update_total": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "throttle_time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "write_load": {
+                      "type": "float",
+                      "index": false
+                    }
+                  }
+                },
+                "merges": {
+                  "properties": {
+                    "current": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "current_docs": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "current_size_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total_auto_throttle_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total_docs": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total_size_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total_stopped_time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total_throttled_time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total_time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "query_cache": {
+                  "properties": {
+                    "cache_count": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "cache_size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "evictions": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "hit_count": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "memory_size_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "miss_count": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total_count": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "recovery": {
+                  "properties": {
+                    "current_as_source": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "current_as_target": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "throttle_time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "refresh": {
+                  "properties": {
+                    "external_total": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "external_total_time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "listeners": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total_time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "request_cache": {
+                  "properties": {
+                    "evictions": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "hit_count": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "memory_size_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "miss_count": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "search": {
+                  "properties": {
+                    "fetch_current": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "fetch_failure": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "fetch_time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "fetch_total": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "open_contexts": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "query_current": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "query_failure": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "query_time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "query_total": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "scroll_current": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "scroll_time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "scroll_total": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "suggest_current": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "suggest_time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "suggest_total": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "segments": {
+                  "properties": {
+                    "count": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "doc_values_memory_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "fixed_bit_set_memory_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "index_writer_memory_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "max_unsafe_auto_id_timestamp": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "memory_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "norms_memory_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "points_memory_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "stored_fields_memory_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "term_vectors_memory_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "terms_memory_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "version_map_memory_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "shard_stats": {
+                  "properties": {
+                    "total_count": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "sparse_vector": {
+                  "properties": {
+                    "value_count": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "store": {
+                  "properties": {
+                    "reserved_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "size_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total_data_set_size_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "translog": {
+                  "properties": {
+                    "earliest_last_modified_age": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "operations": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "size_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "uncommitted_operations": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "uncommitted_size_in_bytes": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "warmer": {
+                  "properties": {
+                    "current": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "total_time_in_millis": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                }
+              }
+            },
+            "uuid": {
+              "type": "keyword"
+            },
+            "write_phase_sec": {
+              "type": "long",
+              "index": false
+            }
+          }
         }
       }
     }
-  }
+  },
+  "version": 2
 }

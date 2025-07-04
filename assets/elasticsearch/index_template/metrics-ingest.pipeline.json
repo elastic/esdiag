@@ -1,31 +1,56 @@
 {
-    "index_patterns": [
-        "metrics-ingest.pipeline-esdiag*"
-    ],
-    "composed_of": [
-        "esdiag@mappings",
-        "esdiag@metadata",
-        "esdiag@settings"
-    ],
-    "allow_auto_create": true,
-    "data_stream": {
-        "hidden": false,
-        "allow_custom_routing": false
-    },
-    "priority": 300,
-    "template": {
-        "mappings": {
-            "properties": {
-                "data_stream": {
-                    "type": "object",
-                    "properties": {
-                        "dataset": {
-                            "type": "constant_keyword",
-                            "value": "ingest.pipeline"
-                        }
-                    }
-                }
+  "_meta": {
+    "description": "ESDiag Elasticsearch ingest pipeline"
+  },
+  "index_patterns": ["metrics-ingest.pipeline-esdiag*"],
+  "composed_of": ["esdiag@mappings", "esdiag@metadata", "esdiag@settings"],
+  "allow_auto_create": true,
+  "data_stream": {
+    "hidden": false,
+    "allow_custom_routing": false
+  },
+  "priority": 300,
+  "template": {
+    "mappings": {
+      "properties": {
+        "data_stream": {
+          "type": "object",
+          "properties": {
+            "dataset": {
+              "type": "constant_keyword",
+              "value": "ingest.pipeline"
             }
+          }
+        },
+        "ingest": {
+          "properties": {
+            "pipeline": {
+              "properties": {
+                "count": {
+                  "type": "long",
+                  "index": false
+                },
+                "current": {
+                  "type": "long",
+                  "index": false
+                },
+                "failed": {
+                  "type": "long",
+                  "index": false
+                },
+                "name": {
+                  "type": "keyword"
+                },
+                "time_in_millis": {
+                  "type": "long",
+                  "index": false
+                }
+              }
+            }
+          }
         }
+      }
     }
+  },
+  "version": 2
 }

@@ -1,9 +1,11 @@
 {
+  "_meta": {
+    "description": "ESDiag index metadata mappings"
+  },
   "template": {
     "mappings": {
       "properties": {
         "index": {
-          "type": "object",
           "properties": {
             "age": {
               "type": "long"
@@ -12,25 +14,290 @@
               "type": "keyword"
             },
             "creation_date": {
-              "format": "epoch_millis",
+              "type": "date",
+              "format": "epoch_millis"
+            },
+            "creation_date_string": {
               "type": "date"
+            },
+            "data_stream": {
+              "properties": {
+                "allow_custom_routing": {
+                  "type": "boolean"
+                },
+                "dataset": {
+                  "type": "keyword"
+                },
+                "generation": {
+                  "type": "long",
+                  "index": false
+                },
+                "hidden": {
+                  "type": "boolean"
+                },
+                "ilm_policy": {
+                  "type": "keyword"
+                },
+                "is_write_index": {
+                  "type": "boolean"
+                },
+                "name": {
+                  "type": "keyword"
+                },
+                "namespace": {
+                  "type": "keyword"
+                },
+                "next_generation_managed_by": {
+                  "type": "keyword"
+                },
+                "prefer_ilm": {
+                  "type": "boolean"
+                },
+                "replicated": {
+                  "type": "boolean"
+                },
+                "rollover_on_write": {
+                  "type": "boolean"
+                },
+                "status": {
+                  "type": "keyword"
+                },
+                "system": {
+                  "type": "boolean"
+                },
+                "template": {
+                  "type": "keyword"
+                },
+                "timestamp_field": {
+                  "properties": {
+                    "name": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "type": {
+                  "type": "keyword"
+                }
+              }
+            },
+            "default_pipeline": {
+              "type": "keyword"
             },
             "hidden": {
               "type": "boolean"
             },
+            "ilm": {
+              "properties": {
+                "action": {
+                  "type": "keyword"
+                },
+                "action_time_millis": {
+                  "type": "long"
+                },
+                "failed_step": {
+                  "type": "keyword"
+                },
+                "failed_step_retry_count": {
+                  "type": "long",
+                  "index": false
+                },
+                "index": {
+                  "type": "keyword"
+                },
+                "index_creation_date_millis": {
+                  "type": "date"
+                },
+                "is_auto_retryable_error": {
+                  "type": "boolean"
+                },
+                "lifecycle_date_millis": {
+                  "type": "date"
+                },
+                "managed": {
+                  "type": "boolean"
+                },
+                "phase": {
+                  "type": "keyword"
+                },
+                "phase_execution": {
+                  "properties": {
+                    "modified_date_in_millis": {
+                      "type": "date"
+                    },
+                    "policy": {
+                      "type": "keyword"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                },
+                "phase_time_millis": {
+                  "type": "long"
+                },
+                "policy": {
+                  "type": "keyword"
+                },
+                "previous_step_info": {
+                  "properties": {
+                    "reason": {
+                      "type": "keyword"
+                    },
+                    "type": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "repository_name": {
+                  "type": "keyword"
+                },
+                "snapshot_name": {
+                  "type": "keyword"
+                },
+                "step": {
+                  "type": "keyword"
+                },
+                "step_info": {
+                  "properties": {
+                    "reason": {
+                      "type": "keyword"
+                    },
+                    "type": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "step_time_millis": {
+                  "type": "long"
+                }
+              }
+            },
             "indexing_complete": {
               "type": "boolean"
             },
+            "is_write_index": {
+              "type": "boolean"
+            },
+            "lifecycle": {
+              "properties": {
+                "indexing_complete": {
+                  "type": "boolean"
+                },
+                "name": {
+                  "type": "keyword"
+                },
+                "origination_date": {
+                  "type": "keyword"
+                },
+                "parse_origination_date": {
+                  "type": "keyword"
+                },
+                "prefer_ilm": {
+                  "type": "keyword"
+                },
+                "rollover_alias": {
+                  "type": "keyword"
+                }
+              }
+            },
+            "max_docvalue_fields_search": {
+              "type": "integer"
+            },
+            "mode": {
+              "type": "keyword"
+            },
+            "name": {
+              "type": "keyword"
+            },
+            "number_of_replicas": {
+              "type": "integer"
+            },
+            "number_of_shards": {
+              "type": "integer"
+            },
+            "priority": {
+              "type": "integer"
+            },
+            "provided_name": {
+              "type": "keyword"
+            },
             "refresh_interval": {
               "type": "keyword"
+            },
+            "routing": {
+              "properties": {
+                "allocation": {
+                  "properties": {
+                    "include": {
+                      "properties": {
+                        "_tier_preference": {
+                          "type": "keyword"
+                        }
+                      }
+                    },
+                    "total_shards_per_node": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            },
+            "source": {
+              "type": "keyword"
+            },
+            "store": {
+              "properties": {
+                "config": {
+                  "type": "keyword"
+                },
+                "snapshot": {
+                  "properties": {
+                    "index_name": {
+                      "type": "keyword"
+                    },
+                    "index_uuid": {
+                      "type": "keyword"
+                    },
+                    "partial": {
+                      "type": "keyword"
+                    },
+                    "repository_name": {
+                      "type": "keyword"
+                    },
+                    "repository_uuid": {
+                      "type": "keyword"
+                    },
+                    "snapshot_name": {
+                      "type": "keyword"
+                    },
+                    "snapshot_uuid": {
+                      "type": "keyword"
+                    }
+                  }
+                }
+              }
+            },
+            "uuid": {
+              "type": "keyword"
+            },
+            "version": {
+              "properties": {
+                "created": {
+                  "type": "keyword"
+                },
+                "created_string": {
+                  "type": "keyword"
+                }
+              }
+            },
+            "write_phase_sec": {
+              "type": "long",
+              "index": false
             }
           }
         }
       }
     }
   },
-  "_meta": {
-    "managed": false,
-    "description": "esdiag common mappings for index metadata"
-  }
+  "version": 2
 }

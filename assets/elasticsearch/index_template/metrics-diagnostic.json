@@ -1,4 +1,7 @@
 {
+  "_meta": {
+    "description": "ESDiag processing stats"
+  },
   "index_patterns": ["metrics-diagnostic-esdiag"],
   "composed_of": ["esdiag@metadata", "esdiag@mappings", "esdiag@settings"],
   "allow_auto_create": true,
@@ -22,8 +25,401 @@
               "type": "keyword"
             }
           }
+        },
+        "diagnostic": {
+          "properties": {
+            "collection_date": {
+              "type": "date"
+            },
+            "docs": {
+              "properties": {
+                "created": {
+                  "type": "long",
+                  "index": false
+                },
+                "errors": {
+                  "type": "long",
+                  "index": false
+                },
+                "total": {
+                  "type": "long",
+                  "index": false
+                }
+              }
+            },
+            "id": {
+              "type": "keyword"
+            },
+            "inputs": {
+              "type": "match_only_text"
+            },
+            "lookup": {
+              "properties": {
+                "count": {
+                  "type": "long",
+                  "index": false
+                },
+                "errors": {
+                  "type": "long",
+                  "index": false
+                },
+                "stats": {
+                  "properties": {
+                    "alias": {
+                      "properties": {
+                        "docs": {
+                          "type": "long",
+                          "index": false
+                        }
+                      }
+                    },
+                    "data_stream": {
+                      "properties": {
+                        "docs": {
+                          "type": "long",
+                          "index": false
+                        }
+                      }
+                    },
+                    "ilm_explain": {
+                      "properties": {
+                        "docs": {
+                          "type": "long",
+                          "index": false
+                        }
+                      }
+                    },
+                    "index_settings": {
+                      "properties": {
+                        "docs": {
+                          "type": "long",
+                          "index": false
+                        }
+                      }
+                    },
+                    "node": {
+                      "properties": {
+                        "docs": {
+                          "type": "long",
+                          "index": false
+                        }
+                      }
+                    },
+                    "shared_cache": {
+                      "properties": {
+                        "docs": {
+                          "type": "long",
+                          "index": false
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "node": {
+              "type": "keyword",
+              "ignore_above": 1024
+            },
+            "origin": {
+              "properties": {
+                "path": {
+                  "type": "keyword"
+                },
+                "type": {
+                  "type": "keyword"
+                }
+              }
+            },
+            "processor": {
+              "properties": {
+                "count": {
+                  "type": "long",
+                  "index": false
+                },
+                "errors": {
+                  "type": "long",
+                  "index": false
+                },
+                "failures": {
+                  "type": "keyword"
+                },
+                "stats": {
+                  "properties": {
+                    "cluster_settings": {
+                      "properties": {
+                        "batch": {
+                          "properties": {
+                            "count": {
+                              "type": "long",
+                              "index": false
+                            },
+                            "retries": {
+                              "type": "long",
+                              "index": false
+                            },
+                            "status_codes": {
+                              "properties": {
+                                "200": {
+                                  "type": "long",
+                                  "index": false
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "doc_errors": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "docs": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "index": {
+                          "type": "keyword"
+                        },
+                        "source": {
+                          "properties": {
+                            "parsed": {
+                              "type": "boolean"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "indices_settings": {
+                      "properties": {
+                        "batch": {
+                          "properties": {
+                            "count": {
+                              "type": "long",
+                              "index": false
+                            },
+                            "retries": {
+                              "type": "long",
+                              "index": false
+                            },
+                            "status_codes": {
+                              "properties": {
+                                "200": {
+                                  "type": "long",
+                                  "index": false
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "doc_errors": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "docs": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "index": {
+                          "type": "keyword"
+                        },
+                        "source": {
+                          "properties": {
+                            "parsed": {
+                              "type": "boolean"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "indices_stats": {
+                      "properties": {
+                        "batch": {
+                          "properties": {
+                            "count": {
+                              "type": "long",
+                              "index": false
+                            },
+                            "retries": {
+                              "type": "long",
+                              "index": false
+                            },
+                            "status_codes": {
+                              "properties": {
+                                "200": {
+                                  "type": "long",
+                                  "index": false
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "doc_errors": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "docs": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "index": {
+                          "type": "keyword"
+                        },
+                        "source": {
+                          "properties": {
+                            "parsed": {
+                              "type": "boolean"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "nodes": {
+                      "properties": {
+                        "batch": {
+                          "properties": {
+                            "count": {
+                              "type": "long",
+                              "index": false
+                            },
+                            "retries": {
+                              "type": "long",
+                              "index": false
+                            },
+                            "status_codes": {
+                              "properties": {
+                                "200": {
+                                  "type": "long",
+                                  "index": false
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "doc_errors": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "docs": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "index": {
+                          "type": "keyword"
+                        },
+                        "source": {
+                          "properties": {
+                            "parsed": {
+                              "type": "boolean"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "nodes_stats": {
+                      "properties": {
+                        "batch": {
+                          "properties": {
+                            "count": {
+                              "type": "long",
+                              "index": false
+                            },
+                            "retries": {
+                              "type": "long",
+                              "index": false
+                            },
+                            "status_codes": {
+                              "properties": {
+                                "200": {
+                                  "type": "long",
+                                  "index": false
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "doc_errors": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "docs": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "index": {
+                          "type": "keyword"
+                        },
+                        "source": {
+                          "properties": {
+                            "parsed": {
+                              "type": "boolean"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "tasks": {
+                      "properties": {
+                        "batch": {
+                          "properties": {
+                            "count": {
+                              "type": "long",
+                              "index": false
+                            },
+                            "retries": {
+                              "type": "long",
+                              "index": false
+                            },
+                            "status_codes": {
+                              "properties": {
+                                "200": {
+                                  "type": "long",
+                                  "index": false
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "doc_errors": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "docs": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "index": {
+                          "type": "keyword"
+                        },
+                        "source": {
+                          "properties": {
+                            "parsed": {
+                              "type": "boolean"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "product": {
+              "type": "keyword"
+            },
+            "runner": {
+              "type": "keyword",
+              "ignore_above": 1024
+            },
+            "uuid": {
+              "type": "keyword",
+              "ignore_above": 1024
+            },
+            "version": {
+              "type": "keyword"
+            }
+          }
         }
       }
     }
-  }
+  },
+  "version": 2
 }

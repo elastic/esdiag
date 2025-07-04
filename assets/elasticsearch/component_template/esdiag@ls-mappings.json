@@ -1,5 +1,8 @@
 {
-  "version": 1,
+  "_meta": {
+    "managed": false,
+    "description": "ESDiag Logstash metrics mappings"
+  },
   "template": {
     "mappings": {
       "_routing": {
@@ -65,8 +68,5 @@
       }
     }
   },
-  "_meta": {
-    "managed": false,
-    "description": "Default metadat mapping for esdiag Logstash templates"
-  }
+  "version": 2
 }

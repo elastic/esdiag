@@ -1,5 +1,8 @@
 {
-  "version": 1,
+  "_meta": {
+    "managed": false,
+    "description": "ESDiag default common mappings and dynamic templates"
+  },
   "template": {
     "mappings": {
       "_routing": {
@@ -146,8 +149,5 @@
       }
     }
   },
-  "_meta": {
-    "managed": false,
-    "description": "Default mappings for the esdiag index templates"
-  }
+  "version": 2
 }

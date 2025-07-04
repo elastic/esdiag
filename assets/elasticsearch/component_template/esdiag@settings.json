@@ -1,8 +1,10 @@
 {
-  "version": 1,
+  "_meta": {
+    "description": "ESDiag default index settings"
+  },
   "template": {
     "lifecycle": {
-      "data_retention": "15d"
+      "data_retention": "30d"
     },
     "settings": {
       "index": {
@@ -25,8 +27,5 @@
       }
     }
   },
-  "_meta": {
-    "managed": false,
-    "description": "Default settings for the esdiag index templates"
-  }
+  "version": 2
 }
