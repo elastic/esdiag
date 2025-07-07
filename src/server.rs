@@ -63,11 +63,12 @@ impl ApiServer {
             let status_handler =
                 { move || async move { Self::status_handler(state_handler).await } };
 
+            const ONE_GIBIBYTE: usize = 1024 * 1024 * 1024;
             let app = Router::new()
                 .route("/", get(Self::index_handler))
                 .route("/upload", post(upload_handler))
                 .route("/status", get(status_handler))
-                .layer(DefaultBodyLimit::max(1024 * 1024 * 1024)); // 1 GB limit
+                .layer(DefaultBodyLimit::max(ONE_GIBIBYTE));
 
             let addr = SocketAddr::from(([0, 0, 0, 0], port));
 

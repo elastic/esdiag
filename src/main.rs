@@ -10,6 +10,7 @@ use esdiag::{
     setup,
 };
 use eyre::{Result, eyre};
+use tokio::signal::unix::{SignalKind, signal};
 use url::Url;
 
 // CLI Styling
@@ -175,7 +176,6 @@ async fn run(cli: Cli) -> Result<&'static str> {
             let output_uri = output.and_then(|o| Uri::try_from(o).ok());
             let exporter = Exporter::try_from(output_uri)?;
 
-            log::info!("Press Ctrl+C to exit");
             let mut server = ApiServer::new(port, exporter.to_string());
 
             let rx = match &server.rx {
@@ -183,11 +183,17 @@ async fn run(cli: Cli) -> Result<&'static str> {
                 None => return Err(eyre!("Server rx error")),
             };
 
-            // This will process uploaded diagnostics until Ctrl+C is pressed
+            // This will process uploaded diagnostics until a termination signal is received
             tokio::select! {
                 _ = tokio::signal::ctrl_c() => {
-                    log::info!("Shutting down server...");
+                    log::info!("Shutting down server (Ctrl+C)...");
                 }
+                _ = async {
+                    let mut term_signal = signal(SignalKind::terminate()).map_err(|e| eyre!("Failed to install SIGTERM handler: {}", e))?;
+                    term_signal.recv().await;
+                    log::info!("Shutting down server (SIGTERM)...");
+                    Ok::<_, eyre::Report>(())
+                } => {}
                 _ = async {
                     loop {
                         let mut rx = rx.write().await;
