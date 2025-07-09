@@ -4,121 +4,6 @@ use serde_json::Value;
 use std::time::Duration;
 
 #[tokio::test]
-async fn status_ready() {
-    // Create a server instance on a random port
-    // Using a high ephemeral port reduces likelihood of conflict
-    let port = 9876;
-    let exporter = "-".to_string(); // "-" uses stdout
-    let _server = ApiServer::new(port, exporter.clone());
-
-    // Allow server time to start
-    tokio::time::sleep(Duration::from_millis(100)).await;
-
-    // Create HTTP client
-    let client = reqwest::Client::new();
-    let url = format!("http://localhost:{}/status", port);
-
-    // Test the status endpoint
-    let response = client
-        .get(&url)
-        .send()
-        .await
-        .expect("Failed to send request");
-
-    // Assert response status code is 200 OK
-    assert_eq!(response.status(), StatusCode::OK);
-
-    // Parse the response body
-    let body: Value = response
-        .json()
-        .await
-        .expect("Failed to parse JSON response");
-
-    // Verify response structure and content
-    assert_eq!(body["status"], "ready");
-    assert_eq!(body["exporter"], exporter);
-
-    // Clean up - no explicit cleanup needed as ApiServer implements Drop that calls shutdown
-}
-
-#[tokio::test]
-async fn status_processing() {
-    // Create a server instance
-    let port = 9877;
-    let exporter = "-".to_string(); // "-" uses stdout
-    let mut server = ApiServer::new(port, exporter.clone());
-
-    // Allow server time to start
-    tokio::time::sleep(Duration::from_millis(100)).await;
-
-    // Set the server status to processing
-    server.set_processing().await;
-
-    // Create HTTP client
-    let client = reqwest::Client::new();
-    let url = format!("http://localhost:{}/status", port);
-
-    // Test the status endpoint
-    let response = client
-        .get(&url)
-        .send()
-        .await
-        .expect("Failed to send request");
-
-    // Assert response status code is 200 OK
-    assert_eq!(response.status(), StatusCode::OK);
-
-    // Parse the response body
-    let body: Value = response
-        .json()
-        .await
-        .expect("Failed to parse JSON response");
-
-    // Verify response structure for processing state
-    assert_eq!(body["status"], "processing");
-    assert_eq!(body["progress"], "Processing diagnostic...");
-}
-
-#[tokio::test]
-async fn status_error() {
-    // Create a server instance
-    let port = 9878;
-    let exporter = "-".to_string(); // "-" uses stdout
-    let mut server = ApiServer::new(port, exporter.clone());
-
-    // Allow server time to start
-    tokio::time::sleep(Duration::from_millis(100)).await;
-
-    // Set the server status to error
-    let error_message = "Test error message".to_string();
-    server.set_error(error_message.clone()).await;
-
-    // Create HTTP client
-    let client = reqwest::Client::new();
-    let url = format!("http://localhost:{}/status", port);
-
-    // Test the status endpoint
-    let response = client
-        .get(&url)
-        .send()
-        .await
-        .expect("Failed to send request");
-
-    // Assert response status code is 200 OK
-    assert_eq!(response.status(), StatusCode::OK);
-
-    // Parse the response body
-    let body: Value = response
-        .json()
-        .await
-        .expect("Failed to parse JSON response");
-
-    // Verify response structure for error state
-    assert_eq!(body["status"], "error");
-    assert_eq!(body["error"], error_message);
-}
-
-#[tokio::test]
 async fn upload_non_zip_extension_returns_bad_request() {
     // Create a server instance
     let port = 9879;
@@ -211,13 +96,13 @@ async fn upload_without_filename_returns_bad_request() {
 }
 
 #[tokio::test]
-async fn upload_invalid_zip_accepts_then_status_error() {
+async fn upload_invalid_zip_processes_and_returns_ready() {
     // Create a server instance
     let port = 9881;
     let exporter = "-".to_string(); // "-" uses stdout
     let mut server = ApiServer::new(port, exporter.clone());
 
-    // Allow server time to start
+    // Allow time for server to start
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     // Create HTTP client
@@ -253,24 +138,22 @@ async fn upload_invalid_zip_accepts_then_status_error() {
         .expect("Failed to parse JSON response");
 
     // The response should indicate processing has started
-    assert_eq!(body["status"], "processing");
+    assert_eq!(
+        body["status"], "processing",
+        "Upload response status should be 'processing'"
+    );
     assert!(
         body["message"]
             .as_str()
             .unwrap()
-            .contains("invalid_content.zip")
+            .contains("invalid_content.zip"),
+        "Upload response message should include the filename"
     );
 
-    // Allow some time for processing to fail
-    tokio::time::sleep(Duration::from_millis(300)).await;
+    // Wait for job processing to complete
+    tokio::time::sleep(Duration::from_millis(1000)).await;
 
-    // Set error status manually as we can't easily intercept the processing error
-    // This simulates what happens internally when the ZIP processing fails
-    server
-        .set_error("Invalid ZIP file format".to_string())
-        .await;
-
-    // Check the status endpoint to verify it shows an error
+    // Check the status endpoint
     let status_url = format!("http://localhost:{}/status", port);
     let status_response = client
         .get(&status_url)
@@ -283,7 +166,20 @@ async fn upload_invalid_zip_accepts_then_status_error() {
         .await
         .expect("Failed to parse status response");
 
-    // The status should be "error" since the processing failed with invalid ZIP content
-    assert_eq!(status_body["status"], "error");
-    assert_eq!(status_body["error"], "Invalid ZIP file format");
+    // After processing, the server should be in "ready" state regardless of job success/failure
+    // With the job queue implementation, the job will be processed by the background thread
+    // and the job status will be recorded in history (visible in browser tests)
+    assert_eq!(
+        status_body["status"], "ready",
+        "Server should be in 'ready' state after processing"
+    );
+
+    // Queue should be empty since the job should have been processed
+    assert_eq!(
+        status_body["queue"]["size"], 0,
+        "Queue should be empty after processing"
+    );
+
+    // Clean up - properly shutdown the server and processor thread
+    server.shutdown().await;
 }

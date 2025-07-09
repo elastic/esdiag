@@ -50,8 +50,11 @@
             }
             #status-container {
                 margin-top: 15px;
+            }
+            .status-box {
                 padding: 15px;
                 border-radius: 4px;
+                margin-bottom: 10px;
             }
             .ready {
                 background-color: #e3e8f2;
@@ -214,7 +217,10 @@
                 />
             </form>
         </div>
-        <div id="status-container" class="hidden"></div>
+        <div id="status-container">
+            <div id="current-status" class="status-box"></div>
+            <div id="history-container"></div>
+        </div>
 
         <script>
             // File upload handling
@@ -346,57 +352,84 @@
                 error,
                 message,
                 exporter,
+                history = [],
             }) {
-                const statusContainer =
-                    document.getElementById("status-container");
+                const currentStatus = document.getElementById("current-status");
+                const historyContainer =
+                    document.getElementById("history-container");
                 const uploadButton = document.getElementById("upload-button");
-                statusContainer.className = "";
 
+                // Update current status
                 switch (status) {
                     case "uploading":
                         uploadButton.disabled = true;
-                        statusContainer.classList.add("processing");
-                        statusContainer.innerHTML = `
+                        currentStatus.classList.add("processing");
+                        currentStatus.innerHTML = `
                             <div class="spinner"></div>
                             <span>Uploading diagnostic bundle...</span>
                         `;
                         break;
                     case "processing":
                         uploadButton.disabled = true;
-                        statusContainer.classList.add("processing");
-                        statusContainer.innerHTML = `
+                        currentStatus.classList.add("processing");
+                        currentStatus.innerHTML = `
                             <div class="spinner"></div>
                             <span>${message || "Processing diagnostic..."}</span>
                         `;
                         setTimeout(pollStatus, 1000);
                         break;
-                    case "complete":
-                        uploadButton.disabled = false;
-                        statusContainer.classList.add("success");
-                        let message_complete = `✅ Diagnostic processing complete!`;
-                        if (report) {
-                            message_complete += `<p><b>Diagnostic ID:</b> <a target="_blank" href="${report.kibana_link}">${report.id}</a></p>`;
-                            message_complete += `<p><b>Product:</b> ${report.product}</p>`;
-                            message_complete += `<p><b>Ingested:</b> ${report.docs.created} documents</p>`;
-                        }
-                        statusContainer.innerHTML = message_complete;
-                        break;
-                    case "error":
-                        uploadButton.disabled = false;
-                        statusContainer.classList.add("error");
-                        statusContainer.innerHTML = `🛑 <b>Error:</b> ${error || "Processing failed"}`;
-                        break;
                     case "ready":
                         uploadButton.disabled = true;
-                        statusContainer.classList.add("ready");
-                        statusContainer.innerHTML = `▶️ Ready, exporting to: ${exporter}`;
+                        currentStatus.classList.remove("processing");
+                        currentStatus.classList.add("ready");
+                        currentStatus.innerHTML = `▶️ Ready, exporting to: ${exporter}`;
+                        break;
+                }
+
+                // Update job history
+                if (history && history.length > 0) {
+                    historyContainer.innerHTML = "";
+                    // Reverse the array to show newest entries first
+                    [...history].reverse().forEach((job) => {
+                        const historyItem = document.createElement("div");
+                        historyItem.className = "status-box";
+
+                        if (job.Completed) {
+                            const completedJob = job.Completed;
+                            historyItem.classList.add("success");
+                            let message = `✅ Diagnostic processing complete!`;
+
+                            if (completedJob.report) {
+                                const report = completedJob.report;
+                                message += `<p><b>Diagnostic ID:</b> <a target="_blank" href="${report.kibana_link}">${report.id}</a></p>`;
+                                message += `<p><b>Product:</b> ${report.product}</p>`;
+                                message += `<p><b>Ingested:</b> ${report.docs.created} documents</p>`;
+                            }
+
+                            historyItem.innerHTML = message;
+                        } else if (job.Failed) {
+                            const failedJob = job.Failed;
+                            historyItem.classList.add("error");
+                            historyItem.innerHTML = `🛑 <b>Error:</b> ${failedJob.error || "Processing failed"}`;
+                        }
+
+                        historyContainer.appendChild(historyItem);
+                    });
                 }
             }
 
             function pollStatus() {
                 fetch(`/status`)
                     .then((response) => response.json())
-                    .then((data) => updateStatus(data))
+                    .then((data) => {
+                        updateStatus({
+                            status: data.status,
+                            message: data.message || data.progress,
+                            error: data.error,
+                            exporter: data.exporter,
+                            history: data.history || [],
+                        });
+                    })
                     .catch((error) => {
                         console.error("Polling error:", error);
                     });
@@ -406,8 +439,6 @@
                 .getElementById("upload-form")
                 .addEventListener("submit", function (e) {
                     e.preventDefault();
-                    const statusContainer =
-                        document.getElementById("status-container");
                     const formData = new FormData(this);
                     updateStatus({ status: "uploading" });
                     fetch("/upload", {
