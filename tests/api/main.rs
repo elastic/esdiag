@@ -183,3 +183,62 @@ async fn upload_invalid_zip_processes_and_returns_ready() {
     // Clean up - properly shutdown the server and processor thread
     server.shutdown().await;
 }
+
+#[tokio::test]
+async fn status_with_auth_header_returns_user() {
+    // Create a server instance
+    let port = 9882;
+    let exporter = "-".to_string(); // "-" uses stdout
+    let mut server = ApiServer::new(port, exporter.clone());
+
+    // Allow time for server to start
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Create HTTP client
+    let client = reqwest::Client::new();
+    let status_url = format!("http://localhost:{}/status", port);
+
+    // Test 1: Request without the auth header
+    let status_response = client
+        .get(&status_url)
+        .send()
+        .await
+        .expect("Failed to send status request without header");
+
+    let status_body: Value = status_response
+        .json()
+        .await
+        .expect("Failed to parse status response");
+
+    // Verify user field is null when header is missing
+    assert_eq!(
+        status_body["user"],
+        Value::Null,
+        "User field should be null when auth header is missing"
+    );
+
+    // Test 2: Request with the auth header
+    let status_response = client
+        .get(&status_url)
+        .header(
+            "X-Goog-Authenticated-User-Email",
+            "accounts.google.com:test.user@example.com",
+        )
+        .send()
+        .await
+        .expect("Failed to send status request with header");
+
+    let status_body: Value = status_response
+        .json()
+        .await
+        .expect("Failed to parse status response");
+
+    // Verify user field contains the extracted email
+    assert_eq!(
+        status_body["user"], "test.user@example.com",
+        "User field should contain the extracted email from auth header"
+    );
+
+    // Clean up - properly shutdown the server and processor thread
+    server.shutdown().await;
+}
