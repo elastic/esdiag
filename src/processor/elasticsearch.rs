@@ -45,7 +45,7 @@ use tokio::{sync::RwLock, task::JoinHandle};
 
 type ExporterDocumentQueue = Arc<RwLock<Vec<(String, Vec<Value>)>>>;
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 pub struct ElasticsearchDiagnostic {
     lookups: Arc<Lookups>,
     metadata: Arc<ElasticsearchMetadata>,

@@ -17,29 +17,36 @@ pub struct ApiServer {
     server_handle: Option<Arc<tokio::task::JoinHandle<()>>>,
     worker_handle: Option<Arc<tokio::task::JoinHandle<()>>>,
     shutdown_signal: Option<Arc<oneshot::Sender<()>>>,
-    pub rx: Option<Arc<RwLock<mpsc::Receiver<Bytes>>>>,
+    pub rx: Option<Arc<RwLock<mpsc::Receiver<(String, Bytes)>>>>,
     state: Arc<ApiState>,
 }
 
-// Shared state for the API server
 struct ApiState {
-    upload_tx: mpsc::Sender<Bytes>,
-    job_queue: Arc<RwLock<VecDeque<JobProcessing>>>,
-    job_history: Arc<RwLock<Vec<Job>>>,
     exporter: String,
+    job: JobState,
+    upload_tx: mpsc::Sender<(String, Bytes)>,
+}
+
+struct JobState {
+    current: Arc<RwLock<Option<JobProcessing>>>,
+    history: Arc<RwLock<Vec<Job>>>,
+    queue: Arc<RwLock<VecDeque<JobProcessing>>>,
 }
 
 impl ApiServer {
     pub fn new(port: u16, exporter: String) -> Self {
-        let (tx, rx) = mpsc::channel::<Bytes>(1);
+        let (tx, rx) = mpsc::channel::<(String, Bytes)>(1);
         let rx = Arc::new(RwLock::new(rx));
         let rx_clone = rx.clone();
 
         // Create shared state
         let state = Arc::new(ApiState {
             upload_tx: tx.clone(),
-            job_queue: Arc::new(RwLock::new(VecDeque::with_capacity(10))),
-            job_history: Arc::new(RwLock::new(Vec::with_capacity(100))),
+            job: JobState {
+                current: Arc::new(RwLock::new(None)),
+                history: Arc::new(RwLock::new(Vec::with_capacity(100))),
+                queue: Arc::new(RwLock::new(VecDeque::with_capacity(10))),
+            },
             exporter,
         });
 
@@ -123,7 +130,7 @@ impl ApiServer {
                         let bytes = Bytes::copy_from_slice(&data);
 
                         // Send the bytes through the channel
-                        if state.upload_tx.send(bytes).await.is_ok() {
+                        if state.upload_tx.send((file_name, bytes)).await.is_ok() {
                             return (
                                 StatusCode::OK,
                                 axum::Json(serde_json::json!({
@@ -164,8 +171,9 @@ impl ApiServer {
     }
 
     async fn status_handler(state: Arc<ApiState>) -> impl IntoResponse {
-        let queue_size = state.job_queue.read().await.len();
-        let history = state.job_history.read().await;
+        let queue_size = state.job.queue.read().await.len();
+        let history = state.job.history.read().await;
+        let current = state.job.current.read().await;
 
         match queue_size {
             0 => (
@@ -173,10 +181,11 @@ impl ApiServer {
                 axum::Json(serde_json::json!({
                     "status": "ready",
                     "exporter": state.exporter,
-                    "history": *history,
+                    "current": *current,
                     "queue": {
                         "size": queue_size
-                    }
+                    },
+                    "history": *history,
                 })),
             ),
             1..10 => (
@@ -184,10 +193,11 @@ impl ApiServer {
                 axum::Json(serde_json::json!({
                     "status": "processing",
                     "progress": "Processing diagnostic...",
-                    "history": *history,
+                    "current": *current,
                     "queue": {
                         "size": queue_size
-                    }
+                    },
+                    "history": *history,
                 })),
             ),
             _ => (
@@ -195,10 +205,11 @@ impl ApiServer {
                 axum::Json(serde_json::json!({
                     "status": "busy",
                     "warning": "Too many jobs in queue",
-                    "history": *history,
+                    "current": *current,
                     "queue": {
                         "size": queue_size
-                    }
+                    },
+                    "history": *history,
                 })),
             ),
         }
@@ -240,14 +251,14 @@ impl ApiServer {
     }
 
     pub async fn job_push(&mut self, job: JobProcessing) {
-        let mut queue = self.state.job_queue.write().await;
+        let mut queue = self.state.job.queue.write().await;
         log::debug!("Adding job {} to queue {}", job.id, queue.len());
         queue.push_back(job);
     }
 
     pub async fn job_record_failure(&mut self, job: JobFailed) {
         log::error!("Job {} failed with error: {}", job.id, job.error);
-        self.state.job_history.write().await.push(Job::Failed(job));
+        self.state.job.history.write().await.push(Job::Failed(job));
     }
 
     // Start a thread to process diagnostics in the background
@@ -268,17 +279,23 @@ impl ApiServer {
                     }
                     _ = async {
                         // Check if there are any jobs in the queue
-                        let mut queue = state.job_queue.write().await;
+                        let mut queue = state.job.queue.write().await;
                         if let Some(job) = queue.pop_front() {
                             // Release the lock before processing
                             drop(queue);
 
-                            let mut history = state.job_history.write().await;
+                            let mut current = state.job.current.write().await;
+                            *current = Some(job.clone());
+                            drop(current);
+
                             log::info!("Processing job {} from queue", job.id);
                             match job.process().await {
                                 Ok(job_completed) => {
                                     log::info!("Job {} completed successfully", job_completed.id);
+                                    let mut history = state.job.history.write().await;
                                     history.push(Job::Completed(job_completed));
+                                    let mut current = state.job.current.write().await;
+                                    *current = None;
                                 }
                                 Err(job_failed) => {
                                     log::error!(
@@ -286,7 +303,10 @@ impl ApiServer {
                                         job_failed.id,
                                         job_failed.error
                                     );
+                                    let mut history = state.job.history.write().await;
                                     history.push(Job::Failed(job_failed));
+                                    let mut current = state.job.current.write().await;
+                                    *current = None;
                                 }
                             }
                         } else {

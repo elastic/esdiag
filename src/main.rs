@@ -199,7 +199,7 @@ async fn run(cli: Cli) -> Result<&'static str> {
                         // Only receive the diagnostic - processing happens in a separate worker thread
                         let mut rx = rx.write().await;
                         match rx.recv().await {
-                            Some(bytes) => {
+                            Some((filename, bytes)) => {
                                 let receiver = match Receiver::try_from(bytes) {
                                     Ok(receiver) => receiver,
                                     Err(e) => {
@@ -210,7 +210,7 @@ async fn run(cli: Cli) -> Result<&'static str> {
                                     }
                                 };
                                 // Create job and push to queue for the worker thread to handle
-                                match JobNew::from(receiver).ready(exporter.clone()).await {
+                                match JobNew::new(filename, receiver).ready(exporter.clone()).await {
                                     Ok(job) => server.job_push(job.start()).await,
                                     Err(job) => server.job_record_failure(job).await,
                                 };

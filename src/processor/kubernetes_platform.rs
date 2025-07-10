@@ -11,7 +11,7 @@ use serde::Serialize;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 pub struct KubernetesPlatformDiagnostic {
     lookups: Arc<Lookups>,
     #[serde(skip)]
