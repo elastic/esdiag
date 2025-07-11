@@ -1,3 +1,6 @@
+# Defaults, override with --substitutions flag
+substitutions:
+  _VERSION: "latest"
 steps:
   - name: "gcr.io/cloud-builders/docker"
     id: "build"
@@ -23,7 +26,7 @@ steps:
         "push",
         "us-west1-docker.pkg.dev/elastic-ce-tools/esdiag/esdiag:${_VERSION}",
       ]
-
-# Defaults, override with --substitutions flag
-substitutions:
-  _VERSION: "latest"
+serviceAccount: "projects/elastic-ce-tools/serviceAccounts/esdiag-cloud-build@elastic-ce-tools.iam.gserviceaccount.com"
+# logsBucket: 'gs://YOUR_LOGS_BUCKET' # Optional, but good practice
+options:
+  logging: CLOUD_LOGGING_ONLY # GCS_ONLY # If using logsBucket, set logging to GCS_ONLY

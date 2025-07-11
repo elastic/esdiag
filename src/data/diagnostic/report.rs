@@ -56,6 +56,27 @@ impl TryFrom<DiagnosticManifest> for DiagnosticReportBuilder {
 }
 
 #[derive(Serialize, Clone)]
+pub struct Identifiers {
+    pub account: Option<String>,
+    pub case: Option<String>,
+    pub filename: Option<String>,
+    pub opportunity: Option<String>,
+    pub user: Option<String>,
+}
+
+impl Default for Identifiers {
+    fn default() -> Self {
+        Self {
+            account: None,
+            case: None,
+            filename: None,
+            opportunity: None,
+            user: None,
+        }
+    }
+}
+
+#[derive(Serialize, Clone)]
 pub struct DiagnosticReport {
     pub product: Product,
     origin: Origin,
@@ -65,11 +86,17 @@ pub struct DiagnosticReport {
     #[serde(flatten)]
     pub metadata: DiagnosticMetadata,
     pub kibana_link: Option<String>,
+    #[serde(flatten)]
+    pub identifiers: Identifiers,
 }
 
 impl DiagnosticReport {
     pub fn add_kibana_link(&mut self, link: String) {
         self.kibana_link = Some(link);
+    }
+
+    pub fn add_identifiers(&mut self, identifiers: Identifiers) {
+        self.identifiers = identifiers;
     }
 }
 
@@ -145,6 +172,7 @@ impl TryFrom<DiagnosticReportBuilder> for DiagnosticReport {
             },
             product: builder.product.unwrap_or(Product::Unknown),
             kibana_link: None,
+            identifiers: Identifiers::default(),
         })
     }
 }

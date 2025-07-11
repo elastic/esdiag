@@ -11,7 +11,10 @@ use crate::{
     client::{KnownHost, KnownHostBuilder},
     data::{
         Uri,
-        diagnostic::{DiagnosticReport, Product, report::ProcessorSummary},
+        diagnostic::{
+            DiagnosticReport, Product,
+            report::{Identifiers, ProcessorSummary},
+        },
     },
 };
 pub use directory::DirectoryExporter;
@@ -26,6 +29,7 @@ trait Export {
     async fn is_connected(&self) -> bool;
     async fn write(&self, index: String, docs: Vec<Value>) -> Result<ProcessorSummary>;
     async fn save_report(&self, report: &DiagnosticReport) -> Result<()>;
+    fn with_identifiers(self, identifiers: Identifiers) -> Self;
 }
 
 /// The different types of exporters for data output.
@@ -81,6 +85,24 @@ impl Exporter {
             Exporter::Elasticsearch(exporter) => exporter.is_connected().await,
             Exporter::File(exporter) => exporter.is_connected().await,
             Exporter::Stream(exporter) => exporter.is_connected().await,
+        }
+    }
+
+    pub fn with_identifiers(self, identifiers: Identifiers) -> Self {
+        match self {
+            Exporter::Elasticsearch(exporter) => {
+                Exporter::Elasticsearch(exporter.with_identifiers(identifiers))
+            }
+            Exporter::File(exporter) => Exporter::File(exporter.with_identifiers(identifiers)),
+            Exporter::Stream(exporter) => Exporter::Stream(exporter.with_identifiers(identifiers)),
+        }
+    }
+
+    pub fn identifiers(&self) -> Identifiers {
+        match self {
+            Exporter::Elasticsearch(exporter) => exporter.identifiers.clone(),
+            Exporter::File(exporter) => exporter.identifiers.clone(),
+            Exporter::Stream(exporter) => exporter.identifiers.clone(),
         }
     }
 }

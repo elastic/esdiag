@@ -72,7 +72,7 @@ impl TryFrom<Bytes> for ArchiveBytesReceiver {
     type Error = eyre::Report;
 
     fn try_from(bytes: Bytes) -> Result<Self> {
-        log::info!("Using in-memory archive");
+        log::debug!("Using in-memory archive");
         let archive = ZipArchive::new(BufReader::new(Cursor::new(bytes)))?;
         Ok(Self {
             archive: Arc::new(RwLock::new(archive)),

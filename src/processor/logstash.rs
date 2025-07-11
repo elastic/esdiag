@@ -26,7 +26,7 @@ use serde::{Serialize, de::DeserializeOwned};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 pub struct LogstashDiagnostic {
     lookups: Arc<Lookups>,
     metadata: Arc<LogstashMetadata>,

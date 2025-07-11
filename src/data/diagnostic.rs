@@ -99,7 +99,7 @@ impl Default for Product {
     }
 }
 
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DiagPath {
     pub diag_type: String,

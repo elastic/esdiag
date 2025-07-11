@@ -8,11 +8,13 @@ pub mod kubernetes_platform;
 pub mod logstash;
 
 use std::sync::Arc;
+use uuid::Uuid;
 
 use elastic_cloud_kubernetes::ElasticCloudKubernetesDiagnostic;
 use elasticsearch::ElasticsearchDiagnostic;
 use kubernetes_platform::KubernetesPlatformDiagnostic;
 use logstash::LogstashDiagnostic;
+use serde::Serialize;
 
 use crate::{
     data::diagnostic::{DiagnosticManifest, DiagnosticReport, Product},
@@ -21,6 +23,7 @@ use crate::{
 };
 use eyre::{Result, eyre};
 
+#[derive(Clone)]
 pub enum Diagnostic {
     Elasticsearch(Box<ElasticsearchDiagnostic>),
     ElasticCloudKubernetes(Box<ElasticCloudKubernetesDiagnostic>),
@@ -104,4 +107,213 @@ trait DiagnosticProcessor {
 
 trait Metadata {
     fn as_meta_doc(&self) -> serde_json::Value;
+}
+
+#[derive(Serialize)]
+pub struct JobNew {
+    pub id: String,
+    filename: String,
+    user: Option<String>,
+    #[serde(skip_serializing)]
+    receiver: Receiver,
+}
+
+#[derive(Serialize)]
+pub struct JobReady {
+    pub id: String,
+    filename: String,
+    user: Option<String>,
+    #[serde(skip_serializing)]
+    diagnostic: Diagnostic,
+}
+
+#[derive(Clone, Serialize)]
+pub struct JobProcessing {
+    pub id: String,
+    filename: String,
+    user: Option<String>,
+    #[serde(skip_serializing)]
+    diagnostic: Diagnostic,
+}
+
+#[derive(Serialize)]
+pub struct JobCompleted {
+    pub id: String,
+    filename: String,
+    user: Option<String>,
+    report: DiagnosticReport,
+}
+
+#[derive(Serialize)]
+pub struct JobFailed {
+    pub id: String,
+    pub filename: String,
+    pub user: Option<String>,
+    pub error: String,
+}
+
+impl From<String> for JobFailed {
+    fn from(error: String) -> Self {
+        JobFailed {
+            id: uuid::Uuid::new_v4().to_string(),
+            filename: String::new(),
+            user: None,
+            error,
+        }
+    }
+}
+
+#[derive(Serialize)]
+pub enum Job {
+    New(JobNew),
+    Ready(JobReady),
+    Processing(JobProcessing),
+    Completed(JobCompleted),
+    Failed(JobFailed),
+}
+
+impl JobNew {
+    pub fn with_filename(self, filename: String) -> Self {
+        JobNew { filename, ..self }
+    }
+
+    pub async fn ready(self, exporter: Exporter) -> Result<JobReady, JobFailed> {
+        let manifest = match self.receiver.try_get_manifest().await {
+            Ok(manifest) => manifest,
+            Err(err) => {
+                log::error!("Failed to build manifest: {}", err);
+                return Err(JobFailed {
+                    id: self.id,
+                    filename: self.filename,
+                    user: self.user,
+                    error: err.to_string(),
+                });
+            }
+        };
+
+        match Diagnostic::try_new(manifest, self.receiver, exporter).await {
+            Ok(diagnostic) => Ok(JobReady {
+                id: self.id,
+                filename: self.filename,
+                user: self.user,
+                diagnostic,
+            }),
+            Err(err) => Err(JobFailed {
+                id: self.id,
+                filename: self.filename,
+                user: self.user,
+                error: err.to_string(),
+            }),
+        }
+    }
+}
+
+impl JobNew {
+    pub fn new(filename: String, user: Option<String>, receiver: Receiver) -> Self {
+        let id = Uuid::new_v4().to_string();
+        JobNew {
+            id,
+            filename,
+            user,
+            receiver,
+        }
+    }
+}
+
+impl JobReady {
+    pub fn start(self) -> JobProcessing {
+        JobProcessing {
+            id: self.id,
+            filename: self.filename,
+            user: self.user,
+            diagnostic: self.diagnostic,
+        }
+    }
+}
+
+impl JobProcessing {
+    pub async fn process(self) -> Result<JobCompleted, JobFailed> {
+        match self.diagnostic.run().await {
+            Ok(report) => Ok(JobCompleted {
+                id: self.id,
+                filename: self.filename,
+                user: self.user,
+                report,
+            }),
+            Err(error) => Err(JobFailed {
+                id: self.id,
+                filename: self.filename,
+                user: self.user,
+                error: error.to_string(),
+            }),
+        }
+    }
+}
+
+impl Job {
+    pub fn new(filename: String, user: Option<String>, receiver: Receiver) -> Self {
+        let id = Uuid::new_v4().to_string();
+        Job::New(JobNew {
+            id,
+            filename,
+            user,
+            receiver,
+        })
+    }
+
+    pub fn id(&self) -> String {
+        match self {
+            Job::New(job) => job.id.clone(),
+            Job::Ready(job) => job.id.clone(),
+            Job::Processing(job) => job.id.clone(),
+            Job::Completed(job) => job.id.clone(),
+            Job::Failed(job) => job.id.clone(),
+        }
+    }
+
+    pub fn filename(&self) -> String {
+        match self {
+            Job::New(job) => job.filename.clone(),
+            Job::Ready(job) => job.filename.clone(),
+            Job::Processing(job) => job.filename.clone(),
+            Job::Completed(job) => job.filename.clone(),
+            Job::Failed(job) => job.filename.clone(),
+        }
+    }
+
+    pub fn user(&self) -> Option<String> {
+        match self {
+            Job::New(job) => job.user.clone(),
+            Job::Ready(job) => job.user.clone(),
+            Job::Processing(job) => job.user.clone(),
+            Job::Completed(job) => job.user.clone(),
+            Job::Failed(job) => job.user.clone(),
+        }
+    }
+
+    pub async fn ready(self, exporter: Exporter) -> Result<Self, Self> {
+        if let Job::New(job) = self {
+            match job.ready(exporter).await {
+                Ok(job) => Ok(Job::Ready(job)),
+                Err(job) => Err(Job::Failed(job)),
+            }
+        } else {
+            Err(Job::Failed(JobFailed {
+                id: self.id(),
+                filename: self.filename(),
+                user: self.user(),
+                error: "Attempted to ready a job that was not new".to_string(),
+            }))
+        }
+    }
+
+    pub fn status(&self) -> &str {
+        match self {
+            Job::New(_) => "New",
+            Job::Ready(_) => "Ready",
+            Job::Processing(_) => "Processing",
+            Job::Completed(_) => "Completed",
+            Job::Failed(_) => "Failed",
+        }
+    }
 }

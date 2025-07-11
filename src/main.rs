@@ -1,10 +1,13 @@
 use clap::{Parser, Subcommand, builder::styling};
 use esdiag::{
     client::{KnownHost, KnownHostBuilder},
-    data::{Collector, Uri, diagnostic::Product},
+    data::{
+        Collector, Uri,
+        diagnostic::{Product, report::Identifiers},
+    },
     env::LOG_LEVEL,
     exporter::{DirectoryExporter, Exporter},
-    processor::Diagnostic,
+    processor::{Diagnostic, JobFailed, JobNew},
     receiver::Receiver,
     server::ApiServer,
     setup,
@@ -183,6 +186,8 @@ async fn run(cli: Cli) -> Result<&'static str> {
                 None => return Err(eyre!("Server rx error")),
             };
 
+            let user = std::env::var("ESDIAG_USER").ok();
+
             // This will process uploaded diagnostics until a termination signal is received
             tokio::select! {
                 _ = tokio::signal::ctrl_c() => {
@@ -196,39 +201,51 @@ async fn run(cli: Cli) -> Result<&'static str> {
                 } => {}
                 _ = async {
                     loop {
+                        // Only receive the diagnostic - processing happens in a separate worker thread
                         let mut rx = rx.write().await;
                         match rx.recv().await {
-                            Some(bytes) => {
-                                server.set_processing().await;
-                                let receiver = Receiver::try_from(bytes)?;
-                                let manifest = match receiver.try_get_manifest().await {
-                                    Ok(manifest) => manifest,
-                                    Err(err) => {
-                                        let message = format!("Failed to build manifest, invalid diagnostic archive");
-                                        log::error!("Failed to build manifest: {}", err);
-                                        server.set_error(message).await;
+                            Some((filename, username, bytes)) => {
+                                let receiver = match Receiver::try_from(bytes) {
+                                    Ok(receiver) => receiver,
+                                    Err(e) => {
+                                        let error = format!("Failed to create receiver: {}", e);
+                                        log::error!("{}", error);
+                                        server.job_record_failure(JobFailed::from(error)).await;
                                         continue;
                                     }
                                 };
-                                let report = Diagnostic::try_new(manifest, receiver, exporter.clone()).await?.run().await?;
-                                log::debug!("Diagnostic report generated: {}", serde_json::to_string(&report)?);
-                                server.set_complete(report).await;
+                                let user = match &user {
+                                    Some(user) => Some(user.clone()),
+                                    None => username.clone(),
+                                };
+                                let identifiers = Identifiers {
+                                    account: None,
+                                    case: None,
+                                    filename: Some(filename.clone()),
+                                    opportunity: None,
+                                    user: user.clone(),
+                                };
+                                let exporter = exporter.clone().with_identifiers(identifiers);
+                                // Create job and push to queue for the worker thread to handle
+                                match JobNew::new(filename, username, receiver).ready(exporter).await {
+                                    Ok(job) => server.job_push(job.start()).await,
+                                    Err(job) => server.job_record_failure(job).await,
+                                };
                             }
                             None => {
                                 let message = format!("Failed receiving archive bytes");
                                 log::error!("{}", message);
-                                server.set_error(message).await;
                             }
                         }
-                        log::info!("Waiting for next diagnostic...");
+                        log::debug!("Waiting for next diagnostic...");
                     }
                     #[allow(unreachable_code)]
                     Ok::<_, eyre::Report>(())
                 } => {}
             }
 
-            // Allow time for graceful shutdown
-            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            // Perform graceful shutdown of the server and worker thread
+            server.shutdown().await;
             Ok("serve")
         }
         Commands::Collect { host, output } => {

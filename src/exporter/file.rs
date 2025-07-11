@@ -1,6 +1,6 @@
 use crate::data::diagnostic::{
-    report::{BatchResponse, ProcessorSummary},
     DiagnosticReport,
+    report::{BatchResponse, Identifiers, ProcessorSummary},
 };
 
 use super::Export;
@@ -15,6 +15,7 @@ use std::{
 pub struct FileExporter {
     file: File,
     path: PathBuf,
+    pub identifiers: Identifiers,
 }
 
 impl Clone for FileExporter {
@@ -22,6 +23,7 @@ impl Clone for FileExporter {
         Self {
             file: self.file.try_clone().expect("Failed to clone file"),
             path: self.path.clone(),
+            identifiers: self.identifiers.clone(),
         }
     }
 }
@@ -35,11 +37,22 @@ impl TryFrom<PathBuf> for FileExporter {
             .truncate(true)
             .write(true)
             .open(&path)?;
-        Ok(Self { file, path })
+        Ok(Self {
+            file,
+            path,
+            identifiers: Identifiers::default(),
+        })
     }
 }
 
 impl Export for FileExporter {
+    fn with_identifiers(self, identifiers: Identifiers) -> Self {
+        Self {
+            identifiers,
+            ..self
+        }
+    }
+
     async fn is_connected(&self) -> bool {
         let is_file = self.path.is_file();
         let filename = self.path.to_str().unwrap_or("");

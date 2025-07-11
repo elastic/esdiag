@@ -1,6 +1,6 @@
 use crate::data::diagnostic::{
-    report::{BatchResponse, ProcessorSummary},
     DiagnosticReport,
+    report::{BatchResponse, Identifiers, ProcessorSummary},
 };
 
 use super::Export;
@@ -8,15 +8,30 @@ use eyre::Result;
 use serde_json::Value;
 
 #[derive(Clone)]
-pub struct StreamExporter {}
+pub struct StreamExporter {
+    pub identifiers: Identifiers,
+}
 
 impl StreamExporter {
     pub fn new() -> Self {
-        Self {}
+        Self {
+            identifiers: Identifiers::default(),
+        }
     }
 }
 
 impl Export for StreamExporter {
+    fn with_identifiers(self, identifiers: Identifiers) -> Self {
+        Self {
+            identifiers,
+            ..self
+        }
+    }
+
+    async fn is_connected(&self) -> bool {
+        true
+    }
+
     async fn write(&self, index: String, docs: Vec<Value>) -> Result<ProcessorSummary> {
         let doc_count = docs.len() as u32;
         let start_time = std::time::Instant::now();
@@ -32,10 +47,6 @@ impl Export for StreamExporter {
         batch.time = start_time.elapsed().as_millis() as u32;
         summary.add_batch(batch);
         Ok(summary)
-    }
-
-    async fn is_connected(&self) -> bool {
-        true
     }
 
     async fn save_report(&self, report: &DiagnosticReport) -> Result<()> {
