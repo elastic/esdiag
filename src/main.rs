@@ -1,7 +1,10 @@
 use clap::{Parser, Subcommand, builder::styling};
 use esdiag::{
     client::{KnownHost, KnownHostBuilder},
-    data::{Collector, Uri, diagnostic::Product},
+    data::{
+        Collector, Uri,
+        diagnostic::{Product, report::Identifiers},
+    },
     env::LOG_LEVEL,
     exporter::{DirectoryExporter, Exporter},
     processor::{Diagnostic, JobFailed, JobNew},
@@ -183,6 +186,8 @@ async fn run(cli: Cli) -> Result<&'static str> {
                 None => return Err(eyre!("Server rx error")),
             };
 
+            let user = std::env::var("ESDIAG_USER").ok();
+
             // This will process uploaded diagnostics until a termination signal is received
             tokio::select! {
                 _ = tokio::signal::ctrl_c() => {
@@ -209,8 +214,20 @@ async fn run(cli: Cli) -> Result<&'static str> {
                                         continue;
                                     }
                                 };
+                                let user = match &user {
+                                    Some(user) => Some(user.clone()),
+                                    None => username.clone(),
+                                };
+                                let identifiers = Identifiers {
+                                    account: None,
+                                    case: None,
+                                    filename: Some(filename.clone()),
+                                    opportunity: None,
+                                    user: user.clone(),
+                                };
+                                let exporter = exporter.clone().with_identifiers(identifiers);
                                 // Create job and push to queue for the worker thread to handle
-                                match JobNew::new(filename, username, receiver).ready(exporter.clone()).await {
+                                match JobNew::new(filename, username, receiver).ready(exporter).await {
                                     Ok(job) => server.job_push(job.start()).await,
                                     Err(job) => server.job_record_failure(job).await,
                                 };

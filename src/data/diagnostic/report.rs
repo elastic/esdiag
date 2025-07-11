@@ -57,19 +57,21 @@ impl TryFrom<DiagnosticManifest> for DiagnosticReportBuilder {
 
 #[derive(Serialize, Clone)]
 pub struct Identifiers {
-    account: Option<String>,
-    opportunity: Option<String>,
-    user: Option<String>,
-    case: Option<String>,
+    pub account: Option<String>,
+    pub case: Option<String>,
+    pub filename: Option<String>,
+    pub opportunity: Option<String>,
+    pub user: Option<String>,
 }
 
 impl Default for Identifiers {
     fn default() -> Self {
         Self {
             account: None,
+            case: None,
+            filename: None,
             opportunity: None,
             user: None,
-            case: None,
         }
     }
 }
