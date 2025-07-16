@@ -311,7 +311,14 @@
             .icon {
                 width: 24px;
                 height: 24px;
+                margin: 0px 12px;
                 align-self: right;
+            }
+            #kibana {
+                position: relative;
+            }
+            #kibana:hover .user-menu {
+                display: block;
             }
             .github {
                 color: #b7d0fb;
@@ -425,9 +432,49 @@
                 Elastic Stack Diagnostics
             </h1>
             <div class="links">
-                <div id="github" class="github">
+                <div id="kibana">
+                    <a href="#" target="_blank">
+                        <svg
+                            class="icon"
+                            width="64"
+                            height="64"
+                            viewBox="0 0 64 64"
+                            fill="none"
+                            xmlns="http://www.w3.org/2000/svg"
+                        >
+                            <g clip-path="url(#clip0_0_6522)">
+                                <path
+                                    fill-rule="evenodd"
+                                    clip-rule="evenodd"
+                                    d="M11 25.2499V53.5809L31.137 30.3919C25.149 27.1299 18.299 25.2499 11 25.2499Z"
+                                    fill="white"
+                                />
+                                <path
+                                    fill-rule="evenodd"
+                                    clip-rule="evenodd"
+                                    d="M11 4.99991V25.2499C18.299 25.2499 25.149 27.1299 31.137 30.3919L53.188 4.99991H11Z"
+                                    fill="white"
+                                />
+                                <path
+                                    fill-rule="evenodd"
+                                    clip-rule="evenodd"
+                                    d="M35.4434 33.059L14.7754 56.86L12.9164 59H52.3414C50.1784 48.342 43.9924 39.149 35.4434 33.059Z"
+                                    fill="white"
+                                />
+                            </g>
+                            <defs>
+                                <clipPath id="clip0_0_6522">
+                                    <rect width="64" height="64" fill="white" />
+                                </clipPath>
+                            </defs></svg
+                    ></a>
+                    <div class="user-menu">
+                        <div class="user-menu-item">Loading...</div>
+                    </div>
+                </div>
+                <div id="github" class="github icon">
                     <a href="https://github.com/elastic/esdiag" target="_blank">
-                        <svg class="icon" viewBox="0 0 24 24">
+                        <svg viewBox="0 0 24 24">
                             <path
                                 fill="rgb(255,255,255)"
                                 d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.17 6.839 9.49.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.603-3.369-1.342-3.369-1.342-.454-1.155-1.11-1.462-1.11-1.462-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0112 6.836c.85.004 1.705.114 2.504.336 1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.167 22 16.418 22 12c0-5.523-4.477-10-10-10z"
@@ -535,6 +582,21 @@
                     username ? username.charAt(0).toUpperCase() : "_";
                 document.getElementById("username-display").textContent =
                     username || "Anonymous";
+            }
+
+            function updateKibanaUrl(kibanaUrl) {
+                const kibanaLink = document.querySelector("#kibana a");
+                const kibanaMenu = document.querySelector(
+                    "#kibana .user-menu-item",
+                );
+
+                if (kibanaLink && kibanaUrl) {
+                    kibanaLink.href = `${kibanaUrl}/app/dashboards#/view/2c8cd284-79ef-4787-8b79-0030e0df467b`;
+                }
+
+                if (kibanaMenu && kibanaUrl) {
+                    kibanaMenu.textContent = kibanaUrl;
+                }
             }
 
             // File upload handling
@@ -696,7 +758,7 @@
                 } else if (current) {
                     readyStatus.innerHTML = `🔄 Processing`;
                 } else {
-                    readyStatus.innerHTML = `▶️ Ready`;
+                    readyStatus.innerHTML = `▶️ Ready, exporting to ${exporter}`;
                 }
 
                 // Reset upload-related UI elements
@@ -832,6 +894,11 @@
                             user: data.user,
                             queue: data.queue,
                         });
+
+                        // Update kibana URL if available
+                        if (data.kibana) {
+                            updateKibanaUrl(data.kibana);
+                        }
                     })
                     .catch((error) => {
                         console.error("Polling error:", error);
@@ -940,7 +1007,7 @@
                     xhr.send(formData);
                 });
 
-            setTimeout(pollStatus, 500);
+            setTimeout(pollStatus, 200);
         </script>
     </body>
 </html>

@@ -62,6 +62,12 @@ enum Commands {
             long_help = "Target to send the processed diagnostic documents to (known host, file, stdout, or env). Strings will be checked against the known hosts stored in `~/.esdiag/hosts.yml` and will fallback to a filename if not found. Use `-` for stdout. If nothing is provided, the output will try using the environment variables: ESDIAG_OUTPUT_URL, ESDIAG_OUTPUT_APIKEY, ESDIAG_OUTPUT_USERNAME, and ESDIAG_OUTPUT_PASSWORD."
         )]
         output: Option<String>,
+        /// Kibana URL to display in the web interface
+        #[arg(
+            long,
+            long_help = "Kibana URL to display in the web interface. If not provided, will use the ESDIAG_KIBANA_URL environment variable."
+        )]
+        kibana: Option<String>,
     },
     /// Configure, test and save a remote host connection to `~/.esdiag/hosts.yml`
     Host {
@@ -173,13 +179,22 @@ async fn main() -> Result<()> {
 
 async fn run(cli: Cli) -> Result<&'static str> {
     match cli.command {
-        Commands::Serve { port, output } => {
+        Commands::Serve {
+            port,
+            output,
+            kibana,
+        } => {
             log::info!("Starting ESDiag API server");
 
             let output_uri = output.and_then(|o| Uri::try_from(o).ok());
             let exporter = Exporter::try_from(output_uri)?;
 
-            let mut server = ApiServer::new(port, exporter.to_string());
+            let kibana_url = kibana.unwrap_or_else(|| {
+                esdiag::env::get_string("ESDIAG_KIBANA_URL")
+                    .unwrap_or_else(|_| "http://localhost:5601".to_string())
+            });
+
+            let mut server = ApiServer::new(port, exporter.to_string(), kibana_url);
 
             let rx = match &server.rx {
                 Some(rx) => rx.clone(),

@@ -23,6 +23,7 @@ pub struct ApiServer {
 
 struct ApiState {
     exporter: String,
+    kibana: String,
     job: JobState,
     upload_tx: mpsc::Sender<(String, Option<String>, Bytes)>,
 }
@@ -34,7 +35,7 @@ struct JobState {
 }
 
 impl ApiServer {
-    pub fn new(port: u16, exporter: String) -> Self {
+    pub fn new(port: u16, exporter: String, kibana: String) -> Self {
         let (tx, rx) = mpsc::channel::<(String, Option<String>, Bytes)>(1);
         let rx = Arc::new(RwLock::new(rx));
         let rx_clone = rx.clone();
@@ -48,6 +49,7 @@ impl ApiServer {
                 queue: Arc::new(RwLock::new(VecDeque::with_capacity(10))),
             },
             exporter,
+            kibana,
         });
 
         // Start the Axum server
@@ -213,6 +215,7 @@ impl ApiServer {
                 axum::Json(serde_json::json!({
                     "status": "ready",
                     "exporter": state.exporter,
+                    "kibana": state.kibana,
                     "user": user_email,
                     "current": *current,
                     "queue": {
@@ -226,6 +229,7 @@ impl ApiServer {
                 axum::Json(serde_json::json!({
                     "status": "processing",
                     "progress": "Processing diagnostic...",
+                    "kibana": state.kibana,
                     "user": user_email,
                     "current": *current,
                     "queue": {
@@ -239,6 +243,7 @@ impl ApiServer {
                 axum::Json(serde_json::json!({
                     "status": "busy",
                     "warning": "Too many jobs in queue",
+                    "kibana": state.kibana,
                     "user": user_email,
                     "current": *current,
                     "queue": {
@@ -361,7 +366,7 @@ impl ApiServer {
 
 impl Default for ApiServer {
     fn default() -> Self {
-        Self::new(3000, String::new())
+        Self::new(3000, String::new(), String::new())
     }
 }
 

@@ -8,7 +8,7 @@ async fn upload_non_zip_extension_returns_bad_request() {
     // Create a server instance
     let port = 9879;
     let exporter = "-".to_string(); // "-" uses stdout
-    let _server = ApiServer::new(port, exporter.clone());
+    let _server = ApiServer::new(port, exporter.clone(), "http://localhost:5601".to_string());
 
     // Allow server time to start
     tokio::time::sleep(Duration::from_millis(100)).await;
@@ -57,7 +57,7 @@ async fn upload_without_filename_returns_bad_request() {
     // Create a server instance
     let port = 9880;
     let exporter = "-".to_string(); // "-" uses stdout
-    let _server = ApiServer::new(port, exporter.clone());
+    let _server = ApiServer::new(port, exporter.clone(), "http://localhost:5601".to_string());
 
     // Allow server time to start
     tokio::time::sleep(Duration::from_millis(100)).await;
@@ -100,7 +100,7 @@ async fn upload_invalid_zip_processes_and_returns_ready() {
     // Create a server instance
     let port = 9881;
     let exporter = "-".to_string(); // "-" uses stdout
-    let mut server = ApiServer::new(port, exporter.clone());
+    let mut server = ApiServer::new(port, exporter.clone(), "http://localhost:5601".to_string());
 
     // Allow time for server to start
     tokio::time::sleep(Duration::from_millis(100)).await;
@@ -189,7 +189,7 @@ async fn status_with_auth_header_returns_user() {
     // Create a server instance
     let port = 9882;
     let exporter = "-".to_string(); // "-" uses stdout
-    let mut server = ApiServer::new(port, exporter.clone());
+    let mut server = ApiServer::new(port, exporter.clone(), "http://localhost:5601".to_string());
 
     // Allow time for server to start
     tokio::time::sleep(Duration::from_millis(100)).await;
@@ -247,7 +247,7 @@ async fn status_with_auth_header_returns_user() {
 async fn auth_header_filters_job_history() {
     // Create a server instance for testing
     let port = 9883;
-    let mut server = ApiServer::new(port, "-".to_string());
+    let mut server = ApiServer::new(port, "-".to_string(), "http://localhost:5601".to_string());
 
     // Allow time for server to start
     tokio::time::sleep(Duration::from_millis(100)).await;
