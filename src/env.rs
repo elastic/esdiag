@@ -2,6 +2,7 @@ pub const ESDIAG_ES_BULK_SIZE: usize = 5_000;
 pub const ESDIAG_ES_WORKERS: usize = 4;
 pub static ESDIAG_HOME: &str = ".esdiag";
 pub static LOG_LEVEL: &str = "info";
+pub static ESDIAG_KIBANA_URL: &str = "http://localhost:5601";
 
 fn default_int(name: &str) -> Option<usize> {
     match name {
@@ -15,6 +16,7 @@ fn default_str(name: &str) -> Option<&str> {
     match name {
         "ESDIAG_HOME" => Some(ESDIAG_HOME),
         "LOG_LEVEL" => Some(LOG_LEVEL),
+        "ESDIAG_KIBANA_URL" => Some(ESDIAG_KIBANA_URL),
         _ => None,
     }
 }
