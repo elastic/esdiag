@@ -74,6 +74,7 @@ impl Diagnostic {
     }
 
     pub async fn run(self) -> Result<DiagnosticReport> {
+        let start_time = std::time::Instant::now();
         let mut report = match self {
             Self::Elasticsearch(diagnostic) => diagnostic.run().await?,
             Self::ElasticCloudKubernetes(diagnostic) => diagnostic.run().await?,
@@ -95,6 +96,7 @@ impl Diagnostic {
             log::info!("{}", kibana_link);
             report.add_kibana_link(kibana_link);
         }
+        report.add_processing_duration(start_time.elapsed().as_millis());
         Ok(report)
     }
 }
@@ -149,6 +151,12 @@ pub struct JobCompleted {
     filename: String,
     user: Option<String>,
     report: DiagnosticReport,
+}
+
+impl JobCompleted {
+    pub fn processing_seconds(&self) -> f64 {
+        self.report.processing_duration as f64 / 1000.0
+    }
 }
 
 #[derive(Serialize)]
@@ -216,12 +224,16 @@ impl JobNew {
 }
 
 impl JobNew {
-    pub fn new(filename: String, user: Option<String>, receiver: Receiver) -> Self {
+    pub fn new(identifiers: &Identifiers, receiver: Receiver) -> Self {
         let id = Uuid::new_v4().to_string();
         JobNew {
             id,
-            filename,
-            user,
+            filename: identifiers
+                .filename
+                .as_ref()
+                .expect("missing filename")
+                .clone(),
+            user: identifiers.user.clone(),
             receiver,
         }
     }

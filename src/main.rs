@@ -133,8 +133,6 @@ enum Commands {
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 8)]
 async fn main() -> Result<()> {
-    let start_time = std::time::Instant::now();
-
     // Parse CLI early to check for debug flag
     let cli = Cli::parse();
 
@@ -161,10 +159,7 @@ async fn main() -> Result<()> {
 
     match run(cli).await {
         Ok(cmd) => {
-            log::info!(
-                "{cmd} complete in {:.3} seconds",
-                start_time.elapsed().as_secs_f32()
-            );
+            log::debug!("{cmd} complete");
             Ok(())
         }
         Err(e) => {
@@ -216,7 +211,7 @@ async fn run(cli: Cli) -> Result<&'static str> {
                         // Only receive the diagnostic - processing happens in a separate worker thread
                         let mut rx = rx.write().await;
                         match rx.recv().await {
-                            Some((filename, username, bytes)) => {
+                            Some((identifiers, bytes)) => {
                                 let receiver = match Receiver::try_from(bytes) {
                                     Ok(receiver) => receiver,
                                     Err(e) => {
@@ -226,20 +221,10 @@ async fn run(cli: Cli) -> Result<&'static str> {
                                         continue;
                                     }
                                 };
-                                let user = match &user {
-                                    Some(user) => Some(user.clone()),
-                                    None => username.clone(),
-                                };
-                                let identifiers = Identifiers {
-                                    account: None,
-                                    case: None,
-                                    filename: Some(filename.clone()),
-                                    opportunity: None,
-                                    user: user.clone(),
-                                };
-                                let exporter = exporter.clone().with_identifiers(identifiers);
+
+                                let exporter = exporter.clone().with_identifiers(identifiers.clone().default_user(user.as_ref()));
                                 // Create job and push to queue for the worker thread to handle
-                                match JobNew::new(filename, username, receiver).ready(exporter).await {
+                                match JobNew::new(&exporter.identifiers(), receiver).ready(exporter).await {
                                     Ok(job) => server.job_push(job.start()).await,
                                     Err(job) => server.job_record_failure(job).await,
                                 };
@@ -340,7 +325,12 @@ async fn run(cli: Cli) -> Result<&'static str> {
             log::trace!("{}", serde_json::to_string(&manifest)?);
 
             let diagnostic = Diagnostic::try_new(manifest, receiver, exporter).await?;
-            diagnostic.run().await.map(|_| "process")
+            let report = diagnostic.run().await?;
+            log::info!(
+                "Process complete in {:.3} seconds",
+                report.processing_duration as f64 / 1000.0
+            );
+            Ok("process")
         }
         Commands::Import { target, source } => {
             let input_uri = Uri::try_from(source)?;

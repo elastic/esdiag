@@ -1,7 +1,7 @@
 use super::super::elasticsearch::License as ElasticsearchLicense;
 use super::{DiagnosticManifest, DiagnosticMetadata, Lookup, Product};
 use eyre::{OptionExt, Report, Result, eyre};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 pub struct DiagnosticReportBuilder {
@@ -56,20 +56,29 @@ impl TryFrom<DiagnosticManifest> for DiagnosticReportBuilder {
     }
 }
 
-#[derive(Serialize, Clone)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Identifiers {
     pub account: Option<String>,
-    pub case: Option<String>,
+    pub case_number: Option<u64>,
     pub filename: Option<String>,
     pub opportunity: Option<String>,
     pub user: Option<String>,
+}
+
+impl Identifiers {
+    pub fn default_user(self, username: Option<&String>) -> Self {
+        Self {
+            user: self.user.or_else(|| username.cloned()),
+            ..self
+        }
+    }
 }
 
 impl Default for Identifiers {
     fn default() -> Self {
         Self {
             account: None,
-            case: None,
+            case_number: None,
             filename: None,
             opportunity: None,
             user: None,
@@ -96,6 +105,7 @@ pub struct DiagnosticReport {
     pub kibana_link: Option<String>,
     #[serde(flatten)]
     pub identifiers: Identifiers,
+    pub processing_duration: u128,
 }
 
 impl DiagnosticReport {
@@ -109,6 +119,10 @@ impl DiagnosticReport {
 
     pub fn add_license(&mut self, license: Option<ElasticsearchLicense>) {
         self.license = license.map(License::Elasticsearch);
+    }
+
+    pub fn add_processing_duration(&mut self, time: u128) {
+        self.processing_duration = time;
     }
 }
 
@@ -186,6 +200,7 @@ impl TryFrom<DiagnosticReportBuilder> for DiagnosticReport {
             product: builder.product.unwrap_or(Product::Unknown),
             kibana_link: None,
             identifiers: Identifiers::default(),
+            processing_duration: 0,
         })
     }
 }

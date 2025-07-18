@@ -1,23 +1,49 @@
-use crate::processor::{Job, JobFailed, JobProcessing};
+use crate::{
+    data::Uri,
+    exporter::Exporter,
+    processor::{Identifiers, Job, JobFailed, JobNew, JobProcessing},
+    receiver::Receiver,
+};
 use axum::{
     Router,
-    extract::{DefaultBodyLimit, Multipart},
+    extract::{DefaultBodyLimit, Json, Multipart},
     http::{HeaderMap, StatusCode},
     response::{Html, IntoResponse},
     routing::{get, post},
 };
 use bytes::Bytes;
+use serde::{Deserialize, Serialize};
 use std::{collections::VecDeque, net::SocketAddr, sync::Arc};
 use tokio::sync::{RwLock, mpsc, oneshot};
+use url::Url;
 
 static INDEX_HTML: &str = include_str!("index.html");
+
+#[derive(Debug, Deserialize, Serialize)]
+struct UploadServiceRequest {
+    metadata: Identifiers,
+    token: String,
+    url: String,
+}
+
+impl From<UploadServiceRequest> for Identifiers {
+    fn from(request: UploadServiceRequest) -> Self {
+        Identifiers {
+            account: request.metadata.account.clone(),
+            case_number: request.metadata.case_number,
+            filename: request.metadata.filename.clone(),
+            opportunity: None,
+            user: request.metadata.user,
+        }
+    }
+}
 
 #[derive(Clone)]
 pub struct ApiServer {
     server_handle: Option<Arc<tokio::task::JoinHandle<()>>>,
     worker_handle: Option<Arc<tokio::task::JoinHandle<()>>>,
     shutdown_signal: Option<Arc<oneshot::Sender<()>>>,
-    pub rx: Option<Arc<RwLock<mpsc::Receiver<(String, Option<String>, Bytes)>>>>,
+    pub rx: Option<Arc<RwLock<mpsc::Receiver<(Identifiers, Bytes)>>>>,
     state: Arc<ApiState>,
 }
 
@@ -25,7 +51,7 @@ struct ApiState {
     exporter: String,
     kibana: String,
     job: JobState,
-    upload_tx: mpsc::Sender<(String, Option<String>, Bytes)>,
+    upload_tx: mpsc::Sender<(Identifiers, Bytes)>,
 }
 
 struct JobState {
@@ -36,7 +62,7 @@ struct JobState {
 
 impl ApiServer {
     pub fn new(port: u16, exporter: String, kibana: String) -> Self {
-        let (tx, rx) = mpsc::channel::<(String, Option<String>, Bytes)>(1);
+        let (tx, rx) = mpsc::channel::<(Identifiers, Bytes)>(1);
         let rx = Arc::new(RwLock::new(rx));
         let rx_clone = rx.clone();
 
@@ -54,7 +80,8 @@ impl ApiServer {
 
         // Start the Axum server
         let state_uploader = state.clone();
-        let state_handler = state.clone();
+        let state_status = state.clone();
+        let state_upload_service = state.clone();
         let handle = tokio::spawn(async move {
             // Handler closures
             let upload_handler = {
@@ -63,8 +90,13 @@ impl ApiServer {
                 }
             };
 
-            let status_handler = {
-                move |headers| async move { Self::status_handler(headers, state_handler).await }
+            let status_handler =
+                { move |headers| async move { Self::status_handler(headers, state_status).await } };
+
+            let upload_service_handler = {
+                move |headers, json: Json<UploadServiceRequest>| async move {
+                    Self::upload_service_handler(headers, json, state_upload_service).await
+                }
             };
 
             const ONE_GIBIBYTE: usize = 1024 * 1024 * 1024;
@@ -72,6 +104,7 @@ impl ApiServer {
                 .route("/", get(Self::index_handler))
                 .route("/upload", post(upload_handler))
                 .route("/status", get(status_handler))
+                .route("/upload_service", post(upload_service_handler))
                 .layer(DefaultBodyLimit::max(ONE_GIBIBYTE));
 
             let addr = SocketAddr::from(([0, 0, 0, 0], port));
@@ -144,14 +177,16 @@ impl ApiServer {
 
                         // Clone the data to avoid ownership issues
                         let bytes = Bytes::copy_from_slice(&data);
+                        let identifiers = Identifiers {
+                            account: None,
+                            case_number: None,
+                            filename: Some(filename),
+                            user: username,
+                            opportunity: None,
+                        };
 
                         // Send the bytes through the channel
-                        if state
-                            .upload_tx
-                            .send((filename, username, bytes))
-                            .await
-                            .is_ok()
-                        {
+                        if state.upload_tx.send((identifiers, bytes)).await.is_ok() {
                             return (
                                 StatusCode::OK,
                                 axum::Json(serde_json::json!({
@@ -255,6 +290,134 @@ impl ApiServer {
         }
     }
 
+    async fn upload_service_handler(
+        headers: HeaderMap,
+        Json(payload): Json<UploadServiceRequest>,
+        state: Arc<ApiState>,
+    ) -> impl IntoResponse {
+        log::info!("Received elastic uploader request for: {}", payload.url);
+
+        // Extract authenticated user email from header
+        let username = headers
+            .get("X-Goog-Authenticated-User-Email")
+            .and_then(|value| value.to_str().ok())
+            .map(|email| {
+                // Google auth headers are typically in format "accounts.google.com:email"
+                email.split(':').last().unwrap_or(email).to_string()
+            });
+
+        // Construct the URL with token authentication
+        let uploader_service_url = match Url::parse(&payload.url) {
+            Ok(mut url) => {
+                // Set username to "token" and password to the actual token
+                if url.set_username("token").is_err() {
+                    return (
+                        StatusCode::BAD_REQUEST,
+                        axum::Json(serde_json::json!({
+                            "error": "Failed to set token in URL"
+                        })),
+                    );
+                }
+                if url.set_password(Some(&payload.token)).is_err() {
+                    return (
+                        StatusCode::BAD_REQUEST,
+                        axum::Json(serde_json::json!({
+                            "error": "Failed to set token in URL"
+                        })),
+                    );
+                }
+                url
+            }
+            Err(e) => {
+                log::error!("Invalid URL provided: {}", e);
+                return (
+                    StatusCode::BAD_REQUEST,
+                    axum::Json(serde_json::json!({
+                        "error": format!("Invalid URL: {}", e)
+                    })),
+                );
+            }
+        };
+
+        // Create URI from the URL
+        let uri = match Uri::try_from(uploader_service_url.to_string()) {
+            Ok(uri) => uri,
+            Err(e) => {
+                log::error!("Failed to create URI: {}", e);
+                return (
+                    StatusCode::BAD_REQUEST,
+                    axum::Json(serde_json::json!({
+                        "error": format!("Failed to create URI: {}", e)
+                    })),
+                );
+            }
+        };
+
+        // Create receiver from URI
+        let receiver = match Receiver::try_from(uri) {
+            Ok(receiver) => receiver,
+            Err(e) => {
+                log::error!("Failed to create receiver: {}", e);
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    axum::Json(serde_json::json!({
+                        "error": format!("Failed to create receiver: {}", e)
+                    })),
+                );
+            }
+        };
+
+        let identifiers = Identifiers::from(payload).default_user(username.as_ref());
+        let exporter = match Exporter::try_from(None) {
+            Ok(exporter) => exporter.with_identifiers(identifiers),
+
+            Err(e) => {
+                log::error!("Failed to create exporter: {}", e);
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    axum::Json(serde_json::json!({
+                        "error": format!("Failed to create exporter: {}", e)
+                    })),
+                );
+            }
+        };
+
+        let job = JobNew::new(&exporter.identifiers(), receiver);
+        let job_id = job.id.clone();
+
+        let job_ready = match job.ready(exporter).await {
+            Ok(job_ready) => job_ready,
+            Err(failed_job) => {
+                log::error!("Failed to prepare job: {}", failed_job.error);
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    axum::Json(serde_json::json!({
+                        "error": format!("Failed to prepare job: {}", failed_job.error)
+                    })),
+                );
+            }
+        };
+
+        // Start processing
+        let job_processing = job_ready.start();
+
+        // Add to queue
+        let mut queue = state.job.queue.write().await;
+        queue.push_back(job_processing);
+        let queue_size = queue.len();
+
+        log::info!("Added elastic uploader job to queue (size: {})", queue_size);
+
+        (
+            StatusCode::OK,
+            axum::Json(serde_json::json!({
+                "status": "processing",
+                "job_id": job_id,
+                "queue_size": queue_size,
+            })),
+        )
+    }
+
     pub async fn shutdown(&mut self) {
         // Send shutdown signal to worker thread if it exists
         if let Some(tx) = self.shutdown_signal.take() {
@@ -331,7 +494,7 @@ impl ApiServer {
                             log::info!("Processing job {} from queue", job.id);
                             match job.process().await {
                                 Ok(job_completed) => {
-                                    log::info!("Job {} completed successfully", job_completed.id);
+                                    log::info!("Job {} completed in {:.3} seconds", job_completed.id, job_completed.processing_seconds());
                                     let mut history = state.job.history.write().await;
                                     history.push(Job::Completed(job_completed));
                                     let mut current = state.job.current.write().await;
