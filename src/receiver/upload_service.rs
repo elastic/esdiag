@@ -4,12 +4,12 @@ use url::Url;
 use crate::receiver::archive::ArchiveBytesReceiver;
 
 #[derive(Clone)]
-pub struct ElasticUploadDownloader {
+pub struct UploadServiceDownloader {
     token: String,
     url: Url,
 }
 
-impl ElasticUploadDownloader {
+impl UploadServiceDownloader {
     /// Downloads a file from the Elastic Uploader service given a URL and token
     /// The URL format of `https://upload.elastic.co/...` will have been validated previously.
     pub fn download(self) -> Result<ArchiveBytesReceiver> {
@@ -30,7 +30,7 @@ impl ElasticUploadDownloader {
     }
 }
 
-impl TryFrom<Url> for ElasticUploadDownloader {
+impl TryFrom<Url> for UploadServiceDownloader {
     type Error = eyre::Report;
 
     fn try_from(url: Url) -> Result<Self> {
@@ -47,7 +47,7 @@ impl TryFrom<Url> for ElasticUploadDownloader {
     }
 }
 
-impl std::fmt::Display for ElasticUploadDownloader {
+impl std::fmt::Display for UploadServiceDownloader {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "Elastic Uploader {}", self.url)
     }
