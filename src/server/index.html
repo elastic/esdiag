@@ -8,6 +8,10 @@
                 padding: 0px;
                 margin: 0px;
             }
+            .info {
+                color: rgb(81, 99, 129);
+                font-size: 0.8em;
+            }
             code {
                 background-color: rgb(246, 249, 252);
                 border-radius: 4px;
@@ -265,6 +269,119 @@
             .hidden {
                 display: none;
             }
+            .tabs {
+                display: flex;
+                border-bottom: 1px solid #e3e8f2;
+                margin-bottom: 16px;
+            }
+            .tab {
+                background: none;
+                border: none;
+                color: #516381;
+                cursor: pointer;
+                font-size: 16px;
+                font-weight: 500;
+                padding: 12px 16px;
+                position: relative;
+                transition: color 0.3s ease;
+            }
+            .tab:hover {
+                color: #1339ab;
+            }
+            .tab.active {
+                color: #1339ab;
+                font-weight: 600;
+            }
+            .tab.active::after {
+                background-color: #1339ab;
+                bottom: -1px;
+                content: "";
+                height: 2px;
+                left: 0;
+                position: absolute;
+                width: 100%;
+            }
+            .tab-content {
+                display: none;
+            }
+            .tab-content.active {
+                display: block;
+            }
+            .form-group {
+                margin-bottom: 16px;
+            }
+            .form-label {
+                color: #17284c;
+                display: block;
+                font-size: 14px;
+                font-weight: 500;
+                margin-bottom: 6px;
+            }
+            .form-input {
+                background-color: #ffffff;
+                border: 1px solid #d3dae6;
+                border-radius: 4px;
+                color: #17284c;
+                font-size: 14px;
+                padding: 8px 12px;
+                width: 95%;
+            }
+            .form-input:focus {
+                border-color: #1339ab;
+                box-shadow: 0 0 0 1px #1339ab;
+                outline: none;
+            }
+            .form-input::placeholder {
+                color: #98a2b3;
+                opacity: 1;
+            }
+
+            .curl-textarea {
+                background-color: #f6f9fc;
+                border: 1px solid #d3dae6;
+                border-radius: 4px;
+                color: #17284c;
+                font-family: "Roboto Mono", Menlo, Courier, monospace;
+                font-size: 13px;
+                min-height: 80px;
+                padding: 12px;
+                resize: vertical;
+                width: 95%;
+            }
+            .curl-textarea:focus {
+                border-color: #1339ab;
+                box-shadow: 0 0 0 1px #1339ab;
+                outline: none;
+            }
+            .curl-textarea.error {
+                border-color: #c61e25;
+                box-shadow: 0 0 0 1px #c61e25;
+            }
+            .curl-textarea::placeholder {
+                color: #98a2b3;
+                opacity: 1;
+            }
+            .form-input:disabled,
+            .form-input:read-only {
+                background-color: #f5f7fa;
+                color: #98a2b3;
+                cursor: not-allowed;
+            }
+            .clear-curl-link {
+                color: #1339ab;
+                cursor: pointer;
+                display: none;
+                font-size: 14px;
+                font-weight: 500;
+                text-decoration: none;
+                align-self: flex-end;
+            }
+            .clear-curl-link:hover {
+                text-decoration: underline;
+            }
+            .clear-curl-link.visible {
+                display: inline;
+            }
             .user-menu {
                 position: absolute;
                 top: 100%;
@@ -464,7 +581,7 @@
             </div>
         </div>
         <div class="content">
-            <h2>Upload File</h2>
+            <h2>Process Diagnostics</h2>
             <div class="upload-form">
                 <form id="upload-form" action="/upload" method="post" enctype="multipart/form-data">
                     <div class="drop-area" id="drop-area">
@@ -690,6 +807,14 @@
                         <div class="spinner"></div>
                         <span><b>Processing:</b> ${current.filename || "diagnostic"}</span>
                     `;
+
+                    // Remove any retrieving status boxes when processing starts
+                    const retrievingBoxes = historyContainer.querySelectorAll(".history-item.processing");
+                    retrievingBoxes.forEach((box) => {
+                        if (box.textContent.includes("Retrieving:")) {
+                            box.remove();
+                        }
+                    });
                 } else {
                     // Hide status box if no current activity for this user
                     currentStatus.classList.add("hidden");
@@ -887,6 +1012,183 @@
                 xhr.open("POST", "/upload", true);
                 xhr.send(formData);
             });
+
+            // Tab switching functionality
+            const fileTab = document.getElementById("file-tab");
+            const serviceTab = document.getElementById("service-tab");
+            const fileContent = document.getElementById("file-content");
+            const serviceContent = document.getElementById("service-content");
+
+            fileTab.addEventListener("click", () => {
+                fileTab.classList.add("active");
+                serviceTab.classList.remove("active");
+                fileContent.classList.add("active");
+                serviceContent.classList.remove("active");
+            });
+
+            serviceTab.addEventListener("click", () => {
+                serviceTab.classList.add("active");
+                fileTab.classList.remove("active");
+                serviceContent.classList.add("active");
+                fileContent.classList.remove("active");
+            });
+
+            // Upload service form handler
+            document.getElementById("upload-service-form").addEventListener("submit", function (e) {
+                e.preventDefault();
+
+                const formData = new FormData(this);
+                const serviceButton = document.getElementById("upload-service-button");
+
+                // Convert FormData to JSON
+                const data = {
+                    token: formData.get("token"),
+                    url: formData.get("url"),
+                    metadata: {
+                        filename: formData.get("filename"),
+                    },
+                };
+
+                // Disable button during request
+                serviceButton.disabled = true;
+                serviceButton.value = "Submitting...";
+
+                fetch("/upload_service", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify(data),
+                })
+                    .then((response) => response.json())
+                    .then((responseData) => {
+                        // Immediately show retrieving status if we got a job ID
+                        if (responseData.job_id) {
+                            // Create a retrieving status entry
+                            const historyContainer = document.getElementById("history-container");
+                            const retrievingItem = document.createElement("div");
+                            retrievingItem.className = "status-box history-item processing";
+                            retrievingItem.innerHTML = `
+                                    <div class="spinner"></div>
+                                    <span><b>Retrieving:</b> ${formData.get("filename")}</span>
+                                `;
+
+                            // Insert at the beginning
+                            historyContainer.insertBefore(retrievingItem, historyContainer.firstChild);
+                        }
+
+                        updateStatus({
+                            ...responseData,
+                            queue: responseData.queue || {},
+                        });
+                        // Clear form after successful submission
+                        document.getElementById("upload-service-form").reset();
+                    })
+                    .catch((error) => {
+                        console.error("Upload service error:", error);
+                        updateStatus({
+                            status: "error",
+                            error: "Upload service request failed",
+                        });
+                    })
+                    .finally(() => {
+                        // Re-enable button
+                        serviceButton.disabled = false;
+                        serviceButton.value = "Submit";
+                    });
+            });
+
+            // Curl command parsing
+            const textareaCurl = document.getElementById("curl-command");
+            const linkClearCurl = document.getElementById("clear-curl");
+            const inputToken = document.getElementById("service-token");
+            const inputUrl = document.getElementById("service-url");
+            const inputFilename = document.getElementById("service-filename");
+
+            function parseCurlCommand(curlCommand) {
+                // Extract token from Authorization header
+                const tokenMatch =
+                    curlCommand.match(/-H\s+['"]Authorization:\s*([^'"]+)['"]/) ||
+                    curlCommand.match(/--header\s+['"]Authorization:\s*([^'"]+)['"]/);
+
+                // Extract filename from -o option
+                const filenameMatch =
+                    curlCommand.match(/-o\s+['"]([^'"]+)['"]/) ||
+                    curlCommand.match(/-o\s+(\S+)/) ||
+                    curlCommand.match(/--output\s+['"]([^'"]+)['"]/) ||
+                    curlCommand.match(/--output\s+(\S+)/);
+
+                // Extract URL (last argument that starts with http)
+                const urlMatch = curlCommand.match(/https?:\/\/\S+/);
+
+                const parsed = {
+                    token: tokenMatch ? tokenMatch[1] : null,
+                    filename: filenameMatch ? filenameMatch[1] : null,
+                    url: urlMatch ? urlMatch[0] : null,
+                };
+
+                // Check if parsing was successful
+                parsed.hasError = !(parsed.token && parsed.filename && parsed.url);
+
+                return parsed;
+            }
+
+            function fillFormFromCurl(parsed) {
+                // Clear error state first
+                textareaCurl.classList.remove("error");
+
+                if (parsed.hasError) {
+                    // Show error state if parsing failed
+                    textareaCurl.classList.add("error");
+                    return;
+                }
+
+                if (parsed.token) {
+                    inputToken.value = parsed.token;
+                    inputToken.readOnly = true;
+                }
+                if (parsed.url) {
+                    inputUrl.value = parsed.url;
+                    inputUrl.readOnly = true;
+                }
+                if (parsed.filename) {
+                    inputFilename.value = parsed.filename;
+                    inputFilename.readOnly = true;
+                }
+
+                // Show clear link if any field was filled
+                if (parsed.token || parsed.url || parsed.filename) {
+                    linkClearCurl.classList.add("visible");
+                }
+            }
+
+            function clearCurlForm() {
+                textareaCurl.value = "";
+                textareaCurl.classList.remove("error");
+                inputToken.value = "";
+                inputUrl.value = "";
+                inputFilename.value = "";
+                inputToken.readOnly = false;
+                inputUrl.readOnly = false;
+                inputFilename.readOnly = false;
+                linkClearCurl.classList.remove("visible");
+            }
+
+            textareaCurl.addEventListener("input", function () {
+                const curlCommand = this.value.trim();
+
+                if (curlCommand && curlCommand.startsWith("curl")) {
+                    const parsed = parseCurlCommand(curlCommand);
+                    fillFormFromCurl(parsed);
+                } else if (!curlCommand) {
+                    clearCurlForm();
+                } else {
+                    textareaCurl.classList.add("error");
+                    linkClearCurl.classList.add("visible");
+                }
+            });
+
+            linkClearCurl.addEventListener("click", clearCurlForm);
 
             setTimeout(pollStatus, 200);
         </script>
