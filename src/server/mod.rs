@@ -5,8 +5,8 @@ use crate::{
     receiver::Receiver,
 };
 use axum::{
-    Router,
-    extract::{DefaultBodyLimit, Json, Multipart},
+    Json, Router,
+    extract::{DefaultBodyLimit, Multipart},
     http::{HeaderMap, StatusCode},
     response::{Html, IntoResponse},
     routing::{get, post},
@@ -17,7 +17,10 @@ use std::{collections::VecDeque, net::SocketAddr, sync::Arc};
 use tokio::sync::{RwLock, mpsc, oneshot};
 use url::Url;
 
-static INDEX_HTML: &str = include_str!("index.html");
+static INDEX_HTML: &str = include_str!("web/index.html");
+static STYLE_CSS: &str = include_str!("web/style.css");
+static SCRIPT_JS: &str = include_str!("web/script.js");
+static ESDIAG_SVG: &str = include_str!("web/esdiag.svg");
 
 #[derive(Debug, Deserialize, Serialize)]
 struct UploadServiceRequest {
@@ -102,6 +105,10 @@ impl ApiServer {
             const ONE_GIBIBYTE: usize = 1024 * 1024 * 1024;
             let app = Router::new()
                 .route("/", get(Self::index_handler))
+                .route("/style.css", get(Self::style_handler))
+                .route("/script.js", get(Self::script_handler))
+                .route("/favicon.ico", get(Self::logo_handler))
+                .route("/esdiag.svg", get(Self::logo_handler))
                 .route("/upload", post(upload_handler))
                 .route("/status", get(status_handler))
                 .route("/upload_service", post(upload_service_handler))
@@ -129,8 +136,28 @@ impl ApiServer {
         server
     }
 
+    async fn logo_handler() -> impl IntoResponse {
+        (
+            StatusCode::OK,
+            [("Content-Type", "image/svg+xml")],
+            ESDIAG_SVG,
+        )
+    }
+
     async fn index_handler() -> impl IntoResponse {
         Html(INDEX_HTML)
+    }
+
+    async fn script_handler() -> impl IntoResponse {
+        (
+            StatusCode::OK,
+            [("Content-Type", "application/javascript")],
+            SCRIPT_JS,
+        )
+    }
+
+    async fn style_handler() -> impl IntoResponse {
+        (StatusCode::OK, [("Content-Type", "text/css")], STYLE_CSS)
     }
 
     async fn upload_handler(
@@ -155,7 +182,7 @@ impl ApiServer {
                     Some(filename) if !filename.ends_with(".zip") => {
                         return (
                             StatusCode::BAD_REQUEST,
-                            axum::Json(serde_json::json!({
+                            Json(serde_json::json!({
                                 "error": "Invalid file type. Only .zip files are allowed."
                             })),
                         );
@@ -164,7 +191,7 @@ impl ApiServer {
                     None => {
                         return (
                             StatusCode::BAD_REQUEST,
-                            axum::Json(serde_json::json!({"error": "No file name provided"})),
+                            Json(serde_json::json!({"error": "No file name provided"})),
                         );
                     }
                 };
@@ -189,7 +216,7 @@ impl ApiServer {
                         if state.upload_tx.send((identifiers, bytes)).await.is_ok() {
                             return (
                                 StatusCode::OK,
-                                axum::Json(serde_json::json!({
+                                Json(serde_json::json!({
                                     "status": "processing",
                                     "message": message,
                                 })),
@@ -197,7 +224,7 @@ impl ApiServer {
                         } else {
                             return (
                                 StatusCode::INTERNAL_SERVER_ERROR,
-                                axum::Json(serde_json::json!({
+                                Json(serde_json::json!({
                                     "status": "error",
                                     "error": "Failed to process the upload"
                                 })),
@@ -208,7 +235,7 @@ impl ApiServer {
                         log::error!("Failed to read upload data: {}", e);
                         return (
                             StatusCode::INTERNAL_SERVER_ERROR,
-                            axum::Json(serde_json::json!({
+                            Json(serde_json::json!({
                                 "status": "error",
                                 "error": format!("Failed to read upload data: {}", e)
                             })),
@@ -220,9 +247,7 @@ impl ApiServer {
 
         (
             StatusCode::BAD_REQUEST,
-            axum::Json(
-                serde_json::json!({"status": "error", "error": "No file part in the request"}),
-            ),
+            Json(serde_json::json!({"status": "error", "error": "No file part in the request"})),
         )
     }
 
@@ -247,7 +272,7 @@ impl ApiServer {
         match queue_size {
             0 => (
                 StatusCode::OK,
-                axum::Json(serde_json::json!({
+                Json(serde_json::json!({
                     "status": "ready",
                     "exporter": state.exporter,
                     "kibana": state.kibana,
@@ -261,7 +286,7 @@ impl ApiServer {
             ),
             1..10 => (
                 StatusCode::OK,
-                axum::Json(serde_json::json!({
+                Json(serde_json::json!({
                     "status": "processing",
                     "progress": "Processing diagnostic...",
                     "kibana": state.kibana,
@@ -275,7 +300,7 @@ impl ApiServer {
             ),
             _ => (
                 StatusCode::OK,
-                axum::Json(serde_json::json!({
+                Json(serde_json::json!({
                     "status": "busy",
                     "warning": "Too many jobs in queue",
                     "kibana": state.kibana,
@@ -313,7 +338,7 @@ impl ApiServer {
                 if url.set_username("token").is_err() {
                     return (
                         StatusCode::BAD_REQUEST,
-                        axum::Json(serde_json::json!({
+                        Json(serde_json::json!({
                             "error": "Failed to set token in URL"
                         })),
                     );
@@ -321,7 +346,7 @@ impl ApiServer {
                 if url.set_password(Some(&payload.token)).is_err() {
                     return (
                         StatusCode::BAD_REQUEST,
-                        axum::Json(serde_json::json!({
+                        Json(serde_json::json!({
                             "error": "Failed to set token in URL"
                         })),
                     );
@@ -332,7 +357,7 @@ impl ApiServer {
                 log::error!("Invalid URL provided: {}", e);
                 return (
                     StatusCode::BAD_REQUEST,
-                    axum::Json(serde_json::json!({
+                    Json(serde_json::json!({
                         "error": format!("Invalid URL: {}", e)
                     })),
                 );
@@ -346,7 +371,7 @@ impl ApiServer {
                 log::error!("Failed to create URI: {}", e);
                 return (
                     StatusCode::BAD_REQUEST,
-                    axum::Json(serde_json::json!({
+                    Json(serde_json::json!({
                         "error": format!("Failed to create URI: {}", e)
                     })),
                 );
@@ -360,7 +385,7 @@ impl ApiServer {
                 log::error!("Failed to create receiver: {}", e);
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    axum::Json(serde_json::json!({
+                    Json(serde_json::json!({
                         "error": format!("Failed to create receiver: {}", e)
                     })),
                 );
@@ -370,12 +395,11 @@ impl ApiServer {
         let identifiers = Identifiers::from(payload).default_user(username.as_ref());
         let exporter = match Exporter::try_from(None) {
             Ok(exporter) => exporter.with_identifiers(identifiers),
-
             Err(e) => {
                 log::error!("Failed to create exporter: {}", e);
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    axum::Json(serde_json::json!({
+                    Json(serde_json::json!({
                         "error": format!("Failed to create exporter: {}", e)
                     })),
                 );
@@ -391,7 +415,7 @@ impl ApiServer {
                 log::error!("Failed to prepare job: {}", failed_job.error);
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    axum::Json(serde_json::json!({
+                    Json(serde_json::json!({
                         "error": format!("Failed to prepare job: {}", failed_job.error)
                     })),
                 );
@@ -410,7 +434,7 @@ impl ApiServer {
 
         (
             StatusCode::OK,
-            axum::Json(serde_json::json!({
+            Json(serde_json::json!({
                 "status": "processing",
                 "job_id": job_id,
                 "queue_size": queue_size,

@@ -1,0 +1,185 @@
+<!doctype html>
+<html>
+    <head>
+        <title>Elastic Stack Diagnostics</title>
+        <link rel="stylesheet" href="style.css" />
+        <link rel="icon" type="image/svg+xml" href="esdiag.svg" />
+        <link rel="apple-touch-icon" href="esdiag.svg" />
+    </head>
+
+    <body>
+        <div class="header">
+            <div>
+                <img class="logo" src="/esdiag.svg" alt="Elastic Stack Diagnostics Logo" />
+                <h1>Elastic Stack Diagnostics</h1>
+            </div>
+            <div class="links">
+                <div id="kibana">
+                    <a href="#" target="_blank">
+                        <svg
+                            class="icon"
+                            width="64"
+                            height="64"
+                            viewBox="0 0 64 64"
+                            fill="none"
+                            xmlns="http://www.w3.org/2000/svg"
+                        >
+                            <g clip-path="url(#clip0_0_6522)">
+                                <path
+                                    fill-rule="evenodd"
+                                    clip-rule="evenodd"
+                                    d="M11 25.2499V53.5809L31.137 30.3919C25.149 27.1299 18.299 25.2499 11 25.2499Z"
+                                    fill="white"
+                                />
+                                <path
+                                    fill-rule="evenodd"
+                                    clip-rule="evenodd"
+                                    d="M11 4.99991V25.2499C18.299 25.2499 25.149 27.1299 31.137 30.3919L53.188 4.99991H11Z"
+                                    fill="white"
+                                />
+                                <path
+                                    fill-rule="evenodd"
+                                    clip-rule="evenodd"
+                                    d="M35.4434 33.059L14.7754 56.86L12.9164 59H52.3414C50.1784 48.342 43.9924 39.149 35.4434 33.059Z"
+                                    fill="white"
+                                />
+                            </g>
+                            <defs>
+                                <clipPath id="clip0_0_6522">
+                                    <rect width="64" height="64" fill="white" />
+                                </clipPath>
+                            </defs></svg
+                    ></a>
+                    <div class="user-menu">
+                        <div class="user-menu-item">Loading...</div>
+                    </div>
+                </div>
+                <div id="github" class="github icon">
+                    <a href="https://github.com/elastic/esdiag" target="_blank">
+                        <svg viewBox="0 0 24 24">
+                            <path
+                                fill="rgb(255,255,255)"
+                                d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.17 6.839 9.49.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.603-3.369-1.342-3.369-1.342-.454-1.155-1.11-1.462-1.11-1.462-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0112 6.836c.85.004 1.705.114 2.504.336 1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.167 22 16.418 22 12c0-5.523-4.477-10-10-10z"
+                            />
+                        </svg>
+                    </a>
+                </div>
+                <div id="user-circle" class="user-circle">
+                    _
+                    <div class="user-menu">
+                        <div class="user-menu-header">ESDiag v0.8.1</div>
+                        <div id="username-display" class="user-menu-item">Loading...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="content">
+            <h2>Process Diagnostics</h2>
+            <div class="upload-form">
+                <div class="tabs">
+                    <button class="tab active" id="file-tab">File Upload</button>
+                    <button class="tab" id="service-tab">Service Link</button>
+                </div>
+
+                <div class="tab-content active" id="file-content">
+                    <form id="upload-form" action="/upload" method="post" enctype="multipart/form-data">
+                        <p class="info">Upload a file from your local computer</p>
+                        <div class="drop-area" id="drop-area">
+                            <div class="file-icon">
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                    <polyline points="14 2 14 8 20 8"></polyline>
+                                    <line x1="12" y1="18" x2="12" y2="12"></line>
+                                    <line x1="9" y1="15" x2="15" y2="15"></line>
+                                </svg>
+                            </div>
+                            <div id="upload-instructions">
+                                <p>
+                                    Select or drag and drop a
+                                    <code>.zip</code> file
+                                </p>
+                            </div>
+                            <div id="file-info" class="file-info hidden">
+                                <span id="file-name" class="file-name"></span>
+                                <span id="clear-file" class="clear-button">✕</span>
+                            </div>
+                            <input type="file" name="file" id="file-input" class="file-input" accept=".zip" required />
+                            <div class="upload-progress-container" id="upload-progress-container">
+                                <div class="upload-progress-bar" id="upload-progress-bar"></div>
+                            </div>
+                            <div class="upload-progress-text" id="upload-progress-text">0%</div>
+                        </div>
+                        <input type="submit" value="Upload" class="button" id="upload-button" disabled />
+                    </form>
+                </div>
+
+                <div class="tab-content" id="service-content">
+                    <form id="upload-service-form">
+                        <p class="info">
+                            Forward a file from the Elastic upload service:
+                            <a href="https://upload.elastic.co" target="_blank"> https://upload.elastic.co </a>
+                        </p>
+                        <div class="form-group">
+                            <label for="curl-command" class="form-label">Curl Command (Optional) </label>
+                            <textarea
+                                id="curl-command"
+                                class="curl-textarea"
+                                placeholder="Paste your curl command to auto-fill the form..."
+                            ></textarea>
+                            <div id="clear-curl" class="clear-curl-link">Clear</div>
+                        </div>
+                        <div class="form-group">
+                            <label for="service-token" class="form-label">Token</label>
+                            <input
+                                type="text"
+                                id="service-token"
+                                name="token"
+                                class="form-input"
+                                required
+                                placeholder="Enter authentication token"
+                            />
+                        </div>
+                        <div class="form-group">
+                            <label for="service-url" class="form-label">URL</label>
+                            <input
+                                type="url"
+                                id="service-url"
+                                name="url"
+                                class="form-input"
+                                required
+                                placeholder="https://example.com/path/to/diagnostic.zip"
+                            />
+                        </div>
+                        <div class="form-group">
+                            <label for="service-filename" class="form-label">Filename</label>
+                            <input
+                                type="text"
+                                id="service-filename"
+                                name="filename"
+                                class="form-input"
+                                required
+                                placeholder="diagnostic.zip"
+                            />
+                        </div>
+                        <input type="submit" value="Submit" class="button" id="upload-service-button" />
+                    </form>
+                </div>
+            </div>
+            <div id="status-box">
+                <div id="ready-status" class="status-box ready">⏹️ Connecting...</div>
+                <div id="current-status" class="status-box processing hidden"></div>
+                <div id="history-container"></div>
+            </div>
+        </div>
+
+        <script src="script.js"></script>
+    </body>
+</html>

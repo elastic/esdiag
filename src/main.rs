@@ -4,7 +4,7 @@ use esdiag::{
     data::Uri,
     env::LOG_LEVEL,
     exporter::{DirectoryExporter, Exporter},
-    processor::{Collector, Diagnostic, Identifiers, JobFailed, JobNew, Product},
+    processor::{Collector, Diagnostic, JobFailed, JobNew, Product},
     receiver::Receiver,
     server::ApiServer,
     setup,

@@ -540,7 +540,7 @@ dependencies = [
 
 [[package]]
 name = "esdiag"
-version = "0.8.1"
+version = "0.9.1"
 dependencies = [
  "axum",
  "axum-server",
