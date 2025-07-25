@@ -137,15 +137,7 @@ document.addEventListener("DOMContentLoaded", function () {
 });
 
 // Simplified status update for upload handling only
-function updateStatus({ status, error, user, exporter, kibana, queue = {} }) {
-  if (user) {
-    setUserInfo(user);
-  }
-
-  if (kibana) {
-    updateKibanaUrl(kibana);
-  }
-
+function updateStatus({ status }) {
   const dropArea = document.getElementById("drop-area");
 
   // Reset upload-related UI elements
@@ -193,17 +185,6 @@ document.addEventListener("htmx:timeout", function (evt) {
   }
 });
 
-// Handle HTMX trigger for user and Kibana updates
-document.addEventListener("updateUserAndKibana", function (evt) {
-  const data = evt.detail;
-  if (data.user) {
-    setUserInfo(data.user);
-  }
-  if (data.kibana) {
-    updateKibanaUrl(data.kibana);
-  }
-});
-
 // HTMX upload event handlers
 document.addEventListener("htmx:beforeRequest", function (evt) {
   if (evt.detail.target.id === "upload-result") {
@@ -240,10 +221,7 @@ document.addEventListener("htmx:afterRequest", function (evt) {
       progressBar.style.width = "0%";
       progressText.textContent = "0%";
       updateFileInfo(null);
-    }, 2000);
-
-    // Trigger immediate status poll for updates
-    setTimeout(() => htmx.trigger(document.body, "statusPoll"), 100);
+    }, 1000);
   }
 });
 
@@ -259,17 +237,7 @@ document.addEventListener("htmx:responseError", function (evt) {
     progressText.classList.remove("active");
     updateFileInfo(null);
     document.getElementById("drop-area").style.pointerEvents = "";
-
-    // Trigger immediate status poll for updates
-    setTimeout(() => htmx.trigger(document.body, "statusPoll"), 100);
   }
-});
-
-// Handle upload success trigger
-document.addEventListener("uploadSuccess", function (evt) {
-  const data = evt.detail;
-  // Clear file info on successful upload
-  updateFileInfo(null);
 });
 
 // Tab switching functionality
@@ -312,9 +280,6 @@ document.addEventListener("htmx:afterRequest", function (evt) {
       document.getElementById("upload-service-form").reset();
       clearCurlForm();
     }
-
-    // Trigger immediate status poll for updates
-    setTimeout(() => htmx.trigger(document.body, "statusPoll"), 100);
   }
 });
 
@@ -323,21 +288,8 @@ document.addEventListener("htmx:responseError", function (evt) {
     const serviceButton = document.getElementById("upload-service-button");
     serviceButton.disabled = false;
     serviceButton.value = "Submit";
-
-    // Trigger immediate status poll for updates
-    setTimeout(() => htmx.trigger(document.body, "statusPoll"), 100);
   }
 });
-
-// Handle service upload success trigger
-document.addEventListener("serviceUploadSuccess", function (evt) {
-  const data = evt.detail;
-  // Clear form after successful service upload
-  document.getElementById("upload-service-form").reset();
-  clearCurlForm();
-});
-
-// Upload service form now handles form data directly - no JSON conversion needed
 
 // Curl command parsing
 const textareaCurl = document.getElementById("curl-command");

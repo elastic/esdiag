@@ -101,16 +101,7 @@ h2 {
         transform: translateY(0);
     }
 }
-.history-item {
-    animation: pushIn 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
-    transform-origin: top center;
-    position: relative;
-    transition: transform 0.2s ease;
-    cursor: pointer;
-}
-.history-item:hover {
-    transform: translateY(-2px);
-}
+
 #ready-status {
     background-color: #e3e8f2;
     color: #516381;
