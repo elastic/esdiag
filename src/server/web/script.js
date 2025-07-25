@@ -1,29 +1,3 @@
-// Idle timeout management
-let lastInteractionTime = Date.now();
-let isPollingPaused = false;
-const IDLE_TIMEOUT = 60000; // 60 seconds
-
-function updateLastInteraction() {
-  lastInteractionTime = Date.now();
-  if (isPollingPaused) {
-    isPollingPaused = false;
-    // Resume polling immediately when user becomes active
-    pollStatus();
-  }
-}
-
-function checkIdleTimeout() {
-  const timeSinceLastInteraction = Date.now() - lastInteractionTime;
-  return timeSinceLastInteraction > IDLE_TIMEOUT;
-}
-
-// Add event listeners for user interaction
-document.addEventListener("click", updateLastInteraction);
-document.addEventListener("keypress", updateLastInteraction);
-document.addEventListener("mousemove", updateLastInteraction);
-document.addEventListener("scroll", updateLastInteraction);
-document.addEventListener("touchstart", updateLastInteraction);
-
 // User information
 function setUserInfo(username) {
   document.getElementById("user-circle").firstChild.textContent = username
@@ -154,7 +128,6 @@ fileInput.addEventListener("change", function () {
 clearFile.addEventListener("click", function (e) {
   e.stopPropagation();
   updateFileInfo(null);
-  pollStatus();
 });
 
 // Initialize button state when page loads
@@ -163,212 +136,73 @@ document.addEventListener("DOMContentLoaded", function () {
   uploadButton.disabled = fileInput.files.length === 0;
 });
 
-function updateStatus({
-  current,
-  error,
-  exporter,
-  history = [],
-  message,
-  report,
-  status,
-  user,
-  queue = {},
-}) {
-  setUserInfo(user);
-  const readyStatus = document.getElementById("ready-status");
-  const currentStatus = document.getElementById("current-status");
-  const historyContainer = document.getElementById("history-container");
-  const uploadButton = document.getElementById("upload-button");
-  const dropArea = document.getElementById("drop-area");
-
-  // Get queue size if available
-  const queueSize = queue?.size || 0;
-
-  // Update ready status box - always visible, always gray
-  readyStatus.className = "status-box";
-  if (queueSize > 1) {
-    readyStatus.innerHTML = `⏸️ Queue: ${queueSize}`;
-  } else if (current) {
-    readyStatus.innerHTML = `🔄 Processing`;
-  } else {
-    readyStatus.innerHTML = `▶️ Ready, exporting to ${exporter}`;
+// Simplified status update for upload handling only
+function updateStatus({ status, error, user, exporter, kibana, queue = {} }) {
+  if (user) {
+    setUserInfo(user);
   }
+
+  if (kibana) {
+    updateKibanaUrl(kibana);
+  }
+
+  const dropArea = document.getElementById("drop-area");
 
   // Reset upload-related UI elements
   if (status !== "uploading") {
     dropArea.style.borderColor = "";
     dropArea.style.pointerEvents = "";
   }
-
-  // Handle current status box visibility and content
-  if (current && (current.user === user || current.user === null)) {
-    // Show processing status only for current user's job
-    currentStatus.classList.remove("hidden");
-    currentStatus.innerHTML = `
-            <div class="spinner"></div>
-            <span><b>Processing:</b> ${current.filename || "diagnostic"}</span>
-        `;
-
-    // Remove any retrieving status boxes when processing starts
-    const retrievingBoxes = historyContainer.querySelectorAll(
-      ".history-item.processing",
-    );
-    retrievingBoxes.forEach((box) => {
-      if (box.textContent.includes("Retrieving:")) {
-        box.remove();
-      }
-    });
-  } else {
-    // Hide status box if no current activity for this user
-    currentStatus.classList.add("hidden");
-  }
-
-  // Update job history
-  if (history && history.length > 0) {
-    // Get current history IDs to compare
-    const currentHistoryIds = Array.from(
-      historyContainer.querySelectorAll("[data-job-id]"),
-    ).map((el) => el.getAttribute("data-job-id"));
-
-    // Store the previous history state in a data attribute for comparison
-    const previousHistoryJson =
-      historyContainer.getAttribute("data-history-json") || "[]";
-    let previousHistory;
-    try {
-      previousHistory = JSON.parse(previousHistoryJson);
-    } catch (e) {
-      previousHistory = [];
-    }
-
-    // Compare current history with previous to determine if we have new items
-    const historyJson = JSON.stringify(history);
-    const hasNewItems = previousHistoryJson !== historyJson;
-
-    // Update stored history
-    historyContainer.setAttribute("data-history-json", historyJson);
-
-    // Preserve history container if it exists
-    const historyItems = [];
-
-    // Reverse the array to show newest entries first
-    [...history].reverse().forEach((job, index) => {
-      const historyItem = document.createElement("div");
-      historyItem.className = "status-box history-item";
-
-      // Add job ID as data attribute for comparison
-      const jobId = job.Completed?.id || job.Failed?.id || "";
-      historyItem.setAttribute("data-job-id", jobId);
-
-      // Get timestamp for comparison
-      const timestamp =
-        job.Completed?.timestamp || job.Failed?.timestamp || Date.now();
-      historyItem.setAttribute("data-timestamp", timestamp);
-
-      // Check if this item is new (wasn't in the previous history)
-      const isNewItem = !previousHistory.some(
-        (prevJob) =>
-          prevJob.Completed?.id === jobId || prevJob.Failed?.id === jobId,
-      );
-
-      // Apply animation only to new items
-      if (hasNewItems && isNewItem && jobId) {
-        historyItem.style.animationDelay = index * 0.08 + "s";
-      }
-
-      if (job.Completed) {
-        const completedJob = job.Completed;
-        historyItem.classList.add("success");
-        let message = `✅ Processing complete!`;
-
-        if (completedJob.report) {
-          const report = completedJob.report;
-          message += `<p><b>Diagnostic ID:</b> <a target="_blank" href="${report.kibana_link}">${report.id}</a></p>`;
-          message += `<p><b>Filename:</b> ${completedJob.filename}</p>`;
-          message += `<p><b>Product:</b> ${report.product}</p>`;
-          message += `<p><b>Ingested:</b> ${report.docs.created} documents</p>`;
-        }
-
-        historyItem.innerHTML = message;
-      } else if (job.Failed) {
-        const failedJob = job.Failed;
-        historyItem.classList.add("error");
-        historyItem.innerHTML = `🛑 <b>Error:</b> ${failedJob.error || "Processing failed"}<p><b>Filename:</b> ${failedJob.filename}</p>`;
-        historyItem.title = "Click for more details";
-      }
-
-      historyItems.push(historyItem);
-    });
-
-    // Always clear and rebuild if there are new items
-    if (
-      hasNewItems ||
-      historyContainer.children.length !== historyItems.length
-    ) {
-      historyContainer.innerHTML = "";
-      historyItems.forEach((item) => {
-        historyContainer.appendChild(item);
-      });
-    }
-  }
 }
 
-function pollStatus() {
-  // Check if user has been idle too long
-  if (checkIdleTimeout()) {
-    isPollingPaused = true;
-    console.log("Polling paused due to user inactivity");
-    return;
-  }
+// HTMX event handlers for status updates
+document.addEventListener("htmx:afterRequest", function (evt) {
+  if (evt.detail.pathInfo.requestPath === "/status") {
+    const response = evt.detail.xhr.response;
 
-  fetch(`/status`)
-    .then((response) => response.json())
-    .then((data) => {
-      updateStatus({
-        current: data.current,
-        error: data.error,
-        exporter: data.exporter,
-        history: data.history || [],
-        message: data.message || data.progress,
-        status: data.status,
-        user: data.user,
-        queue: data.queue,
-      });
+    // For non-HTMX requests that return JSON, we need to handle them
+    if (
+      evt.detail.xhr
+        .getResponseHeader("content-type")
+        ?.includes("application/json")
+    ) {
+      const data = JSON.parse(response);
 
       // Update kibana URL if available
       if (data.kibana) {
         updateKibanaUrl(data.kibana);
       }
 
-      // Don't schedule next poll if we're now paused
-      if (isPollingPaused) {
-        return;
-      }
+      setUserInfo(data.user);
+    }
+  }
+});
 
-      // Determine polling interval based on user activity
-      let pollInterval;
-      if (
-        data.current &&
-        (data.current.user === data.user || data.current.user === null)
-      ) {
-        // User has an active job - poll every 2 seconds
-        pollInterval = 2000;
-      } else {
-        // No active job for this user - poll every 10 seconds
-        pollInterval = 10000;
-      }
+// HTMX error handler for status requests
+document.addEventListener("htmx:responseError", function (evt) {
+  if (evt.detail.pathInfo.requestPath === "/status") {
+    console.error("Status polling error:", evt.detail.xhr.status);
+    // On error, continue polling but with longer interval
+  }
+});
 
-      setTimeout(pollStatus, pollInterval);
-    })
-    .catch((error) => {
-      console.error("Polling error:", error);
-      // Don't schedule next poll if we're now paused
-      if (isPollingPaused) {
-        return;
-      }
-      // On error, use longer interval to avoid hammering the server
-      setTimeout(pollStatus, 10000);
-    });
-}
+document.addEventListener("htmx:timeout", function (evt) {
+  if (evt.detail.pathInfo.requestPath === "/status") {
+    console.error("Status polling timeout");
+    // On timeout, continue polling but with longer interval
+  }
+});
+
+// Handle HTMX trigger for user and Kibana updates
+document.addEventListener("updateUserAndKibana", function (evt) {
+  const data = evt.detail;
+  if (data.user) {
+    setUserInfo(data.user);
+  }
+  if (data.kibana) {
+    updateKibanaUrl(data.kibana);
+  }
+});
 
 document.getElementById("upload-form").addEventListener("submit", function (e) {
   e.preventDefault();
@@ -411,8 +245,6 @@ document.getElementById("upload-form").addEventListener("submit", function (e) {
         ...body,
         queue: body.queue || {},
       });
-      // Do an immediate status check for latest updates
-      setTimeout(pollStatus, 100);
       // Reset progress bar after a delay to show completion
       setTimeout(() => {
         progressBar.style.width = "0%";
@@ -428,8 +260,6 @@ document.getElementById("upload-form").addEventListener("submit", function (e) {
         status: "error",
         error: "Upload failed with status: " + xhr.status,
       });
-      // Do an immediate status check for latest updates
-      setTimeout(pollStatus, 100);
       // Hide progress elements
       progressContainer.classList.remove("active");
       progressText.classList.remove("active");
@@ -445,8 +275,6 @@ document.getElementById("upload-form").addEventListener("submit", function (e) {
       status: "error",
       error: "Upload failed",
     });
-    // Do an immediate status check for latest updates
-    setTimeout(pollStatus, 100);
     // Hide progress elements
     progressContainer.classList.remove("active");
     progressText.classList.remove("active");
@@ -533,8 +361,6 @@ document
           ...responseData,
           queue: responseData.queue || {},
         });
-        // Do an immediate status check for latest updates
-        setTimeout(pollStatus, 100);
         // Clear form after successful submission
         document.getElementById("upload-service-form").reset();
       })
@@ -544,8 +370,6 @@ document
           status: "error",
           error: "Upload service request failed",
         });
-        // Do an immediate status check for latest updates
-        setTimeout(pollStatus, 100);
       })
       .finally(() => {
         // Re-enable button
@@ -645,6 +469,3 @@ textareaCurl.addEventListener("input", function () {
 });
 
 linkClearCurl.addEventListener("click", clearCurlForm);
-
-// Start polling when page loads
-setTimeout(pollStatus, 200);

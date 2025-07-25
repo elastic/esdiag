@@ -5,6 +5,7 @@
         <link rel="stylesheet" href="style.css" />
         <link rel="icon" type="image/svg+xml" href="esdiag.svg" />
         <link rel="apple-touch-icon" href="esdiag.svg" />
+        <script src="htmx.js"></script>
     </head>
 
     <body>
@@ -81,7 +82,7 @@
         </div>
         <div class="content">
             <h2>Process Diagnostics</h2>
-            <div class="upload-form">
+            <div class="upload-form" id="input-form">
                 <div class="tabs">
                     <button class="tab active" id="file-tab">
                         File Upload
@@ -240,7 +241,12 @@
                     </form>
                 </div>
             </div>
-            <div id="status-box">
+            <div
+                id="status-box"
+                hx-get="/status"
+                hx-trigger="load, mousemove delay:1s throttle: 5s from:body"
+                hx-swap="innerHTML"
+            >
                 <div id="ready-status" class="status-box ready">
                     ⏹️ Connecting...
                 </div>

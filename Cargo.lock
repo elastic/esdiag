@@ -203,6 +203,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "axum-htmx"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a2d4a162b7621482903309c0e8a990a866728b6312350147181230f840252314"
+dependencies = [
+ "axum-core",
+ "http",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "axum-server"
 version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -543,6 +556,7 @@ name = "esdiag"
 version = "0.9.0"
 dependencies = [
  "axum",
+ "axum-htmx",
  "axum-server",
  "base64",
  "bytes",

@@ -157,6 +157,10 @@ impl JobCompleted {
     pub fn processing_seconds(&self) -> f64 {
         self.report.processing_duration as f64 / 1000.0
     }
+
+    pub fn report(&self) -> &DiagnosticReport {
+        &self.report
+    }
 }
 
 #[derive(Serialize)]
