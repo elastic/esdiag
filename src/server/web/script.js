@@ -1,25 +1,3 @@
-// User information
-function setUserInfo(username) {
-  document.getElementById("user-circle").firstChild.textContent = username
-    ? username.charAt(0).toUpperCase()
-    : "_";
-  document.getElementById("username-display").textContent =
-    username || "Anonymous";
-}
-
-function updateKibanaUrl(kibanaUrl) {
-  const kibanaLink = document.querySelector("#kibana a");
-  const kibanaMenu = document.querySelector("#kibana .user-menu-item");
-
-  if (kibanaLink && kibanaUrl) {
-    kibanaLink.href = `${kibanaUrl}/app/dashboards#/view/2c8cd284-79ef-4787-8b79-0030e0df467b`;
-  }
-
-  if (kibanaMenu && kibanaUrl) {
-    kibanaMenu.textContent = kibanaUrl;
-  }
-}
-
 // Tab switching functionality
 const fileTab = document.getElementById("file-tab");
 const serviceTab = document.getElementById("service-tab");
@@ -166,44 +144,6 @@ function updateStatus({ status }) {
     dropArea.style.pointerEvents = "";
   }
 }
-
-// HTMX event handlers for status updates
-document.addEventListener("htmx:afterRequest", function (evt) {
-  if (evt.detail.pathInfo.requestPath === "/status") {
-    const response = evt.detail.xhr.response;
-
-    // For non-HTMX requests that return JSON, we need to handle them
-    if (
-      evt.detail.xhr
-        .getResponseHeader("content-type")
-        ?.includes("application/json")
-    ) {
-      const data = JSON.parse(response);
-
-      // Update kibana URL if available
-      if (data.kibana) {
-        updateKibanaUrl(data.kibana);
-      }
-
-      setUserInfo(data.user);
-    }
-  }
-});
-
-// HTMX error handler for status requests
-document.addEventListener("htmx:responseError", function (evt) {
-  if (evt.detail.pathInfo.requestPath === "/status") {
-    console.error("Status polling error:", evt.detail.xhr.status);
-    // On error, continue polling but with longer interval
-  }
-});
-
-document.addEventListener("htmx:timeout", function (evt) {
-  if (evt.detail.pathInfo.requestPath === "/status") {
-    console.error("Status polling timeout");
-    // On timeout, continue polling but with longer interval
-  }
-});
 
 // HTMX upload event handlers
 document.addEventListener("htmx:beforeRequest", function (evt) {

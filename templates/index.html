@@ -20,7 +20,10 @@
             </div>
             <div class="links">
                 <div id="kibana">
-                    <a href="#" target="_blank">
+                    <a
+                        href="{{ kibana_url }}/app/dashboards#/view/2c8cd284-79ef-4787-8b79-0030e0df467b"
+                        target="_blank"
+                    >
                         <svg
                             class="icon"
                             width="64"
@@ -70,7 +73,7 @@
                     </a>
                 </div>
                 <div id="user-circle" class="user-circle">
-                    _
+                    {{ user_initial }}
                     <div class="user-menu">
                         <div class="user-menu-header">
                             <span>ESDiag</span> <span>v {{ version }}</span>
@@ -95,10 +98,10 @@
                 <div class="tab-content active" id="file-content">
                     <form
                         id="upload-form"
-                        hx-post="/upload"
-                        hx-target="#upload-result"
-                        hx-swap="innerHTML"
                         hx-encoding="multipart/form-data"
+                        hx-post="/upload"
+                        hx-swap="innerHTML"
+                        hx-target="#upload-result"
                     >
                         <p class="info">
                             Upload a file from your local computer
@@ -256,7 +259,7 @@
             <div
                 id="status-box"
                 hx-get="/status"
-                hx-trigger="load, mousemove delay:1s throttle: 5s from:body"
+                hx-trigger="load, mousemove delay:1s throttle:5s from:body"
                 hx-swap="innerHTML"
             >
                 <div id="ready-status" class="status-box ready">
