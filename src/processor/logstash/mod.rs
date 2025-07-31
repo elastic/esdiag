@@ -93,6 +93,10 @@ impl DiagnosticProcessor for LogstashDiagnostic {
         self.exporter.save_report(&*report).await?;
         Ok(report.clone())
     }
+
+    fn id(&self) -> &str {
+        &self.metadata.diagnostic.id
+    }
 }
 
 #[derive(Serialize)]

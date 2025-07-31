@@ -47,6 +47,7 @@ impl Status<'_> {
 #[derive(Template)]
 #[template(path = "index.html")]
 pub struct Index {
+    pub debug: bool,
     pub exporter: String,
     pub kibana_url: String,
     pub user: String,
@@ -77,6 +78,7 @@ pub struct StatusProcessing {
     source = r#"<div id="ready-status" class="status-box ready">⏸️ Queue: {{ queue_size }}</div>"#,
     ext = "html"
 )]
+
 pub struct StatusQueue {
     pub queue_size: usize,
 }
@@ -100,16 +102,25 @@ pub struct CurrentStatusIdle {}
 #[derive(Template)]
 #[template(path = "job_completed.html")]
 pub struct JobCompleted<'a> {
-    pub diagnostic_id: &'a String,
+    pub job_id: u64,
+    pub diagnostic_id: &'a str,
     pub docs_created: &'a u32,
-    pub filename: &'a String,
-    pub kibana_link: &'a String,
-    pub product: &'a String,
+    pub filename: &'a str,
+    pub kibana_link: &'a str,
+    pub product: &'a str,
 }
 
 #[derive(Template)]
 #[template(path = "job_failed.html")]
 pub struct JobFailed<'a> {
-    pub error: &'a String,
-    pub filename: &'a String,
+    pub job_id: u64,
+    pub error: &'a str,
+    pub filename: &'a str,
+}
+
+#[derive(Template)]
+#[template(path = "job_processing.html")]
+pub struct JobProcessing<'a> {
+    pub job_id: u64,
+    pub filename: &'a str,
 }

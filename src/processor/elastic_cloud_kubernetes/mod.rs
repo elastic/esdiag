@@ -85,6 +85,10 @@ impl DiagnosticProcessor for ElasticCloudKubernetesDiagnostic {
         self.exporter.save_report(&*report).await?;
         Ok(report.clone())
     }
+
+    fn id(&self) -> &str {
+        "undefined"
+    }
 }
 
 #[derive(Serialize)]

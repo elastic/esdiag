@@ -196,6 +196,10 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
 
         Ok(report.clone())
     }
+
+    fn id(&self) -> &str {
+        &self.metadata.diagnostic.id
+    }
 }
 
 type DataProcessorTask = Pin<Box<JoinHandle<Option<ProcessorSummary>>>>;

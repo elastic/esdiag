@@ -40,6 +40,7 @@ pub async fn handler(headers: HeaderMap, state: Arc<ServerState>) -> impl IntoRe
     let index_html = template::Index {
         exporter: exporter_target,
         kibana_url: state.kibana.clone(),
+        debug: log::max_level() == log::Level::Debug,
         user_initial,
         user: user_email,
         version: env!("CARGO_PKG_VERSION").to_string(),

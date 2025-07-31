@@ -496,6 +496,15 @@ h2 {
     cursor: pointer;
 }
 
+.debug-signals {
+    color: #abb4c4;
+    position: absolute;
+    right: 8px;
+    top: 48px;
+    width: 25%;
+    overflow: scroll;
+}
+
 footer {
     position: fixed;
     bottom: 0;

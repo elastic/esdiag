@@ -118,12 +118,24 @@
         <footer>
             <span id="exporter" class="text-left">Output: {{ exporter }}</span>
             <span class="text-center">ESDiag {{ version }}</span>
-            <span class="text-right">
-                <span id="status">Ready</span>
-                | <span>0</span> queued | <span>1,000</span> diags | <span>1,000,000</span> docs
+            <span
+                class="text-right"
+                data-signals="{ stats: {
+                    jobs: { total: 0, success: 0, failed: 0 },
+                    docs: { total: 0, errors: 0 }
+                }}"
+            >
+                <span id="status" data-text="$uploading ? 'Uploading' : $processing ? 'Processing' : 'Ready'">
+                    Ready
+                </span>
+                | <span data-text="Intl.NumberFormat().format($stats.jobs.total)">0</span> diags |
+                <span data-text="Intl.NumberFormat().format($stats.docs.total)">0</span> docs
             </span>
         </footer>
 
         <script src="script.js"></script>
+        {% if debug %}
+        <pre class="debug-signals" data-json-signals="{exclude: /files/}"></pre>
+        {% endif %}
     </body>
 </html>

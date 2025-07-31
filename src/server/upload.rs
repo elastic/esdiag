@@ -21,17 +21,6 @@ pub async fn handler(
     // Extract authenticated user email from header
     let user_email = get_iap_email(&headers);
 
-    // (
-    //     StatusCode::BAD_REQUEST,
-    //     Html(format!(
-    //         r#"<div class="status-box error">
-    //             🛑 <b>Error:</b> No file part in the request
-    //         </div>"#
-    //     )),
-    // )
-    // .into_response()
-    //
-
     Sse::new(stream! {
         let signal = r#"{"uploading":true}"#;
         let sse_event = PatchSignals::new(signal).write_as_axum_sse_event();
@@ -70,6 +59,10 @@ pub async fn handler(
                         let message = format!("Received upload: {} ({} bytes)", filename, data.len());
                         log::info!("{}", message);
 
+                        let signal = r#"{"uploading":false,"processing":true}"#;
+                        let sse_event = PatchSignals::new(signal).write_as_axum_sse_event();
+                        yield Ok::<_, Infallible>(sse_event);
+
                         let identifiers = Identifiers {
                             account: None,
                             case_number: None,
@@ -94,46 +87,63 @@ pub async fn handler(
                             }
                         };
 
-                        let element = template::Status::new("processing", &message);
-                        let sse_event = PatchElements::new(element).write_as_axum_sse_event();
-                        yield Ok::<_, Infallible>(sse_event);
-
                         let exporter = {
                             state.exporter.read().await.clone().with_identifiers(identifiers)
                         };
 
-                        let elements = match JobNew::new(&exporter.identifiers(), receiver).ready(exporter).await {
+                        match JobNew::new(&exporter.identifiers(), receiver).ready(exporter).await {
                             Ok(job) => {
-                                match job.start().process().await {
+                                let job = job.start();
+                                let element = template::JobProcessing {
+                                    job_id: job.id,
+                                    filename: &job.filename,
+                                }.render().expect("Failed to render JobProcessing template");
+                                let sse_event = PatchElements::new(element).selector("#job-feed")
+                                    .mode(ElementPatchMode::After).write_as_axum_sse_event();
+                                yield Ok::<_, Infallible>(sse_event);
+
+                                let elements = match job.process().await {
                                     Ok(job) => {
-                                       template::JobCompleted {
-                                           diagnostic_id: &job.id,
-                                           docs_created: &job.report.docs.created,
-                                           filename: &job.filename,
-                                           kibana_link: job.report.kibana_link.as_ref().unwrap_or(&"#".to_string()),
-                                           product: &job.report.product.to_string(),
-                                       }.render()
-                                       .unwrap_or(template::Error::new("error", "Render error", "Failed to render template"))
+                                        state.record_success(job.report.docs.total, job.report.docs.errors).await;
+                                        template::JobCompleted {
+                                            job_id: job.id,
+                                            diagnostic_id: &job.report.metadata.id,
+                                            docs_created: &job.report.docs.created,
+                                            filename: &job.filename,
+                                            kibana_link: job.report.kibana_link.as_ref().unwrap_or(&"#".to_string()),
+                                            product: &job.report.product.to_string(),
+                                        }.render().unwrap_or(template::Error::new("error", "Render error", "Failed to render template"))
                                     },
                                     Err(job) => {
-                                        let element = template::Status::new("error", &job.error);
+                                        state.record_failure().await;
+                                        let elements = template::JobFailed {
+                                            job_id: job.id,
+                                            error: &job.error,
+                                            filename: &job.filename,
+                                        }.render().expect("Failed to render JobFailed template");
                                         state.job.record_failure(job).await;
-                                        element
-                                    },
-                                }
+                                        elements
+                                    }
+                                };
+                                let sse_event = PatchElements::new(elements).write_as_axum_sse_event();
+                                yield Ok::<_, Infallible>(sse_event);
                             },
                             Err(job) => {
-                                let element = template::Status::new("error", &job.error);
+                                state.record_failure().await;
+                                let element = template::JobFailed {
+                                    job_id: job.id,
+                                    error: &job.error,
+                                    filename: &job.filename,
+                                }.render().expect("Failed to render JobFailed template");
                                 state.job.record_failure(job).await;
-                                element
+                                let sse_event = PatchElements::new(element).selector("#job-feed")
+                                    .mode(ElementPatchMode::After).write_as_axum_sse_event();
+                                yield Ok::<_, Infallible>(sse_event);
                             },
                         };
-
-                        let sse_event = PatchElements::new(elements).selector("#job-feed")
-                            .mode(ElementPatchMode::After).write_as_axum_sse_event();
-                        yield Ok::<_, Infallible>(sse_event);
                     }
                     Err(e) => {
+                        state.record_failure().await;
                         let error_msg = format!("Failed to read upload data: {}", e);
                         let element = template::Status::new("error", &error_msg);
                         let sse_event = PatchElements::new(element).write_as_axum_sse_event();
@@ -143,7 +153,8 @@ pub async fn handler(
                 }
             }
         }
-        let signal = r#"{"uploading":false}"#;
+        let stats = state.get_stats().await;
+        let signal = format!(r#"{{"processing":false,"stats":{stats}}}"#);
         let sse_event = PatchSignals::new(signal).write_as_axum_sse_event();
         yield Ok::<_, Infallible>(sse_event)
     })
