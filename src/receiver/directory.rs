@@ -1,5 +1,5 @@
+use super::super::processor::{DataSource, PathType};
 use super::{Receive, ReceiveMultiple, ReceiveRaw};
-use crate::data::diagnostic::{DataSource, data_source::PathType};
 use eyre::{Result, eyre};
 use serde::de::DeserializeOwned;
 use std::{

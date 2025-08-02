@@ -1,9 +1,5 @@
-use crate::data::diagnostic::{
-    DiagnosticReport,
-    report::{BatchResponse, Identifiers, ProcessorSummary},
-};
-
 use super::Export;
+use crate::processor::{BatchResponse, DiagnosticReport, Identifiers, ProcessorSummary};
 use eyre::Result;
 use serde_json::Value;
 

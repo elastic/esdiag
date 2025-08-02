@@ -1,7 +1,4 @@
-use crate::data::diagnostic::{
-    DiagnosticReport,
-    report::{BatchResponse, Identifiers, ProcessorSummary},
-};
+use crate::processor::{BatchResponse, DiagnosticReport, Identifiers, ProcessorSummary};
 
 use super::Export;
 use eyre::Result;

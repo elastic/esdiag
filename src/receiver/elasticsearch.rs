@@ -1,13 +1,8 @@
-use super::{Receive, ReceiveRaw};
-use crate::{
-    client::KnownHost,
-    data::{
-        diagnostic::{
-            DataSource, DiagnosticManifest, data_source::PathType, manifest::ManifestBuilder,
-        },
-        elasticsearch::Cluster,
-    },
+use super::super::processor::{
+    DataSource, DiagnosticManifest, ElasticsearchCluster, ManifestBuilder, PathType,
 };
+use super::{Receive, ReceiveRaw};
+use crate::client::KnownHost;
 use elasticsearch::{Elasticsearch, http};
 use eyre::Result;
 use serde::de::DeserializeOwned;
@@ -98,7 +93,7 @@ impl Receive for ElasticsearchReceiver {
     async fn try_get_manifest(&self) -> Result<DiagnosticManifest> {
         let collection_date = chrono::Utc::now().to_rfc3339();
         log::info!("Creating diagnostic manifest with collection date {collection_date}");
-        let cluster = self.get::<Cluster>().await?;
+        let cluster = self.get::<ElasticsearchCluster>().await?;
         let manifest = ManifestBuilder::from(cluster)
             .runner("esdiag")
             .collection_date(collection_date)

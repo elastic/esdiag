@@ -1,4 +1,4 @@
-use crate::data::diagnostic::Product;
+use crate::processor::Product;
 use eyre::{Result, eyre};
 use reqwest;
 use serde::{Deserialize, Serialize};

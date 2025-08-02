@@ -1,6 +1,6 @@
 use super::resolve_archive_path;
 use crate::{
-    data::diagnostic::{DataSource, data_source::PathType},
+    processor::{DataSource, PathType},
     receiver::{Receive, ReceiveMultiple},
 };
 use bytes::Bytes;

@@ -1,13 +1,10 @@
 use clap::{Parser, Subcommand, builder::styling};
 use esdiag::{
     client::{KnownHost, KnownHostBuilder},
-    data::{
-        Collector, Uri,
-        diagnostic::{Product, report::Identifiers},
-    },
+    data::Uri,
     env::LOG_LEVEL,
     exporter::{DirectoryExporter, Exporter},
-    processor::{Diagnostic, JobFailed, JobNew},
+    processor::{Collector, Diagnostic, Identifiers, JobFailed, JobNew, Product},
     receiver::Receiver,
     server::ApiServer,
     setup,

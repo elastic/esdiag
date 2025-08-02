@@ -1,8 +1,5 @@
-use super::Metadata;
-use crate::data::{
-    diagnostic::{DataStreamName, DiagnosticMetadata, DiagnosticManifest},
-    logstash::Version,
-};
+use super::super::diagnostic::{DataStreamName, DiagnosticManifest, DiagnosticMetadata};
+use super::{Metadata, version::Version};
 use eyre::Result;
 use serde::Serialize;
 use serde_json::Value;

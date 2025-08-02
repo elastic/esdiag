@@ -1,13 +1,8 @@
 use super::Export;
 use crate::{
     client::{Auth, ElasticsearchBuilder, KnownHost},
-    data::{
-        self,
-        diagnostic::{
-            DiagnosticReport,
-            report::{BatchResponse, Identifiers, ProcessorSummary},
-        },
-    },
+    data,
+    processor::{BatchResponse, DiagnosticReport, Identifiers, ProcessorSummary},
 };
 use elasticsearch::{
     BulkOperation, BulkParts, Elasticsearch, IndexParts,
