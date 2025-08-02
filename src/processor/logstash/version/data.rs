@@ -13,12 +13,6 @@ pub struct Version {
     status: String,
     snapshot: bool,
     pipeline: Pipeline,
-    // #[serde(skip_serializing)]
-    // pub build_date: Option<String>,
-    // #[serde(skip_serializing)]
-    // pub build_sha: Option<String>,
-    // #[serde(skip_serializing)]
-    // pub build_snapshot: bool,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
