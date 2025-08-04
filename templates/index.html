@@ -111,36 +111,31 @@
                         id="upload-form"
                         data-show="$_tab === 'file-upload'"
                         data-signals-uploading="false"
+                        data-signals-file_upload.job_id="0"
                         enctype="multipart/form-data"
                     >
                         <p class="info">Upload a file from your local computer</p>
                         <input
                             type="file"
                             id="file-input"
-                            data-show="true"
-                            data-bind-files
-                            data-ref-_file-upload
-                            data-computed-_file_selected="$files && $files.length > 0"
                             name="file"
                             accept=".zip"
                             required
                             value=""
+                            style="opacity: 0"
                         />
                         <div
                             id="dropzone"
                             data-on-dragenter="$_drag-on=true"
                             data-on-dragover="$_drag-on=true"
                             data-on-dragleave="$_drag-on=false"
-                            data-on-drop="$_drag-on=false; $_fileUpload.files=evt.dataTransfer.files; $_fileUpload.dispatchEvent(new Event('change'))"
-                            data-class="{
-                                'drag-over': $drag-on
-                            }"
+                            data-on-drop="$_drag-on=false"
+                            data-class-drag-over="$_drag-on"
                             class="dropzone"
                         >
                             <div class="file-icon">
                                 <!--- upload icon -->
                                 <svg
-                                    data-show="!$_file_selected"
                                     xmlns="http://www.w3.org/2000/svg"
                                     viewBox="0 0 24 24"
                                     fill="none"
@@ -154,47 +149,29 @@
                                     <line x1="12" y1="18" x2="12" y2="12"></line>
                                     <line x1="9" y1="15" x2="15" y2="15"></line>
                                 </svg>
-                                <!--- checkmark icon -->
-                                <svg
-                                    data-show="$_file_selected"
-                                    style="color: #0b64dd; display: none"
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    stroke-width="2"
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                >
-                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                                    <polyline points="14 2 14 8 20 8"></polyline>
-                                    <path d="M9 15L11 17L15 13"></path>
-                                </svg>
                             </div>
-                            <div id="upload-instructions" data-show="!$_file_selected">
+                            <div id="upload-instructions">
                                 <p>Select or drag and drop a <code>.zip</code> file</p>
                             </div>
-                            <div id="file-info" class="file-info" data-show="$_file_selected" style="display: none">
-                                <span id="file-name" class="file-name" data-text="$filesNames[0] || ''"></span>
+                            <div id="file-info" class="file-info hidden">
+                                <span id="file-name" class="file-name"></span>
                             </div>
+                            <div class="upload-progress-container" id="upload-progress-container">
+                                <div class="upload-progress-bar" id="upload-progress-bar"></div>
+                            </div>
+                            <div class="upload-progress-text" id="upload-progress-text">0%</div>
                         </div>
-                        <input
-                            id="upload-button"
-                            data-on-click="@post('/upload', {contentType: 'form'})"
-                            data-attr-disabled="($uploading || !$_file_selected)"
-                            data-attr-value="$uploading ? 'Uploading' : '&nbsp;Upload&nbsp;'"
-                            class="button"
-                            type="submit"
-                            value="&nbsp;Upload&nbsp;"
-                            disabled
-                        />
+                        <input id="upload-button" class="button" type="submit" value="Upload" disabled />
                         <script>
                             // File upload handling
-                            const dropArea = document.getElementById("dropzone");
+                            const dropzone = document.getElementById("dropzone");
+                            const fileInput = document.getElementById("file-input");
+                            const fileName = document.getElementById("file-name");
+                            const uploadInstructions = document.getElementById("upload-instructions");
 
                             // Prevent default drag behaviors
                             ["dragenter", "dragover", "dragleave", "drop"].forEach((eventName) => {
-                                dropArea.addEventListener(eventName, preventDefaults, false);
+                                dropzone.addEventListener(eventName, preventDefaults, false);
                                 document.body.addEventListener(eventName, preventDefaults, false);
                             });
 
@@ -202,6 +179,139 @@
                                 e.preventDefault();
                                 e.stopPropagation();
                             }
+
+                            // Handle dropped files
+                            dropzone.addEventListener("drop", handleDrop, false);
+
+                            function handleDrop(e) {
+                                const dt = e.dataTransfer;
+                                const files = dt.files;
+                                handleFiles(files);
+                            }
+
+                            function handleFiles(files) {
+                                if (files.length > 0) {
+                                    fileInput.files = files;
+                                    updateFileInfo(files[0]);
+                                }
+                            }
+
+                            function updateFileInfo(file) {
+                                const uploadButton = document.getElementById("upload-button");
+                                const fileIcon = document.querySelector(".file-icon");
+                                const fileInfo = document.querySelector(".file-info");
+                                const currentStatus = document.getElementById("current-status");
+                                const isUploading = currentStatus && currentStatus.textContent.includes("Uploading");
+
+                                // Don't clear the file if we're currently uploading
+                                if (isUploading && !file) return;
+
+                                if (file) {
+                                    fileName.textContent = file.name;
+                                    fileInfo.classList.remove("hidden");
+                                    uploadButton.disabled = false;
+                                    uploadInstructions.classList.add("hidden");
+                                    fileIcon.style.color = "#1339ab"; // Change to button text blue
+
+                                    // Change the icon to a check mark
+                                    document.querySelector(".file-icon svg").innerHTML = `
+                                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                        <polyline points="14 2 14 8 20 8"></polyline>
+                                        <path d="M9 15L11 17L15 13"></path>
+                                    `;
+                                } else {
+                                    fileInput.value = "";
+                                    fileInfo.classList.add("hidden");
+                                    uploadButton.disabled = true;
+                                    uploadInstructions.classList.remove("hidden");
+                                    fileIcon.style.color = "#516381"; // Reset to original color
+
+                                    // Reset to upload icon
+                                    document.querySelector(".file-icon svg").innerHTML = `
+                                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                        <polyline points="14 2 14 8 20 8"></polyline>
+                                        <line x1="12" y1="18" x2="12" y2="12"></line>
+                                        <line x1="9" y1="15" x2="15" y2="15"></line>
+                                    `;
+                                }
+                            }
+
+                            // Open file picker when clicking drop area
+                            dropzone.addEventListener("click", () => {
+                                fileInput.click();
+                            });
+
+                            // Handle selected file when using file picker
+                            fileInput.addEventListener("change", function () {
+                                if (this.files && this.files[0]) {
+                                    updateFileInfo(this.files[0]);
+                                }
+                            });
+
+                            // Initialize button state when page loads
+                            document.addEventListener("DOMContentLoaded", function () {
+                                const uploadButton = document.getElementById("upload-button");
+                                uploadButton.disabled = fileInput.files.length === 0;
+                            });
+                            document.getElementById("upload-form").addEventListener("submit", function (e) {
+                                e.preventDefault();
+                                const formData = new FormData(this);
+                                // Keep the file visible while uploading
+                                const currentFile = fileInput.files[0];
+
+                                // Use XMLHttpRequest to track upload progress
+                                const xhr = new XMLHttpRequest();
+                                const progressBar = document.getElementById("upload-progress-bar");
+                                const progressContainer = document.getElementById("upload-progress-container");
+                                const progressText = document.getElementById("upload-progress-text");
+
+                                // Show progress elements
+                                progressContainer.classList.add("active");
+                                progressText.classList.add("active");
+
+                                // Reset progress bar
+                                progressBar.style.width = "0%";
+                                progressText.textContent = "0%";
+
+                                xhr.upload.addEventListener("progress", function (event) {
+                                    if (event.lengthComputable) {
+                                        const percentComplete = (event.loaded / event.total) * 100;
+                                        const percentFormatted = Math.round(percentComplete) + "%";
+
+                                        progressBar.style.width = percentFormatted;
+                                        progressText.textContent = percentFormatted;
+                                    }
+                                });
+
+                                xhr.onload = function () {
+                                    const jobFeed = document.getElementById("job-feed");
+                                    if (xhr.status >= 200 && xhr.status < 300) {
+                                        setTimeout(() => {
+                                            progressBar.style.width = "0%";
+                                            progressContainer.classList.remove("active");
+                                            progressText.classList.remove("active");
+                                            updateFileInfo(null);
+                                            document.getElementById("dropzone").style.pointerEvents = "";
+                                        }, 1000);
+                                    } else {
+                                        progressContainer.classList.remove("active");
+                                        progressText.classList.remove("active");
+                                        updateFileInfo(null);
+                                        document.getElementById("dropzone").style.pointerEvents = "";
+                                    }
+                                    jobFeed.insertAdjacentHTML("afterend", xhr.responseText);
+                                };
+
+                                xhr.onerror = function () {
+                                    progressContainer.classList.remove("active");
+                                    progressText.classList.remove("active");
+                                    updateFileInfo(null);
+                                    document.getElementById("dropzone").style.pointerEvents = "";
+                                };
+
+                                xhr.open("POST", "/upload/submit", true);
+                                xhr.send(formData);
+                            });
                         </script>
                     </form>
 
@@ -221,21 +331,21 @@
                                 id="curl-command"
                                 class="curl-textarea"
                                 placeholder="Paste a curl command or case comment to auto-fill the form"
-                                data-bind-_service_link.curl
+                                data-bind-service_link._curl
                                 data-on-input="{
-                                    $_service_link.url = parseUrl($_service_link.curl),
-                                    $_service_link.token = parseToken($_service_link.curl),
-                                    $_service_link.filename = parseFilename($_service_link.curl)
+                                    $service_link.url = parseUrl($service_link._curl),
+                                    $service_link.token = parseToken($service_link._curl),
+                                    $service_link.filename = parseFilename($service_link._curl)
                                 }"
                             ></textarea>
                             <div
                                 id="curl-command-clear"
-                                data-show="$_service_link.curl !== ''"
+                                data-show="$service_link._curl !== ''"
                                 data-on-click="{
-                                    $_service_link.curl = '';
-                                    $_service_link.url = '';
-                                    $_service_link.token = '';
-                                    $_service_link.filename = '';
+                                    $service_link._curl = '';
+                                    $service_link.url = '';
+                                    $service_link.token = '';
+                                    $service_link.filename = '';
                                 }"
                                 class="clear-curl-link"
                                 style="display: none"
@@ -249,8 +359,8 @@
                                 type="text"
                                 id="service-token"
                                 name="token"
-                                data-bind-_service_link.token
-                                data-attr-readonly="$_service_link.curl !== ''"
+                                data-bind-service_link.token
+                                data-attr-readonly="$service_link._curl !== ''"
                                 class="form-input"
                                 required
                                 placeholder="Enter authentication token"
@@ -262,8 +372,8 @@
                                 type="url"
                                 id="service-url"
                                 name="url"
-                                data-bind-_service_link.url
-                                data-attr-readonly="$_service_link.curl !== ''"
+                                data-bind-service_link.url
+                                data-attr-readonly="$service_link._curl !== ''"
                                 class="form-input"
                                 required
                                 placeholder="https://example.com/path/to/diagnostic.zip"
@@ -275,8 +385,8 @@
                                 type="text"
                                 id="service-filename"
                                 name="filename"
-                                data-bind-_service_link.filename
-                                data-attr-readonly="$_service_link.curl !== ''"
+                                data-bind-service_link.filename
+                                data-attr-readonly="$service_link._curl !== ''"
                                 class="form-input"
                                 required
                                 placeholder="diagnostic.zip"
@@ -288,7 +398,7 @@
                             type="submit"
                             value="Submit"
                             data-on-click="$uploading = true; @post('/service_link',{contentType: 'form'})"
-                            data-attr-disabled="$uploading || $processing || !$_service_link.url || !$_service_link.token"
+                            data-attr-disabled="$uploading || $processing || !$service_link.url || !$service_link.token"
                         />
                         <script>
                             // Extract token from Authorization header
@@ -316,13 +426,43 @@
                         </script>
                     </form>
 
-                    <form
-                        id="api-key-form"
-                        enctype="multipart/form-data"
-                        data-show="$_tab === 'api-key'"
-                        style="display: none"
-                    >
-                        <p>To be implemented...</p>
+                    <form id="api-key-form" data-show="$_tab === 'api-key'" style="display: none">
+                        <form>
+                            <p class="info">Process API calls directly from an Elasticsearch cluster.</p>
+                            <div class="form-group">
+                                <label for="elasticsearch-url" class="form-label">Elasticsearch URL</label>
+                                <input
+                                    type="url"
+                                    id="elasticsearch-url"
+                                    name="url"
+                                    data-bind-es_api.url
+                                    class="form-input"
+                                    required
+                                    placeholder="https://elasticsearch.example.com/"
+                                />
+                            </div>
+                            <div class="form-group">
+                                <label for="api-key" class="form-label">Elasticsearch API Key</label>
+                                <input
+                                    type="text"
+                                    id="api-key"
+                                    name="api-key"
+                                    data-bind-es_api.key
+                                    class="form-input"
+                                    required
+                                    placeholder="Cluster API key"
+                                />
+                                <p class="info"><i>API keys are not saved or logged.</i></p>
+                            </div>
+                            <input
+                                id="es-api-key-button"
+                                class="button"
+                                type="submit"
+                                value="Process"
+                                data-on-click="$processing = true; @post('/api_key')"
+                                data-attr-disabled="$processing || !$es_api.url || !$es_api.key"
+                            />
+                        </form>
                     </form>
                 </div>
             </div>

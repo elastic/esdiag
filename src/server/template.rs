@@ -1,4 +1,3 @@
-use crate::processor::new_job_id;
 use askama::Template;
 
 #[derive(Template)]
@@ -9,18 +8,6 @@ pub struct Error<'e> {
     pub message: &'e str,
 }
 
-impl Error<'_> {
-    pub fn new(id: &str, error: &str, message: &str) -> String {
-        let error = Error { id, error, message };
-        match error.render() {
-            Ok(html) => html,
-            Err(err) => format!(
-                r#"<div id="error-render" class="error"><h3>🛑 Failed rendering error template</h3><p>{err}</p></div>"#
-            ),
-        }
-    }
-}
-
 #[derive(Template)]
 #[template(
     source = r#"<div id="current-status" class="status-box {{ class }}"> ✅ {{ message }}</div>"#,
@@ -29,20 +16,6 @@ impl Error<'_> {
 pub struct Status<'s> {
     pub class: &'s str,
     pub message: &'s str,
-}
-
-impl Status<'_> {
-    pub fn new(class: &str, message: &str) -> String {
-        let status = Status { class, message };
-        match status.render() {
-            Ok(html) => html,
-            Err(err) => Error::new(
-                "error-render",
-                "Failed rendering status template",
-                &err.to_string(),
-            ),
-        }
-    }
 }
 
 #[derive(Template)]
@@ -116,20 +89,7 @@ pub struct JobCompleted<'a> {
 pub struct JobFailed<'a> {
     pub job_id: u64,
     pub error: &'a str,
-    pub filename: &'a str,
-}
-
-impl<'a> JobFailed<'a> {
-    pub fn element(job_id: Option<u64>, error: &'a str, filename: &'a str) -> String {
-        let job_id = job_id.unwrap_or(new_job_id());
-        Self {
-            job_id,
-            error,
-            filename,
-        }
-        .render()
-        .expect("Failed to render JobFailed template")
-    }
+    pub source: &'a str,
 }
 
 #[derive(Template)]

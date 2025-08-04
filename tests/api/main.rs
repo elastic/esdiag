@@ -286,7 +286,7 @@ async fn auth_header_filters_job_history() {
             .job
             .record_failure(JobFailed {
                 id: 1,
-                filename: "public_file1.zip".to_string(),
+                filename: Some("public_file1.zip".to_string()),
                 user: None,
                 error: "Test error for public job 1".to_string(),
             })
@@ -297,7 +297,7 @@ async fn auth_header_filters_job_history() {
             .job
             .record_failure(JobFailed {
                 id: 2,
-                filename: "public_file2.zip".to_string(),
+                filename: Some("public_file2.zip".to_string()),
                 user: None,
                 error: "Test error for public job 2".to_string(),
             })
@@ -309,7 +309,7 @@ async fn auth_header_filters_job_history() {
             .job
             .record_failure(JobFailed {
                 id: 3,
-                filename: "user1_specific.zip".to_string(),
+                filename: Some("user1_specific.zip".to_string()),
                 user: Some("user1@example.com".to_string()),
                 error: "Test error for user1".to_string(),
             })
@@ -320,7 +320,7 @@ async fn auth_header_filters_job_history() {
             .job
             .record_failure(JobFailed {
                 id: 4,
-                filename: "user2_specific.zip".to_string(),
+                filename: Some("user2_specific.zip".to_string()),
                 user: Some("user2@example.com".to_string()),
                 error: "Test error for user2".to_string(),
             })

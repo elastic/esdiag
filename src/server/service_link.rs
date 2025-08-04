@@ -1,18 +1,16 @@
-use super::{ServerState, get_user_email, patch_signals, template};
+use super::{ServerState, get_user_email, patch_job_feed, patch_signals, patch_template, template};
 use crate::{
     data::{Uri, diagnostic::report::Identifiers},
-    processor::JobNew,
+    processor::{JobNew, new_job_id},
     receiver::Receiver,
 };
-use askama::Template;
 use async_stream::stream;
 use axum::{
     extract::Multipart,
     http::HeaderMap,
     response::{IntoResponse, Sse},
 };
-use datastar::{consts::ElementPatchMode, prelude::PatchElements};
-use std::{convert::Infallible, sync::Arc};
+use std::sync::Arc;
 use url::Url;
 
 pub async fn handler(
@@ -54,23 +52,19 @@ pub async fn handler(
             Ok(mut url) => {
                 // Set username to "token" and password to the actual token
                 if url.set_username("token").is_err() {
-                    let element = template::Error::new(
-                        "error-url",
-                        "Upload Service",
-                        "Failed to set username in URL",
-                    );
-                    let sse_event = PatchElements::new(element).write_as_axum_sse_event();
-                    yield Ok::<_, Infallible>(sse_event);
+                    yield patch_template(template::Error {
+                        id: "error-url",
+                        error: "Upload Service",
+                        message: "Failed to set username in URL",
+                    });
                     yield patch_signals(r#"{"uploading":false}"#);
                 }
                 if url.set_password(Some(&token)).is_err() {
-                    let element = template::Error::new(
-                        "error-url",
-                        "Upload Service",
-                        "Failed to set token in URL",
-                    );
-                    let sse_event = PatchElements::new(element).write_as_axum_sse_event();
-                    yield Ok::<_, Infallible>(sse_event);
+                    yield patch_template(template::Error {
+                        id: "error-url",
+                        error: "Upload Service",
+                        message: "Failed to set token in URL",
+                    });
                     yield patch_signals(r#"{"uploading":false}"#);
                 }
                 url
@@ -78,13 +72,11 @@ pub async fn handler(
             Err(e) => {
                 let error_msg = format!("Invalid URL: {}", e);
                 log::error!("Invalid URL provided: {}", e);
-                let element = template::Error::new(
-                    "error-url",
-                    "Upload Service",
-                    &error_msg
-                );
-                let sse_event = PatchElements::new(element).write_as_axum_sse_event();
-                yield Ok::<_, Infallible>(sse_event);
+                yield patch_template(template::Error {
+                    id: "error-url",
+                    error: "Upload Service",
+                    message: &error_msg
+                });
                 yield patch_signals(r#"{"uploading":false}"#);
                 return
             }
@@ -96,13 +88,11 @@ pub async fn handler(
             Err(e) => {
                 let error_msg = format!("Failed to create URI: {}", e);
                 log::error!("Failed to create URI: {}", e);
-                let element = template::Error::new(
-                    "error-url",
-                    "Upload Service",
-                    &error_msg
-                );
-                let sse_event = PatchElements::new(element).write_as_axum_sse_event();
-                yield Ok::<_, Infallible>(sse_event);
+                yield patch_template(template::Error {
+                    id: "error-url",
+                    error: "Upload Service",
+                    message: &error_msg
+                });
                 yield patch_signals(r#"{"uploading":false}"#);
                 return
             }
@@ -115,10 +105,11 @@ pub async fn handler(
                 state.record_failure().await;
                 let error_msg = format!("Failed to create receiver: {}", e);
                 log::error!("Failed to create receiver: {}", e);
-                let element = template::JobFailed::element(None, &error_msg, &filename);
-                let sse_event = PatchElements::new(element).selector("#job-feed")
-                    .mode(ElementPatchMode::After).write_as_axum_sse_event();
-                yield Ok::<_, Infallible>(sse_event);
+                yield patch_job_feed(template::JobFailed {
+                    job_id: new_job_id(),
+                    error: &error_msg,
+                    source: &filename,
+                });
                 yield patch_signals(r#"{"uploading":false}"#);
                 return
             }
@@ -139,58 +130,50 @@ pub async fn handler(
         match JobNew::new(&exporter.identifiers(), receiver).ready(exporter).await {
             Ok(job) => {
                 let job = job.start();
-                let element = template::JobProcessing {
+                yield patch_job_feed(template::JobProcessing {
                     job_id: job.id,
-                    filename: &job.filename,
-                }.render().expect("Failed to render JobProcessing template");
-                let sse_event = PatchElements::new(element).selector("#job-feed")
-                    .mode(ElementPatchMode::After).write_as_axum_sse_event();
+                    filename: job.filename.as_deref().unwrap_or(""),
+                });
                 yield patch_signals(r#"{"uploading":false,"processing":true}"#);
-                yield Ok::<_, Infallible>(sse_event);
 
-                let elements = match job.process().await {
+                match job.process().await {
                     Ok(job) => {
-                        state.record_success(job.report.docs.total, job.report.docs.errors).await;
-                        template::JobCompleted {
+                        yield patch_template(template::JobCompleted {
                             job_id: job.id,
                             diagnostic_id: &job.report.metadata.id,
                             docs_created: &job.report.docs.created,
-                            filename: &job.filename,
+                            filename: job.filename.as_deref().unwrap_or(""),
                             kibana_link: job.report.kibana_link.as_ref().unwrap_or(&"#".to_string()),
                             product: &job.report.product.to_string(),
-                        }.render().unwrap_or(template::Error::new("error", "Render error", "Failed to render template"))
-                    },
+                        });
+                        yield patch_signals(
+                            &format!(r#"{{"processing":false,"service_link":{{"_curl":"","token":"","url":"","filename":""}},"stats":{}}}"#, state.get_stats().await)
+                        );
+                        state.record_success(job.report.docs.total, job.report.docs.errors).await;
+                    }
                     Err(job) => {
-                        state.record_failure().await;
-                        let elements = template::JobFailed {
+                        yield patch_template(template::JobFailed {
                             job_id: job.id,
                             error: &job.error,
-                            filename: &job.filename,
-                        }.render().expect("Failed to render JobFailed template");
+                            source: job.filename.as_deref().unwrap_or(""),
+                        });
+                        yield patch_signals(r#"{"processing":false}"#);
+                        state.record_failure().await;
                         state.job.record_failure(job).await;
-                        elements
                     }
-                };
-                let sse_event = PatchElements::new(elements).write_as_axum_sse_event();
-                yield Ok::<_, Infallible>(sse_event);
-                yield patch_signals(r#"{"processing":false}"#);
+                }
             },
             Err(job) => {
-                state.record_failure().await;
-                let element = template::JobFailed {
+                yield patch_template(template::JobFailed {
                     job_id: job.id,
                     error: &job.error,
-                    filename: &job.filename,
-                }.render().expect("Failed to render JobFailed template");
-                state.job.record_failure(job).await;
-                let sse_event = PatchElements::new(element).selector("#job-feed")
-                    .mode(ElementPatchMode::After).write_as_axum_sse_event();
-                yield Ok::<_, Infallible>(sse_event);
+                    source: job.filename.as_deref().unwrap_or(""),
+                });
                 yield patch_signals(r#"{"processing":false}"#);
+                state.record_failure().await;
+                state.job.record_failure(job).await;
             },
         };
 
-        let signals = format!(r#"{{"processing":false,"stats":{}}}"#, state.get_stats().await);
-        yield patch_signals(&signals);
     })
 }
