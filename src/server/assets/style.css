@@ -1,5 +1,5 @@
 body {
-    font-family: 'Inter', BlinkMacSystemFont, Helvetica, Arial, sans-serif;
+    font-family: "Inter", BlinkMacSystemFont, Helvetica, Arial, sans-serif;
     padding: 0px;
     margin: 0px;
 }
@@ -13,7 +13,7 @@ code {
     background-color: rgb(246, 249, 252);
     border-radius: 4px;
     color: rgb(107, 60, 159);
-    font-family: 'Roboto Mono', Menlo, Courier, monospace;
+    font-family: "Roboto Mono", Menlo, Courier, monospace;
     font-size: 0.9em;
     font-weight: 600;
     padding-block: 0.2em;
@@ -67,7 +67,7 @@ h3 {
     display: inline-block;
     vertical-align: middle;
     height: 26px;
-    margin: 0px 2px 4px 4px;
+    margin: 0px 4px 6px 4px;
 }
 
 .content {
@@ -334,7 +334,7 @@ h3 {
 .tab.active::after {
     background-color: #1339ab;
     bottom: -1px;
-    content: '';
+    content: "";
     height: 2px;
     left: 0;
     position: absolute;
@@ -383,7 +383,7 @@ h3 {
     border: 1px solid #d3dae6;
     border-radius: 4px;
     color: #047471;
-    font-family: 'Roboto Mono', Menlo, Courier, monospace;
+    font-family: "Roboto Mono", Menlo, Courier, monospace;
     font-size: 13px;
     min-height: 80px;
     padding: 12px;
@@ -433,7 +433,7 @@ h3 {
 
 .user-menu {
     position: absolute;
-    top: 100%;
+    top: 95%;
     right: 0;
     background: white;
     border: 1px solid #dce2ea;
@@ -441,24 +441,12 @@ h3 {
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
     padding: 12px;
     min-width: 180px;
-    margin-top: 8px;
     display: none;
     z-index: 1000;
 }
 
 .user-circle:hover .user-menu {
     display: block;
-}
-
-.user-menu-item {
-    padding: 8px;
-    font-size: 14px;
-    font-weight: 400;
-    color: #101c3f;
-    white-space: nowrap;
-    display: flex;
-    align-items: center;
-    text-decoration: none;
 }
 
 .user-menu-header {
@@ -474,9 +462,29 @@ h3 {
     border-bottom: 1px solid #e3e8f2;
 }
 
+.user-menu-item {
+    padding: 8px;
+    font-size: 14px;
+    font-weight: 400;
+    color: #101c3f;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    text-decoration: none;
+}
+
 .user-menu-item:hover {
     background-color: #f5f7fa;
     border-radius: 4px;
+}
+
+.user-menu-item a {
+    display: inline-block;
+    width: 100%;
+    font-size: 14px;
+    font-weight: 400;
+    color: #101c3f;
+    text-decoration: none;
 }
 
 .icon {
@@ -495,7 +503,11 @@ h3 {
 }
 
 .github {
-    color: #b7d0fb;
+    display: inline-block;
+    height: 20px;
+    width: 24px;
+    margin-top: -5px;
+    vertical-align: bottom;
 }
 
 .user-circle {
@@ -537,6 +549,7 @@ footer {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    z-index: 100;
 }
 
 footer span {
@@ -558,4 +571,13 @@ footer span {
 
 .text-right {
     text-align: right;
+}
+
+.version {
+    color: inherit;
+    text-decoration: none;
+}
+
+.version:hover {
+    text-decoration: underline;
 }

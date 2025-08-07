@@ -55,23 +55,27 @@
                             </defs></svg
                     ></a>
                     <div class="user-menu">
-                        <div class="user-menu-item">{{ kibana_url }}</div>
+                        <div class="user-menu-header">Kibana Links</div>
+                        <div class="user-menu-item">
+                            <a
+                                target="_blank"
+                                href="{{ kibana_url }}/app/dashboards#/view/2c8cd284-79ef-4787-8b79-0030e0df467b?_g=(filters:!(),refreshInterval:(pause:!t,value:60000),time:(from:now-90d,to:now))"
+                                >{{ kibana_url }}</a
+                            >
+                        </div>
+                        <div class="user-menu-item">
+                            <a
+                                target="_blank"
+                                href="{{ kibana_url }}/app/dashboards#/view/578354da-7455-4b56-b2d8-b78425fb1710?_g=(filters:!(),refreshInterval:(pause:!t,value:60000),time:(from:now-90d,to:now))&_a=(filters:!(('$state':(store:appState),meta:(alias:!n,disabled:!f,index:'metrics-diagnostic-esdiag',key:diagnostic.user,negate:!f,params:(query:'{{ user }}'),type:phrase),query:(match_phrase:(diagnostic.user:'{{ user }}')))),viewMode:view)"
+                                >My Diagnostics</a
+                            >
+                        </div>
                     </div>
-                </div>
-                <div id="github" class="github icon">
-                    <a href="https://github.com/elastic/esdiag" target="_blank">
-                        <svg viewBox="0 0 24 24">
-                            <path
-                                fill="rgb(255,255,255)"
-                                d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.17 6.839 9.49.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.603-3.369-1.342-3.369-1.342-.454-1.155-1.11-1.462-1.11-1.462-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0112 6.836c.85.004 1.705.114 2.504.336 1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.167 22 16.418 22 12c0-5.523-4.477-10-10-10z"
-                            />
-                        </svg>
-                    </a>
                 </div>
                 <div id="user-circle" class="user-circle">
                     {{ user_initial }}
                     <div class="user-menu">
-                        <div class="user-menu-header"><span>ESDiag</span> <span>v {{ version }}</span></div>
+                        <div class="user-menu-header">Username</div>
                         <div
                             id="username-display"
                             data-signals-auth.header="{{ auth_header }}"
@@ -122,7 +126,7 @@
                             data-signals-file_upload.job_id="0"
                             enctype="multipart/form-data"
                         >
-                            <p class="info">Upload a file from your local computer</p>
+                            <p class="info">Process a file uploaded from your local computer</p>
                             <input
                                 type="file"
                                 id="file-input"
@@ -169,7 +173,7 @@
                                 </div>
                                 <div class="upload-progress-text" id="upload-progress-text">0%</div>
                             </div>
-                            <input id="upload-button" class="button" type="submit" value="Upload" disabled />
+                            <input id="upload-button" class="button" type="submit" value="Process" disabled />
                             <script>
                                 // File upload handling
                                 const dropzone = document.getElementById("dropzone");
@@ -326,7 +330,7 @@
                             style="display: none"
                         >
                             <p class="info">
-                                Forward a link from the Elastic upload service:
+                                Process from an Elastic upload service link:
                                 <a href="https://upload.elastic.co" target="_blank">https://upload.elastic.co</a>
                             </p>
                             <div class="form-group">
@@ -401,10 +405,10 @@
                             <input
                                 id="service-link-button"
                                 class="button"
-                                type="submit"
-                                value="Forward"
+                                type="button"
+                                value="Process"
                                 data-on-click="$uploading = true; @post('/service_link')"
-                                data-attr-disabled="$uploading || $processing || !$service_link.url || !$service_link.token"
+                                data-attr-disabled="$uploading || !$service_link.url || !$service_link.token"
                             />
                             <script>
                                 // Extract token from Authorization header
@@ -433,13 +437,14 @@
                         </form>
 
                         <form id="api-key-form" data-show="$_tab === 'api-key'" style="display: none">
-                            <p class="info">Process API calls directly from an Elasticsearch cluster.</p>
+                            <p class="info">Process directly from an Elasticsearch cluster's API.</p>
                             <div class="form-group">
                                 <label for="elasticsearch-url" class="form-label">Elasticsearch URL</label>
                                 <input
                                     type="url"
                                     id="elasticsearch-url"
                                     name="url"
+                                    autocomplete="url"
                                     data-bind-es_api.url
                                     class="form-input"
                                     required
@@ -452,6 +457,7 @@
                                     type="password"
                                     id="api-key"
                                     name="api-key"
+                                    autocomplete="current-password"
                                     data-bind-es_api.key
                                     class="form-input"
                                     required
@@ -462,10 +468,10 @@
                             <input
                                 id="es-api-key-button"
                                 class="button"
-                                type="submit"
+                                type="button"
                                 value="Process"
                                 data-on-click="$processing = true; @post('/api_key')"
-                                data-attr-disabled="$processing || !$es_api.url || !$es_api.key"
+                                data-attr-disabled="$uploading || !$es_api.url || !$es_api.key"
                             />
                         </form>
                     </div>
@@ -480,6 +486,7 @@
                             name="username"
                             data-bind-metadata.user
                             placeholder="Username"
+                            autocomplete="username"
                             class="form-input"
                             data-attr-disabled="$auth.header || $processing || $uploading"
                         />
@@ -536,6 +543,15 @@
                 </div>
             </div>
 
+            <div
+                id="current-status"
+                data-show="$uploading && $_job_id === '' "
+                class="status-box uploading"
+                style="display: none"
+            >
+                <div class="spinner"></div>
+                Uploading...
+            </div>
             <div id="job-feed"></div>
             {% if let Some(link_id) = link_id %}
             <div
@@ -562,27 +578,27 @@
                 Loading file upload {{ upload_id }}
             </div>
             {% endif %}
-            <div
-                id="current-status"
-                data-show="$uploading && !$_job_id"
-                class="status-box uploading"
-                style="display: none"
-            >
-                <div class="spinner"></div>
-                Uploading...
-            </div>
         </div>
 
         <footer>
-            <span id="exporter" class="text-left">Output: {{ exporter }}</span>
-            <span class="text-center">ESDiag {{ version }}</span>
-            <span
-                class="text-right"
-                data-signals="{ stats: {
-                    jobs: { total: 0, success: 0, failed: 0 },
-                    docs: { total: 0, errors: 0 }
-                }}"
-            >
+            <span class="text-left">
+                <span id="github" class="github">
+                    <a href="https://github.com/elastic/esdiag" target="_blank">
+                        <svg viewBox="0 0 24 24">
+                            <path
+                                fill="#abb4c4"
+                                d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.17 6.839 9.49.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.603-3.369-1.342-3.369-1.342-.454-1.155-1.11-1.462-1.11-1.462-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0112 6.836c.85.004 1.705.114 2.504.336 1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.167 22 16.418 22 12c0-5.523-4.477-10-10-10z"
+                            />
+                        </svg>
+                    </a>
+                </span>
+                ESDiag
+                <a target="_blank" href="https://github.com/elastic/esdiag/releases/tag/{{ version }}" class="version"
+                    >{{ version }}</a
+                >
+            </span>
+            <span id="exporter" class="text-center">Output: {{ exporter }}</span>
+            <span class="text-right" data-signals="{ 'stats': {{ stats }} }">
                 <span id="status" data-text="$uploading ? 'Uploading' : $processing ? 'Processing' : 'Ready'">
                     Ready
                 </span>

@@ -54,7 +54,11 @@ pub async fn handler(
     headers: HeaderMap,
 ) -> impl IntoResponse {
     let (auth_header, user_initial, user_email) = match get_user_email(&headers) {
-        (auth_header, Some(email)) => (auth_header, email.chars().next().unwrap_or('_'), email),
+        (auth_header, Some(email)) => (
+            auth_header,
+            email.chars().next().unwrap_or('_').to_ascii_uppercase(),
+            email,
+        ),
         _ => (false, '_', "Anonymous".to_string()),
     };
 
@@ -65,6 +69,7 @@ pub async fn handler(
         exporter: exporter_target,
         kibana_url: state.kibana.clone(),
         link_id: params.link_id,
+        stats: state.get_stats_as_signals().await,
         upload_id: params.upload_id,
         user: user_email,
         user_initial,

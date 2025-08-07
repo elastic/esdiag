@@ -35,7 +35,6 @@ pub async fn handler(
                     error: "Upload Service",
                     message: "Failed to set username in URL",
                 });
-                yield patch_signals(r#"{"uploading":false}"#);
             }
             if url.set_password(Some(&service_link.token)).is_err() {
                 yield patch_template(template::Error {
@@ -43,7 +42,6 @@ pub async fn handler(
                     error: "Upload Service",
                     message: "Failed to set token in URL",
                 });
-                yield patch_signals(r#"{"uploading":false}"#);
             }
             Uri::ServiceLink(url)
         } else {
@@ -91,7 +89,9 @@ pub async fn handler(
                     job_id: job.id,
                     filename: job.filename.as_deref().unwrap_or(""),
                 });
-                yield patch_signals(r#"{"uploading":false,"processing":true}"#);
+                yield patch_signals(
+                    r#"{"uploading":false,"processing":true,"service_link":{"_curl":"","token":"","url":"","filename":""}}"#
+                );
 
                 match job.process().await {
                     Ok(job) => {
@@ -106,7 +106,7 @@ pub async fn handler(
                             product: &job.report.product.to_string(),
                         });
                         yield patch_signals(
-                            &format!(r#"{{"processing":false,"service_link":{{"_curl":"","token":"","url":"","filename":""}},"stats":{}}}"#, state.get_stats().await)
+                            &format!(r#"{{"processing":false,"stats":{}}}"#, state.get_stats().await)
                         );
                     }
                     Err(job) => {

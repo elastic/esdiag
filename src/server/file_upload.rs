@@ -104,8 +104,6 @@ pub async fn process_handler(
     State(state): State<Arc<ServerState>>,
     ReadSignals(signals): ReadSignals<Signals>,
 ) -> impl IntoResponse {
-    log::debug!("Signals: {:?}", signals);
-
     // Use the signal job_id to override the job.id created in this function
     let job_id = signals.file_upload.job_id;
 
@@ -114,10 +112,10 @@ pub async fn process_handler(
         let (filename, data): (String, Bytes) = match state.pop_upload(job_id).await{
             Some((filename, data)) => (filename, data),
             None =>{
-                yield patch_template(template::Error {
-                    id: "error-upload",
-                    error: "Failed to process upload",
-                    message: "Upload job_id not found"
+                yield patch_template(template::JobFailed {
+                    job_id: job_id,
+                    error: "Failed to upload file",
+                    source: "User upload",
                 });
                 return
             }
@@ -128,10 +126,10 @@ pub async fn process_handler(
             Err(e) => {
                 let error = format!("Failed to create receiver: {}", e);
                 log::error!("{}", error);
-                yield patch_template(template::Error {
-                    id: "error-receiver",
-                    error: "Failed to create upload receiver",
-                    message: &error
+                yield patch_template(template::JobFailed {
+                    job_id: job_id,
+                    error: "Failed to create file receiver",
+                    source: &filename,
                 });
                 return
             }
@@ -188,6 +186,6 @@ pub async fn process_handler(
             },
         };
 
-        yield patch_signals(&format!(r#"{{"processing":false,"file_upload":{{"job_id":""}},"stats":{}}}"#, state.get_stats().await));
+        yield patch_signals(&format!(r#"{{"processing":false,"file_upload":{{"job_id":0}},"stats":{}}}"#, state.get_stats().await));
     })
 }

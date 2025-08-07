@@ -196,6 +196,12 @@ impl ServerState {
         self.stats.read().await.clone()
     }
 
+    pub async fn get_stats_as_signals(&self) -> String {
+        serde_json::to_string(&self.get_stats().await)
+            .unwrap_or_default()
+            .replace('\"', "'")
+    }
+
     pub async fn push_link(
         &self,
         id: u64,

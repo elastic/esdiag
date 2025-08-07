@@ -27,6 +27,7 @@ pub struct Index {
     pub kibana_url: String,
     pub upload_id: Option<u64>,
     pub link_id: Option<u64>,
+    pub stats: String,
     pub user: String,
     pub user_initial: char,
     pub version: String,
