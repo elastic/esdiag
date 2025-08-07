@@ -67,21 +67,21 @@ impl Server {
 
         // Start the Axum server
         let handle = tokio::spawn(async move {
-            const ONE_GIBIBYTE: usize = 1024 * 1024 * 1024;
+            const FIVE_HUNDRED_TWELVE_MEBIBYTES: usize = 512 * 1024 * 1024;
             let app = Router::new()
                 .route("/", get(index::handler))
-                .route("/style.css", get(assets::style))
+                .route("/api/service_link", post(api::service_link_handler))
+                .route("/api_key", post(api_key::handler))
                 .route("/datastar.js", get(assets::datastar))
                 .route("/datastar.js.map", get(assets::datastar_map))
-                .route("/favicon.ico", get(assets::logo))
                 .route("/esdiag.svg", get(assets::logo))
-                .route("/upload/submit", post(file_upload::submit_handler))
-                .route("/upload/process", post(file_upload::process_handler))
+                .route("/favicon.ico", get(assets::logo))
                 .route("/service_link", post(service_link::handler))
                 .route("/service_link/{id}", post(service_link::job_handler))
-                .route("/api_key", post(api_key::handler))
-                .route("/api/service_link", post(api::service_link_handler))
-                .layer(DefaultBodyLimit::max(ONE_GIBIBYTE));
+                .route("/style.css", get(assets::style))
+                .route("/upload/process", post(file_upload::process_handler))
+                .route("/upload/submit", post(file_upload::submit_handler))
+                .layer(DefaultBodyLimit::max(FIVE_HUNDRED_TWELVE_MEBIBYTES));
 
             let addr = SocketAddr::from(([0, 0, 0, 0], port));
 
@@ -96,14 +96,12 @@ impl Server {
             }
         });
 
-        let server = Self {
+        Self {
             server_handle: Some(Arc::new(handle)),
             worker_handle: None,
             shutdown_signal: None,
             rx: Some(rx_clone),
-        };
-
-        server
+        }
     }
 
     pub async fn shutdown(&mut self) {
@@ -144,7 +142,11 @@ impl Server {
 
 impl Default for Server {
     fn default() -> Self {
-        Self::new(3000, Exporter::default(), String::new())
+        let port = std::env::var("ESDIAG_PORT")
+            .ok()
+            .and_then(|s| s.parse::<u16>().ok())
+            .unwrap_or(3000);
+        Self::new(port, Exporter::default(), String::new())
     }
 }
 
