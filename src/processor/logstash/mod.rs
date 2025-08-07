@@ -89,6 +89,12 @@ impl DiagnosticProcessor for LogstashDiagnostic {
         report.add_processor_summary(self.process::<node::Node>().await?);
         report.add_processor_summary(self.process::<node_stats::NodeStats>().await?);
         report.add_processor_summary(self.process::<plugins::Plugins>().await?);
+        report.add_identifiers(self.exporter.identifiers());
+        report.add_origin(
+            Some(self.metadata.node.name.clone()),
+            None,
+            Some("node".to_string()),
+        );
 
         self.exporter.save_report(&*report).await?;
         Ok(report.clone())

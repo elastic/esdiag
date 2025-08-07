@@ -192,8 +192,12 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
             .flatten()
             .for_each(|summary| report.add_processor_summary(summary));
 
+        report.add_origin(
+            Some(diag.metadata.cluster.display_name.clone()),
+            Some(diag.metadata.cluster.uuid.clone()),
+            Some("cluster".to_string()),
+        );
         diag.exporter.save_report(&*report).await?;
-
         Ok(report.clone())
     }
 

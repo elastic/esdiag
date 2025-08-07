@@ -128,6 +128,12 @@ impl DiagnosticReport {
     pub fn add_processing_duration(&mut self, time: u128) {
         self.processing_duration = time;
     }
+
+    pub fn add_origin(&mut self, name: Option<String>, id: Option<String>, scope: Option<String>) {
+        self.origin.name = name;
+        self.origin.id = id;
+        self.origin.scope = scope;
+    }
 }
 
 #[derive(Serialize, Clone)]
@@ -311,6 +317,9 @@ impl ProcessorSummary {
 struct Origin {
     r#type: String,
     path: String,
+    name: Option<String>,
+    id: Option<String>,
+    scope: Option<String>,
 }
 
 impl TryFrom<String> for Origin {
@@ -323,6 +332,9 @@ impl TryFrom<String> for Origin {
         Ok(Self {
             r#type: r#type.to_string(),
             path: path.to_string(),
+            name: None,
+            id: None,
+            scope: None,
         })
     }
 }
