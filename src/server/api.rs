@@ -28,6 +28,14 @@ pub async fn service_link_handler(
                     })),
                 );
             }
+            if &payload.token == "" {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({
+                        "error": "Authorization token cannot be empty"
+                    })),
+                );
+            }
             if url.set_password(Some(&payload.token)).is_err() {
                 return (
                     StatusCode::BAD_REQUEST,
@@ -62,6 +70,15 @@ pub async fn service_link_handler(
             );
         }
     };
+
+    if let Uri::Url(_) = uri {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": "URL must be for the Elastic Upload Service"
+            })),
+        );
+    }
 
     // Stash the username and (filename, URI) into the server state for later use
     state.push_link(job_id, payload.metadata, uri).await;
