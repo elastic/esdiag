@@ -1,257 +1,106 @@
-use crate::processor::{Job, JobFailed, JobProcessing};
+mod api;
+mod api_key;
+mod assets;
+mod file_upload;
+mod index;
+mod service_link;
+mod template;
+
+use super::processor::Identifiers;
+use crate::{data::Uri, exporter::Exporter};
+use askama::Template;
 use axum::{
     Router,
-    extract::{DefaultBodyLimit, Multipart},
-    http::{HeaderMap, StatusCode},
-    response::{Html, IntoResponse},
+    extract::DefaultBodyLimit,
+    http::HeaderMap,
+    response::sse::Event,
     routing::{get, post},
 };
 use bytes::Bytes;
-use std::{collections::VecDeque, net::SocketAddr, sync::Arc};
+use datastar::prelude::{ElementPatchMode, PatchElements, PatchSignals};
+use serde::{Deserialize, Serialize};
+use std::{collections::HashMap, convert::Infallible, net::SocketAddr, sync::Arc};
 use tokio::sync::{RwLock, mpsc, oneshot};
 
-static INDEX_HTML: &str = include_str!("index.html");
+#[derive(Debug, Deserialize, Serialize)]
+struct UploadServiceRequest {
+    metadata: Identifiers,
+    token: String,
+    url: String,
+}
+
+impl From<UploadServiceRequest> for Identifiers {
+    fn from(request: UploadServiceRequest) -> Self {
+        Identifiers {
+            account: request.metadata.account.clone(),
+            case_number: request.metadata.case_number,
+            filename: request.metadata.filename.clone(),
+            opportunity: None,
+            user: request.metadata.user,
+        }
+    }
+}
 
 #[derive(Clone)]
-pub struct ApiServer {
+pub struct Server {
     server_handle: Option<Arc<tokio::task::JoinHandle<()>>>,
     worker_handle: Option<Arc<tokio::task::JoinHandle<()>>>,
     shutdown_signal: Option<Arc<oneshot::Sender<()>>>,
-    pub rx: Option<Arc<RwLock<mpsc::Receiver<(String, Option<String>, Bytes)>>>>,
-    state: Arc<ApiState>,
+    pub rx: Option<Arc<RwLock<mpsc::Receiver<(Identifiers, Bytes)>>>>,
 }
 
-struct ApiState {
-    exporter: String,
-    kibana: String,
-    job: JobState,
-    upload_tx: mpsc::Sender<(String, Option<String>, Bytes)>,
-}
-
-struct JobState {
-    current: Arc<RwLock<Option<JobProcessing>>>,
-    history: Arc<RwLock<Vec<Job>>>,
-    queue: Arc<RwLock<VecDeque<JobProcessing>>>,
-}
-
-impl ApiServer {
-    pub fn new(port: u16, exporter: String, kibana: String) -> Self {
-        let (tx, rx) = mpsc::channel::<(String, Option<String>, Bytes)>(1);
+impl Server {
+    pub fn new(port: u16, exporter: Exporter, kibana: String) -> Self {
+        let (_, rx) = mpsc::channel::<(Identifiers, Bytes)>(1);
         let rx = Arc::new(RwLock::new(rx));
         let rx_clone = rx.clone();
 
         // Create shared state
-        let state = Arc::new(ApiState {
-            upload_tx: tx.clone(),
-            job: JobState {
-                current: Arc::new(RwLock::new(None)),
-                history: Arc::new(RwLock::new(Vec::with_capacity(100))),
-                queue: Arc::new(RwLock::new(VecDeque::with_capacity(10))),
-            },
-            exporter,
+        let state = Arc::new(ServerState {
+            signals: Arc::new(RwLock::new(Signals::default())),
+            exporter: Arc::new(RwLock::new(exporter)),
             kibana,
+            stats: Arc::new(RwLock::new(Stats::default())),
+            uploads: Arc::new(RwLock::new(HashMap::new())),
+            links: Arc::new(RwLock::new(HashMap::new())),
         });
 
         // Start the Axum server
-        let state_uploader = state.clone();
-        let state_handler = state.clone();
         let handle = tokio::spawn(async move {
-            // Handler closures
-            let upload_handler = {
-                move |headers, multipart: Multipart| async move {
-                    Self::upload_handler(headers, multipart, state_uploader).await
-                }
-            };
-
-            let status_handler = {
-                move |headers| async move { Self::status_handler(headers, state_handler).await }
-            };
-
-            const ONE_GIBIBYTE: usize = 1024 * 1024 * 1024;
+            const FIVE_HUNDRED_TWELVE_MEBIBYTES: usize = 512 * 1024 * 1024;
             let app = Router::new()
-                .route("/", get(Self::index_handler))
-                .route("/upload", post(upload_handler))
-                .route("/status", get(status_handler))
-                .layer(DefaultBodyLimit::max(ONE_GIBIBYTE));
+                .route("/", get(index::handler))
+                .route("/api/service_link", post(api::service_link_handler))
+                .route("/api_key", post(api_key::handler))
+                .route("/datastar.js", get(assets::datastar))
+                .route("/datastar.js.map", get(assets::datastar_map))
+                .route("/esdiag.svg", get(assets::logo))
+                .route("/favicon.ico", get(assets::logo))
+                .route("/service_link", post(service_link::handler))
+                .route("/service_link/{id}", post(service_link::job_handler))
+                .route("/style.css", get(assets::style))
+                .route("/upload/process", post(file_upload::process_handler))
+                .route("/upload/submit", post(file_upload::submit_handler))
+                .layer(DefaultBodyLimit::max(FIVE_HUNDRED_TWELVE_MEBIBYTES));
 
             let addr = SocketAddr::from(([0, 0, 0, 0], port));
 
             // Start the server
             log::info!("Listening on port {}", port);
-            match axum_server::bind(addr).serve(app.into_make_service()).await {
+            match axum_server::bind(addr)
+                .serve(app.with_state(state).into_make_service())
+                .await
+            {
                 Ok(_) => log::info!("Server shutdown"),
                 Err(e) => log::error!("Server error: {}", e),
             }
         });
 
-        let mut server = Self {
+        Self {
             server_handle: Some(Arc::new(handle)),
             worker_handle: None,
             shutdown_signal: None,
             rx: Some(rx_clone),
-            state,
-        };
-
-        server.start_worker();
-        server
-    }
-
-    async fn index_handler() -> impl IntoResponse {
-        Html(INDEX_HTML)
-    }
-
-    async fn upload_handler(
-        headers: HeaderMap,
-        mut multipart: Multipart,
-        state: Arc<ApiState>,
-    ) -> impl IntoResponse {
-        // Extract authenticated user email from header
-        let username = headers
-            .get("X-Goog-Authenticated-User-Email")
-            .and_then(|value| value.to_str().ok())
-            .map(|email| {
-                // Google auth headers are typically in format "accounts.google.com:email"
-                email.split(':').last().unwrap_or(email).to_string()
-            });
-
-        // Process the multipart form
-        while let Ok(Some(field)) = multipart.next_field().await {
-            if field.name() == Some("file") {
-                // Check if the file has a valid filename
-                let filename = match field.file_name() {
-                    Some(filename) if !filename.ends_with(".zip") => {
-                        return (
-                            StatusCode::BAD_REQUEST,
-                            axum::Json(serde_json::json!({
-                                "error": "Invalid file type. Only .zip files are allowed."
-                            })),
-                        );
-                    }
-                    Some(file_name) => file_name.to_string(),
-                    None => {
-                        return (
-                            StatusCode::BAD_REQUEST,
-                            axum::Json(serde_json::json!({"error": "No file name provided"})),
-                        );
-                    }
-                };
-                // Get the file data
-                match field.bytes().await {
-                    Ok(data) => {
-                        let message =
-                            format!("Received upload: {} ({} bytes)", filename, data.len());
-                        log::info!("{}", message);
-
-                        // Clone the data to avoid ownership issues
-                        let bytes = Bytes::copy_from_slice(&data);
-
-                        // Send the bytes through the channel
-                        if state
-                            .upload_tx
-                            .send((filename, username, bytes))
-                            .await
-                            .is_ok()
-                        {
-                            return (
-                                StatusCode::OK,
-                                axum::Json(serde_json::json!({
-                                    "status": "processing",
-                                    "message": message,
-                                })),
-                            );
-                        } else {
-                            return (
-                                StatusCode::INTERNAL_SERVER_ERROR,
-                                axum::Json(serde_json::json!({
-                                    "status": "error",
-                                    "error": "Failed to process the upload"
-                                })),
-                            );
-                        }
-                    }
-                    Err(e) => {
-                        log::error!("Failed to read upload data: {}", e);
-                        return (
-                            StatusCode::INTERNAL_SERVER_ERROR,
-                            axum::Json(serde_json::json!({
-                                "status": "error",
-                                "error": format!("Failed to read upload data: {}", e)
-                            })),
-                        );
-                    }
-                }
-            }
-        }
-
-        (
-            StatusCode::BAD_REQUEST,
-            axum::Json(
-                serde_json::json!({"status": "error", "error": "No file part in the request"}),
-            ),
-        )
-    }
-
-    async fn status_handler(headers: HeaderMap, state: Arc<ApiState>) -> impl IntoResponse {
-        // Extract authenticated user email from header
-        let user_email = headers
-            .get("X-Goog-Authenticated-User-Email")
-            .and_then(|value| value.to_str().ok())
-            .map(|email| {
-                // Google auth headers are typically in format "accounts.google.com:email"
-                email.split(':').last().unwrap_or(email).to_string()
-            });
-
-        let queue_size = state.job.queue.read().await.len();
-        let current = state.job.current.read().await;
-        let history = state.job.history.read().await;
-        let history = history
-            .iter()
-            .filter(|entry| entry.user() == user_email)
-            .collect::<Vec<&Job>>();
-
-        match queue_size {
-            0 => (
-                StatusCode::OK,
-                axum::Json(serde_json::json!({
-                    "status": "ready",
-                    "exporter": state.exporter,
-                    "kibana": state.kibana,
-                    "user": user_email,
-                    "current": *current,
-                    "queue": {
-                        "size": queue_size
-                    },
-                    "history": history,
-                })),
-            ),
-            1..10 => (
-                StatusCode::OK,
-                axum::Json(serde_json::json!({
-                    "status": "processing",
-                    "progress": "Processing diagnostic...",
-                    "kibana": state.kibana,
-                    "user": user_email,
-                    "current": *current,
-                    "queue": {
-                        "size": queue_size
-                    },
-                    "history": *history,
-                })),
-            ),
-            _ => (
-                StatusCode::OK,
-                axum::Json(serde_json::json!({
-                    "status": "busy",
-                    "warning": "Too many jobs in queue",
-                    "kibana": state.kibana,
-                    "user": user_email,
-                    "current": *current,
-                    "queue": {
-                        "size": queue_size
-                    },
-                    "history": *history,
-                })),
-            ),
         }
     }
 
@@ -289,88 +138,19 @@ impl ApiServer {
             log::debug!("Server thread aborted");
         }
     }
-
-    pub async fn job_push(&mut self, job: JobProcessing) {
-        let mut queue = self.state.job.queue.write().await;
-        log::debug!("Adding job {} to queue {}", job.id, queue.len());
-        queue.push_back(job);
-    }
-
-    pub async fn job_record_failure(&mut self, job: JobFailed) {
-        log::error!("Job {} failed with error: {}", job.id, job.error);
-        self.state.job.history.write().await.push(Job::Failed(job));
-    }
-
-    // Start a thread to process diagnostics in the background
-    fn start_worker(&mut self) {
-        let state = self.state.clone();
-        let (shutdown_tx, mut shutdown_rx) = oneshot::channel();
-
-        self.shutdown_signal = Some(Arc::new(shutdown_tx));
-
-        let handle = tokio::spawn(async move {
-            log::info!("Starting diagnostic worker thread");
-
-            loop {
-                tokio::select! {
-                    _ = &mut shutdown_rx => {
-                        log::debug!("Worker thread received shutdown signal");
-                        break;
-                    }
-                    _ = async {
-                        // Check if there are any jobs in the queue
-                        let mut queue = state.job.queue.write().await;
-                        if let Some(job) = queue.pop_front() {
-                            // Release the lock before processing
-                            drop(queue);
-
-                            let mut current = state.job.current.write().await;
-                            *current = Some(job.clone());
-                            drop(current);
-
-                            log::info!("Processing job {} from queue", job.id);
-                            match job.process().await {
-                                Ok(job_completed) => {
-                                    log::info!("Job {} completed successfully", job_completed.id);
-                                    let mut history = state.job.history.write().await;
-                                    history.push(Job::Completed(job_completed));
-                                    let mut current = state.job.current.write().await;
-                                    *current = None;
-                                }
-                                Err(job_failed) => {
-                                    log::error!(
-                                        "Job {} failed with error: {}",
-                                        job_failed.id,
-                                        job_failed.error
-                                    );
-                                    let mut history = state.job.history.write().await;
-                                    history.push(Job::Failed(job_failed));
-                                    let mut current = state.job.current.write().await;
-                                    *current = None;
-                                }
-                            }
-                        } else {
-                            // No jobs in queue, sleep for a while before checking again
-                            drop(queue);
-                            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                        }
-                    } => {}
-                }
-            }
-        });
-
-        self.worker_handle = Some(Arc::new(handle));
-        log::debug!("Diagnostic worker thread started");
-    }
 }
 
-impl Default for ApiServer {
+impl Default for Server {
     fn default() -> Self {
-        Self::new(3000, String::new(), String::new())
+        let port = std::env::var("ESDIAG_PORT")
+            .ok()
+            .and_then(|s| s.parse::<u16>().ok())
+            .unwrap_or(3000);
+        Self::new(port, Exporter::default(), String::new())
     }
 }
 
-impl Drop for ApiServer {
+impl Drop for Server {
     fn drop(&mut self) {
         // Abort the server thread if it exists
         if let Some(handle) = self.server_handle.take() {
@@ -384,6 +164,210 @@ impl Drop for ApiServer {
             }
         }
 
-        log::info!("ApiServer dropped, server and worker threads are being shut down");
+        log::info!("Server dropped, server and worker threads are being shut down");
+    }
+}
+
+pub struct ServerState {
+    pub exporter: Arc<RwLock<Exporter>>,
+    pub kibana: String,
+    pub signals: Arc<RwLock<Signals>>,
+    pub uploads: Arc<RwLock<HashMap<u64, (String, Bytes)>>>,
+    pub links: Arc<RwLock<HashMap<u64, (Identifiers, Uri)>>>,
+    stats: Arc<RwLock<Stats>>,
+}
+
+impl ServerState {
+    pub async fn record_success(&self, docs: u32, errors: u32) {
+        let mut stats = self.stats.write().await;
+        stats.docs.total += docs as u64;
+        stats.docs.errors += errors as u64;
+        stats.jobs.total += 1;
+        stats.jobs.success += 1;
+    }
+
+    pub async fn record_failure(&self) {
+        let mut stats = self.stats.write().await;
+        stats.jobs.total += 1;
+        stats.jobs.failed += 1;
+    }
+
+    pub async fn get_stats(&self) -> Stats {
+        self.stats.read().await.clone()
+    }
+
+    pub async fn get_stats_as_signals(&self) -> String {
+        serde_json::to_string(&self.get_stats().await)
+            .unwrap_or_default()
+            .replace('\"', "'")
+    }
+
+    pub async fn push_link(
+        &self,
+        id: u64,
+        identifiers: Identifiers,
+        uri: Uri,
+    ) -> Option<(Identifiers, Uri)> {
+        log::debug!("Pushing service link id: {id}");
+        self.links.write().await.insert(id, (identifiers, uri))
+    }
+
+    pub async fn pop_link(&self, id: u64) -> Option<(Identifiers, Uri)> {
+        log::debug!("Popping service link id: {id}");
+        self.links.write().await.remove(&id)
+    }
+
+    pub async fn push_upload(
+        &self,
+        id: u64,
+        filename: String,
+        data: Bytes,
+    ) -> Option<(String, Bytes)> {
+        log::debug!("Pushing file upload id: {id}");
+        self.uploads.write().await.insert(id, (filename, data))
+    }
+
+    pub async fn pop_upload(&self, id: u64) -> Option<(String, Bytes)> {
+        log::debug!("Popping file upload id: {id}");
+        self.uploads.write().await.remove(&id)
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Stats {
+    pub docs: DocStats,
+    pub jobs: JobStats,
+}
+
+impl Default for Stats {
+    fn default() -> Self {
+        Stats {
+            docs: DocStats {
+                total: 0,
+                errors: 0,
+            },
+            jobs: JobStats {
+                total: 0,
+                success: 0,
+                failed: 0,
+            },
+        }
+    }
+}
+
+impl std::fmt::Display for Stats {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let json = match serde_json::to_string(self) {
+            Ok(json) => json,
+            Err(_) => return Err(std::fmt::Error),
+        };
+        write!(f, "{}", json)
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct DocStats {
+    pub total: u64,
+    pub errors: u64,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct JobStats {
+    pub total: u64,
+    pub success: u64,
+    pub failed: u64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Signals {
+    pub auth: Auth,
+    pub processing: bool,
+    pub uploading: bool,
+    pub metadata: Identifiers,
+    pub file_upload: FileUpload,
+    pub service_link: ServiceLink,
+    pub es_api: EsApiKey,
+    pub stats: Stats,
+}
+
+impl Default for Signals {
+    fn default() -> Self {
+        Signals {
+            auth: Auth { header: false },
+            processing: false,
+            uploading: false,
+            metadata: Identifiers::default(),
+            file_upload: FileUpload { job_id: 0 },
+            service_link: ServiceLink {
+                url: Uri::default(),
+                token: String::new(),
+                filename: String::new(),
+            },
+            es_api: EsApiKey {
+                key: String::new(),
+                url: Uri::default(),
+            },
+            stats: Stats::default(),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Auth {
+    pub header: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct EsApiKey {
+    pub key: String,
+    pub url: Uri,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct FileUpload {
+    pub job_id: u64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ServiceLink {
+    pub url: Uri,
+    pub token: String,
+    pub filename: String,
+}
+
+pub fn patch_signals(signals: &str) -> Result<Event, Infallible> {
+    let sse_event = PatchSignals::new(signals).write_as_axum_sse_event();
+    Ok(sse_event)
+}
+
+pub fn patch_template(template: impl Template) -> Result<Event, Infallible> {
+    let element = template.render().expect("Failed to render template");
+    let sse_event = PatchElements::new(element).write_as_axum_sse_event();
+    Ok(sse_event)
+}
+
+pub fn patch_job_feed(template: impl Template) -> Result<Event, Infallible> {
+    let element = template.render().expect("Failed to render template");
+    let sse_event = PatchElements::new(element)
+        .selector("#job-feed")
+        .mode(ElementPatchMode::After)
+        .write_as_axum_sse_event();
+    Ok(sse_event)
+}
+
+fn get_user_email(headers: &HeaderMap) -> (bool, Option<String>) {
+    match std::env::var("ESDIAG_USER").ok() {
+        Some(user) => (false, Some(user)),
+        None => {
+            let has_header = headers.contains_key("X-Goog-Authenticated-User-Email");
+            let email = headers
+                .get("X-Goog-Authenticated-User-Email")
+                .and_then(|value| value.to_str().ok())
+                .map(|email| {
+                    // Google auth headers are typically in format "accounts.google.com:email"
+                    email.split(':').last().unwrap_or(email).to_string()
+                });
+            (has_header, email)
+        }
     }
 }

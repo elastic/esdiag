@@ -3,7 +3,7 @@ use super::{
     DataSource, DiagnosticManifest, Product, alias::AliasList, cluster_settings::ClusterSettings,
     data_stream::DataStreams, ilm_explain::IlmExplain, ilm_policies::IlmPolicies,
     indices_settings::IndicesSettings, indices_stats::IndicesStats, licenses::Licenses,
-    nodes::Nodes, nodes_stats::NodesStats,
+    nodes::Nodes, nodes_stats::NodesStats, pending_tasks::PendingTasks,
     searchable_snapshots_cache_stats::SearchableSnapshotsCacheStats,
     searchable_snapshots_stats::SearchableSnapshotsStats, slm_policies::SlmPolicies, tasks::Tasks,
     version::Cluster,
@@ -26,7 +26,7 @@ impl ElasticsearchCollector {
         let mut result = CollectionResult {
             path: self.exporter.to_string().clone(),
             success: 0,
-            total: 13,
+            total: 17,
         };
 
         result.success += self.save_diagnostic_manifest().await?;
@@ -41,6 +41,7 @@ impl ElasticsearchCollector {
         result.success += self.save::<Licenses>().await?;
         result.success += self.save::<Nodes>().await?;
         result.success += self.save::<NodesStats>().await?;
+        result.success += self.save::<PendingTasks>().await?;
         result.success += self.save::<SearchableSnapshotsCacheStats>().await?;
         result.success += self.save::<SearchableSnapshotsStats>().await?;
         result.success += self.save::<SlmPolicies>().await?;

@@ -1,0 +1,32 @@
+{
+  "_meta": {
+    "description": "ESDiag Elasticsearch health report indicator"
+  },
+  "index_patterns": ["health-indicator-esdiag*"],
+  "composed_of": [
+    "esdiag@node",
+    "esdiag@mappings",
+    "esdiag@metadata",
+    "esdiag@settings"
+  ],
+  "allow_auto_create": true,
+  "data_stream": {},
+  "priority": 300,
+  "template": {
+    "mappings": {
+      "numeric_detection": false,
+      "dynamic": true,
+      "dynamic_templates": [
+        {
+          "strings_as_keywords": {
+            "mapping": {
+              "type": "keyword"
+            },
+            "match_mapping_type": "string"
+          }
+        }
+      ],
+      "properties": {}
+    }
+  }
+}

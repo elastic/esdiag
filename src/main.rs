@@ -4,9 +4,9 @@ use esdiag::{
     data::Uri,
     env::LOG_LEVEL,
     exporter::{DirectoryExporter, Exporter},
-    processor::{Collector, Diagnostic, Identifiers, JobFailed, JobNew, Product},
+    processor::{Collector, Diagnostic, Product},
     receiver::Receiver,
-    server::ApiServer,
+    server::Server,
     setup,
 };
 use eyre::{Result, eyre};
@@ -133,8 +133,6 @@ enum Commands {
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 8)]
 async fn main() -> Result<()> {
-    let start_time = std::time::Instant::now();
-
     // Parse CLI early to check for debug flag
     let cli = Cli::parse();
 
@@ -161,10 +159,7 @@ async fn main() -> Result<()> {
 
     match run(cli).await {
         Ok(cmd) => {
-            log::info!(
-                "{cmd} complete in {:.3} seconds",
-                start_time.elapsed().as_secs_f32()
-            );
+            log::debug!("{cmd} complete");
             Ok(())
         }
         Err(e) => {
@@ -191,14 +186,7 @@ async fn run(cli: Cli) -> Result<&'static str> {
                     .unwrap_or_else(|_| "http://localhost:5601".to_string())
             });
 
-            let mut server = ApiServer::new(port, exporter.to_string(), kibana_url);
-
-            let rx = match &server.rx {
-                Some(rx) => rx.clone(),
-                None => return Err(eyre!("Server rx error")),
-            };
-
-            let user = std::env::var("ESDIAG_USER").ok();
+            let mut server = Server::new(port, exporter, kibana_url);
 
             // This will process uploaded diagnostics until a termination signal is received
             tokio::select! {
@@ -211,51 +199,7 @@ async fn run(cli: Cli) -> Result<&'static str> {
                     log::info!("Shutting down server (SIGTERM)...");
                     Ok::<_, eyre::Report>(())
                 } => {}
-                _ = async {
-                    loop {
-                        // Only receive the diagnostic - processing happens in a separate worker thread
-                        let mut rx = rx.write().await;
-                        match rx.recv().await {
-                            Some((filename, username, bytes)) => {
-                                let receiver = match Receiver::try_from(bytes) {
-                                    Ok(receiver) => receiver,
-                                    Err(e) => {
-                                        let error = format!("Failed to create receiver: {}", e);
-                                        log::error!("{}", error);
-                                        server.job_record_failure(JobFailed::from(error)).await;
-                                        continue;
-                                    }
-                                };
-                                let user = match &user {
-                                    Some(user) => Some(user.clone()),
-                                    None => username.clone(),
-                                };
-                                let identifiers = Identifiers {
-                                    account: None,
-                                    case: None,
-                                    filename: Some(filename.clone()),
-                                    opportunity: None,
-                                    user: user.clone(),
-                                };
-                                let exporter = exporter.clone().with_identifiers(identifiers);
-                                // Create job and push to queue for the worker thread to handle
-                                match JobNew::new(filename, username, receiver).ready(exporter).await {
-                                    Ok(job) => server.job_push(job.start()).await,
-                                    Err(job) => server.job_record_failure(job).await,
-                                };
-                            }
-                            None => {
-                                let message = format!("Failed receiving archive bytes");
-                                log::error!("{}", message);
-                            }
-                        }
-                        log::debug!("Waiting for next diagnostic...");
-                    }
-                    #[allow(unreachable_code)]
-                    Ok::<_, eyre::Report>(())
-                } => {}
             }
-
             // Perform graceful shutdown of the server and worker thread
             server.shutdown().await;
             Ok("serve")
@@ -340,7 +284,12 @@ async fn run(cli: Cli) -> Result<&'static str> {
             log::trace!("{}", serde_json::to_string(&manifest)?);
 
             let diagnostic = Diagnostic::try_new(manifest, receiver, exporter).await?;
-            diagnostic.run().await.map(|_| "process")
+            let report = diagnostic.run().await?;
+            log::info!(
+                "Process complete in {:.3} seconds",
+                report.processing_duration as f64 / 1000.0
+            );
+            Ok("process")
         }
         Commands::Import { target, source } => {
             let input_uri = Uri::try_from(source)?;

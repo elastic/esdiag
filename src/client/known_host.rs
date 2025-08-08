@@ -368,3 +368,13 @@ impl FromStr for KnownHost {
         }
     }
 }
+
+impl From<KnownHost> for Url {
+    fn from(host: KnownHost) -> Url {
+        match host {
+            KnownHost::ApiKey { url, .. } => url.clone(),
+            KnownHost::Basic { url, .. } => url.clone(),
+            KnownHost::NoAuth { url, .. } => url.clone(),
+        }
+    }
+}

@@ -2,15 +2,17 @@
 mod archive;
 /// Read from a direcotry in the local file system
 mod directory;
-/// Get file from Elastic Uploader service
-mod elastic_uploader;
 /// Request API calls from Elasticsearch
 mod elasticsearch;
+/// Get file from https://upload.elastic.co/
+mod upload_service;
 
 use archive::{ArchiveBytesReceiver, ArchiveFileReceiver};
 use directory::DirectoryReceiver;
-use elastic_uploader::ElasticUploadDownloader;
 pub use elasticsearch::ElasticsearchReceiver;
+use upload_service::UploadServiceDownloader;
+
+use crate::client::KnownHost;
 
 use super::{
     data::Uri,
@@ -157,12 +159,21 @@ impl TryFrom<Uri> for Receiver {
             Uri::Directory(dir) => Receiver::Directory(DirectoryReceiver::try_from(dir)?),
             Uri::File(file) => Receiver::ArchiveFile(ArchiveFileReceiver::try_from(file)?),
             Uri::KnownHost(host) => Receiver::Elasticsearch(ElasticsearchReceiver::try_from(host)?),
-            Uri::ElasticUploader(url) => {
-                Receiver::ArchiveBytes(ElasticUploadDownloader::try_from(url)?.download()?)
+            Uri::ServiceLink(url) => {
+                Receiver::ArchiveBytes(UploadServiceDownloader::try_from(url)?.download()?)
             }
             _ => return Err(eyre!("Unsupported URI: {uri}")),
         };
         Ok(receiver)
+    }
+}
+
+impl TryFrom<KnownHost> for Receiver {
+    type Error = eyre::Report;
+    fn try_from(host: KnownHost) -> std::result::Result<Self, Self::Error> {
+        Ok(Receiver::Elasticsearch(ElasticsearchReceiver::try_from(
+            host,
+        )?))
     }
 }
 

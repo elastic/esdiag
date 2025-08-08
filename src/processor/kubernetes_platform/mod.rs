@@ -84,10 +84,19 @@ impl DiagnosticProcessor for KubernetesPlatformDiagnostic {
             }
         }
 
-        let report = self.report.write().await;
-
+        let mut report = self.report.write().await;
+        report.add_identifiers(self.exporter.identifiers());
+        report.add_origin(
+            Some("mki".to_string()),
+            None,
+            Some("orchestration".to_string()),
+        );
         self.exporter.save_report(&*report).await?;
         Ok(report.clone())
+    }
+
+    fn id(&self) -> &str {
+        "undefined"
     }
 }
 

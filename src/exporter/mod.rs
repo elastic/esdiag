@@ -102,6 +102,12 @@ impl Exporter {
     }
 }
 
+impl Default for Exporter {
+    fn default() -> Self {
+        Exporter::Stream(StreamExporter::new())
+    }
+}
+
 impl TryFrom<Option<Uri>> for Exporter {
     type Error = eyre::Report;
     fn try_from(uri: Option<Uri>) -> std::result::Result<Self, Self::Error> {

@@ -6,6 +6,8 @@ mod cluster_settings;
 pub mod collector;
 /// The `_data_stream` API
 mod data_stream;
+/// The `_health_report` API
+mod health_report;
 /// The `_ilm/explain` API
 mod ilm_explain;
 /// The `_ilm/policy` API
@@ -22,6 +24,8 @@ mod metadata;
 mod nodes;
 /// The `_nodes/stats` API
 mod nodes_stats;
+/// The `_pending_tasks` API
+mod pending_tasks;
 /// The `_searchable_snapshots_cache/stats` API
 mod searchable_snapshots_cache_stats;
 /// The `_searchable_snapshots/stats` API
@@ -46,7 +50,10 @@ use super::{
         report::ProcessorSummary,
     },
 };
-use crate::{data, exporter::Exporter, receiver::Receiver};
+use crate::{
+    data, exporter::Exporter, processor::elasticsearch::health_report::HealthReport,
+    receiver::Receiver,
+};
 use eyre::{Result, eyre};
 use futures::{future::join_all, stream::FuturesUnordered};
 use serde::{Serialize, de::DeserializeOwned};
@@ -64,6 +71,7 @@ use {
     licenses::Licenses,
     nodes::{NodeDocument, Nodes},
     nodes_stats::NodesStats,
+    pending_tasks::PendingTasks,
     searchable_snapshots_cache_stats::{SearchableSnapshotsCacheStats, SharedCacheStats},
     slm_policies::SlmPolicies,
     tasks::Tasks,
@@ -172,6 +180,7 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
             spawn_processor::<ClusterSettings>(diag.clone()),
             spawn_processor::<IndicesSettings>(diag.clone()),
             spawn_processor::<IndicesStats>(diag.clone()),
+            spawn_processor::<HealthReport>(diag.clone()),
             spawn_processor::<Nodes>(diag.clone()),
             spawn_processor::<NodesStats>(diag.clone()),
             spawn_processor::<IlmPolicies>(diag.clone()),
@@ -180,6 +189,7 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
             // prevent the expected error
             // spawn_processor::<SearchableSnapshotsStats>(diag.clone()),
             spawn_processor::<Tasks>(diag.clone()),
+            spawn_processor::<PendingTasks>(diag.clone()),
         ];
         tasks.drain(..).map(|task| futures.push(task)).count();
 
@@ -192,9 +202,17 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
             .flatten()
             .for_each(|summary| report.add_processor_summary(summary));
 
+        report.add_origin(
+            Some(diag.metadata.cluster.display_name.clone()),
+            Some(diag.metadata.cluster.uuid.clone()),
+            Some("cluster".to_string()),
+        );
         diag.exporter.save_report(&*report).await?;
-
         Ok(report.clone())
+    }
+
+    fn id(&self) -> &str {
+        &self.metadata.diagnostic.id
     }
 }
 

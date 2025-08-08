@@ -26,6 +26,29 @@
             }
           }
         },
+        "index": {
+          "type": "object",
+          "properties": {
+            "ilm": {
+              "type": "object",
+              "properties": {
+                "policy": {
+                  "type": "alias",
+                  "path": "ilm.name"
+                }
+              }
+            },
+            "lifecycle": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "alias",
+                  "path": "ilm.name"
+                }
+              }
+            }
+          }
+        },
         "ilm": {
           "properties": {
             "in_use_by": {
@@ -154,12 +177,10 @@
                                   "index": false
                                 },
                                 "max_primary_shard_size": {
-                                  "type": "object",
-                                  "enabled": false
+                                  "type": "keyword"
                                 },
                                 "max_size": {
-                                  "type": "object",
-                                  "enabled": false
+                                  "type": "keyword"
                                 }
                               }
                             },

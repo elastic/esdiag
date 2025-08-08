@@ -27,8 +27,7 @@ use eyre::{Result, eyre};
 use kubernetes_platform::KubernetesPlatformDiagnostic;
 use logstash::LogstashDiagnostic;
 use serde::Serialize;
-use std::sync::Arc;
-use uuid::Uuid;
+use std::{sync::Arc, time::UNIX_EPOCH};
 
 #[derive(Clone)]
 pub enum Diagnostic {
@@ -74,6 +73,7 @@ impl Diagnostic {
     }
 
     pub async fn run(self) -> Result<DiagnosticReport> {
+        let start_time = std::time::Instant::now();
         let mut report = match self {
             Self::Elasticsearch(diagnostic) => diagnostic.run().await?,
             Self::ElasticCloudKubernetes(diagnostic) => diagnostic.run().await?,
@@ -89,12 +89,13 @@ impl Diagnostic {
         );
         if let Ok(kibana_url) = std::env::var("ESDIAG_KIBANA_URL") {
             let kibana_link = format!(
-                "{}/app/dashboards#/view/4e0a26b2-e5f8-4b58-b617-86f5cdd0edad?_g=(filters:!(('$state':(store:globalState),meta:(disabled:!f,index:'4319ebc4-df81-4b18-b8bd-6aaa55a1fd13',key:diagnostic.id,negate:!f,params:(query:'{}'),type:phrase),query:(match_phrase:(diagnostic.id:'{}')))),refreshInterval:(pause:!t,value:60000),time:(from:now-7d,to:now))",
+                "{}/app/dashboards#/view/4e0a26b2-e5f8-4b58-b617-86f5cdd0edad?_g=(filters:!(('$state':(store:globalState),meta:(disabled:!f,index:'4319ebc4-df81-4b18-b8bd-6aaa55a1fd13',key:diagnostic.id,negate:!f,params:(query:'{}'),type:phrase),query:(match_phrase:(diagnostic.id:'{}')))),refreshInterval:(pause:!t,value:60000),time:(from:now-90d,to:now))",
                 kibana_url, report.metadata.id, report.metadata.id
             );
             log::info!("{}", kibana_link);
             report.add_kibana_link(kibana_link);
         }
+        report.add_processing_duration(start_time.elapsed().as_millis());
         Ok(report)
     }
 }
@@ -110,6 +111,8 @@ trait DiagnosticProcessor {
         exporter: Exporter,
     ) -> Result<Box<Self>>;
     async fn run(self) -> Result<DiagnosticReport>;
+    #[allow(dead_code)]
+    fn id(&self) -> &str;
 }
 
 trait Metadata {
@@ -118,8 +121,8 @@ trait Metadata {
 
 #[derive(Serialize)]
 pub struct JobNew {
-    pub id: String,
-    filename: String,
+    pub id: u64,
+    filename: Option<String>,
     user: Option<String>,
     #[serde(skip_serializing)]
     receiver: Receiver,
@@ -127,8 +130,8 @@ pub struct JobNew {
 
 #[derive(Serialize)]
 pub struct JobReady {
-    pub id: String,
-    filename: String,
+    pub id: u64,
+    filename: Option<String>,
     user: Option<String>,
     #[serde(skip_serializing)]
     diagnostic: Diagnostic,
@@ -136,25 +139,35 @@ pub struct JobReady {
 
 #[derive(Clone, Serialize)]
 pub struct JobProcessing {
-    pub id: String,
-    filename: String,
-    user: Option<String>,
+    pub id: u64,
+    pub filename: Option<String>,
+    pub user: Option<String>,
     #[serde(skip_serializing)]
     diagnostic: Diagnostic,
 }
 
 #[derive(Serialize)]
 pub struct JobCompleted {
-    pub id: String,
-    filename: String,
-    user: Option<String>,
-    report: DiagnosticReport,
+    pub id: u64,
+    pub filename: Option<String>,
+    pub user: Option<String>,
+    pub report: DiagnosticReport,
+}
+
+impl JobCompleted {
+    pub fn processing_seconds(&self) -> f64 {
+        self.report.processing_duration as f64 / 1000.0
+    }
+
+    pub fn report(&self) -> &DiagnosticReport {
+        &self.report
+    }
 }
 
 #[derive(Serialize)]
 pub struct JobFailed {
-    pub id: String,
-    pub filename: String,
+    pub id: u64,
+    pub filename: Option<String>,
     pub user: Option<String>,
     pub error: String,
 }
@@ -162,8 +175,8 @@ pub struct JobFailed {
 impl From<String> for JobFailed {
     fn from(error: String) -> Self {
         JobFailed {
-            id: uuid::Uuid::new_v4().to_string(),
-            filename: String::new(),
+            id: new_job_id(),
+            filename: None,
             user: None,
             error,
         }
@@ -181,7 +194,10 @@ pub enum Job {
 
 impl JobNew {
     pub fn with_filename(self, filename: String) -> Self {
-        JobNew { filename, ..self }
+        JobNew {
+            filename: Some(filename),
+            ..self
+        }
     }
 
     pub async fn ready(self, exporter: Exporter) -> Result<JobReady, JobFailed> {
@@ -216,12 +232,12 @@ impl JobNew {
 }
 
 impl JobNew {
-    pub fn new(filename: String, user: Option<String>, receiver: Receiver) -> Self {
-        let id = Uuid::new_v4().to_string();
+    pub fn new(identifiers: &Identifiers, receiver: Receiver) -> Self {
+        let id = new_job_id();
         JobNew {
             id,
-            filename,
-            user,
+            filename: identifiers.filename.clone(),
+            user: identifiers.user.clone(),
             receiver,
         }
     }
@@ -258,8 +274,8 @@ impl JobProcessing {
 }
 
 impl Job {
-    pub fn new(filename: String, user: Option<String>, receiver: Receiver) -> Self {
-        let id = Uuid::new_v4().to_string();
+    pub fn new(filename: Option<String>, user: Option<String>, receiver: Receiver) -> Self {
+        let id = new_job_id();
         Job::New(JobNew {
             id,
             filename,
@@ -268,17 +284,17 @@ impl Job {
         })
     }
 
-    pub fn id(&self) -> String {
+    pub fn id(&self) -> u64 {
         match self {
-            Job::New(job) => job.id.clone(),
-            Job::Ready(job) => job.id.clone(),
-            Job::Processing(job) => job.id.clone(),
-            Job::Completed(job) => job.id.clone(),
-            Job::Failed(job) => job.id.clone(),
+            Job::New(job) => job.id,
+            Job::Ready(job) => job.id,
+            Job::Processing(job) => job.id,
+            Job::Completed(job) => job.id,
+            Job::Failed(job) => job.id,
         }
     }
 
-    pub fn filename(&self) -> String {
+    pub fn filename(&self) -> Option<String> {
         match self {
             Job::New(job) => job.filename.clone(),
             Job::Ready(job) => job.filename.clone(),
@@ -313,4 +329,12 @@ impl Job {
             }))
         }
     }
+}
+
+pub fn new_job_id() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64
+        % 100000
 }
