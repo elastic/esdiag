@@ -1,0 +1,51 @@
+{
+  "_meta": {
+    "description": "ESDiag Elasticsearch pending tasks stats"
+  },
+  "index_patterns": ["metrics-pending_task-esdiag*"],
+  "composed_of": [
+    "esdiag@node",
+    "esdiag@mappings",
+    "esdiag@metadata",
+    "esdiag@settings"
+  ],
+  "allow_auto_create": true,
+  "data_stream": {
+    "hidden": false,
+    "allow_custom_routing": false
+  },
+  "priority": 300,
+  "template": {
+    "mappings": {
+      "numeric_detection": false,
+      "dynamic": true,
+      "dynamic_templates": [
+        {
+          "strings_as_keywords": {
+            "mapping": {
+              "type": "keyword"
+            },
+            "match_mapping_type": "string"
+          }
+        }
+      ],
+      "properties": {
+        "insert_order": {
+          "type": "long"
+        },
+        "priority": {
+          "type": "keyword"
+        },
+        "source": {
+          "type": "keyword"
+        },
+        "executing": {
+          "type": "boolean"
+        },
+        "time_in_queue_millis": {
+          "type": "long"
+        }
+      }
+    }
+  }
+}

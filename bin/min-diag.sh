@@ -82,11 +82,15 @@ function collect_diag() {
     curl --silent -H "Authorization: ApiKey $APIKEY" "$URL/_cluster/settings?include_defaults&flat_settings" -o cluster_settings_defaults.json
     curl --silent -H "Authorization: ApiKey $APIKEY" "$URL/_data_stream?expand_wildcards=all" -o commercial/data_stream.json
     curl --silent -H "Authorization: ApiKey $APIKEY" "$URL/*/_ilm/explain?expand_wildcards=all" -o commercial/ilm_explain.json
+    curl --silent -H "Authorization: ApiKey $APIKEY" "$URL/_ilm/policy" -o commercial/ilm_policies.json
     curl --silent -H "Authorization: ApiKey $APIKEY" "$URL/_settings?expand_wildcards=all" -o settings.json
     curl --silent -H "Authorization: ApiKey $APIKEY" "$URL/_stats?level=shards&expand_wildcards=all&ignore_unavailable=true" -o indices_stats.json
+    curl --silent -H "Authorization: ApiKey $APIKEY" "$URL/_license" -o licenses.json
     curl --silent -H "Authorization: ApiKey $APIKEY" "$URL/_nodes" -o nodes.json
     curl --silent -H "Authorization: ApiKey $APIKEY" "$URL/_nodes/stats" -o nodes_stats.json
+    curl --silent -H "Authorization: ApiKey $APIKEY" "$URL/_cluster/pending_tasks" -o cluster_pending_tasks.json
     curl --silent -H "Authorization: ApiKey $APIKEY" "$URL/_searchable_snapshots/cache/stats" -o commercial/searchable_snapshots_cache_stats.json
+    curl --silent -H "Authorization: ApiKey $APIKEY" "$URL/_slm/policy" -o commercial/slm_policies.json
     curl --silent -H "Authorization: ApiKey $APIKEY" "$URL/_tasks?detailed=true" -o tasks.json
     curl --silent -H "Authorization: ApiKey $APIKEY" "$URL/" -o version.json
     save_manifest

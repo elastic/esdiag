@@ -22,6 +22,8 @@ mod metadata;
 mod nodes;
 /// The `_nodes/stats` API
 mod nodes_stats;
+/// The `_pending_tasks` API
+mod pending_tasks;
 /// The `_searchable_snapshots_cache/stats` API
 mod searchable_snapshots_cache_stats;
 /// The `_searchable_snapshots/stats` API
@@ -64,6 +66,7 @@ use {
     licenses::Licenses,
     nodes::{NodeDocument, Nodes},
     nodes_stats::NodesStats,
+    pending_tasks::PendingTasks,
     searchable_snapshots_cache_stats::{SearchableSnapshotsCacheStats, SharedCacheStats},
     slm_policies::SlmPolicies,
     tasks::Tasks,
@@ -180,6 +183,7 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
             // prevent the expected error
             // spawn_processor::<SearchableSnapshotsStats>(diag.clone()),
             spawn_processor::<Tasks>(diag.clone()),
+            spawn_processor::<PendingTasks>(diag.clone()),
         ];
         tasks.drain(..).map(|task| futures.push(task)).count();
 
