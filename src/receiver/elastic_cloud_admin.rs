@@ -17,7 +17,6 @@ pub struct ElasticCloudAdminReceiver {
 
 impl ElasticCloudAdminReceiver {
     pub fn new(url: Url, api_key: String) -> Result<Self> {
-        //std::env::var("APIKEY_GOVCLOUD")?.clone()
         let mut default_headers = HeaderMap::new();
         default_headers.append("X-Management-Request", "true".parse().unwrap());
         default_headers.append(ACCEPT, "application/json".parse().unwrap());
