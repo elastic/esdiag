@@ -25,7 +25,10 @@ impl UploadServiceDownloader {
             let response = request.send()?;
             let bytes = response.bytes()?;
             log::debug!("Downloaded archive size: {} bytes", bytes.len());
-            Ok(ArchiveBytesReceiver::try_from(bytes)?)
+            match bytes.len() {
+                0 => Err(eyre!("Downloaded empty file, check upload link expiration")),
+                _ => Ok(ArchiveBytesReceiver::try_from(bytes)?),
+            }
         })
     }
 }

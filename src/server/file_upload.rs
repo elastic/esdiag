@@ -50,7 +50,7 @@ pub async fn submit_handler(
             let upload_file_element = format!(
                 r#"<div id="job-{job_id}"
                     class="status-box history-item processing"
-                    data-on-load="$uploading=false; $file_upload.job_id={job_id}; @post('upload/process')"
+                    data-on-load="$loading=false; $file_upload.job_id={job_id}; @post('upload/process')"
                 >
                     <div class="spinner"></div> Processing diagnostic
                         <p><b>Filename:</b> {filename}</p>

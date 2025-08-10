@@ -11,6 +11,9 @@ impl Collector {
         if let Receiver::Elasticsearch(_) = &receiver {
             let collector = ElasticsearchCollector::new(receiver, exporter).await?;
             Ok(Self::Elasticsearch(collector))
+        } else if let Receiver::ElasticCloudAdmin(_) = &receiver {
+            let collector = ElasticsearchCollector::new(receiver, exporter).await?;
+            Ok(Self::Elasticsearch(collector))
         } else {
             Err(eyre!(
                 "Collect is only implemented from Elasticsearch to a Directory"

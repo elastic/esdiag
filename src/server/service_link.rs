@@ -25,7 +25,7 @@ pub async fn handler(
 
     Sse::new(stream! {
         let service_link = &signals.service_link;
-        yield patch_signals(r#"{"uploading":true}"#);
+        yield patch_signals(r#"{"loading":true}"#);
 
         let tokenized_uri = if let Uri::ServiceLinkNoAuth(mut url) = service_link.url.clone() {
             // Set username to "token" and password to the actual token
@@ -52,7 +52,7 @@ pub async fn handler(
                 error: "Upload Service",
                 message: &error_msg
             });
-            yield patch_signals(r#"{"uploading":false}"#);
+            yield patch_signals(r#"{"loading":false}"#);
             return
         };
 
@@ -70,7 +70,7 @@ pub async fn handler(
                     error: &error_msg,
                     source: &signals.service_link.filename,
                 });
-                yield patch_signals(r#"{"uploading":false}"#);
+                yield patch_signals(r#"{"loading":false}"#);
                 return
             }
         };
@@ -90,7 +90,7 @@ pub async fn handler(
                     filename: job.filename.as_deref().unwrap_or(""),
                 });
                 yield patch_signals(
-                    r#"{"uploading":false,"processing":true,"service_link":{"_curl":"","token":"","url":"","filename":""}}"#
+                    r#"{"loading":false,"processing":true,"service_link":{"_curl":"","token":"","url":"","filename":""}}"#
                 );
 
                 match job.process().await {
@@ -150,7 +150,7 @@ pub async fn job_handler(
                     error: &format!("Link id {} not found", id),
                     source: "Forwarded service link job"
                 });
-                yield patch_signals(r#"{"uploading":false}"#);
+                yield patch_signals(r#"{"loading":false}"#);
                 return
             }
         };
@@ -167,12 +167,12 @@ pub async fn job_handler(
                     error: &error_msg,
                     source: &identifiers.filename.unwrap_or("None".to_string())
                 });
-                yield patch_signals(r#"{"uploading":false}"#);
+                yield patch_signals(r#"{"loading":false}"#);
                 return
             }
         };
 
-        yield patch_signals(r#"{"uploading":false,"processing":true}"#);
+        yield patch_signals(r#"{"loading":false,"processing":true}"#);
 
         let exporter = {
             state.exporter.read().await.clone().with_identifiers(identifiers)
@@ -185,7 +185,7 @@ pub async fn job_handler(
                     job_id: job.id,
                     filename: job.filename.as_deref().unwrap_or(""),
                 });
-                yield patch_signals(r#"{"uploading":false,"processing":true}"#);
+                yield patch_signals(r#"{"loading":false,"processing":true}"#);
 
                 match job.process().await {
                     Ok(job) => {

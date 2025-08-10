@@ -1,6 +1,9 @@
 use crate::processor::Product;
 use eyre::{Result, eyre};
-use reqwest;
+use reqwest::{
+    Error, Response,
+    header::{ACCEPT, AUTHORIZATION, HeaderMap},
+};
 use serde::{Deserialize, Serialize};
 use serde_yaml;
 use std::{
@@ -130,6 +133,56 @@ impl KnownHost {
         }
     }
 
+    pub fn update_cloud_api_path(self) -> Self {
+        // Desired URL format is https://{domain}/api/v1/deployments/{deployment_id}/elasticsearch/elasticsearch/proxy/
+        match self {
+            Self::Basic { .. } | Self::NoAuth { .. } => self,
+            Self::ApiKey {
+                mut url,
+                app,
+                accept_invalid_certs,
+                apikey,
+                cloud_id,
+            } => {
+                let deployment_id = url.clone();
+                let deployment_id = deployment_id
+                    .path()
+                    .split('/')
+                    .skip_while(|segment| *segment != "deployments")
+                    .nth(1)
+                    .unwrap_or("");
+                let new_segments: Vec<&str> = match app {
+                    Product::Elasticsearch => vec![
+                        "api",
+                        "v1",
+                        "deployments",
+                        deployment_id,
+                        "elasticsearch",
+                        "elasticsearch",
+                        "proxy",
+                    ],
+                    _ => Vec::new(),
+                };
+                // Only modify the path if we have new segments
+                if new_segments.len() > 0 {
+                    let mut path_segments = url
+                        .path_segments_mut()
+                        .expect("Failed to get path segments");
+                    path_segments.clear().extend(new_segments);
+                }
+
+                log::debug!("Updated Cloud API URL: {}", url);
+                KnownHost::ApiKey {
+                    accept_invalid_certs,
+                    apikey,
+                    app,
+                    cloud_id,
+                    url,
+                }
+            }
+        }
+    }
+
     pub fn save(self, name: &String) -> Result<String> {
         // parse the ~/.esdiag/hosts.yml file into a HashMap<String, Host>
         let mut hosts = match KnownHost::parse_hosts_yml() {
@@ -181,13 +234,14 @@ impl KnownHost {
         }
     }
 
-    async fn validate_application(&self, response: reqwest::Response) -> (bool, String) {
+    async fn validate_application(&self, response: Response) -> (bool, String) {
         let status = response.status();
         let body = response.text().await.expect("Failed to read test body");
         let json = serde_json::from_str(&body).unwrap_or(serde_json::Value::Null);
         let app = match self {
             Self::ApiKey { app, .. } | Self::Basic { app, .. } | Self::NoAuth { app, .. } => app,
         };
+        log::debug!("Validation response {} ", json);
         match app {
             Product::Elasticsearch => match json.get("tagline") {
                 Some(_) => (true, format!("{} ✅ Elasticsearch", status)),
@@ -203,7 +257,7 @@ impl KnownHost {
         }
     }
 
-    pub async fn test(&self) -> Result<(bool, String), reqwest::Error> {
+    pub async fn test(&self) -> Result<(bool, String), Error> {
         match self {
             Self::ApiKey {
                 apikey,
@@ -215,16 +269,13 @@ impl KnownHost {
                 // test the connection
                 log::info!("Testing {} connection", &app);
                 // create a client with the API key
+                let mut default_headers = HeaderMap::new();
+                default_headers.append("X-Management-Request", "true".parse().unwrap());
+                default_headers.append(ACCEPT, "application/json".parse().unwrap());
+                default_headers
+                    .append(AUTHORIZATION, format!("ApiKey {}", apikey).parse().unwrap());
                 let client = reqwest::Client::builder()
-                    .default_headers(
-                        std::iter::once((
-                            reqwest::header::AUTHORIZATION,
-                            format!("ApiKey {}", apikey)
-                                .parse()
-                                .expect("Failed to parse apikey"),
-                        ))
-                        .collect(),
-                    )
+                    .default_headers(default_headers)
                     .danger_accept_invalid_certs(*accept_invalid_certs)
                     .build()?;
                 log::trace!("Reqwest client: {:?}", client);

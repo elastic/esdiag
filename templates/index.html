@@ -90,7 +90,7 @@
 
         <div class="content">
             <h2>Process Diagnostics</h2>
-            <div class="input-form" id="input-form" data-signals-uploading="false" data-signals-processing="false">
+            <div class="input-form" id="input-form" data-signals-loading="false" data-signals-processing="false">
                 <div id="diagnostic-form" class="diagnostic-form">
                     <div class="tabs" data-signals-_tab="'file-upload'">
                         <button
@@ -122,7 +122,7 @@
                         <form
                             id="upload-form"
                             data-show="$_tab === 'file-upload'"
-                            data-signals-uploading="false"
+                            data-signals-loading="false"
                             data-signals-file_upload.job_id="0"
                             enctype="multipart/form-data"
                         >
@@ -407,8 +407,8 @@
                                 class="button"
                                 type="button"
                                 value="Process"
-                                data-on-click="$uploading = true; @post('/service_link')"
-                                data-attr-disabled="$uploading || !$service_link.url || !$service_link.token"
+                                data-on-click="$loading = true; $message = 'Connecting to Elastic Upload service...'; @post('/service_link')"
+                                data-attr-disabled="$loading || !$service_link.url || !$service_link.token"
                             />
                             <script>
                                 // Extract token from Authorization header
@@ -470,8 +470,8 @@
                                 class="button"
                                 type="button"
                                 value="Process"
-                                data-on-click="$processing = true; @post('/api_key')"
-                                data-attr-disabled="$uploading || !$es_api.url || !$es_api.key"
+                                data-on-click="$loading = true; $message = 'Connecting with API key...'; @post('/api_key')"
+                                data-attr-disabled="$loading || !$es_api.url || !$es_api.key"
                             />
                         </form>
                     </div>
@@ -488,7 +488,7 @@
                             placeholder="Username"
                             autocomplete="username"
                             class="form-input"
-                            data-attr-disabled="$auth.header || $processing || $uploading"
+                            data-attr-disabled="$auth.header || $processing || $loading"
                         />
                     </div>
                     <div class="form-group">
@@ -500,7 +500,7 @@
                             data-bind-metadata.account
                             placeholder="Account"
                             class="form-input"
-                            data-attr-disabled="$uploading || $processing"
+                            data-attr-disabled="$loading || $processing"
                         />
                     </div>
                     <div class="form-group">
@@ -512,7 +512,7 @@
                             data-bind-metadata.case_number
                             placeholder="Case Number"
                             class="form-input"
-                            data-attr-disabled="$uploading || $processing"
+                            data-attr-disabled="$loading || $processing"
                         />
                     </div>
                     <div class="form-group">
@@ -524,7 +524,7 @@
                             data-bind-metadata.opportunity
                             placeholder="Opportunity"
                             class="form-input"
-                            data-attr-disabled="$uploading || $processing"
+                            data-attr-disabled="$loading || $processing"
                         />
                     </div>
                     <div
@@ -545,21 +545,21 @@
 
             <div
                 id="current-status"
-                data-show="$uploading && $_job_id === '' "
-                class="status-box uploading"
+                data-show="$loading && $_job_id === '' "
+                class="status-box loading"
                 style="display: none"
             >
                 <div class="spinner"></div>
-                Uploading...
+                <span id="status-message" data-text="$message">Uploading...</span>
             </div>
             <div id="job-feed"></div>
             {% if let Some(link_id) = link_id %}
             <div
                 id="job-{{ link_id }}"
-                data-show="$uploading"
+                data-show="$loading"
                 data-signals-_job_id="true"
-                data-on-load="$uploading = true && @post('/service_link/{{ link_id }}')"
-                class="status-box uploading"
+                data-on-load="$loading = true && $message = 'Forwarding service link {{ link_id }}' && @post('/service_link/{{ link_id }}')"
+                class="status-box loading"
                 style="display: none"
             >
                 <div class="spinner"></div>
@@ -568,10 +568,10 @@
             {% else if let Some(upload_id) = upload_id %}
             <div
                 id="job-{{ upload_id }}"
-                data-show="$uploading"
+                data-show="$loading"
                 data-signals-_job_id="true"
-                data-on-load="$uploading = true && @post('/file_upload/{{ upload_id }}')"
-                class="status-box uploading"
+                data-on-load="$loading = true && $message = 'Processing file upload {{ upload_id }}' && @post('/file_upload/{{ upload_id }}')"
+                class="status-box loading"
                 style="display: none"
             >
                 <div class="spinner"></div>
@@ -599,9 +599,7 @@
             </span>
             <span id="exporter" class="text-center">Output: {{ exporter }}</span>
             <span class="text-right" data-signals="{ 'stats': {{ stats }} }">
-                <span id="status" data-text="$uploading ? 'Uploading' : $processing ? 'Processing' : 'Ready'">
-                    Ready
-                </span>
+                <span id="status" data-text="$loading ? 'Loading' : $processing ? 'Processing' : 'Ready'">Ready </span>
                 | <span data-text="Intl.NumberFormat().format($stats.jobs.total)">0</span> diags |
                 <span data-text="Intl.NumberFormat().format($stats.docs.total)">0</span> docs
             </span>

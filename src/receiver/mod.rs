@@ -2,6 +2,8 @@
 mod archive;
 /// Read from a direcotry in the local file system
 mod directory;
+/// Request API calls from the Elastic Cloud API proxy
+mod elastic_cloud_admin;
 /// Request API calls from Elasticsearch
 mod elasticsearch;
 /// Get file from https://upload.elastic.co/
@@ -9,6 +11,7 @@ mod upload_service;
 
 use archive::{ArchiveBytesReceiver, ArchiveFileReceiver};
 use directory::DirectoryReceiver;
+use elastic_cloud_admin::ElasticCloudAdminReceiver;
 pub use elasticsearch::ElasticsearchReceiver;
 use upload_service::UploadServiceDownloader;
 
@@ -84,6 +87,8 @@ pub enum Receiver {
     Directory(DirectoryReceiver),
     /// Request API calls from Elasticsearch
     Elasticsearch(ElasticsearchReceiver),
+    /// Request API calls from Elastic Cloud admin
+    ElasticCloudAdmin(ElasticCloudAdminReceiver),
 }
 
 impl Receiver {
@@ -96,6 +101,7 @@ impl Receiver {
             Receiver::ArchiveFile(receiver) => receiver.get::<T>().await,
             Receiver::Directory(receiver) => receiver.get::<T>().await,
             Receiver::Elasticsearch(receiver) => receiver.get::<T>().await,
+            Receiver::ElasticCloudAdmin(receiver) => receiver.get::<T>().await,
         }
     }
 
@@ -105,6 +111,7 @@ impl Receiver {
     {
         match self {
             Receiver::Elasticsearch(receiver) => receiver.get_raw::<T>().await,
+            Receiver::ElasticCloudAdmin(receiver) => receiver.get_raw::<T>().await,
             _ => Err(eyre!("Raw data is not supported for this receiver")),
         }
     }
@@ -115,6 +122,7 @@ impl Receiver {
             Receiver::ArchiveFile(receiver) => receiver.is_connected().await,
             Receiver::Directory(receiver) => receiver.is_connected().await,
             Receiver::Elasticsearch(receiver) => receiver.is_connected().await,
+            Receiver::ElasticCloudAdmin(receiver) => receiver.is_connected().await,
         }
     }
 
@@ -139,6 +147,7 @@ impl Receiver {
             Receiver::ArchiveFile(receiver) => receiver.collection_date().await,
             Receiver::Directory(receiver) => receiver.collection_date().await,
             Receiver::Elasticsearch(receiver) => receiver.collection_date().await,
+            Receiver::ElasticCloudAdmin(receiver) => receiver.collection_date().await,
         }
     }
 
@@ -148,6 +157,7 @@ impl Receiver {
             Receiver::ArchiveFile(receiver) => receiver.try_get_manifest().await,
             Receiver::Directory(receiver) => receiver.try_get_manifest().await,
             Receiver::Elasticsearch(receiver) => receiver.try_get_manifest().await,
+            Receiver::ElasticCloudAdmin(receiver) => receiver.try_get_manifest().await,
         }
     }
 }
@@ -157,6 +167,12 @@ impl TryFrom<Uri> for Receiver {
     fn try_from(uri: Uri) -> std::result::Result<Self, Self::Error> {
         let receiver = match uri {
             Uri::Directory(dir) => Receiver::Directory(DirectoryReceiver::try_from(dir)?),
+            Uri::ElasticCloud(host) => {
+                return Err(eyre!("Elastic Cloud API not yet implemented. {host}"));
+            }
+            Uri::ElasticCloudAdmin(host) | Uri::ElasticGovCloudAdmin(host) => {
+                Receiver::ElasticCloudAdmin(ElasticCloudAdminReceiver::try_from(host)?)
+            }
             Uri::File(file) => Receiver::ArchiveFile(ArchiveFileReceiver::try_from(file)?),
             Uri::KnownHost(host) => Receiver::Elasticsearch(ElasticsearchReceiver::try_from(host)?),
             Uri::ServiceLink(url) => {
@@ -171,9 +187,8 @@ impl TryFrom<Uri> for Receiver {
 impl TryFrom<KnownHost> for Receiver {
     type Error = eyre::Report;
     fn try_from(host: KnownHost) -> std::result::Result<Self, Self::Error> {
-        Ok(Receiver::Elasticsearch(ElasticsearchReceiver::try_from(
-            host,
-        )?))
+        let uri = Uri::try_from(host)?;
+        Receiver::try_from(uri)
     }
 }
 
@@ -193,6 +208,9 @@ impl std::fmt::Display for Receiver {
             Receiver::ArchiveFile(receiver) => write!(f, "Archive File {receiver}"),
             Receiver::Directory(receiver) => write!(f, "Directory {receiver}"),
             Receiver::Elasticsearch(receiver) => write!(f, "Elasticsearch {receiver}"),
+            Receiver::ElasticCloudAdmin(receiver) => {
+                write!(f, "ElasticCloudAdmin {receiver}")
+            }
         }
     }
 }

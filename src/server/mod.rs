@@ -282,7 +282,8 @@ pub struct JobStats {
 pub struct Signals {
     pub auth: Auth,
     pub processing: bool,
-    pub uploading: bool,
+    pub loading: bool,
+    pub message: String,
     pub metadata: Identifiers,
     pub file_upload: FileUpload,
     pub service_link: ServiceLink,
@@ -295,7 +296,8 @@ impl Default for Signals {
         Signals {
             auth: Auth { header: false },
             processing: false,
-            uploading: false,
+            loading: false,
+            message: String::new(),
             metadata: Identifiers::default(),
             file_upload: FileUpload { job_id: 0 },
             service_link: ServiceLink {

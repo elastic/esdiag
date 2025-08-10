@@ -208,7 +208,7 @@ async fn run(cli: Cli) -> Result<&'static str> {
             let known_host = Uri::try_from(host)?;
             let output = Uri::try_from(output)?;
             match known_host {
-                Uri::KnownHost(_) => {
+                Uri::KnownHost(_) | Uri::ElasticCloudAdmin(_) | Uri::ElasticGovCloudAdmin(_) => {
                     log::info!("Collecting diagnostic from {known_host}");
                     log::info!("Saving diagnostic to {output}");
                     let receiver = Receiver::try_from(known_host)?;
@@ -216,6 +216,9 @@ async fn run(cli: Cli) -> Result<&'static str> {
                     let collector = Collector::try_new(receiver, exporter).await?;
                     collector.collect().await?;
                     Ok("collect")
+                }
+                Uri::ElasticCloud(_) => {
+                    Err(eyre!("Elastic Cloud API collection not yet implemented"))
                 }
                 _ => Err(eyre!("Collect requires a known host")),
             }

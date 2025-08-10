@@ -39,7 +39,10 @@ pub async fn handler(
             };
 
         let receiver = match Receiver::try_from(host) {
-            Ok(receiver) => receiver,
+            Ok(receiver) => {
+                log::info!("Created receiver: {}", receiver);
+                receiver
+            }
             Err(e) => {
                 state.record_failure().await;
                 let error_msg = format!("Failed to create receiver: {}", e);
@@ -67,7 +70,7 @@ pub async fn handler(
                     job_id: job.id,
                     filename: job.filename.as_deref().unwrap_or(""),
                 });
-                yield patch_signals(r#"{"uploading":false,"processing":true}"#);
+                yield patch_signals(r#"{"loading":false,"processing":true}"#);
 
                 match job.process().await {
                     Ok(job) => {

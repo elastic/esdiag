@@ -58,6 +58,7 @@ impl DiagnosticProcessor for KubernetesPlatformDiagnostic {
 
     async fn run(self) -> Result<DiagnosticReport> {
         self.receiver.is_connected().await;
+        let mut reports: Vec<DiagnosticReport> = Vec::with_capacity(2);
         for diagnostic in self.included_diagnostics {
             let diag_type = diagnostic.diag_type.as_str().trim_end_matches("appconfig");
             match diag_type {
@@ -72,7 +73,7 @@ impl DiagnosticProcessor for KubernetesPlatformDiagnostic {
                     let diagnostic =
                         ElasticsearchDiagnostic::new(manifest, receiver, self.exporter.cloned())
                             .await?;
-                    diagnostic.run().await?;
+                    reports.push(diagnostic.run().await?);
                 }
                 _ => {
                     log::warn!(
@@ -92,7 +93,12 @@ impl DiagnosticProcessor for KubernetesPlatformDiagnostic {
             Some("orchestration".to_string()),
         );
         self.exporter.save_report(&*report).await?;
-        Ok(report.clone())
+        // For now, we will return only the Elasticsearch report for the UI
+        // TODO: Implement processor iterators - https://github.com/elastic/esdiag/issues/148#issuecomment-3172865628
+        if reports.is_empty() {
+            return Err(eyre::eyre!("No reports were collected. No diagnostics matched the expected types."));
+        }
+        Ok(reports[0].clone())
     }
 
     fn id(&self) -> &str {

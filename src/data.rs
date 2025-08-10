@@ -33,6 +33,12 @@ pub fn save_file<T: Serialize>(filename: &str, content: &T) -> Result<()> {
 pub enum Uri {
     /// Known host saved in the ~/.esdiag/hosts.yml by default
     KnownHost(KnownHost),
+    /// An Elastic Cloud URL for the Elasticsearch API proxy
+    ElasticCloud(KnownHost),
+    /// An Elastic Cloud Admin URL for the Elasticsearch API proxy
+    ElasticCloudAdmin(KnownHost),
+    /// An Elastic Cloud GovCloud Admin URL for the Elasticsearch API proxy
+    ElasticGovCloudAdmin(KnownHost),
     /// An Elastic Uploader service URL, embed the auth token as `token:<value>@` instead of `username:password` in the URL
     ServiceLink(Url),
     /// An Elastic Uploader service URL, without authentication
@@ -66,14 +72,48 @@ impl Default for Uri {
 impl From<Uri> for Url {
     fn from(uri: Uri) -> Self {
         match uri {
-            Uri::Stream => Url::parse("stdin://").unwrap(),
+            Uri::Directory(path) => Url::from_directory_path(path).unwrap(),
+            Uri::ElasticCloud(host) => host.into(),
+            Uri::ElasticCloudAdmin(host) => host.into(),
+            Uri::ElasticGovCloudAdmin(host) => host.into(),
+            Uri::File(path) => Url::from_file_path(path).unwrap(),
             Uri::KnownHost(host) => host.into(),
             Uri::ServiceLink(url) => url,
             Uri::ServiceLinkNoAuth(url) => url,
+            Uri::Stream => Url::parse("stdin://").unwrap(),
             Uri::Url(url) => url,
-            Uri::Directory(path) => Url::from_directory_path(path).unwrap(),
-            Uri::File(path) => Url::from_file_path(path).unwrap(),
         }
+    }
+}
+
+fn identify_elastic_host(host: KnownHost) -> Uri {
+    // https://admin.us-gov-east-1.aws.elastic-cloud.com/api/v1/deployments/2492c05b8d1f4c4d8c1ecb05ec59e4c0/elasticsearch/elasticsearch/proxy/
+    // https://admin.us-gov-east-1.aws.elastic-cloud.com/deployments/2492c05b8d1f4c4d8c1ecb05ec59e4c0
+    match host.get_url().as_str() {
+        url if url.contains("admin.us-gov-east-1.aws.elastic-cloud.com") => {
+            log::debug!("Creating Uri::ElasticGovCloudAdmin");
+            Uri::ElasticGovCloudAdmin(host.update_cloud_api_path())
+        }
+        url if url.contains("admin.found.no") => {
+            log::debug!("Creating Uri::ElasticCloudAdmin");
+            Uri::ElasticCloudAdmin(host.update_cloud_api_path())
+        }
+        url if url.contains("cloud.elastic.co") => {
+            log::debug!("Creating Uri::ElasticCloud");
+            Uri::ElasticCloud(host.update_cloud_api_path())
+        }
+        _ => {
+            log::debug!("Creating Uri::KnownHost");
+            Uri::KnownHost(host)
+        }
+    }
+}
+
+impl TryFrom<KnownHost> for Uri {
+    type Error = eyre::Report;
+
+    fn try_from(host: KnownHost) -> Result<Self> {
+        Ok(identify_elastic_host(host))
     }
 }
 
@@ -87,10 +127,9 @@ impl TryFrom<&str> for Uri {
         }
 
         if let Ok(host) = KnownHost::from_str(&uri) {
-            log::debug!("Creating Uri::KnownHost");
-            return Ok(Uri::KnownHost(host));
+            return Ok(identify_elastic_host(host));
         }
-        log::debug!("No known host {uri}");
+        log::debug!("No known host for {uri}");
 
         if let Ok(url) = Url::parse(&uri) {
             let domain = url.domain().ok_or_eyre("URL is missing a domain")?;
@@ -148,6 +187,11 @@ impl TryFrom<String> for Uri {
 impl std::fmt::Display for Uri {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
+            Uri::Directory(path) => write!(f, "{}", path.display()),
+            Uri::ElasticCloud(host) => write!(f, "{}", host),
+            Uri::ElasticCloudAdmin(host) => write!(f, "{}", host),
+            Uri::ElasticGovCloudAdmin(host) => write!(f, "{}", host),
+            Uri::File(path) => write!(f, "{}", path.display()),
             Uri::KnownHost(host) => write!(f, "{}", host),
             Uri::ServiceLink(url) => {
                 write!(f, "{}{}", url.domain().expect("No domain"), url.path())
@@ -155,10 +199,8 @@ impl std::fmt::Display for Uri {
             Uri::ServiceLinkNoAuth(url) => {
                 write!(f, "{}{}", url.domain().expect("No domain"), url.path())
             }
-            Uri::Url(url) => write!(f, "{}", url),
-            Uri::Directory(path) => write!(f, "{}", path.display()),
-            Uri::File(path) => write!(f, "{}", path.display()),
             Uri::Stream => write!(f, "-"),
+            Uri::Url(url) => write!(f, "{}", url),
         }
     }
 }
