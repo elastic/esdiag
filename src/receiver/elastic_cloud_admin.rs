@@ -107,11 +107,13 @@ impl ReceiveRaw for ElasticCloudAdminReceiver {
     {
         // Get the API URL path for the provided type
         let path = T::source(PathType::Url)?;
-        log::debug!("Getting API: {}", &path);
+        // Prepend the API proxy base path
+        let path = format!("{}/{}", self.url.path(), path);
+        let url = self.url.join(&path)?;
+        log::debug!("Getting API: {}", url);
+        let response = self.client.get(url).send().await?;
 
-        // Send a simple GET request to the API path
-        let response = self.client.get(self.url.as_str()).send().await?;
-
+        // Return raw text
         response.text().await.map_err(Into::into)
     }
 }
