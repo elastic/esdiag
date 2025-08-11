@@ -75,7 +75,7 @@ impl DataProcessor<Lookups, ElasticsearchMetadata> for HealthReport {
             .collect();
 
         log::debug!("Health report docs: {}", health_docs.len());
-        ("logs-health.indicator-esdiag".to_string(), health_docs)
+        ("health-indicator-esdiag".to_string(), health_docs)
     }
 }
 
