@@ -552,10 +552,6 @@ footer {
     z-index: 100;
 }
 
-footer span {
-    width: 33%;
-}
-
 .counter {
     display: inline-block;
     width: 8em;
