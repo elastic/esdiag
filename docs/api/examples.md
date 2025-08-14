@@ -1,6 +1,6 @@
 # API Usage Examples
 
-This document provides practical examples of how to use the ESdiag API endpoints.
+This document provides practical examples of how to use the ESDiag API endpoints.
 
 ## Authentication
 
@@ -23,7 +23,7 @@ curl -X GET http://localhost:3000/
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Elastic Stack Diagnostics</title>
+    <title>ESDiag</title>
 </head>
 <body>
     <!-- Main application interface -->
@@ -36,7 +36,6 @@ curl -X GET http://localhost:3000/
 ### Request
 ```bash
 curl -X POST http://localhost:3000/api/service_link \
-  -H "X-Goog-Authenticated-User-Email: accounts.google.com:user@example.com" \
   -H "Content-Type: application/json" \
   -d '{
     "metadata": {
@@ -53,7 +52,7 @@ curl -X POST http://localhost:3000/api/service_link \
 ### Successful Response
 ```json
 {
-  "link_id": "job-456789"
+  "link_id": 456789
 }
 ```
 
@@ -78,6 +77,52 @@ curl -X POST http://localhost:3000/api/service_link \
 }
 ```
 
+## POST `/api/api_key` - API Key Processing
+
+### Request
+```bash
+curl -X POST http://localhost:3000/api/api_key \
+  -H "Content-Type: application/json" \
+  -d '{
+    "metadata": {
+      "account": "Acme, Inc.",
+      "case_number": "98765",
+      "opportunity": null,
+      "user": "user@example.com"
+    },
+    "apikey": "abcdefghijklmnopqrstuvwxyz=",
+    "url": "https://elasticsearch.example.com"
+  }'
+```
+
+### Successful Response
+```json
+{
+  "key_id": 12345
+}
+```
+
+### Error Response - Invalid URL
+```json
+{
+  "error": "Failed to parse URL: relative URL without a base"
+}
+```
+
+### Error Response - Empty API Key
+```json
+{
+  "error": "API key cannot be empty"
+}
+```
+
+### Error Response - Host Build Error
+```json
+{
+  "error": "Failed to build host: unsupported host type"
+}
+```
+
 ## Complete Workflow Examples
 
 ### Example: Basic service link forwarding workflow
@@ -86,7 +131,6 @@ curl -X POST http://localhost:3000/api/service_link \
 
 ```bash
 curl -X POST http://localhost:3000/api/service_link \
-  -H "X-Goog-Authenticated-User-Email: accounts.google.com:user@example.com" \
   -H "Content-Type: application/json" \
   -d '{
     "metadata": {
@@ -108,4 +152,34 @@ curl -X POST http://localhost:3000/api/service_link \
 3. Forward user to ESDiag with `link_id` as a parameter
 ```bash
 open "http://localhost:3000/?link_id=45678"
+```
+
+### Example: API key workflow
+
+1. Submit API key and Elasticsearch URL to ESDiag
+
+```bash
+curl -X POST http://localhost:3000/api/api_key \
+  -H "Content-Type: application/json" \
+  -d '{
+    "metadata": {
+      "account": "Acme, Inc",
+      "case_number": "12345",
+      "user": "user@example.com"
+    },
+    "apikey": "abcdefghijklmnopqrstuvwxyz=",
+    "url": "https://my-cluster.es.example.com"
+  }'
+```
+
+2. Retrieve `key_id` from response
+
+```json
+{ "key_id": 12345 }
+```
+
+3. Forward user to ESDiag with `key_id` as a parameter
+
+```bash
+open "http://localhost:3000/?key_id=12345"
 ```
