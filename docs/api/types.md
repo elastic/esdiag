@@ -1,6 +1,6 @@
 # Data Types
 
-This document defines the data types used by the ESdiag API.
+This document defines the data types used by the ESDiag API.
 
 ## Core Types
 
@@ -56,13 +56,51 @@ Response from the `/api/service_link` endpoint.
 
 ```json
 {
-  "link_id": "string"
+  "link_id": integer
 }
 ```
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `link_id` | String | Unique identifier for the created job |
+
+### ApiKeyRequest
+
+Request payload for the `/api/api_key` endpoint.
+
+```json
+{
+  "apikey": "string",
+  "url": "string",
+  "metadata": {
+    "account": "string | null",
+    "case_number": "string | null",
+    "filename": "string | null",
+    "opportunity": "string | null",
+    "user": "string | null"
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `metadata` | Identifiers | Diagnostic metadata and identifiers |
+| `apikey` | String | API key for authenticating with the Elasticsearch cluster |
+| `url` | String | URL of the Elasticsearch cluster endpoint |
+
+### ApiKey Response
+
+Response from the `/api/api_key` endpoint.
+
+```json
+{
+  "key_id": integer
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `key_id` | String | Unique identifier for the created API key job |
 
 ### Error Response
 
@@ -81,6 +119,7 @@ Standard error response format used across all endpoints.
 ### HTTP Status Codes
 
 - `200 OK` - Request successful
+- `201 Created` - Resource created successfully (used by `/api/api_key`)
 - `400 Bad Request` - Invalid request data or parameters
 - `422 Unprocessable Entity` - Invalid request data structure
 - `500 Internal Server Error` - Server-side processing error
