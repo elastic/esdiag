@@ -30,7 +30,10 @@ impl std::fmt::Display for Tab {
 #[allow(dead_code)]
 pub struct Params {
     #[serde(default, deserialize_with = "empty_string_as_none")]
+    key_id: Option<u64>,
+    #[serde(default, deserialize_with = "empty_string_as_none")]
     link_id: Option<u64>,
+    #[serde(default, deserialize_with = "empty_string_as_none")]
     upload_id: Option<u64>,
 }
 
@@ -67,10 +70,11 @@ pub async fn handler(
         auth_header,
         debug: log::max_level() == log::Level::Debug,
         exporter: exporter_target,
-        kibana_url: state.kibana.clone(),
+        kibana_url: state.kibana_url.clone(),
+        key_id: params.key_id,
         link_id: params.link_id,
-        stats: state.get_stats_as_signals().await,
         upload_id: params.upload_id,
+        stats: state.get_stats_as_signals().await,
         user: user_email,
         user_initial,
         version: env!("CARGO_PKG_VERSION").to_string(),

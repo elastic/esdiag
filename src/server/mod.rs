@@ -7,7 +7,7 @@ mod service_link;
 mod template;
 
 use super::processor::Identifiers;
-use crate::{data::Uri, exporter::Exporter};
+use crate::{client::KnownHost, data::Uri, exporter::Exporter};
 use askama::Template;
 use axum::{
     Router,
@@ -20,9 +20,9 @@ use bytes::Bytes;
 use datastar::prelude::{ElementPatchMode, PatchElements, PatchSignals};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, convert::Infallible, net::SocketAddr, sync::Arc};
-use tokio::sync::{RwLock, mpsc, oneshot};
+use tokio::sync::{RwLock, mpsc};
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
 struct UploadServiceRequest {
     metadata: Identifiers,
     token: String,
@@ -31,26 +31,31 @@ struct UploadServiceRequest {
 
 impl From<UploadServiceRequest> for Identifiers {
     fn from(request: UploadServiceRequest) -> Self {
-        Identifiers {
-            account: request.metadata.account.clone(),
-            case_number: request.metadata.case_number,
-            filename: request.metadata.filename.clone(),
-            opportunity: None,
-            user: request.metadata.user,
-        }
+        Identifiers { ..request.metadata }
+    }
+}
+
+#[derive(Deserialize, Serialize)]
+struct ApiKeyRequest {
+    metadata: Identifiers,
+    apikey: String,
+    url: String,
+}
+
+impl From<ApiKeyRequest> for Identifiers {
+    fn from(request: ApiKeyRequest) -> Self {
+        Identifiers { ..request.metadata }
     }
 }
 
 #[derive(Clone)]
 pub struct Server {
     server_handle: Option<Arc<tokio::task::JoinHandle<()>>>,
-    worker_handle: Option<Arc<tokio::task::JoinHandle<()>>>,
-    shutdown_signal: Option<Arc<oneshot::Sender<()>>>,
     pub rx: Option<Arc<RwLock<mpsc::Receiver<(Identifiers, Bytes)>>>>,
 }
 
 impl Server {
-    pub fn new(port: u16, exporter: Exporter, kibana: String) -> Self {
+    pub fn new(port: u16, exporter: Exporter, kibana_url: String) -> Self {
         let (_, rx) = mpsc::channel::<(Identifiers, Bytes)>(1);
         let rx = Arc::new(RwLock::new(rx));
         let rx_clone = rx.clone();
@@ -59,10 +64,11 @@ impl Server {
         let state = Arc::new(ServerState {
             signals: Arc::new(RwLock::new(Signals::default())),
             exporter: Arc::new(RwLock::new(exporter)),
-            kibana,
+            kibana_url,
             stats: Arc::new(RwLock::new(Stats::default())),
             uploads: Arc::new(RwLock::new(HashMap::new())),
             links: Arc::new(RwLock::new(HashMap::new())),
+            keys: Arc::new(RwLock::new(HashMap::new())),
         });
 
         // Start the Axum server
@@ -70,17 +76,19 @@ impl Server {
             const FIVE_HUNDRED_TWELVE_MEBIBYTES: usize = 512 * 1024 * 1024;
             let app = Router::new()
                 .route("/", get(index::handler))
-                .route("/api/service_link", post(api::service_link_handler))
-                .route("/api_key", post(api_key::handler))
+                .route("/api/service_link", post(api::service_link))
+                .route("/api/api_key", post(api::api_key))
+                .route("/api_key", post(api_key::form))
+                .route("/api_key/{id}", post(api_key::id))
                 .route("/datastar.js", get(assets::datastar))
                 .route("/datastar.js.map", get(assets::datastar_map))
                 .route("/esdiag.svg", get(assets::logo))
                 .route("/favicon.ico", get(assets::logo))
-                .route("/service_link", post(service_link::handler))
-                .route("/service_link/{id}", post(service_link::job_handler))
+                .route("/service_link", post(service_link::form))
+                .route("/service_link/{id}", post(service_link::id))
                 .route("/style.css", get(assets::style))
-                .route("/upload/process", post(file_upload::process_handler))
-                .route("/upload/submit", post(file_upload::submit_handler))
+                .route("/upload/process", post(file_upload::process))
+                .route("/upload/submit", post(file_upload::submit))
                 .layer(DefaultBodyLimit::max(FIVE_HUNDRED_TWELVE_MEBIBYTES));
 
             let addr = SocketAddr::from(([0, 0, 0, 0], port));
@@ -98,44 +106,15 @@ impl Server {
 
         Self {
             server_handle: Some(Arc::new(handle)),
-            worker_handle: None,
-            shutdown_signal: None,
             rx: Some(rx_clone),
         }
     }
 
     pub async fn shutdown(&mut self) {
-        // Send shutdown signal to worker thread if it exists
-        if let Some(tx) = self.shutdown_signal.take() {
-            log::debug!("Sending shutdown signal to worker thread");
-            if let Err(e) = Arc::try_unwrap(tx).map(|tx| tx.send(())) {
-                log::warn!("Failed to send shutdown signal to worker thread: {:?}", e);
-            }
-        }
-
-        // Wait for worker thread to complete if it exists
-        if let Some(handle) = self.worker_handle.take() {
-            log::debug!("Waiting for worker thread to complete");
-
-            // Use a timeout to avoid waiting forever
-            match tokio::time::timeout(
-                std::time::Duration::from_secs(5),
-                Arc::try_unwrap(handle).unwrap(),
-            )
-            .await
-            {
-                Ok(result) => match result {
-                    Ok(_) => log::info!("Worker thread shut down successfully"),
-                    Err(e) => log::warn!("Error joining worker thread: {:?}", e),
-                },
-                Err(_) => log::warn!("Timeout waiting for worker thread to shut down"),
-            }
-        }
-
         // Shutdown the main server
         if let Some(handle) = self.server_handle.take() {
             Arc::try_unwrap(handle).map(|handle| handle.abort()).ok();
-            log::debug!("Server thread aborted");
+            log::debug!("Server thread stopped");
         }
     }
 }
@@ -157,23 +136,17 @@ impl Drop for Server {
             Arc::try_unwrap(handle).map(|handle| handle.abort()).ok();
         }
 
-        // Send shutdown signal to worker thread if it exists
-        if let Some(tx) = self.shutdown_signal.take() {
-            if let Err(e) = Arc::try_unwrap(tx).map(|tx| tx.send(())) {
-                log::warn!("Failed to send shutdown signal to worker thread: {:?}", e);
-            }
-        }
-
-        log::info!("Server dropped, server and worker threads are being shut down");
+        log::info!("Server shut down");
     }
 }
 
 pub struct ServerState {
     pub exporter: Arc<RwLock<Exporter>>,
-    pub kibana: String,
+    pub kibana_url: String,
     pub signals: Arc<RwLock<Signals>>,
     pub uploads: Arc<RwLock<HashMap<u64, (String, Bytes)>>>,
     pub links: Arc<RwLock<HashMap<u64, (Identifiers, Uri)>>>,
+    pub keys: Arc<RwLock<HashMap<u64, (Identifiers, KnownHost)>>>,
     stats: Arc<RwLock<Stats>>,
 }
 
@@ -200,6 +173,20 @@ impl ServerState {
         serde_json::to_string(&self.get_stats().await)
             .unwrap_or_default()
             .replace('\"', "'")
+    }
+
+    pub async fn push_key(
+        &self,
+        id: u64,
+        identifiers: Identifiers,
+        host: KnownHost,
+    ) -> Option<(Identifiers, KnownHost)> {
+        self.keys.write().await.insert(id, (identifiers, host))
+    }
+
+    pub async fn pop_key(&self, id: u64) -> Option<(Identifiers, KnownHost)> {
+        log::debug!("Popping api key id: {id}");
+        self.keys.write().await.remove(&id)
     }
 
     pub async fn push_link(
@@ -289,6 +276,7 @@ pub struct Signals {
     pub service_link: ServiceLink,
     pub es_api: EsApiKey,
     pub stats: Stats,
+    pub tab: Tab,
 }
 
 impl Default for Signals {
@@ -310,8 +298,17 @@ impl Default for Signals {
                 url: Uri::default(),
             },
             stats: Stats::default(),
+            tab: Tab::FileUpload,
         }
     }
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Tab {
+    FileUpload,
+    ServiceLink,
+    ApiKey,
 }
 
 #[derive(Debug, Deserialize)]

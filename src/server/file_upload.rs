@@ -13,7 +13,7 @@ use datastar::axum::ReadSignals;
 use reqwest::StatusCode;
 use std::sync::Arc;
 
-pub async fn submit_handler(
+pub async fn submit(
     State(state): State<Arc<ServerState>>,
     mut multipart: Multipart,
 ) -> impl IntoResponse {
@@ -100,7 +100,7 @@ pub async fn submit_handler(
     }
 }
 
-pub async fn process_handler(
+pub async fn process(
     State(state): State<Arc<ServerState>>,
     ReadSignals(signals): ReadSignals<Signals>,
 ) -> impl IntoResponse {
@@ -149,7 +149,7 @@ pub async fn process_handler(
                 // The submit function already pushed a template to the feed
                 yield patch_template(template::JobProcessing {
                     job_id: job_id,
-                    filename: job.filename.as_deref().unwrap_or(""),
+                    source: job.filename.as_deref().unwrap_or(""),
                 });
 
                 match job.process().await {
@@ -160,7 +160,7 @@ pub async fn process_handler(
                             diagnostic_id: &job.report.metadata.id,
                             docs_created: &job.report.docs.created,
                             duration: &format!("{:.3}", job.report.processing_duration as f64 / 1000.0),
-                            filename: job.filename.as_deref().unwrap_or(""),
+                            source: job.filename.as_deref().unwrap_or(""),
                             kibana_link: job.report.kibana_link.as_ref().unwrap_or(&"#".to_string()),
                             product: &job.report.product.to_string(),
                         });
