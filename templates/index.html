@@ -430,8 +430,9 @@
 
                                 // Extract URL
                                 const parseUrl = (cmd) => {
-                                    const url = cmd.match(/https?:\/\/\S+/);
-                                    return url ? url[0] : null;
+                                    const match = cmd.match(/https?:\/\/\S+/);
+                                    const url = match ? match[0].replace(/\.$/, "") : null;
+                                    return url;
                                 };
                             </script>
                         </form>
