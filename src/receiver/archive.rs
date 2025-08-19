@@ -33,16 +33,153 @@ pub fn resolve_archive_path<A: Read + Seek>(
     archive: &mut ZipArchive<A>,
     filename: &str,
 ) -> Result<String> {
-    let full_path = match subdir {
-        // Ugly hack to make ECK bundles with double-slashed paths work
-        // This will break if the sub-paths are fixed in the ECK bundles
-        Some(subdir) => format!("{}//{}", subdir.display(), filename),
-        None => {
-            let mut path = PathBuf::from(archive.by_index(0)?.name().to_string());
-            trim_to_working_directory(&mut path);
-            let path = path.join(filename);
-            format!("{}", path.display())
+    let path = if let Some(dir) = subdir {
+        let mut workdir = PathBuf::from(archive.by_index(0)?.name().to_string());
+        trim_to_working_directory(&mut workdir);
+        let path = workdir
+            .join(dir)
+            .join(filename)
+            .to_string_lossy()
+            .to_string();
+        if archive.by_name(&path).is_ok() {
+            return Ok(path);
+        } else {
+            // Fall back to double slash for ECK bundles with faulty paths
+            format!("{}//{}", workdir.join(dir).display(), filename)
         }
+    } else {
+        let mut path = PathBuf::from(archive.by_index(0)?.name().to_string());
+        trim_to_working_directory(&mut path);
+        format!("{}", path.join(filename).display())
     };
-    Ok(full_path)
+
+    if archive.by_name(&path).is_ok() {
+        Ok(path)
+    } else {
+        Err(eyre::eyre!("File not found in archive: {}", path))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{Cursor, Write};
+    use zip::{ZipWriter, write::SimpleFileOptions};
+
+    fn create_test_archive_with_double_slash() -> Vec<u8> {
+        let mut buf = Vec::new();
+        {
+            let mut zip = ZipWriter::new(Cursor::new(&mut buf));
+
+            zip.start_file("version.json", SimpleFileOptions::default())
+                .unwrap();
+            zip.write_all(br#"{"version": "2.4.0"}"#).unwrap();
+
+            // Add a file with double slash path (legacy ECK bundle format)
+            zip.start_file(
+                "namespace/elasticsearch/cluster-one//version.json",
+                SimpleFileOptions::default(),
+            )
+            .unwrap();
+            zip.write_all(br#"{"version": "9.0.0"}"#).unwrap();
+            zip.finish().unwrap();
+        }
+        buf
+    }
+
+    fn create_test_archive_with_single_slash() -> Vec<u8> {
+        let mut buf = Vec::new();
+        {
+            let mut zip = ZipWriter::new(Cursor::new(&mut buf));
+            zip.start_file("eck-diagnostics/version.json", SimpleFileOptions::default())
+                .unwrap();
+            zip.write_all(br#"{"version": "3.0.0"}"#).unwrap();
+
+            // Add a file with single slash path (standard format)
+            zip.start_file(
+                "eck-diagnostics/namespace/elasticsearch/cluster-two/version.json",
+                SimpleFileOptions::default(),
+            )
+            .unwrap();
+            zip.write_all(br#"{"version": "8.1.0"}"#).unwrap();
+
+            zip.finish().unwrap();
+        }
+        buf
+    }
+
+    #[test]
+    fn resolve_archive_path_with_double_slash_returns_ok() {
+        let archive_data = create_test_archive_with_double_slash();
+        let mut archive = ZipArchive::new(Cursor::new(archive_data)).unwrap();
+
+        let subdir = PathBuf::from("namespace/elasticsearch/cluster-one");
+        let result = resolve_archive_path(Some(&subdir), &mut archive, "version.json").unwrap();
+
+        assert_eq!(result, "namespace/elasticsearch/cluster-one//version.json");
+    }
+
+    #[test]
+    fn resolve_archive_path_with_single_slash_returns_ok() {
+        let archive_data = create_test_archive_with_single_slash();
+        let mut archive = ZipArchive::new(Cursor::new(archive_data)).unwrap();
+
+        let subdir = PathBuf::from("namespace/elasticsearch/cluster-two");
+        let result = resolve_archive_path(Some(&subdir), &mut archive, "version.json").unwrap();
+
+        assert_eq!(
+            result,
+            "eck-diagnostics/namespace/elasticsearch/cluster-two/version.json"
+        );
+    }
+
+    #[test]
+    fn archive_path_without_subdir_returns_ok() {
+        let mut buf = Vec::new();
+        {
+            let mut zip = ZipWriter::new(Cursor::new(&mut buf));
+
+            // Add a root level file
+            zip.start_file("file.json", SimpleFileOptions::default())
+                .unwrap();
+            zip.write_all(br#"{"test": true}"#).unwrap();
+
+            zip.finish().unwrap();
+        }
+
+        let mut archive = ZipArchive::new(Cursor::new(buf)).unwrap();
+        let result = resolve_archive_path(None, &mut archive, "file.json").unwrap();
+
+        // Should derive path from first entry in archive
+        assert_eq!(result, "file.json");
+    }
+
+    #[test]
+    fn missing_file_returns_err() {
+        let archive_data = create_test_archive_with_single_slash();
+        let mut archive = ZipArchive::new(Cursor::new(archive_data)).unwrap();
+        let result = resolve_archive_path(None, &mut archive, "missing.json");
+        assert!(result.unwrap_err().to_string().contains("File not found"));
+    }
+
+    #[test]
+    fn trim_removes_files_and_known_subdirectories() {
+        // Test with filename
+        let mut path = PathBuf::from("root/nested/file.txt");
+        trim_to_working_directory(&mut path);
+        assert_eq!(path, PathBuf::from("root/nested"));
+
+        // Test with known subdirectories
+        let mut path = PathBuf::from("root/cat");
+        trim_to_working_directory(&mut path);
+        assert_eq!(path, PathBuf::from("root"));
+
+        let mut path = PathBuf::from("root/logs");
+        trim_to_working_directory(&mut path);
+        assert_eq!(path, PathBuf::from("root"));
+
+        let mut path = PathBuf::from("root/docker");
+        trim_to_working_directory(&mut path);
+        assert_eq!(path, PathBuf::from("root"));
+    }
 }
