@@ -11,7 +11,7 @@ on:
       - '.gitattributes'
       - '.editorconfig'
       - '.dockerignore'
-      - 'scripts/**'
+      # - 'scripts/**'
     types:
       - opened
       - synchronize
