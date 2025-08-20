@@ -1,0 +1,39 @@
+name: Docker Image CI (Simple)
+
+on:
+  workflow_dispatch:
+    inputs:
+      platforms:
+        description: 'Target platforms (comma-separated)'
+        required: false
+        default: 'linux/amd64,linux/arm64'
+      registry_type:
+        description: 'Registry type'
+        required: false
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - prod
+      tag:
+        description: 'Image tag'
+        required: false
+        default: 'dev'
+
+jobs:
+  docker-build-simple:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build with script
+        env:
+          PLATFORMS: ${{ github.event.inputs.platforms || 'linux/amd64,linux/arm64' }}
+          REGISTRY_TYPE: ${{ github.event.inputs.registry_type || 'dev' }}
+          TAG: ${{ github.event.inputs.tag || 'dev' }}
+          DOCKER_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKER_PASSWORD: ${{ secrets.DOCKERHUB_TOKEN }}
+          CACHE_TYPE: gha
+        run: |
+          ./scripts/docker-build.sh

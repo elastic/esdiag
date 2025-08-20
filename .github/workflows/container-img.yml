@@ -3,12 +3,41 @@ name: Docker Image CI
 on:
   push:
     branches: [ "main", "*docker-build*" ]
+    paths-ignore:
+      - '.github/**'
+      - '*.md'
+      - '.env*'
+      - '.gitignore'
+      - '.gitattributes'
+      - '.editorconfig'
+      - '.dockerignore'
+      - 'scripts/**'
+    types:
+      - opened
+      - synchronize
   pull_request:
     branches: [ "main" ]
+    paths-ignore:
+      - '.github/**'
+      - '*.md'
+      - '.env*'
+      - '.gitignore'
+      - '.gitattributes'
+      - '.editorconfig'
+      - '.dockerignore'
+      - 'scripts/**'
+    types:
+      - opened
+      - synchronize
 
 jobs:
-  docker:
+  docker-build:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        platform:
+          - linux/amd64
+          - linux/arm64
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -27,19 +56,75 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Restore buildx cache
-        uses: actions/cache@v4
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
         with:
-          path: /tmp/.buildx-cache
-          key: buildx-cache-${{ runner.os }}-buildx
-          restore-keys: |
-            buildx-cache-${{ runner.os }}-
+          images: docker.elastic.co/employees/adrianchen-es/esdiag
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=raw,value=dev
 
-      - name: Build and push
+      - name: Build and push by digest
+        id: build
         uses: docker/build-push-action@v6
         with:
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: adrianchen-es/esdiag:dev
-          cache-from: type=local,src=/tmp/.buildx-cache
-          cache-to: type=local,dest=/tmp/.buildx-cache,mode=max
+          context: .
+          platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          outputs: type=image,name=docker.elastic.co/employees/adrianchen-es/esdiag,push-by-digest=true,name-canonical=true,push=true
+
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.platform }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    runs-on: ubuntu-latest
+    needs:
+      - docker-build
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digests-*
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          registry: docker.elastic.co/employees
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: docker.elastic.co/employees/adrianchen-es/esdiag
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=raw,value=dev
+
+      - name: Create manifest list and push
+        working-directory: /tmp/digests
+        run: |
+          docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf 'docker.elastic.co/employees/adrianchen-es/esdiag@sha256:%s ' *)

@@ -2,7 +2,7 @@
 /target/
 **/*.rs.bk
 *.pdb
-Cargo.lock
+!Cargo.lock
 
 # Git related
 .git/

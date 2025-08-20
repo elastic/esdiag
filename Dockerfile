@@ -1,29 +1,30 @@
 # syntax=docker/dockerfile:1.4
 # Use BuildKit syntax to enable cache mounts (speeds up cargo downloads / target caching)
 # Requires BuildKit-enabled builder (GitHub Actions setup with docker/setup-buildx-action provides this)
-FROM rust:1.88 AS builder
+
+# Multi-stage build with cargo-chef for optimal dependency caching
+FROM rust:1.88 AS chef
+RUN cargo install cargo-chef
 WORKDIR /usr/src/app
 
-# Copy only manifest files first to cache dependency resolution layer
-COPY Cargo.toml ./
+FROM chef AS planner
+COPY . .
+RUN cargo chef prepare --recipe-path recipe.json
 
-# Create a tiny dummy source so cargo will populate the dependency graph and cache crates
-RUN mkdir src && printf 'fn main() {}' > src/main.rs
-
-# Populate cargo registry/git cache using BuildKit cache mounts
+FROM chef AS builder
+# Copy the recipe and build dependencies first (this layer will be cached)
+COPY --from=planner /usr/src/app/recipe.json recipe.json
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
-	--mount=type=cache,target=/usr/local/cargo/git \
-	cargo build --release
+    --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=/usr/src/app/target \
+    cargo chef cook --release --recipe-path recipe.json
 
-# Remove dummy source
-RUN rm -rf src
-
-# Copy the full source and build, reusing cargo and target caches
+# Copy source and build the application
 COPY . .
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
-	--mount=type=cache,target=/usr/local/cargo/git \
-	--mount=type=cache,target=/usr/src/app/target \
-	cargo build --release \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=/usr/src/app/target \
+    cargo build --release \
  && strip target/release/esdiag
 
 FROM gcr.io/distroless/cc-debian12
