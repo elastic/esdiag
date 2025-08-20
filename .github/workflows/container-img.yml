@@ -12,9 +12,9 @@ on:
       - '.editorconfig'
       - '.dockerignore'
       # - 'scripts/**'
-    types:
-      - opened
-      - synchronize
+    # types:
+    #   - opened
+    #   - synchronize
   pull_request:
     branches: [ "main" ]
     paths-ignore:
