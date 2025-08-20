@@ -66,6 +66,14 @@ jobs:
             type=ref,event=pr
             type=raw,value=dev
 
+      - name: Optimize build for available CPU cores
+        run: |
+          echo "Detecting available CPU cores on GitHub runner..."
+          CPU_CORES=$(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo "4")
+          echo "Available CPU cores: $CPU_CORES"
+          echo "DOCKER_BUILDKIT_INLINE_CACHE=1" >> $GITHUB_ENV
+          echo "BUILDX_CONFIG=/tmp/.buildx" >> $GITHUB_ENV
+
       - name: Build and push by digest
         id: build
         uses: docker/build-push-action@v6
@@ -73,6 +81,8 @@ jobs:
           context: .
           platforms: ${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            BUILDKIT_INLINE_CACHE=1
           cache-from: type=gha
           cache-to: type=gha,mode=max
           outputs: type=image,name=docker.elastic.co/employees/adrianchen-es/esdiag,push-by-digest=true,name-canonical=true,push=true

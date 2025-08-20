@@ -38,6 +38,15 @@ RUN case "$TARGETPLATFORM" in \
 # Add the target for cross-compilation
 RUN rustup target add $(cat /tmp/rust-target)
 
+# Detect available CPU cores and set as environment variable
+RUN CPU_CORES=$(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo "4") && \
+    echo "Detected $CPU_CORES CPU cores for parallel compilation"
+
+# Set environment variable for parallel builds (but don't use with cargo-chef)
+ENV CPU_CORES_DETECTED=""
+RUN CPU_CORES=$(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo "4") && \
+    echo "$CPU_CORES" > /tmp/cpu-cores
+
 # Set environment variables for static linking
 ENV RUSTFLAGS="-C target-feature=+crt-static"
 ENV OPENSSL_STATIC=1
@@ -50,6 +59,8 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     --mount=type=cache,target=/usr/src/app/target \
     RUST_TARGET=$(cat /tmp/rust-target) && \
+    CPU_CORES=$(cat /tmp/cpu-cores) && \
+    echo "Building dependencies for target: $RUST_TARGET (CPU cores available: $CPU_CORES)" && \
     cargo chef cook --release --target=$RUST_TARGET --recipe-path recipe.json
 
 # Copy source code and build the application
@@ -58,6 +69,9 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     --mount=type=cache,target=/usr/src/app/target \
     RUST_TARGET=$(cat /tmp/rust-target) && \
+    CPU_CORES=$(cat /tmp/cpu-cores) && \
+    export CARGO_BUILD_JOBS=$CPU_CORES && \
+    echo "Building application with $CARGO_BUILD_JOBS parallel jobs for target: $RUST_TARGET" && \
     cargo build --release --target=$RUST_TARGET && \
     strip target/$RUST_TARGET/release/esdiag && \
     ldd target/$RUST_TARGET/release/esdiag || echo "Static binary confirmed" && \

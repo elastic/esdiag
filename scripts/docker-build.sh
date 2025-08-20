@@ -12,6 +12,10 @@ DEFAULT_PROD_REGISTRY="docker.elastic.co"
 DEFAULT_TAG="dev"
 DEFAULT_BUILDER_NAME="esdiag-builder"
 
+# Detect available CPU cores for optimized builds
+CPU_CORES=$(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo "4")
+MAX_PARALLEL_BUILDS="${MAX_PARALLEL_BUILDS:-$CPU_CORES}"
+
 # Environment variables with defaults
 PLATFORMS="${PLATFORMS:-$DEFAULT_PLATFORMS}"
 REGISTRY_TYPE="${REGISTRY_TYPE:-dev}"  # dev or prod
@@ -81,6 +85,7 @@ ENVIRONMENT VARIABLES:
     CONTEXT                    Build context
     PUSH                       Push to registry (true/false)
     CACHE_TYPE                 Cache strategy
+    MAX_PARALLEL_BUILDS        Maximum parallel builds (auto-detected)
     DOCKER_USERNAME            Registry username
     DOCKER_PASSWORD            Registry password
 
@@ -277,6 +282,8 @@ build_image() {
     log_info "Image: $image_name"
     log_info "Push: $PUSH"
     log_info "Cache strategy: $CACHE_TYPE"
+    log_info "Available CPU cores: $CPU_CORES"
+    log_info "Max parallel builds: $MAX_PARALLEL_BUILDS"
     
     # Build command arguments
     local build_args=(
@@ -284,6 +291,7 @@ build_image() {
         "--platform" "$PLATFORMS"
         "--file" "$DOCKERFILE"
         "--tag" "$image_name"
+        "--build-arg" "BUILDKIT_INLINE_CACHE=1"
     )
     
     # Add cache configuration if specified
