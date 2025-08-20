@@ -3,7 +3,6 @@
 # Docker Multi-Arch Build Script for esdiag
 # Supports both local development and CI/CD environments
 # Optimized for fast builds with proper caching
-
 set -euo pipefail
 
 # Default configuration
