@@ -93,10 +93,17 @@ jobs:
           digest="${{ steps.build.outputs.digest }}"
           touch "/tmp/digests/${digest#sha256:}"
 
+      - name: Generate artifact name
+        id: artifact
+        run: |
+          # Convert platform to safe artifact name
+          PLATFORM_NAME=$(echo "${{ matrix.platform }}" | sed 's/\//-/g')
+          echo "name=digests-${PLATFORM_NAME}" >> $GITHUB_OUTPUT
+
       - name: Upload digest
         uses: actions/upload-artifact@v4
         with:
-          name: digests-${{ matrix.platform//\//- }}
+          name: ${{ steps.artifact.outputs.name }}
           path: /tmp/digests/*
           if-no-files-found: error
           retention-days: 1
