@@ -78,6 +78,7 @@ jobs:
         id: build
         uses: docker/build-push-action@v6
         with:
+          driver: docker-container
           context: .
           platforms: ${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
