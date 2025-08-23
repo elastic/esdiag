@@ -5,6 +5,7 @@
 #
 # Ensure you've allocated your container runtime virtual machine at least 8 GB
 # of memory and as many CPU cores as you can spare for fast ingest performance.
+# Diagnostics with over 100k shards or 100 nodes may require more memory.
 
 name: esdiag
 services:
