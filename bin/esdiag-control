@@ -33,7 +33,7 @@ function print_usage() {
 
 function print_help_main() {
     echo $(white "Description:")
-    echo "    Elastic Stack Diagnostics Control $(green 'esdiag-control') is the deployment assistant for ESDiag!"
+    echo "    Elastic Stack Diagnostics Control $(green 'esdiag-control') is the deployment assistant for ESDiag"
     echo
     echo $(white "Usage:")
     echo "    $(green esdiag-control) <command> [options] <arguments>"
@@ -129,10 +129,10 @@ function esdiag_version_check() {
 
     log_info "latest version: $(cyan ${esdiag_latest}) on $(gray ${esdiag_branch})"
 
-    if [[ "$esdiag_latest" == "$esdiag_version" ]]; then
-        log_info "local version:  $(green ${esdiag_version}) on $(gray ${local_branch})"
+    if [[ "$esdiag_latest" == "$version" ]]; then
+        log_info "local  version: $(green ${version}) on $(gray ${local_branch})"
     else
-        log_warn "local version:  $(yellow ${esdiag_version}) on $(gray ${local_branch})"
+        log_warn "local  version: $(yellow ${version}) on $(gray ${local_branch})"
         log_warn "Please run $(white "git pull") to update local repository and ensure dashboard compatibility"
         if [[ "$local_branch" != "$esdiag_branch" ]]; then
             log_warn "And be sure the $(yellow ${local_branch}) branch is compatible with $(cyan ${esdiag_branch})"
@@ -228,9 +228,19 @@ function kibana_objects_import() {
     sleep 1
 
     # Import saved objects
-
     set_auth_header
-    log_info "Importing $(gray $dashboard_file) to $(blue ${kibana_url}) in the $(gray ${kibana_space}) space"
+    # check for a 404, if it is not found, create it:
+    # https://esdiag-prod.kb.us-west-2.aws.found.io/api/spaces/space/esdiag
+    log_info "Creating Kibana space $(cyan ${kibana_space}) on "$(blue ${kibana_url})""
+    curl -X POST "${kibana_url}/api/spaces/space" \
+        --header "${auth_header}" \
+        --header "kbn-xsrf: true" \
+        --header "Content-Type: application/json" \
+        --silent \
+        --data @"assets/kibana/space.json" \
+        | jq > "${response_file}"
+
+    log_info "Importing $(gray $dashboard_file) to $(blue ${kibana_url}) in the $(cyan ${kibana_space}) space"
     curl -X POST "${kibana_url}/s/${kibana_space}/api/saved_objects/_import?overwrite=true" \
         --header "${auth_header}" \
         --header "kbn-xsrf: true" \
@@ -290,9 +300,16 @@ function validate_dependencies() {
 
     local failures=0
 
+    export container="docker"
     if ! command -v docker &> /dev/null; then
-        log_error "$(white docker) is required to pull, build and run conatiners"
-        failures=$((failures + 1))
+        if command -v podman &> /dev/null; then
+            log_info "Using $(white podman) contianer runtime"
+            container="podman"
+        else
+            log_error "Required container runtime $(magenta docker) or $(magenta podman) is not found"
+            failures=$((failures + 1))
+        fi
+        
     fi
 
     if ! command -v curl &> /dev/null; then
@@ -369,7 +386,7 @@ function command_auth() {
     if [[ $status_code != "null" ]]; then
         local error=$(echo ${response} | jq --raw-output '.error')
         local message=$(echo ${response} | jq --raw-output '.message')
-        log_error "Request to space $(magenta "${kibana_space}") failed: ${status_code} - ${error}"
+        log_error "Request to space $(magenta "${kibana_space}") $(red failed): ${status_code} - ${error}"
         log_error "${message}"
         failure="true"
     else
@@ -404,21 +421,21 @@ function print_help_build () {
 function command_build() {
     local registry="${private_registry:+${private_registry}/esdiag/}"
 
-    if [[ $(docker images -q "${registry}esdiag:${version}" 2> /dev/null) == "" ]]; then
+    if [[ $(${container} images -q "${registry}esdiag:${version}" 2> /dev/null) == "" ]]; then
         log_info "Building $(cyan "esdiag:${version}") container image"
     else
-        log_info "Skipping $(white "docker build"), found latest container image $(cyan "esdiag:${version}")"
+        log_info "Skipping $(white "${container} build"), found latest container image $(cyan "esdiag:${version}")"
         return
     fi
 
-    echo docker build . ${push} \
+    ${container} build . ${push} \
         --tag "${registry}esdiag:latest" \
         --tag "${registry}esdiag:${version}"
 
     if [[ $? -eq 0 ]]; then
-        log_info "$(white "docker build") is $(green complete)"
+        log_info "$(white "${container} build") is $(green complete)"
     else
-        log_error "$(white "docker build") $(red failed) with exit status ${?}"
+        log_error "$(white "${container} build") $(red failed) with exit status ${?}"
         exit $?
     fi
 }
@@ -444,10 +461,18 @@ function command_buildx() {
     if [[ "${private_registry}" != "" ]]; then
         local registry="${private_registry}/esdiag/"
     fi
-    echo docker buildx build . ${push} \
+
+    ${container} buildx build . ${push} \
         --platform linux/amd64,linux/arm64 \
         --tag "${registry}esdiag:latest" \
         --tag "${registry}esdiag:${version}"
+
+    if [[ $? -eq 0 ]]; then
+        log_info "$(white "${container} buildx") is $(green complete)"
+    else
+        log_error "$(white "${container} buildx") $(red failed) with exit status ${?}"
+        exit $?
+    fi
 }
 
 # ----- Command: compose -----
@@ -455,7 +480,7 @@ function command_buildx() {
 function print_help_compose () {
     echo
     echo "$(white "Command:") $(green "compose") [compose_file]"
-    echo "    Generate a full Elastic Stack deployment for use with $(gray "docker compose")"
+    echo "    Generate a full Elastic Stack deployment for use with $(gray "${container} compose")"
     echo
     echo "$(white "Options:")"
     echo "    -e, --env <NAME|FILE>  - The $(gray ".env.NAME") or $(gray "FILE") to source credentials from (default $(gray ".env"))"
@@ -463,7 +488,7 @@ function print_help_compose () {
     echo "    -r, --registry <URL>   - Elastic container registry URL"
     echo
     echo "$(white "Arguments:")"
-    echo "    [compose_file]         - Filename to save the compose file to (default $(gray docker-compose.yml))"
+    echo "    [compose_file]         - Filename to save the compose file to (default $(gray docker/docker-compose.yml))"
     echo
     echo "$(white "Environment Variables:")"
     echo "    ELASTIC_CONTAINER_REGISTRY - Elastic container registry (default $(gray "docker.elastic.co"))"
@@ -491,7 +516,7 @@ function command_compose() {
     # Read the compose file and perform substitutions
     sed -e "s|image: esdiag:latest|image: ${esdiag_registry}esdiag:${version}|g" \
         -e "s|docker\.elastic\.co|${elastic_registry}|g" \
-        -e "s|http://localhost:5601|${kibana_url}|g" \
+        -e "s|http://localhost:5601|${kibana_url}/s/${kibana_space}|g" \
         -e "s|xpack.security.enabled=false|xpack.security.enabled=${security}|g" \
         "$compose_file" > "$compose_esdiag"
 
@@ -508,7 +533,7 @@ function command_compose() {
 function print_help_launch () {
     echo
     echo "$(white "Command:") $(green "launch") [compose_file]"
-    echo "    Generate, launch, and setup a full Elastic Stack deployment with $(gray "docker compose up -d")"
+    echo "    Generate, launch, and setup a full Elastic Stack deployment with $(gray "${container} compose up -d")"
     echo
     echo "$(white "Options:")"
     echo "    -e, --env <NAME|FILE>  - The $(gray ".env.NAME") or $(gray "FILE") to source credentials from (default $(gray ".env"))"
@@ -517,7 +542,7 @@ function print_help_launch () {
     echo "    -s, --space            - Kibana space id to use (default "esdiag")"
     echo
     echo "$(white "Arguments:")"
-    echo "    [compose_file]         - Filename to save the compose file to (default $(gray docker-compose.yml))"
+    echo "    [compose_file]         - Filename to save the compose file to (default $(gray docker/docker-compose.yml))"
     echo
     echo "$(white "Environment Variables:")"
     echo "    ELASTIC_CONTAINER_REGISTRY - Elastic container registry (default $(gray "docker.elastic.co"))"
@@ -526,12 +551,12 @@ function print_help_launch () {
 }
 
 function command_launch() {
-    log_info "Running $(white "docker compose up --detach")"
-    echo docker compose --file ${compose_esdiag} up --detach
-    # echo docker compose --file ${compose_esdiag} up --detach > /dev/null 2>&1 &
+    log_info "Running $(white "${container} compose up --detach")"
+    #${container} compose --file ${compose_esdiag} up --detach > /dev/null 2>&1 &
+    ${container} compose --file ${compose_esdiag} up --detach > /dev/null 2>&1 &
     wait $!
     if [[ $? -ne 0 ]]; then
-        log_error "$(white "docker compose up") $(red failed) with exit status ${?}"
+        log_error "$(white "${container} compose up") $(red failed) with exit status ${?}"
         exit $?
     fi
 }
@@ -541,7 +566,7 @@ function command_launch() {
 function print_help_setup () {
     echo
     echo "$(white "Command:") $(green "setup")"
-    echo "    Generate, launch, and setup a full Elastic Stack deployment with $(gray "docker compose up -d")"
+    echo "    Generate, launch, and setup a full Elastic Stack deployment with $(gray "${container} compose up -d")"
     echo
     echo "$(white "Options:")"
     echo "    -e, --env <NAME|FILE>  - The $(gray ".env.NAME") or $(gray "FILE") to source credentials from (default $(gray ".env"))"
@@ -571,14 +596,17 @@ function elasticsearch_templates_setup() {
         fi
     done
     log_info "$(blue Elasticsearch) is $(green ready)!"
-    echo "Setting up esdiag... $(magenta allegedly)"
-    docker run --rm \
-        --env ESDIAG_OUTPUT_URL="${elasticsearch_url}" \
-        ${LOG_LEVEL:+--env LOG_LEVEL="${LOG_LEVEL}"} \
-        ${apikey:+--env ESDIAG_OUTPUT_APIKEY="${apikey}"} \
-        ${username:+--env ESDIAG_OUTPUT_USERNAME="${username}"} \
-        ${password:+--env ESDIAG_OUTPUT_PASSWORD="${password}"} \
-        ${registry}esdiag:${esdiag_version} setup
+    if [[ ! -z ${compose_esdiag} ]]; then
+        ${container} compose --file ${compose_esdiag} run --rm esdiag-webui setup &> /dev/null
+    else 
+        ${container} run --rm --name="esdiag-setup" \
+            --env ESDIAG_OUTPUT_URL="${elasticsearch_url}" \
+            ${LOG_LEVEL:+--env LOG_LEVEL="${LOG_LEVEL}"} \
+            ${apikey:+--env ESDIAG_OUTPUT_APIKEY="${apikey}"} \
+            ${username:+--env ESDIAG_OUTPUT_USERNAME="${username}"} \
+            ${password:+--env ESDIAG_OUTPUT_PASSWORD="${password}"} \
+            ${registry}esdiag:${version} setup
+    fi
 
     if [[ $? -eq 0 ]]; then
         log_info "$(white "esdiag setup") is $(green complete)!"
@@ -591,7 +619,7 @@ function elasticsearch_templates_setup() {
 function command_setup() {
     # If we have a GitHub token, try to download the latest dashboard file
     if [[ -z $github_token ]]; then
-        log_info "No GitHub token, $(green skipping) version checks and building with local version $(cyan ${esdiag_version})"
+        log_info "No GitHub token, $(green skipping) version checks and building with local version $(cyan ${version})"
     else
         github_token_check \
         && esdiag_version_check \
@@ -603,7 +631,7 @@ function command_setup() {
         elasticsearch_templates_setup \
         && kibana_objects_import
     else
-        log_error "ESDiag Dashboards file $(red "not found")"
+        log_error "ESDiag Dashboards file $(magenta ${dashboard_file}) $(red "not found")"
         exit 1
     fi
 }
@@ -717,17 +745,17 @@ case $command in
     ;;
     "compose" )
         if [[ $help == true ]]; then print_help_compose && exit 0; fi
-        declare compose_file="${1:-docker-compose.yml}"
-        declare compose_esdiag="${2:-esdiag-compose.yml}"
+        declare compose_file="${1:-docker/docker-compose.yml}"
+        declare compose_esdiag="${2:-target/esdiag-compose.yml}"
         log_info "$(green compose) file generating"
         command_compose && \
         log_info "$(green compose) complete"
     ;;
     "launch" )
         if [[ $help == true ]]; then print_help_launch && exit 0; fi
-        declare compose_file="${1:-docker-compose.yml}"
-        declare compose_esdiag="${2:-esdiag-compose.yml}"
-        log_info "$(green launch) docker compose from $(gray ${compose_file})"
+        declare compose_file="${1:-docker/docker-compose.yml}"
+        declare compose_esdiag="${2:-target/esdiag-compose.yml}"
+        log_info "$(green launch) ${container} compose from $(gray ${compose_file})"
         command_build && \
         command_compose && \
         command_launch && \
