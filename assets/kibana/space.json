@@ -1,0 +1,33 @@
+{
+    "id": "esdiag",
+    "name": "esdiag",
+    "description": "Elastic Stack Diagnostics",
+    "color": "#9170B8",
+    "initials": "e",
+    "imageUrl": "data:image/png;base64,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",
+    "disabledFeatures": [
+        "securitySolutionTimeline",
+        "securitySolutionNotes",
+        "siemV2",
+        "securitySolutionCasesV3",
+        "securitySolutionAssistant",
+        "securitySolutionAttackDiscovery",
+        "securitySolutionSiemMigrations",
+        "searchSynonyms",
+        "enterpriseSearch",
+        "searchPlayground",
+        "searchInferenceEndpoints",
+        "enterpriseSearchApplications",
+        "enterpriseSearchAnalytics",
+        "logs",
+        "infrastructure",
+        "apm",
+        "inventory",
+        "uptime",
+        "slo",
+        "profiling",
+        "canvas"
+    ],
+    "_reserved": true,
+    "solution": "classic"
+}
