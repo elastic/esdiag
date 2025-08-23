@@ -33,7 +33,7 @@ services:
       - cluster.name=esdiag-cluster
       - cluster.initial_master_nodes=esdiag-node
       - xpack.security.enabled=false
-      - bootstrap.memory_lock=true
+      - bootstrap.memory_lock=false
       - "ES_JAVA_OPTS=-Xms4g -Xmx4g"
       # Workaround for MacOS 15.2 on M4: https://github.com/elastic/elasticsearch/issues/118583 and https://bugs.openjdk.org/browse/JDK-8345296
       - "_JAVA_OPTIONS=-XX:UseSVE=0"
