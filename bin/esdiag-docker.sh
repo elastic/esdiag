@@ -1,5 +1,10 @@
 #!/bin/bash
 
+### ⚠️ DEPRECATED SCRIPT ⚠️ ###
+# Running esdiag CLI with a container is discouraged
+# Use the web interface for containerized workloads instead.
+# This script will be removed.
+
 # Export these variables, they will be passed to the container
 declare ESDIAG_KIBANA_URL=${ESDIAG_KIBANA_URL:-"http://localhost:5601"}
 declare ESDIAG_OUTPUT_URL=${ESDIAG_OUTPUT_URL:-"http://host.docker.internal:9200"}
@@ -85,6 +90,7 @@ function docker_run() {
 
 # ----- Main -----
 
+log_warn "⚠️ DEPRECATED SCRIPT: for containerized usage, use the web interface instead"
 dependencies_validate && container_image_validate
 declare command="${1}"; shift
 case "${command}" in
@@ -107,3 +113,4 @@ case "${command}" in
         docker_run ${*}
         ;;
 esac
+log_warn "⚠️ DEPRECATED SCRIPT: for containerized usage, use the web interface instead"
