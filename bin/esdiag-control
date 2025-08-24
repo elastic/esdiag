@@ -213,14 +213,22 @@ function kibana_objects_import() {
     local kibana_space="${kibana_space:-esdiag}"
     local response_file="target/kibana_import.json"
 
-    # Don't import before Kibana is responding
-
+    # Wait for Kibana to be ready
     local http_status=0
     while [[ $http_status -ne 200 ]]; do
         http_status=$(curl --write-out "%{http_code}" --silent --output /dev/null "${kibana_url}/app/home")
         if [[ $http_status -ne 200 ]]; then
             log_info "Waiting on $(magenta Kibana)..."
             sleep 5
+        fi
+        # Make sure the container is still running
+        if [[ ! -z ${compose_esdiag} ]]; then
+            local container_status=$(${container} inspect esdiag-kibana --format '{{.State.Status}}')
+            if [[ $container_status == "exited" ]]; then
+                log_info "$(blue Kibana) container $(red exited)!"
+                ${container} logs esdiag-kibana | tail -n 10
+                exit 1
+            fi
         fi
     done
     log_info "$(magenta Kibana) is $(green ready)!"
@@ -309,7 +317,7 @@ function validate_dependencies() {
             log_error "Required container runtime $(magenta docker) or $(magenta podman) is not found"
             failures=$((failures + 1))
         fi
-        
+
     fi
 
     if ! command -v curl &> /dev/null; then
@@ -551,12 +559,32 @@ function print_help_launch () {
 }
 
 function command_launch() {
+    # Check if the container runtime has the recommended resources
+    if [[ $container == "podman" ]]; then
+        local machine=$(podman machine inspect --format '{{.Name}}')
+        local cpus=$(podman machine inspect --format '{{.Resources.CPUs}}')
+        local memory=$(podman machine inspect --format '{{.Resources.Memory}}')
+    elif [[ $container == "docker" ]]; then
+        local machine=$(docker info --format '{{.Name}}')
+        local cpus=$(docker info --format '{{.NCPU}}')
+        local memory=$(( $(docker info --format '{{.MemTotal}}') / 1024 / 1024 ))
+    fi
+
+    log_info "$(white ${container}) machine $(gray "${machine}") allocated with $(cyan "${cpus} CPUs") and $(cyan "${memory}MB") memory"
+    if [[ $memory -lt 8192 ]]; then
+        log_error "Required minimum container engine memory is $(magenta 8192MB)"
+        exit 1
+    fi
+    if [[ $cpus -lt 8 ]]; then
+        log_warn "Recommended minimum processors is $(magenta 8 CPUs)"
+    fi
+
     log_info "Running $(white "${container} compose up --detach")"
-    #${container} compose --file ${compose_esdiag} up --detach > /dev/null 2>&1 &
     ${container} compose --file ${compose_esdiag} up --detach > /dev/null 2>&1 &
     wait $!
     if [[ $? -ne 0 ]]; then
         log_error "$(white "${container} compose up") $(red failed) with exit status ${?}"
+        ${container} compose --file ${compose_esdiag} logs | tail -n10
         exit $?
     fi
 }
@@ -587,6 +615,7 @@ function print_help_setup () {
 
 function elasticsearch_templates_setup() {
     local registry="${private_registry:+${private_registry}/esdiag/}"
+    # Wait for Elasticsearch to be ready
     local http_status=0
     while [[ $http_status -ne 200 ]]; do
         http_status=$(curl --write-out "%{http_code}" --silent --output /dev/null "${elasticsearch_url}/")
@@ -594,11 +623,20 @@ function elasticsearch_templates_setup() {
             log_info "Waiting on $(blue Elasticsearch)..."
             sleep 5
         fi
+        # Make sure the container is still running
+        if [[ ! -z ${compose_esdiag} ]]; then
+            local container_status=$(${container} inspect esdiag-elasticsearch --format '{{.State.Status}}')
+            if [[ $container_status == "exited" ]]; then
+                log_info "$(blue Elasticsearch) container $(red exited)!"
+                ${container} logs esdiag-elasticsearch | tail -n 10
+                exit 1
+            fi
+        fi
     done
     log_info "$(blue Elasticsearch) is $(green ready)!"
     if [[ ! -z ${compose_esdiag} ]]; then
         ${container} compose --file ${compose_esdiag} run --rm esdiag-webui setup &> /dev/null
-    else 
+    else
         ${container} run --rm --name="esdiag-setup" \
             --env ESDIAG_OUTPUT_URL="${elasticsearch_url}" \
             ${LOG_LEVEL:+--env LOG_LEVEL="${LOG_LEVEL}"} \
