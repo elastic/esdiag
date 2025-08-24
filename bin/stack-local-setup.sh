@@ -1,5 +1,7 @@
 #!/bin/bash
 
+log_warn "⚠️ DEPRECATED SCRIPT: this script is replaced by $(white "esdiag-control launch --insecure" )"
+
 # Setup a complete, local, Docker container-powered Elastic Stack for ESDiag.
 # 1. Builds an ESDiag container image for use with `esdiag-docker.sh`
 # 2. Starts a security-disabled Kibana and Elasticsearch via `docker compose`
@@ -376,3 +378,5 @@ else
     log_error "ESDiag Dashboards file $(red "not found")"
     exit 1
 fi
+
+log_warn "⚠️ DEPRECATED SCRIPT: this script is replaced by $(white "esdiag-control launch --insecure" )"
