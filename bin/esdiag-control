@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# Automates the build, configuration and deployment of Elastic Stack Diagnostics
+# See `docs/esdiag-control.md` for more information
+# Run `esdiag-control help <command>` for usage details
+
 # ----- Logging Functions -----
 
 declare log_name="esdiag-control"
@@ -48,7 +52,7 @@ function print_help_main() {
     echo
     echo "$(white "Options:")"
     echo "    -e, --env <NAME|FILE>  - The $(gray ".env.NAME") or $(gray "FILE") file to source credentials from (default $(gray ".env"))"
-    echo "    -s, --space <ID>       - Kibana space id to use (default $(gray "esdiag"))"
+    echo "    -s, --space <ID>       - Kibana space id (default $(gray "esdiag"))"
     echo "        --debug            - More verbose logging and retention of temporary files"
     echo "        --version          - Print the version of the script"
 }
@@ -356,10 +360,17 @@ function validate_dependencies() {
 function print_help_auth () {
     echo
     echo "$(white "Command:") $(green "auth")"
-    echo "    Tests the Kibana authorization configuration"
+    echo "    Test the configured authorization for Elasticsearch and Kibana"
     echo
     echo "$(white "Options:")"
     echo "    -e, --env <NAME|FILE>  - The $(gray ".env.NAME") or $(gray "FILE") file to source credentials from (default $(gray ".env"))"
+    echo
+    echo "$(white "Environment Variables:")"
+    echo "    ESDIAG_KIBANA_URL          - Kibana URL (default $(gray "http://localhost:5601"))"
+    echo "    ESDIAG_OUTPUT_URL          - Elasticsearch URL (default $(gray "http://localhost:9200"))"
+    echo "    ESDIAG_OUTPUT_APIKEY       - Elasticsearch API key, takes precedence over username/password"
+    echo "    ESDIAG_OUTPUT_USERNAME     - Elasticsearch username"
+    echo "    ESDIAG_OUTPUT_PASSWORD     - Elasticsearch password"
     echo
 }
 
@@ -487,7 +498,7 @@ function command_buildx() {
 
 function print_help_compose () {
     echo
-    echo "$(white "Command:") $(green "compose") [compose_file]"
+    echo "$(white "Command:") $(green "compose") [input_file] [output_file]"
     echo "    Generate a full Elastic Stack deployment for use with $(gray "${container} compose")"
     echo
     echo "$(white "Options:")"
@@ -496,7 +507,8 @@ function print_help_compose () {
     echo "    -r, --registry <URL>   - Elastic container registry URL"
     echo
     echo "$(white "Arguments:")"
-    echo "    [compose_file]         - Filename to save the compose file to (default $(gray docker/docker-compose.yml))"
+    echo "    [input_file]         - Compose file to read in (default docker/docker-compose.yml)"
+    echo "    [output_file]        - Compose file to save out (default target/esdiag-compose.yml)"
     echo
     echo "$(white "Environment Variables:")"
     echo "    ELASTIC_CONTAINER_REGISTRY - Elastic container registry (default $(gray "docker.elastic.co"))"
@@ -540,17 +552,18 @@ function command_compose() {
 
 function print_help_launch () {
     echo
-    echo "$(white "Command:") $(green "launch") [compose_file]"
+    echo "$(white "Command:") $(green "launch") [input_file] [output_file]"
     echo "    Generate, launch, and setup a full Elastic Stack deployment with $(gray "${container} compose up -d")"
     echo
     echo "$(white "Options:")"
     echo "    -e, --env <NAME|FILE>  - The $(gray ".env.NAME") or $(gray "FILE") to source credentials from (default $(gray ".env"))"
     echo "    -i, --insecure         - Setup the Elasticsearch cluster with security disabled"
     echo "    -r, --registry <URL>   - Elastic container registry URL"
-    echo "    -s, --space            - Kibana space id to use (default "esdiag")"
+    echo "    -s, --space            - Kibana space id (default "esdiag")"
     echo
     echo "$(white "Arguments:")"
-    echo "    [compose_file]         - Filename to save the compose file to (default $(gray docker/docker-compose.yml))"
+    echo "    [input_file]           - Compose file to read in (default $(gray docker/docker-compose.yml))"
+    echo "    [output_file]          - Compose file to save out (default $(gray target/esdiag-compose.yml))"
     echo
     echo "$(white "Environment Variables:")"
     echo "    ELASTIC_CONTAINER_REGISTRY - Elastic container registry (default $(gray "docker.elastic.co"))"
@@ -600,16 +613,16 @@ function print_help_setup () {
     echo "    -e, --env <NAME|FILE>  - The $(gray ".env.NAME") or $(gray "FILE") to source credentials from (default $(gray ".env"))"
     echo "    -i, --insecure         - Setup the Elasticsearch cluster with security disabled"
     echo "    -r, --registry <URL>   - Elastic container registry URL"
-    echo "    -s, --space            - Kibana space id to use (default "esdiag")"
+    echo "    -s, --space            - Kibana space id (default "esdiag")"
     echo
     echo "$(white "Environment Variables:")"
     echo "    ELASTIC_CONTAINER_REGISTRY - Elastic container registry (default $(gray "docker.elastic.co"))"
     echo "    ESDIAG_REGISTRY            - Private container registry (default $(gray '$ELASTIC_CONTAINER_REGISTRY'))"
-    echo "    ESDIAG_KIBANA_URL          - Kibana URL to use (default $(gray "http://localhost:5601"))"
-    echo "    ESDIAG_OUTPUT_URL          - Elasticsearch URL to use (default $(gray "http://localhost:9200"))"
-    echo "    ESDIAG_OUTPUT_APIKEY       - Elasticsearch API key to use, takes precedence over username/password"
-    echo "    ESDIAG_OUTPUT_USERNAME     - Elasticsearch username to use"
-    echo "    ESDIAG_OUTPUT_PASSWORD     - Elasticsearch password to use"
+    echo "    ESDIAG_KIBANA_URL          - Kibana URL (default $(gray "http://localhost:5601"))"
+    echo "    ESDIAG_OUTPUT_URL          - Elasticsearch URL (default $(gray "http://localhost:9200"))"
+    echo "    ESDIAG_OUTPUT_APIKEY       - Elasticsearch API key , takes precedence over username/password"
+    echo "    ESDIAG_OUTPUT_USERNAME     - Elasticsearch username"
+    echo "    ESDIAG_OUTPUT_PASSWORD     - Elasticsearch password"
     echo
 }
 
