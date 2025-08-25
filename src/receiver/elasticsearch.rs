@@ -4,8 +4,9 @@ use super::super::processor::{
 use super::{Receive, ReceiveRaw};
 use crate::client::KnownHost;
 use elasticsearch::{Elasticsearch, http};
-use eyre::Result;
+use eyre::{Result, eyre};
 use serde::de::DeserializeOwned;
+use serde_json::Value;
 use url::Url;
 
 #[derive(Clone)]
@@ -87,13 +88,30 @@ impl Receive for ElasticsearchReceiver {
             )
             .await?;
 
-        response.json::<T>().await.map_err(Into::into)
+        match response.status_code() {
+            http::StatusCode::OK => response.json::<T>().await.map_err(Into::into),
+            status => {
+                let body: Value = response.json().await?;
+                log::debug!("Failed to get API response: {}", body);
+                let reason = body
+                    .get("error")
+                    .and_then(|e| e.get("reason").and_then(|r| r.as_str()))
+                    .unwrap_or("Unknown");
+                Err(eyre!("http {} - {}", status, reason))
+            }
+        }
     }
 
     async fn try_get_manifest(&self) -> Result<DiagnosticManifest> {
         let collection_date = chrono::Utc::now().to_rfc3339();
         log::info!("Creating diagnostic manifest with collection date {collection_date}");
-        let cluster = self.get::<ElasticsearchCluster>().await?;
+        let cluster = match self.get::<ElasticsearchCluster>().await {
+            Ok(cluster) => cluster,
+            Err(err) => {
+                log::debug!("Failed to get Elasticsearch cluster info: {}", err);
+                return Err(err);
+            }
+        };
         let manifest = ManifestBuilder::from(cluster)
             .runner("esdiag")
             .collection_date(collection_date)

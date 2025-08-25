@@ -1,7 +1,7 @@
 <!doctype html>
 <html>
     <head>
-        <title>Elastic Stack Diagnostics</title>
+        <title>ESDiag</title>
         <link rel="stylesheet" href="style.css" />
         <link rel="icon" type="image/svg+xml" href="esdiag.svg" />
         <link rel="apple-touch-icon" href="esdiag.svg" />
@@ -92,28 +92,28 @@
             <h2>Process Diagnostics</h2>
             <div class="input-form" id="input-form" data-signals-loading="false" data-signals-processing="false">
                 <div id="diagnostic-form" class="diagnostic-form">
-                    <div class="tabs" data-signals-_tab="'file-upload'">
+                    <div class="tabs" data-signals-tab="'file-upload'">
                         <button
                             id="tab-file-upload"
                             class="tab active"
-                            data-on-click="$_tab = 'file-upload'"
-                            data-class-active="$_tab === 'file-upload'"
+                            data-on-click="$tab = 'file-upload'"
+                            data-class-active="$tab === 'file-upload'"
                         >
                             File Upload
                         </button>
                         <button
                             id="tab-service-link"
                             class="tab"
-                            data-on-click="$_tab = 'service-link'"
-                            data-class-active="$_tab === 'service-link'"
+                            data-on-click="$tab = 'service-link'"
+                            data-class-active="$tab === 'service-link'"
                         >
                             Service Link
                         </button>
                         <button
                             id="tab-api-key"
                             class="tab"
-                            data-on-click="$_tab = 'api-key'"
-                            data-class-active="$_tab === 'api-key'"
+                            data-on-click="$tab = 'api-key'"
+                            data-class-active="$tab === 'api-key'"
                         >
                             API Key
                         </button>
@@ -121,7 +121,7 @@
                     <div id="tab-content" class="tab-content">
                         <form
                             id="upload-form"
-                            data-show="$_tab === 'file-upload'"
+                            data-show="$tab === 'file-upload'"
                             data-signals-loading="false"
                             data-signals-file_upload.job_id="0"
                             enctype="multipart/form-data"
@@ -326,7 +326,7 @@
                         <form
                             id="service-link-form"
                             enctype="multipart/form-data"
-                            data-show="$_tab === 'service-link'"
+                            data-show="$tab === 'service-link'"
                             style="display: none"
                         >
                             <p class="info">
@@ -430,13 +430,14 @@
 
                                 // Extract URL
                                 const parseUrl = (cmd) => {
-                                    const url = cmd.match(/https?:\/\/\S+/);
-                                    return url ? url[0] : null;
+                                    const match = cmd.match(/https?:\/\/\S+/);
+                                    const url = match ? match[0].replace(/\.$/, "") : null;
+                                    return url;
                                 };
                             </script>
                         </form>
 
-                        <form id="api-key-form" data-show="$_tab === 'api-key'" style="display: none">
+                        <form id="api-key-form" data-show="$tab === 'api-key'" style="display: none">
                             <p class="info">Process directly from an Elasticsearch cluster's API.</p>
                             <div class="form-group">
                                 <label for="elasticsearch-url" class="form-label">Elasticsearch URL</label>
@@ -444,7 +445,7 @@
                                     type="url"
                                     id="elasticsearch-url"
                                     name="url"
-                                    autocomplete="url"
+                                    autocomplete="username"
                                     data-bind-es_api.url
                                     class="form-input"
                                     required
@@ -486,7 +487,7 @@
                             name="username"
                             data-bind-metadata.user
                             placeholder="Username"
-                            autocomplete="username"
+                            autocomplete="none"
                             class="form-input"
                             data-attr-disabled="$auth.header || $processing || $loading"
                         />
@@ -553,14 +554,22 @@
                 <span id="status-message" data-text="$message">Uploading...</span>
             </div>
             <div id="job-feed"></div>
-            {% if let Some(link_id) = link_id %}
+            {% if let Some(key_id) = key_id %}
+            <div
+                id="job-{{ key_id }}"
+                data-signals-_job_id="true"
+                data-on-load="$loading = true; $tab='api-key'; $message = 'Processing api key {{ key_id }}'; @post('/api_key/{{ key_id }}')"
+                class="status-box loading"
+            >
+                <div class="spinner"></div>
+                Processing api key for {{ key_id }}
+            </div>
+            {% else if let Some(link_id) = link_id %}
             <div
                 id="job-{{ link_id }}"
-                data-show="$loading"
                 data-signals-_job_id="true"
-                data-on-load="$loading = true && $message = 'Forwarding service link {{ link_id }}' && @post('/service_link/{{ link_id }}')"
+                data-on-load="$loading = true; $tab='service-link'; $message = 'Forwarding service link {{ link_id }}'; @post('/service_link/{{ link_id }}')"
                 class="status-box loading"
-                style="display: none"
             >
                 <div class="spinner"></div>
                 Loading service link {{ link_id }}
@@ -568,11 +577,9 @@
             {% else if let Some(upload_id) = upload_id %}
             <div
                 id="job-{{ upload_id }}"
-                data-show="$loading"
                 data-signals-_job_id="true"
-                data-on-load="$loading = true && $message = 'Processing file upload {{ upload_id }}' && @post('/file_upload/{{ upload_id }}')"
+                data-on-load="$loading = true; $message = 'Processing file upload {{ upload_id }}'; @post('/file_upload/{{ upload_id }}')"
                 class="status-box loading"
-                style="display: none"
             >
                 <div class="spinner"></div>
                 Loading file upload {{ upload_id }}

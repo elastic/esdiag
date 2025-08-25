@@ -59,39 +59,33 @@ pub async fn get(
     Ok((status, body))
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
+#[tokio::test]
+async fn get_root_returns_http_200() {
+    let mut test_server = setup_test_server().await;
 
-    #[tokio::test]
-    async fn test_server_setup() {
-        let mut test_server = setup_test_server().await;
+    // Test simple request to server
+    let (status, _) = get(&test_server.base_url, "/").await.unwrap();
+    assert_eq!(status, StatusCode::OK);
 
-        // Test simple request to server
-        let (status, _) = get(&test_server.base_url, "/").await.unwrap();
-        assert_eq!(status, StatusCode::OK);
+    // Clean up
+    test_server.server.shutdown().await;
+}
 
-        // Clean up
-        test_server.server.shutdown().await;
-    }
+#[tokio::test]
+async fn post_json_returns_http_404() {
+    let mut test_server = setup_test_server().await;
 
-    #[tokio::test]
-    async fn test_json_request() {
-        let mut test_server = setup_test_server().await;
+    let payload = serde_json::json!({
+        "test": "data"
+    });
 
-        let payload = json!({
-            "test": "data"
-        });
+    // This will fail with 404 since we're testing a non-existent endpoint,
+    // but it verifies the JSON request functionality
+    let (status, _) = post_json(&test_server.base_url, "/test", &payload)
+        .await
+        .unwrap();
+    assert_eq!(status, StatusCode::NOT_FOUND);
 
-        // This will fail with 404 since we're testing a non-existent endpoint,
-        // but it verifies the JSON request functionality
-        let (status, _) = post_json(&test_server.base_url, "/test", &payload)
-            .await
-            .unwrap();
-        assert_eq!(status, StatusCode::NOT_FOUND);
-
-        // Clean up
-        test_server.server.shutdown().await;
-    }
+    // Clean up
+    test_server.server.shutdown().await;
 }

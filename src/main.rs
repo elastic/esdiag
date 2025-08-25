@@ -176,7 +176,7 @@ async fn run(cli: Cli) -> Result<&'static str> {
             output,
             kibana,
         } => {
-            log::info!("Starting ESDiag API server");
+            log::info!("Starting ESDiag server");
 
             let output_uri = output.and_then(|o| Uri::try_from(o).ok());
             let exporter = Exporter::try_from(output_uri)?;
@@ -188,7 +188,6 @@ async fn run(cli: Cli) -> Result<&'static str> {
 
             let mut server = Server::new(port, exporter, kibana_url);
 
-            // This will process uploaded diagnostics until a termination signal is received
             tokio::select! {
                 _ = tokio::signal::ctrl_c() => {
                     log::info!("Shutting down server (Ctrl+C)...");
@@ -200,7 +199,7 @@ async fn run(cli: Cli) -> Result<&'static str> {
                     Ok::<_, eyre::Report>(())
                 } => {}
             }
-            // Perform graceful shutdown of the server and worker thread
+
             server.shutdown().await;
             Ok("serve")
         }

@@ -1,10 +1,10 @@
-# ESdiag API Documentation
+# ESDiag API Documentation
 
 This directory contains the API documentation for the ESDiag service, which processes Elastic Stack diagnostic bundles.
 
 ## Overview
 
-The ESdiag API provides endpoints for:
+The ESDiag API provides endpoints for:
 - Accessing the web interface
 - Checking processing status
 - Uploading diagnostic bundles via form submission
@@ -27,7 +27,8 @@ http://localhost:{port}
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/` | Serves the main application interface, may include a `?job_id=<job_id>` parameter to immediately start processing |
-| POST | `/api/service_link` | Stores a job_id for later processing |
+| POST | `/api/service_link` | Stores a `link_id` for later processing |
+| POST | `/api/api_key` | Stores a `key_id` for later processing |
 
 ## Request Limits
 
@@ -49,4 +50,3 @@ All API responses return JSON with consistent structure:
 - [`endpoints.md`](./endpoints.md) - Detailed endpoint documentation
 - [`types.md`](./types.md) - Data type definitions
 - [`examples.md`](./examples.md) - Request/response examples
-- [`errors.md`](./errors.md) - Error handling and status codes

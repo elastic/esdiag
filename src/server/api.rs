@@ -1,11 +1,11 @@
-use super::{ServerState, UploadServiceRequest};
-use crate::{data::Uri, processor::new_job_id};
+use super::{ApiKeyRequest, ServerState, UploadServiceRequest};
+use crate::{client::KnownHostBuilder, data::Uri, processor::new_job_id};
 use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
 use serde_json::json;
 use std::sync::Arc;
 use url::Url;
 
-pub async fn service_link_handler(
+pub async fn service_link(
     State(state): State<Arc<ServerState>>,
     Json(payload): Json<UploadServiceRequest>,
 ) -> impl IntoResponse {
@@ -85,4 +85,60 @@ pub async fn service_link_handler(
 
     // Respond with a JSON success
     (StatusCode::CREATED, Json(json!({"link_id": job_id})))
+}
+
+#[axum::debug_handler]
+pub async fn api_key(
+    State(state): State<Arc<ServerState>>,
+    Json(payload): Json<ApiKeyRequest>,
+) -> impl IntoResponse {
+    log::info!("Received JSON api key request for: {}", payload.url);
+
+    let job_id = new_job_id();
+
+    // Build the known host from the URL
+    let url = match Url::parse(&payload.url) {
+        Ok(url) => url,
+        Err(e) => {
+            log::error!("Failed to parse URL: {}", e);
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({
+                    "error": format!("Failed to parse URL: {}", e)
+                })),
+            );
+        }
+    };
+
+    // Validate apikey is not empty or whitespace-only
+    if payload.apikey.trim().is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": "API key cannot be empty"
+            })),
+        );
+    }
+
+    let host = match KnownHostBuilder::new(url)
+        .apikey(Some(payload.apikey))
+        .build()
+    {
+        Ok(host) => host,
+        Err(e) => {
+            log::error!("Failed to build host: {}", e);
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({
+                    "error": format!("Failed to build host: {}", e)
+                })),
+            );
+        }
+    };
+
+    // Stash the username and (filename, URI) into the server state for later use
+    state.push_key(job_id, payload.metadata, host).await;
+
+    // Respond with a JSON success
+    (StatusCode::CREATED, Json(json!({"key_id": job_id})))
 }

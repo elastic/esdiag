@@ -14,7 +14,7 @@ use axum::{
 use datastar::axum::ReadSignals;
 use std::sync::Arc;
 
-pub async fn handler(
+pub async fn form(
     State(state): State<Arc<ServerState>>,
     ReadSignals(signals): ReadSignals<Signals>,
 ) -> impl IntoResponse {
@@ -87,7 +87,7 @@ pub async fn handler(
                 let job = job.start();
                 yield patch_job_feed(template::JobProcessing {
                     job_id: job.id,
-                    filename: job.filename.as_deref().unwrap_or(""),
+                    source: job.filename.as_deref().unwrap_or(""),
                 });
                 yield patch_signals(
                     r#"{"loading":false,"processing":true,"service_link":{"_curl":"","token":"","url":"","filename":""}}"#
@@ -101,7 +101,7 @@ pub async fn handler(
                             diagnostic_id: &job.report.metadata.id,
                             docs_created: &job.report.docs.created,
                             duration: &format!("{:.3}", job.report.processing_duration as f64 / 1000.0),
-                            filename: job.filename.as_deref().unwrap_or(""),
+                            source: job.filename.as_deref().unwrap_or(""),
                             kibana_link: job.report.kibana_link.as_ref().unwrap_or(&"#".to_string()),
                             product: &job.report.product.to_string(),
                         });
@@ -133,21 +133,21 @@ pub async fn handler(
     })
 }
 
-pub async fn job_handler(
+pub async fn id(
     State(state): State<Arc<ServerState>>,
-    Path(id): Path<u64>,
+    Path(job_id): Path<u64>,
     ReadSignals(signals): ReadSignals<Signals>,
 ) -> impl IntoResponse {
     Sse::new(stream! {
-        let (identifiers, uri): (Identifiers, Uri) = match state.pop_link(id).await{
+        let (identifiers, uri): (Identifiers, Uri) = match state.pop_link(job_id).await{
             Some((mut identifiers, uri)) => {
                 identifiers.user = signals.metadata.user;
                 (identifiers, uri)
             },
             None => {
-                yield patch_job_feed(template::JobFailed {
-                    job_id: id,
-                    error: &format!("Link id {} not found", id),
+                yield patch_template(template::JobFailed {
+                    job_id,
+                    error: &format!("Link id {} not found", job_id),
                     source: "Forwarded service link job"
                 });
                 yield patch_signals(r#"{"loading":false}"#);
@@ -162,8 +162,8 @@ pub async fn job_handler(
                 state.record_failure().await;
                 let error_msg = format!("Failed to create receiver: {}", e);
                 log::error!("Failed to create receiver: {}", e);
-                yield patch_job_feed(template::JobFailed {
-                    job_id: new_job_id(),
+                yield patch_template(template::JobFailed {
+                    job_id,
                     error: &error_msg,
                     source: &identifiers.filename.unwrap_or("None".to_string())
                 });
@@ -181,9 +181,9 @@ pub async fn job_handler(
         match JobNew::new(&exporter.identifiers(), receiver).ready(exporter).await {
             Ok(job) => {
                 let job = job.start();
-                yield patch_job_feed(template::JobProcessing {
-                    job_id: job.id,
-                    filename: job.filename.as_deref().unwrap_or(""),
+                yield patch_template(template::JobProcessing {
+                    job_id,
+                    source: job.filename.as_deref().unwrap_or(""),
                 });
                 yield patch_signals(r#"{"loading":false,"processing":true}"#);
 
@@ -191,11 +191,11 @@ pub async fn job_handler(
                     Ok(job) => {
                         state.record_success(job.report.docs.total, job.report.docs.errors).await;
                         yield patch_template(template::JobCompleted {
-                            job_id: job.id,
+                            job_id,
                             diagnostic_id: &job.report.metadata.id,
                             docs_created: &job.report.docs.created,
                             duration: &format!("{:.3}", job.report.processing_duration as f64 / 1000.0),
-                            filename: job.filename.as_deref().unwrap_or(""),
+                            source: job.filename.as_deref().unwrap_or(""),
                             kibana_link: job.report.kibana_link.as_ref().unwrap_or(&"#".to_string()),
                             product: &job.report.product.to_string(),
                         });
@@ -206,7 +206,7 @@ pub async fn job_handler(
                     Err(job) => {
                         state.record_failure().await;
                         yield patch_template(template::JobFailed {
-                            job_id: job.id,
+                            job_id,
                             error: &job.error,
                             source: job.filename.as_deref().unwrap_or(""),
                         });
@@ -217,7 +217,7 @@ pub async fn job_handler(
             Err(job) => {
                 state.record_failure().await;
                 yield patch_template(template::JobFailed {
-                    job_id: job.id,
+                    job_id,
                     error: &job.error,
                     source: job.filename.as_deref().unwrap_or(""),
                 });
