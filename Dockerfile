@@ -1,9 +1,16 @@
-FROM rust:1.88 AS builder
-WORKDIR /usr/src/app
+FROM cgr.dev/chainguard/rust:latest-dev AS builder
+
+# Install build dependency for OpenSSL
+USER root
+RUN apk add --no-cache openssl-dev
+USER nonroot
+
+# Build Rust binary
 COPY . .
 RUN cargo build --release
 
-FROM gcr.io/distroless/cc-debian12
-COPY --from=builder /usr/src/app/target/release/esdiag /usr/local/bin/esdiag
+# Wrap it in the wolfi-base container
+FROM cgr.dev/chainguard/wolfi-base:latest
+COPY --from=builder /work/target/release/esdiag /usr/bin/esdiag
 
-ENTRYPOINT [ "/usr/local/bin/esdiag" ]
+ENTRYPOINT ["/usr/bin/esdiag"]
