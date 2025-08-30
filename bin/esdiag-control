@@ -5,11 +5,9 @@
 # Run `esdiag-control help <command>` for usage details
 
 # ----- Logging Functions -----
-
 declare log_name="esdiag-control"
 
 # Colorized echo statements
-
 function blue()    { echo -e -n "\033[94m${*}\033[39m"; }
 function cyan()    { echo -e -n "\033[36m${*}\033[39m"; }
 function gray()    { echo -e -n "\033[90m${*}\033[39m"; }
@@ -46,7 +44,6 @@ function print_help_main() {
     white "Commands:\n"
     echo "    $(green build)    Build an ESDiag container image for the local host's platform"
     echo "    $(green buildx)   Build a multi-platform ESDiag container image with buildx"
-    echo "    $(green compose)  Generate a full Elastic Stack deployment using Docker compose"
     echo "    $(green launch)   Generate and launch a full Elastic Stack deployment using Docker compose"
     echo "    $(green setup)    Setup the target Elasticsearch and Kibana instances with ESDiag assets"
     echo "    $(green help)     To get detailed <command> help, use a command name as the <argument>"
@@ -61,10 +58,11 @@ function print_help_main() {
 
 # ----- Environment Configuration -----
 
-function source_env_file() {
+function env_file_source() {
     if [[ ! -f $env_file ]]; then
-        log_error "Environment file $(gray "${env_file}") does not exist"
-        exit 1
+        log_info "$(green creating) environment file $(cyan "${env_file}")"
+        cp example.env "${env_file}"
+        chmod 600 "${env_file}"
     fi
 
     log_debug "Sourcing $(gray "${env_file}")"
@@ -77,13 +75,22 @@ function source_env_file() {
 }
 
 function setup_environment() {
-    export security=${security:-true}
+    if [[ "${security}" == "false" ]]; then
+        export ELASTIC_SECURITY_ENABLED=false
+        sed -e 's/^export ELASTIC_SECURITY_ENABLED=.*/export ELASTIC_SECURITY_ENABLED=false/' -i .tmp "${env_file}"
+        rm "${env_file}.tmp"
+    fi
+
+    version=$(grep -o '^version = ".*"' Cargo.toml | sed -E 's/^version = "(.*)"/\1/')
+    export version
 
     export elasticsearch_url=${ESDIAG_OUTPUT_URL:-"http://localhost:9200"}
     export kibana_url=${ESDIAG_KIBANA_URL:-"http://localhost:5601"}
     export esdiag_url="http://localhost:3000"
     export assets_path="assets/kibana"
-    export private_registry=${ESDIAG_REGISTRY:-${ELASTIC_CONTAINER_REGISTRY:-""}}
+    export esdiag_registry="${ESDIAG_REGISTRY:-${ELASTIC_CONTAINER_REGISTRY:-"localhost"}}"
+    export esdiag_image="${esdiag_registry}/esdiag/esdiag:${version}"
+    export esdiag_image_latest="${esdiag_registry}/esdiag/esdiag:latest"
 
     # Use ESDIAG_OUTPUT* environment variables to configure Elastic Stack authentication
     export apikey=${ESDIAG_OUTPUT_APIKEY}
@@ -100,8 +107,6 @@ function setup_environment() {
     export esdiag_dashboards_url="https://api.github.com/repos/elastic/esdiag-dashboards"
     export esdiag_github_url="https://api.github.com/repos/elastic/esdiag"
     export esdiag_branch=${ESDIAG_BRANCH:-"main"}
-    version=$(grep -o '^version = ".*"' Cargo.toml | sed -E 's/^version = "(.*)"/\1/')
-    export version
 }
 
 # ----- GitHub Functions -----
@@ -225,13 +230,20 @@ function kibana_objects_import() {
     # Wait for Kibana to be ready
     local http_status=0
     while [[ $http_status -ne 200 ]]; do
-        http_status=$(curl --write-out "%{http_code}" --silent --output /dev/null "${kibana_url}/app/home")
-        if [[ $http_status -ne 200 ]]; then
+        http_status=$(curl --silent \
+            --header "${auth_header}" \
+            --write-out "%{http_code}"\
+            --output /dev/null "${kibana_url}/app/home"
+        )
+        if (( http_status >= 400 )); then
+            log_error "Kibana returned HTTP status code $(magenta "${http_status}")"
+            exit 1
+        elif [[ $http_status -ne 200 ]]; then
             log_info "Waiting on $(magenta Kibana)..."
             sleep 5
         fi
         # Make sure the container is still running
-        if [[ ! -z ${compose_esdiag} ]]; then
+        if [[ ! -z ${compose_file} ]]; then
             local container_status
             container_status=$(${container} inspect esdiag-kibana --format '{{.State.Status}}')
             if [[ $container_status == "exited" ]]; then
@@ -319,17 +331,16 @@ function validate_dependencies() {
 
     local failures=0
 
-    export container="docker"
-    if ! command -v docker &> /dev/null; then
-        if command -v podman &> /dev/null; then
-            log_info "Using $(white podman) contianer runtime"
-            container="podman"
-        else
-            log_error "Required container runtime $(magenta docker) or $(magenta podman) is not found"
-            failures=$((failures + 1))
-        fi
-
+    if command -v podman &> /dev/null; then
+        container="podman"
+    elif command -v docker &> /dev/null; then
+        container="docker"
+    else
+        log_error "Required container runtime $(magenta docker) or $(magenta podman) is not found"
+        failures=$((failures + 1))
     fi
+    log_info "Using $(white "${container}") container runtime"
+    export container
 
     if ! command -v curl &> /dev/null; then
         log_error "$(white curl) is required to send HTTP requests"
@@ -440,23 +451,22 @@ function print_help_build () {
     echo "    -p, --push             - Push the container image to the registry"
     echo
     white "Environment Variables:\n"
-    echo "    ESDIAG_REGISTRY - Private container registry to publish to"
+    echo "    ESDIAG_REGISTRY        - Private container registry to publish to (default $(gray "localhost"))"
     echo
 }
 
 function command_build() {
-    local registry="${private_registry:+${private_registry}/esdiag/}"
-
-    if [[ $(${container} images -q "${registry}esdiag:${version}" 2> /dev/null) == "" ]]; then
+    if [[ $(${container} image ls --quiet "${esdiag_image}" 2> /dev/null) == "" ]]; then
         log_info "Building $(cyan "esdiag:${version}") container image"
     else
-        log_info "Skipping $(white "${container} build"), found latest container image $(cyan "esdiag:${version}")"
+        log_info "Skipping $(white "${container} build"), found current container image $(cyan "esdiag:${version}")"
         return
     fi
 
-    ${container} build . "${push}" \
-        --tag "${registry}esdiag:latest" \
-        --tag "${registry}esdiag:${version}"
+    # shellcheck disable=SC2086
+    ${container} build --file docker/Dockerfile . ${push} \
+        --tag "${esdiag_image_latest}" \
+        --tag "${esdiag_image}"
 
     # shellcheck disable=SC2181
     if [[ $? -eq 0 ]]; then
@@ -480,19 +490,16 @@ function print_help_buildx () {
     echo "    -p, --push             - Push the container image to the registry"
     echo
     white "Environment Variables:\n"
-    echo "    ESDIAG_REGISTRY - Private container registry to publish to"
+    echo "    ESDIAG_REGISTRY        - Private container registry to publish to (default $(gray "localhost"))"
     echo
 }
 
 function command_buildx() {
-    if [[ "${private_registry}" != "" ]]; then
-        local registry="${private_registry}/esdiag/"
-    fi
-
-    ${container} buildx build . "${push}" \
+    # shellcheck disable=SC2086
+    ${container} buildx build --file docker/Dockerfile . ${push} \
         --platform linux/amd64,linux/arm64 \
-        --tag "${registry}esdiag:latest" \
-        --tag "${registry}esdiag:${version}"
+        --tag "${esdiag_image_latest}" \
+        --tag "${esdiag_image}"
 
     # shellcheck disable=SC2181
     if [[ $? -eq 0 ]]; then
@@ -503,67 +510,11 @@ function command_buildx() {
     fi
 }
 
-# ----- Command: compose -----
-
-function print_help_compose () {
-    echo
-    white "Command: $(green compose) [input_file] [output_file]\n"
-    echo "    Generate a full Elastic Stack deployment for use with $(gray "${container} compose")"
-    echo
-    white "Options:\n"
-    echo "    -e, --env <NAME|FILE>  - The $(gray ".env.NAME") or $(gray "FILE") to source credentials from (default $(gray ".env"))"
-    echo "    -i, --insecure         - Setup the Elasticsearch cluster with security disabled"
-    echo "    -r, --registry <URL>   - Elastic container registry URL"
-    echo
-    white "Arguments:\n"
-    echo "    [input_file]         - Compose file to read in (default $(gray "docker/docker-compose.yml"))"
-    echo "    [output_file]        - Compose file to save out (default $(gray "target/esdiag-compose.yml"))"
-    echo
-    white "Environment Variables:\n"
-    echo "    ELASTIC_CONTAINER_REGISTRY - Elastic container registry (default $(gray "docker.elastic.co"))"
-    echo "    ESDIAG_REGISTRY            - Private container registry (default $(gray ELASTIC_CONTAINER_REGISTRY))"
-    echo
-}
-
-function command_compose() {
-    # Set defaults for environment variables if not already set
-    local esdiag_registry
-    if [[ "${private_registry}" != "" ]]; then
-        esdiag_registry="${private_registry}/esdiag/"
-    else
-        esdiag_registry=""
-    fi
-
-    local elastic_registry="${ELASTIC_CONTAINER_REGISTRY:-docker.elastic.co}"
-    # Check if compose file exists
-    if [[ ! -f "$compose_file" ]]; then
-        log_error "Source compose file $(gray "$compose_file") not found"
-        exit 1
-    fi
-
-    log_info "Reading $(gray "$compose_file") and writing to $(gray "$compose_esdiag")"
-
-    # Read the compose file and perform substitutions
-    sed -e "s|image: esdiag:latest|image: ${esdiag_registry}esdiag:${version}|g" \
-        -e "s|docker\.elastic\.co|${elastic_registry}|g" \
-        -e "s|http://localhost:5601|${kibana_url}/s/${kibana_space}|g" \
-        -e "s|xpack.security.enabled=false|xpack.security.enabled=${security}|g" \
-        "$compose_file" > "$compose_esdiag"
-
-    # shellcheck disable=SC2181
-    if [[ $? -eq 0 ]]; then
-        log_info "$(green Successfully) generated compose file $(gray "$compose_esdiag")"
-    else
-        log_error "$(red Failed) to generate compose file $(gray "$compose_esdiag")"
-        exit 1
-    fi
-}
-
 # ----- Command: launch -----
 
 function print_help_launch () {
     echo
-    white "Command: $(green launch) [input_file] [output_file]\n"
+    white "Command: $(green launch) [options]\n"
     echo "    Generate, launch, and setup a full Elastic Stack deployment with $(gray "${container} compose up -d")"
     echo
     white "Options:\n"
@@ -572,13 +523,9 @@ function print_help_launch () {
     echo "    -r, --registry <URL>   - Elastic container registry URL"
     echo "    -s, --space            - Kibana space id (default $(gray esdiag)"
     echo
-    white "Arguments:\n"
-    echo "    [input_file]           - Compose file to read in (default $(gray docker/docker-compose.yml))"
-    echo "    [output_file]          - Compose file to save out (default $(gray target/esdiag-compose.yml))"
-    echo
     white "Environment Variables:\n"
     echo "    ELASTIC_CONTAINER_REGISTRY - Elastic container registry (default $(gray "docker.elastic.co"))"
-    echo "    ESDIAG_REGISTRY            - Private container registry (default $(gray ELASTIC_CONTAINER_REGISTRY))"
+    echo "    ESDIAG_REGISTRY            - Private container registry (default $(gray "localhost"))"
     echo
 }
 
@@ -597,7 +544,7 @@ function command_launch() {
         memory=$(( $(docker info --format '{{.MemTotal}}') / 1024 / 1024 ))
     fi
 
-    log_info "$(white ${container}) machine $(gray "${machine}") allocated with $(cyan "${cpus} CPUs") and $(cyan "${memory}MB") memory"
+    log_info "$(white "${container}") machine $(gray "${machine}") allocated with $(cyan "${cpus} CPUs") and $(cyan "${memory}MB") memory"
     if [[ $memory -lt 8192 ]]; then
         log_error "Required minimum container engine memory is $(magenta 8192MB)"
         exit 1
@@ -607,13 +554,42 @@ function command_launch() {
     fi
 
     log_info "Running $(white "${container} compose up --detach")"
-    ${container} compose --file "${compose_esdiag}" up --detach > /dev/null 2>&1 &
+    ${container} compose \
+        --env-file "${env_file}" \
+        --file "${compose_file}" \
+        up --detach > /dev/null 2>&1 &
     wait $!
     # shellcheck disable=SC2181
     if [[ $? -ne 0 ]]; then
         log_error "$(white "${container} compose up") $(red failed) with exit status ${?}"
-        ${container} compose --file "${compose_esdiag}" logs | tail -n10
+        ${container} compose --env-file "${env_file}" --file "${compose_file}" logs | tail -n10
         exit $?
+    fi
+}
+
+# ----- Command: remove -----
+
+function print_help_remove () {
+    echo
+    white "Command: $(green "remove")\n"
+    echo "    Remove all containers with $(white "${container}" compose down), optionally also delete the volume"
+    echo
+    white "Options:\n"
+    echo "    --remove-image         - Also remove the ESDiag image, will require re-building or re-downloading for next $(white launch)"
+    echo "    --remove-volume        - Also remove the volume $(yellow WARNING:) Permenantly erases all data off the cluster!"
+    echo
+}
+
+function command_remove() {
+    log_info "Removing containers with $(white "${container}" compose down)"
+    ${container} compose --env-file "${env_file}" --file "${compose_file}" down
+    if [[ "${remove_image}" == "true" ]]; then
+        log_info "Removing image $(magenta "${esdiag_image}")"
+        ${container} image rm "${esdiag_image}" "${esdiag_image_latest}"
+    fi
+    if [[ "${remove_volume}" == "true" ]]; then
+        log_info "Removing volume $(magenta esdiag_data)"
+        ${container} volume rm esdiag_data
     fi
 }
 
@@ -632,7 +608,7 @@ function print_help_setup () {
     echo
     white "Environment Variables:\n"
     echo "    ELASTIC_CONTAINER_REGISTRY - Elastic container registry (default $(gray "docker.elastic.co"))"
-    echo "    ESDIAG_REGISTRY            - Private container registry (default $(gray ELASTIC_CONTAINER_REGISTRY))"
+    echo "    ESDIAG_REGISTRY            - Private container registry (default $(gray "localhost"))"
     echo "    ESDIAG_KIBANA_URL          - Kibana URL (default $(gray "http://localhost:5601"))"
     echo "    ESDIAG_OUTPUT_URL          - Elasticsearch URL (default $(gray "http://localhost:9200"))"
     echo "    ESDIAG_OUTPUT_APIKEY       - Elasticsearch API key , takes precedence over username/password"
@@ -642,17 +618,23 @@ function print_help_setup () {
 }
 
 function elasticsearch_templates_setup() {
-    local registry="${private_registry:+${private_registry}/esdiag/}"
     # Wait for Elasticsearch to be ready
     local http_status=0
     while [[ $http_status -ne 200 ]]; do
-        http_status=$(curl --write-out "%{http_code}" --silent --output /dev/null "${elasticsearch_url}/")
-        if [[ $http_status -ne 200 ]]; then
+        http_status=$(curl --silent \
+            --header "${auth_header}" \
+            --write-out "%{http_code}" \
+            --output /dev/null "${elasticsearch_url}/"
+        )
+        if (( http_status >= 400 )); then
+            log_error "Elasticsearch returned HTTP status code $(magenta "${http_status}")"
+            exit 1
+        elif [[ $http_status -ne 200 ]]; then
             log_info "Waiting on $(blue Elasticsearch)..."
             sleep 5
         fi
         # Make sure the container is still running
-        if [[ ! -z ${compose_esdiag} ]]; then
+        if [[ ! -z ${compose_file} ]]; then
             local container_status && container_status=$(${container} inspect esdiag-elasticsearch --format '{{.State.Status}}')
             if [[ $container_status == "exited" ]]; then
                 log_info "$(blue Elasticsearch) container $(red exited)!"
@@ -662,8 +644,12 @@ function elasticsearch_templates_setup() {
         fi
     done
     log_info "$(blue Elasticsearch) is $(green ready)!"
-    if [[ ! -z ${compose_esdiag} ]]; then
-        ${container} compose --file "${compose_esdiag}" run --rm esdiag-webui setup &> /dev/null
+
+    # If we already have a running container from compose, use it
+    local compose_status && compose_status=$(${container} inspect esdiag --format '{{.State.Status}}')
+    if [[ "${compose_status}" == "running" ]]; then
+        log_debug "Using existing $(cyan esdiag) compose container"
+        ${container} compose --env-file "${env_file}" --file "${compose_file}" run --rm esdiag-webui setup &> /dev/null
     else
         ${container} run --rm --name="esdiag-setup" \
             --env ESDIAG_OUTPUT_URL="${elasticsearch_url}" \
@@ -671,7 +657,7 @@ function elasticsearch_templates_setup() {
             ${apikey:+--env ESDIAG_OUTPUT_APIKEY="${apikey}"} \
             ${username:+--env ESDIAG_OUTPUT_USERNAME="${username}"} \
             ${password:+--env ESDIAG_OUTPUT_PASSWORD="${password}"} \
-            "${registry}esdiag:${version} setup"
+            "${esdiag_image} setup"
     fi
 
     # shellcheck disable=SC2181
@@ -693,8 +679,10 @@ function command_setup() {
         && dashboards_latest_release_download
     fi
 
+    set_auth_header
     # If we have a dashboard file, proceed with setup
     if [[ -f $dashboard_file ]]; then
+        log_debug "$(green found) dashboard file $(cyan "${dashboard_file}")"
         elasticsearch_templates_setup \
         && kibana_objects_import
     else
@@ -710,7 +698,7 @@ validate_dependencies
 # Validate and set command
 declare command="${1}" && shift
 log_debug "Command: ${command}"
-if [[ ! $command =~ ^(auth|build|buildx|compose|launch|setup|-?-?h(elp)?)?$ ]]; then
+if [[ ! $command =~ ^(auth|build|buildx|launch|remove|setup|-?-?h(elp)?)?$ ]]; then
     log_error "Invalid command $(magenta "$command")"
     print_help_main
     exit 1
@@ -758,6 +746,14 @@ while [[ $# -gt 0 ]]; do
             declare security="false"
             shift
         ;;
+        --remove-image)
+            declare remove_image=true
+            shift
+        ;;
+        --remove-volume)
+            declare remove_volume=true
+            shift
+        ;;
         -s|--space)
             shift
             if [[ $# -gt 0 ]]; then
@@ -777,7 +773,7 @@ done
 
 # ----- Execute command -----
 
-source_env_file && setup_environment
+env_file_source && setup_environment
 log_debug "Executing command $(green "${command}")"
 case $command in
     "help" )
@@ -786,8 +782,8 @@ case $command in
             "auth"    ) print_help_auth ;;
             "build"   ) print_help_build  ;;
             "buildx"  ) print_help_buildx ;;
-            "compose" ) print_help_compose ;;
             "launch"  ) print_help_launch ;;
+            "remove"  ) print_help_remove ;;
             "setup"   ) print_help_setup ;;
             * ) log_warn "Unknown command: $(magenta "${1}")" && print_help_main ;;
         esac
@@ -810,28 +806,26 @@ case $command in
         command_buildx && \
         log_info "$(green buildx) complete"
     ;;
-    "compose" )
-        if [[ $help == true ]]; then print_help_compose && exit 0; fi
-        declare compose_file="${1:-docker/docker-compose.yml}"
-        declare compose_esdiag="${2:-target/esdiag-compose.yml}"
-        log_info "$(green compose) file generating"
-        command_compose && \
-        log_info "$(green compose) complete"
-    ;;
     "launch" )
         if [[ $help == true ]]; then print_help_launch && exit 0; fi
         declare compose_file="${1:-docker/docker-compose.yml}"
-        declare compose_esdiag="${2:-target/esdiag-compose.yml}"
         log_info "$(green launch) ${container} compose from $(gray "${compose_file}")"
         command_build && \
-        command_compose && \
         command_launch && \
         command_setup && \
         browser_open && \
         log_info "$(green launch) complete"
     ;;
+    "remove" )
+        if [[ $help == true ]]; then print_help_remove && exit 0; fi
+        declare compose_file="${1:-docker/docker-compose.yml}"
+        log_info "$(green remove) containers${remove_image:+ image}${remove_volume:+ volume}"
+        command_remove && \
+        log_info "$(green remove) complete"
+    ;;
     "setup" )
         if [[ $help == true ]]; then print_help_setup && exit 0; fi
+        declare compose_file="${1:-docker/docker-compose.yml}"
         log_info "$(green setup) Elasticsearch $(gray "${elasticsearch_url}") and Kibana $(gray "${kibana_url}")"
         command_setup && \
         log_info "$(green setup) complete"

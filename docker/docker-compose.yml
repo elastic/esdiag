@@ -11,13 +11,13 @@ name: esdiag
 services:
   esdiag-webui:
     container_name: esdiag
-    image: esdiag:latest
+    image: ${ESDIAG_REGISTRY}/esdiag/esdiag:${ESDIAG_VERSION}
     depends_on:
       - esdiag-elasticsearch
       - esdiag-kibana
     environment:
       ESDIAG_OUTPUT_URL: http://esdiag-elasticsearch:9200
-      ESDIAG_KIBANA_URL: http://localhost:5601
+      ESDIAG_KIBANA_URL: ${ESDIAG_KIBANA_URL}/s/${ESDIAG_KIBANA_SPACE}
       LOG_LEVEL: info
     command: ["serve"]
     networks:
@@ -27,22 +27,26 @@ services:
 
   esdiag-elasticsearch:
     container_name: esdiag-elasticsearch
-    image: docker.elastic.co/elasticsearch/elasticsearch:9.0.3
+    image: ${ELASTIC_CONTAINER_REGISTRY}/elasticsearch/elasticsearch:${ELASTIC_VERSION}
     environment:
-      - node.name=esdiag-node
       - cluster.name=esdiag-cluster
-      - cluster.initial_master_nodes=esdiag-node
-      - xpack.security.enabled=false
-      - bootstrap.memory_lock=false
-      - "ES_JAVA_OPTS=-Xms4g -Xmx4g"
+      - node.name=esdiag-node
+      - discovery.type=single-node
+      - xpack.security.enabled=${ELASTIC_SECURITY_ENABLED}
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+      - xpack.security.http.ssl.enabled=false
+      - xpack.ml.use_auto_machine_memory_percent=true
+      - ES_JAVA_OPTS=-Xms${ELASTICSEARCH_HEAP_INIT} -Xmx${ELASTICSEARCH_HEAP_MAX}
       # Workaround for MacOS 15.2 on M4: https://github.com/elastic/elasticsearch/issues/118583 and https://bugs.openjdk.org/browse/JDK-8345296
       - "_JAVA_OPTIONS=-XX:UseSVE=0"
     ulimits:
+      # Remove ulimits for LXC: https://github.com/elastic/start-local/issues/27
+      # Set to maximum for rootless Docker: https://github.com/elastic/start-local/issues/66
       memlock:
         soft: -1
         hard: -1
     volumes:
-      - esdiag-data:/usr/share/elasticsearch/data
+      - data:/usr/share/elasticsearch/data
     networks:
       - net
     ports:
@@ -50,18 +54,24 @@ services:
 
   esdiag-kibana:
     container_name: esdiag-kibana
-    image: docker.elastic.co/kibana/kibana:9.0.3
+    image: ${ELASTIC_CONTAINER_REGISTRY}/kibana/kibana:${ELASTIC_VERSION}
     depends_on:
       - esdiag-elasticsearch
     environment:
-      ELASTICSEARCH_HOSTS: http://esdiag-elasticsearch:9200
+      - SERVER_NAME=kibana
+      - ELASTICSEARCH_HOSTS=http://esdiag-elasticsearch:9200
+      - ELASTICSEARCH_PASSWORD=${KIBANA_SYSTEM_PASSWORD}
+      - XPACK_ENCRYPTEDSAVEDOBJECTS_ENCRYPTIONKEY=${KIBANA_ENCRYPTION_KEY}
+      - ELASTICSEARCH_PUBLICBASEURL=${ESDIAG_KIBANA_URL}
+    volumes:
+      - data:/usr/share/kibana/data
     networks:
       - net
     ports:
       - 5601:5601
 
 volumes:
-  esdiag-data:
+  data:
     driver: local
 
 networks:

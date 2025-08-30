@@ -86,7 +86,6 @@ Commands:
     auth     Test the authentication for ESDIAG_OUTPUT_URL and ESDIAG_KIBANA_URL
     build    Build an ESDiag container image for the local host's platform
     buildx   Build a multi-platform ESDiag container image with buildx
-    compose  Generate a full Elastic Stack deployment using Docker compose
     launch   Generate and launch a full Elastic Stack deployment using Docker compose
     setup    Setup the target Elasticsearch and Kibana instances with ESDiag assets
     help     To get detailed <command> help, use a command name as the <argument>
@@ -145,26 +144,6 @@ Environment Variables:
     ESDIAG_REGISTRY - Private container registry to publish to
 ```
 
-### compose
-
-```
-Command: compose [input_file] [output_file]
-    Generate a full Elastic Stack deployment for use with docker compose
-
-Options:
-    -e, --env <NAME|FILE>  - The .env.NAME or FILE to source credentials from (default .env)
-    -i, --insecure         - Setup the Elasticsearch cluster with security disabled
-    -r, --registry <URL>   - Elastic container registry URL
-
-Arguments:
-    [input_file]           - Compose file to read in (default docker/docker-compose.yml)
-    [output_file]          - Compose file to save out (default target/esdiag-compose.yml)
-
-Environment Variables:
-    ELASTIC_CONTAINER_REGISTRY - Elastic container registry (default docker.elastic.co)
-    ESDIAG_REGISTRY            - Private container registry (default $ELASTIC_CONTAINER_REGISTRY)
-```
-
 ### launch
 
 ```
@@ -184,6 +163,17 @@ Arguments:
 Environment Variables:
     ELASTIC_CONTAINER_REGISTRY - Elastic container registry (default docker.elastic.co)
     ESDIAG_REGISTRY            - Private container registry (default $ELASTIC_CONTAINER_REGISTRY)
+```
+
+### remove
+
+```
+Command: remove
+    Remove all containers with podman compose down), optionally also delete the volume
+
+Options:
+    --remove-image         - Also remove the ESDiag image, will require re-building or re-downloading for next launch
+    --remove-volume        - Also remove the volume WARNING: Permenantly erases all data off the cluster!
 ```
 
 ### setup
