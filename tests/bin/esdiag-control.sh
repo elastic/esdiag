@@ -186,6 +186,35 @@ function command_setup_completes_successfully() {
     fi
 }
 
+function command_remove_removes_containers {
+    test_start "command_remove_removes_containers"
+    esdiag_control remove
+    containers=$("$container" ps -a | grep esdiag | wc -l)
+
+    log_debug "Remove containers: $(white "${containers}")"
+    if [[ ${containers} -eq 0 ]]; then
+        test_pass command_remove_removes_containers
+    else
+        test_fail command_remove_removes_containers found $(magenta "${containers}") $(gray esdiag-*) containers
+    fi
+}
+
+function command_launch_secure_starts_stack_containers {
+    test_start "command_launch_secure_starts_stack_containers"
+    sed -i -e 's/ELASTIC_SECURITY_ENABLED=false/ELASTIC_SECURITY_ENABLED=true/' .env.test
+    esdiag_control launch
+
+    elasticsearch_status=$(${container} inspect esdiag-elasticsearch --format '{{.State.Status}}')
+    kibana_status=$(${container} inspect esdiag-kibana --format '{{.State.Status}}')
+    esdiag_status=$(${container} inspect esdiag --format '{{.State.Status}}')
+
+    if [[ ${elasticsearch_status} == "running" && ${kibana_status} == "running" && ${esdiag_status} == "running" ]]; then
+        test_pass command_launch_secure_starts_stack_containers
+    else
+        test_fail command_launch_secure_starts_stack_containers Elasticsearch: $(magenta "${elasticsearch_status}") Kibana: $(magenta "${kibana_status}") ESDiag: $(magenta "${esdiag_status}")
+    fi
+}
+
 # ----- Main -----
 
 function env_setup() {
@@ -224,9 +253,14 @@ function tests_run() {
     shellcheck_returns_zero_issues
     command_help_prints_usage
     command_build_creates_container_image
+    # First launch and auth with security disabled
     command_launch_insecure_starts_stack_containers
     command_auth_returns_success
     command_setup_completes_successfully
+    command_remove_removes_containers
+    # Second launch and with security enabled
+    command_launch_secure_starts_stack_containers
+    command_auth_returns_success
 }
 
 env_setup
