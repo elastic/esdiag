@@ -97,13 +97,7 @@ function env_file_source() {
     log_debug "Using space $(cyan "${kibana_space}")"
 }
 
-function setup_environment() {
-    if [[ "${security}" == "false" ]]; then
-        export ELASTIC_SECURITY_ENABLED=false
-        sed -e 's/^export ELASTIC_SECURITY_ENABLED=.*/export ELASTIC_SECURITY_ENABLED=false/' -i .tmp "${env_file}"
-        rm "${env_file}.tmp"
-    fi
-
+function environment_setup() {
     version=$(grep -o '^version = ".*"' Cargo.toml | sed -E 's/^version = "(.*)"/\1/')
     export version
 
@@ -130,6 +124,79 @@ function setup_environment() {
     export esdiag_dashboards_url="https://api.github.com/repos/elastic/esdiag-dashboards"
     export esdiag_github_url="https://api.github.com/repos/elastic/esdiag"
     export esdiag_branch=${ESDIAG_BRANCH:-"main"}
+}
+
+function random_password() {
+  LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 32
+}
+
+function password_reset() {
+    local username="${1}"
+    local password="${2}"
+    curl --silent -X POST \
+        --user "elastic:${ELASTIC_PASSWORD}" \
+        --header "Content-Type: application/json" \
+        --location "${elasticsearch_url}/_security/user/${username}/_password" \
+        --write-out "%{http_code}" \
+        --data "{\"password\":\"${password}\"}"
+}
+
+function security_setup() {
+    if [[ "${security}" == "false" ]]; then
+        log_info "$(yellow --insecure) disabling security"
+        export ELASTIC_SECURITY_ENABLED=false
+        sed -i -e 's/^export ELASTIC_SECURITY_ENABLED=.*/export ELASTIC_SECURITY_ENABLED=false/' "${env_file}"
+    else
+        local status_code
+        log_info "Generating $(cyan elastic) superuser password"
+        local elastic_password="$(random_password)"
+        sed -i -e "s/ELASTIC_PASSWORD=.*/ELASTIC_PASSWORD='${elastic_password}'/" "${env_file}"
+        export ELASTIC_PASSWORD="${elastic_password}"
+
+        local kibana_password="$(random_password)"
+        log_info "Generating $(cyan kibana_system) user password";
+        sed -i -e "s/KIBANA_SYSTEM_PASSWORD=.*/KIBANA_SYSTEM_PASSWORD='${kibana_password}'/" "${env_file}"
+        export KIBANA_SYSTEM_PASSWORD="${kibana_password}"
+
+        local kibana_encryption_key="$(random_password)"
+        log_info "Generating Kibana $(cyan encryption key)";
+        sed -i -e "s/KIBANA_ENCRYPTION_KEY=.*/KIBANA_ENCRYPTION_KEY='${kibana_encryption_key}'/" "${env_file}"
+        export KIBANA_ENCRYPTION_KEY="${kibana_encryption_key}"
+    fi
+}
+
+function apikey_setup() {
+    if [[ "${security}" == "false" ]]; then
+        log_debug "Skipping API key generation $(cyan "security=${security}")"
+    elif [[ -z "${ESDIAG_OUTPUT_APIKEY}" || "${apikey}" == "" ]]; then
+        log_info "Generating Elasticsearch $(cyan apikey)"
+        # Even after the container is running we need to waith for the API to start responding
+        local elasticsearch_status="000"
+        while [[ "${elasticsearch_status}" == "000" ]]; do
+            elasticsearch_status=$(curl --silent -X GET \
+                --header "Authorization: Basic $(echo -n "elastic:${ELASTIC_PASSWORD}" | base64)" \
+                --location "${elasticsearch_url}" \
+                --write-out '%{http_code}' \
+                --output /dev/null)
+            sleep 2
+        done
+        apikey=$(curl --silent -X POST \
+            --header "Content-Type: application/json" \
+            --header "Authorization: Basic $(echo -n "elastic:${ELASTIC_PASSWORD}" | base64)" \
+            --location "${elasticsearch_url}/_security/api_key" \
+            --data '{"name":"esdiag"}' | jq --raw-output '.encoded'
+        )
+        if [[ -z "${apikey}" || ${apikey} == "" ]]; then
+            log_error "Failed to generate API key"
+            exit 1
+        fi
+        sed -i -e "s/^.*export ESDIAG_OUTPUT_APIKEY=.*/export ESDIAG_OUTPUT_APIKEY='${apikey}'/" "${env_file}"
+        export ESDIAG_OUTPUT_APIKEY="${apikey}"
+        export apikey
+        log_debug "API key generated $(cyan "${apikey:0:5}...") for ${elasticsearch_url}"
+    else
+        log_debug "Using given API key $(cyan "${ESDIAG_OUTPUT_APIKEY:0:5}...")"
+    fi
 }
 
 # ----- GitHub Functions -----
@@ -243,6 +310,27 @@ function set_auth_header() {
     else
         log_info "Using $(cyan Authorization: None)"
         export auth_header="Authorization: None"
+    fi
+}
+
+function kibana_password_setup () {
+    if [[ "${security}" == "false" ]]; then
+        log_info "Skipping $(magenta Kibana) security setup"
+    else
+        log_info "Setting up $(magenta Kibana) security"
+        local status=$(curl --silent -X POST \
+            --header "Authorization: Basic $(echo -n "elastic:${ELASTIC_PASSWORD}" | base64)" \
+            --header "Content-Type: application/json" \
+            --output /dev/null \
+            --write-out "%{http_code}" \
+            --data "{\"password\":\"${KIBANA_SYSTEM_PASSWORD}\"}" \
+            "${elasticsearch_url}/_security/user/kibana_system/_password"
+        )
+
+        if [[ $status -ne 200 ]]; then
+            log_error "Failed to set $(magenta kibana_system) password"
+            exit 1
+        fi
     fi
 }
 
@@ -597,15 +685,42 @@ function command_launch() {
         log_warn "Recommended minimum processors is $(magenta 8 CPUs)"
     fi
 
-    log_info "Running $(white "${container} compose up --detach")"
+    security_setup
+    log_info "Starting Elasticsearch $(white "${container} compose up esdiag-elasticsearch")"
     ${container} compose \
         --env-file "${env_file}" \
         --file "${compose_file}" \
-        up --detach > /dev/null 2>&1 &
+        up esdiag-elasticsearch --detach > /dev/null 2>&1 &
     wait $!
     # shellcheck disable=SC2181
     if [[ $? -ne 0 ]]; then
-        log_error "$(white "${container} compose up") $(red failed) with exit status ${?}"
+        log_error "$(white "${container} compose up esdiag-elasticsearch") $(red failed) with exit status ${?}"
+        ${container} compose --env-file "${env_file}" --file "${compose_file}" logs | tail -n10
+        exit $?
+    fi
+    apikey_setup
+    kibana_password_setup
+    log_info "Starting Kibana $(white "${container} compose up esdiag-kibana")"
+    # shellcheck disable=SC2181
+    ${container} compose \
+        --env-file "${env_file}" \
+        --file "${compose_file}" \
+        up esdiag-kibana --detach > /dev/null 2>&1 &
+    wait $!
+    if [[ $? -ne 0 ]]; then
+        log_error "$(white "${container} compose up esdiag-kibana") $(red failed) with exit status ${?}"
+        ${container} compose --env-file "${env_file}" --file "${compose_file}" logs | tail -n10
+        exit $?
+    fi
+    log_info "Starting ESDiag $(white "${container} compose up esdiag-webui")"
+    ${container} compose \
+        --env-file "${env_file}" \
+        --file "${compose_file}" \
+        up esdiag-webui --detach > /dev/null 2>&1 &
+    wait $!
+    # shellcheck disable=SC2181
+    if [[ $? -ne 0 ]]; then
+        log_error "$(white "${container} compose up esdiag-webui") $(red failed) with exit status ${?}"
         ${container} compose --env-file "${env_file}" --file "${compose_file}" logs | tail -n10
         exit $?
     fi
@@ -817,7 +932,7 @@ done
 
 # ----- Execute command -----
 
-env_file_source && setup_environment
+env_file_source && environment_setup
 log_debug "Executing command $(green "${command}")"
 case $command in
     "help" )
