@@ -13,8 +13,10 @@ services:
     container_name: esdiag
     image: ${ESDIAG_REGISTRY}/esdiag/esdiag:${ESDIAG_VERSION}
     depends_on:
-      - esdiag-elasticsearch
-      - esdiag-kibana
+      esdiag-elasticsearch:
+        condition: service_healthy
+      esdiag-kibana:
+        condition: service_healthy
     environment:
       ESDIAG_OUTPUT_URL: http://esdiag-elasticsearch:9200
       ESDIAG_KIBANA_URL: ${ESDIAG_KIBANA_URL}/s/${ESDIAG_KIBANA_SPACE}
@@ -51,12 +53,22 @@ services:
       - net
     ports:
       - 9200:9200
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl --output /dev/null --silent --head --fail -u elastic:${ELASTIC_PASSWORD} http://esdiag-elasticsearch:9200",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 30
 
   esdiag-kibana:
     container_name: esdiag-kibana
     image: ${ELASTIC_CONTAINER_REGISTRY}/kibana/kibana:${ELASTIC_VERSION}
     depends_on:
-      - esdiag-elasticsearch
+      esdiag-elasticsearch:
+        condition: service_healthy
     environment:
       - SERVER_NAME=kibana
       - ELASTICSEARCH_HOSTS=http://esdiag-elasticsearch:9200
@@ -69,6 +81,15 @@ services:
       - net
     ports:
       - 5601:5601
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -s -I http://kibana:5601 | grep -q 'HTTP/1.1 302 Found'",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 30
 
 volumes:
   data:
