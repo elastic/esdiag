@@ -251,7 +251,7 @@ function esdiag_version_check() {
 }
 
 function dashboards_latest_release_download() {
-    log_info "Fetching latest ESDiag Dashboards release"
+    log_info "$(green fetching) latest ESDiag Dashboards release"
 
     # Get the latest release metadata
     local latest_release_json && latest_release_json=$(curl --silent --location \
@@ -265,10 +265,10 @@ function dashboards_latest_release_download() {
     local file_name && file_name=$(echo "${latest_release_json}" | jq -r '.assets[] | select(.name | endswith(".ndjson")) | .name' | head -1)
 
     if [[ -z "$download_url" || -z "$file_name" ]]; then
-        log_error "Latest ESDiag Dashboards release $(red not found), no $(gray .ndjson) in assets"
+        log_error "$(red missing) ESDiag Dashboards release, no $(gray assets/kibana/*.ndjson) files"
         return 1
     else
-        log_info "Latest ESDiag Dashboards release $(green found): $(gray "${file_name}")"
+        log_info "$(green found) ESDiag Dashboards release: $(gray "${file_name}")"
     fi
 
     if [[ ! -f "${assets_path}/${file_name}" ]]; then
@@ -284,10 +284,10 @@ function dashboards_latest_release_download() {
             return 1
         fi
 
-        log_info "Dashboard file $(green successfully) downloaded to $(gray "${assets_path}/${file_name}")"
+        log_info "$(green downloaded) dashboards file to $(gray "${assets_path}/${file_name}")"
     else
         # Skip download if we already have the latest release file
-        log_info "File $(gray "${assets_path}/${file_name}") $(green exists), skipping download"
+        log_info "$(green found) dashboards file $(gray "${assets_path}/${file_name}"), skipping download"
     fi
 
     export dashboard_file="${assets_path}/${file_name}"
@@ -424,19 +424,18 @@ function browser_open() {
 
 # ----- Main Functions -----
 
-function require_file() {
-    local file="${1}"
-    if [[ ! -f "${file}" ]]; then
-        log_error "Required file $(magenta "${file}") not found"
+function configuration_validate() {
+    if [[ -z $dashboard_file && -z $GITHUB_TOKEN ]]; then
+        log_error "$(red missing) dashboards file in $(gray assets/kibana/) and GitHub token in $(gray .env) file, must provide one or the other"
         exit 1
     fi
 }
 
-function validate_auth_registry() {
+function auth_registry_validate() {
     log_warn "Auth registry validation is not implemented yet"
 }
 
-function validate_dependencies() {
+function dependencies_validate() {
     if [[ ! -f "Cargo.toml" ]]; then
         log_error "$(gray Cargo.toml) file not found in the current directory"
         echo "Please run this script from the $(gray root) of the $(cyan esdiag) repository:"
@@ -838,14 +837,14 @@ function command_setup() {
         elasticsearch_templates_setup \
         && kibana_objects_import
     else
-        log_error "ESDiag Dashboards file $(magenta "${dashboard_file}") $(red "not found")"
+        log_error "$(red missing) dashboards file $(magenta "${dashboard_file}")"
         exit 1
     fi
 }
 
 # ----- Main -----
 
-validate_dependencies
+dependencies_validate
 
 # Validate and set command
 declare command="${1}" && shift
@@ -886,7 +885,7 @@ while [[ $# -gt 0 ]]; do
         ;;
         -p|--push)
             declare push="--push"
-            validate_auth_registry
+            auth_registry_validate
             shift
         ;;
         -h|--help)
@@ -978,6 +977,7 @@ case $command in
     "setup" )
         if [[ $help == true ]]; then print_help_setup && exit 0; fi
         declare compose_file="target/docker-compose.yml"
+        configuration_validate
         compose_file_select
         log_info "$(white setup) Elasticsearch $(gray "${elasticsearch_url}") and Kibana $(gray "${kibana_url}")"
         command_setup && \
@@ -986,6 +986,7 @@ case $command in
     "up" )
         if [[ $help == true ]]; then print_help_up && exit 0; fi
         declare compose_file="target/docker-compose.yml"
+        configuration_validate
         compose_file_select
         log_info "$(white up) ${container} compose with $(gray "${compose_file}")"
         command_build && \
