@@ -28,9 +28,9 @@ You can use either Podman (preferred) or Docker to build and run ESDiag along th
   export GITHUB_TOKEN=<your_github_token>
   ```
 
-5. Launch a full security-disabled Elastic Stack with the ESDiag web interface
+5. Start a full security-disabled Elastic Stack with the ESDiag web interface
   ```sh
-  ./bin/esdiag-control launch --insecure
+  ./bin/esdiag-control up --insecure
   ```
 
 ## Examples
@@ -45,9 +45,9 @@ Build a multi-platform container image, pushing it to the container registry
 esdiag-control buildx --push
 ```
 
-Generate and launch a full Elastic Stack deployment, with security disabled, and open a browser to it
+Configure and start up a full Elastic Stack deployment, with security disabled, and open a browser to it
 ```sh
-esdiag-control launch --insecure
+esdiag-control up --insecure
 ```
 
 Setup an existing stack monitoring cluster with ESDiag assets
@@ -81,9 +81,9 @@ Commands:
     auth     Test the authentication for ESDIAG_OUTPUT_URL and ESDIAG_KIBANA_URL
     build    Build an ESDiag container image for the local host's platform
     buildx   Build a multi-platform ESDiag container image with buildx
-    launch   Generate and launch a full Elastic Stack deployment using compose
+    up       Configure and start up a full Elastic Stack deployment using compose
     setup    Setup the target Elasticsearch and Kibana instances with ESDiag assets
-    remove   Remove down the Elasticsearch, Kibana and ESDiag contaiers
+    down     Remove down the Elasticsearch, Kibana and ESDiag contaiers
     help     To get detailed <command> help, use a command name as the <argument>
 
 Options:
@@ -91,6 +91,36 @@ Options:
     -s, --space <ID>       - Kibana space id (default esdiag)
         --debug            - More verbose logging and retention of temporary files
         --version          - Print the version of the script
+```
+
+### up
+
+```
+Command: up [options]
+    Configure and start up a full Elastic Stack deployment with podman compose up -d
+
+Options:
+    -e, --env <NAME|FILE>  - The .env.NAME or FILE to source credentials from (default .env)
+    -i, --insecure         - Setup the Elasticsearch cluster with security disabled
+    -r, --registry <URL>   - Elastic container registry URL
+    -s, --space            - Kibana space id (default esdiag)
+
+Environment Variables:
+    ELASTIC_CONTAINER_REGISTRY - Elastic container registry (default docker.elastic.co)
+    ESDIAG_REGISTRY            - Private container registry (default localhost)
+```
+
+### down
+
+```
+Command: down
+    Remove all containers with podman compose down, optionally also delete the volume
+
+Options:
+    --remove-file          - Also remove the currently-configured target/docker-compose.yml file
+    --remove-image         - Also remove the ESDiag image, will require re-building or re-downloading for a new container
+    --remove-volume        - Also remove the volume WARNING: Permenantly all data from the cluster and invalidates security configuration!
+    --remove-all           - Remove the containers, image, volume, and compose file
 ```
 
 ### auth
@@ -140,41 +170,11 @@ Environment Variables:
     ESDIAG_REGISTRY        - Private container registry to publish to (default localhost)
 ```
 
-### launch
-
-```
-Command: launch [options]
-    Generate, launch, and setup a full Elastic Stack deployment with podman compose up -d
-
-Options:
-    -e, --env <NAME|FILE>  - The .env.NAME or FILE to source credentials from (default .env)
-    -i, --insecure         - Setup the Elasticsearch cluster with security disabled
-    -r, --registry <URL>   - Elastic container registry URL
-    -s, --space            - Kibana space id (default esdiag)
-
-Environment Variables:
-    ELASTIC_CONTAINER_REGISTRY - Elastic container registry (default docker.elastic.co)
-    ESDIAG_REGISTRY            - Private container registry (default localhost)
-```
-
-### remove
-
-```
-Command: remove
-    Remove all containers with podman compose down, optionally also delete the volume
-
-Options:
-    --remove-file          - Also remove the currently-configured target/docker-compose.yml file
-    --remove-image         - Also remove the ESDiag image, will require re-building or re-downloading for next launch
-    --remove-volume        - Also remove the volume WARNING: Permenantly all data from the cluster and invalidates security configuration!
-    --remove-all           - Remove the containers, image, volume, and compose file
-```
-
 ### setup
 
 ```
 Command: setup
-    Generate, launch, and setup a full Elastic Stack deployment with compose up -d
+    Configure and start up a full Elastic Stack deployment with compose up -d
 
 Options:
     -e, --env <NAME|FILE>  - The .env.NAME or FILE to source credentials from (default .env)

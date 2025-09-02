@@ -1,6 +1,6 @@
 #!/bin/bash
 
-log_warn "⚠️ DEPRECATED SCRIPT: this script is replaced by $(white "esdiag-control launch --insecure" )"
+log_warn "⚠️ DEPRECATED SCRIPT: this script is replaced by $(white "esdiag-control up --insecure" )"
 
 # Setup a complete, local, Docker container-powered Elastic Stack for ESDiag.
 # 1. Builds an ESDiag container image for use with `esdiag-docker.sh`
@@ -379,4 +379,4 @@ else
     exit 1
 fi
 
-log_warn "⚠️ DEPRECATED SCRIPT: this script is replaced by $(white "esdiag-control launch --insecure" )"
+log_warn "⚠️ DEPRECATED SCRIPT: this script is replaced by $(white "esdiag-control up --insecure" )"

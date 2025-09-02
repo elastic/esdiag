@@ -67,9 +67,9 @@ function print_help_main() {
     white "Commands:\n"
     echo "    $(green build)    Build an ESDiag container image for the local host's platform"
     echo "    $(green buildx)   Build a multi-platform ESDiag container image with buildx"
-    echo "    $(green launch)   Generate and launch a full Elastic Stack deployment using compose"
     echo "    $(green setup)    Setup the target Elasticsearch and Kibana instances with ESDiag assets"
-    echo "    $(green remove)   Remove down the Elasticsearch, Kibana and ESDiag contaiers"
+    echo "    $(green down)     $(white compose down) the Elasticsearch, Kibana and ESDiag containers"
+    echo "    $(green up)       $(white compose up) to configure and start up a full Elastic Stack deployment"
     echo "    $(green help)     To get detailed <command> help, use a command name as the <argument>"
     echo
     white "Options:\n"
@@ -148,7 +148,7 @@ function security_setup() {
         log_info "$(yellow disabling) security: $(white '--insecure')"
         export ELASTIC_SECURITY_ENABLED=false
         sed -i -e 's/^export ELASTIC_SECURITY_ENABLED=.*/export ELASTIC_SECURITY_ENABLED=false/' "${env_file}"
-    elif [[ ! -z "${ELASTIC_PASSWORD}" ]]; then
+    elif [[ ! -z "${ELASTIC_PASSWORD}" && "${ELASTIC_PASSWORD}" != "changeme" ]]; then
         log_info "$(green found) $(gray "${env_file}") with system passwords and encryption key"
     else
         log_info "Generating $(cyan elastic) superuser password"
@@ -173,7 +173,7 @@ function apikey_setup() {
         log_debug "Skipping API key generation $(cyan "security=${security}")"
     elif [[ -z "${ESDIAG_OUTPUT_APIKEY}" || "${apikey}" == "" ]]; then
         log_info "Generating Elasticsearch $(cyan apikey)"
-        # Even after the container is running we need to waith for the API to start responding
+        # Even after the container is running we need to wait for the API to start responding
         local elasticsearch_status="000"
         while [[ "${elasticsearch_status}" == "000" ]]; do
             elasticsearch_status=$(curl --silent -X GET \
@@ -494,7 +494,7 @@ function validate_dependencies() {
 
 function print_help_auth () {
     echo
-    white "Command: $(green auth)\n"
+    white "Command: $(green auth) [options]\n"
     echo "    Test the configured authorization for Elasticsearch and Kibana"
     echo
     white "Options:\n"
@@ -574,7 +574,7 @@ function command_auth() {
 
 function print_help_build () {
     echo
-    white "Command: $(green build)\n"
+    white "Command: $(green build) [options]\n"
     echo "    Build an ESDiag container image for the local host's platform"
     echo
     white "Options:\n"
@@ -613,7 +613,7 @@ function command_build() {
 
 function print_help_buildx () {
     echo
-    white "Command: $(green buildx)\n"
+    white "Command: $(green buildx) [options]\n"
     echo "    Build a multi-platform ESDiag container image for $(gray x86_64) and $(gray arm64)"
     echo
     white "Options:\n"
@@ -642,12 +642,12 @@ function command_buildx() {
     fi
 }
 
-# ----- Command: launch -----
+# ----- Command: up -----
 
-function print_help_launch () {
+function print_help_up () {
     echo
-    white "Command: $(green launch) [options]\n"
-    echo "    Generate, launch, and setup a full Elastic Stack deployment with $(gray "${container} compose up -d")"
+    white "Command: $(green up) [options]\n"
+    echo "    Configure and launch a full Elastic Stack deployment with $(white "${container} compose up -d")"
     echo
     white "Options:\n"
     echo "    -e, --env <NAME|FILE>  - The $(gray .env.NAME) or $(gray FILE) to source credentials from (default $(gray .env))"
@@ -673,7 +673,7 @@ function compose_file_select() {
     fi
 }
 
-function command_launch() {
+function command_up() {
     # Check if the container runtime has the recommended resources
     local machine
     local cpus
@@ -713,26 +713,26 @@ function command_launch() {
     apikey_setup
 }
 
-# ----- Command: remove -----
+# ----- Command: down -----
 
-function print_help_remove () {
+function print_help_down () {
     echo
-    white "Command: $(green "remove")\n"
+    white "Command: $(green "down") [options]\n"
     echo "    Remove all containers with $(white "${container}" compose down), optionally also delete the volume"
     echo
     white "Options:\n"
     echo "    --remove-file          - Also remove the currently-configured $(gray target/docker-compose.yml) file"
-    echo "    --remove-image         - Also remove the ESDiag image, will require re-building or re-downloading for next $(white launch)"
+    echo "    --remove-image         - Also remove the ESDiag image, will require re-building or re-downloading for a new container"
     echo "    --remove-volume        - Also remove the volume $(yellow WARNING:) Permenantly all data from the cluster and invalidates security configuration!"
     echo "    --remove-all           - Remove the containers, image, volume, and compose file"
     echo
 }
 
-function command_remove() {
+function command_down() {
     log_info "$(green running) $(white "${container}" compose down)"
     ${container} compose --env-file "${env_file}" --file "${compose_file}" down
     if [[ "${remove_image}" == "true" ]]; then
-        log_info "Removing image $(magenta "${esdiag_image}")"
+        log_info "$(green running) $(white "${container}" image rm "${esdiag_image}" "${esdiag_image_latest}")"
         ${container} image rm "${esdiag_image}" "${esdiag_image_latest}"
     fi
     if [[ "${remove_volume}" == "true" ]]; then
@@ -752,18 +752,14 @@ function command_remove() {
 
 function print_help_setup () {
     echo
-    white "Command: $(green "setup")\n"
-    echo "    Generate, launch, and setup a full Elastic Stack deployment with $(gray "${container} compose up -d")"
+    white "Command: $(green "setup") [options]\n"
+    echo "    Create Elasticsearch templates and import Kibana saved objects"
     echo
     white "Options:\n"
     echo "    -e, --env <NAME|FILE>  - The $(gray .env.NAME) or $(gray FILE) to source credentials from (default $(gray ".env"))"
-    echo "    -i, --insecure         - Setup the Elasticsearch cluster with security disabled"
-    echo "    -r, --registry <URL>   - Elastic container registry URL"
     echo "    -s, --space            - Kibana space id (default $(gray esdiag))"
     echo
     white "Environment Variables:\n"
-    echo "    ELASTIC_CONTAINER_REGISTRY - Elastic container registry (default $(gray "docker.elastic.co"))"
-    echo "    ESDIAG_REGISTRY            - Private container registry (default $(gray "localhost"))"
     echo "    ESDIAG_KIBANA_URL          - Kibana URL (default $(gray "http://localhost:5601"))"
     echo "    ESDIAG_OUTPUT_URL          - Elasticsearch URL (default $(gray "http://localhost:9200"))"
     echo "    ESDIAG_OUTPUT_APIKEY       - Elasticsearch API key , takes precedence over username/password"
@@ -853,7 +849,7 @@ validate_dependencies
 
 # Validate and set command
 declare command="${1}" && shift
-if [[ ! ${command} =~ ^(auth|build|buildx|launch|remove|setup|-?-?h(elp)?)?$ ]]; then
+if [[ ! ${command} =~ ^(auth|build|buildx|down|setup|up|-?-?h(elp)?)?$ ]]; then
     log_error "Invalid command $(magenta "$command")"
     print_help_main
     exit 1
@@ -943,13 +939,13 @@ log_debug "Input command: $(white "${command}")"
 case $command in
     "help" )
         case "${1}" in
-            ""        ) print_help_main ;;
-            "auth"    ) print_help_auth ;;
-            "build"   ) print_help_build  ;;
-            "buildx"  ) print_help_buildx ;;
-            "launch"  ) print_help_launch ;;
-            "remove"  ) print_help_remove ;;
-            "setup"   ) print_help_setup ;;
+            ""       ) print_help_main ;;
+            "auth"   ) print_help_auth ;;
+            "build"  ) print_help_build  ;;
+            "buildx" ) print_help_buildx ;;
+            "down"   ) print_help_down ;;
+            "up"     ) print_help_up ;;
+            "setup"  ) print_help_setup ;;
             * ) log_warn "Unknown command: $(magenta "${1}")" && print_help_main ;;
         esac
     ;;
@@ -971,25 +967,13 @@ case $command in
         command_buildx && \
         log_debug "$(white buildx) complete"
     ;;
-    "launch" )
-        if [[ $help == true ]]; then print_help_launch && exit 0; fi
+    "down" )
+        if [[ $help == true ]]; then print_help_down && exit 0; fi
         declare compose_file="target/docker-compose.yml"
         compose_file_select
-        log_info "$(white launch) ${container} compose with $(gray "${compose_file}")"
-        command_build && \
-        command_launch && \
-        command_setup && \
-        log_info "$(green serving) $(cyan ESDiag) at $(blue "${esdiag_url}")" && \
-        browser_open && \
-        log_debug "$(white launch) complete"
-    ;;
-    "remove" )
-        if [[ $help == true ]]; then print_help_remove && exit 0; fi
-        declare compose_file="target/docker-compose.yml"
-        compose_file_select
-        log_info "$(white remove) containers${remove_image:+ image}${remove_volume:+ volume}"
-        command_remove && \
-        log_debug "$(white remove) complete"
+        log_info "$(white down) containers${remove_image:+ image}${remove_volume:+ volume}"
+        command_down && \
+        log_debug "$(white down) complete"
     ;;
     "setup" )
         if [[ $help == true ]]; then print_help_setup && exit 0; fi
@@ -998,6 +982,18 @@ case $command in
         log_info "$(white setup) Elasticsearch $(gray "${elasticsearch_url}") and Kibana $(gray "${kibana_url}")"
         command_setup && \
         log_debug "$(white setup) complete"
+    ;;
+    "up" )
+        if [[ $help == true ]]; then print_help_up && exit 0; fi
+        declare compose_file="target/docker-compose.yml"
+        compose_file_select
+        log_info "$(white up) ${container} compose with $(gray "${compose_file}")"
+        command_build && \
+        command_up && \
+        command_setup && \
+        log_info "$(green serving) $(cyan ESDiag) at $(blue "${esdiag_url}")" && \
+        browser_open && \
+        log_debug "$(white up) complete"
     ;;
     * )
         if [[ $# == 0 ]]; then

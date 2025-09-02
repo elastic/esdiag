@@ -1,8 +1,10 @@
 #!/bin/bash
 
+# Integration tests for the bin/esdiag-control command
+
 # ----- Environment -----
 
-declare esdiag_dir="${1:-.}"
+declare esdiag_dir="."
 declare version
 version=$(grep --only-matching '^version = ".*"' Cargo.toml | sed -E 's/^version = "(.*)"/\1/')
 declare tests_passed=0
@@ -112,9 +114,9 @@ function command_build_creates_container_image() {
 
     # make sure the esdiag:latest and esdiag:version images don't exist
     if [[ -n ${image_id} ]]; then
-        log_debug "Removing existing image: $(cyan esdiag esdiag:${version})"
+        log_debug "Removing existing image: $(cyan esdiag "esdiag:${version}")"
         ${container} image rm esdiag "esdiag:${version}" >> "${test_log}" 2>&1 \
-        || log_error "$(red failed) to remove existing image ${image_id}"
+        || log_error "$(red failed) to down existing image ${image_id}"
     fi
 
     # Build the esdiag image
@@ -132,9 +134,9 @@ function command_buildx_creates_multi_platform_images() {
 
     # make sure the esdiag:latest and esdiag:version images don't exist
     if [[ -n ${image_id} ]]; then
-        log_debug "Removing existing image: $(cyan esdiag esdiag:${version})"
+        log_debug "Removing existing image: $(cyan esdiag "esdiag:${version}")"
         ${container} image rm esdiag "esdiag:${version}" >> "${test_log}" 2>&1 \
-        || log_error "$(red failed) to remove existing image ${image_id}"
+        || log_error "$(red failed) to down existing image ${image_id}"
     fi
 
     # Build the esdiag image
@@ -160,25 +162,26 @@ function command_auth_returns_success() {
     fi
 }
 
-function command_launch_insecure_starts_stack_containers() {
-    test_start "command_launch_insecure_starts_stack_containers"
-    esdiag_control launch --insecure
+function command_up_insecure_starts_stack_containers() {
+    test_start "command_up_insecure_starts_stack_containers"
+    esdiag_control up --insecure
 
     elasticsearch_status=$(${container} inspect esdiag-elasticsearch --format '{{.State.Status}}')
     kibana_status=$(${container} inspect esdiag-kibana --format '{{.State.Status}}')
     esdiag_status=$(${container} inspect esdiag --format '{{.State.Status}}')
 
     if [[ ${elasticsearch_status} == "running" && ${kibana_status} == "running" && ${esdiag_status} == "running" ]]; then
-        test_pass command_launch_insecure_starts_stack_containers
+        test_pass command_up_insecure_starts_stack_containers
     else
-        test_fail command_launch_insecure_starts_stack_containers
+        test_fail command_up_insecure_starts_stack_containers
     fi
 }
 
 function command_setup_completes_successfully() {
     test_start "command_setup_completes_successfully"
     esdiag_control setup
-    success=$(tail -n 20 ${test_log} | grep --count "importing Kibana objects into space:")
+    sleep 1
+    success=$(tail -n 10 ${test_log} | grep --count "importing Kibana objects into space:")
 
     log_debug "Setup success: $(white "${success}")"
     if [[ ${success} -eq 1 ]]; then
@@ -188,33 +191,33 @@ function command_setup_completes_successfully() {
     fi
 }
 
-function command_remove_removes_containers {
-    test_start "command_remove_removes_containers"
+function command_down_removes_containers {
+    test_start "command_down_removes_containers"
     before=$("$container" ps -a | grep --count esdiag)
-    esdiag_control remove
+    esdiag_control down
     after=$("$container" ps -a | grep --count esdiag)
 
-    log_debug "Remove remaining containers: $(white "${before}")"
+    log_debug "down remaining containers: $(white "${before}")"
     if [[ ${before} -gt 0 && ${after} -eq 0 ]]; then
-        test_pass command_remove_removes_containers
+        test_pass command_down_removes_containers
     else
-        test_fail command_remove_removes_containers found "$(magenta "${before}")" "$(gray esdiag-*)" containers
+        test_fail command_down_removes_containers found "$(magenta "${before}")" "$(gray esdiag-*)" containers
     fi
 }
 
-function command_launch_secure_starts_stack_containers {
-    test_start "command_launch_secure_starts_stack_containers"
+function command_up_secure_starts_stack_containers {
+    test_start "command_up_secure_starts_stack_containers"
     sed -i -e 's/ELASTIC_SECURITY_ENABLED=false/ELASTIC_SECURITY_ENABLED=true/' .env.test
-    esdiag_control launch
+    esdiag_control up
 
     elasticsearch_status=$(${container} inspect esdiag-elasticsearch --format '{{.State.Status}}')
     kibana_status=$(${container} inspect esdiag-kibana --format '{{.State.Status}}')
     esdiag_status=$(${container} inspect esdiag --format '{{.State.Status}}')
 
     if [[ ${elasticsearch_status} == "running" && ${kibana_status} == "running" && ${esdiag_status} == "running" ]]; then
-        test_pass command_launch_secure_starts_stack_containers
+        test_pass command_up_secure_starts_stack_containers
     else
-        test_fail command_launch_secure_starts_stack_containers Elasticsearch: "$(magenta "${elasticsearch_status}")" Kibana: "$(magenta "${kibana_status}")" ESDiag: "$(magenta "${esdiag_status}")"
+        test_fail command_up_secure_starts_stack_containers Elasticsearch: "$(magenta "${elasticsearch_status}")" Kibana: "$(magenta "${kibana_status}")" ESDiag: "$(magenta "${esdiag_status}")"
     fi
 }
 
@@ -262,20 +265,27 @@ function tests_run() {
     shellcheck_returns_zero_issues
     command_help_prints_usage
     command_build_creates_container_image
-    # First launch and auth with security disabled
-    command_launch_insecure_starts_stack_containers
+    # TODO: command_buildx_creates_multi_platform_images
+    # First up and auth with security disabled
+    command_up_insecure_starts_stack_containers
     command_auth_returns_success
     command_setup_completes_successfully
-    command_remove_removes_containers
-    # Second launch and with security enabled
-    command_launch_secure_starts_stack_containers
+    command_down_removes_containers
+    # Second up and with security enabled
+    command_up_secure_starts_stack_containers
     command_auth_returns_success
     command_setup_completes_successfully
     # Tear down environment
-    command_remove_removes_containers
+    command_down_removes_containers
 }
 
 env_setup
-tests_run
-tests_summary
+# To run only one test, pass the argument: `--only <function_name>`
+if [[ $1 == "--only" ]]; then
+    shift
+    $1
+else
+    tests_run
+    tests_summary
+fi
 env_teardown

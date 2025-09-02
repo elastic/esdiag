@@ -8,13 +8,13 @@ Running locally within containers
 
 ### 1. Preparation
 
-Use the `bin/stack-local-setup.sh` to quickly spin up a fully-local environment.
+Use the `bin/esdiag-control` command to quickly spin up a fully-local environment.
 
 1. Clone this repository to your local machine using either `git` or [GitHub Desktop](https://desktop.github.com/download/)
 2. Be sure you have the dependencies installed: `docker`, `jq`, `curl`, `grep`, and `sed`.
-3. Pick either the **Automated** or **Manual** dashboard update method (easily to switch later)
+3. Pick either the **Automated** or **Manual** dashboard update method (easy to switch later)
 
-> ℹ️ Note: You can use any container runtime, as long as it supports the `docker compose` subcommand.
+> ℹ️ Note: You can use either the `podman` or `docker` container runtime, as long as you have the `compose` subcommand installed.
 
 ### 2a. Automated dashboard updates
 
@@ -28,7 +28,7 @@ Once you've generated the token, add it to the `.env` file in the repository roo
 export GITHUB_TOKEN="github_pat_123..."
 ```
 
-This will allow the `esdiag` scripts like `bin/stack-local-setup.sh` to use your permissions to read directly from the private GitHub repositories.
+This will allow the `esdiag` scripts like `bin/esdiag-control` to read directly from private GitHub repositories.
 
 ### 2b. Manual dashboard updates
 
@@ -43,23 +43,29 @@ You can add the GitHub token later at any time.
 Now run the script from this repository's root directory:
 
 ```sh
-./bin/stack-local-setup.sh
+./bin/esdiag-control up
 ```
+
+> NOTE: When running security enabled, the `elastic` user's password will be saved to the `ELASTIC_PASSWORD` environment variable in the `.env` file.
+
+or with security disabled:
+
+```sh
+./bin/esdiag-control up --insecure
+```
+
+> NOTE: The AI assistant features will not be available with security disabled. Running with security disabled prevents Kibana from using an Kibana encryption key, which is required to configure anything with an external API key, like large-language model (LLM) providers.
 
 Once the script is complete, you will have:
 1. A single Elasticsearch node with all index templates installed.
 2. A fully-configured Kibana instance with dashboards, data views, and saved searches imported.
-3. An `esdiag:latest` Docker container serving the web interface (also works with `bin/esdiag-docker.sh`).
-4. A web browser opened to the ESDiag web interface at http://localhost:3000 (Windows may not auto-launch the browser)
+3. An `esdiag:latest` container container serving the web interface.
+4. A web browser opened to the ESDiag web interface at http://localhost:3000
 5. If you configured `automated` dashboard updates, re-running the script will update and re-import the dashboards.
 
 ### 4. Processing diagnostics
 
-Now import your first diagnostic with:
-
-```sh
-./bin/esdiag-docker.sh process ~/Downloads/diagnostic-abc123-2025-Jun-20--12_30_01.zip
-```
+Open your browser to the ESDiag web interface to http://localhost:3000 and use your browser to upload a diagnostic bundle.
 
 Full Rust Installation with Cargo
 ----------------------------------
@@ -128,7 +134,7 @@ Validate the installation is working by simply running `esdiag help`. If you see
 
 Refer to the `example.env` file to configure a default output with environment variables, without any `host` configurations.
 
-If you need a simple, local, security-disabled Elasticsearch and Kibana environment, use the `bin/stack-local-setup.sh` script above. You can still target a local install to the stack running in the containers.
+If you need a simple way to run the full stack locally, including Elasticsearch and Kibana, use the `bin/esdiag-local` script above. You can still target the containers with a local ESDiag install, just be sure to stop the `esdiag` container before trying to run `esdiag serve`.
 
 Usage
 --------------------
