@@ -9,16 +9,6 @@ pub struct Error<'e> {
 }
 
 #[derive(Template)]
-#[template(
-    source = r#"<div id="current-status" class="status-box {{ class }}"> ✅ {{ message }}</div>"#,
-    ext = "html"
-)]
-pub struct Status<'s> {
-    pub class: &'s str,
-    pub message: &'s str,
-}
-
-#[derive(Template)]
 #[template(path = "index.html")]
 pub struct Index {
     pub auth_header: bool,

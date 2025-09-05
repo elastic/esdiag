@@ -1,0 +1,1009 @@
+#!/bin/bash
+
+# Automates the build, configuration and deployment of Elastic Stack Diagnostics
+# See `docs/esdiag-control.md` for more information
+# Run `esdiag-control help <command>` for usage details
+
+# ----- Logging Functions -----
+
+declare log_name="esdiag-control"
+
+# Only print colors if output is a terminal
+declare colorize=false
+if [[ -t 1 ]]; then
+    colorize=true
+fi
+
+function echo_color() {
+    local color=$1; shift
+    if [[ $colorize == true ]]; then
+        echo -e -n "\033[${color}m${*}\033[39m"
+    else
+        echo -n "${*}"
+    fi
+}
+
+# Colorized echo statements
+function black()     { echo_color 30 "${@}"; }
+function red()       { echo_color 31 "${@}"; }
+function green()     { echo_color 32 "${@}"; }
+function yellow()    { echo_color 33 "${@}"; }
+function blue()      { echo_color 34 "${@}"; }
+function magenta()   { echo_color 35 "${@}"; }
+function cyan()      { echo_color 36 "${@}"; }
+function gray()      { echo_color 90 "${@}"; }
+function lt_red()    { echo_color 91 "${@}"; }
+function lt_green()  { echo_color 92 "${@}"; }
+function lt_yellow() { echo_color 93 "${@}"; }
+function lt_blue()   { echo_color 94 "${@}"; }
+function lt_magenta(){ echo_color 95 "${@}"; }
+function lt_cyan()   { echo_color 96 "${@}"; }
+function white()     { echo_color 97 "${@}"; }
+
+# Colorized log messages
+function timestamp() { echo -n "$(date -u +"%Y-%m-%d %H:%M:%S")"; }
+function log_error() { echo "[$(timestamp) $(red Error) ${log_name}] ${*}"; }
+function log_warn()  { echo "[$(timestamp) $(yellow Warn)  ${log_name}] ${*}"; }
+function log_info()  { echo "[$(timestamp) $(green Info)  ${log_name}] ${*}"; }
+function log_debug() {
+    if [[ $LOG_LEVEL == "debug" ]]; then
+        echo "[$(timestamp) $(blue Debug) ${log_name}] ${*}"
+    fi
+}
+
+# ----- Help Functions -----
+
+function print_usage() {
+    echo "$(white "Usage:") esdiag-control <command> [options] <arguments>"
+}
+
+function print_help_main() {
+    white "Description:\n"
+    echo "    Elastic Stack Diagnostics Control $(green 'esdiag-control') is the deployment assistant for ESDiag"
+    echo
+    white "Usage:\n"
+    echo "    $(green esdiag-control) <command> [options] <arguments>"
+    echo
+    white "Commands:\n"
+    echo "    $(green build)    Build an ESDiag container image for the local host's platform"
+    echo "    $(green buildx)   Build a multi-platform ESDiag container image with buildx"
+    echo "    $(green setup)    Setup the target Elasticsearch and Kibana instances with ESDiag assets"
+    echo "    $(green down)     $(white compose down) the Elasticsearch, Kibana and ESDiag containers"
+    echo "    $(green up)       $(white compose up) to configure and start up a full Elastic Stack deployment"
+    echo "    $(green help)     To get detailed <command> help, use a command name as the <argument>"
+    echo
+    white "Options:\n"
+    echo "    -e, --env <NAME|FILE>  - The $(gray ".env.NAME") or $(gray "FILE") file to source credentials from (default $(gray ".env"))"
+    echo "    -s, --space <ID>       - Kibana space id (default $(gray "esdiag"))"
+    echo "        --debug            - More verbose logging and retention of temporary files"
+    echo "        --version          - Print the version of the script"
+    echo
+}
+
+# ----- Environment Configuration -----
+
+function env_file_source() {
+    if [[ ! -f $env_file ]]; then
+        log_info "$(green creating) environment file $(cyan "${env_file}")"
+        cp example.env "${env_file}"
+        chmod 600 "${env_file}"
+    fi
+
+    log_debug "Sourcing $(gray "${env_file}")"
+    # shellcheck disable=SC1090
+    source "${env_file}"
+
+    # Set default space
+    export kibana_space=${kibana_space_arg:-${ESDIAG_KIBANA_SPACE:-esdiag}}
+    log_debug "Space: $(cyan "${kibana_space}")"
+}
+
+function environment_setup() {
+    version=$(grep -o '^version = ".*"' Cargo.toml | sed -E 's/^version = "(.*)"/\1/')
+    export version
+
+    export elasticsearch_url=${ESDIAG_OUTPUT_URL:-"http://localhost:9200"}
+    export kibana_url=${ESDIAG_KIBANA_URL:-"http://localhost:5601"}
+    export esdiag_url="http://localhost:3000"
+    export assets_path="assets/kibana"
+    export esdiag_registry="${ESDIAG_REGISTRY:-${ELASTIC_CONTAINER_REGISTRY:-"localhost"}}"
+    export esdiag_image="${esdiag_registry}/esdiag/esdiag:${version}"
+    export esdiag_image_latest="${esdiag_registry}/esdiag/esdiag:latest"
+
+    export security=${security:-${ELASTIC_SECURITY_ENABLED:-"true"}}
+    # Use ESDIAG_OUTPUT* environment variables to configure Elastic Stack authentication
+    export apikey=${ESDIAG_OUTPUT_APIKEY}
+    export username=${ESDIAG_OUTPUT_USERNAME}
+    export password=${ESDIAG_OUTPUT_PASSWORD}
+
+    # The `export.ndjson` file to import into Kibana, defaults to the newest
+    # dashboard file in `assets/kibana/esdiag-dashboards*.ndjson`
+    # Is overwritten by `dashboards_latest_release_download()` if a GITHUB_TOKEN is defined
+    dashboard_file=$(find assets/kibana -name "esdiag-dashboards*.ndjson" -type f 2>/dev/null | sort | tail -n 1)
+    export dashboard_file
+
+    # Git repository information
+    export esdiag_dashboards_url="https://api.github.com/repos/elastic/esdiag-dashboards"
+    export esdiag_github_url="https://api.github.com/repos/elastic/esdiag"
+    export esdiag_branch=${ESDIAG_BRANCH:-"main"}
+}
+
+function random_password() {
+  LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 32
+}
+
+function password_reset() {
+    local username="${1}"
+    local password="${2}"
+    curl --silent -X POST \
+        --user "elastic:${ELASTIC_PASSWORD}" \
+        --header "Content-Type: application/json" \
+        --location "${elasticsearch_url}/_security/user/${username}/_password" \
+        --write-out "%{http_code}" \
+        --data "{\"password\":\"${password}\"}"
+}
+
+function security_setup() {
+    if [[ "${security}" == "false" ]]; then
+        log_info "$(yellow disabling) security: $(white '--insecure')"
+        export ELASTIC_SECURITY_ENABLED=false
+        sed -i -e 's/^export ELASTIC_SECURITY_ENABLED=.*/export ELASTIC_SECURITY_ENABLED=false/' "${env_file}"
+    elif [[ ! -z "${ELASTIC_PASSWORD}" && "${ELASTIC_PASSWORD}" != "changeme" ]]; then
+        log_info "$(green found) $(gray "${env_file}") with system passwords and encryption key"
+    else
+        log_info "Generating $(cyan elastic) superuser password"
+        elastic_password="$(random_password)"
+        sed -i -e "s/ELASTIC_PASSWORD=.*/ELASTIC_PASSWORD='${elastic_password}'/" "${env_file}"
+        export ELASTIC_PASSWORD="${elastic_password}"
+
+        kibana_password="$(random_password)"
+        log_info "Generating $(cyan kibana_system) user password";
+        sed -i -e "s/KIBANA_SYSTEM_PASSWORD=.*/KIBANA_SYSTEM_PASSWORD='${kibana_password}'/" "${env_file}"
+        export KIBANA_SYSTEM_PASSWORD="${kibana_password}"
+
+        kibana_encryption_key="$(random_password)"
+        log_info "Generating Kibana $(cyan encryption key)";
+        sed -i -e "s/KIBANA_ENCRYPTION_KEY=.*/KIBANA_ENCRYPTION_KEY='${kibana_encryption_key}'/" "${env_file}"
+        export KIBANA_ENCRYPTION_KEY="${kibana_encryption_key}"
+    fi
+}
+
+function apikey_setup() {
+    if [[ "${security}" == "false" ]]; then
+        log_debug "Skipping API key generation $(cyan "security=${security}")"
+    elif [[ -z "${ESDIAG_OUTPUT_APIKEY}" || "${apikey}" == "" ]]; then
+        log_info "Generating Elasticsearch $(cyan apikey)"
+        # Even after the container is running we need to wait for the API to start responding
+        local elasticsearch_status="000"
+        while [[ "${elasticsearch_status}" == "000" ]]; do
+            elasticsearch_status=$(curl --silent -X GET \
+                --header "Authorization: Basic $(echo -n "elastic:${ELASTIC_PASSWORD}" | base64)" \
+                --location "${elasticsearch_url}" \
+                --write-out '%{http_code}' \
+                --output /dev/null)
+            sleep 2
+        done
+        apikey=$(curl --silent -X POST \
+            --header "Content-Type: application/json" \
+            --header "Authorization: Basic $(echo -n "elastic:${ELASTIC_PASSWORD}" | base64)" \
+            --location "${elasticsearch_url}/_security/api_key" \
+            --data '{"name":"esdiag"}' | jq --raw-output '.encoded'
+        )
+        if [[ -z "${apikey}" || ${apikey} == "" ]]; then
+            log_error "Failed to generate API key"
+            exit 1
+        fi
+        sed -i -e "s/^.*export ESDIAG_OUTPUT_APIKEY=.*/export ESDIAG_OUTPUT_APIKEY='${apikey}'/" "${env_file}"
+        export ESDIAG_OUTPUT_APIKEY="${apikey}"
+        export apikey
+        log_debug "API key generated $(cyan "${apikey:0:5}...") for ${elasticsearch_url}"
+        # Container has to be rebuilt to pick up the new API key environment variable
+        ${container} compose --env-file "${env_file}" --file "${compose_file}" down esdiag-webui
+        ${container} compose --env-file "${env_file}" --file "${compose_file}" up esdiag-webui --detach
+    else
+        log_debug "$(green found) existing API key $(cyan "${ESDIAG_OUTPUT_APIKEY:0:5}...")"
+    fi
+}
+
+# ----- GitHub Functions -----
+
+function github_token_check() {
+    local token_status && token_status=$(curl --silent --location \
+        --header "Accept: application/vnd.github+json" \
+        --header "Authorization: token ${GITHUB_TOKEN}" \
+        --header "X-GitHub-Api-Version: 2022-11-28" \
+        --write-out "%{http_code}" --output /dev/null \
+        "${esdiag_github_url}")
+
+    if [[ $token_status == "200" ]]; then
+        log_info "$(green validated) GitHub token: http ${token_status}"
+    else
+        log_error "$(red invalid) GitHub token: http ${token_status}"
+        exit 1
+    fi
+}
+
+function esdiag_version_check() {
+    local local_branch && local_branch=$(git branch --show-current)
+    if [[ "$local_branch" != "$esdiag_branch" ]]; then
+        log_warn "You are on branch $(yellow "${local_branch}") and checking against $(cyan "${esdiag_branch}")"
+    fi
+
+    local esdiag_latest && esdiag_latest=$(curl --silent --location \
+        --header "Accept: application/vnd.github+json" \
+        --header "Authorization: token ${GITHUB_TOKEN}" \
+        --header "X-GitHub-Api-Version: 2022-11-28" \
+          "${esdiag_github_url}/contents/Cargo.toml?ref=${esdiag_branch}" \
+          | jq -r '.content' | base64 -d | grep "^version = " | sed 's/version = "\(.*\)"/\1/')
+
+    log_info "latest version: $(cyan "${esdiag_latest}") on $(gray "${esdiag_branch}")"
+
+    if [[ "$esdiag_latest" == "$version" ]]; then
+        log_info "local  version: $(green "${version}") on $(gray "${local_branch}")"
+    else
+        log_warn "local  version: $(yellow "${version}") on $(gray "${local_branch}")"
+        log_warn "Please run $(white "git pull") to update local repository and ensure dashboard compatibility"
+        if [[ "$local_branch" != "$esdiag_branch" ]]; then
+            log_warn "And be sure the $(yellow "${local_branch}") branch is compatible with $(cyan "${esdiag_branch}")"
+        fi
+        exit 1
+    fi
+}
+
+function dashboards_latest_release_download() {
+    log_info "$(green fetching) latest ESDiag Dashboards release"
+
+    # Get the latest release metadata
+    local latest_release_json && latest_release_json=$(curl --silent --location \
+            --header "Accept: application/vnd.github+json" \
+            --header "Authorization: token ${GITHUB_TOKEN}" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "${esdiag_dashboards_url}/releases/latest")
+
+    # Find the .ndjson asset download URL
+    local download_url && download_url=$(echo "${latest_release_json}" | jq -r '.assets[] | select(.name | endswith(".ndjson")) | .url' | head -1)
+    local file_name && file_name=$(echo "${latest_release_json}" | jq -r '.assets[] | select(.name | endswith(".ndjson")) | .name' | head -1)
+
+    if [[ -z "$download_url" || -z "$file_name" ]]; then
+        log_error "$(red missing) ESDiag Dashboards release, no $(gray assets/kibana/*.ndjson) files"
+        return 1
+    else
+        log_info "$(green found) ESDiag Dashboards release: $(gray "${file_name}")"
+    fi
+
+    if [[ ! -f "${assets_path}/${file_name}" ]]; then
+        # Download the asset using the GitHub API
+        curl --silent --location \
+                --header "Authorization: token ${GITHUB_TOKEN}" \
+                --header "Accept: application/octet-stream" \
+                --output "${assets_path}/${file_name}" \
+                "${download_url}"
+
+        if [[ $? -ne 0 || ! -f "${assets_path}/${file_name}" ]]; then
+            log_error "Failed to download dashboard file"
+            return 1
+        fi
+
+        log_info "$(green downloaded) dashboards file to $(gray "${assets_path}/${file_name}")"
+    else
+        # Skip download if we already have the latest release file
+        log_info "$(green found) dashboards file $(gray "${assets_path}/${file_name}"), skipping download"
+    fi
+
+    export dashboard_file="${assets_path}/${file_name}"
+}
+
+# ----- Kibana Functions -----
+
+function set_auth_header() {
+    log_debug "$(green setting) authorization header"
+
+    if [[ ! -z $auth_header ]]; then
+        log_debug "$(green reusing) auth header $(cyan "${auth_header}")"
+        return 0
+    elif [[ "${security}" == "false" ]]; then
+        log_info "$(green setting) header $(cyan Authorization: None)"
+        export auth_header="Authorization: None"
+        return 0
+    fi
+
+    if [[ -z $kibana_url ]]; then
+        log_error "Kibana URL is not defined"
+        exit 1
+    elif [[ -z $elasticsearch_url ]]; then
+        log_error "Elasticsearch URL is not defined"
+        exit 1
+    fi
+
+    if [[ ! -z $apikey ]]; then
+        log_info "$(green set) header $(cyan Authorization: ApiKey)"
+        export auth_header="Authorization: ApiKey ${apikey}"
+    elif [[ ! -z $password ]]; then
+        log_info "$(green set) header $(cyan Authorization: Basic) for $(cyan "${username}")"
+        auth_header="Authorization: Basic $(echo -n "${username}:${password}" | base64)"
+        export auth_header
+    else
+        log_warn "$(yellow missing) security credentials"
+        log_info "$(green setting) header $(cyan Authorization: None)"
+        export auth_header="Authorization: None"
+    fi
+}
+
+function kibana_objects_import() {
+    local kibana_space="${kibana_space:-esdiag}"
+    local response_file="target/kibana_import.json"
+    log_debug "$(green starting) import Kibana objects into space $(cyan "${kibana_space}")"
+
+    # Wait for Kibana to be ready
+    local http_status=0
+    while [[ $http_status -ne 200 ]]; do
+        http_status=$(curl --silent \
+            --max-time 5 \
+            --header "${auth_header}" \
+            --write-out "%{http_code}"\
+            --output /dev/null "${kibana_url}/app/home"
+        )
+        if [[ $http_status -ge 400 || $http_status == "000" ]]; then
+            log_error "$(magenta Kibana) returned HTTP status code $(magenta "${http_status}")"
+            error_message=$("${container}" logs esdiag-kibana | tail -n 20 | grep ERROR | sed -e 's/.*ERROR]//')
+            if [[ -n $error_message ]]; then
+                log_error "${error_message}"
+            fi
+            exit 1
+        elif [[ $http_status -ne 200 ]]; then
+            log_info "Waiting on $(magenta Kibana)..."
+            sleep 5
+        fi
+        # Make sure the container is still running
+        if [[ ! -z ${compose_file} ]]; then
+            local container_status
+            container_status=$(${container} inspect esdiag-kibana --format '{{.State.Status}}')
+            if [[ $container_status == "exited" ]]; then
+                log_info "$(green exited) $(magenta Kibana) container"
+                ${container} logs esdiag-kibana | tail -n 10
+                exit 1
+            fi
+        fi
+    done
+    log_info "$(green serving) $(magenta Kibana) at $(blue "${kibana_url}")"
+    # Kibana's "ready" is overly optimistic and imports may fail, so give it another second
+    sleep 1
+
+    # Import saved objects
+    set_auth_header
+    # check for a 404, if it is not found, create it:
+    # https://esdiag-prod.kb.us-west-2.aws.found.io/api/spaces/space/esdiag
+    log_info "$(green creating) $(magenta Kibana) space $(cyan "${kibana_space}")"
+    curl -X POST "${kibana_url}/api/spaces/space" \
+        --header "${auth_header}" \
+        --header "kbn-xsrf: true" \
+        --header "Content-Type: application/json" \
+        --silent \
+        --data @"assets/kibana/space.json" \
+        | jq > "${response_file}"
+
+    log_info "$(green importing) $(magenta Kibana) objects into space: $(cyan "${kibana_space}")"
+    curl -X POST "${kibana_url}/s/${kibana_space}/api/saved_objects/_import?overwrite=true" \
+        --header "${auth_header}" \
+        --header "kbn-xsrf: true" \
+        --compressed \
+        --silent \
+        --form file=@"${dashboard_file}" \
+        | jq > "${response_file}"
+
+    local success && success=$(jq -r .success "${response_file}")
+    if [[ $success != "true" ]]; then
+        log_error "Import failed, check $(gray "${response_file}") for details"
+        exit 1
+    fi
+    success_count=$(jq -r .successCount "${response_file}")
+    log_debug "$(green success) $(magenta Kibana) objects imported: $(cyan "${success_count}")"
+}
+
+function browser_open() {
+    if [[ $(command -v explorer.exe) ]]; then
+        # Windows Subsystem for Linux (WSL)
+        log_info "$(green running) $(white explorer.exe "${esdiag_url}")"
+        explorer.exe "${esdiag_url}"
+    elif [[ $(command -v open) ]]; then
+        # MacOS
+        log_info "$(green running) $(white open "${esdiag_url}")"
+        open "${esdiag_url}"
+    elif [[ $(command -v gnome-open) ]]; then
+        # Linux with Gnome
+        log_info "$(green running) $(white gnome-open "${esdiag_url}")"
+        gnome-open "${esdiag_url}"
+    elif [[ $(command -v xdg-open) ]]; then
+        # Linux, more generic
+        log_info "$(green running) $(white xdg-open "${esdiag_url}")"
+        xdg-open "${esdiag_url}"
+    else
+        log_info "No browser launcher found"
+    fi
+}
+
+# ----- Main Functions -----
+
+function configuration_validate() {
+    if [[ -z $dashboard_file && -z $GITHUB_TOKEN ]]; then
+        log_error "$(red missing) dashboards file in $(gray assets/kibana/) and GitHub token in $(gray .env) file, must provide one or the other"
+        exit 1
+    fi
+}
+
+function auth_registry_validate() {
+    log_warn "Auth registry validation is not implemented yet"
+}
+
+function dependencies_validate() {
+    if [[ ! -f "Cargo.toml" ]]; then
+        log_error "$(gray Cargo.toml) file not found in the current directory"
+        echo "Please run this script from the $(gray root) of the $(cyan esdiag) repository:"
+        echo "  $(white "./bin/esdiag-control")"
+        exit 1
+    fi
+
+    local failures=0
+
+    if command -v podman &> /dev/null; then
+        # Supresses warning message for external compose provider
+        export PODMAN_COMPOSE_WARNING_LOGS=false
+        container="podman"
+    elif command -v docker &> /dev/null; then
+        container="docker"
+    else
+        log_error "$(red missing) container runtime, neither $(magenta docker) nor $(magenta podman) found"
+        failures=$((failures + 1))
+    fi
+    log_debug "$(green using) $(white "${container}") container runtime"
+    export container
+
+    if ! command -v curl &> /dev/null; then
+        log_error "$(white curl) is required to send HTTP requests"
+        failures=$((failures + 1))
+    fi
+
+    if ! command -v jq &> /dev/null; then
+        log_error "$(white jq) is required to read json files and $(white curl) responses"
+        failures=$((failures + 1))
+    fi
+
+    if ! command -v grep &> /dev/null; then
+        log_error "$(white grep) is required to search files"
+        failures=$((failures + 1))
+    fi
+
+    if ! command -v sed &> /dev/null; then
+        log_error "$(white sed) is required to process text"
+        failures=$((failures + 1))
+    fi
+
+    if (( failures > 0 )); then
+        log_error "Dependencies: $(white $failures) checks $(red failed)"
+        exit 1
+    fi
+
+    if [[ ! -d "target" ]]; then
+        log_info "Creating directory: $(gray target)"
+        mkdir "target"
+    fi
+}
+
+# ----- Command: Auth -----
+
+function print_help_auth () {
+    echo
+    white "Command: $(green auth) [options]\n"
+    echo "    Test the configured authorization for Elasticsearch and Kibana"
+    echo
+    white "Options:\n"
+    echo "    -e, --env <NAME|FILE>  - The $(gray ".env.NAME") or $(gray "FILE") file to source credentials from (default $(gray ".env"))"
+    echo
+    white "Environment Variables:\n"
+    echo "    ESDIAG_KIBANA_URL          - Kibana URL (default $(gray "http://localhost:5601"))"
+    echo "    ESDIAG_OUTPUT_URL          - Elasticsearch URL (default $(gray "http://localhost:9200"))"
+    echo "    ESDIAG_OUTPUT_APIKEY       - Elasticsearch API key, takes precedence over username/password"
+    echo "    ESDIAG_OUTPUT_USERNAME     - Elasticsearch username"
+    echo "    ESDIAG_OUTPUT_PASSWORD     - Elasticsearch password"
+    echo
+}
+
+# Tests authorization to Kibana by getting the default space description
+function command_auth() {
+    set_auth_header
+    local failure="false"
+
+    # Check Elasticsearch authenitcation
+    log_info "Request to Elasticsearch: $(blue "${elasticsearch_url}")"
+    local response && response=$(curl --silent \
+        --header "${auth_header}" \
+        --location "${elasticsearch_url}"
+    )
+    log_debug "Elasticsearch response: ${response}"
+    if echo "${response}" | grep -q "You Know, for Search"; then
+        log_info "Elasticsearch $(green You Know, for Search)"
+    else
+        log_error "Elasticsearch connection $(red failed)"
+        failure="true"
+    fi
+
+    # Check Kibana authenitcation
+    log_info "Request to Kibana: $(blue "${kibana_url}")"
+    local response && response=$(curl --silent \
+        --header "${auth_header}" \
+        --header "elastic-api-version: 2023-10-31" \
+        --location "${kibana_url}/api/spaces/space/${kibana_space}"
+    )
+
+    log_debug "Kibana response: ${response}"
+
+    local status_code
+    local message
+    local error
+    if [[ "${response}" == "Kibana server is not ready yet" ]]; then
+        message="${response}"
+        error="Bad Gateway"
+        status_code=503
+        failure="true"
+    else
+        status_code=$(echo "${response}" | jq --raw-output '.statusCode')
+    fi
+
+    if (( status_code >= 400 )); then
+        if [[ -z $message ]]; then
+            error=$(echo "${response}" | jq --raw-output '.error')
+            message=$(echo "${response}" | jq --raw-output '.message')
+        fi
+        log_error "Request to space $(magenta "${kibana_space}") $(red failed): ${status_code} - ${error}"
+        log_error "${message}"
+        failure="true"
+    else
+        local jq && jq=$(echo "${response}" | jq --raw-output '.name + "=" + (.description | if length > 30 then .[:30] + "..." else . end)')
+        local name && name=${jq//=*/}
+        local description && description=${jq//*=/}
+        log_info "Kibana space $(cyan "${name}"): $(gray "${description}")"
+    fi
+
+    if [[ ${failure} == "true" ]]; then
+        exit 1
+    fi
+}
+
+# ----- Command: build -----
+
+function print_help_build () {
+    echo
+    white "Command: $(green build) [options]\n"
+    echo "    Build an ESDiag container image for the local host's platform"
+    echo
+    white "Options:\n"
+    echo "    -e, --env <NAME|FILE>  - The $(gray ".env.NAME") or $(gray "FILE") to source credentials from (default $(gray ".env"))"
+    echo "    -r, --registry <URL>   - Elastic container registry URL"
+    echo "    -p, --push             - Push the container image to the registry"
+    echo
+    white "Environment Variables:\n"
+    echo "    ESDIAG_REGISTRY        - Private container registry to publish to (default $(gray "localhost"))"
+    echo
+}
+
+function command_build() {
+    if [[ $(${container} image ls --quiet "${esdiag_image}" 2> /dev/null) == "" ]]; then
+        log_info "Building $(cyan "esdiag:${version}") container image"
+    else
+        log_info "$(green skipping) build, found current container image $(cyan "esdiag:${version}")"
+        return
+    fi
+
+    # shellcheck disable=SC2086
+    ${container} build --file docker/Dockerfile . ${push} \
+        --tag "${esdiag_image_latest}" \
+        --tag "${esdiag_image}"
+
+    # shellcheck disable=SC2181
+    if [[ $? -eq 0 ]]; then
+        log_info "$(white "${container} build") is $(green complete)"
+    else
+        log_error "$(white "${container} build") $(red failed) with exit status ${?}"
+        exit $?
+    fi
+}
+
+# ----- Command: buildx -----
+
+function print_help_buildx () {
+    echo
+    white "Command: $(green buildx) [options]\n"
+    echo "    Build a multi-platform ESDiag container image for $(gray x86_64) and $(gray arm64)"
+    echo
+    white "Options:\n"
+    echo "    -e, --env <NAME|FILE>  - The $(gray ".env.NAME") or $(gray "FILE") to source credentials from (default $(gray ".env"))"
+    echo "    -r, --registry <URL>   - Elastic container registry URL"
+    echo "    -p, --push             - Push the container image to the registry"
+    echo
+    white "Environment Variables:\n"
+    echo "    ESDIAG_REGISTRY        - Private container registry to publish to (default $(gray "localhost"))"
+    echo
+}
+
+function command_buildx() {
+    # shellcheck disable=SC2086
+    ${container} buildx build --file docker/Dockerfile . ${push} \
+        --platform linux/amd64,linux/arm64 \
+        --tag "${esdiag_image_latest}" \
+        --tag "${esdiag_image}"
+
+    # shellcheck disable=SC2181
+    if [[ $? -eq 0 ]]; then
+        log_debug "$(white "${container} buildx") is $(green complete)"
+    else
+        log_error "$(white "${container} buildx") $(red failed) with exit status ${?}"
+        exit $?
+    fi
+}
+
+# ----- Command: up -----
+
+function print_help_up () {
+    echo
+    white "Command: $(green up) [options]\n"
+    echo "    Configure and launch a full Elastic Stack deployment with $(white "${container} compose up -d")"
+    echo
+    white "Options:\n"
+    echo "    -e, --env <NAME|FILE>  - The $(gray .env.NAME) or $(gray FILE) to source credentials from (default $(gray .env))"
+    echo "    -i, --insecure         - Setup the Elasticsearch cluster with security disabled"
+    echo "    -r, --registry <URL>   - Elastic container registry URL"
+    echo "    -s, --space            - Kibana space id (default $(gray esdiag))"
+    echo
+    white "Environment Variables:\n"
+    echo "    ELASTIC_CONTAINER_REGISTRY - Elastic container registry (default $(gray "docker.elastic.co"))"
+    echo "    ESDIAG_REGISTRY            - Private container registry (default $(gray "localhost"))"
+    echo
+}
+
+function compose_file_select() {
+    if [[ -f "${compose_file}" ]]; then
+        log_debug "$(green found) compose file: $(gray "${compose_file}")"
+    elif [[ "${security}" == "false" ]]; then
+        log_debug "Using $(yellow insecure) compose file"
+        cp docker/docker-compose-insecure.yml target/docker-compose.yml
+    else
+        log_debug "Using $(cyan secure) compose file"
+        cp docker/docker-compose.yml target/docker-compose.yml
+    fi
+}
+
+function command_up() {
+    # Check if the container runtime has the recommended resources
+    local machine
+    local cpus
+    local memory
+    if [[ $container == "podman" ]]; then
+        machine=$(podman machine inspect --format '{{.Name}}')
+        cpus=$(podman machine inspect --format '{{.Resources.CPUs}}')
+        memory=$(podman machine inspect --format '{{.Resources.Memory}}')
+    elif [[ $container == "docker" ]]; then
+        machine=$(docker info --format '{{.Name}}')
+        cpus=$(docker info --format '{{.NCPU}}')
+        memory=$(( $(docker info --format '{{.MemTotal}}') / 1024 / 1024 ))
+    fi
+
+    log_info "$(green found) machine $(cyan "${machine}") allocated with $(cyan "${cpus} CPUs") and $(cyan "${memory}MB") memory"
+    if [[ $memory -lt 8192 ]]; then
+        log_error "Required minimum container engine memory is $(magenta 8192MB)"
+        exit 1
+    fi
+    if [[ $cpus -lt 8 ]]; then
+        log_warn "Recommended minimum processors is $(magenta 8 CPUs)"
+    fi
+
+    security_setup
+    compose_file_select
+    log_info "$(green running) $(white "${container} compose up --detach")"
+    ${container} compose \
+        --env-file "${env_file}" \
+        --file "${compose_file}" \
+        up --detach
+    # shellcheck disable=SC2181
+    if [[ $? -ne 0 ]]; then
+        log_error "$(white "${container} compose up") $(red failed) with exit status ${?}"
+        ${container} compose --env-file "${env_file}" --file "${compose_file}" logs | tail -n10
+        exit $?
+    fi
+    apikey_setup
+}
+
+# ----- Command: down -----
+
+function print_help_down () {
+    echo
+    white "Command: $(green "down") [options]\n"
+    echo "    Remove all containers with $(white "${container}" compose down), optionally also delete the volume"
+    echo
+    white "Options:\n"
+    echo "    --remove-file          - Also remove the currently-configured $(gray target/docker-compose.yml) file"
+    echo "    --remove-image         - Also remove the ESDiag image, will require re-building or re-downloading for a new container"
+    echo "    --remove-volume        - Also remove the volume $(yellow WARNING:) Permenantly all data from the cluster and invalidates security configuration!"
+    echo "    --remove-all           - Remove the containers, image, volume, and compose file"
+    echo
+}
+
+function command_down() {
+    log_info "$(green running) $(white "${container}" compose down)"
+    ${container} compose --env-file "${env_file}" --file "${compose_file}" down
+    if [[ "${remove_image}" == "true" ]]; then
+        log_info "$(green running) $(white "${container}" image rm "${esdiag_image}" "${esdiag_image_latest}")"
+        ${container} image rm "${esdiag_image}" "${esdiag_image_latest}"
+    fi
+    if [[ "${remove_volume}" == "true" ]]; then
+        log_info "$(green running) $(white volume rm esdiag_data)"
+        ${container} volume rm esdiag_data
+        if [[ "${?}" -eq 0  && -f "${env_file}" ]]; then
+            log_warn "The security configured in $(gray "${env_file}") is now $(red invalid)"
+        fi
+    fi
+    if [[ "${remove_file}" == "true" ]]; then
+        log_info "$(green running) $(white rm "${compose_file}")"
+        rm "${compose_file}"
+    fi
+}
+
+# ----- Command: setup -----
+
+function print_help_setup () {
+    echo
+    white "Command: $(green "setup") [options]\n"
+    echo "    Create Elasticsearch templates and import Kibana saved objects"
+    echo
+    white "Options:\n"
+    echo "    -e, --env <NAME|FILE>  - The $(gray .env.NAME) or $(gray FILE) to source credentials from (default $(gray ".env"))"
+    echo "    -s, --space            - Kibana space id (default $(gray esdiag))"
+    echo
+    white "Environment Variables:\n"
+    echo "    ESDIAG_KIBANA_URL          - Kibana URL (default $(gray "http://localhost:5601"))"
+    echo "    ESDIAG_OUTPUT_URL          - Elasticsearch URL (default $(gray "http://localhost:9200"))"
+    echo "    ESDIAG_OUTPUT_APIKEY       - Elasticsearch API key , takes precedence over username/password"
+    echo "    ESDIAG_OUTPUT_USERNAME     - Elasticsearch username"
+    echo "    ESDIAG_OUTPUT_PASSWORD     - Elasticsearch password"
+    echo
+}
+
+function elasticsearch_templates_setup() {
+    # Wait for Elasticsearch to be ready
+    local http_status=0
+    while [[ $http_status -ne 200 ]]; do
+        http_status=$(curl --silent \
+            --header "${auth_header}" \
+            --write-out "%{http_code}" \
+            --output /dev/null "${elasticsearch_url}/"
+        )
+        if (( http_status >= 400 )); then
+            log_error "Elasticsearch returned HTTP status code $(magenta "${http_status}")"
+            exit 1
+        elif [[ $http_status -ne 200 ]]; then
+            log_info "Waiting on $(blue Elasticsearch)..."
+            sleep 5
+        fi
+        # Make sure the container is still running
+        if [[ ! -z ${compose_file} ]]; then
+            local container_status && container_status=$(${container} inspect esdiag-elasticsearch --format '{{.State.Status}}')
+            if [[ $container_status == "exited" ]]; then
+                log_info "$(blue Elasticsearch) container $(red exited)!"
+                ${container} logs esdiag-elasticsearch | tail -n 10
+                exit 1
+            fi
+        fi
+    done
+    log_info "$(green serving) $(blue Elasticsearch) at $(blue "${elasticsearch_url}")"
+
+    log_debug "$(green running) $(white "esdiag setup")"
+    # If we already have a running container from compose, use it
+    local compose_status && compose_status=$(${container} inspect esdiag --format '{{.State.Status}}')
+    if [[ "${compose_status}" == "running" ]]; then
+        log_debug "$(green found) existing $(cyan esdiag) container"
+        ${container} compose --env-file "${env_file}" --file "${compose_file}" run --rm esdiag-webui setup &> /dev/null
+    else
+        ${container} run --rm --name="esdiag-setup" \
+            --env ESDIAG_OUTPUT_URL="${elasticsearch_url}" \
+            ${LOG_LEVEL:+--env LOG_LEVEL="${LOG_LEVEL}"} \
+            ${apikey:+--env ESDIAG_OUTPUT_APIKEY="${apikey}"} \
+            ${username:+--env ESDIAG_OUTPUT_USERNAME="${username}"} \
+            ${password:+--env ESDIAG_OUTPUT_PASSWORD="${password}"} \
+            "${esdiag_image} setup"
+    fi
+
+    # shellcheck disable=SC2181
+    if [[ $? -eq 0 ]]; then
+        log_debug "$(green completed) $(white "esdiag setup")"
+    else
+        log_error "$(red failed) $(white "esdiag setup") with exit status ${?}"
+        exit $?
+    fi
+}
+
+function command_setup() {
+    # If we have a GitHub token, try to download the latest dashboard file
+    if [[ -z $GITHUB_TOKEN ]]; then
+        log_info "$(green skipping) GitHub version checks (no access token), building from local version $(cyan "${version}")"
+    else
+        github_token_check \
+        && esdiag_version_check \
+        && dashboards_latest_release_download
+    fi
+
+    set_auth_header
+    # If we have a dashboard file, proceed with setup
+    if [[ -f $dashboard_file ]]; then
+        log_debug "$(green found) dashboard file $(gray "${dashboard_file}")"
+        elasticsearch_templates_setup \
+        && kibana_objects_import
+    else
+        log_error "$(red missing) dashboards file $(magenta "${dashboard_file}")"
+        exit 1
+    fi
+}
+
+# ----- Main -----
+
+dependencies_validate
+
+# Validate and set command
+declare command="${1}" && shift
+if [[ ! ${command} =~ ^(auth|build|buildx|down|setup|up|-?-?h(elp)?)?$ ]]; then
+    log_error "Invalid command $(magenta "$command")"
+    print_help_main
+    exit 1
+fi
+
+# Defaults
+declare env_file=".env"
+
+# ----- Process command line arguments -----
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -d|--debug)
+            declare LOG_LEVEL="debug"
+            log_debug "Turning on debug logging"
+            shift
+        ;;
+        -e|--env)
+            shift
+            if [[ $# -gt 0 ]]; then
+                if [[ -f $1 ]]; then
+                    env_file="${1}"
+                elif [[ -f ".env.${1}" ]]; then
+                    env_file=".env.${1}"
+                else
+                    log_error "Environment file $(magenta "$1") not found"
+                    exit 1
+                fi
+            else
+                log_error "missing environment filename"
+                exit 1
+            fi
+            shift
+        ;;
+        -p|--push)
+            declare push="--push"
+            auth_registry_validate
+            shift
+        ;;
+        -h|--help)
+            declare help=true
+            shift
+        ;;
+        -i|--insecure)
+            declare security="false"
+            shift
+        ;;
+        --remove-all)
+            declare remove_file=true
+            declare remove_image=true
+            declare remove_volume=true
+            shift
+        ;;
+        --remove-file)
+            declare remove_file=true
+            shift
+        ;;
+        --remove-image)
+            declare remove_image=true
+            shift
+        ;;
+        --remove-volume)
+            declare remove_volume=true
+            shift
+        ;;
+        -s|--space)
+            shift
+            if [[ $# -gt 0 ]]; then
+                declare kibana_space_arg="${1}"
+            else
+                log_error "Missing $(gray --space) value"
+                exit 1
+            fi
+            shift
+        ;;
+        *)
+            log_debug "Remaining arguments are $(gray "${*}")"
+            break
+        ;;
+    esac
+done
+
+# ----- Execute command -----
+
+env_file_source && environment_setup
+log_debug "Input command: $(white "${command}")"
+case $command in
+    "help" )
+        case "${1}" in
+            ""       ) print_help_main ;;
+            "auth"   ) print_help_auth ;;
+            "build"  ) print_help_build  ;;
+            "buildx" ) print_help_buildx ;;
+            "down"   ) print_help_down ;;
+            "up"     ) print_help_up ;;
+            "setup"  ) print_help_setup ;;
+            * ) log_warn "Unknown command: $(magenta "${1}")" && print_help_main ;;
+        esac
+    ;;
+    "auth" )
+        if [[ $help == "true" ]]; then print_help_auth && exit 0; fi
+        log_info "$(white authorization) checks"
+        command_auth && \
+        log_debug "$(white auth) complete"
+    ;;
+    "build" )
+        if [[ $help == true ]]; then print_help_build && exit 0; fi
+        log_info "$(white build) esdiag container for $(white "linux/$(uname -m)")"
+        command_build && \
+        log_debug "$(white build) complete"
+    ;;
+    "buildx" )
+        if [[ $help == true ]]; then print_help_buildx && exit 0; fi
+        log_info "$(white buildx) esdiag container for $(white "linux/x86_64") and $(white "linux/arm64")"
+        command_buildx && \
+        log_debug "$(white buildx) complete"
+    ;;
+    "down" )
+        if [[ $help == true ]]; then print_help_down && exit 0; fi
+        declare compose_file="target/docker-compose.yml"
+        compose_file_select
+        log_info "$(white down) containers${remove_image:+ image}${remove_volume:+ volume}"
+        command_down && \
+        log_debug "$(white down) complete"
+    ;;
+    "setup" )
+        if [[ $help == true ]]; then print_help_setup && exit 0; fi
+        declare compose_file="target/docker-compose.yml"
+        configuration_validate
+        compose_file_select
+        log_info "$(white setup) Elasticsearch $(gray "${elasticsearch_url}") and Kibana $(gray "${kibana_url}")"
+        command_setup && \
+        log_debug "$(white setup) complete"
+    ;;
+    "up" )
+        if [[ $help == true ]]; then print_help_up && exit 0; fi
+        declare compose_file="target/docker-compose.yml"
+        configuration_validate
+        compose_file_select
+        log_info "$(white up) ${container} compose with $(gray "${compose_file}")"
+        command_build && \
+        command_up && \
+        command_setup && \
+        log_info "$(green serving) $(cyan ESDiag) at $(blue "${esdiag_url}")" && \
+        browser_open && \
+        log_debug "$(white up) complete"
+    ;;
+    * )
+        if [[ $# == 0 ]]; then
+            print_help_main
+            exit 1
+        else
+            log_error "Invalid command $(magenta "${1}")"
+            print_help_main
+            exit 1
+        fi
+    ;;
+esac
