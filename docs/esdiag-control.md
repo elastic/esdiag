@@ -83,7 +83,7 @@ Commands:
     buildx   Build a multi-platform ESDiag container image with buildx
     up       Configure and start up a full Elastic Stack deployment using compose
     setup    Setup the target Elasticsearch and Kibana instances with ESDiag assets
-    down     Remove down the Elasticsearch, Kibana and ESDiag contaiers
+    down     Bring down the Elasticsearch, Kibana and ESDiag containers
     help     To get detailed <command> help, use a command name as the <argument>
 
 Options:

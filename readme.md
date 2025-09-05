@@ -12,7 +12,7 @@ Use the `bin/esdiag-control` command to quickly spin up a fully-local environmen
 
 1. Clone this repository to your local machine using either `git` or [GitHub Desktop](https://desktop.github.com/download/)
 2. Be sure you have the dependencies installed: `docker`, `jq`, `curl`, `grep`, and `sed`.
-3. Pick either the **Automated** or **Manual** dashboard update method (easy to switch later)
+3. Pick either the **Automated** or **Manual** dashboard update method (easily switched later)
 
 > ℹ️ Note: You can use either the `podman` or `docker` container runtime, as long as you have the `compose` subcommand installed.
 
