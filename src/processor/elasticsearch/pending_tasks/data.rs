@@ -24,7 +24,7 @@ impl DataSource for PendingTasks {
     fn source(path: PathType) -> Result<&'static str> {
         match path {
             PathType::File => Ok("cluster_pending_tasks.json"),
-            PathType::Url => Ok("/_cluster/pending_tasks"),
+            PathType::Url => Ok("_cluster/pending_tasks"),
         }
     }
 

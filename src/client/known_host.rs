@@ -162,7 +162,7 @@ impl KnownHost {
                         "deployments",
                         deployment_id,
                         "elasticsearch",
-                        "elasticsearch",
+                        "main-elasticsearch",
                         "proxy",
                     ],
                     _ => Vec::new(),

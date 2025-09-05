@@ -50,7 +50,7 @@ impl DataSource for IlmPolicies {
     fn source(path: PathType) -> Result<&'static str> {
         match path {
             PathType::File => Ok("commercial/ilm_policies.json"),
-            PathType::Url => Ok("/_ilm/policy"),
+            PathType::Url => Ok("_ilm/policy"),
         }
     }
 
