@@ -87,7 +87,7 @@ impl DataProcessor<Lookups, ElasticsearchMetadata> for HealthReport {
 struct NamedHealthIndicator {
     status: String,
     symptom: String,
-    details: Value,
+    details: Option<Value>,
     indicator: String,
 }
 

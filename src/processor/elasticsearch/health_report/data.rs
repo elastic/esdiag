@@ -22,7 +22,7 @@ pub type HealthIndicators = HashMap<String, HealthIndicator>;
 pub struct HealthIndicator {
     pub status: String,
     pub symptom: String,
-    pub details: Value,
+    pub details: Option<Value>,
     #[serde(skip_serializing)]
     pub impacts: Option<Vec<HealthImpact>>,
     #[serde(skip_serializing)]

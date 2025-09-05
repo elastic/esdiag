@@ -5,9 +5,9 @@
 use super::super::{collector::CollectionResult, diagnostic::PathType};
 use super::{
     DataSource, DiagnosticManifest, Product, alias::AliasList, cluster_settings::ClusterSettings,
-    data_stream::DataStreams, ilm_explain::IlmExplain, ilm_policies::IlmPolicies,
-    indices_settings::IndicesSettings, indices_stats::IndicesStats, licenses::Licenses,
-    nodes::Nodes, nodes_stats::NodesStats, pending_tasks::PendingTasks,
+    data_stream::DataStreams, health_report::HealthReport, ilm_explain::IlmExplain,
+    ilm_policies::IlmPolicies, indices_settings::IndicesSettings, indices_stats::IndicesStats,
+    licenses::Licenses, nodes::Nodes, nodes_stats::NodesStats, pending_tasks::PendingTasks,
     searchable_snapshots_cache_stats::SearchableSnapshotsCacheStats,
     searchable_snapshots_stats::SearchableSnapshotsStats, slm_policies::SlmPolicies, tasks::Tasks,
     version::Cluster,
@@ -38,6 +38,7 @@ impl ElasticsearchCollector {
         result.success += self.save::<Cluster>().await?;
         result.success += self.save::<ClusterSettings>().await?;
         result.success += self.save::<DataStreams>().await?;
+        result.success += self.save::<HealthReport>().await?;
         result.success += self.save::<IlmExplain>().await?;
         result.success += self.save::<IlmPolicies>().await?;
         result.success += self.save::<IndicesSettings>().await?;
