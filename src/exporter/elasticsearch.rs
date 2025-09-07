@@ -13,10 +13,8 @@ use elasticsearch::{
     http::{Method, headers, request::JsonBody, response::Response},
 };
 use eyre::{Result, eyre};
-use futures::{future::join_all, stream::FuturesUnordered};
+use futures::stream::FuturesUnordered;
 use serde_json::{Value, json};
-use std::sync::Arc;
-use tokio::sync::Semaphore;
 use url::Url;
 
 #[derive(Clone)]
@@ -106,40 +104,44 @@ impl Export for ElasticsearchExporter {
     }
 
     async fn write(&self, index: String, mut docs: Vec<Value>) -> Result<ProcessorSummary> {
-        let client = Arc::new(self.client.clone());
+        use futures::{FutureExt, StreamExt};
+        let client = self.client.clone();
         let workers = 4;
-        let bulk_size = 5000;
-        let semaphore = Arc::new(Semaphore::new(workers));
+        let bulk_size = 5_000;
         let mut summary = ProcessorSummary::new(index.clone());
 
-        let futures = FuturesUnordered::new();
+        let mut in_flight: FuturesUnordered<_> = FuturesUnordered::new();
 
-        while !docs.is_empty() {
-            let client = client.clone();
-            let batch_size = std::cmp::min(docs.len(), bulk_size);
-            let index = index.clone();
-            let ops: Vec<BulkOperation<serde_json::Value>> = docs
-                .drain(..batch_size)
-                .map(|doc| BulkOperation::create(doc).pipeline("esdiag").into())
-                .collect();
-            let semaphore = semaphore.clone();
-            let future = async move {
-                let _permit = semaphore.acquire().await;
-                let response = client.bulk(BulkParts::Index(&index)).body(ops).send().await;
-                parse_response(index, response).await
-            };
+        while !docs.is_empty() || !in_flight.is_empty() {
+            while in_flight.len() < workers && !docs.is_empty() {
+                let batch_size = docs.len().min(bulk_size);
+                let mut batch: Vec<BulkOperation<Value>> = Vec::with_capacity(batch_size);
+                for doc in docs.drain(..batch_size) {
+                    batch.push(BulkOperation::create(doc).pipeline("esdiag").into());
+                }
+                let batch_index = index.clone();
+                let batch_client = client.clone();
+                let fut = async move {
+                    let response = batch_client
+                        .bulk(BulkParts::Index(&batch_index))
+                        .body(batch)
+                        .send()
+                        .await;
+                    parse_response(batch_index, response).await
+                };
+                in_flight.push(fut.boxed());
+            }
 
-            futures.push(tokio::spawn(future));
+            // Only create the next batch after one has completed
+            if let Some(res) = in_flight.next().await {
+                match res {
+                    Ok(batch_response) => summary.add_batch(batch_response),
+                    Err(e) => {
+                        log::warn!("Bulk batch failed: {e:?}");
+                    }
+                }
+            }
         }
-
-        join_all(futures)
-            .await
-            .into_iter()
-            .filter_map(Result::ok)
-            .flatten()
-            .for_each(|response| {
-                summary.add_batch(response);
-            });
 
         Ok(summary)
     }
