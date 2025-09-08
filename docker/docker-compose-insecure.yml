@@ -75,6 +75,7 @@ services:
     environment:
       - SERVER_NAME=kibana
       - ELASTICSEARCH_HOSTS=http://esdiag-elasticsearch:9200
+      - XPACK_SECURITY_ENABLED=false # AR: Added change on 09/08/2025 - Disable security to avoid login prompt since we will use Pomerium and IDP for security
     volumes:
       - data:/usr/share/kibana/data
     networks:

@@ -1,0 +1,23 @@
+# 2025-09-07: Created by AR
+# Reason: To define the Pomerium service and its related overrides in a separate
+# file, allowing it to be layered on top of the base configuration.
+
+name: esdiag
+services:
+  pomerium:
+    image: pomerium/pomerium:latest
+    container_name: esdiag-pomerium
+    networks: ["net"]
+    ports:
+      - 443:443
+    volumes:   
+      - ./pomerium-config.yml:/pomerium/config.yml:ro
+      - ./ec_private.pem:/pomerium/ec_private.pem:ro
+    environment:
+      - AUTHENTICATE_SERVICE_URL=${ESDIAG_PROXY_AUTHENTICATE_URL}
+      - JWKS_ENDPOINT=https://esdiag-pomerium/.well-known/pomerium/jwks.json
+    command: ["--config", "/pomerium/config.yml"]
+  verify:
+    image: pomerium/verify:latest
+    expose:
+      - 8000

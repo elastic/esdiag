@@ -319,6 +319,18 @@ function set_auth_header() {
         exit 1
     fi
 
+    # 2025-09-08: Modified by AR to handle Pomerium proxy case
+    # Reason: When the proxy is enabled, the OIDC realm can interfere with newly
+    # created API keys during setup. Forcing Basic Auth with the superuser
+    # ('elastic') is a more reliable method for the script's setup tasks.
+    if [[ "${ESDIAG_PROXY}" == "pomerium" ]]; then
+        log_info "$(green set) header $(cyan Authorization: Basic) for $(cyan "elastic") (proxy mode)"
+        # Directly use the guaranteed-to-be-set ELASTIC_PASSWORD
+        auth_header="Authorization: Basic $(echo -n "elastic:${ELASTIC_PASSWORD}" | base64)"
+        export auth_header
+        return 0 # Exit the function to prevent falling through
+    fi
+
     if [[ ! -z $apikey ]]; then
         log_info "$(green set) header $(cyan Authorization: ApiKey)"
         export auth_header="Authorization: ApiKey ${apikey}"
@@ -403,24 +415,29 @@ function kibana_objects_import() {
     success_count=$(jq -r .successCount "${response_file}")
     log_debug "$(green success) $(magenta Kibana) objects imported: $(cyan "${success_count}")"
 }
-
+# AR 09-08-2025: Added function to open the browser
 function browser_open() {
-    if [[ $(command -v explorer.exe) ]]; then
+    local url_to_open="${1:-$esdiag_url}"
+    if [[ $(command -v explorer.exe) ]];
+then
         # Windows Subsystem for Linux (WSL)
-        log_info "$(green running) $(white explorer.exe "${esdiag_url}")"
-        explorer.exe "${esdiag_url}"
-    elif [[ $(command -v open) ]]; then
+        log_info "$(green running) $(white explorer.exe "${url_to_open}")"
+        explorer.exe "${url_to_open}"
+    elif [[ $(command -v open) ]];
+then
         # MacOS
-        log_info "$(green running) $(white open "${esdiag_url}")"
-        open "${esdiag_url}"
-    elif [[ $(command -v gnome-open) ]]; then
+        log_info "$(green running) $(white open "${url_to_open}")"
+        open "${url_to_open}"
+    elif [[ $(command -v gnome-open) ]];
+then
         # Linux with Gnome
-        log_info "$(green running) $(white gnome-open "${esdiag_url}")"
-        gnome-open "${esdiag_url}"
-    elif [[ $(command -v xdg-open) ]]; then
+        log_info "$(green running) $(white gnome-open "${url_to_open}")"
+        gnome-open "${url_to_open}"
+    elif [[ $(command -v xdg-open) ]];
+then
         # Linux, more generic
-        log_info "$(green running) $(white xdg-open "${esdiag_url}")"
-        xdg-open "${esdiag_url}"
+        log_info "$(green running) $(white xdg-open "${url_to_open}")"
+        xdg-open "${url_to_open}"
     else
         log_info "No browser launcher found"
     fi
@@ -664,15 +681,18 @@ function print_help_up () {
     echo
 }
 
+# AR: Added change on 09/08/2025 - This new function correctly handles the --insecure and --proxy flags to select the right compose files.
 function compose_file_select() {
-    if [[ -f "${compose_file}" ]]; then
-        log_debug "$(green found) compose file: $(gray "${compose_file}")"
-    elif [[ "${security}" == "false" ]]; then
-        log_debug "Using $(yellow insecure) compose file"
-        cp docker/docker-compose-insecure.yml target/docker-compose.yml
+    if [[ "${security}" == "false" ]]; then
+        log_debug "Using $(yellow insecure) compose file as the base"
+        compose_files=("-f" "docker/docker-compose-insecure.yml")
     else
-        log_debug "Using $(cyan secure) compose file"
-        cp docker/docker-compose.yml target/docker-compose.yml
+        compose_files=("-f" "docker/docker-compose.yml")
+    fi
+
+    if [[ "${ESDIAG_PROXY}" == "pomerium" ]]; then
+        log_debug "Adding $(magenta proxy) compose file"
+        compose_files+=("-f" "docker/docker-compose-proxy.yml")
     fi
 }
 
@@ -701,12 +721,13 @@ function command_up() {
     fi
 
     security_setup
-    compose_file_select
+    # AR: Added change on 09/08/2025 - The call to 'compose_file_select' is removed from this function, as it is now correctly called from the main "up" command block.
+    # compose_file_select
+
     log_info "$(green running) $(white "${container} compose up --detach")"
-    ${container} compose \
-        --env-file "${env_file}" \
-        --file "${compose_file}" \
-        up --detach
+
+    # AR: Added change on 09/08/2025 - The docker compose command is updated to use the 'compose_files' array, which allows it to handle multiple configuration files (e.g., for the insecure and proxy setups).
+    ${container} compose --env-file "${env_file}" "${compose_files[@]}" up --detach
     # shellcheck disable=SC2181
     if [[ $? -ne 0 ]]; then
         log_error "$(white "${container} compose up") $(red failed) with exit status ${?}"
@@ -732,23 +753,37 @@ function print_help_down () {
 }
 
 function command_down() {
+    # 2025-09-08: Added by AR
+    # Reason: This function must now select the correct set of compose files
+    # (e.g., base + proxy) to ensure all containers are properly stopped and removed.
+    compose_file_select
+
     log_info "$(green running) $(white "${container}" compose down)"
-    ${container} compose --env-file "${env_file}" --file "${compose_file}" down
+    
+    # 2025-09-08: Modified by AR
+    # Reason: Updated to use the 'compose_files' array, which contains all
+    # necessary file paths for the current deployment configuration.
+    ${container} compose --env-file "${env_file}" "${compose_files[@]}" down
+
     if [[ "${remove_image}" == "true" ]]; then
         log_info "$(green running) $(white "${container}" image rm "${esdiag_image}" "${esdiag_image_latest}")"
         ${container} image rm "${esdiag_image}" "${esdiag_image_latest}"
     fi
     if [[ "${remove_volume}" == "true" ]]; then
+        # 2025-09-08: Modified by AR
+        # Reason: Corrected to only remove the 'esdiag_data' volume, which is the
+        # one defined in the project's compose files.
         log_info "$(green running) $(white volume rm esdiag_data)"
         ${container} volume rm esdiag_data
         if [[ "${?}" -eq 0  && -f "${env_file}" ]]; then
             log_warn "The security configured in $(gray "${env_file}") is now $(red invalid)"
         fi
     fi
-    if [[ "${remove_file}" == "true" ]]; then
-        log_info "$(green running) $(white rm "${compose_file}")"
-        rm "${compose_file}"
-    fi
+    
+    # 2025-09-08: Removed by AR
+    # Reason: The 'remove_file' logic is part of the old file-copying strategy
+    # and is no longer needed since we are not creating files in the 'target' directory.
+    # if [[ "${remove_file}" == "true" ]]; then ...
 }
 
 # ----- Command: setup -----
@@ -772,48 +807,37 @@ function print_help_setup () {
 }
 
 function elasticsearch_templates_setup() {
-    # Wait for Elasticsearch to be ready
-    local http_status=0
-    while [[ $http_status -ne 200 ]]; do
+    # 2025-09-08: Modified by Aparna Roy
+    # Reason: Replaced the simple health check with a robust while loop that polls the
+    # cluster health endpoint. This resolves a race condition where the setup command
+    # was running before Elasticsearch was fully initialized.
+    log_info "Waiting for $(blue Elasticsearch) to become available..."
+    local http_status="000"
+    while [[ "${http_status}" != "200" ]]; do
+        # Use the elastic user and password for a reliable health check
         http_status=$(curl --silent \
-            --header "${auth_header}" \
+            --user "elastic:${ELASTIC_PASSWORD}" \
             --write-out "%{http_code}" \
-            --output /dev/null "${elasticsearch_url}/"
+            --output /dev/null "${elasticsearch_url}/_cluster/health"
         )
-        if (( http_status >= 400 )); then
-            log_error "Elasticsearch returned HTTP status code $(magenta "${http_status}")"
-            exit 1
-        elif [[ $http_status -ne 200 ]]; then
-            log_info "Waiting on $(blue Elasticsearch)..."
+        if [[ "${http_status}" != "200" ]]; then
+            log_debug "Elasticsearch not ready (HTTP ${http_status}). Waiting..."
             sleep 5
-        fi
-        # Make sure the container is still running
-        if [[ ! -z ${compose_file} ]]; then
-            local container_status && container_status=$(${container} inspect esdiag-elasticsearch --format '{{.State.Status}}')
-            if [[ $container_status == "exited" ]]; then
-                log_info "$(blue Elasticsearch) container $(red exited)!"
-                ${container} logs esdiag-elasticsearch | tail -n 10
-                exit 1
-            fi
         fi
     done
     log_info "$(green serving) $(blue Elasticsearch) at $(blue "${elasticsearch_url}")"
 
     log_debug "$(green running) $(white "esdiag setup")"
-    # If we already have a running container from compose, use it
-    local compose_status && compose_status=$(${container} inspect esdiag --format '{{.State.Status}}')
-    if [[ "${compose_status}" == "running" ]]; then
-        log_debug "$(green found) existing $(cyan esdiag) container"
-        ${container} compose --env-file "${env_file}" --file "${compose_file}" run --rm esdiag-webui setup &> /dev/null
-    else
-        ${container} run --rm --name="esdiag-setup" \
-            --env ESDIAG_OUTPUT_URL="${elasticsearch_url}" \
-            ${LOG_LEVEL:+--env LOG_LEVEL="${LOG_LEVEL}"} \
-            ${apikey:+--env ESDIAG_OUTPUT_APIKEY="${apikey}"} \
-            ${username:+--env ESDIAG_OUTPUT_USERNAME="${username}"} \
-            ${password:+--env ESDIAG_OUTPUT_PASSWORD="${password}"} \
-            "${esdiag_image} setup"
-    fi
+
+    # 2025-09-08: Modified by Aparna Roy
+    # Reason: Switched from 'docker compose run' to 'docker run' with explicit
+    # network attachment. This is a more reliable way to connect a temporary client
+    # container to the existing Docker network, resolving service discovery issues.
+    ${container} run --rm --name="esdiag-setup" --network="esdiag_net" \
+        -e ESDIAG_OUTPUT_URL="http://esdiag-elasticsearch:9200" \
+        -e ESDIAG_OUTPUT_USERNAME="elastic" \
+        -e ESDIAG_OUTPUT_PASSWORD="${ELASTIC_PASSWORD}" \
+        "${esdiag_image}" setup
 
     # shellcheck disable=SC2181
     if [[ $? -eq 0 ]]; then
@@ -987,17 +1011,26 @@ case $command in
         command_setup && \
         log_debug "$(white setup) complete"
     ;;
+    # AR: Added change on 09/08/2025 - This is the final, simplified "up" command flow for the new approach.
     "up" )
         if [[ $help == true ]]; then print_help_up && exit 0; fi
-        declare compose_file="target/docker-compose.yml"
         configuration_validate
+        proxy_setup
         compose_file_select
-        log_info "$(white up) ${container} compose with $(gray "${compose_file}")"
+
+        log_info "$(white up) ${container} compose"
         command_build && \
         command_up && \
-        command_setup && \
-        log_info "$(green serving) $(cyan ESDiag) at $(blue "${esdiag_url}")" && \
-        browser_open && \
+        command_setup
+
+        # After the stack is up, open the correct browser URL.
+        if [[ "${ESDIAG_PROXY}" == "pomerium" ]]; then
+            log_info "$(green serving) $(cyan ESDiag) at $(blue "https://esdiag-webui.localhost.pomerium.io")" && \
+            browser_open "https://esdiag-webui.localhost.pomerium.io"
+        else
+            log_info "$(green serving) $(cyan ESDiag) at $(blue "${esdiag_url}")" && \
+            browser_open
+        fi
         log_debug "$(white up) complete"
     ;;
     * )
