@@ -10,7 +10,6 @@ use super::{
 use json_patch::merge;
 use serde::Serialize;
 use serde_json::{Value, json};
-use std::sync::Arc;
 
 const DEFAULT: &str = "default";
 const PERSISTENT: &str = "persistent";
@@ -19,8 +18,8 @@ const TRANSIENT: &str = "transient";
 impl DataProcessor<Lookups, ElasticsearchMetadata> for ClusterSettings {
     fn generate_docs(
         self,
-        _lookups: Arc<Lookups>,
-        metadata: Arc<ElasticsearchMetadata>,
+        _lookups: &Lookups,
+        metadata: &ElasticsearchMetadata,
     ) -> (String, Vec<Value>) {
         let data_stream = "settings-cluster-esdiag".to_string();
         let data_stream_name = DataStreamName::from(data_stream.as_str());

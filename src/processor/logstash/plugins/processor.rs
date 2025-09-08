@@ -8,14 +8,9 @@ use super::{
 };
 use serde::Serialize;
 use serde_json::{Value, json};
-use std::sync::Arc;
 
 impl DataProcessor<Lookups, LogstashMetadata> for Plugins {
-    fn generate_docs(
-        self,
-        _: Arc<Lookups>,
-        metadata: Arc<LogstashMetadata>,
-    ) -> (String, Vec<Value>) {
+    fn generate_docs(self, _: &Lookups, metadata: &LogstashMetadata) -> (String, Vec<Value>) {
         let data_stream = "settings-logstash.plugin-esdiag".to_string();
         let metadata_doc = metadata.for_data_stream(&data_stream).as_meta_doc();
         let docs: Vec<Value> = self

@@ -15,15 +15,15 @@ use super::{
 use json_patch::merge;
 use rayon::prelude::*;
 use serde_json::{Value, json};
-use std::sync::{Arc, LazyLock};
+use std::sync::LazyLock;
 
 static INGEST_ROLE: LazyLock<String> = LazyLock::new(|| String::from("ingest"));
 
 impl DataProcessor<Lookups, ElasticsearchMetadata> for NodesStats {
     fn generate_docs(
         self,
-        lookups: Arc<Lookups>,
-        metadata: Arc<ElasticsearchMetadata>,
+        lookups: &Lookups,
+        metadata: &ElasticsearchMetadata,
     ) -> (String, Vec<Value>) {
         let mut nodes_stats = self.nodes;
         log::debug!("nodes: {}", nodes_stats.len());

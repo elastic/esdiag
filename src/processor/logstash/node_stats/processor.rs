@@ -8,17 +8,13 @@ use super::{
 };
 use serde::Serialize;
 use serde_json::{Value, json};
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
 impl DataProcessor<Lookups, LogstashMetadata> for NodeStats {
-    fn generate_docs(
-        mut self,
-        _: Arc<Lookups>,
-        metadata: Arc<LogstashMetadata>,
-    ) -> (String, Vec<Value>) {
+    fn generate_docs(mut self, _: &Lookups, metadata: &LogstashMetadata) -> (String, Vec<Value>) {
         let mut docs: Vec<Value> = Vec::new();
         self.take_pipelines().map(|pipelines| {
-            let mut pipeline_docs = generate_pipeline_docs(metadata.clone(), pipelines);
+            let mut pipeline_docs = generate_pipeline_docs(metadata, pipelines);
             docs.append(&mut pipeline_docs);
         });
 
@@ -51,7 +47,7 @@ impl NodeStatsDoc {
 }
 
 fn generate_pipeline_docs(
-    metadata: Arc<LogstashMetadata>,
+    metadata: &LogstashMetadata,
     pipelines: HashMap<String, PipelineStats>,
 ) -> Vec<Value> {
     let pipeline_metadata_doc = metadata
@@ -63,7 +59,7 @@ fn generate_pipeline_docs(
         .into_iter()
         .map(|(name, mut stats)| {
             stats.take_plugins().map(|plugins| {
-                let mut docs = generate_plugin_docs(metadata.clone(), plugins);
+                let mut docs = generate_plugin_docs(metadata, plugins);
                 plugin_docs.append(&mut docs);
             });
             json!(PipelineDoc::new(name, stats, pipeline_metadata_doc.clone()))
@@ -123,7 +119,7 @@ impl PluginDoc {
     }
 }
 
-fn generate_plugin_docs(metadata: Arc<LogstashMetadata>, plugins: PipelinePlugins) -> Vec<Value> {
+fn generate_plugin_docs(metadata: &LogstashMetadata, plugins: PipelinePlugins) -> Vec<Value> {
     let plugin_metadata_doc = metadata
         .for_data_stream("metrics-logstash.plugin-esdiag")
         .as_meta_doc();

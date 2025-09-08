@@ -10,13 +10,12 @@ use json_patch::merge;
 use rayon::prelude::*;
 use serde::Serialize;
 use serde_json::{Value, json};
-use std::sync::Arc;
 
 impl DataProcessor<Lookups, ElasticsearchMetadata> for Nodes {
     fn generate_docs(
         self,
-        lookups: Arc<Lookups>,
-        metadata: Arc<ElasticsearchMetadata>,
+        lookups: &Lookups,
+        metadata: &ElasticsearchMetadata,
     ) -> (String, Vec<Value>) {
         let mut nodes = self.nodes;
         log::debug!("nodes: {}", nodes.len());

@@ -19,42 +19,35 @@ use super::{
     DataProcessor, DiagnosticProcessor, Metadata,
     diagnostic::{
         DataSource, DiagnosticManifest, DiagnosticReport, DiagnosticReportBuilder, Product,
-        report::ProcessorSummary,
     },
 };
 use crate::{data, exporter::Exporter, receiver::Receiver};
 use eyre::Result;
 use metadata::LogstashMetadata;
 use serde::{Serialize, de::DeserializeOwned};
-use std::sync::Arc;
-use tokio::sync::RwLock;
 
-#[derive(Clone, Serialize)]
+#[derive(Serialize)]
 pub struct LogstashDiagnostic {
-    lookups: Arc<Lookups>,
-    metadata: Arc<LogstashMetadata>,
+    lookups: Lookups,
+    metadata: LogstashMetadata,
     #[serde(skip)]
-    exporter: Arc<Exporter>,
+    exporter: Exporter,
     #[serde(skip)]
-    receiver: Arc<Receiver>,
+    receiver: Receiver,
     #[serde(skip)]
-    report: Arc<RwLock<DiagnosticReport>>,
+    report: DiagnosticReport,
 }
 
 impl LogstashDiagnostic {
-    async fn process<T>(&self) -> Result<ProcessorSummary>
+    async fn process<T>(&mut self) -> Result<()>
     where
         T: DataSource + DataProcessor<Lookups, LogstashMetadata> + DeserializeOwned + Send + Sync,
     {
-        match self
-            .receiver
-            .get::<T>()
-            .await
-            .map(|data| data.generate_docs(self.lookups.clone(), self.metadata.clone()))
-        {
-            Ok((index, docs)) => self.exporter.write(index, docs).await,
-            Err(e) => Err(e.into()),
-        }
+        let data = self.receiver.get::<T>().await?;
+        let (index, docs) = data.generate_docs(&self.lookups, &self.metadata);
+        let summary = self.exporter.write(index, docs).await?;
+        self.report.add_processor_summary(summary);
+        Ok(())
     }
 }
 
@@ -73,35 +66,34 @@ impl DiagnosticProcessor for LogstashDiagnostic {
             .build()?;
 
         Ok(Box::new(Self {
-            lookups: Arc::new(Lookups {
+            lookups: Lookups {
                 plugin_count: plugins.total,
-            }),
-            metadata: Arc::new(metadata),
-            exporter: Arc::new(exporter),
-            receiver: Arc::new(receiver),
-            report: Arc::new(RwLock::new(report)),
+            },
+            metadata,
+            exporter,
+            receiver,
+            report,
         }))
     }
 
-    async fn run(self) -> Result<DiagnosticReport> {
+    async fn run(mut self) -> Result<DiagnosticReport> {
         log::debug!("Running Logstash diagnostic processors");
         if log::max_level() >= log::Level::Debug {
             data::save_file("diagnostic.json", &self)?;
         }
 
-        let mut report = self.report.write().await;
-        report.add_processor_summary(self.process::<node::Node>().await?);
-        report.add_processor_summary(self.process::<node_stats::NodeStats>().await?);
-        report.add_processor_summary(self.process::<plugins::Plugins>().await?);
-        report.add_identifiers(self.exporter.identifiers());
-        report.add_origin(
+        self.process::<node::Node>().await?;
+        self.process::<node_stats::NodeStats>().await?;
+        self.process::<plugins::Plugins>().await?;
+        self.report.add_identifiers(self.exporter.identifiers());
+        self.report.add_origin(
             Some(self.metadata.node.name.clone()),
             None,
             Some("node".to_string()),
         );
 
-        self.exporter.save_report(&*report).await?;
-        Ok(report.clone())
+        self.exporter.save_report(&self.report).await?;
+        Ok(self.report)
     }
 
     fn id(&self) -> &str {

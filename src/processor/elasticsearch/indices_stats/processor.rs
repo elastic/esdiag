@@ -19,13 +19,12 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use serde_with::skip_serializing_none;
-use std::sync::Arc;
 
 impl DataProcessor<Lookups, ElasticsearchMetadata> for IndicesStats {
     fn generate_docs(
         self,
-        lookups: Arc<Lookups>,
-        metadata: Arc<ElasticsearchMetadata>,
+        lookups: &Lookups,
+        metadata: &ElasticsearchMetadata,
     ) -> (String, Vec<Value>) {
         let mut indices_stats = self.indices;
         log::debug!("index_stats indices: {}", indices_stats.len());

@@ -9,12 +9,11 @@ use super::{
 use rayon::prelude::*;
 use serde::Serialize;
 use serde_json::Value;
-use std::sync::Arc;
 impl DataProcessor<Lookups, ElasticsearchMetadata> for SearchableSnapshotsStats {
     fn generate_docs(
         self,
-        _lookups: Arc<Lookups>,
-        metadata: Arc<ElasticsearchMetadata>,
+        _lookups: &Lookups,
+        metadata: &ElasticsearchMetadata,
     ) -> (String, Vec<Value>) {
         let data_stream = "metrics-searchable_snapshot-esdiag".to_string();
         let searchable_snapshots_stats_metadata =

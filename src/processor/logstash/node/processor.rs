@@ -8,13 +8,13 @@ use super::{
 };
 use serde::Serialize;
 use serde_json::{Value, json};
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
 impl DataProcessor<Lookups, LogstashMetadata> for Node {
     fn generate_docs(
         mut self,
-        lookups: Arc<Lookups>,
-        metadata: Arc<LogstashMetadata>,
+        lookups: &Lookups,
+        metadata: &LogstashMetadata,
     ) -> (String, Vec<Value>) {
         let mut docs: Vec<Value> = Vec::new();
         let data_stream = "settings-logstash.node-esdiag".to_string();
@@ -67,7 +67,7 @@ impl LogstashNodeDoc {
 }
 
 fn generate_pipeline_docs(
-    metadata: Arc<LogstashMetadata>,
+    metadata: LogstashMetadata,
     pipelines: HashMap<String, Pipeline>,
 ) -> Vec<Value> {
     let metadata = metadata

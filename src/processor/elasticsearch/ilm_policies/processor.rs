@@ -9,13 +9,12 @@ use super::{
 use rayon::prelude::*;
 use serde::Serialize;
 use serde_json::Value;
-use std::sync::Arc;
 
 impl DataProcessor<Lookups, ElasticsearchMetadata> for IlmPolicies {
     fn generate_docs(
         self,
-        _lookups: Arc<Lookups>,
-        metadata: Arc<ElasticsearchMetadata>,
+        _lookups: &Lookups,
+        metadata: &ElasticsearchMetadata,
     ) -> (String, Vec<Value>) {
         log::debug!("processing ILM policies");
         let data_stream = "settings-ilm-esdiag".to_string();

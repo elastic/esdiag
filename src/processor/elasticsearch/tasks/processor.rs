@@ -11,13 +11,12 @@ use rayon::prelude::*;
 use serde::Serialize;
 use serde_json::Value;
 use serde_with::skip_serializing_none;
-use std::sync::Arc;
 
 impl DataProcessor<Lookups, ElasticsearchMetadata> for Tasks {
     fn generate_docs(
         self,
-        lookups: Arc<Lookups>,
-        metadata: Arc<ElasticsearchMetadata>,
+        lookups: &Lookups,
+        metadata: &ElasticsearchMetadata,
     ) -> (String, Vec<Value>) {
         log::debug!("processing tasks");
         let data_stream = "metrics-task-esdiag".to_string();

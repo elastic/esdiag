@@ -9,13 +9,12 @@ use super::{
 use rayon::prelude::*;
 use serde::Serialize;
 use serde_json::Value;
-use std::sync::Arc;
 
 impl DataProcessor<Lookups, ElasticsearchMetadata> for IndicesSettings {
     fn generate_docs(
         mut self,
-        lookups: Arc<Lookups>,
-        metadata: Arc<ElasticsearchMetadata>,
+        lookups: &Lookups,
+        metadata: &ElasticsearchMetadata,
     ) -> (String, Vec<Value>) {
         log::debug!("processing indices: {}", self.len());
         let index_metadata = metadata.for_data_stream("settings-index-esdiag");
