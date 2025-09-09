@@ -12,10 +12,8 @@ services:
       - 443:443
     volumes:   
       - ./pomerium-config.yml:/pomerium/config.yml:ro
-      - ./ec_private.pem:/pomerium/ec_private.pem:ro
     environment:
       - AUTHENTICATE_SERVICE_URL=${ESDIAG_PROXY_AUTHENTICATE_URL}
-      - JWKS_ENDPOINT=https://esdiag-pomerium/.well-known/pomerium/jwks.json
     command: ["--config", "/pomerium/config.yml"]
   verify:
     image: pomerium/verify:latest

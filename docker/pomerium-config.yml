@@ -3,18 +3,25 @@
 # It defines the routes and the authorization policy.
 
 # Use Pomerium's hosted service for authentication.
-authenticate_service_url: https://authenticate.pomerium.app
 idp_provider: ${IDP_PROVIDER}
 idp_client_id: ${IDP_CLIENT_ID}
 idp_client_secret: ${IDP_CLIENT_SECRET}
-signing_key_file: '/pomerium/ec_private.pem'
 
 routes:
   - from: https://esdiag-webui.localhost.pomerium.io #this is the URL used for users logging in
     to: http://esdiag-webui:3000
-    allow_any_authenticated_user: true
+    policy:
+      - allow:
+          or:
+            - domain:
+                is: elastic.co
     pass_identity_headers: true
   - from: https://kibana.localhost.pomerium.io
     to: http://esdiag-kibana:5601
-    allow_any_authenticated_user: true
+    policy:
+      - allow:
+          or:
+            - domain:
+                is: elastic.co
     pass_identity_headers: true
+    
