@@ -92,7 +92,7 @@ pub struct ElasticsearchDiagnostic {
 }
 
 impl ElasticsearchDiagnostic {
-    async fn process<T>(&mut self) -> Result<()>
+    async fn process<T>(&self) -> Result<ProcessorSummary>
     where
         T: DataSource
             + DocumentExporter<Lookups, ElasticsearchMetadata>
@@ -110,8 +110,7 @@ impl ElasticsearchDiagnostic {
                 ProcessorSummary::new(T::name())
             }
         };
-        self.report.add_processor_summary(summary);
-        Ok(())
+        Ok(summary)
     }
 }
 
@@ -176,20 +175,48 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
 
         self.report.add_identifiers(self.exporter.identifiers());
 
-        // settings-*
-        self.process::<ClusterSettings>().await?;
-        self.process::<IndicesSettings>().await?;
-        self.process::<Nodes>().await?;
-        self.process::<IlmPolicies>().await?;
-        self.process::<SlmPolicies>().await?;
-        // health-*
-        self.process::<HealthReport>().await?;
-        // metrics-*
-        self.process::<Tasks>().await?;
-        self.process::<PendingTasks>().await?;
-        self.process::<IndicesStats>().await?;
-        self.process::<NodesStats>().await?;
-        //self.process::<SearchableSnapshotsStats>().await?;
+        let (thread1_summaries, thread2_summaries, thread3_summaries) = tokio::try_join!(
+            // Thread 1: IndicesStats
+            async {
+                let indices_stats = self.process::<IndicesStats>().await?;
+                Ok::<Vec<ProcessorSummary>, eyre::Error>(vec![indices_stats])
+            },
+            // Thread 2: NodesStats
+            async {
+                let nodes_stats = self.process::<NodesStats>().await?;
+                Ok::<Vec<ProcessorSummary>, eyre::Error>(vec![nodes_stats])
+            },
+            // Thread 3: Everything else
+            async {
+                let cluster_settings = self.process::<ClusterSettings>().await?;
+                let health_report = self.process::<HealthReport>().await?;
+                let ilm_policies = self.process::<IlmPolicies>().await?;
+                let indices_settings = self.process::<IndicesSettings>().await?;
+                let nodes = self.process::<Nodes>().await?;
+                let pending_tasks = self.process::<PendingTasks>().await?;
+                let slm_policies = self.process::<SlmPolicies>().await?;
+                let tasks = self.process::<Tasks>().await?;
+                Ok::<Vec<ProcessorSummary>, eyre::Error>(vec![
+                    cluster_settings,
+                    health_report,
+                    ilm_policies,
+                    indices_settings,
+                    nodes,
+                    pending_tasks,
+                    slm_policies,
+                    tasks,
+                ])
+            }
+        )?;
+
+        // Add all summaries to the report
+        for summary in thread1_summaries
+            .into_iter()
+            .chain(thread2_summaries.into_iter())
+            .chain(thread3_summaries.into_iter())
+        {
+            self.report.add_processor_summary(summary);
+        }
 
         self.report.add_origin(
             Some(self.metadata.cluster.display_name.clone()),
