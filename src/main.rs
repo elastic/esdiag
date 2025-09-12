@@ -343,7 +343,12 @@ fn clear_last_run_files() -> Result<()> {
     if !last_run.exists() {
         std::fs::create_dir_all(&last_run)?;
     }
-    let files = vec!["bulk_errors.ndjson", "diagnostic.json", "report.json"];
+    let files = vec![
+        "bulk_errors.ndjson",
+        "diagnostic.json",
+        "report.json",
+        "responses.ndjson",
+    ];
     for file in files {
         let file = last_run.join(file);
         log::debug!("Removing {}", &file.display());

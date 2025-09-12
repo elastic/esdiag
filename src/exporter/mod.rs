@@ -29,7 +29,7 @@ trait Export {
     async fn is_connected(&self) -> bool;
     async fn write<T>(&self, summary: &mut ProcessorSummary, docs: &mut Vec<T>) -> Result<()>
     where
-        T: Sized + Serialize + Send;
+        T: Serialize + Sized + Send + Sync;
     async fn save_report(&self, report: &DiagnosticReport) -> Result<()>;
     fn with_identifiers(self, identifiers: Identifiers) -> Self;
 }
@@ -102,7 +102,7 @@ impl Exporter {
 
     pub async fn write<T>(&self, summary: &mut ProcessorSummary, docs: &mut Vec<T>) -> Result<()>
     where
-        T: Serialize + Send + Sized,
+        T: Serialize + Sized + Send + Sync,
     {
         match self {
             Exporter::Elasticsearch(exporter) => exporter.write(summary, docs).await,

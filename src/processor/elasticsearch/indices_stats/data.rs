@@ -27,7 +27,7 @@ pub struct ShardsStats {
 }
 
 #[skip_serializing_none]
-#[derive(Clone, Deserialize)]
+#[derive(Deserialize)]
 pub struct IndexStats {
     pub uuid: Option<String>,
     pub health: Option<String>,
@@ -37,7 +37,7 @@ pub struct IndexStats {
 }
 
 #[skip_serializing_none]
-#[derive(Clone, Deserialize)]
+#[derive(Deserialize)]
 pub struct ShardEntry {
     pub routing: ShardRouting,
     pub commit: ShardCommit,
@@ -51,7 +51,7 @@ pub struct ShardEntry {
 }
 
 #[skip_serializing_none]
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct SequenceNumber {
     max_seq_no: Option<i64>,
     local_checkpoint: Option<i64>,
@@ -59,7 +59,7 @@ pub struct SequenceNumber {
 }
 
 #[skip_serializing_none]
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct ShardPath {
     state_path: Option<String>,
     data_path: Option<String>,
@@ -67,20 +67,20 @@ pub struct ShardPath {
 }
 
 #[skip_serializing_none]
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct RetentionLeases {
     primary_term: Option<u64>,
     version: Option<u64>,
 }
 
 #[skip_serializing_none]
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct VectorCount {
     pub value_count: Option<u64>,
 }
 
 #[skip_serializing_none]
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct ShardCommit {
     id: Option<String>,
     generation: Option<u64>,
@@ -89,7 +89,7 @@ pub struct ShardCommit {
 }
 
 #[skip_serializing_none]
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct ShardRouting {
     pub node: String,
     pub primary: bool,
@@ -98,7 +98,7 @@ pub struct ShardRouting {
 }
 
 #[skip_serializing_none]
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct Stats {
     pub bulk: Option<Bulk>,
     pub completion: Option<Completion>,
@@ -123,7 +123,7 @@ pub struct Stats {
 }
 
 #[skip_serializing_none]
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct Docs {
     pub count: u64,
     pub deleted: u64,
@@ -134,13 +134,13 @@ pub struct Docs {
     pub deleted_percent: Option<f32>,
 }
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct ShardStats {
     pub total_count: u64,
 }
 
 #[skip_serializing_none]
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct StoreStats {
     pub size_in_bytes: u64,
     pub total_data_set_size_in_bytes: Option<u64>,
@@ -148,7 +148,7 @@ pub struct StoreStats {
 }
 
 #[skip_serializing_none]
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct Indexing {
     pub delete_current: u64,
     pub delete_time_in_millis: u64,
@@ -168,7 +168,7 @@ pub struct Indexing {
 }
 
 #[skip_serializing_none]
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct Get {
     current: Option<u64>,
     exists_time_in_millis: Option<u64>,
@@ -180,7 +180,7 @@ pub struct Get {
 }
 
 #[skip_serializing_none]
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct Search {
     pub fetch_current: Option<u64>,
     pub fetch_failure: Option<u64>,
@@ -205,7 +205,7 @@ pub struct Search {
 }
 
 #[skip_serializing_none]
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct Merges {
     current: Option<u64>,
     current_docs: Option<u64>,
@@ -220,7 +220,7 @@ pub struct Merges {
 }
 
 #[skip_serializing_none]
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct Refresh {
     external_total: Option<u64>,
     external_total_time_in_millis: Option<u64>,
@@ -230,7 +230,7 @@ pub struct Refresh {
 }
 
 #[skip_serializing_none]
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct Flush {
     total: Option<u64>,
     periodic: Option<u64>,
@@ -239,7 +239,7 @@ pub struct Flush {
 }
 
 #[skip_serializing_none]
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct Warmer {
     current: Option<u64>,
     total: Option<u64>,
@@ -247,7 +247,7 @@ pub struct Warmer {
 }
 
 #[skip_serializing_none]
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct QueryCache {
     cache_count: Option<u64>,
     cache_size: Option<u64>,
@@ -259,7 +259,7 @@ pub struct QueryCache {
 }
 
 #[skip_serializing_none]
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct Fielddata {
     memory_size_in_bytes: Option<u64>,
     evictions: Option<u64>,
@@ -267,19 +267,19 @@ pub struct Fielddata {
 }
 
 #[skip_serializing_none]
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct GlobalOrdinals {
     build_time_in_millis: Option<u64>,
 }
 
 #[skip_serializing_none]
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct Completion {
     size_in_bytes: Option<u64>,
 }
 
 #[skip_serializing_none]
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct Segments {
     count: Option<u64>,
     doc_values_memory_in_bytes: Option<u64>,
@@ -298,7 +298,7 @@ pub struct Segments {
 }
 
 #[skip_serializing_none]
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct Translog {
     operations: Option<u64>,
     size_in_bytes: Option<u64>,
@@ -308,7 +308,7 @@ pub struct Translog {
 }
 
 #[skip_serializing_none]
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct RequestCache {
     memory_size_in_bytes: Option<u64>,
     evictions: Option<u64>,
@@ -317,7 +317,7 @@ pub struct RequestCache {
 }
 
 #[skip_serializing_none]
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct Recovery {
     current_as_source: Option<u64>,
     current_as_target: Option<u64>,
@@ -325,7 +325,7 @@ pub struct Recovery {
 }
 
 #[skip_serializing_none]
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct Bulk {
     pub avg_size_in_bytes: Option<u64>,
     pub avg_time_in_millis: Option<u64>,

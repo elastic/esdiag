@@ -101,10 +101,10 @@ impl ElasticsearchDiagnostic {
             + Sync,
     {
         let summary = match self.receiver.get::<T>().await {
-            Ok(data) => {
-                data.documents_export(&self.exporter, &self.lookups, &self.metadata)
-                    .await
-            }
+            Ok(data) => data
+                .documents_export(&self.exporter, &self.lookups, &self.metadata)
+                .await
+                .was_parsed(),
             Err(err) => {
                 log::warn!("{}", err);
                 ProcessorSummary::new(T::name())

@@ -106,7 +106,7 @@ impl Export for ElasticsearchExporter {
 
     async fn write<T>(&self, summary: &mut ProcessorSummary, docs: &mut Vec<T>) -> Result<()>
     where
-        T: Serialize + Send + Sized,
+        T: Serialize + Sized + Send + Sync,
     {
         use futures::{FutureExt, StreamExt};
         let client = self.client.clone();
@@ -119,9 +119,10 @@ impl Export for ElasticsearchExporter {
             while in_flight.len() < workers && !docs.is_empty() {
                 let batch_size = docs.len().min(bulk_size);
                 let mut batch: Vec<BulkOperation<T>> = Vec::with_capacity(batch_size);
-                for doc in docs.drain(..batch_size) {
-                    batch.push(BulkOperation::create(doc).pipeline("esdiag").into());
-                }
+                batch.extend(
+                    docs.drain(..batch_size)
+                        .map(|doc| BulkOperation::create(doc).pipeline("esdiag").into()),
+                );
                 let batch_index = summary.index.clone();
                 let batch_client = client.clone();
                 let fut = async move {
@@ -218,6 +219,21 @@ async fn parse_response(
     let error_count = error_items.len();
     let doc_count = item_count - error_count;
 
+    if (status_code != 200 && log::max_level() >= log::Level::Debug)
+        || (log::max_level() >= log::Level::Trace)
+    {
+        data::save_file(
+            "responses.ndjson",
+            &serde_json::json!({
+                "index": index,
+                "doc_count": doc_count,
+                "error_count": error_count,
+                "errors": error_items,
+                "body": body,
+            }),
+        )?;
+    }
+
     match status_code {
         200 if error_count == 0 => log::debug!("{}, created {} docs", index, doc_count),
         200 => log::warn!(
@@ -226,6 +242,7 @@ async fn parse_response(
             doc_count,
             error_count
         ),
+        400 => return Err(eyre!("{} - http 400 bad request", index)),
         401 => return Err(eyre!("{} - http 401 unauthorized", index)),
         403 => return Err(eyre!("{} - http 403 forbidden", index)),
         404 => return Err(eyre!("{} - http 404 not found", index)),

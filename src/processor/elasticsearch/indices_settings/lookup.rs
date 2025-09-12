@@ -43,16 +43,14 @@ pub struct IndexSettingsDocument {
     pub data_stream: Option<DataStream>,
     pub lifecycle: Option<serde_json::Value>,
     pub ilm: Option<IlmStats>,
-    pub is_write_index: bool,
     pub mode: String,
-    pub name: String,
+    //pub name: String,
     pub store: Option<StoreSettings>,
     pub number_of_shards: Option<u64>,
     pub number_of_replicas: Option<u64>,
     pub refresh_interval: String,
     pub source: Option<String>,
     pub write_phase_sec: Option<u64>,
-    pub uuid: String,
 }
 
 impl IndexSettingsDocument {
@@ -82,16 +80,14 @@ impl From<IndexSettings> for IndexSettingsDocument {
             data_stream: index_settings.data_stream,
             lifecycle: index_settings.lifecycle,
             ilm: None,
-            is_write_index: index_settings.is_write_index,
             mode: index_settings.mode,
-            name: index_settings.name.expect("Name is required"),
+            //name: index_settings.name.expect("Name is required"),
             store: index_settings.store,
             number_of_shards: index_settings.number_of_shards,
             number_of_replicas: index_settings.number_of_replicas,
             refresh_interval: index_settings.refresh_interval,
             source: index_settings.source,
             write_phase_sec: None,
-            uuid: index_settings.uuid,
         }
     }
 }

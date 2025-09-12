@@ -52,10 +52,8 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for IndicesStats {
                 batch_size,
             ));
 
-        for (index_name, mut index_stats) in indices_stats.into_iter() {
-            // Moves shard data out of index_stats
+        for (index_name, mut index_stats) in indices_stats {
             let shards_stats = index_stats.shards.take();
-
             let index_settings =
                 lookups
                     .index_settings
@@ -75,6 +73,7 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for IndicesStats {
             let write_phase_sec = match EnrichedIndexStats::try_from(index_stats) {
                 Ok(enriched_stats) => {
                     let stats = enriched_stats
+                        .name(index_name.clone())
                         .alias(lookups.alias.by_name(&index_name).cloned())
                         .with_settings(index_settings.clone());
                     let index_document =
@@ -185,8 +184,11 @@ struct IndexStatsDocument {
 }
 
 impl IndexStatsDocument {
-    fn new(index: EnrichedIndexStatsWithSettings, metadata: MetadataDoc) -> Self {
-        IndexStatsDocument { index, metadata }
+    fn new(index_stats: EnrichedIndexStatsWithSettings, metadata: MetadataDoc) -> Self {
+        IndexStatsDocument {
+            index: index_stats,
+            metadata,
+        }
     }
 
     fn calculate(mut self) -> Self {
@@ -235,7 +237,6 @@ impl IndexStatsDocument {
                 0
             };
 
-            stats.age = Some(since_creation);
             stats.since_rollover = since_rollover;
             stats.write_phase_sec = Some(write_phase_sec);
         }
@@ -299,12 +300,12 @@ impl IndexStatsDocument {
 #[skip_serializing_none]
 #[derive(Serialize)]
 struct EnrichedIndexStats {
-    pub age: Option<u64>,
     pub alias: Option<Alias>,
     pub health: Option<String>,
     pub is_write_index: bool,
     pub primaries: EnrichedStats,
     pub since_rollover: Option<u64>,
+    pub name: Option<String>,
     pub total: EnrichedStats,
     pub uuid: Option<String>,
     pub write_phase_sec: Option<u64>,
@@ -324,6 +325,13 @@ impl EnrichedIndexStats {
         Self { alias, ..self }
     }
 
+    fn name(self, name: String) -> Self {
+        Self {
+            name: Some(name),
+            ..self
+        }
+    }
+
     fn with_settings(
         self,
         settings: Option<IndexSettingsDocument>,
@@ -339,20 +347,18 @@ impl TryFrom<IndexStats> for EnrichedIndexStats {
     type Error = Report;
 
     fn try_from(stats: IndexStats) -> Result<Self, Self::Error> {
-        let health = stats.health;
         let primaries = EnrichedStats::try_from(stats.primaries)?;
         let total = EnrichedStats::try_from(stats.total)?;
-        let uuid = stats.uuid;
 
         Ok(EnrichedIndexStats {
-            age: None,
             alias: None,
-            health,
+            health: stats.health,
             is_write_index: false,
+            name: None,
             primaries,
             since_rollover: None,
             total,
-            uuid,
+            uuid: stats.uuid,
             write_phase_sec: None,
         })
     }
