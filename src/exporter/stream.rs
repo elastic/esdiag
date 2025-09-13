@@ -81,9 +81,10 @@ impl Export for StreamExporter {
         Ok(rx)
     }
 
-    /// Saves the final diagnostic report file to the esdiag home directory
+    /// Writes the final diagnostic report file to stdout
     async fn save_report(&self, report: &DiagnosticReport) -> Result<()> {
-        crate::data::save_file("report.json", report)
+        println!("{}", serde_json::to_string(report)?);
+        Ok(())
     }
 }
 
