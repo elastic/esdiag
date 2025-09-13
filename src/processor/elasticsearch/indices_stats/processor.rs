@@ -102,8 +102,8 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for IndicesStats {
                 ) {
                     Ok(docs) => {
                         for doc in docs {
-                            if let Err(e) = shard_tx.send(doc).await {
-                                log::warn!("Shard channel closed unexpectedly: {}", e);
+                            if shard_tx.send(doc).await.is_err() {
+                                log::warn!("Shard channel closed unexpectedly");
                                 break;
                             }
                         }
