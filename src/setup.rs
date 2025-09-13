@@ -3,10 +3,10 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use crate::exporter::Exporter;
-use eyre::{eyre, Result};
-use include_dir::{include_dir, Dir};
+use eyre::{Result, eyre};
+use include_dir::{Dir, include_dir};
 use serde::Deserialize;
-use serde_json::{from_slice, Value};
+use serde_json::{Value, from_slice};
 use std::path::PathBuf;
 
 // Subdirectory for templates and configs files
@@ -28,7 +28,7 @@ pub struct Asset {
 pub async fn assets(exporter: Exporter) -> Result<()> {
     match exporter {
         Exporter::File(_) | Exporter::Stream(_) => {
-            return Err(eyre!("Setup only supports Elasticsearch."))
+            return Err(eyre!("Setup only supports Elasticsearch."));
         }
         _ => {}
     }
@@ -70,7 +70,7 @@ pub async fn assets(exporter: Exporter) -> Result<()> {
                         asset.suffix.clone().unwrap_or("".to_string()),
                     );
                     match exporter
-                        .send(&asset.method, &endpoint, value.as_ref())
+                        .request(&asset.method, &endpoint, value.as_ref())
                         .await
                     {
                         Ok(response) => match response.status_code().is_success() {

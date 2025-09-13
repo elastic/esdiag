@@ -16,8 +16,10 @@ use eyre::{Result, eyre};
 use futures::stream::FuturesUnordered;
 use serde::Serialize;
 use serde_json::{Value, json};
+use tokio::sync::oneshot;
 use url::Url;
 
+/// An exporter that sends documents to an Elasticsearch cluster.
 #[derive(Clone)]
 pub struct ElasticsearchExporter {
     client: Elasticsearch,
@@ -40,8 +42,13 @@ impl ElasticsearchExporter {
         })
     }
 
-    /// Send a request to an arbitrary path on the Elasticsearch client
-    pub async fn send(&self, method: &str, path: &str, value: Option<&Value>) -> Result<Response> {
+    /// Request to an arbitrary path on the Elasticsearch client
+    pub async fn request(
+        &self,
+        method: &str,
+        path: &str,
+        value: Option<&Value>,
+    ) -> Result<Response> {
         let method = match method {
             "POST" => Method::Post,
             "PUT" => Method::Put,
@@ -81,6 +88,7 @@ impl TryFrom<KnownHost> for ElasticsearchExporter {
 }
 
 impl Export for ElasticsearchExporter {
+    /// Adds identifiers to the exporter, which will be enriched on every document sent.
     fn with_identifiers(self, identifiers: Identifiers) -> Self {
         Self {
             identifiers,
@@ -88,6 +96,7 @@ impl Export for ElasticsearchExporter {
         }
     }
 
+    /// Check if the exporter has a valid connection to Elasticsearch.
     async fn is_connected(&self) -> bool {
         let status_code = match self.client.info().send().await {
             Ok(res) => {
@@ -104,7 +113,8 @@ impl Export for ElasticsearchExporter {
         status_code == 200
     }
 
-    async fn write<T>(&self, summary: &mut ProcessorSummary, docs: &mut Vec<T>) -> Result<()>
+    /// Drains the docs array into batches and sends them to Elasticsearch with multiple workers.
+    async fn send<T>(&self, summary: &mut ProcessorSummary, docs: &mut Vec<T>) -> Result<()>
     where
         T: Serialize + Sized + Send + Sync,
     {
@@ -149,6 +159,43 @@ impl Export for ElasticsearchExporter {
         Ok(())
     }
 
+    /// Transmits a single batch of documents in an async task
+    /// Returns a one-shot channel for the BatchResponse
+    async fn tx<T>(&self, index: String, docs: Vec<T>) -> Result<oneshot::Receiver<BatchResponse>>
+    where
+        T: Serialize + Sized + Send + Sync + 'static,
+    {
+        let (tx, rx) = oneshot::channel();
+        let client = self.client.clone();
+
+        tokio::spawn(async move {
+            let batch: Vec<BulkOperation<T>> = docs
+                .into_iter()
+                .map(|doc| BulkOperation::create(doc).pipeline("esdiag").into())
+                .collect();
+
+            let response = client
+                .bulk(BulkParts::Index(&index))
+                .body(batch)
+                .send()
+                .await;
+
+            match parse_response(index, response).await {
+                Ok(batch_response) => {
+                    if tx.send(batch_response).is_err() {
+                        log::error!("Failed to send batch response: receiver dropped");
+                    }
+                }
+                Err(e) => {
+                    log::warn!("Bulk batch failed: {}", e);
+                }
+            }
+        });
+
+        Ok(rx)
+    }
+
+    /// Sends the final diagnostic report document to Elasticsearch.
     async fn save_report(&self, report: &DiagnosticReport) -> Result<()> {
         data::save_file("report.json", report)?;
         let diagnostic_id = report.metadata.id.clone();
