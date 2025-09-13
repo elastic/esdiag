@@ -37,7 +37,7 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for ClusterSettings {
         log::debug!("cluster_settings scopes: {}", scopes.len());
         let cluster_settings_doc = ClusterSettingsDoc::new(metadata.clone(), data_stream_name);
 
-        let mut cluster_settings: Vec<Value> = scopes.into_iter().map(|(priority, settings)| {
+        let cluster_settings: Vec<Value> = scopes.into_iter().map(|(priority, settings)| {
             let cluster_patch = json!({
                 "cluster.max_shards_per_node.frozen": null,
                 "cluster.max_shards_per_node": null,
@@ -84,9 +84,10 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for ClusterSettings {
         })
         .collect();
         log::debug!("cluster_settings docs: {}", cluster_settings.len());
-        let mut summary = ProcessorSummary::new(data_stream);
-        if let Err(err) = exporter.write(&mut summary, &mut cluster_settings).await {
-            log::error!("Failed to write cluster settings: {}", err);
+        let mut summary = ProcessorSummary::new(data_stream.clone());
+        match exporter.send(data_stream, cluster_settings).await {
+            Ok(batch) => summary.add_batch(batch),
+            Err(err) => log::error!("Failed to send cluster settings: {}", err),
         }
         summary
     }

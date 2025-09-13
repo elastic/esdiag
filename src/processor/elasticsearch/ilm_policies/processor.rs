@@ -25,7 +25,7 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for IlmPolicies {
 
         let mut policies: Vec<(String, IlmPolicy)> = self.into_par_iter().collect();
 
-        let mut policies: Vec<Value> = policies
+        let policies: Vec<Value> = policies
             .par_drain(..)
             .filter_map(|(name, config)| {
                 serde_json::to_value(IlmDoc {
@@ -36,10 +36,14 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for IlmPolicies {
             })
             .collect();
 
-        log::debug!("ilm policy docs: {}", policies.len());
-        let mut summary = ProcessorSummary::new(data_stream);
-        if let Err(err) = exporter.write(&mut summary, &mut policies).await {
-            log::error!("Failed to write ILM policies: {}", err);
+        log::debug!("ILM policies docs: {}", policies.len());
+        let mut summary = ProcessorSummary::new("settings-ilm-policies-esdiag".to_string());
+        match exporter
+            .send("settings-ilm-policies-esdiag".to_string(), policies)
+            .await
+        {
+            Ok(batch) => summary.add_batch(batch),
+            Err(err) => log::error!("Failed to send ILM policies: {}", err),
         }
         summary
     }

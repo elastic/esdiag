@@ -33,7 +33,7 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for HealthReport {
         let mut indicators: Vec<(String, HealthIndicator)> =
             self.indicators.into_par_iter().collect();
 
-        let mut health_docs: Vec<Value> = indicators
+        let health_docs: Vec<Value> = indicators
             .par_drain(..)
             .flat_map(|(name, mut indicator)| {
                 let mut docs: Vec<Value> = Vec::with_capacity(10);
@@ -82,8 +82,12 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for HealthReport {
 
         log::debug!("Health report docs: {}", health_docs.len());
         let mut summary = ProcessorSummary::new("health-indicator-esdiag".to_string());
-        if let Err(err) = exporter.write(&mut summary, &mut health_docs).await {
-            log::error!("Failed to write health report: {}", err);
+        match exporter
+            .send("health-indicator-esdiag".to_string(), health_docs)
+            .await
+        {
+            Ok(batch) => summary.add_batch(batch),
+            Err(err) => log::error!("Failed to send health report: {}", err),
         }
         summary
     }

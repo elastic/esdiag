@@ -29,7 +29,7 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for Tasks {
 
         let mut nodes: Vec<(String, NodeTasks)> = self.nodes.into_par_iter().collect();
 
-        let mut tasks: Vec<Value> = nodes
+        let tasks: Vec<Value> = nodes
             .par_drain(..)
             .flat_map(|(node_id, mut node)| {
                 node.tasks
@@ -47,9 +47,10 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for Tasks {
             .collect();
 
         log::debug!("task docs: {}", tasks.len());
-        let mut summary = ProcessorSummary::new(data_stream);
-        if let Err(err) = exporter.write(&mut summary, &mut tasks).await {
-            log::error!("Failed to write tasks: {}", err);
+        let mut summary = ProcessorSummary::new(data_stream.clone());
+        match exporter.send(data_stream, tasks).await {
+            Ok(batch) => summary.add_batch(batch),
+            Err(err) => log::error!("Failed to send tasks: {}", err),
         }
         summary
     }

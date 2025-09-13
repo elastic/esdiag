@@ -24,7 +24,7 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for IndicesSettings {
         let collection_date = metadata.timestamp;
         let metadata_doc = index_metadata.as_meta_doc();
 
-        let mut index_settings: Vec<EnrichedIndexSettings> = self
+        let index_settings: Vec<EnrichedIndexSettings> = self
             .par_drain()
             .map(|(name, settings)| {
                 let index_settings = settings
@@ -42,10 +42,14 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for IndicesSettings {
             })
             .collect();
 
-        log::debug!("index setting docs: {}", index_settings.len());
+        log::debug!("index settings docs: {}", index_settings.len());
         let mut summary = ProcessorSummary::new(index_metadata.data_stream.to_string());
-        if let Err(err) = exporter.write(&mut summary, &mut index_settings).await {
-            log::error!("Failed to write index settings: {}", err);
+        match exporter
+            .send(index_metadata.data_stream.to_string(), index_settings)
+            .await
+        {
+            Ok(batch) => summary.add_batch(batch),
+            Err(err) => log::error!("Failed to send index settings: {}", err),
         }
         summary
     }

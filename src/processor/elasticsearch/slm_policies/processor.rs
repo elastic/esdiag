@@ -25,7 +25,7 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for SlmPolicies {
 
         let mut policies: Vec<(String, SlmPolicy)> = self.into_par_iter().collect();
 
-        let mut policies: Vec<Value> = policies
+        let policies: Vec<Value> = policies
             .par_drain(..)
             .filter_map(|(name, config)| {
                 serde_json::to_value(SlmDoc {
@@ -36,10 +36,11 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for SlmPolicies {
             })
             .collect();
 
-        log::debug!("slm policy docs: {}", policies.len());
-        let mut summary = ProcessorSummary::new(data_stream);
-        if let Err(err) = exporter.write(&mut summary, &mut policies).await {
-            log::error!("Failed to write SLM policies: {}", err);
+        log::debug!("SLM policies docs: {}", policies.len());
+        let mut summary = ProcessorSummary::new(data_stream.clone());
+        match exporter.send(data_stream, policies).await {
+            Ok(batch) => summary.add_batch(batch),
+            Err(err) => log::error!("Failed to send SLM policies: {}", err),
         }
         summary
     }

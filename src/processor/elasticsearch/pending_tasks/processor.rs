@@ -25,7 +25,7 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for PendingTasks {
 
         let mut pending_tasks: Vec<PendingTask> = self.tasks.into_par_iter().collect();
 
-        let mut pending_tasks: Vec<Value> = pending_tasks
+        let pending_tasks: Vec<Value> = pending_tasks
             .par_drain(..)
             .filter_map(|task| {
                 serde_json::to_value(PendingTaskDoc {
@@ -37,9 +37,10 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for PendingTasks {
             .collect();
 
         log::debug!("pending task docs: {}", pending_tasks.len());
-        let mut summary = ProcessorSummary::new(data_stream);
-        if let Err(err) = exporter.write(&mut summary, &mut pending_tasks).await {
-            log::error!("Failed to write pending tasks: {}", err);
+        let mut summary = ProcessorSummary::new(data_stream.clone());
+        match exporter.send(data_stream, pending_tasks).await {
+            Ok(batch) => summary.add_batch(batch),
+            Err(err) => log::error!("Failed to send pending tasks: {}", err),
         }
         summary
     }

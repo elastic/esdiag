@@ -3,7 +3,7 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::Export;
-use crate::processor::{BatchResponse, DiagnosticReport, Identifiers, ProcessorSummary};
+use crate::processor::{BatchResponse, DiagnosticReport, Identifiers};
 use eyre::Result;
 use serde::Serialize;
 use tokio::sync::oneshot;
@@ -36,24 +36,22 @@ impl Export for StreamExporter {
         true
     }
 
-    /// Drains the vec and writes all documents to the file.
-    async fn send<T>(&self, summary: &mut ProcessorSummary, docs: &mut Vec<T>) -> Result<()>
+    /// Writes the docs to stdout
+    async fn send<T>(&self, index: String, docs: Vec<T>) -> Result<BatchResponse>
     where
-        T: Sized + Serialize,
+        T: Serialize + Sized + Send + Sync,
     {
-        let doc_count = docs.len() as u32;
         let start_time = std::time::Instant::now();
+        let doc_count = docs.len() as u32;
         let mut batch = BatchResponse::new(doc_count);
-        log::debug!("Writing {} docs to stdout", doc_count);
+        log::debug!("{} wrote {} docs to stdout", index, doc_count);
         for doc in docs {
             serde_json::to_writer(std::io::stdout(), &doc)?;
             println!();
         }
         batch.size = doc_count;
-        batch.time = start_time.elapsed().as_secs() as u32;
         batch.time = start_time.elapsed().as_millis() as u32;
-        summary.add_batch(batch);
-        Ok(())
+        Ok(batch)
     }
 
     /// Transmits a single batch of documents in an async task
@@ -63,19 +61,15 @@ impl Export for StreamExporter {
         T: Serialize + Sized + Send + Sync + 'static,
     {
         let (tx, rx) = oneshot::channel();
-        let doc_count = docs.len() as u32;
-        let mut temp_docs = docs;
-        let mut summary = ProcessorSummary::new(index);
 
-        // Stream exporter writes synchronously, so we just write and send a simple response
-        match self.send(&mut summary, &mut temp_docs).await {
-            Ok(_) => {
-                let batch_response = BatchResponse::new(doc_count);
-                let _ = tx.send(batch_response);
+        // Stream exporter writes synchronously, so we just write and send the response
+        match self.send(index, docs).await {
+            Ok(batch_response) => {
+                if tx.send(batch_response).is_err() {
+                    log::error!("Failed to send batch response");
+                }
             }
-            Err(e) => {
-                log::warn!("Stream write failed: {}", e);
-            }
+            Err(e) => log::warn!("Stream write failed: {}", e),
         }
 
         Ok(rx)

@@ -24,7 +24,7 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for SearchableSnapshotsSta
 
         let mut indices: Vec<_> = self.indices.into_par_iter().collect();
 
-        let mut searchable_snapshot_stats: Vec<Value> = indices
+        let searchable_snapshot_stats: Vec<Value> = indices
             .par_drain(..)
             .flat_map(|(index_name, mut index_stats)| {
                 index_stats
@@ -50,12 +50,10 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for SearchableSnapshotsSta
             searchable_snapshot_stats.len()
         );
 
-        let mut summary = ProcessorSummary::new(data_stream);
-        if let Err(err) = exporter
-            .write(&mut summary, &mut searchable_snapshot_stats)
-            .await
-        {
-            log::error!("Failed to write searchable snapshot stats: {}", err);
+        let mut summary = ProcessorSummary::new(data_stream.clone());
+        match exporter.send(data_stream, searchable_snapshot_stats).await {
+            Ok(batch) => summary.add_batch(batch),
+            Err(err) => log::error!("Failed to send searchable snapshots stats: {}", err),
         }
         summary
     }

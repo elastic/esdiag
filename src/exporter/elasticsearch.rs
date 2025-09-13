@@ -6,14 +6,13 @@ use super::Export;
 use crate::{
     client::{Auth, ElasticsearchBuilder, KnownHost},
     data,
-    processor::{BatchResponse, DiagnosticReport, Identifiers, ProcessorSummary},
+    processor::{BatchResponse, DiagnosticReport, Identifiers},
 };
 use elasticsearch::{
     BulkOperation, BulkParts, Elasticsearch, IndexParts,
     http::{Method, headers, request::JsonBody, response::Response},
 };
 use eyre::{Result, eyre};
-use futures::stream::FuturesUnordered;
 use serde::Serialize;
 use serde_json::{Value, json};
 use tokio::sync::oneshot;
@@ -113,50 +112,25 @@ impl Export for ElasticsearchExporter {
         status_code == 200
     }
 
-    /// Drains the docs array into batches and sends them to Elasticsearch with multiple workers.
-    async fn send<T>(&self, summary: &mut ProcessorSummary, docs: &mut Vec<T>) -> Result<()>
+    /// Sends a single batch of documents directly to Elasticsearch with backpressure.
+    /// Returns a BatchResponse directly without spawning tasks.
+    async fn send<T>(&self, index: String, docs: Vec<T>) -> Result<BatchResponse>
     where
         T: Serialize + Sized + Send + Sync,
     {
-        use futures::{FutureExt, StreamExt};
-        let client = self.client.clone();
-        let workers = 4;
-        let bulk_size = 5_000;
+        let batch: Vec<BulkOperation<T>> = docs
+            .into_iter()
+            .map(|doc| BulkOperation::create(doc).pipeline("esdiag").into())
+            .collect();
 
-        let mut in_flight: FuturesUnordered<_> = FuturesUnordered::new();
+        let response = self
+            .client
+            .bulk(BulkParts::Index(&index))
+            .body(batch)
+            .send()
+            .await;
 
-        while !docs.is_empty() || !in_flight.is_empty() {
-            while in_flight.len() < workers && !docs.is_empty() {
-                let batch_size = docs.len().min(bulk_size);
-                let mut batch: Vec<BulkOperation<T>> = Vec::with_capacity(batch_size);
-                batch.extend(
-                    docs.drain(..batch_size)
-                        .map(|doc| BulkOperation::create(doc).pipeline("esdiag").into()),
-                );
-                let batch_index = summary.index.clone();
-                let batch_client = client.clone();
-                let fut = async move {
-                    let response = batch_client
-                        .bulk(BulkParts::Index(&batch_index))
-                        .body(batch)
-                        .send()
-                        .await;
-                    parse_response(batch_index, response).await
-                };
-                in_flight.push(fut.boxed());
-            }
-
-            // Only create the next batch after one has completed
-            if let Some(res) = in_flight.next().await {
-                match res {
-                    Ok(batch_response) => summary.add_batch(batch_response),
-                    Err(e) => {
-                        log::warn!("Bulk batch failed: {e:?}");
-                    }
-                }
-            }
-        }
-        Ok(())
+        parse_response(index, response).await
     }
 
     /// Transmits a single batch of documents in an async task

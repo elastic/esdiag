@@ -31,7 +31,7 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for Nodes {
             node: None,
         };
 
-        let mut node_docs: Vec<Value> = nodes
+        let node_docs: Vec<Value> = nodes
             .par_drain()
             .map(|(node_id, node)| {
                 let patch = json!({
@@ -56,10 +56,11 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for Nodes {
             })
             .collect();
 
-        log::debug!("node settings docs: {}", node_docs.len());
-        let mut summary = ProcessorSummary::new(data_stream);
-        if let Err(err) = exporter.write(&mut summary, &mut node_docs).await {
-            log::error!("Failed to write node settings: {}", err);
+        log::debug!("node docs: {}", node_docs.len());
+        let mut summary = ProcessorSummary::new(data_stream.clone());
+        match exporter.send(data_stream, node_docs).await {
+            Ok(batch) => summary.add_batch(batch),
+            Err(err) => log::error!("Failed to send nodes: {}", err),
         }
         summary
     }

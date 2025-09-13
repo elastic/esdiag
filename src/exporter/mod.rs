@@ -27,7 +27,7 @@ use url::Url;
 
 trait Export {
     async fn is_connected(&self) -> bool;
-    async fn send<T>(&self, summary: &mut ProcessorSummary, docs: &mut Vec<T>) -> Result<()>
+    async fn send<T>(&self, index: String, docs: Vec<T>) -> Result<crate::processor::BatchResponse>
     where
         T: Serialize + Sized + Send + Sync;
     async fn tx<T>(
@@ -86,7 +86,6 @@ impl Exporter {
         let mut summary = ProcessorSummary::new(index.clone());
         let mut accumulator = Vec::<T>::with_capacity(batch_size);
         let mut batch_receivers = Vec::new();
-
         while let Some(doc) = rx.recv().await {
             accumulator.push(doc);
 
@@ -119,14 +118,18 @@ impl Exporter {
         summary
     }
 
-    pub async fn write<T>(&self, summary: &mut ProcessorSummary, docs: &mut Vec<T>) -> Result<()>
+    pub async fn send<T>(
+        &self,
+        index: String,
+        docs: Vec<T>,
+    ) -> Result<crate::processor::BatchResponse>
     where
         T: Serialize + Sized + Send + Sync,
     {
         match self {
-            Exporter::Elasticsearch(exporter) => exporter.send(summary, docs).await,
-            Exporter::File(exporter) => exporter.send(summary, docs).await,
-            Exporter::Stream(exporter) => exporter.send(summary, docs).await,
+            Exporter::Elasticsearch(exporter) => exporter.send(index, docs).await,
+            Exporter::File(exporter) => exporter.send(index, docs).await,
+            Exporter::Stream(exporter) => exporter.send(index, docs).await,
         }
     }
 
@@ -153,8 +156,8 @@ impl Exporter {
     ) -> Result<::elasticsearch::http::response::Response> {
         match self {
             Exporter::Elasticsearch(exporter) => exporter.request(method, path, value).await,
-            Exporter::File(_) => Err(eyre!("send_request not supported for file exporter")),
-            Exporter::Stream(_) => Err(eyre!("send_request not supported for stream exporter")),
+            Exporter::File(_) => Err(eyre!("request not supported for file exporter")),
+            Exporter::Stream(_) => Err(eyre!("request not supported for stream exporter")),
         }
     }
 

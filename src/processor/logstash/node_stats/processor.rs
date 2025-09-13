@@ -30,9 +30,10 @@ impl DocumentExporter<Lookups, LogstashMetadata> for NodeStats {
         let node_doc = json!(NodeStatsDoc::new(self, metadata_doc));
         docs.push(node_doc);
 
-        let mut summary = ProcessorSummary::new(data_stream);
-        if let Err(err) = exporter.write(&mut summary, &mut docs).await {
-            log::error!("Failed to write node stats: {}", err);
+        let mut summary = ProcessorSummary::new(data_stream.clone());
+        match exporter.send(data_stream, docs).await {
+            Ok(batch) => summary.add_batch(batch),
+            Err(err) => log::error!("Failed to send node stats: {}", err),
         }
         summary
     }

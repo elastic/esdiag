@@ -2,7 +2,7 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use crate::processor::{BatchResponse, DiagnosticReport, Identifiers, ProcessorSummary};
+use crate::processor::{BatchResponse, DiagnosticReport, Identifiers};
 
 use super::Export;
 use eyre::Result;
@@ -81,7 +81,7 @@ impl Export for FileExporter {
     }
 
     /// Drains the vec and writes all documents to the file.
-    async fn send<T>(&self, summary: &mut ProcessorSummary, docs: &mut Vec<T>) -> Result<()>
+    async fn send<T>(&self, index: String, docs: Vec<T>) -> Result<BatchResponse>
     where
         T: Sized + Serialize,
     {
@@ -117,9 +117,8 @@ impl Export for FileExporter {
         }
         batch.time = start_time.elapsed().as_millis() as u32;
 
-        summary.add_batch(batch);
-        log::info!("{}, created {} docs", summary.index, doc_count);
-        Ok(())
+        log::info!("{}, created {} docs", index, doc_count);
+        Ok(batch)
     }
 
     /// Transmits a single batch of documents in an async task
@@ -129,19 +128,15 @@ impl Export for FileExporter {
         T: Serialize + Sized + Send + Sync + 'static,
     {
         let (tx, rx) = oneshot::channel();
-        let doc_count = docs.len() as u32;
-        let mut temp_docs = docs;
-        let mut summary = ProcessorSummary::new(index);
 
         // File exporter writes synchronously, so we just write and send a simple response
-        match self.send(&mut summary, &mut temp_docs).await {
-            Ok(_) => {
-                let batch_response = BatchResponse::new(doc_count);
-                let _ = tx.send(batch_response);
+        match self.send(index, docs).await {
+            Ok(batch_response) => {
+                if tx.send(batch_response).is_err() {
+                    log::error!("Failed to send batch response");
+                }
             }
-            Err(e) => {
-                log::warn!("File write failed: {}", e);
-            }
+            Err(e) => log::warn!("File write failed: {}", e),
         }
 
         Ok(rx)
