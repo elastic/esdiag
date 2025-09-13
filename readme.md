@@ -175,7 +175,6 @@ Usage: esdiag <COMMAND>
 Commands:
   collect  Collect a diagnostic bundle from a known host's API endpoints, writes output to a directory
   host     Configure and test a remote host connection
-  import   [DEPRECATED] Process, enrich and import a diagnostic into Elasticsearch
   process  Receives a diagnostic from the input, processes it, and sends processed docs to the output
   serve    Start a web server to receive diagnostic bundle uploads
   setup    Import assets (templates, ingest pipelines, etc.) to a known Elasticsearch host

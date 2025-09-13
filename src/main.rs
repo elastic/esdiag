@@ -101,16 +101,6 @@ enum Commands {
         )]
         nosave: bool,
     },
-    /// [DEPRECATED] Process, enrich and import a diagnostic into Elasticsearch
-    Import {
-        /// The target to write processed diagnostic data to
-        #[arg(help = "Target to write processed diagnostic documents to (`-` for stdout)")]
-        target: String,
-
-        /// The source to read diagnostic data from
-        #[arg(help = "Source to read diagnostic data from")]
-        source: String,
-    },
     /// Receives a diagnostic from the input, processes it, and sends processed docs to the output
     Process {
         /// Source to read diagnostic data from
@@ -296,22 +286,6 @@ async fn run(cli: Cli) -> Result<&'static str> {
                 report.processing_duration as f64 / 1000.0
             );
             Ok("process")
-        }
-        Commands::Import { target, source } => {
-            let input_uri = Uri::try_from(source)?;
-            let output_uri = Uri::try_from(target)?;
-            log::info!("input: {}", input_uri);
-            log::info!("output: {}", output_uri);
-            log::warn!("The `import` command is deprecated, please use `process` instead");
-
-            let receiver = Receiver::try_from(input_uri)?;
-            let exporter = Exporter::try_from(Some(output_uri))?;
-
-            let manifest = receiver.try_get_manifest().await?;
-            log::trace!("{}", serde_json::to_string(&manifest)?);
-
-            let diagnostic = Diagnostic::try_new(manifest, receiver, exporter).await?;
-            diagnostic.run().await.map(|_| "import")
         }
         Commands::Setup { host } => {
             let uri = match host {
