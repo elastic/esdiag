@@ -54,7 +54,9 @@ pub async fn submit(
             let upload_file_element = format!(
                 r#"<div id="job-{job_id}"
                     class="status-box history-item processing"
-                    data-on-load="$loading=false; $file_upload.job_id={job_id}; @post('upload/process')"
+                    data-on-load="$file_upload.job_id = $file_upload.job_id == {job_id} ? $file_upload.job_id : {job_id}"
+                    data-on-signal-patch="$loading=false; @post('upload/process', {{openWhenHidden: true}})"
+                    data-on-signal-patch-filter="{{include: /file_upload/}}"
                 >
                     <div class="spinner"></div> Processing diagnostic
                         <p><b>Filename:</b> {filename}</p>
