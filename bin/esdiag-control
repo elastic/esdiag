@@ -209,6 +209,25 @@ function apikey_setup() {
     fi
 }
 
+function proxy_setup() {
+    # Check if the proxy argument is set to "pomerium".
+    if [[ "${ESDIAG_PROXY_ARG}" == "pomerium" ]]; then
+        log_info "$(green enabling) pomerium proxy support"
+        
+        # Use sed -i '' for macOS/BSD compatibility.
+        sed -i '' -e 's/^export ESDIAG_PROXY=.*/export ESDIAG_PROXY="pomerium"/' "${env_file}"
+        sed -i '' -e 's/^export IDP_PROVIDER=.*/export IDP_PROVIDER="google"/' "${env_file}"
+        sed -i '' -e 's/^export IDP_CLIENT_ID=.*/export IDP_CLIENT_ID="xxxx"/' "${env_file}"
+        sed -i '' -e 's/^export IDP_CLIENT_SECRET=.*/export IDP_CLIENT_SECRET="xxxxxx"/' "${env_file}"
+
+        # Delete any existing ESDIAG_USER line.
+        sed -i '' -e '/export ESDIAG_USER/d' "${env_file}"
+        
+        # Append the correct line telling the app to use the JWT header.
+        echo 'export ESDIAG_USER="x-pomerium-jwt-assertion"' >> "${env_file}"
+    fi
+}
+
 # ----- GitHub Functions -----
 
 function github_token_check() {
@@ -672,6 +691,8 @@ function print_help_up () {
     white "Options:\n"
     echo "    -e, --env <NAME|FILE>  - The $(gray .env.NAME) or $(gray FILE) to source credentials from (default $(gray .env))"
     echo "    -i, --insecure         - Setup the Elasticsearch cluster with security disabled"
+    # AR - 09/15/2025 -Added change to include help text for the new proxy option.
+    echo "    --proxy <pomerium>     - Enable a proxy (e.g., pomerium) and configure the .env file"
     echo "    -r, --registry <URL>   - Elastic container registry URL"
     echo "    -s, --space            - Kibana space id (default $(gray esdiag))"
     echo
@@ -892,6 +913,22 @@ while [[ $# -gt 0 ]]; do
         -d|--debug)
             declare LOG_LEVEL="debug"
             log_debug "Turning on debug logging"
+            shift
+        ;;
+        # AR - 09/15/2025 - Added change to handle --proxy=<value> format.
+        --proxy=*)
+            declare ESDIAG_PROXY_ARG="${1#*=}"
+            shift
+        ;;
+        # AR - 09/15/2025 -Added change to introduce the --proxy command-line argument.
+        --proxy)
+            shift
+            if [[ $# -gt 0 ]]; then
+                declare ESDIAG_PROXY_ARG="${1}"
+            else
+                log_error "Missing value for --proxy argument"
+                exit 1
+            fi
             shift
         ;;
         -e|--env)

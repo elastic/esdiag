@@ -16,7 +16,6 @@ use askama::Template;
 use axum::{
     Router,
     extract::DefaultBodyLimit,
-    http::HeaderMap,
     response::sse::Event,
     routing::{get, post},
 };
@@ -356,21 +355,4 @@ pub fn patch_job_feed(template: impl Template) -> Result<Event, Infallible> {
         .mode(ElementPatchMode::After)
         .write_as_axum_sse_event();
     Ok(sse_event)
-}
-
-fn get_user_email(headers: &HeaderMap) -> (bool, Option<String>) {
-    match std::env::var("ESDIAG_USER").ok() {
-        Some(user) => (false, Some(user)),
-        None => {
-            let has_header = headers.contains_key("X-Goog-Authenticated-User-Email");
-            let email = headers
-                .get("X-Goog-Authenticated-User-Email")
-                .and_then(|value| value.to_str().ok())
-                .map(|email| {
-                    // Google auth headers are typically in format "accounts.google.com:email"
-                    email.split(':').last().unwrap_or(email).to_string()
-                });
-            (has_header, email)
-        }
-    }
 }
