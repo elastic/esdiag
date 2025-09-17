@@ -100,7 +100,7 @@ pub enum License {
     Elasticsearch(ElasticsearchLicense),
 }
 
-#[derive(Serialize, Clone)]
+#[derive(Serialize)]
 pub struct DiagnosticReport {
     pub product: Product,
     origin: Origin,
@@ -242,6 +242,16 @@ impl BatchResponse {
     }
 }
 
+impl std::fmt::Display for BatchResponse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Docs: {}, Errors: {}, Retries: {}, Size: {}, Status Code: {}, Time: {}",
+            self.docs, self.errors, self.retries, self.size, self.status_code, self.time
+        )
+    }
+}
+
 #[derive(Serialize, Clone)]
 pub struct LookupSummary {
     docs: u32,
@@ -273,6 +283,16 @@ impl ProcessorSummary {
     }
 }
 
+impl std::fmt::Display for ProcessorSummary {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Processor: {}, Index: {}, Source {}, Docs: {}, Doc Errors: {}",
+            self.processor, self.index, self.source, self.docs, self.doc_errors
+        )
+    }
+}
+
 #[derive(Serialize, Clone)]
 pub struct BatchStats {
     count: u32,
@@ -299,6 +319,12 @@ impl BatchStats {
 #[derive(Serialize, Clone)]
 pub struct Source {
     pub parsed: bool,
+}
+
+impl std::fmt::Display for Source {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Parsed: {}", self.parsed)
+    }
 }
 
 impl ProcessorSummary {

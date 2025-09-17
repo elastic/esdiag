@@ -42,6 +42,7 @@ mod tasks;
 mod version;
 
 pub use metadata::{ElasticsearchMetadata, ElasticsearchVersion};
+use tokio::{sync::mpsc, time::Instant};
 pub use {
     licenses::License,
     version::{Cluster, Version},
@@ -53,7 +54,7 @@ use super::{
     diagnostic::{DiagnosticReportBuilder, Lookup},
     elasticsearch::health_report::HealthReport,
 };
-use crate::{data, exporter::Exporter, receiver::Receiver};
+use crate::{data, exporter::Exporter, processor::BatchResponse, receiver::Receiver};
 use eyre::{Result, eyre};
 use serde::{Serialize, de::DeserializeOwned};
 use std::sync::Arc;
@@ -83,12 +84,13 @@ pub struct ElasticsearchDiagnostic {
     exporter: Arc<Exporter>,
     #[serde(skip)]
     receiver: Arc<Receiver>,
-    #[serde(skip)]
-    report: DiagnosticReport,
 }
 
 impl ElasticsearchDiagnostic {
-    async fn process<T>(&self) -> Result<ProcessorSummary>
+    async fn process_datasource<T>(
+        &self,
+        batch_tx: mpsc::Sender<BatchResponse>,
+    ) -> Result<ProcessorSummary>
     where
         T: DataSource
             + DocumentExporter<Lookups, ElasticsearchMetadata>
@@ -98,7 +100,7 @@ impl ElasticsearchDiagnostic {
     {
         let summary = match self.receiver.get::<T>().await {
             Ok(data) => data
-                .documents_export(&self.exporter, &self.lookups, &self.metadata)
+                .documents_export(&self.exporter, &self.lookups, &self.metadata, batch_tx)
                 .await
                 .was_parsed(),
             Err(err) => {
@@ -111,11 +113,11 @@ impl ElasticsearchDiagnostic {
 }
 
 impl DiagnosticProcessor for ElasticsearchDiagnostic {
-    async fn new(
+    async fn try_new(
         receiver: Arc<Receiver>,
         exporter: Arc<Exporter>,
         manifest: DiagnosticManifest,
-    ) -> Result<Box<Self>> {
+    ) -> Result<(Box<Self>, DiagnosticReport)> {
         let cluster = receiver.get::<version::Cluster>().await?;
         let display_name = receiver
             .get::<cluster_settings::ClusterSettings>()
@@ -123,6 +125,7 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
             .get_display_name();
         let metadata =
             ElasticsearchMetadata::try_new(manifest, cluster.with_display_name(display_name))?;
+
         let mut report = DiagnosticReportBuilder::from(metadata.diagnostic.clone())
             .product(Product::Elasticsearch)
             .receiver(receiver.to_string())
@@ -150,16 +153,23 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
         report.add_lookup("ilm_explain", &lookups.ilm_explain);
         report.add_lookup("shared_cache", &lookups.shared_cache);
 
-        Ok(Box::new(Self {
-            exporter,
-            lookups,
-            metadata,
-            receiver,
+        Ok((
+            Box::new(Self {
+                exporter,
+                lookups,
+                metadata,
+                receiver,
+            }),
             report,
-        }))
+        ))
     }
 
-    async fn run(mut self) -> Result<DiagnosticReport> {
+    async fn process(
+        self,
+        start_time: &Instant,
+        batch_tx: mpsc::Sender<BatchResponse>,
+        summary_tx: mpsc::Sender<ProcessorSummary>,
+    ) -> Result<()> {
         log::debug!("Running Elasticsearch diagnostic processors");
         if self.exporter.is_connected().await == false {
             return Err(eyre!("Exporter is not connected"));
@@ -169,29 +179,45 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
             data::save_file("diagnostic.json", &self)?;
         }
 
-        self.report.add_identifiers(self.exporter.identifiers());
+        // self.report.add_identifiers(self.exporter.identifiers());
 
         let (thread1_summaries, thread2_summaries, thread3_summaries) = tokio::try_join!(
             // Thread 1: IndicesStats
             async {
-                let indices_stats = self.process::<IndicesStats>().await?;
+                let indices_stats = self
+                    .process_datasource::<IndicesStats>(batch_tx.clone())
+                    .await?;
                 Ok::<Vec<ProcessorSummary>, eyre::Error>(vec![indices_stats])
             },
             // Thread 2: NodesStats
             async {
-                let nodes_stats = self.process::<NodesStats>().await?;
+                let nodes_stats = self
+                    .process_datasource::<NodesStats>(batch_tx.clone())
+                    .await?;
                 Ok::<Vec<ProcessorSummary>, eyre::Error>(vec![nodes_stats])
             },
             // Thread 3: Everything else
             async {
-                let cluster_settings = self.process::<ClusterSettings>().await?;
-                let health_report = self.process::<HealthReport>().await?;
-                let ilm_policies = self.process::<IlmPolicies>().await?;
-                let indices_settings = self.process::<IndicesSettings>().await?;
-                let nodes = self.process::<Nodes>().await?;
-                let pending_tasks = self.process::<PendingTasks>().await?;
-                let slm_policies = self.process::<SlmPolicies>().await?;
-                let tasks = self.process::<Tasks>().await?;
+                let cluster_settings = self
+                    .process_datasource::<ClusterSettings>(batch_tx.clone())
+                    .await?;
+                let health_report = self
+                    .process_datasource::<HealthReport>(batch_tx.clone())
+                    .await?;
+                let ilm_policies = self
+                    .process_datasource::<IlmPolicies>(batch_tx.clone())
+                    .await?;
+                let indices_settings = self
+                    .process_datasource::<IndicesSettings>(batch_tx.clone())
+                    .await?;
+                let nodes = self.process_datasource::<Nodes>(batch_tx.clone()).await?;
+                let pending_tasks = self
+                    .process_datasource::<PendingTasks>(batch_tx.clone())
+                    .await?;
+                let slm_policies = self
+                    .process_datasource::<SlmPolicies>(batch_tx.clone())
+                    .await?;
+                let tasks = self.process_datasource::<Tasks>(batch_tx.clone()).await?;
                 Ok::<Vec<ProcessorSummary>, eyre::Error>(vec![
                     cluster_settings,
                     health_report,
@@ -211,17 +237,33 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
             .chain(thread2_summaries.into_iter())
             .chain(thread3_summaries.into_iter())
         {
-            self.report.add_processor_summary(summary);
+            summary_tx.send(summary).await?;
         }
 
-        self.report.add_origin(
-            Some(self.metadata.cluster.display_name.clone()),
-            Some(self.metadata.cluster.uuid.clone()),
-            Some("cluster".to_string()),
-        );
-        self.exporter.save_report(&self.report).await?;
+        // self.report.add_origin(
+        // Some(self.metadata.cluster.display_name.clone()),
+        // Some(self.metadata.cluster.uuid.clone()),
+        // Some("cluster".to_string()),
+        // );
+        // self.exporter.save_report(&self.report).await?;
 
-        Ok(self.report)
+        // log::info!(
+        // "Created {} documents for {} diagnostic: {}",
+        // self.report.docs.created,
+        // self.report.product,
+        // self.report.metadata.id,
+        // );
+        // if let Ok(kibana_url) = std::env::var("ESDIAG_KIBANA_URL") {
+        // let kibana_link = format!(
+        // "{}/app/dashboards#/view/4e0a26b2-e5f8-4b58-b617-86f5cdd0edad?_g=(filters:!(('$state':(store:globalState),meta:(disabled:!f,index:'4319ebc4-df81-4b18-b8bd-6aaa55a1fd13',key:diagnostic.id,negate:!f,params:(query:'{}'),type:phrase),query:(match_phrase:(diagnostic.id:'{}')))),refreshInterval:(pause:!t,value:60000),time:(from:now-90d,to:now))",
+        // kibana_url, self.report.metadata.id, self.report.metadata.id
+        // );
+        // log::info!("{}", kibana_link);
+        // self.report.add_kibana_link(kibana_link);
+        // }
+        // self.report
+        // .add_processing_duration(start_time.elapsed().as_millis());
+        Ok(())
     }
 
     fn id(&self) -> &str {

@@ -5,10 +5,12 @@
 use super::super::{DocumentExporter, ElasticsearchMetadata, Lookups, Metadata, ProcessorSummary};
 use super::{Node, Nodes};
 use crate::exporter::Exporter;
+use crate::processor::BatchResponse;
 use json_patch::merge;
 use rayon::prelude::*;
 use serde::Serialize;
 use serde_json::{Value, json};
+use tokio::sync::mpsc;
 
 impl DocumentExporter<Lookups, ElasticsearchMetadata> for Nodes {
     async fn documents_export(
@@ -16,6 +18,7 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for Nodes {
         exporter: &Exporter,
         lookups: &Lookups,
         metadata: &ElasticsearchMetadata,
+        batch_tx: mpsc::Sender<BatchResponse>,
     ) -> ProcessorSummary {
         let mut nodes = self.nodes;
         log::debug!("nodes: {}", nodes.len());

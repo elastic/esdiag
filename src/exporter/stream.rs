@@ -41,7 +41,7 @@ impl Export for StreamExporter {
     where
         T: Serialize + Sized + Send + Sync,
     {
-        let start_time = std::time::Instant::now();
+        let start_time = tokio::time::Instant::now();
         let doc_count = docs.len() as u32;
         let mut batch = BatchResponse::new(doc_count);
         log::debug!("{} wrote {} docs to stdout", index, doc_count);

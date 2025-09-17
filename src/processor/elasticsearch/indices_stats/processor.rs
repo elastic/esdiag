@@ -2,6 +2,8 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
+use crate::processor::BatchResponse;
+
 use super::super::super::{Exporter, ProcessorSummary};
 use super::super::{
     DocumentExporter, ElasticsearchMetadata, IlmStats, Lookup, Lookups,
@@ -23,6 +25,7 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for IndicesStats {
         exporter: &Exporter,
         lookups: &Lookups,
         metadata: &ElasticsearchMetadata,
+        batch_tx: mpsc::Sender<BatchResponse>,
     ) -> ProcessorSummary {
         log::debug!("index_stats indices: {}", self.indices.len());
         let indices_stats = self.indices;

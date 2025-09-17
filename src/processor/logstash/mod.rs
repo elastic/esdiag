@@ -16,7 +16,7 @@ mod plugins;
 mod version;
 
 use super::{
-    DiagnosticProcessor, DocumentExporter, Metadata,
+    BatchResponse, DiagnosticProcessor, DocumentExporter, Metadata, ProcessorSummary,
     diagnostic::{
         DataSource, DiagnosticManifest, DiagnosticReport, DiagnosticReportBuilder, Product,
     },
@@ -29,6 +29,8 @@ use node_stats::NodeStats;
 use plugins::Plugins;
 use serde::{Serialize, de::DeserializeOwned};
 use std::sync::Arc;
+use tokio::sync::mpsc;
+use tokio::time::Instant;
 
 #[derive(Serialize)]
 pub struct LogstashDiagnostic {
@@ -38,12 +40,10 @@ pub struct LogstashDiagnostic {
     exporter: Arc<Exporter>,
     #[serde(skip)]
     receiver: Arc<Receiver>,
-    #[serde(skip)]
-    report: DiagnosticReport,
 }
 
 impl LogstashDiagnostic {
-    async fn process<T>(&mut self) -> Result<()>
+    async fn process_datasource<T>(&mut self, batch_tx: mpsc::Sender<BatchResponse>) -> Result<()>
     where
         T: DataSource
             + DocumentExporter<Lookups, LogstashMetadata>
@@ -53,19 +53,18 @@ impl LogstashDiagnostic {
     {
         let data = self.receiver.get::<T>().await?;
         let summary = data
-            .documents_export(&self.exporter, &self.lookups, &self.metadata)
+            .documents_export(&self.exporter, &self.lookups, &self.metadata, batch_tx)
             .await;
-        self.report.add_processor_summary(summary);
         Ok(())
     }
 }
 
 impl DiagnosticProcessor for LogstashDiagnostic {
-    async fn new(
+    async fn try_new(
         receiver: Arc<Receiver>,
         exporter: Arc<Exporter>,
         manifest: DiagnosticManifest,
-    ) -> Result<Box<Self>> {
+    ) -> Result<(Box<Self>, DiagnosticReport)> {
         let logstash_version = receiver.get::<version::Version>().await?;
         let metadata = LogstashMetadata::try_new(manifest, logstash_version)?;
         let plugins = receiver.get::<plugins::Plugins>().await?;
@@ -74,35 +73,45 @@ impl DiagnosticProcessor for LogstashDiagnostic {
             .receiver(receiver.to_string())
             .build()?;
 
-        Ok(Box::new(Self {
-            lookups: Lookups {
-                plugin_count: plugins.total,
-            },
-            receiver,
-            exporter,
-            metadata,
+        Ok((
+            Box::new(Self {
+                lookups: Lookups {
+                    plugin_count: plugins.total,
+                },
+                receiver,
+                exporter,
+                metadata,
+            }),
             report,
-        }))
+        ))
     }
 
-    async fn run(mut self) -> Result<DiagnosticReport> {
+    async fn process(
+        mut self,
+        start_time: &Instant,
+        batch_tx: mpsc::Sender<BatchResponse>,
+        summary_tx: mpsc::Sender<ProcessorSummary>,
+    ) -> Result<()> {
         log::debug!("Running Logstash diagnostic processors");
         if log::max_level() >= log::Level::Debug {
             data::save_file("diagnostic.json", &self)?;
         }
 
-        self.process::<Node>().await?;
-        self.process::<NodeStats>().await?;
-        self.process::<Plugins>().await?;
-        self.report.add_identifiers(self.exporter.identifiers());
-        self.report.add_origin(
-            Some(self.metadata.node.name.clone()),
-            None,
-            Some("node".to_string()),
-        );
+        self.process_datasource::<Node>(batch_tx.clone()).await?;
+        self.process_datasource::<NodeStats>(batch_tx.clone())
+            .await?;
+        self.process_datasource::<Plugins>(batch_tx.clone()).await?;
+        // self.report.add_identifiers(self.exporter.identifiers());
+        // self.report.add_origin(
+        //     Some(self.metadata.node.name.clone()),
+        //     None,
+        //     Some("node".to_string()),
+        // );
+        // self.report
+        //     .add_processing_duration(start_time.elapsed().as_millis());
 
-        self.exporter.save_report(&self.report).await?;
-        Ok(self.report)
+        // self.exporter.save_report(&self.report).await?;
+        Ok(())
     }
 
     fn id(&self) -> &str {

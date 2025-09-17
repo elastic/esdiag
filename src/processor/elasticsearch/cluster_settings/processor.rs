@@ -5,10 +5,12 @@
 use super::super::super::diagnostic::DataStreamName;
 use super::super::{DocumentExporter, ElasticsearchMetadata, Lookups, Metadata};
 use super::ClusterSettings;
+use crate::processor::BatchResponse;
 use crate::{exporter::Exporter, processor::ProcessorSummary};
 use json_patch::merge;
 use serde::Serialize;
 use serde_json::{Value, json};
+use tokio::sync::mpsc;
 
 const DEFAULT: &str = "default";
 const PERSISTENT: &str = "persistent";
@@ -20,6 +22,7 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for ClusterSettings {
         exporter: &Exporter,
         _lookups: &Lookups,
         metadata: &ElasticsearchMetadata,
+        batch_tx: mpsc::Sender<BatchResponse>,
     ) -> ProcessorSummary {
         let data_stream = "settings-cluster-esdiag".to_string();
         let data_stream_name = DataStreamName::from(data_stream.as_str());

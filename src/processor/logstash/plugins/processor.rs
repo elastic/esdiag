@@ -4,9 +4,11 @@
 
 use super::super::{DocumentExporter, LogstashMetadata, Lookups, Metadata};
 use super::{Plugin, Plugins};
+use crate::processor::BatchResponse;
 use crate::{exporter::Exporter, processor::ProcessorSummary};
 use serde::Serialize;
 use serde_json::{Value, json};
+use tokio::sync::mpsc;
 
 impl DocumentExporter<Lookups, LogstashMetadata> for Plugins {
     async fn documents_export(
@@ -14,6 +16,7 @@ impl DocumentExporter<Lookups, LogstashMetadata> for Plugins {
         exporter: &Exporter,
         _: &Lookups,
         metadata: &LogstashMetadata,
+        batch_tx: mpsc::Sender<BatchResponse>,
     ) -> ProcessorSummary {
         let data_stream = "settings-logstash.plugin-esdiag".to_string();
         let metadata_doc = metadata.for_data_stream(&data_stream).as_meta_doc();

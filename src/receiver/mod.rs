@@ -13,20 +13,19 @@ mod elasticsearch;
 /// Get file from https://upload.elastic.co/
 mod upload_service;
 
-use archive::{ArchiveBytesReceiver, ArchiveFileReceiver};
-use directory::DirectoryReceiver;
-use elastic_cloud_admin::ElasticCloudAdminReceiver;
 pub use elasticsearch::ElasticsearchReceiver;
-use upload_service::UploadServiceDownloader;
-
-use crate::client::KnownHost;
 
 use super::{
     data::Uri,
     processor::{DataSource, DiagnosticManifest, ElasticsearchCluster, Manifest, ManifestBuilder},
 };
+use crate::client::KnownHost;
+use archive::{ArchiveBytesReceiver, ArchiveFileReceiver};
+use directory::DirectoryReceiver;
+use elastic_cloud_admin::ElasticCloudAdminReceiver;
 use eyre::{Result, eyre};
 use serde::de::DeserializeOwned;
+use upload_service::UploadServiceDownloader;
 
 #[allow(async_fn_in_trait)]
 pub trait Receive {

@@ -85,7 +85,7 @@ impl Export for FileExporter {
     where
         T: Sized + Serialize,
     {
-        let start_time = std::time::Instant::now();
+        let start_time = tokio::time::Instant::now();
         let mut batch = BatchResponse::new(docs.len() as u32);
         let mut doc_count = 0;
         {

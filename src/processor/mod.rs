@@ -31,13 +31,13 @@ use eyre::{Result, eyre};
 use logstash::LogstashDiagnostic;
 use std::sync::Arc;
 use std::time::UNIX_EPOCH;
-use tokio::sync::mpsc;
+use tokio::{sync::mpsc, time::Instant};
 
 pub struct Processor<S: State> {
     receiver: Arc<Receiver>,
     exporter: Arc<Exporter>,
-    start_time: std::time::Instant,
-    id: u64,
+    pub start_time: Instant,
+    pub id: u64,
     pub state: S,
 }
 
@@ -56,36 +56,11 @@ impl Ready {
 /// The `Processing` state represents an active processing job
 pub struct Processing {
     diagnostic: Diagnostic,
-    progress: Progress,
-    tx: mpsc::Sender<Progress>,
-}
-
-impl Progress {
-    fn new() -> Self {
-        Progress {
-            percent: 0.0,
-            docs: 0,
-            errors: 0,
-            processors: 0,
-        }
-    }
-
-    fn update(&mut self, percent: f32, stats: &Stats) {
-        self.percent = percent;
-        self.docs = stats.docs;
-        self.errors = stats.errors;
-        self.processors = stats.processors;
-    }
-}
-
-/// The counters we track for progress reporting
-// We implment copy to simplify progress channel sending
-#[derive(Copy, Clone)]
-pub struct Progress {
-    pub percent: f32,
-    pub docs: usize,
-    pub errors: usize,
-    pub processors: usize,
+    batch_tx: mpsc::Sender<BatchResponse>,
+    summary_tx: mpsc::Sender<ProcessorSummary>,
+    batch_rx: mpsc::Receiver<BatchResponse>,
+    summary_rx: mpsc::Receiver<ProcessorSummary>,
+    report: DiagnosticReport,
 }
 
 /// The `Completed` state represents a succesfull processing job
@@ -138,7 +113,7 @@ impl Processor<Ready> {
             receiver: Arc::new(receiver),
             exporter: Arc::new(exporter),
             id: new_job_id(),
-            start_time: std::time::Instant::now(),
+            start_time: Instant::now(),
             state: Ready {
                 manifest,
                 identifiers,
@@ -147,11 +122,11 @@ impl Processor<Ready> {
     }
 
     /// State transition from `Ready` to `Processing`, returning the progress channel
-    pub async fn start(
-        self,
-    ) -> Result<(Processor<Processing>, mpsc::Receiver<Progress>), Processor<Failed>> {
+    pub async fn start(self) -> Result<Processor<Processing>, Processor<Failed>> {
         log::debug!("Transitioned: Processor<Processing>");
-        let (tx, rx) = mpsc::channel::<Progress>(10);
+        let (batch_tx, batch_rx) = mpsc::channel::<BatchResponse>(100);
+        let (summary_tx, summary_rx) = mpsc::channel::<ProcessorSummary>(10);
+
         match Diagnostic::try_new(
             self.receiver.clone(),
             self.exporter.clone(),
@@ -159,7 +134,7 @@ impl Processor<Ready> {
         )
         .await
         {
-            Ok(diagnostic) => {
+            Ok((diagnostic, report)) => {
                 let processor = Processor {
                     receiver: self.receiver,
                     exporter: self.exporter,
@@ -167,11 +142,14 @@ impl Processor<Ready> {
                     start_time: self.start_time,
                     state: Processing {
                         diagnostic,
-                        tx,
-                        progress: Progress::new(),
+                        batch_rx,
+                        batch_tx,
+                        summary_rx,
+                        summary_tx,
+                        report,
                     },
                 };
-                Ok((processor, rx))
+                Ok(processor)
             }
             Err(err) => Err(Processor {
                 receiver: self.receiver,
@@ -189,33 +167,45 @@ impl Processor<Ready> {
 
 /// The actively `Processing` state.
 impl Processor<Processing> {
-    pub async fn process(self) -> Result<Processor<Completed>, Processor<Failed>> {
+    pub async fn process(mut self) -> Result<Processor<Completed>, Processor<Failed>> {
         log::debug!("Processing with async progress updates");
 
-        let report = match self.state.diagnostic {
-            Diagnostic::Elasticsearch(diagnostic) => diagnostic.run().await,
-            //Diagnostic::ElasticCloudKubernetes(diagnostic) => diagnostic.run().await,
-            //Diagnostic::KubernetesPlatform(diagnostic) => diagnostic.run().await,
-            //Diagnostic::Kibana(diagnostic) => diagnostic.run().await?,
-            Diagnostic::Logstash(diagnostic) => diagnostic.run().await,
-        };
+        let process_result = self
+            .state
+            .diagnostic
+            .process(
+                &self.start_time,
+                self.state.batch_tx.clone(),
+                self.state.summary_tx.clone(),
+            )
+            .await;
+        if let Err(err) = process_result {
+            return Err(Processor {
+                receiver: self.receiver,
+                exporter: self.exporter,
+                start_time: self.start_time,
+                id: self.id,
+                state: Failed {
+                    runtime: self.start_time.elapsed().as_millis(),
+                    error: err.to_string(),
+                },
+            });
+        }
 
-        let mut report = match report {
-            Ok(report) => report,
-            Err(err) => {
-                return Err(Processor {
-                    receiver: self.receiver,
-                    exporter: self.exporter,
-                    start_time: self.start_time,
-                    id: self.id,
-                    state: Failed {
-                        runtime: self.start_time.elapsed().as_millis(),
-                        error: err.to_string(),
-                    },
-                });
+        // Spawn a non-blocking task to print progress updates as they are generated
+        let handle_summaries = tokio::spawn(async move {
+            while let Some(summary) = self.state.summary_rx.recv().await {
+                log::debug!("{}", summary);
             }
-        };
+        });
 
+        let handle_batches = tokio::spawn(async move {
+            while let Some(batch) = self.state.batch_rx.recv().await {
+                log::debug!("{}", batch);
+            }
+        });
+
+        let mut report = self.state.report;
         log::info!(
             "Created {} documents for {} diagnostic: {}",
             report.docs.created,
@@ -272,7 +262,7 @@ impl Diagnostic {
         receiver: Arc<Receiver>,
         exporter: Arc<Exporter>,
         manifest: DiagnosticManifest,
-    ) -> Result<Self> {
+    ) -> Result<(Self, DiagnosticReport)> {
         log::info!("Processing {} diagnostic", manifest.product);
         log::trace!(
             "Diagnostic Manifest: {}",
@@ -280,8 +270,9 @@ impl Diagnostic {
         );
         match manifest.product {
             Product::Elasticsearch => {
-                let diagnostic = ElasticsearchDiagnostic::new(receiver, exporter, manifest).await?;
-                Ok(Self::Elasticsearch(diagnostic))
+                let (diagnostic, report) =
+                    ElasticsearchDiagnostic::try_new(receiver, exporter, manifest).await?;
+                Ok((Self::Elasticsearch(diagnostic), report))
             }
             //Product::ECK => {
             //    let diagnostic = ElasticCloudKubernetesDiagnostic::new(&receiver, manifest).await?;
@@ -292,38 +283,31 @@ impl Diagnostic {
             //    Ok(Self::KubernetesPlatform(diagnostic))
             //}
             Product::Logstash => {
-                let diagnostic = LogstashDiagnostic::new(receiver, exporter, manifest).await?;
-                Ok(Self::Logstash(diagnostic))
+                let (diagnostic, report) =
+                    LogstashDiagnostic::try_new(receiver, exporter, manifest).await?;
+                Ok((Self::Logstash(diagnostic), report))
             }
             _ => Err(eyre!("Unsupported product or diagnostic bundle")),
         }
     }
 
-    pub async fn run(self) -> Result<DiagnosticReport> {
-        let start_time = std::time::Instant::now();
-        let mut report = match self {
-            Self::Elasticsearch(diagnostic) => diagnostic.run().await?,
-            //Self::ElasticCloudKubernetes(diagnostic) => diagnostic.run().await?,
-            //Self::KubernetesPlatform(diagnostic) => diagnostic.run().await?,
-            //Self::Kibana(diagnostic) => diagnostic.run().await?,
-            Self::Logstash(diagnostic) => diagnostic.run().await?,
-        };
-        log::info!(
-            "Created {} documents for {} diagnostic: {}",
-            report.docs.created,
-            report.product,
-            report.metadata.id,
-        );
-        if let Ok(kibana_url) = std::env::var("ESDIAG_KIBANA_URL") {
-            let kibana_link = format!(
-                "{}/app/dashboards#/view/4e0a26b2-e5f8-4b58-b617-86f5cdd0edad?_g=(filters:!(('$state':(store:globalState),meta:(disabled:!f,index:'4319ebc4-df81-4b18-b8bd-6aaa55a1fd13',key:diagnostic.id,negate:!f,params:(query:'{}'),type:phrase),query:(match_phrase:(diagnostic.id:'{}')))),refreshInterval:(pause:!t,value:60000),time:(from:now-90d,to:now))",
-                kibana_url, report.metadata.id, report.metadata.id
-            );
-            log::info!("{}", kibana_link);
-            report.add_kibana_link(kibana_link);
+    async fn process(
+        self,
+        start_time: &Instant,
+        batch_tx: mpsc::Sender<BatchResponse>,
+        summary_tx: mpsc::Sender<ProcessorSummary>,
+    ) -> Result<()> {
+        match self {
+            Diagnostic::Elasticsearch(diagnostic) => {
+                diagnostic.process(start_time, batch_tx, summary_tx).await
+            }
+            //Diagnostic::ElasticCloudKubernetes(diagnostic) => diagnostic.run().await,
+            //Diagnostic::KubernetesPlatform(diagnostic) => diagnostic.run().await,
+            //Diagnostic::Kibana(diagnostic) => diagnostic.run().await?,
+            Diagnostic::Logstash(diagnostic) => {
+                diagnostic.process(start_time, batch_tx, summary_tx).await
+            }
         }
-        report.add_processing_duration(start_time.elapsed().as_millis());
-        Ok(report)
     }
 }
 
@@ -333,16 +317,22 @@ trait DocumentExporter<T, U> {
         exporter: &Exporter,
         lookups: &T,
         metadata: &U,
+        batch_tx: mpsc::Sender<BatchResponse>,
     ) -> ProcessorSummary;
 }
 
 trait DiagnosticProcessor {
-    async fn new(
+    async fn try_new(
         receiver: Arc<Receiver>,
         exporter: Arc<Exporter>,
         manifest: DiagnosticManifest,
-    ) -> Result<Box<Self>>;
-    async fn run(self) -> Result<DiagnosticReport>;
+    ) -> Result<(Box<Self>, DiagnosticReport)>;
+    async fn process(
+        self,
+        start_time: &Instant,
+        batch_tx: mpsc::Sender<BatchResponse>,
+        summary_tx: mpsc::Sender<ProcessorSummary>,
+    ) -> Result<()>;
     #[allow(dead_code)]
     fn id(&self) -> &str;
 }

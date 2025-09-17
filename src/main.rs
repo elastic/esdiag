@@ -277,30 +277,15 @@ async fn run(cli: Cli) -> Result<&'static str> {
 
             let identifiers = Identifiers::default();
             let processor = Processor::try_new(receiver, exporter, identifiers).await?;
-            let (processor, mut rx_progress) = match processor.start().await {
-                Ok((processor, rx)) => (processor, rx),
+            let processor = match processor.start().await {
+                Ok(processor) => processor,
                 Err(processor) => {
                     return Err(eyre!("{}", processor));
                 }
             };
 
-            // Spawn a non-blocking task to print progress updates as they are generated
-            let handle = tokio::spawn(async move {
-                while let Some(progress) = rx_progress.recv().await {
-                    // Print every time we receive a progress update
-                    log::debug!(
-                        "\r{:>5.1}% complete {:>10} processors {:>10} docs {:>10} errors",
-                        progress.percent,
-                        progress.processors,
-                        progress.docs,
-                        progress.errors
-                    );
-                }
-            });
-
             match processor.process().await {
                 Ok(processor) => {
-                    handle.await?;
                     log::info!(
                         "Process complete in {:.3} seconds",
                         processor.state.runtime as f64 / 1000.0
@@ -308,7 +293,6 @@ async fn run(cli: Cli) -> Result<&'static str> {
                     Ok("process")
                 }
                 Err(processor) => {
-                    handle.await?;
                     log::info!(
                         "Process failed in {:.3} seconds",
                         processor.state.runtime as f64 / 1000.0

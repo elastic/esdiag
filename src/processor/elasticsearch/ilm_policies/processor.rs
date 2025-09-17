@@ -5,9 +5,11 @@
 use super::super::{DocumentExporter, ElasticsearchMetadata, Lookups, Metadata, ProcessorSummary};
 use super::{IlmPolicies, IlmPolicy};
 use crate::exporter::Exporter;
+use crate::processor::BatchResponse;
 use rayon::prelude::*;
 use serde::Serialize;
 use serde_json::Value;
+use tokio::sync::mpsc;
 
 impl DocumentExporter<Lookups, ElasticsearchMetadata> for IlmPolicies {
     async fn documents_export(
@@ -15,6 +17,7 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for IlmPolicies {
         exporter: &Exporter,
         _lookups: &Lookups,
         metadata: &ElasticsearchMetadata,
+        batch_tx: mpsc::Sender<BatchResponse>,
     ) -> ProcessorSummary {
         log::debug!("processing ILM policies");
         let data_stream = "settings-ilm-esdiag".to_string();

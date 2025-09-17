@@ -4,10 +4,12 @@
 
 use super::super::{DocumentExporter, LogstashMetadata, Lookups, Metadata};
 use super::{NodeStats, PipelinePlugins, PipelineStats};
+use crate::processor::BatchResponse;
 use crate::{exporter::Exporter, processor::ProcessorSummary};
 use serde::Serialize;
 use serde_json::{Value, json};
 use std::collections::HashMap;
+use tokio::sync::mpsc;
 
 impl DocumentExporter<Lookups, LogstashMetadata> for NodeStats {
     async fn documents_export(
@@ -15,6 +17,7 @@ impl DocumentExporter<Lookups, LogstashMetadata> for NodeStats {
         exporter: &Exporter,
         _: &Lookups,
         metadata: &LogstashMetadata,
+        batch_tx: mpsc::Sender<BatchResponse>,
     ) -> ProcessorSummary {
         let mut docs: Vec<Value> = Vec::new();
         self.take_pipelines().map(|pipelines| {

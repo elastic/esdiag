@@ -4,10 +4,12 @@
 
 use super::super::{DocumentExporter, LogstashMetadata, Lookups, Metadata};
 use super::{Node, Pipeline};
+use crate::processor::BatchResponse;
 use crate::{exporter::Exporter, processor::ProcessorSummary};
 use serde::Serialize;
 use serde_json::{Value, json};
 use std::collections::HashMap;
+use tokio::sync::mpsc;
 
 impl DocumentExporter<Lookups, LogstashMetadata> for Node {
     async fn documents_export(
@@ -15,6 +17,7 @@ impl DocumentExporter<Lookups, LogstashMetadata> for Node {
         exporter: &Exporter,
         lookups: &Lookups,
         metadata: &LogstashMetadata,
+        batch_tx: mpsc::Sender<BatchResponse>,
     ) -> ProcessorSummary {
         let mut docs: Vec<Value> = Vec::new();
         let data_stream = "settings-logstash.node-esdiag".to_string();
