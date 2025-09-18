@@ -2,30 +2,34 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use super::diagnostic::{
-    DiagPath, DiagnosticManifest, DiagnosticReport, DiagnosticReportBuilder, Lookup, Product,
+use super::{
+    DiagnosticProcessor, ProcessorSummary,
+    diagnostic::{
+        DiagPath, DiagnosticManifest, DiagnosticReport, DiagnosticReportBuilder, Lookup, Product,
+    },
 };
-use super::{DiagnosticProcessor, ElasticsearchDiagnostic};
 use crate::{exporter::Exporter, receiver::Receiver};
 use eyre::Result;
 use serde::Serialize;
 use std::sync::Arc;
-use tokio::sync::RwLock;
+use tokio::sync::mpsc;
 
-#[derive(Clone, Serialize)]
+#[derive(Serialize)]
 pub struct ElasticCloudKubernetesDiagnostic {
-    lookups: Arc<Lookups>,
+    pub lookups: Arc<Lookups>,
     #[serde(skip)]
-    exporter: Arc<Exporter>,
+    pub exporter: Arc<Exporter>,
     #[serde(skip)]
-    receiver: Arc<Receiver>,
-    #[serde(skip)]
-    report: Arc<RwLock<DiagnosticReport>>,
-    included_diagnostics: Vec<DiagPath>,
+    pub receiver: Arc<Receiver>,
+    pub included_diagnostics: Vec<DiagPath>,
 }
 
 impl DiagnosticProcessor for ElasticCloudKubernetesDiagnostic {
-    async fn new(receiver: &Receiver, mut manifest: DiagnosticManifest) -> Result<Box<Self>> {
+    async fn try_new(
+        receiver: Arc<Receiver>,
+        exporter: Arc<Exporter>,
+        mut manifest: DiagnosticManifest,
+    ) -> Result<(Box<Self>, DiagnosticReport)> {
         let lookups = Arc::new(Lookups {
             k8s_node: Lookup::new(),
         });
@@ -45,60 +49,41 @@ impl DiagnosticProcessor for ElasticCloudKubernetesDiagnostic {
             .receiver(receiver.to_string())
             .build()?;
 
-        Ok(Box::new(Self {
-            lookups,
-            receiver: Arc::new(receiver),
-            report: Arc::new(RwLock::new(report)),
-            included_diagnostics,
-        }))
+        Ok((
+            Box::new(Self {
+                lookups,
+                receiver,
+                exporter,
+                included_diagnostics,
+            }),
+            report,
+        ))
     }
 
-    async fn run(self) -> Result<DiagnosticReport> {
+    async fn process(self, _summary_tx: mpsc::Sender<ProcessorSummary>) -> Result<()> {
         self.receiver.is_connected().await;
-        let mut reports: Vec<DiagnosticReport> = Vec::with_capacity(2);
-        for diagnostic in self.included_diagnostics {
-            match diagnostic.diag_type.as_str() {
-                "elasticsearch" => {
-                    log::info!(
-                        "Processing {} diagnostic at {}",
-                        diagnostic.diag_type,
-                        diagnostic.diag_path
-                    );
-                    let receiver = self.receiver.clone_for_subdir(&diagnostic.diag_path)?;
-                    let manifest = receiver.try_get_manifest().await?;
-                    let diagnostic = ElasticsearchDiagnostic::new(&receiver, manifest).await?;
-                    reports.push(diagnostic.run().await?);
-                }
-                _ => {
-                    log::warn!(
-                        "Skipping {} diagnostic at {}",
-                        diagnostic.diag_type,
-                        diagnostic.diag_path
-                    );
-                }
-            }
-        }
-
-        let mut report = self.report.write().await;
-        report.add_identifiers(self.exporter.identifiers());
-        report.add_origin(
-            Some("eck".to_string()),
-            None,
-            Some("orchestration".to_string()),
+        log::warn!(
+            "Elastic Cloud Kubernetes diagnostics only process included Elasticsearch bundles"
         );
-        self.exporter.save_report(&*report).await?;
-        // For now, we will return only the Elasticsearch report for the UI
-        // TODO: Implement processor iterators - https://github.com/elastic/esdiag/issues/148#issuecomment-3172865628
-        if reports.is_empty() {
-            return Err(eyre::eyre!(
-                "No reports were collected. At least one diagnostic report is required."
-            ));
-        }
-        Ok(reports[0].clone())
+        Ok(())
     }
 
     fn id(&self) -> &str {
         "undefined"
+    }
+
+    fn origin(&self) -> (String, String, String) {
+        (
+            "eck".to_string(),
+            "".to_string(),
+            "orchestration".to_string(),
+        )
+    }
+}
+
+impl ElasticCloudKubernetesDiagnostic {
+    pub fn cloned_receiver(&self, next: &DiagPath) -> Result<Receiver> {
+        self.receiver.clone_for_subdir(&next.diag_path)
     }
 }
 

@@ -102,7 +102,6 @@ impl DiagnosticProcessor for LogstashDiagnostic {
             .await?;
         self.process_datasource::<Plugins>(summary_tx.clone())
             .await?;
-        // self.report.add_identifiers(self.exporter.identifiers());
         Ok(())
     }
 

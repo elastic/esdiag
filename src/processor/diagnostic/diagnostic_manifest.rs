@@ -2,14 +2,12 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use chrono::{DateTime, SecondsFormat, TimeZone, Utc};
-use std::sync::RwLock;
-
-use crate::processor::Identifiers;
-
+use super::super::Identifiers;
 use super::{DataSource, DiagPath, Manifest, Product, data_source::PathType};
+use chrono::{DateTime, SecondsFormat, TimeZone, Utc};
 use eyre::{Result, eyre};
 use serde::{Deserialize, Serialize};
+use std::sync::RwLock;
 
 #[derive(Deserialize, Serialize)]
 pub struct DiagnosticManifest {
@@ -30,7 +28,7 @@ pub struct DiagnosticManifest {
     pub name: String,
     #[serde(skip_deserializing)]
     diagnostic_id: RwLock<Option<String>>,
-    identifiers: Option<Identifiers>,
+    pub identifiers: Option<Identifiers>,
 }
 
 impl DiagnosticManifest {

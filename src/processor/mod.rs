@@ -7,7 +7,7 @@ mod collector;
 /// Universal diagnostic processor
 mod diagnostic;
 /// Processors for Elastic Cloud Kubernetes (ECK) diagnostics
-//mod elastic_cloud_kubernetes;
+mod elastic_cloud_kubernetes;
 /// Processors for Elasticsearch diagnostics
 mod elasticsearch;
 /// Processors for Managed Kubernetes Infrastructure (MKI) platform diagnostics
@@ -22,16 +22,17 @@ pub use diagnostic::{
     report::{BatchResponse, Identifiers, ProcessorSummary},
 };
 pub use elasticsearch::Cluster as ElasticsearchCluster;
+use futures::stream::FuturesUnordered;
 
 use crate::{exporter::Exporter, receiver::Receiver};
-//use elastic_cloud_kubernetes::ElasticCloudKubernetesDiagnostic;
+use elastic_cloud_kubernetes::ElasticCloudKubernetesDiagnostic;
 use elasticsearch::ElasticsearchDiagnostic;
 use eyre::{Result, eyre};
 //use kubernetes_platform::KubernetesPlatformDiagnostic;
 use logstash::LogstashDiagnostic;
 use std::sync::Arc;
 use std::time::UNIX_EPOCH;
-use tokio::{sync::mpsc, time::Instant};
+use tokio::{sync::mpsc, task::JoinHandle, time::Instant};
 
 pub struct Processor<S: State> {
     receiver: Arc<Receiver>,
@@ -76,18 +77,63 @@ impl State for Processing {}
 impl State for Completed {}
 impl State for Failed {}
 
+fn spawn_sub_processors(
+    diag_paths: Vec<diagnostic::DiagPath>,
+    receiver: Arc<Receiver>,
+    exporter: Arc<Exporter>,
+    identifiers: Option<Identifiers>,
+) -> FuturesUnordered<JoinHandle<()>> {
+    let handles = FuturesUnordered::new();
+    let identifiers = identifiers.unwrap_or_default();
+    for diag_path in diag_paths {
+        let receiver = match receiver.clone_for_subdir(&diag_path.diag_path) {
+            Ok(receiver) => receiver,
+            Err(e) => {
+                log::error!("Failed to clone receiver for sub-processor: {} ", e);
+                continue;
+            }
+        };
+        let exporter = exporter.clone();
+        let ident_clone = identifiers.clone();
+        let handle = tokio::spawn(async move {
+            match Processor::try_new(Arc::new(receiver), exporter, ident_clone).await {
+                Ok(processor) => {
+                    match processor.start().await {
+                        Ok(processing) => match processing.process().await {
+                            Ok(_complete) => {
+                                log::info!("Sub-processor complete");
+                            }
+                            Err(failed) => {
+                                log::error!("Sub-processor failed: {}", failed);
+                            }
+                        },
+                        Err(failed) => {
+                            log::error!("Sub-processor failed: {}", failed);
+                        }
+                    };
+                }
+                Err(e) => {
+                    log::error!("Diagnostic sub-processor failed: {}", e);
+                }
+            };
+        });
+        handles.push(handle)
+    }
+    handles
+}
+
 impl Processor<Ready> {
     /// Try creating a processor with the receiver, exporter and identifiers.
     /// Will attempt to build a manifest from a call to the receiver.
     pub async fn try_new(
-        receiver: Receiver,
-        exporter: Exporter,
+        receiver: Arc<Receiver>,
+        exporter: Arc<Exporter>,
         identifiers: Identifiers,
     ) -> Result<Self> {
         let manifest = receiver.try_get_manifest().await?;
         Ok(Self {
-            receiver: Arc::new(receiver),
-            exporter: Arc::new(exporter),
+            receiver,
+            exporter,
             id: new_job_id(),
             start_time: Instant::now(),
             state: Ready {
@@ -101,6 +147,21 @@ impl Processor<Ready> {
     pub async fn start(self) -> Result<Processor<Processing>, Processor<Failed>> {
         log::debug!("Transitioned: Processor<Processing>");
         let (summary_tx, summary_rx) = mpsc::channel::<ProcessorSummary>(10);
+
+        if let Some(included_diagnostics) = self.state.manifest.included_diagnostics.clone() {
+            let handles = spawn_sub_processors(
+                included_diagnostics,
+                self.receiver.clone(),
+                self.exporter.clone(),
+                self.state.manifest.identifiers.clone(),
+            );
+            for handle in handles {
+                match handle.await {
+                    Ok(_) => log::debug!("Sub-process tass complete"),
+                    Err(_) => log::debug!("Sub-process task failed"),
+                }
+            }
+        };
 
         match Diagnostic::try_new(
             self.receiver.clone(),
@@ -200,7 +261,7 @@ impl Processor<Processing> {
             log::info!("{}", kibana_link);
             report.add_kibana_link(kibana_link);
         }
-        log::warn!("{:?}", self.state.identifiers);
+        log::debug!("{:?}", self.state.identifiers);
         report.add_identifiers(self.state.identifiers);
         report.add_origin(origin);
         report.add_processing_duration(self.start_time.elapsed().as_millis());
@@ -229,7 +290,7 @@ impl std::fmt::Display for Processor<Failed> {
 
 pub enum Diagnostic {
     Elasticsearch(Box<ElasticsearchDiagnostic>),
-    // ElasticCloudKubernetes(Box<ElasticCloudKubernetesDiagnostic>),
+    ElasticCloudKubernetes(Box<ElasticCloudKubernetesDiagnostic>),
     // KubernetesPlatform(Box<KubernetesPlatformDiagnostic>),
     //Kibana(KibanaDiagnostic)
     Logstash(Box<LogstashDiagnostic>),
@@ -252,10 +313,11 @@ impl Diagnostic {
                     ElasticsearchDiagnostic::try_new(receiver, exporter, manifest).await?;
                 Ok((Self::Elasticsearch(diagnostic), report))
             }
-            //Product::ECK => {
-            //    let diagnostic = ElasticCloudKubernetesDiagnostic::new(&receiver, manifest).await?;
-            //    Ok(Self::ElasticCloudKubernetes(diagnostic))
-            //}
+            Product::ECK => {
+                let (diagnostic, report) =
+                    ElasticCloudKubernetesDiagnostic::try_new(receiver, exporter, manifest).await?;
+                Ok((Self::ElasticCloudKubernetes(diagnostic), report))
+            }
             //Product::KubernetesPlatform => {
             //    let diagnostic = KubernetesPlatformDiagnostic::new(&receiver, manifest).await?;
             //    Ok(Self::KubernetesPlatform(diagnostic))
@@ -265,6 +327,7 @@ impl Diagnostic {
                     LogstashDiagnostic::try_new(receiver, exporter, manifest).await?;
                 Ok((Self::Logstash(diagnostic), report))
             }
+            Product::Kibana => Err(eyre!("Kibana processing is not yet implemented")),
             _ => Err(eyre!("Unsupported product or diagnostic bundle")),
         }
     }
@@ -272,7 +335,7 @@ impl Diagnostic {
     async fn process(self, summary_tx: mpsc::Sender<ProcessorSummary>) -> Result<()> {
         match self {
             Diagnostic::Elasticsearch(diagnostic) => diagnostic.process(summary_tx).await,
-            //Diagnostic::ElasticCloudKubernetes(diagnostic) => diagnostic.run().await,
+            Diagnostic::ElasticCloudKubernetes(diagnostic) => diagnostic.process(summary_tx).await,
             //Diagnostic::KubernetesPlatform(diagnostic) => diagnostic.run().await,
             //Diagnostic::Kibana(diagnostic) => diagnostic.run().await?,
             Diagnostic::Logstash(diagnostic) => diagnostic.process(summary_tx).await,
@@ -282,7 +345,7 @@ impl Diagnostic {
     fn origin(&self) -> (String, String, String) {
         match self {
             Diagnostic::Elasticsearch(diagnostic) => diagnostic.origin(),
-            //Diagnostic::ElasticCloudKubernetes(diagnostic) => diagnostic.origin(),
+            Diagnostic::ElasticCloudKubernetes(diagnostic) => diagnostic.origin(),
             //Diagnostic::KubernetesPlatform(diagnostic) => diagnostic.origin(),
             //Diagnostic::Kibana(diagnostic) => diagnostic.origin(),
             Diagnostic::Logstash(diagnostic) => diagnostic.origin(),

@@ -16,6 +16,7 @@ use esdiag::{
     receiver::Receiver,
 };
 use eyre::{Result, eyre};
+use std::sync::Arc;
 use url::Url;
 
 // CLI Styling
@@ -277,8 +278,8 @@ async fn run(cli: Cli) -> Result<&'static str> {
 
             log::info!("input: {}", input_uri);
 
-            let receiver = Receiver::try_from(input_uri)?;
-            let exporter = Exporter::try_from(output_uri)?;
+            let receiver = Arc::new(Receiver::try_from(input_uri)?);
+            let exporter = Arc::new(Exporter::try_from(output_uri)?);
 
             let identifiers = Identifiers::default();
             let processor = Processor::try_new(receiver, exporter, identifiers).await?;
