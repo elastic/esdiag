@@ -14,7 +14,7 @@ mod stream;
 use crate::{
     client::{KnownHost, KnownHostBuilder},
     data::Uri,
-    processor::{DiagnosticReport, Identifiers, ProcessorSummary, Product},
+    processor::{BatchResponse, DiagnosticReport, Identifiers, ProcessorSummary, Product},
 };
 pub use directory::DirectoryExporter;
 use elasticsearch::ElasticsearchExporter;
@@ -27,14 +27,14 @@ use url::Url;
 
 trait Export {
     async fn is_connected(&self) -> bool;
-    async fn send<T>(&self, index: String, docs: Vec<T>) -> Result<crate::processor::BatchResponse>
+    async fn batch_send<T>(&self, index: String, docs: Vec<T>) -> Result<BatchResponse>
     where
         T: Serialize + Sized + Send + Sync;
-    async fn tx<T>(
+    async fn batch_tx<T>(
         &self,
         index: String,
         docs: Vec<T>,
-    ) -> Result<oneshot::Receiver<crate::processor::BatchResponse>>
+    ) -> Result<oneshot::Receiver<BatchResponse>>
     where
         T: Serialize + Sized + Send + Sync + 'static;
     async fn save_report(&self, report: &DiagnosticReport) -> Result<()>;
@@ -127,9 +127,9 @@ impl Exporter {
         T: Serialize + Sized + Send + Sync,
     {
         match self {
-            Exporter::Elasticsearch(exporter) => exporter.send(index, docs).await,
-            Exporter::File(exporter) => exporter.send(index, docs).await,
-            Exporter::Stream(exporter) => exporter.send(index, docs).await,
+            Exporter::Elasticsearch(exporter) => exporter.batch_send(index, docs).await,
+            Exporter::File(exporter) => exporter.batch_send(index, docs).await,
+            Exporter::Stream(exporter) => exporter.batch_send(index, docs).await,
         }
     }
 
@@ -142,9 +142,9 @@ impl Exporter {
         T: Serialize + Sized + Send + Sync + 'static,
     {
         match self {
-            Exporter::Elasticsearch(exporter) => exporter.tx(index, docs).await,
-            Exporter::File(exporter) => exporter.tx(index, docs).await,
-            Exporter::Stream(exporter) => exporter.tx(index, docs).await,
+            Exporter::Elasticsearch(exporter) => exporter.batch_tx(index, docs).await,
+            Exporter::File(exporter) => exporter.batch_tx(index, docs).await,
+            Exporter::Stream(exporter) => exporter.batch_tx(index, docs).await,
         }
     }
 

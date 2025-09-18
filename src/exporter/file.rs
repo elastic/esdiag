@@ -2,9 +2,8 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use crate::processor::{BatchResponse, DiagnosticReport, Identifiers};
-
 use super::Export;
+use crate::processor::{BatchResponse, DiagnosticReport, Identifiers};
 use eyre::Result;
 use serde::Serialize;
 use std::sync::{Arc, RwLock};
@@ -81,7 +80,7 @@ impl Export for FileExporter {
     }
 
     /// Drains the vec and writes all documents to the file.
-    async fn send<T>(&self, index: String, docs: Vec<T>) -> Result<BatchResponse>
+    async fn batch_send<T>(&self, index: String, docs: Vec<T>) -> Result<BatchResponse>
     where
         T: Sized + Serialize,
     {
@@ -123,14 +122,18 @@ impl Export for FileExporter {
 
     /// Transmits a single batch of documents in an async task
     /// Returns a one-shot channel for the BatchResponse
-    async fn tx<T>(&self, index: String, docs: Vec<T>) -> Result<oneshot::Receiver<BatchResponse>>
+    async fn batch_tx<T>(
+        &self,
+        index: String,
+        docs: Vec<T>,
+    ) -> Result<oneshot::Receiver<BatchResponse>>
     where
         T: Serialize + Sized + Send + Sync + 'static,
     {
         let (tx, rx) = oneshot::channel();
 
         // File exporter writes synchronously, so we just write and send a simple response
-        match self.send(index, docs).await {
+        match self.batch_send(index, docs).await {
             Ok(batch_response) => {
                 if tx.send(batch_response).is_err() {
                     log::error!("Failed to send batch response");

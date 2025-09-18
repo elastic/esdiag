@@ -37,7 +37,7 @@ impl Export for StreamExporter {
     }
 
     /// Writes the docs to stdout
-    async fn send<T>(&self, index: String, docs: Vec<T>) -> Result<BatchResponse>
+    async fn batch_send<T>(&self, index: String, docs: Vec<T>) -> Result<BatchResponse>
     where
         T: Serialize + Sized + Send + Sync,
     {
@@ -56,14 +56,18 @@ impl Export for StreamExporter {
 
     /// Transmits a single batch of documents in an async task
     /// Returns a one-shot channel for the BatchResponse
-    async fn tx<T>(&self, index: String, docs: Vec<T>) -> Result<oneshot::Receiver<BatchResponse>>
+    async fn batch_tx<T>(
+        &self,
+        index: String,
+        docs: Vec<T>,
+    ) -> Result<oneshot::Receiver<BatchResponse>>
     where
         T: Serialize + Sized + Send + Sync + 'static,
     {
         let (tx, rx) = oneshot::channel();
 
         // Stream exporter writes synchronously, so we just write and send the response
-        match self.send(index, docs).await {
+        match self.batch_send(index, docs).await {
             Ok(batch_response) => {
                 if tx.send(batch_response).is_err() {
                     log::error!("Failed to send batch response");

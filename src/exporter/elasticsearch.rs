@@ -132,7 +132,7 @@ impl Export for ElasticsearchExporter {
 
     /// Sends a single batch of documents directly to Elasticsearch with backpressure.
     /// Returns a BatchResponse directly without spawning tasks.
-    async fn send<T>(&self, index: String, docs: Vec<T>) -> Result<BatchResponse>
+    async fn batch_send<T>(&self, index: String, docs: Vec<T>) -> Result<BatchResponse>
     where
         T: Serialize + Sized + Send + Sync,
     {
@@ -153,7 +153,11 @@ impl Export for ElasticsearchExporter {
 
     /// Transmits a single batch of documents with semaphore-based connection limiting
     /// Returns a one-shot channel for the BatchResponse
-    async fn tx<T>(&self, index: String, docs: Vec<T>) -> Result<oneshot::Receiver<BatchResponse>>
+    async fn batch_tx<T>(
+        &self,
+        index: String,
+        docs: Vec<T>,
+    ) -> Result<oneshot::Receiver<BatchResponse>>
     where
         T: Serialize + Sized + Send + Sync + 'static,
     {
