@@ -11,7 +11,7 @@ mod elastic_cloud_kubernetes;
 /// Processors for Elasticsearch diagnostics
 mod elasticsearch;
 /// Processors for Managed Kubernetes Infrastructure (MKI) platform diagnostics
-//mod kubernetes_platform;
+mod kubernetes_platform;
 /// Processors for Logstash diagnostics
 mod logstash;
 pub use collector::Collector;
@@ -28,7 +28,7 @@ use crate::{exporter::Exporter, receiver::Receiver};
 use elastic_cloud_kubernetes::ElasticCloudKubernetesDiagnostic;
 use elasticsearch::ElasticsearchDiagnostic;
 use eyre::{Result, eyre};
-//use kubernetes_platform::KubernetesPlatformDiagnostic;
+use kubernetes_platform::KubernetesPlatformDiagnostic;
 use logstash::LogstashDiagnostic;
 use std::sync::Arc;
 use std::time::UNIX_EPOCH;
@@ -291,7 +291,7 @@ impl std::fmt::Display for Processor<Failed> {
 pub enum Diagnostic {
     Elasticsearch(Box<ElasticsearchDiagnostic>),
     ElasticCloudKubernetes(Box<ElasticCloudKubernetesDiagnostic>),
-    // KubernetesPlatform(Box<KubernetesPlatformDiagnostic>),
+    KubernetesPlatform(Box<KubernetesPlatformDiagnostic>),
     //Kibana(KibanaDiagnostic)
     Logstash(Box<LogstashDiagnostic>),
 }
@@ -318,10 +318,11 @@ impl Diagnostic {
                     ElasticCloudKubernetesDiagnostic::try_new(receiver, exporter, manifest).await?;
                 Ok((Self::ElasticCloudKubernetes(diagnostic), report))
             }
-            //Product::KubernetesPlatform => {
-            //    let diagnostic = KubernetesPlatformDiagnostic::new(&receiver, manifest).await?;
-            //    Ok(Self::KubernetesPlatform(diagnostic))
-            //}
+            Product::KubernetesPlatform => {
+                let (diagnostic, report) =
+                    KubernetesPlatformDiagnostic::try_new(receiver, exporter, manifest).await?;
+                Ok((Self::KubernetesPlatform(diagnostic), report))
+            }
             Product::Logstash => {
                 let (diagnostic, report) =
                     LogstashDiagnostic::try_new(receiver, exporter, manifest).await?;
@@ -336,7 +337,7 @@ impl Diagnostic {
         match self {
             Diagnostic::Elasticsearch(diagnostic) => diagnostic.process(summary_tx).await,
             Diagnostic::ElasticCloudKubernetes(diagnostic) => diagnostic.process(summary_tx).await,
-            //Diagnostic::KubernetesPlatform(diagnostic) => diagnostic.run().await,
+            Diagnostic::KubernetesPlatform(diagnostic) => diagnostic.process(summary_tx).await,
             //Diagnostic::Kibana(diagnostic) => diagnostic.run().await?,
             Diagnostic::Logstash(diagnostic) => diagnostic.process(summary_tx).await,
         }
@@ -346,7 +347,7 @@ impl Diagnostic {
         match self {
             Diagnostic::Elasticsearch(diagnostic) => diagnostic.origin(),
             Diagnostic::ElasticCloudKubernetes(diagnostic) => diagnostic.origin(),
-            //Diagnostic::KubernetesPlatform(diagnostic) => diagnostic.origin(),
+            Diagnostic::KubernetesPlatform(diagnostic) => diagnostic.origin(),
             //Diagnostic::Kibana(diagnostic) => diagnostic.origin(),
             Diagnostic::Logstash(diagnostic) => diagnostic.origin(),
         }

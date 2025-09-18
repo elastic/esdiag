@@ -3,7 +3,7 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::{
-    DiagnosticProcessor, ElasticsearchDiagnostic,
+    DiagnosticProcessor, ProcessorSummary,
     diagnostic::{
         DiagPath, DiagnosticManifest, DiagnosticReport, DiagnosticReportBuilder, Lookup, Product,
     },
@@ -12,26 +12,25 @@ use crate::{exporter::Exporter, receiver::Receiver};
 use eyre::Result;
 use serde::Serialize;
 use std::sync::Arc;
-use tokio::sync::RwLock;
+use tokio::sync::mpsc;
 
 #[derive(Clone, Serialize)]
 pub struct KubernetesPlatformDiagnostic {
-    lookups: Arc<Lookups>,
+    pub lookups: Arc<Lookups>,
     #[serde(skip)]
-    exporter: Arc<Exporter>,
+    pub exporter: Arc<Exporter>,
     #[serde(skip)]
-    receiver: Arc<Receiver>,
+    pub receiver: Arc<Receiver>,
     #[serde(skip)]
-    report: Arc<RwLock<DiagnosticReport>>,
-    included_diagnostics: Vec<DiagPath>,
+    pub included_diagnostics: Vec<DiagPath>,
 }
 
 impl DiagnosticProcessor for KubernetesPlatformDiagnostic {
-    async fn new(
+    async fn try_new(
+        receiver: Arc<Receiver>,
+        exporter: Arc<Exporter>,
         mut manifest: DiagnosticManifest,
-        receiver: Receiver,
-        exporter: Exporter,
-    ) -> Result<Box<Self>> {
+    ) -> Result<(Box<Self>, DiagnosticReport)> {
         let lookups = Arc::new(Lookups {
             k8s_node: Lookup::new(),
         });
@@ -51,62 +50,39 @@ impl DiagnosticProcessor for KubernetesPlatformDiagnostic {
             .receiver(receiver.to_string())
             .build()?;
 
-        Ok(Box::new(Self {
-            lookups,
-            exporter: Arc::new(exporter),
-            receiver: Arc::new(receiver),
-            report: Arc::new(RwLock::new(report)),
-            included_diagnostics,
-        }))
+        Ok((
+            Box::new(Self {
+                lookups,
+                exporter,
+                receiver,
+                included_diagnostics,
+            }),
+            report,
+        ))
     }
 
-    async fn run(self) -> Result<DiagnosticReport> {
+    async fn process(self, _summary_tx: mpsc::Sender<ProcessorSummary>) -> Result<()> {
         self.receiver.is_connected().await;
-        let mut reports: Vec<DiagnosticReport> = Vec::with_capacity(2);
-        for diagnostic in self.included_diagnostics {
-            let diag_type = diagnostic.diag_type.as_str().trim_end_matches("appconfig");
-            match diag_type {
-                "elasticsearch" => {
-                    log::info!(
-                        "Processing {} diagnostic at {}",
-                        diag_type,
-                        diagnostic.diag_path
-                    );
-                    let receiver = self.receiver.clone_for_subdir(&diagnostic.diag_path)?;
-                    let manifest = receiver.try_get_manifest().await?;
-                    let diagnostic =
-                        ElasticsearchDiagnostic::new(manifest, receiver, self.exporter.cloned())
-                            .await?;
-                    reports.push(diagnostic.run().await?);
-                }
-                _ => {
-                    log::warn!(
-                        "Skipping {} diagnostic at {}",
-                        diag_type,
-                        diagnostic.diag_path
-                    );
-                }
-            }
-        }
-
-        let mut report = self.report.write().await;
-        report.add_identifiers(self.exporter.identifiers());
-        report.add_origin(
-            Some("mki".to_string()),
-            None,
-            Some("orchestration".to_string()),
-        );
-        self.exporter.save_report(&*report).await?;
-        // For now, we will return only the Elasticsearch report for the UI
-        // TODO: Implement processor iterators - https://github.com/elastic/esdiag/issues/148#issuecomment-3172865628
-        if reports.is_empty() {
-            return Err(eyre::eyre!("No reports were collected. No diagnostics matched the expected types."));
-        }
-        Ok(reports[0].clone())
+        log::warn!("Kubernetes Platform diagnostics only process included Elasticsearch bundles");
+        Ok(())
     }
 
     fn id(&self) -> &str {
         "undefined"
+    }
+
+    fn origin(&self) -> (String, String, String) {
+        (
+            "mki".to_string(),
+            "".to_string(),
+            "orchestration".to_string(),
+        )
+    }
+}
+
+impl KubernetesPlatformDiagnostic {
+    pub fn cloned_receiver(&self, next: &DiagPath) -> Result<Receiver> {
+        self.receiver.clone_for_subdir(&next.diag_path)
     }
 }
 
