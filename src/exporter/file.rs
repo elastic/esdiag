@@ -3,7 +3,7 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::Export;
-use crate::processor::{BatchResponse, DiagnosticReport, Identifiers};
+use crate::processor::{BatchResponse, DiagnosticReport};
 use eyre::Result;
 use serde::Serialize;
 use std::sync::{Arc, RwLock};
@@ -19,7 +19,6 @@ pub struct FileExporter {
     file: File,
     path: PathBuf,
     writer: Arc<RwLock<BufWriter<File>>>,
-    pub identifiers: Identifiers,
 }
 
 impl Clone for FileExporter {
@@ -28,7 +27,6 @@ impl Clone for FileExporter {
             file: self.file.try_clone().expect("Failed to clone file"),
             path: self.path.clone(),
             writer: self.writer.clone(),
-            identifiers: self.identifiers.clone(),
         }
     }
 }
@@ -57,20 +55,11 @@ impl TryFrom<PathBuf> for FileExporter {
             file: file.try_clone().expect("Failed to clone file"),
             path,
             writer: Arc::new(RwLock::new(BufWriter::new(file))),
-            identifiers: Identifiers::default(),
         })
     }
 }
 
 impl Export for FileExporter {
-    /// Adds identifiers to the exporter, which will be enriched on every document sent.
-    fn with_identifiers(self, identifiers: Identifiers) -> Self {
-        Self {
-            identifiers,
-            ..self
-        }
-    }
-
     /// Validates the file path and returns true if it exists.
     async fn is_connected(&self) -> bool {
         let is_file = self.path.is_file();

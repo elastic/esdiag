@@ -3,34 +3,22 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::Export;
-use crate::processor::{BatchResponse, DiagnosticReport, Identifiers};
+use crate::processor::{BatchResponse, DiagnosticReport};
 use eyre::Result;
 use serde::Serialize;
 use tokio::sync::oneshot;
 
 /// An exporter that writes documents to stdout.
 #[derive(Clone)]
-pub struct StreamExporter {
-    pub identifiers: Identifiers,
-}
+pub struct StreamExporter {}
 
 impl StreamExporter {
     pub fn new() -> Self {
-        Self {
-            identifiers: Identifiers::default(),
-        }
+        StreamExporter {}
     }
 }
 
 impl Export for StreamExporter {
-    /// Adds identifiers to the exporter, which will be enriched on every document sent.
-    fn with_identifiers(self, identifiers: Identifiers) -> Self {
-        Self {
-            identifiers,
-            ..self
-        }
-    }
-
     /// Returns true for compatibility, can stdout not exist?
     async fn is_connected(&self) -> bool {
         true

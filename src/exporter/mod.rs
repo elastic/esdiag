@@ -14,7 +14,7 @@ mod stream;
 use crate::{
     client::{KnownHost, KnownHostBuilder},
     data::Uri,
-    processor::{BatchResponse, DiagnosticReport, Identifiers, ProcessorSummary, Product},
+    processor::{BatchResponse, DiagnosticReport, ProcessorSummary, Product},
 };
 pub use directory::DirectoryExporter;
 use elasticsearch::ElasticsearchExporter;
@@ -38,7 +38,6 @@ trait Export {
     where
         T: Serialize + Sized + Send + Sync + 'static;
     async fn save_report(&self, report: &DiagnosticReport) -> Result<()>;
-    fn with_identifiers(self, identifiers: Identifiers) -> Self;
 }
 
 /// The different types of exporters for data output.
@@ -186,24 +185,6 @@ impl Exporter {
             Exporter::Elasticsearch(exporter) => exporter.is_connected().await,
             Exporter::File(exporter) => exporter.is_connected().await,
             Exporter::Stream(exporter) => exporter.is_connected().await,
-        }
-    }
-
-    pub fn with_identifiers(self, identifiers: Identifiers) -> Self {
-        match self {
-            Exporter::Elasticsearch(exporter) => {
-                Exporter::Elasticsearch(exporter.with_identifiers(identifiers))
-            }
-            Exporter::File(exporter) => Exporter::File(exporter.with_identifiers(identifiers)),
-            Exporter::Stream(exporter) => Exporter::Stream(exporter.with_identifiers(identifiers)),
-        }
-    }
-
-    pub fn identifiers(&self) -> Identifiers {
-        match self {
-            Exporter::Elasticsearch(exporter) => exporter.identifiers.clone(),
-            Exporter::File(exporter) => exporter.identifiers.clone(),
-            Exporter::Stream(exporter) => exporter.identifiers.clone(),
         }
     }
 }

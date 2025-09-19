@@ -6,7 +6,7 @@ use super::Export;
 use crate::{
     client::{Auth, ElasticsearchBuilder, KnownHost},
     data,
-    processor::{BatchResponse, DiagnosticReport, Identifiers},
+    processor::{BatchResponse, DiagnosticReport},
 };
 use elasticsearch::{
     BulkOperation, BulkParts, Elasticsearch, IndexParts,
@@ -23,14 +23,13 @@ use url::Url;
 #[derive(Clone)]
 pub struct ElasticsearchExporter {
     client: Elasticsearch,
-    pub identifiers: Identifiers,
     tx_limit: Arc<Semaphore>,
     url: Url,
 }
 
 impl ElasticsearchExporter {
     /// Create a new ElasticsearchExporter from a URL and Auth
-    pub fn new(url: Url, auth: Auth) -> Result<Self> {
+    pub fn try_new(url: Url, auth: Auth) -> Result<Self> {
         let client = ElasticsearchBuilder::new(url.clone())
             .insecure(true)
             .auth(auth)
@@ -45,7 +44,6 @@ impl ElasticsearchExporter {
 
         Ok(Self {
             client,
-            identifiers: Identifiers::default(),
             tx_limit: Arc::new(Semaphore::new(limit)),
             url,
         })
@@ -97,7 +95,6 @@ impl TryFrom<KnownHost> for ElasticsearchExporter {
 
         Ok(Self {
             client,
-            identifiers: Identifiers::default(),
             tx_limit: Arc::new(Semaphore::new(limit)),
             url,
         })
@@ -105,14 +102,6 @@ impl TryFrom<KnownHost> for ElasticsearchExporter {
 }
 
 impl Export for ElasticsearchExporter {
-    /// Adds identifiers to the exporter, which will be enriched on every document sent.
-    fn with_identifiers(self, identifiers: Identifiers) -> Self {
-        Self {
-            identifiers,
-            ..self
-        }
-    }
-
     /// Check if the exporter has a valid connection to Elasticsearch.
     async fn is_connected(&self) -> bool {
         let status_code = match self.client.info().send().await {
