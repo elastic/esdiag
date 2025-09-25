@@ -146,7 +146,7 @@ impl Default for Server {
         let port = std::env::var("ESDIAG_PORT")
             .ok()
             .and_then(|s| s.parse::<u16>().ok())
-            .unwrap_or(3000);
+            .unwrap_or(2501);
         Self::new(port, Exporter::default(), String::new())
     }
 }

@@ -29,7 +29,7 @@ services:
     networks:
       - net
     ports:
-      - 3000:3000
+      - 2501:2501
 
   esdiag-elasticsearch:
     container_name: esdiag-elasticsearch

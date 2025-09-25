@@ -59,7 +59,7 @@ enum Commands {
             help = "The port to bind the server to",
             long,
             short,
-            default_value = "3000"
+            default_value = "2501"
         )]
         port: u16,
         /// Target to send processed diagnostic documents to

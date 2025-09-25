@@ -16,7 +16,7 @@ All endpoints require authentication through Google's Identity-Aware Proxy (IAP)
 
 ## Base URL
 
-The API runs on the configured port (default port `3000`) and accepts requests at:
+The API runs on the configured port (default port `2501`) and accepts requests at:
 
 ```
 http://localhost:{port}

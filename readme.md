@@ -60,12 +60,12 @@ Once the script is complete, you will have:
 1. A single Elasticsearch node with all index templates installed.
 2. A fully-configured Kibana instance with dashboards, data views, and saved searches imported.
 3. An `esdiag:latest` container serving the web interface.
-4. A web browser opened to the ESDiag web interface at http://localhost:3000
+4. A web browser opened to the ESDiag web interface at http://localhost:2501
 5. If you configured `automated` dashboard updates, re-running the script will update and re-import the dashboards.
 
 ### 4. Processing diagnostics
 
-Open your browser to the ESDiag web interface to http://localhost:3000 and use your browser to upload a diagnostic bundle.
+Open your browser to the ESDiag web interface to http://localhost:2501 and use your browser to upload a diagnostic bundle.
 
 Full Rust Installation with Cargo
 ----------------------------------
@@ -300,7 +300,7 @@ Arguments:
 
 Options:
   -p, --port <PORT>
-          The port to bind the server to [default: 3000]
+          The port to bind the server to [default: 2501]
   -h, --help
           Print help
 ```
@@ -308,17 +308,17 @@ Options:
 Example usage:
 
 ```sh
-# Start a server on the default port 3000 that sends processed diagnostics to a known host
+# Start a server on the default port 2501 that sends processed diagnostics to a known host
 esdiag serve localhost
 
 # Start a server on port 8080
 esdiag serve --port 8080 localhost
 ```
 
-You can access the web interface at http://localhost:3000 (or your specified port) or use curl to upload a file:
+You can access the web interface at http://localhost:2501 (or your specified port) or use curl to upload a file:
 
 ```sh
-curl -F "file=@/path/to/diagnostic.zip" http://localhost:3000/upload
+curl -F "file=@/path/to/diagnostic.zip" http://localhost:2501/upload
 ```
 
 #### Collect
