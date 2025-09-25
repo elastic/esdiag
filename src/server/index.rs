@@ -12,6 +12,7 @@ use axum::{
 use serde::{Deserialize, Deserializer, Serialize, de};
 use std::{str::FromStr, sync::Arc};
 
+#[allow(dead_code)] // Needed when deserializing signals to modify selected tab in Web UI
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Tab {

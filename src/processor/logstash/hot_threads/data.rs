@@ -6,12 +6,14 @@ use super::super::super::diagnostic::{DataSource, data_source::PathType};
 use eyre::Result;
 use serde::{Deserialize, Serialize};
 
+#[allow(dead_code)] // Future use for processing hot threads data
 #[derive(Deserialize, Serialize)]
 pub struct NodeHotThreads {
     // Omitted duplicate metadata fields from deserialization
     hot_threads: HotThreads,
 }
 
+#[allow(dead_code)] // Future use for processing hot threads data
 #[derive(Deserialize, Serialize)]
 struct HotThreads {
     time: String,
@@ -19,6 +21,7 @@ struct HotThreads {
     threads: Vec<Thread>,
 }
 
+#[allow(dead_code)] // Future use for processing hot threads data
 #[derive(Deserialize, Serialize)]
 struct Thread {
     name: String,

@@ -65,25 +65,3 @@ impl ElasticsearchMetadata {
         })
     }
 }
-
-#[derive(Serialize, Deserialize)]
-pub struct ElasticsearchVersion {
-    pub name: String,
-    pub cluster_name: String,
-    pub cluster_uuid: String,
-    pub version: ElasticsearchVersionDetails,
-    pub tagline: String,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct ElasticsearchVersionDetails {
-    pub number: semver::Version,
-    pub build_flavor: String,
-    pub build_type: String,
-    pub build_hash: String,
-    pub build_date: String,
-    pub build_snapshot: bool,
-    pub lucene_version: String,
-    pub minimum_wire_compatibility_version: semver::Version,
-    pub minimum_index_compatibility_version: semver::Version,
-}

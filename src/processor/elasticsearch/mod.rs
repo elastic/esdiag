@@ -41,7 +41,7 @@ mod tasks;
 /// The cluster `/` API -- "You know, for search!"
 mod version;
 
-pub use metadata::{ElasticsearchMetadata, ElasticsearchVersion};
+pub use metadata::ElasticsearchMetadata;
 use tokio::sync::mpsc;
 pub use {
     licenses::License,

@@ -2,7 +2,7 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use super::super::elasticsearch::{self, ElasticsearchVersion};
+use super::super::elasticsearch;
 use super::{DataSource, DiagPath, Product, data_source::PathType};
 use eyre::{Result, eyre};
 use serde::{Deserialize, Serialize};
@@ -84,13 +84,6 @@ impl From<elasticsearch::Cluster> for ManifestBuilder {
             ..builder
         }
     }
-}
-
-// Deserializing structs
-
-#[derive(Serialize, Deserialize)]
-pub enum Version {
-    Elasticsearch(ElasticsearchVersion),
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
