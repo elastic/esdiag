@@ -27,7 +27,7 @@ declare github_token=${GITHUB_TOKEN}
 
 declare elasticsearch_url=${ESDIAG_OUTPUT_URL:-"http://localhost:9200"}
 declare kibana_url=${ESDIAG_KIBANA_URL:-"http://localhost:5601"}
-declare esdiag_url="http://localhost:3000"
+declare esdiag_url="http://localhost:2501"
 declare assets_path="assets/kibana"
 
 # Use ESDIAG_OUTPUT* environment variables to configure Elastic Stack authentication

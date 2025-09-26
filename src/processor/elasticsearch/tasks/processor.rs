@@ -2,14 +2,12 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use super::{
-    super::{ElasticsearchMetadata, Lookups, nodes::NodeDocument},
-    NodeTasks, ParentTask, Task, Tasks,
+use super::super::{
+    DocumentExporter, ElasticsearchMetadata, Lookups, Metadata, ProcessorSummary,
+    nodes::NodeDocument,
 };
-use crate::{
-    exporter::Exporter,
-    processor::{DocumentExporter, Metadata, ProcessorSummary},
-};
+use super::{NodeTasks, ParentTask, Task, Tasks};
+use crate::exporter::Exporter;
 use rayon::prelude::*;
 use serde::Serialize;
 use serde_json::Value;

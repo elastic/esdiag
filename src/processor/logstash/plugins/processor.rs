@@ -2,12 +2,9 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
+use super::super::{DocumentExporter, LogstashMetadata, Lookups, Metadata};
+use super::{Plugin, Plugins};
 use crate::{exporter::Exporter, processor::ProcessorSummary};
-
-use super::{
-    super::{DocumentExporter, LogstashMetadata, Lookups, Metadata},
-    Plugin, Plugins,
-};
 use serde::Serialize;
 use serde_json::{Value, json};
 

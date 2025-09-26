@@ -2,9 +2,8 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use crate::processor::{BatchResponse, DiagnosticReport, Identifiers};
-
 use super::Export;
+use crate::processor::{BatchResponse, DiagnosticReport};
 use eyre::Result;
 use serde::Serialize;
 use std::sync::{Arc, RwLock};
@@ -13,14 +12,14 @@ use std::{
     io::{BufWriter, Write},
     path::PathBuf,
 };
-use tokio::sync::oneshot;
+use tokio::sync::{mpsc, oneshot};
 
 /// An exporter that writes to a file.
 pub struct FileExporter {
     file: File,
     path: PathBuf,
+    docs_tx: Option<mpsc::Sender<usize>>,
     writer: Arc<RwLock<BufWriter<File>>>,
-    pub identifiers: Identifiers,
 }
 
 impl Clone for FileExporter {
@@ -29,7 +28,7 @@ impl Clone for FileExporter {
             file: self.file.try_clone().expect("Failed to clone file"),
             path: self.path.clone(),
             writer: self.writer.clone(),
-            identifiers: self.identifiers.clone(),
+            docs_tx: self.docs_tx.clone(),
         }
     }
 }
@@ -58,18 +57,16 @@ impl TryFrom<PathBuf> for FileExporter {
             file: file.try_clone().expect("Failed to clone file"),
             path,
             writer: Arc::new(RwLock::new(BufWriter::new(file))),
-            identifiers: Identifiers::default(),
+            docs_tx: None,
         })
     }
 }
 
 impl Export for FileExporter {
-    /// Adds identifiers to the exporter, which will be enriched on every document sent.
-    fn with_identifiers(self, identifiers: Identifiers) -> Self {
-        Self {
-            identifiers,
-            ..self
-        }
+    fn get_docs_rx(&mut self) -> mpsc::Receiver<usize> {
+        let (tx, rx) = mpsc::channel::<usize>(100);
+        self.docs_tx = Some(tx);
+        rx
     }
 
     /// Validates the file path and returns true if it exists.
@@ -81,11 +78,11 @@ impl Export for FileExporter {
     }
 
     /// Drains the vec and writes all documents to the file.
-    async fn send<T>(&self, index: String, docs: Vec<T>) -> Result<BatchResponse>
+    async fn batch_send<T>(&self, index: String, docs: Vec<T>) -> Result<BatchResponse>
     where
         T: Sized + Serialize,
     {
-        let start_time = std::time::Instant::now();
+        let start_time = tokio::time::Instant::now();
         let mut batch = BatchResponse::new(docs.len() as u32);
         let mut doc_count = 0;
         {
@@ -118,19 +115,26 @@ impl Export for FileExporter {
         batch.time = start_time.elapsed().as_millis() as u32;
 
         log::info!("{}, created {} docs", index, doc_count);
+        if let Some(tx) = &self.docs_tx {
+            let _ = tx.send(doc_count).await;
+        }
         Ok(batch)
     }
 
     /// Transmits a single batch of documents in an async task
     /// Returns a one-shot channel for the BatchResponse
-    async fn tx<T>(&self, index: String, docs: Vec<T>) -> Result<oneshot::Receiver<BatchResponse>>
+    async fn batch_tx<T>(
+        &self,
+        index: String,
+        docs: Vec<T>,
+    ) -> Result<oneshot::Receiver<BatchResponse>>
     where
         T: Serialize + Sized + Send + Sync + 'static,
     {
         let (tx, rx) = oneshot::channel();
 
         // File exporter writes synchronously, so we just write and send a simple response
-        match self.send(index, docs).await {
+        match self.batch_send(index, docs).await {
             Ok(batch_response) => {
                 if tx.send(batch_response).is_err() {
                     log::error!("Failed to send batch response");

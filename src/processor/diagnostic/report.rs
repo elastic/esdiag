@@ -84,12 +84,13 @@ impl Identifiers {
 
 impl Default for Identifiers {
     fn default() -> Self {
+        let user = std::env::var("ESDIAG_USER").ok();
         Self {
             account: None,
             case_number: None,
             filename: None,
             opportunity: None,
-            user: None,
+            user,
         }
     }
 }
@@ -100,7 +101,7 @@ pub enum License {
     Elasticsearch(ElasticsearchLicense),
 }
 
-#[derive(Serialize, Clone)]
+#[derive(Serialize)]
 pub struct DiagnosticReport {
     pub product: Product,
     origin: Origin,
@@ -133,10 +134,10 @@ impl DiagnosticReport {
         self.processing_duration = time;
     }
 
-    pub fn add_origin(&mut self, name: Option<String>, id: Option<String>, scope: Option<String>) {
-        self.origin.name = name;
-        self.origin.id = id;
-        self.origin.scope = scope;
+    pub fn add_origin(&mut self, (name, id, scope): (String, String, String)) {
+        self.origin.name = Some(name);
+        self.origin.id = Some(id);
+        self.origin.scope = Some(scope);
     }
 }
 
@@ -219,7 +220,7 @@ impl TryFrom<DiagnosticReportBuilder> for DiagnosticReport {
     }
 }
 
-#[derive(Serialize, Clone)]
+#[derive(Serialize, Clone, Copy)]
 pub struct BatchResponse {
     pub docs: u32,
     pub errors: u32,
@@ -239,6 +240,16 @@ impl BatchResponse {
             status_code: 0,
             time: 0,
         }
+    }
+}
+
+impl std::fmt::Display for BatchResponse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Batch: {:>8} docs {:>8} errors {:>8} retries {:>8} size http-{} time: {:>10}",
+            self.docs, self.errors, self.retries, self.size, self.status_code, self.time
+        )
     }
 }
 
@@ -273,6 +284,16 @@ impl ProcessorSummary {
     }
 }
 
+impl std::fmt::Display for ProcessorSummary {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Processor: {:<30} {}\t{:>7} docs {:>7} errors",
+            self.processor, self.source, self.docs, self.doc_errors
+        )
+    }
+}
+
 #[derive(Serialize, Clone)]
 pub struct BatchStats {
     count: u32,
@@ -299,6 +320,12 @@ impl BatchStats {
 #[derive(Serialize, Clone)]
 pub struct Source {
     pub parsed: bool,
+}
+
+impl std::fmt::Display for Source {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "parsed: {}", self.parsed)
+    }
 }
 
 impl ProcessorSummary {

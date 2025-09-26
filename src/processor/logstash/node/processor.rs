@@ -2,12 +2,9 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
+use super::super::{DocumentExporter, LogstashMetadata, Lookups, Metadata};
+use super::{Node, Pipeline};
 use crate::{exporter::Exporter, processor::ProcessorSummary};
-
-use super::{
-    super::{DocumentExporter, LogstashMetadata, Lookups, Metadata},
-    Node, Pipeline,
-};
 use serde::Serialize;
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -35,7 +32,7 @@ impl DocumentExporter<Lookups, LogstashMetadata> for Node {
         let mut summary = ProcessorSummary::new(data_stream.clone());
         match exporter.send(data_stream, docs).await {
             Ok(batch) => summary.add_batch(batch),
-            Err(err) => log::error!("Failed to send node: {}", err),
+            Err(err) => log::error!("Failed to send node settings: {}", err),
         }
         summary
     }

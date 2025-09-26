@@ -108,11 +108,17 @@ function environment_setup() {
 
     export elasticsearch_url=${ESDIAG_OUTPUT_URL:-"http://localhost:9200"}
     export kibana_url=${ESDIAG_KIBANA_URL:-"http://localhost:5601"}
-    export esdiag_url="http://localhost:3000"
+    export esdiag_url="http://localhost:2501"
     export assets_path="assets/kibana"
-    export esdiag_registry="${ESDIAG_REGISTRY:-${ELASTIC_CONTAINER_REGISTRY:-"localhost"}}"
-    export esdiag_image="${esdiag_registry}/esdiag/esdiag:${version}"
-    export esdiag_image_latest="${esdiag_registry}/esdiag/esdiag:latest"
+    if [[ -z "${ESDIAG_REGISTRY}" ]]; then
+        export esdiag_image="esdiag:${version}"
+        export esdiag_image_latest="esdiag:latest"
+    else
+        export esdiag_image="${ESDIAG_REGISTRY}/esdiag/esdiag:${version}"
+        export esdiag_image_latest="${ESDIAG_REGISTRY}/esdiag/esdiag:latest"
+    fi
+    # Save image tag to `.env` file
+    sed -i -e "s/^export ESDIAG_IMAGE_TAG=.*/export ESDIAG_IMAGE_TAG='${esdiag_image}'/" "${env_file}"
 
     export security=${security:-${ELASTIC_SECURITY_ENABLED:-"true"}}
     # Use ESDIAG_OUTPUT* environment variables to configure Elastic Stack authentication
@@ -462,6 +468,11 @@ function dependencies_validate() {
     log_debug "$(green using) $(white "${container}") container runtime"
     export container
 
+    if [[ $(id -u) -eq 0 || $(id -un) == "root" ]]; then
+        log_error "$(white running as root) user is not supported"
+        failures=$((failures + 1))
+    fi
+
     if ! command -v curl &> /dev/null; then
         log_error "$(white curl) is required to send HTTP requests"
         failures=$((failures + 1))
@@ -586,7 +597,7 @@ function print_help_build () {
     echo "    -p, --push             - Push the container image to the registry"
     echo
     white "Environment Variables:\n"
-    echo "    ESDIAG_REGISTRY        - Private container registry to publish to (default $(gray "localhost"))"
+    echo "    ESDIAG_REGISTRY        - Private container registry to publish to"
     echo
 }
 
@@ -625,7 +636,7 @@ function print_help_buildx () {
     echo "    -p, --push             - Push the container image to the registry"
     echo
     white "Environment Variables:\n"
-    echo "    ESDIAG_REGISTRY        - Private container registry to publish to (default $(gray "localhost"))"
+    echo "    ESDIAG_REGISTRY        - Private container registry to publish to"
     echo
 }
 
@@ -660,7 +671,7 @@ function print_help_up () {
     echo
     white "Environment Variables:\n"
     echo "    ELASTIC_CONTAINER_REGISTRY - Elastic container registry (default $(gray "docker.elastic.co"))"
-    echo "    ESDIAG_REGISTRY            - Private container registry (default $(gray "localhost"))"
+    echo "    ESDIAG_REGISTRY            - Private container registry"
     echo
 }
 
@@ -678,20 +689,25 @@ function compose_file_select() {
 
 function command_up() {
     # Check if the container runtime has the recommended resources
+    local uname && uname=$(uname)
     local machine
     local cpus
     local memory
-    if [[ $container == "podman" ]]; then
-        machine=$(podman machine inspect --format '{{.Name}}')
+    if [[ "${uname}" == "Linux" ]]; then
+        machine="$(cyan "$uname") system"
+        cpus=$(nproc)
+        memory=$(free --mebi | sed -n '/^Mem:/ s/^Mem: *\([0-9]*\).*/\1/p')
+    elif [[ $container == "podman" ]]; then
+        machine="podman machine $(cyan "$(podman machine inspect --format '{{.Name}}')")"
         cpus=$(podman machine inspect --format '{{.Resources.CPUs}}')
         memory=$(podman machine inspect --format '{{.Resources.Memory}}')
     elif [[ $container == "docker" ]]; then
-        machine=$(docker info --format '{{.Name}}')
+        machine="docker machine $(cyan "$(docker info --format '{{.Name}}')")"
         cpus=$(docker info --format '{{.NCPU}}')
         memory=$(( $(docker info --format '{{.MemTotal}}') / 1024 / 1024 ))
     fi
 
-    log_info "$(green found) machine $(cyan "${machine}") allocated with $(cyan "${cpus} CPUs") and $(cyan "${memory}MB") memory"
+    log_info "$(green found) ${machine} allocated with $(cyan "${cpus} CPUs") and $(cyan "${memory}MB") memory"
     if [[ $memory -lt 8192 ]]; then
         log_error "Required minimum container engine memory is $(magenta 8192MB)"
         exit 1

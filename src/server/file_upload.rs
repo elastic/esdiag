@@ -4,7 +4,7 @@
 
 use super::{Identifiers, ServerState, Signals, patch_signals, patch_template, template};
 use crate::{
-    processor::{JobNew, new_job_id},
+    processor::{Processor, new_job_id},
     receiver::Receiver,
 };
 use async_stream::stream;
@@ -116,6 +116,7 @@ pub async fn process(
         let (filename, data): (String, Bytes) = match state.pop_upload(job_id).await{
             Some((filename, data)) => (filename, data),
             None =>{
+                yield patch_signals(r#"{"processing":false}"#);
                 yield patch_template(template::JobFailed {
                     job_id: job_id,
                     error: "Failed to upload file",
@@ -126,10 +127,11 @@ pub async fn process(
         };
 
         let receiver = match Receiver::try_from(data) {
-            Ok(receiver) => receiver,
+            Ok(receiver) => Arc::new(receiver),
             Err(e) => {
                 let error = format!("Failed to create receiver: {}", e);
                 log::error!("{}", error);
+                yield patch_signals(r#"{"processing":false}"#);
                 yield patch_template(template::JobFailed {
                     job_id: job_id,
                     error: "Failed to create file receiver",
@@ -139,53 +141,66 @@ pub async fn process(
             }
         };
 
-        let exporter = {
-            state.exporter.read().await.clone().with_identifiers(Identifiers {
-                user: signals.metadata.user,
-                filename: Some(filename.clone()),
-                ..signals.metadata
-            })
+        let exporter = state.exporter.clone();
+
+        let identifiers = Identifiers {
+            user: signals.metadata.user,
+            filename: Some(filename.clone()),
+            ..signals.metadata
         };
 
-        match JobNew::new(&exporter.identifiers(), receiver).ready(exporter).await {
-            Ok(job) => {
-                let job = job.start();
-                // The submit function already pushed a template to the feed
+        let processor = match Processor::try_new(receiver, exporter, identifiers).await {
+            Ok(ready) => ready,
+            Err(error) => {
+                state.record_failure().await;
+                yield patch_signals(r#"{"processing":false}"#);
+                yield patch_template(template::JobFailed {
+                    job_id,
+                    error: &error.to_string(),
+                    source: &filename,
+                });
+                return
+            }
+        };
+
+        match processor.start().await {
+            Ok(processor) => {
                 yield patch_template(template::JobProcessing {
                     job_id: job_id,
-                    source: job.filename.as_deref().unwrap_or(""),
+                    source: &filename,
                 });
+                yield patch_signals(r#"{"loading":false,"processing":true}"#);
 
-                match job.process().await {
-                    Ok(job) => {
-                        state.record_success(job.report.docs.total, job.report.docs.errors).await;
+                match processor.process().await {
+                    Ok(completed) => {
+                        let report = &completed.state.report;
+                        state.record_success(report.docs.total, report.docs.errors).await;
                         yield patch_template(template::JobCompleted {
                             job_id: job_id,
-                            diagnostic_id: &job.report.metadata.id,
-                            docs_created: &job.report.docs.created,
-                            duration: &format!("{:.3}", job.report.processing_duration as f64 / 1000.0),
-                            source: job.filename.as_deref().unwrap_or(""),
-                            kibana_link: job.report.kibana_link.as_ref().unwrap_or(&"#".to_string()),
-                            product: &job.report.product.to_string(),
+                            diagnostic_id: &report.metadata.id,
+                            docs_created: &report.docs.created,
+                            duration: &format!("{:.3}", report.processing_duration as f64 / 1000.0),
+                            source: &filename,
+                            kibana_link: report.kibana_link.as_ref().unwrap_or(&"#".to_string()),
+                            product: &report.product.to_string(),
                         });
                     },
-                    Err(job) => {
+                    Err(failed) => {
                         state.record_failure().await;
                         yield patch_template(template::JobFailed {
                             job_id: job_id,
-                            error: &job.error,
-                            source: job.filename.as_deref().unwrap_or(""),
+                            error: &failed.state.error,
+                            source: &filename,
                         });
-                        yield patch_signals(r#"{"processing":false}"#);
                     }
                 };
             },
-            Err(job) => {
+            Err(failed) => {
                 state.record_failure().await;
                 yield patch_template(template::JobFailed {
                     job_id: job_id,
-                    error: &job.error,
-                    source: job.filename.as_deref().unwrap_or(""),
+                    error: &failed.state.error,
+                    source: &filename,
                 });
             },
         };

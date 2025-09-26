@@ -16,7 +16,8 @@ pub trait DataSource {
     fn name() -> String;
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq)]
+#[allow(dead_code)] // For future use deserialzing the sources.yml
+#[derive(Clone, PartialEq, Serialize, Deserialize, Eq)]
 pub struct Source {
     pub extension: Option<String>,
     pub subdir: Option<String>,

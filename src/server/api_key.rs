@@ -7,7 +7,7 @@ use super::{
 };
 use crate::{
     client::{KnownHost, KnownHostBuilder},
-    processor::{JobNew, new_job_id},
+    processor::{Processor, new_job_id},
     receiver::Receiver,
 };
 use async_stream::stream;
@@ -46,7 +46,7 @@ pub async fn form(
         let receiver = match Receiver::try_from(host) {
             Ok(receiver) => {
                 log::info!("Created receiver: {}", receiver);
-                receiver
+                Arc::new(receiver)
             }
             Err(e) => {
                 state.record_failure().await;
@@ -61,16 +61,27 @@ pub async fn form(
             }
         };
 
-        let exporter = {
-            state.exporter.read().await.clone().with_identifiers(Identifiers {
-                user: signals.metadata.user,
-                ..signals.metadata
-            })
+        let exporter = state.exporter.clone();
+        let identifiers = Identifiers {
+            user: signals.metadata.user,
+            ..signals.metadata
         };
 
-        match JobNew::new(&exporter.identifiers(), receiver).ready(exporter).await {
+        let job = match Processor::try_new(receiver, exporter, identifiers).await {
+            Ok(job) => job,
+            Err(error) => {
+                state.record_failure().await;
+                yield patch_template(template::JobFailed {
+                    job_id: new_job_id(),
+                    error: &error.to_string(),
+                    source,
+                });
+                return
+            }
+        };
+
+        match job.start().await {
             Ok(job) => {
-                let job = job.start();
                 yield patch_job_feed(template::JobProcessing {
                     job_id: job.id,
                     source
@@ -79,22 +90,23 @@ pub async fn form(
 
                 match job.process().await {
                     Ok(job) => {
-                        state.record_success(job.report.docs.total, job.report.docs.errors).await;
+                        let report = &job.state.report;
+                        state.record_success(report.docs.total, report.docs.errors).await;
                         yield patch_template(template::JobCompleted {
                             job_id: job.id,
-                            diagnostic_id: &job.report.metadata.id,
-                            docs_created: &job.report.docs.created,
-                            duration: &format!("{:.3}", job.report.processing_duration as f64 / 1000.0),
+                            diagnostic_id: &report.metadata.id,
+                            docs_created: &report.docs.created,
+                            duration: &format!("{:.3}", report.processing_duration as f64 / 1000.0),
                             source,
-                            kibana_link: job.report.kibana_link.as_ref().unwrap_or(&"#".to_string()),
-                            product: &job.report.product.to_string(),
+                            kibana_link: report.kibana_link.as_ref().unwrap_or(&"#".to_string()),
+                            product: &report.product.to_string(),
                         });
                     },
                     Err(job) => {
                         state.record_failure().await;
                         yield patch_template(template::JobFailed {
                             job_id: job.id,
-                            error: &job.error,
+                            error: &job.state.error,
                             source,
                         });
                     }
@@ -105,7 +117,7 @@ pub async fn form(
                 state.record_failure().await;
                 yield patch_job_feed(template::JobFailed {
                     job_id: job.id,
-                    error: &job.error,
+                    error: &job.state.error,
                     source,
                 });
                 yield patch_signals(&format!(r#"{{"processing":false,"stats":{}}}"#, state.get_stats().await));
@@ -148,7 +160,7 @@ pub async fn id(
         let receiver = match Receiver::try_from(host) {
             Ok(receiver) => {
                 log::info!("Created receiver: {}", receiver);
-                receiver
+                Arc::new(receiver)
             }
             Err(e) => {
                 state.record_failure().await;
@@ -163,45 +175,59 @@ pub async fn id(
             }
         };
 
-        let exporter = {
-            state.exporter.read().await.clone().with_identifiers(identifiers)
+        let exporter = state.exporter.clone();
+
+        let processor = match Processor::try_new(receiver, exporter, identifiers).await {
+            Ok(job) => job,
+            Err(error) => {
+                state.record_failure().await;
+                yield patch_template(template::JobFailed {
+                    job_id: new_job_id(),
+                    error: &error.to_string(),
+                    source,
+                });
+                return
+            }
         };
 
-        match JobNew::new(&exporter.identifiers(), receiver).ready(exporter).await {
-            Ok(job) => {
-                let job = job.start();
-
+        match processor.start().await {
+            Ok(processor) => {
+                yield patch_job_feed(template::JobProcessing {
+                    job_id: processor.id,
+                    source
+                });
                 yield patch_signals(&format!(r#"{{"loading":false,"processing":true,"es_api":{{"url":"{source}"}}}}"#));
 
-                match job.process().await {
-                    Ok(job) => {
-                        state.record_success(job.report.docs.total, job.report.docs.errors).await;
+                match processor.process().await {
+                    Ok(completed) => {
+                        let report = &completed.state.report;
+                        state.record_success(report.docs.total, report.docs.errors).await;
                         yield patch_template(template::JobCompleted {
-                            job_id,
-                            diagnostic_id: &job.report.metadata.id,
-                            docs_created: &job.report.docs.created,
-                            duration: &format!("{:.3}", job.report.processing_duration as f64 / 1000.0),
+                            job_id: completed.id,
+                            diagnostic_id: &report.metadata.id,
+                            docs_created: &report.docs.created,
+                            duration: &format!("{:.3}", report.processing_duration as f64 / 1000.0),
                             source,
-                            kibana_link: job.report.kibana_link.as_ref().unwrap_or(&"#".to_string()),
-                            product: &job.report.product.to_string(),
+                            kibana_link: report.kibana_link.as_ref().unwrap_or(&"#".to_string()),
+                            product: &report.product.to_string(),
                         });
                     },
-                    Err(job) => {
+                    Err(failed) => {
                         state.record_failure().await;
                         yield patch_template(template::JobFailed {
-                            job_id,
-                            error: &job.error,
-                            source
+                            job_id: failed.id,
+                            error: &failed.state.error,
+                            source,
                         });
                     }
                 };
                 yield patch_signals(&format!(r#"{{"es_api":{{"url":"","key":""}},"loading":false,"processing":false,"stats":{}}}"#, state.get_stats().await));
             },
-            Err(job) => {
+            Err(failed) => {
                 state.record_failure().await;
                 yield patch_template(template::JobFailed {
                     job_id,
-                    error: &job.error,
+                    error: &failed.state.error,
                     source,
                 });
                 yield patch_signals(&format!(r#"{{"loading":false,"processing":false,"stats":{}}}"#, state.get_stats().await));

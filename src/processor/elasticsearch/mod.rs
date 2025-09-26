@@ -41,26 +41,23 @@ mod tasks;
 /// The cluster `/` API -- "You know, for search!"
 mod version;
 
-pub use metadata::{ElasticsearchMetadata, ElasticsearchVersion};
+pub use metadata::ElasticsearchMetadata;
+use tokio::sync::mpsc;
 pub use {
     licenses::License,
     version::{Cluster, Version},
 };
 
 use super::{
-    DiagnosticProcessor, DocumentExporter, Metadata,
-    diagnostic::{
-        DataSource, DiagnosticManifest, DiagnosticReport, DiagnosticReportBuilder, Lookup, Product,
-    },
+    DataSource, DiagnosticManifest, DiagnosticProcessor, DiagnosticReport, DocumentExporter,
+    Metadata, ProcessorSummary, Product,
+    diagnostic::{DiagnosticReportBuilder, Lookup},
+    elasticsearch::health_report::HealthReport,
 };
-use crate::{
-    data,
-    exporter::Exporter,
-    processor::{ProcessorSummary, elasticsearch::health_report::HealthReport},
-    receiver::Receiver,
-};
+use crate::{data, exporter::Exporter, receiver::Receiver};
 use eyre::{Result, eyre};
 use serde::{Serialize, de::DeserializeOwned};
+use std::sync::Arc;
 use {
     alias::{Alias, AliasList},
     cluster_settings::ClusterSettings,
@@ -84,15 +81,13 @@ pub struct ElasticsearchDiagnostic {
     lookups: Lookups,
     metadata: ElasticsearchMetadata,
     #[serde(skip)]
-    exporter: Exporter,
+    exporter: Arc<Exporter>,
     #[serde(skip)]
-    receiver: Receiver,
-    #[serde(skip)]
-    report: DiagnosticReport,
+    receiver: Arc<Receiver>,
 }
 
 impl ElasticsearchDiagnostic {
-    async fn process<T>(&self) -> Result<ProcessorSummary>
+    async fn process_datasource<T>(&self, summary_tx: mpsc::Sender<ProcessorSummary>) -> Result<()>
     where
         T: DataSource
             + DocumentExporter<Lookups, ElasticsearchMetadata>
@@ -110,16 +105,19 @@ impl ElasticsearchDiagnostic {
                 ProcessorSummary::new(T::name())
             }
         };
-        Ok(summary)
+        summary_tx.send(summary).await.map_err(|err| {
+            log::error!("Failed to send summary: {}", err);
+            eyre!(err)
+        })
     }
 }
 
 impl DiagnosticProcessor for ElasticsearchDiagnostic {
-    async fn new(
+    async fn try_new(
+        receiver: Arc<Receiver>,
+        exporter: Arc<Exporter>,
         manifest: DiagnosticManifest,
-        receiver: Receiver,
-        exporter: Exporter,
-    ) -> Result<Box<Self>> {
+    ) -> Result<(Box<Self>, DiagnosticReport)> {
         let cluster = receiver.get::<version::Cluster>().await?;
         let display_name = receiver
             .get::<cluster_settings::ClusterSettings>()
@@ -127,6 +125,7 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
             .get_display_name();
         let metadata =
             ElasticsearchMetadata::try_new(manifest, cluster.with_display_name(display_name))?;
+
         let mut report = DiagnosticReportBuilder::from(metadata.diagnostic.clone())
             .product(Product::Elasticsearch)
             .receiver(receiver.to_string())
@@ -154,16 +153,18 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
         report.add_lookup("ilm_explain", &lookups.ilm_explain);
         report.add_lookup("shared_cache", &lookups.shared_cache);
 
-        Ok(Box::new(Self {
-            exporter,
-            lookups,
-            metadata,
-            receiver,
+        Ok((
+            Box::new(Self {
+                exporter,
+                lookups,
+                metadata,
+                receiver,
+            }),
             report,
-        }))
+        ))
     }
 
-    async fn run(mut self) -> Result<DiagnosticReport> {
+    async fn process(self, summary_tx: mpsc::Sender<ProcessorSummary>) -> Result<()> {
         log::debug!("Running Elasticsearch diagnostic processors");
         if self.exporter.is_connected().await == false {
             return Err(eyre!("Exporter is not connected"));
@@ -172,64 +173,62 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
         if log::max_level() >= log::Level::Debug {
             data::save_file("diagnostic.json", &self)?;
         }
+        // self.report.add_identifiers(self.exporter.identifiers());
 
-        self.report.add_identifiers(self.exporter.identifiers());
+        let diag = Arc::new(self);
+        // Thread 1: IndicesStats
+        let (diag_idx, summary_tx_idx) = (diag.clone(), summary_tx.clone());
+        let thread1 = tokio::spawn(async move {
+            diag_idx
+                .process_datasource::<IndicesStats>(summary_tx_idx)
+                .await?;
+            Ok::<(), eyre::Error>(())
+        });
 
-        let (thread1_summaries, thread2_summaries, thread3_summaries) = tokio::try_join!(
-            // Thread 1: IndicesStats
-            async {
-                let indices_stats = self.process::<IndicesStats>().await?;
-                Ok::<Vec<ProcessorSummary>, eyre::Error>(vec![indices_stats])
-            },
-            // Thread 2: NodesStats
-            async {
-                let nodes_stats = self.process::<NodesStats>().await?;
-                Ok::<Vec<ProcessorSummary>, eyre::Error>(vec![nodes_stats])
-            },
-            // Thread 3: Everything else
-            async {
-                let cluster_settings = self.process::<ClusterSettings>().await?;
-                let health_report = self.process::<HealthReport>().await?;
-                let ilm_policies = self.process::<IlmPolicies>().await?;
-                let indices_settings = self.process::<IndicesSettings>().await?;
-                let nodes = self.process::<Nodes>().await?;
-                let pending_tasks = self.process::<PendingTasks>().await?;
-                let slm_policies = self.process::<SlmPolicies>().await?;
-                let tasks = self.process::<Tasks>().await?;
-                Ok::<Vec<ProcessorSummary>, eyre::Error>(vec![
-                    cluster_settings,
-                    health_report,
-                    ilm_policies,
-                    indices_settings,
-                    nodes,
-                    pending_tasks,
-                    slm_policies,
-                    tasks,
-                ])
-            }
-        )?;
+        // Thread 2: NodesStats
+        let (diag_nodes, summary_tx_nodes) = (diag.clone(), summary_tx.clone());
+        let thread2 = tokio::spawn(async move {
+            diag_nodes
+                .process_datasource::<NodesStats>(summary_tx_nodes)
+                .await?;
+            Ok::<(), eyre::Error>(())
+        });
 
-        // Add all summaries to the report
-        for summary in thread1_summaries
-            .into_iter()
-            .chain(thread2_summaries.into_iter())
-            .chain(thread3_summaries.into_iter())
-        {
-            self.report.add_processor_summary(summary);
+        // Thread 3: Everything else
+        let thread3 = tokio::spawn(async move {
+            diag.process_datasource::<ClusterSettings>(summary_tx.clone())
+                .await?;
+            diag.process_datasource::<HealthReport>(summary_tx.clone())
+                .await?;
+            diag.process_datasource::<IlmPolicies>(summary_tx.clone())
+                .await?;
+            diag.process_datasource::<IndicesSettings>(summary_tx.clone())
+                .await?;
+            diag.process_datasource::<Nodes>(summary_tx.clone()).await?;
+            diag.process_datasource::<PendingTasks>(summary_tx.clone())
+                .await?;
+            diag.process_datasource::<SlmPolicies>(summary_tx.clone())
+                .await?;
+            diag.process_datasource::<Tasks>(summary_tx.clone()).await?;
+            Ok::<(), eyre::Error>(())
+        });
+
+        match tokio::try_join!(thread1, thread2, thread3) {
+            Ok(_) => Ok(()),
+            Err(err) => Err(eyre!(err)),
         }
-
-        self.report.add_origin(
-            Some(self.metadata.cluster.display_name.clone()),
-            Some(self.metadata.cluster.uuid.clone()),
-            Some("cluster".to_string()),
-        );
-        self.exporter.save_report(&self.report).await?;
-
-        Ok(self.report)
     }
 
     fn id(&self) -> &str {
         &self.metadata.diagnostic.id
+    }
+
+    fn origin(&self) -> (String, String, String) {
+        (
+            self.metadata.cluster.display_name.clone(),
+            self.metadata.cluster.uuid.clone(),
+            "cluster".to_string(),
+        )
     }
 }
 

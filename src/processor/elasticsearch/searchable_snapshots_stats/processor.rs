@@ -2,15 +2,13 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use crate::{exporter::Exporter, processor::ProcessorSummary};
-
-use super::{
-    super::{DocumentExporter, ElasticsearchMetadata, Lookups, Metadata},
-    SearchableSnapshotsStats,
-};
+use super::super::{DocumentExporter, ElasticsearchMetadata, Lookups, Metadata, ProcessorSummary};
+use super::SearchableSnapshotsStats;
+use crate::exporter::Exporter;
 use rayon::prelude::*;
 use serde::Serialize;
 use serde_json::Value;
+
 impl DocumentExporter<Lookups, ElasticsearchMetadata> for SearchableSnapshotsStats {
     async fn documents_export(
         self,

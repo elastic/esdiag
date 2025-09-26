@@ -14,7 +14,7 @@ mod stream;
 use crate::{
     client::{KnownHost, KnownHostBuilder},
     data::Uri,
-    processor::{DiagnosticReport, Identifiers, ProcessorSummary, Product},
+    processor::{BatchResponse, DiagnosticReport, ProcessorSummary, Product},
 };
 pub use directory::DirectoryExporter;
 use elasticsearch::ElasticsearchExporter;
@@ -27,18 +27,18 @@ use url::Url;
 
 trait Export {
     async fn is_connected(&self) -> bool;
-    async fn send<T>(&self, index: String, docs: Vec<T>) -> Result<crate::processor::BatchResponse>
+    async fn batch_send<T>(&self, index: String, docs: Vec<T>) -> Result<BatchResponse>
     where
         T: Serialize + Sized + Send + Sync;
-    async fn tx<T>(
+    async fn batch_tx<T>(
         &self,
         index: String,
         docs: Vec<T>,
-    ) -> Result<oneshot::Receiver<crate::processor::BatchResponse>>
+    ) -> Result<oneshot::Receiver<BatchResponse>>
     where
         T: Serialize + Sized + Send + Sync + 'static;
     async fn save_report(&self, report: &DiagnosticReport) -> Result<()>;
-    fn with_identifiers(self, identifiers: Identifiers) -> Self;
+    fn get_docs_rx(&mut self) -> mpsc::Receiver<usize>;
 }
 
 /// The different types of exporters for data output.
@@ -127,9 +127,17 @@ impl Exporter {
         T: Serialize + Sized + Send + Sync,
     {
         match self {
-            Exporter::Elasticsearch(exporter) => exporter.send(index, docs).await,
-            Exporter::File(exporter) => exporter.send(index, docs).await,
-            Exporter::Stream(exporter) => exporter.send(index, docs).await,
+            Exporter::Elasticsearch(exporter) => exporter.batch_send(index, docs).await,
+            Exporter::File(exporter) => exporter.batch_send(index, docs).await,
+            Exporter::Stream(exporter) => exporter.batch_send(index, docs).await,
+        }
+    }
+
+    pub fn get_docs_rx(&mut self) -> mpsc::Receiver<usize> {
+        match self {
+            Exporter::Elasticsearch(exporter) => exporter.get_docs_rx(),
+            Exporter::File(exporter) => exporter.get_docs_rx(),
+            Exporter::Stream(exporter) => exporter.get_docs_rx(),
         }
     }
 
@@ -142,9 +150,9 @@ impl Exporter {
         T: Serialize + Sized + Send + Sync + 'static,
     {
         match self {
-            Exporter::Elasticsearch(exporter) => exporter.tx(index, docs).await,
-            Exporter::File(exporter) => exporter.tx(index, docs).await,
-            Exporter::Stream(exporter) => exporter.tx(index, docs).await,
+            Exporter::Elasticsearch(exporter) => exporter.batch_tx(index, docs).await,
+            Exporter::File(exporter) => exporter.batch_tx(index, docs).await,
+            Exporter::Stream(exporter) => exporter.batch_tx(index, docs).await,
         }
     }
 
@@ -186,24 +194,6 @@ impl Exporter {
             Exporter::Elasticsearch(exporter) => exporter.is_connected().await,
             Exporter::File(exporter) => exporter.is_connected().await,
             Exporter::Stream(exporter) => exporter.is_connected().await,
-        }
-    }
-
-    pub fn with_identifiers(self, identifiers: Identifiers) -> Self {
-        match self {
-            Exporter::Elasticsearch(exporter) => {
-                Exporter::Elasticsearch(exporter.with_identifiers(identifiers))
-            }
-            Exporter::File(exporter) => Exporter::File(exporter.with_identifiers(identifiers)),
-            Exporter::Stream(exporter) => Exporter::Stream(exporter.with_identifiers(identifiers)),
-        }
-    }
-
-    pub fn identifiers(&self) -> Identifiers {
-        match self {
-            Exporter::Elasticsearch(exporter) => exporter.identifiers.clone(),
-            Exporter::File(exporter) => exporter.identifiers.clone(),
-            Exporter::Stream(exporter) => exporter.identifiers.clone(),
         }
     }
 }

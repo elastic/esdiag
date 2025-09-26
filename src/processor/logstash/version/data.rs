@@ -11,7 +11,7 @@ pub struct Version {
     host: String,
     version: String,
     http_address: String,
-    id: String,
+    pub id: String,
     pub name: String,
     ephemeral_id: String,
     status: String,

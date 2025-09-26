@@ -63,12 +63,6 @@ pub struct PhaseExecution {
     modified_date_in_millis: u64,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-struct SearchableSnapshot {
-    snapshot_repository: String,
-    force_merge_index: bool,
-}
-
 impl DataSource for IlmExplain {
     fn source(path: PathType) -> Result<&'static str> {
         match path {

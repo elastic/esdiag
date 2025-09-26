@@ -13,8 +13,6 @@ use super::super::{
 };
 use super::{IndicesStats, data::*};
 use eyre::Report;
-
-//use json_patch::merge;
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 use tokio::sync::mpsc;

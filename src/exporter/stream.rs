@@ -3,32 +3,28 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::Export;
-use crate::processor::{BatchResponse, DiagnosticReport, Identifiers};
+use crate::processor::{BatchResponse, DiagnosticReport};
 use eyre::Result;
 use serde::Serialize;
-use tokio::sync::oneshot;
+use tokio::sync::{mpsc, oneshot};
 
 /// An exporter that writes documents to stdout.
 #[derive(Clone)]
 pub struct StreamExporter {
-    pub identifiers: Identifiers,
+    docs_tx: Option<mpsc::Sender<usize>>,
 }
 
 impl StreamExporter {
     pub fn new() -> Self {
-        Self {
-            identifiers: Identifiers::default(),
-        }
+        StreamExporter { docs_tx: None }
     }
 }
 
 impl Export for StreamExporter {
-    /// Adds identifiers to the exporter, which will be enriched on every document sent.
-    fn with_identifiers(self, identifiers: Identifiers) -> Self {
-        Self {
-            identifiers,
-            ..self
-        }
+    fn get_docs_rx(&mut self) -> mpsc::Receiver<usize> {
+        let (tx, rx) = mpsc::channel::<usize>(100);
+        self.docs_tx = Some(tx);
+        rx
     }
 
     /// Returns true for compatibility, can stdout not exist?
@@ -37,11 +33,11 @@ impl Export for StreamExporter {
     }
 
     /// Writes the docs to stdout
-    async fn send<T>(&self, index: String, docs: Vec<T>) -> Result<BatchResponse>
+    async fn batch_send<T>(&self, index: String, docs: Vec<T>) -> Result<BatchResponse>
     where
         T: Serialize + Sized + Send + Sync,
     {
-        let start_time = std::time::Instant::now();
+        let start_time = tokio::time::Instant::now();
         let doc_count = docs.len() as u32;
         let mut batch = BatchResponse::new(doc_count);
         log::debug!("{} wrote {} docs to stdout", index, doc_count);
@@ -56,14 +52,18 @@ impl Export for StreamExporter {
 
     /// Transmits a single batch of documents in an async task
     /// Returns a one-shot channel for the BatchResponse
-    async fn tx<T>(&self, index: String, docs: Vec<T>) -> Result<oneshot::Receiver<BatchResponse>>
+    async fn batch_tx<T>(
+        &self,
+        index: String,
+        docs: Vec<T>,
+    ) -> Result<oneshot::Receiver<BatchResponse>>
     where
         T: Serialize + Sized + Send + Sync + 'static,
     {
         let (tx, rx) = oneshot::channel();
 
         // Stream exporter writes synchronously, so we just write and send the response
-        match self.send(index, docs).await {
+        match self.batch_send(index, docs).await {
             Ok(batch_response) => {
                 if tx.send(batch_response).is_err() {
                     log::error!("Failed to send batch response");

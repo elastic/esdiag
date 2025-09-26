@@ -15,6 +15,8 @@ pub mod processor;
 /// Receive data from various sources
 pub mod receiver;
 /// Serve the ESDiag http API
+#[cfg(feature = "server")]
 pub mod server;
 /// Send pre-built assets (index templates, etc) to Elasticsearch
+#[cfg(feature = "setup")]
 pub mod setup;

@@ -6,7 +6,7 @@ use super::Export;
 use crate::{
     client::{Auth, ElasticsearchBuilder, KnownHost},
     data,
-    processor::{BatchResponse, DiagnosticReport, Identifiers},
+    processor::{BatchResponse, DiagnosticReport},
 };
 use elasticsearch::{
     BulkOperation, BulkParts, Elasticsearch, IndexParts,
@@ -16,21 +16,21 @@ use eyre::{Result, eyre};
 use serde::Serialize;
 use serde_json::{Value, json};
 use std::sync::Arc;
-use tokio::sync::{Semaphore, oneshot};
+use tokio::sync::{Semaphore, mpsc, oneshot};
 use url::Url;
 
 /// An exporter that sends documents to an Elasticsearch cluster.
 #[derive(Clone)]
 pub struct ElasticsearchExporter {
     client: Elasticsearch,
-    pub identifiers: Identifiers,
     tx_limit: Arc<Semaphore>,
+    docs_tx: Option<mpsc::Sender<usize>>,
     url: Url,
 }
 
 impl ElasticsearchExporter {
     /// Create a new ElasticsearchExporter from a URL and Auth
-    pub fn new(url: Url, auth: Auth) -> Result<Self> {
+    pub fn try_new(url: Url, auth: Auth) -> Result<Self> {
         let client = ElasticsearchBuilder::new(url.clone())
             .insecure(true)
             .auth(auth)
@@ -45,9 +45,9 @@ impl ElasticsearchExporter {
 
         Ok(Self {
             client,
-            identifiers: Identifiers::default(),
             tx_limit: Arc::new(Semaphore::new(limit)),
             url,
+            docs_tx: None,
         })
     }
 
@@ -97,20 +97,18 @@ impl TryFrom<KnownHost> for ElasticsearchExporter {
 
         Ok(Self {
             client,
-            identifiers: Identifiers::default(),
             tx_limit: Arc::new(Semaphore::new(limit)),
             url,
+            docs_tx: None,
         })
     }
 }
 
 impl Export for ElasticsearchExporter {
-    /// Adds identifiers to the exporter, which will be enriched on every document sent.
-    fn with_identifiers(self, identifiers: Identifiers) -> Self {
-        Self {
-            identifiers,
-            ..self
-        }
+    fn get_docs_rx(&mut self) -> mpsc::Receiver<usize> {
+        let (tx, rx) = mpsc::channel::<usize>(100);
+        self.docs_tx = Some(tx);
+        rx
     }
 
     /// Check if the exporter has a valid connection to Elasticsearch.
@@ -132,7 +130,7 @@ impl Export for ElasticsearchExporter {
 
     /// Sends a single batch of documents directly to Elasticsearch with backpressure.
     /// Returns a BatchResponse directly without spawning tasks.
-    async fn send<T>(&self, index: String, docs: Vec<T>) -> Result<BatchResponse>
+    async fn batch_send<T>(&self, index: String, docs: Vec<T>) -> Result<BatchResponse>
     where
         T: Serialize + Sized + Send + Sync,
     {
@@ -153,13 +151,19 @@ impl Export for ElasticsearchExporter {
 
     /// Transmits a single batch of documents with semaphore-based connection limiting
     /// Returns a one-shot channel for the BatchResponse
-    async fn tx<T>(&self, index: String, docs: Vec<T>) -> Result<oneshot::Receiver<BatchResponse>>
+    async fn batch_tx<T>(
+        &self,
+        index: String,
+        docs: Vec<T>,
+    ) -> Result<oneshot::Receiver<BatchResponse>>
     where
         T: Serialize + Sized + Send + Sync + 'static,
     {
         let (tx, rx) = oneshot::channel();
         let client = self.client.clone();
         let semaphore = self.tx_limit.clone();
+        let docs_tx = self.docs_tx.clone();
+        let doc_count = docs.len();
 
         tokio::spawn(async move {
             // Acquire semaphore permit inside task - blocks if at limit (backpressure)
@@ -183,6 +187,10 @@ impl Export for ElasticsearchExporter {
                 Ok(batch_response) => {
                     if tx.send(batch_response).is_err() {
                         log::error!("Failed to send batch response: receiver dropped");
+                    } else {
+                        if let Some(tx) = docs_tx {
+                            let _ = tx.send(doc_count).await;
+                        }
                     }
                 }
                 Err(e) => {

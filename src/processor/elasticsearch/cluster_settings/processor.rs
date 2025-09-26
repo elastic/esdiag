@@ -2,14 +2,10 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use crate::exporter::Exporter;
-use crate::processor::ProcessorSummary;
-
 use super::super::super::diagnostic::DataStreamName;
-use super::{
-    super::{DocumentExporter, ElasticsearchMetadata, Lookups, Metadata},
-    ClusterSettings,
-};
+use super::super::{DocumentExporter, ElasticsearchMetadata, Lookups, Metadata};
+use super::ClusterSettings;
+use crate::{exporter::Exporter, processor::ProcessorSummary};
 use json_patch::merge;
 use serde::Serialize;
 use serde_json::{Value, json};

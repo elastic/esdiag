@@ -3,17 +3,20 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use clap::{Parser, Subcommand, builder::styling};
+#[cfg(feature = "server")]
+use esdiag::server::Server;
+#[cfg(feature = "setup")]
+use esdiag::setup;
 use esdiag::{
     client::{KnownHost, KnownHostBuilder},
     data::Uri,
     env::LOG_LEVEL,
     exporter::{DirectoryExporter, Exporter},
-    processor::{Collector, Diagnostic, Product},
+    processor::{Collector, Identifiers, Processor, Product},
     receiver::Receiver,
-    server::Server,
-    setup,
 };
 use eyre::{Result, eyre};
+use std::sync::Arc;
 use tokio::signal::unix::{SignalKind, signal};
 use url::Url;
 
@@ -49,13 +52,14 @@ enum Commands {
         output: String,
     },
     /// Start a web server to receive diagnostic bundle uploads
+    #[cfg(feature = "server")]
     Serve {
         /// The port to bind the server to
         #[arg(
             help = "The port to bind the server to",
             long,
             short,
-            default_value = "3000"
+            default_value = "2501"
         )]
         port: u16,
         /// Target to send processed diagnostic documents to
@@ -115,6 +119,7 @@ enum Commands {
         )]
         output: Option<String>,
     },
+    #[cfg(feature = "setup")]
     /// Import assets (templates, ingest pipelines, etc.) to a known Elasticsearch host
     Setup {
         /// Known Elasticsearch host to import assets into; if omitted the ESDIAG_OUTPUT_URL, ESDIAG_OUTPUT_APIKEY, ESDIAG_OUTPUT_USERNAME, ESDIAG_OUTPUT_PASSWORD variables will be checked.
@@ -165,6 +170,7 @@ async fn main() -> Result<()> {
 
 async fn run(cli: Cli) -> Result<&'static str> {
     match cli.command {
+        #[cfg(feature = "server")]
         Commands::Serve {
             port,
             output,
@@ -273,20 +279,36 @@ async fn run(cli: Cli) -> Result<&'static str> {
 
             log::info!("input: {}", input_uri);
 
-            let receiver = Receiver::try_from(input_uri)?;
-            let exporter = Exporter::try_from(output_uri)?;
+            let receiver = Arc::new(Receiver::try_from(input_uri)?);
+            let exporter = Arc::new(Exporter::try_from(output_uri)?);
 
-            let manifest = receiver.try_get_manifest().await?;
-            log::trace!("{}", serde_json::to_string(&manifest)?);
+            let identifiers = Identifiers::default();
+            let processor = Processor::try_new(receiver, exporter, identifiers).await?;
+            let processor = match processor.start().await {
+                Ok(processor) => processor,
+                Err(processor) => {
+                    return Err(eyre!("{}", processor));
+                }
+            };
 
-            let diagnostic = Diagnostic::try_new(manifest, receiver, exporter).await?;
-            let report = diagnostic.run().await?;
-            log::info!(
-                "Process complete in {:.3} seconds",
-                report.processing_duration as f64 / 1000.0
-            );
-            Ok("process")
+            match processor.process().await {
+                Ok(processor) => {
+                    log::info!(
+                        "Process complete in {:.3} seconds",
+                        processor.state.runtime as f64 / 1000.0
+                    );
+                    Ok("process")
+                }
+                Err(processor) => {
+                    log::info!(
+                        "Process failed in {:.3} seconds",
+                        processor.state.runtime as f64 / 1000.0
+                    );
+                    Err(eyre!("{}", processor))
+                }
+            }
         }
+        #[cfg(feature = "setup")]
         Commands::Setup { host } => {
             let uri = match host {
                 Some(host) => match Uri::try_from(host) {

@@ -12,6 +12,7 @@ use axum::{
 use serde::{Deserialize, Deserializer, Serialize, de};
 use std::{str::FromStr, sync::Arc};
 
+#[allow(dead_code)] // Needed when deserializing signals to modify selected tab in Web UI
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Tab {
@@ -69,7 +70,7 @@ pub async fn handler(
         _ => (false, '_', "Anonymous".to_string()),
     };
 
-    let exporter_target = { state.exporter.read().await.to_string() };
+    let exporter_target = { state.exporter.to_string() };
     let index_html = template::Index {
         auth_header,
         debug: log::max_level() == log::Level::Debug,
