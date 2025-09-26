@@ -157,7 +157,7 @@ impl Processor<Ready> {
             );
             for handle in handles {
                 match handle.await {
-                    Ok(_) => log::debug!("Sub-process tass complete"),
+                    Ok(_) => log::debug!("Sub-process task complete"),
                     Err(_) => log::debug!("Sub-process task failed"),
                 }
             }
