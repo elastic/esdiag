@@ -11,23 +11,33 @@ use std::sync::RwLock;
 
 #[derive(Deserialize, Serialize)]
 pub struct DiagnosticManifest {
+    /// Diagnostic bundle variation
     pub mode: Option<String>,
+    /// Elastic Stack component name
     pub product: Product,
+    /// Command-line flags used when running the diagnostic collector
     pub flags: Option<String>,
+    /// Diagnostic collector version
     pub diagnostic: Option<String>,
+    /// Diagnostic type (relates to product, not mode)
     pub r#type: Option<String>,
+    /// Where the diagnostic was run from
     pub runner: Option<String>,
+    /// Elastic Stack version
     pub version: Option<String>,
+    /// Datetime when the diagnostic was collected
     #[serde(rename = "timestamp")]
     pub collection_date: String,
+    /// Collection time in milliseconds since the Unix epoch
     pub collection_date_millis: Option<u64>,
-    /// ECK diagnostic bunldes can contain multiple stack diagnostics
+    /// Platform diagnostic bundles can contain multiple diagnostics from different components
     pub included_diagnostics: Option<Vec<DiagPath>>,
     /// Name for human-readable IDs
     #[serde(skip_deserializing)]
     pub name: String,
     #[serde(skip_deserializing)]
     diagnostic_id: RwLock<Option<String>>,
+    /// Additional identifiers not included in the diagnostic itself
     pub identifiers: Option<Identifiers>,
 }
 
