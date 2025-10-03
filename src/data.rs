@@ -144,17 +144,24 @@ impl TryFrom<&str> for Uri {
 
         let path = Path::new(&uri);
         match path.is_dir() {
-            false => log::debug!("Not a directory {uri}"),
+            false => log::debug!("Not an existing directory {uri}"),
             true => {
                 log::debug!("Directory {uri}");
                 let path_buf = PathBuf::from_str(&uri)?;
                 return Ok(Uri::Directory(path_buf));
             }
         }
+
         match path.is_file() {
             false => {
-                log::debug!("File does not exist: {uri}");
-                return Ok(Uri::File(PathBuf::from_str(&uri)?));
+                if path.extension().is_none() {
+                    log::debug!("No extension, creating directory: {uri}");
+                    let path_buf = PathBuf::from_str(&uri)?;
+                    return Ok(Uri::Directory(path_buf));
+                } else {
+                    log::debug!("File did not exist: {uri}");
+                    return Ok(Uri::File(PathBuf::from_str(&uri)?));
+                }
             }
             true => return Ok(Uri::File(PathBuf::from_str(&uri)?)),
         }
