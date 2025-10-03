@@ -34,7 +34,7 @@ pub fn save_file<T: Serialize>(filename: &str, content: &T) -> Result<()> {
 }
 
 /// The different types of supported URIs
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub enum Uri {
     /// Known host saved in the ~/.esdiag/hosts.yml by default
     KnownHost(KnownHost),
@@ -91,32 +91,22 @@ impl From<Uri> for Url {
     }
 }
 
-fn identify_elastic_host(host: KnownHost) -> Uri {
-    match host.get_url().as_str() {
-        url if url.contains("admin.us-gov-east-1.aws.elastic-cloud.com") => {
-            log::debug!("Creating Uri::ElasticGovCloudAdmin");
-            Uri::ElasticGovCloudAdmin(host.update_cloud_api_path())
-        }
-        url if url.contains("admin.found.no") => {
-            log::debug!("Creating Uri::ElasticCloudAdmin");
-            Uri::ElasticCloudAdmin(host.update_cloud_api_path())
-        }
-        url if url.contains("cloud.elastic.co") => {
-            log::debug!("Creating Uri::ElasticCloud");
-            Uri::ElasticCloud(host.update_cloud_api_path())
-        }
-        _ => {
-            log::debug!("Creating Uri::KnownHost");
-            Uri::KnownHost(host)
-        }
-    }
-}
-
 impl TryFrom<KnownHost> for Uri {
     type Error = eyre::Report;
 
     fn try_from(host: KnownHost) -> Result<Self> {
-        Ok(identify_elastic_host(host))
+        use crate::client::ElasticCloud;
+        let host_uri = match host {
+            KnownHost::ApiKey { ref cloud_id, .. } => match cloud_id {
+                Some(ElasticCloud::ElasticCloud) => Uri::ElasticCloud(host),
+                Some(ElasticCloud::ElasticCloudAdmin) => Uri::ElasticCloudAdmin(host),
+                Some(ElasticCloud::ElasticGovCloudAdmin) => Uri::ElasticGovCloudAdmin(host),
+                None => Uri::KnownHost(host),
+            },
+            KnownHost::Basic { .. } => Uri::KnownHost(host),
+            KnownHost::NoAuth { .. } => Uri::KnownHost(host),
+        };
+        Ok(host_uri)
     }
 }
 
@@ -130,7 +120,7 @@ impl TryFrom<&str> for Uri {
         }
 
         if let Ok(host) = KnownHost::from_str(&uri) {
-            return Ok(identify_elastic_host(host));
+            return host.try_into();
         }
         log::debug!("No known host for {uri}");
 
