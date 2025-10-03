@@ -117,7 +117,7 @@ impl Export for DirectoryExporter {
         is_dir
     }
 
-    /// Drains the vec and writes all documents to a file in the direcotry.
+    /// Drains the vec and writes all documents to a file in the directory.
     async fn batch_send<T>(&self, index: String, docs: Vec<T>) -> Result<BatchResponse>
     where
         T: Sized + Serialize,
