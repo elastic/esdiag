@@ -21,11 +21,44 @@ use std::{
 };
 use url::Url;
 
+#[derive(Clone, Serialize, Deserialize)]
+pub enum ElasticCloud {
+    ElasticGovCloudAdmin,
+    ElasticCloudAdmin,
+    ElasticCloud,
+}
+
+impl TryFrom<&Url> for ElasticCloud {
+    type Error = String;
+
+    fn try_from(url: &Url) -> Result<Self, Self::Error> {
+        if url.domain() == Some("admin.us-gov-east-1.aws.elastic-cloud.com") {
+            Ok(ElasticCloud::ElasticGovCloudAdmin)
+        } else if url.domain() == Some("admin.found.no") {
+            Ok(ElasticCloud::ElasticCloudAdmin)
+        } else if url.domain() == Some("cloud.elastic.co") {
+            Ok(ElasticCloud::ElasticCloud)
+        } else {
+            Err(String::from("Not an elastic Cloud URL"))
+        }
+    }
+}
+
+impl Display for ElasticCloud {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ElasticCloud::ElasticGovCloudAdmin => write!(f, "ElasticGovCloudAdmin"),
+            ElasticCloud::ElasticCloudAdmin => write!(f, "ElasticCloudAdmin"),
+            ElasticCloud::ElasticCloud => write!(f, "ElasticCloud"),
+        }
+    }
+}
+
 pub struct KnownHostBuilder {
     accept_invalid_certs: bool,
     apikey: Option<String>,
     product: Product,
-    cloud_id: Option<String>,
+    cloud_id: Option<ElasticCloud>,
     password: Option<String>,
     url: Url,
     username: Option<String>,
@@ -67,7 +100,53 @@ impl KnownHostBuilder {
         Self { username, ..self }
     }
 
-    pub fn build(self) -> Result<KnownHost> {
+    fn update_cloud_api_path(&mut self) {
+        let mut url = self.url.clone();
+        self.cloud_id = ElasticCloud::try_from(&url).ok();
+        if self.cloud_id.is_none() {
+            return;
+        }
+
+        // Desired URL format is https://{domain}/api/v1/deployments/{deployment_id}/elasticsearch/elasticsearch/proxy/
+        let deployment_id = url.clone();
+        let deployment_id = deployment_id
+            .path()
+            .split('/')
+            .skip_while(|segment| *segment != "deployments")
+            .nth(1)
+            .unwrap_or("");
+        let new_segments: Vec<&str> = match self.product {
+            Product::Elasticsearch => {
+                let product = match url.domain() {
+                    Some(domain) if domain == "admin.found.no" => "main-elasticsearch",
+                    _ => "elasticsearch",
+                };
+                vec![
+                    "api",
+                    "v1",
+                    "deployments",
+                    deployment_id,
+                    "elasticsearch",
+                    product,
+                    "proxy",
+                ]
+            }
+            _ => Vec::new(),
+        };
+        // Only modify the path if we have new segments
+        if new_segments.len() > 0 {
+            let mut path_segments = url
+                .path_segments_mut()
+                .expect("Failed to get path segments");
+            path_segments.clear().extend(new_segments);
+        }
+
+        log::debug!("Updated Cloud API URL: {}", url);
+        self.url = url;
+    }
+
+    pub fn build(mut self) -> Result<KnownHost> {
+        self.update_cloud_api_path();
         match (self.apikey, self.username, self.password) {
             (Some(apikey), None, None) => Ok(KnownHost::ApiKey {
                 accept_invalid_certs: self.accept_invalid_certs,
@@ -79,7 +158,6 @@ impl KnownHostBuilder {
             (None, Some(username), Some(password)) => Ok(KnownHost::Basic {
                 accept_invalid_certs: self.accept_invalid_certs,
                 app: self.product,
-                cloud_id: self.cloud_id,
                 password,
                 url: self.url,
                 username,
@@ -93,7 +171,7 @@ impl KnownHostBuilder {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(tag = "auth")]
 pub enum KnownHost {
     /// A host using API key authentication
@@ -102,15 +180,13 @@ pub enum KnownHost {
         apikey: String,
         app: Product,
         #[serde(skip_serializing_if = "Option::is_none")]
-        cloud_id: Option<String>,
+        cloud_id: Option<ElasticCloud>,
         url: Url,
     },
     /// A host using basic username/password authentication
     Basic {
         accept_invalid_certs: bool,
         app: Product,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        cloud_id: Option<String>,
         password: String,
         url: Url,
         username: String,
@@ -134,62 +210,6 @@ impl KnownHost {
             Self::ApiKey { url, .. } => url.clone(),
             Self::Basic { url, .. } => url.clone(),
             Self::NoAuth { url, .. } => url.clone(),
-        }
-    }
-
-    pub fn update_cloud_api_path(self) -> Self {
-        // Desired URL format is https://{domain}/api/v1/deployments/{deployment_id}/elasticsearch/elasticsearch/proxy/
-        match self {
-            Self::Basic { .. } | Self::NoAuth { .. } => self,
-            Self::ApiKey {
-                mut url,
-                app,
-                accept_invalid_certs,
-                apikey,
-                cloud_id,
-            } => {
-                let deployment_id = url.clone();
-                let deployment_id = deployment_id
-                    .path()
-                    .split('/')
-                    .skip_while(|segment| *segment != "deployments")
-                    .nth(1)
-                    .unwrap_or("");
-                let new_segments: Vec<&str> = match app {
-                    Product::Elasticsearch => {
-                        let product = match url.domain() {
-                            Some(domain) if domain == "admin.found.no" => "main-elasticsearch",
-                            _ => "elasticsearch",
-                        };
-                        vec![
-                            "api",
-                            "v1",
-                            "deployments",
-                            deployment_id,
-                            "elasticsearch",
-                            product,
-                            "proxy",
-                        ]
-                    }
-                    _ => Vec::new(),
-                };
-                // Only modify the path if we have new segments
-                if new_segments.len() > 0 {
-                    let mut path_segments = url
-                        .path_segments_mut()
-                        .expect("Failed to get path segments");
-                    path_segments.clear().extend(new_segments);
-                }
-
-                log::debug!("Updated Cloud API URL: {}", url);
-                KnownHost::ApiKey {
-                    accept_invalid_certs,
-                    apikey,
-                    app,
-                    cloud_id,
-                    url,
-                }
-            }
         }
     }
 
@@ -273,14 +293,16 @@ impl KnownHost {
                 apikey,
                 app,
                 accept_invalid_certs,
-                cloud_id: _,
+                cloud_id,
                 url,
             } => {
                 // test the connection
                 log::info!("Testing {} connection", &app);
                 // create a client with the API key
                 let mut default_headers = HeaderMap::new();
-                default_headers.append("X-Management-Request", "true".parse().unwrap());
+                if cloud_id.is_some() {
+                    default_headers.append("X-Management-Request", "true".parse().unwrap());
+                }
                 default_headers.append(ACCEPT, "application/json".parse().unwrap());
                 default_headers
                     .append(AUTHORIZATION, format!("ApiKey {}", apikey).parse().unwrap());
@@ -289,7 +311,9 @@ impl KnownHost {
                     .danger_accept_invalid_certs(*accept_invalid_certs)
                     .build()?;
                 log::trace!("Reqwest client: {:?}", client);
-                let response = client.get(url.as_str()).send().await;
+                // The cloud API proxy requires the trailing slash
+                let url = format!("{}{}", url.as_str(), "/");
+                let response = client.get(url).send().await;
                 match response {
                     Ok(response) => Ok(self.validate_application(response).await),
                     Err(e) => Err(e),
@@ -298,7 +322,6 @@ impl KnownHost {
             Self::Basic {
                 app,
                 accept_invalid_certs,
-                cloud_id: _,
                 password,
                 url,
                 username,
@@ -394,27 +417,18 @@ impl Display for KnownHost {
         match self {
             Self::ApiKey {
                 app, cloud_id, url, ..
-            } => write!(
-                fmt,
-                "KnownHost ApiKey: {} {} {}",
-                app,
-                url,
-                cloud_id.as_deref().unwrap_or(""),
-            ),
+            } => {
+                let cloud_id = match cloud_id {
+                    Some(id) => id.to_string(),
+                    None => "None".to_string(),
+                };
+                write!(fmt, "KnownHost ApiKey: {} {} {}", app, url, cloud_id,)
+            }
             Self::Basic {
-                app,
-                cloud_id,
-                url,
-                username,
-                ..
-            } => write!(
-                fmt,
-                "KnownHost Basic: {} {}@ {} {}",
-                app,
-                username,
-                url,
-                cloud_id.as_deref().unwrap_or(""),
-            ),
+                app, url, username, ..
+            } => {
+                write!(fmt, "KnownHost Basic: {} {}@ {}", app, username, url,)
+            }
             Self::NoAuth { app, url } => write!(fmt, "KnownHost NoAuth: {} {}", app, url),
         }
     }

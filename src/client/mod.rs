@@ -11,4 +11,4 @@ mod known_host;
 
 pub use auth::{Auth, AuthType};
 pub use elasticsearch::ElasticsearchBuilder;
-pub use known_host::{KnownHost, KnownHostBuilder};
+pub use known_host::{ElasticCloud, KnownHost, KnownHostBuilder};

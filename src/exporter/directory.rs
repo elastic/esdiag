@@ -3,7 +3,7 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use crate::data::Uri;
-use eyre::{eyre, Result};
+use eyre::{Result, eyre};
 use std::{fs::File, io::Write, path::PathBuf};
 
 pub struct DirectoryExporter {
@@ -27,7 +27,7 @@ impl TryFrom<Uri> for DirectoryExporter {
         match uri {
             Uri::Directory(path) => Self::try_from(path),
             Uri::File(path) => Self::try_from(path),
-            _ => Err(eyre!("Expected directory got {uri:?}")),
+            _ => Err(eyre!("Expected directory got {}", uri.to_string())),
         }
     }
 }

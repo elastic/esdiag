@@ -17,6 +17,7 @@ use esdiag::{
 };
 use eyre::{Result, eyre};
 use std::sync::Arc;
+#[cfg(feature = "server")]
 use tokio::signal::unix::{SignalKind, signal};
 use url::Url;
 
