@@ -255,9 +255,20 @@ impl Processor<Processing> {
 
         if let Ok(kibana_url) = std::env::var("ESDIAG_KIBANA_URL") {
             let url_safe_id = urlencoding::encode(&report.metadata.id);
+            let days_since_collection = (std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_millis() as u64
+                - report.metadata.collection_date)
+                / (1000 * 60 * 60 * 24);
+            let time_filter = match days_since_collection {
+                x if x < 90 => "from:now-90d,to:now",
+                x if x >= 90 && x < 365 => "from:now-1y,to:now",
+                x => &format!("from:now-{}d,to:now", x + 1),
+            };
             let kibana_link = format!(
-                "{}/app/dashboards#/view/4e0a26b2-e5f8-4b58-b617-86f5cdd0edad?_g=(filters:!(('$state':(store:globalState),meta:(disabled:!f,index:'4319ebc4-df81-4b18-b8bd-6aaa55a1fd13',key:diagnostic.id,negate:!f,params:(query:'{}'),type:phrase),query:(match_phrase:(diagnostic.id:'{}')))),refreshInterval:(pause:!t,value:60000),time:(from:now-90d,to:now))",
-                kibana_url, url_safe_id, url_safe_id
+                "{}/app/dashboards#/view/4e0a26b2-e5f8-4b58-b617-86f5cdd0edad?_g=(filters:!(('$state':(store:globalState),meta:(disabled:!f,index:'4319ebc4-df81-4b18-b8bd-6aaa55a1fd13',key:diagnostic.id,negate:!f,params:(query:'{}'),type:phrase),query:(match_phrase:(diagnostic.id:'{}')))),refreshInterval:(pause:!t,value:60000),time:({}))",
+                kibana_url, url_safe_id, url_safe_id, time_filter
             );
             log::info!("{}", kibana_link);
             report.add_kibana_link(kibana_link);

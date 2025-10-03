@@ -242,7 +242,7 @@ impl ServerState {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct Stats {
     pub docs: DocStats,
     pub jobs: JobStats,
@@ -274,20 +274,20 @@ impl std::fmt::Display for Stats {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct DocStats {
     pub total: usize,
     pub errors: usize,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct JobStats {
     pub total: u64,
     pub success: u64,
     pub failed: u64,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 pub struct Signals {
     pub auth: Auth,
     pub processing: bool,
@@ -325,7 +325,7 @@ impl Default for Signals {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Tab {
     FileUpload,
@@ -333,23 +333,23 @@ pub enum Tab {
     ApiKey,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 pub struct Auth {
     pub header: bool,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 pub struct EsApiKey {
     pub key: String,
     pub url: Uri,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 pub struct FileUpload {
     pub job_id: u64,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 pub struct ServiceLink {
     pub url: Uri,
     pub token: String,

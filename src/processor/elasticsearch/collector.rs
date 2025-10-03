@@ -20,14 +20,19 @@ pub struct ElasticsearchCollector {
 
 impl ElasticsearchCollector {
     pub async fn new(receiver: Receiver, exporter: DirectoryExporter) -> Result<Self> {
-        Ok(Self { receiver, exporter })
+        let timestamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
+        let directory = format!("api-diagnostics-{}", timestamp);
+        Ok(Self {
+            receiver,
+            exporter: exporter.collection_directory(directory)?,
+        })
     }
 
     pub async fn collect(&self) -> Result<CollectionResult> {
         let mut result = CollectionResult {
             path: self.exporter.to_string().clone(),
             success: 0,
-            total: 17,
+            total: 18,
         };
 
         result.success += self.save_diagnostic_manifest().await?;

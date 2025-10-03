@@ -56,6 +56,8 @@ pub enum Exporter {
     Elasticsearch(ElasticsearchExporter),
     /// Export to an `.ndjson` file
     File(FileExporter),
+    /// Export to a directory of `${index}.ndjson` files
+    Directory(DirectoryExporter),
     /// Export to `stdout`
     Stream(StreamExporter),
 }
@@ -127,6 +129,7 @@ impl Exporter {
         T: Serialize + Sized + Send + Sync,
     {
         match self {
+            Exporter::Directory(exporter) => exporter.batch_send(index, docs).await,
             Exporter::Elasticsearch(exporter) => exporter.batch_send(index, docs).await,
             Exporter::File(exporter) => exporter.batch_send(index, docs).await,
             Exporter::Stream(exporter) => exporter.batch_send(index, docs).await,
@@ -135,6 +138,7 @@ impl Exporter {
 
     pub fn get_docs_rx(&mut self) -> mpsc::Receiver<usize> {
         match self {
+            Exporter::Directory(exporter) => exporter.get_docs_rx(),
             Exporter::Elasticsearch(exporter) => exporter.get_docs_rx(),
             Exporter::File(exporter) => exporter.get_docs_rx(),
             Exporter::Stream(exporter) => exporter.get_docs_rx(),
@@ -150,6 +154,7 @@ impl Exporter {
         T: Serialize + Sized + Send + Sync + 'static,
     {
         match self {
+            Exporter::Directory(exporter) => exporter.batch_tx(index, docs).await,
             Exporter::Elasticsearch(exporter) => exporter.batch_tx(index, docs).await,
             Exporter::File(exporter) => exporter.batch_tx(index, docs).await,
             Exporter::Stream(exporter) => exporter.batch_tx(index, docs).await,
@@ -163,6 +168,7 @@ impl Exporter {
         value: Option<&serde_json::Value>,
     ) -> Result<::elasticsearch::http::response::Response> {
         match self {
+            Exporter::Directory(_) => Err(eyre!("request not supported for directory exporter")),
             Exporter::Elasticsearch(exporter) => exporter.request(method, path, value).await,
             Exporter::File(_) => Err(eyre!("request not supported for file exporter")),
             Exporter::Stream(_) => Err(eyre!("request not supported for stream exporter")),
@@ -171,6 +177,7 @@ impl Exporter {
 
     pub fn as_str(&self) -> &'static str {
         match self {
+            Exporter::Directory(_) => "directory",
             Exporter::Elasticsearch(_) => "elasticsearch",
             Exporter::File(_) => "file",
             Exporter::Stream(_) => "stream",
@@ -183,6 +190,7 @@ impl Exporter {
 
     pub async fn save_report(&self, report: &DiagnosticReport) -> Result<()> {
         match self {
+            Exporter::Directory(exporter) => exporter.save_report(report).await,
             Exporter::Elasticsearch(exporter) => exporter.save_report(report).await,
             Exporter::File(exporter) => exporter.save_report(report).await,
             Exporter::Stream(exporter) => exporter.save_report(report).await,
@@ -191,6 +199,7 @@ impl Exporter {
 
     pub async fn is_connected(&self) -> bool {
         match self {
+            Exporter::Directory(exporter) => exporter.is_connected().await,
             Exporter::Elasticsearch(exporter) => exporter.is_connected().await,
             Exporter::File(exporter) => exporter.is_connected().await,
             Exporter::Stream(exporter) => exporter.is_connected().await,
@@ -209,6 +218,7 @@ impl TryFrom<Option<Uri>> for Exporter {
     fn try_from(uri: Option<Uri>) -> std::result::Result<Self, Self::Error> {
         if let Some(uri) = uri {
             match uri {
+                Uri::Directory(dir) => Ok(Exporter::Directory(DirectoryExporter::try_from(dir)?)),
                 Uri::File(file) => Ok(Exporter::File(FileExporter::try_from(file)?)),
                 Uri::KnownHost(host) => Ok(Exporter::Elasticsearch(
                     ElasticsearchExporter::try_from(host)?,
@@ -239,6 +249,7 @@ impl TryFrom<Option<Uri>> for Exporter {
 impl std::fmt::Display for Exporter {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Exporter::Directory(exporter) => write!(f, "Directory {}", exporter),
             Exporter::Elasticsearch(exporter) => write!(f, "Elasticsearch {}", exporter),
             Exporter::File(exporter) => write!(f, "File {}", exporter),
             Exporter::Stream(exporter) => write!(f, "Stream {}", exporter),

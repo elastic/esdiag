@@ -109,11 +109,13 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for NodesStats {
                 .unwrap_or(1);
             node_stats.calculate_stats(allocated_processors);
 
-            match node_stats.transport {
-                Some(ref mut transport) => {
+            // Extract transport actions
+            if let Some(ref mut transport) = node_stats.transport {
+                let actions = transport["actions"].take();
+                if !actions.is_null() {
                     if let Err(e) = transport_actions::extract(
                         &actions_tx,
-                        transport["actions"].take(),
+                        actions,
                         &actions_metadata,
                         node_metadata,
                     )
@@ -126,11 +128,9 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for NodesStats {
                         );
                     }
                 }
-                None => {
-                    log::trace!("Skipping transport stats for node {}", node_id);
-                }
             }
 
+            // Extract HTTP clients
             if let Err(e) = http_clients::extract(
                 &http_clients_tx,
                 node_stats.http["clients"].take(),
@@ -142,6 +142,7 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for NodesStats {
                 log::error!("Error extracting HTTP clients stats: {}", e);
             }
 
+            // Extract adaptive replica selection stats
             if let Err(e) = adaptive_selections::extract(
                 &adaptive_tx,
                 node_stats.adaptive_selection.take(),
@@ -154,6 +155,7 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for NodesStats {
                 log::error!("Error extracting adaptive selection stats: {}", e);
             }
 
+            // Extract cluster applier state
             if let Err(e) = cluster_applier_stats::extract(
                 &applier_tx,
                 node_stats.discovery["cluster_applier_stats"].take(),
@@ -165,6 +167,7 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for NodesStats {
                 log::error!("Error extracting cluster applier stats: {}", e);
             }
 
+            // Extract ingest pipeline stats, but only on nodes with the `ingest` role
             if node_stats.roles.contains(&*INGEST_ROLE) {
                 if let Err(e) = ingest_pipelines::extract(
                     &pipelines_tx,

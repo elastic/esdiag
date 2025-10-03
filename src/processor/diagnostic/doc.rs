@@ -9,10 +9,15 @@ use uuid::Uuid;
 
 #[derive(Clone, Deserialize, Serialize)]
 pub struct DiagnosticMetadata {
+    /// Date the diagnostic was originally collected
     pub collection_date: u64,
+    /// Collection utility or method
     pub runner: String,
+    /// User-friendly diagnostic identifier
     pub id: String,
+    /// Unique identifier
     pub uuid: String,
+    /// Collector version
     pub version: Option<String>,
 }
 
@@ -50,7 +55,7 @@ impl TryFrom<DiagnosticManifest> for DiagnosticMetadata {
             manifest.diagnostic_id(&uuid).clone(),
             runner,
             uuid,
-            manifest.version,
+            manifest.diagnostic,
         ))
     }
 }
