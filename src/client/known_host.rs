@@ -134,7 +134,7 @@ impl KnownHostBuilder {
             _ => Vec::new(),
         };
         // Only modify the path if we have new segments
-        if new_segments.len() > 0 {
+        if !new_segments.is_empty() {
             let mut path_segments = url
                 .path_segments_mut()
                 .expect("Failed to get path segments");
