@@ -5,7 +5,8 @@
 use crate::data::{Auth, KnownHost};
 use base64::Engine;
 use eyre::{Result, eyre};
-use reqwest::{Client, Method};
+use reqwest::{Client, Method, multipart};
+use std::collections::HashMap;
 use url::Url;
 
 /// An exporter that sends requests to an Kibana cluster.
@@ -19,11 +20,7 @@ impl KibanaClient {
     /// Create a new KibanaExporter from a URL and Auth
     pub fn try_new(url: Url, auth: Auth) -> Result<Self> {
         let mut headers = reqwest::header::HeaderMap::new();
-        headers.insert("kbn-xrsf", "true".parse().unwrap());
-        headers.insert(
-            reqwest::header::CONTENT_TYPE,
-            "application/json".parse().unwrap(),
-        );
+        headers.insert("kbn-xsrf", "true".parse().unwrap());
         match auth {
             Auth::Basic(username, password) => {
                 headers.append(
@@ -56,19 +53,62 @@ impl KibanaClient {
     pub async fn request(
         &self,
         method: Method,
+        headers: &HashMap<String, String>,
         path: &str,
         body: Option<&[u8]>,
     ) -> Result<reqwest::Response> {
-        let client = self.client.request(method, self.url.join(path)?);
+        let mut headers: reqwest::header::HeaderMap = headers
+            .into_iter()
+            .map(|(k, v)| (k.parse().unwrap(), v.parse().unwrap()))
+            .collect();
+        let use_form_data = match headers.get("Content-Type") {
+            Some(content_type) => {
+                log::debug!("Content-Type: {}", content_type.to_str()?);
+                content_type.to_str()?.starts_with("multipart/form-data")
+            }
+            None => false,
+        };
+
+        // Remove Content-Type header if using form-data
+        if use_form_data {
+            headers.remove("Content-Type");
+        }
+
+        let client = match path.split_once('?') {
+            Some((p, query)) => {
+                let query: Vec<_> = query.split('&').filter_map(|s| s.split_once('=')).collect();
+                self.client
+                    .request(method, self.url.join(p)?)
+                    .query(&query)
+                    .headers(headers)
+            }
+            None => self
+                .client
+                .request(method, self.url.join(path)?)
+                .headers(headers),
+        };
+
         let response = match body {
-            Some(body) => client.body(body.to_vec()).send().await,
+            Some(body) if use_form_data => {
+                log::debug!("Sending request with form-data");
+                let part = multipart::Part::bytes(body.to_vec())
+                    .file_name("dashboards.ndjson")
+                    .mime_str("application/x-ndjson")?;
+                let form = multipart::Form::new().part("file", part);
+                client.multipart(form).send().await
+            }
+            Some(body) => {
+                log::debug!("Sending request with body");
+                client.body(body.to_vec()).send().await
+            }
             None => client.send().await,
         };
         response.map_err(|e| eyre!("Failed to send request: {}", e))
     }
 
     pub async fn test_connection(&self) -> Result<reqwest::Response> {
-        self.request(Method::GET, "/api/status", None).await
+        self.request(Method::GET, &HashMap::new(), "/api/status", None)
+            .await
     }
 }
 

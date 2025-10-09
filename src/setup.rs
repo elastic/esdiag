@@ -5,9 +5,10 @@
 use crate::{client::Client, data::Product};
 //use bytes::Bytes;
 use eyre::{Result, eyre};
-use include_dir::{Dir, include_dir};
-use serde::Deserialize;
+use include_dir::{Dir, File, include_dir};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 // Subdirectory for templates and configs files
@@ -15,13 +16,62 @@ pub static ASSETS_DIR: Dir = include_dir!("assets");
 pub static ASSETS_FILE: &str = "assets.yml";
 pub static SOURCES_FILE: &str = "sources.yml";
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 pub struct Asset {
     pub endpoint: String,
     pub method: String,
     pub name: String,
-    pub subdir: Option<String>,
+    #[serde(default = "default_headers")]
+    pub headers: HashMap<String, String>,
     pub suffix: Option<String>,
+    pub query: Option<String>,
+}
+
+fn default_headers() -> HashMap<String, String> {
+    HashMap::from([("Content-Type".to_string(), "application/json".to_string())])
+}
+
+async fn send_asset(client: &Client, asset: &Asset, file: &File<'_>, named: bool) -> Result<()> {
+    let stem = file.path().file_stem().unwrap().to_str().unwrap_or("");
+    let endpoint = match named {
+        true => &format!(
+            "{}/{}{}",
+            &asset.endpoint,
+            &stem,
+            asset.suffix.clone().unwrap_or("".to_string()),
+        ),
+        false => &asset.endpoint,
+    };
+    match client
+        .request(
+            asset.method.parse()?,
+            &asset.headers,
+            endpoint,
+            Some(file.contents()),
+        )
+        .await
+    {
+        Ok(response) => {
+            let status = response.status();
+            match status.is_success() {
+                true => {
+                    let body = response.text().await?;
+                    log::info!("{} {} {} {}", &asset.name, &stem, &asset.method, status);
+                    log::debug!("Response body: {}", body);
+                    Ok(())
+                }
+                false => {
+                    let body = response.json::<Value>().await?;
+                    let message = format!("Asset: {body}");
+                    Err(eyre!(message))
+                }
+            }
+        }
+        Err(e) => {
+            log::error!("Failed to send asset: {e:?}");
+            Err(eyre!(e))
+        }
+    }
 }
 
 /// Submit saved assets to the Elasticsearch APIs
@@ -31,49 +81,27 @@ pub async fn assets(client: &Client) -> Result<()> {
 
     for asset in assets {
         log::info!("Processing asset: {}", &asset.name);
-        let dir_str = format!("{}/{}", client, &asset.subdir.unwrap_or("".to_string()));
-        let subdir = PathBuf::from(dir_str);
-        let files = match ASSETS_DIR.get_dir(&subdir) {
-            Some(dir) => dir.files(),
-            None => return Err(eyre!("No assets directory found")),
-        };
-
-        match client {
-            Client::Elasticsearch(_) => {
-                // for each asset, send to Elasticsearch
-                for file in files {
-                    log::debug!("file.path: {:?}", &file.path());
-                    let stem = file.path().file_stem().unwrap().to_str().unwrap_or("");
-                    let endpoint = format!(
-                        "{}/{}{}",
-                        &asset.endpoint,
-                        &stem,
-                        asset.suffix.clone().unwrap_or("".to_string()),
-                    );
-                    match client
-                        .request(asset.method.parse()?, &endpoint, Some(file.contents()))
-                        .await
-                    {
-                        Ok(response) => match response.status().is_success() {
-                            true => {
-                                log::info!(
-                                    "{} {} {} {}",
-                                    &asset.name,
-                                    &stem,
-                                    &asset.method,
-                                    response.status()
-                                )
-                            }
-                            false => {
-                                let body = response.json::<Value>().await?;
-                                log::error!("Asset sent ERROR: {body}");
-                            }
-                        },
-                        Err(e) => log::error!("Failed to send asset: {e:?}"),
-                    }
+        log::debug!("Asset: {}", serde_json::to_string(&asset).unwrap());
+        let path = PathBuf::from(format!("{}/{}", client, asset.name));
+        if let Some(dir) = ASSETS_DIR.get_dir(&path) {
+            // do something with the directory
+            for file in dir.files() {
+                log::debug!("file.path: {:?}", &file.path());
+                match send_asset(client, &asset, file, true).await {
+                    Ok(res) => log::debug!("Response: {:?}", res),
+                    Err(e) => log::error!("Failed to send asset: {e:?}"),
                 }
             }
-            _ => return Err(eyre!("Output target not supported")),
+        } else if let Some(file) = ASSETS_DIR.get_file(&path) {
+            // do something with the file
+            log::debug!("file.path: {:?}", &file.path());
+            match send_asset(client, &asset, file, false).await {
+                Ok(res) => log::debug!("Response: {:?}", res),
+                Err(e) => log::error!("Failed to send asset: {e:?}"),
+            }
+        } else {
+            log::error!("Asset not found: {}", &asset.name);
+            return Err(eyre!("Asset not found: {}", asset.name));
         }
     }
     Ok(())

@@ -14,6 +14,7 @@ extern crate elasticsearch as es;
 use crate::data::{Product, Uri};
 use eyre::{Result, eyre};
 use reqwest::Method;
+use std::collections::HashMap;
 
 pub enum Client {
     Elasticsearch(ElasticsearchClient),
@@ -24,9 +25,11 @@ impl Client {
     pub async fn request(
         &self,
         method: Method,
+        headers: &HashMap<String, String>,
         path: &str,
         body: Option<&[u8]>,
     ) -> Result<reqwest::Response> {
+        log::debug!("Request: {method} {path}");
         match self {
             Client::Elasticsearch(client) => {
                 let method = match method {
@@ -37,6 +40,17 @@ impl Client {
                     Method::HEAD => es::http::Method::Head,
                     _ => return Err(eyre!("Unsupported http method for Elasticsearch client")),
                 };
+                let header_map: es::http::headers::HeaderMap = headers
+                    .iter()
+                    .map(|(k, v)| {
+                        (
+                            k.parse()
+                                .expect(&format!("Failed to parse header key: {}", k)),
+                            v.parse()
+                                .expect(&format!("Failed to parse header value: {}", v)),
+                        )
+                    })
+                    .collect();
                 use es::http::request::JsonBody;
                 let body: Option<JsonBody<serde_json::Value>> = body
                     .map(|b| serde_json::from_slice(b))
@@ -46,7 +60,7 @@ impl Client {
                     .send(
                         method,
                         path,
-                        es::http::headers::HeaderMap::new(),
+                        header_map,
                         Option::<&serde_json::Value>::None,
                         body,
                         None,
@@ -55,7 +69,7 @@ impl Client {
                     .map_err(|e| e.into());
                 response.map(|response| response.into())
             }
-            Client::Kibana(client) => client.request(method, path, body).await,
+            Client::Kibana(client) => client.request(method, headers, path, body).await,
         }
     }
 

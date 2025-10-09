@@ -317,7 +317,7 @@ async fn run(cli: Cli) -> Result<&'static str> {
                 .and_then(|s| Uri::try_from(s).ok())
                 .expect("Failed to determine output URL");
             let client = Client::try_from(uri)?;
-            log::info!("Setting up Elasticsearch assets in {client}");
+            log::info!("Setting up assets in {client}");
             setup::assets(&client).await?;
             Ok("setup")
         }

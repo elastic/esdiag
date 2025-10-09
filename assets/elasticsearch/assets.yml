@@ -1,20 +1,16 @@
 - name: "ingest_pipelines"
   endpoint: "_ingest/pipeline"
   method: "PUT"
-  subdir: "ingest_pipeline"
 
 - name: "component_templates"
   endpoint: "_component_template"
   method: "PUT"
-  subdir: "component_template"
 
 - name: "index_templates"
   endpoint: "_index_template"
   method: "PUT"
-  subdir: "index_template"
   suffix: "-esdiag"
 
 - name: "roles"
   endpoint: "_security/role"
   method: "PUT"
-  subdir: "role"
