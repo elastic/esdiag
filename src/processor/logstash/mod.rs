@@ -17,11 +17,13 @@ mod version;
 
 use super::{
     DiagnosticProcessor, DocumentExporter, Metadata, ProcessorSummary,
-    diagnostic::{
-        DataSource, DiagnosticManifest, DiagnosticReport, DiagnosticReportBuilder, Product,
-    },
+    diagnostic::{DataSource, DiagnosticManifest, DiagnosticReport, DiagnosticReportBuilder},
 };
-use crate::{data, exporter::Exporter, receiver::Receiver};
+use crate::{
+    data::{self, Product},
+    exporter::Exporter,
+    receiver::Receiver,
+};
 use eyre::{Result, eyre};
 use metadata::LogstashMetadata;
 use node::Node;

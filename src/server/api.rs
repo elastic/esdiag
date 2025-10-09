@@ -3,7 +3,10 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::{ApiKeyRequest, ServerState, UploadServiceRequest};
-use crate::{client::KnownHostBuilder, data::Uri, processor::new_job_id};
+use crate::{
+    data::{KnownHostBuilder, Uri},
+    processor::new_job_id,
+};
 use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
 use serde_json::json;
 use std::sync::Arc;

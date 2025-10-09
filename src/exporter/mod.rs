@@ -12,9 +12,8 @@ mod file;
 mod stream;
 
 use crate::{
-    client::{KnownHost, KnownHostBuilder},
-    data::Uri,
-    processor::{BatchResponse, DiagnosticReport, ProcessorSummary, Product},
+    data::{KnownHost, Product, Uri},
+    processor::{BatchResponse, DiagnosticReport, ProcessorSummary},
 };
 pub use directory::DirectoryExporter;
 use elasticsearch::ElasticsearchExporter;
@@ -23,7 +22,6 @@ use file::FileExporter;
 use serde::Serialize;
 use stream::StreamExporter;
 use tokio::sync::{mpsc, oneshot};
-use url::Url;
 
 trait Export {
     async fn is_connected(&self) -> bool;
@@ -213,35 +211,17 @@ impl Default for Exporter {
     }
 }
 
-impl TryFrom<Option<Uri>> for Exporter {
+impl TryFrom<Uri> for Exporter {
     type Error = eyre::Report;
-    fn try_from(uri: Option<Uri>) -> std::result::Result<Self, Self::Error> {
-        if let Some(uri) = uri {
-            match uri {
-                Uri::Directory(dir) => Ok(Exporter::Directory(DirectoryExporter::try_from(dir)?)),
-                Uri::File(file) => Ok(Exporter::File(FileExporter::try_from(file)?)),
-                Uri::KnownHost(host) => Ok(Exporter::Elasticsearch(
-                    ElasticsearchExporter::try_from(host)?,
-                )),
-                Uri::Stream => Ok(Exporter::Stream(StreamExporter::new())),
-                _ => Err(eyre!("Unsupported URI")),
-            }
-        } else {
-            log::debug!("No output given, using ESDIAG_OUTPUT_URL");
-            let output_url = std::env::var("ESDIAG_OUTPUT_URL")
-                .map_err(|_| eyre!("ESDIAG_OUTPUT_URL is not defined"))?;
-            log::info!("output: Env {}", output_url);
-            let apikey = std::env::var("ESDIAG_OUTPUT_APIKEY").ok();
-            let username = std::env::var("ESDIAG_OUTPUT_USERNAME").ok();
-            let password = std::env::var("ESDIAG_OUTPUT_PASSWORD").ok();
-            let host = KnownHostBuilder::new(Url::parse(&output_url)?)
-                .apikey(apikey)
-                .username(username)
-                .password(password)
-                .build()?;
-            Ok(Exporter::Elasticsearch(ElasticsearchExporter::try_from(
+    fn try_from(uri: Uri) -> std::result::Result<Self, Self::Error> {
+        match uri {
+            Uri::Directory(dir) => Ok(Exporter::Directory(DirectoryExporter::try_from(dir)?)),
+            Uri::File(file) => Ok(Exporter::File(FileExporter::try_from(file)?)),
+            Uri::KnownHost(host) => Ok(Exporter::Elasticsearch(ElasticsearchExporter::try_from(
                 host,
-            )?))
+            )?)),
+            Uri::Stream => Ok(Exporter::Stream(StreamExporter::new())),
+            _ => Err(eyre!("Unsupported URI")),
         }
     }
 }

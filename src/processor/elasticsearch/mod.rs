@@ -50,11 +50,15 @@ pub use {
 
 use super::{
     DataSource, DiagnosticManifest, DiagnosticProcessor, DiagnosticReport, DocumentExporter,
-    Metadata, ProcessorSummary, Product,
+    Metadata, ProcessorSummary,
     diagnostic::{DiagnosticReportBuilder, Lookup},
     elasticsearch::health_report::HealthReport,
 };
-use crate::{data, exporter::Exporter, receiver::Receiver};
+use crate::{
+    data::{self, Product},
+    exporter::Exporter,
+    receiver::Receiver,
+};
 use eyre::{Result, eyre};
 use serde::{Serialize, de::DeserializeOwned};
 use std::sync::Arc;

@@ -3,7 +3,8 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::super::Identifiers;
-use super::{DataSource, DiagPath, Manifest, Product, data_source::PathType};
+use super::{DataSource, DiagPath, Manifest, data_source::PathType};
+use crate::data::Product;
 use chrono::{DateTime, SecondsFormat, TimeZone, Utc};
 use eyre::{Result, eyre};
 use serde::{Deserialize, Serialize};

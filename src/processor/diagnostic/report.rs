@@ -3,7 +3,8 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::super::elasticsearch::License as ElasticsearchLicense;
-use super::{DiagnosticManifest, DiagnosticMetadata, Lookup, Product};
+use super::{DiagnosticManifest, DiagnosticMetadata, Lookup};
+use crate::data::Product;
 use eyre::{OptionExt, Report, Result, eyre};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

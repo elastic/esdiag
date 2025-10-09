@@ -6,7 +6,7 @@ use super::super::processor::{
     DataSource, DiagnosticManifest, ElasticsearchCluster, ManifestBuilder, PathType,
 };
 use super::{Receive, ReceiveRaw};
-use crate::client::KnownHost;
+use crate::data::KnownHost;
 use elasticsearch::{Elasticsearch, http};
 use eyre::{Result, eyre};
 use serde::de::DeserializeOwned;

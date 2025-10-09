@@ -16,7 +16,7 @@ mod kubernetes_platform;
 mod logstash;
 pub use collector::Collector;
 pub use diagnostic::{
-    DataSource, DiagnosticManifest, DiagnosticReport, Manifest, Product,
+    DataSource, DiagnosticManifest, DiagnosticReport, Manifest,
     data_source::PathType,
     manifest::ManifestBuilder,
     report::{BatchResponse, Identifiers, ProcessorSummary},
@@ -24,7 +24,7 @@ pub use diagnostic::{
 pub use elasticsearch::Cluster as ElasticsearchCluster;
 use futures::stream::FuturesUnordered;
 
-use crate::{exporter::Exporter, receiver::Receiver};
+use crate::{data::Product, exporter::Exporter, receiver::Receiver};
 use elastic_cloud_kubernetes::ElasticCloudKubernetesDiagnostic;
 use elasticsearch::ElasticsearchDiagnostic;
 use eyre::{Result, eyre};

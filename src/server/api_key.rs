@@ -6,7 +6,7 @@ use super::{
     Identifiers, ServerState, Signals, patch_job_feed, patch_signals, patch_template, template,
 };
 use crate::{
-    client::{KnownHost, KnownHostBuilder},
+    data::{KnownHost, KnownHostBuilder},
     processor::{Processor, new_job_id},
     receiver::Receiver,
 };

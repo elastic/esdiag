@@ -3,7 +3,8 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::super::elasticsearch;
-use super::{DataSource, DiagPath, Product, data_source::PathType};
+use super::{DataSource, DiagPath, data_source::PathType};
+use crate::data::Product;
 use eyre::{Result, eyre};
 use serde::{Deserialize, Serialize};
 

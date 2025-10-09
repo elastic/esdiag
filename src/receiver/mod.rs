@@ -16,10 +16,9 @@ mod upload_service;
 pub use elasticsearch::ElasticsearchReceiver;
 
 use super::{
-    data::Uri,
+    data::{KnownHost, Uri},
     processor::{DataSource, DiagnosticManifest, ElasticsearchCluster, Manifest, ManifestBuilder},
 };
-use crate::client::KnownHost;
 use archive::{ArchiveBytesReceiver, ArchiveFileReceiver};
 use directory::DirectoryReceiver;
 use elastic_cloud_admin::ElasticCloudAdminReceiver;

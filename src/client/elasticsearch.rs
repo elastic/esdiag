@@ -2,30 +2,30 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use super::{auth::Auth, known_host::KnownHost};
-use base64::{engine::general_purpose::STANDARD, Engine};
+use crate::data::{Auth, KnownHost};
+use base64::{Engine, engine::general_purpose::STANDARD};
 use elasticsearch::{
-    self,
     cert::CertificateValidation,
     http::{
-        self,
+        headers,
         transport::{SingleNodeConnectionPool, TransportBuilder},
     },
-    Elasticsearch,
 };
 use eyre::Result;
 use url::Url;
 
+pub use elasticsearch::Elasticsearch as ElasticsearchClient;
+
 pub struct ElasticsearchBuilder {
     cert_validation: CertificateValidation,
     connection_pool: SingleNodeConnectionPool,
-    headers: http::headers::HeaderMap,
+    headers: headers::HeaderMap,
 }
 
 impl ElasticsearchBuilder {
     pub fn new(url: Url) -> Self {
-        let mut headers = http::headers::HeaderMap::new();
-        headers.append(http::headers::ACCEPT_ENCODING, "gzip".parse().unwrap());
+        let mut headers = headers::HeaderMap::new();
+        headers.append(headers::ACCEPT_ENCODING, "gzip".parse().unwrap());
 
         Self {
             cert_validation: CertificateValidation::Default,
@@ -48,7 +48,7 @@ impl ElasticsearchBuilder {
     pub fn apikey(self, apikey: String) -> Self {
         let mut headers = self.headers;
         headers.append(
-            http::headers::AUTHORIZATION,
+            headers::AUTHORIZATION,
             format!("ApiKey {}", apikey)
                 .parse()
                 .expect("Invalid API key"),
@@ -68,8 +68,8 @@ impl ElasticsearchBuilder {
     pub fn basic_auth(self, username: String, password: String) -> Self {
         let mut headers = self.headers;
         headers.append(
-            http::headers::AUTHORIZATION,
-            http::headers::HeaderValue::from_str(&format!(
+            headers::AUTHORIZATION,
+            headers::HeaderValue::from_str(&format!(
                 "Basic {}",
                 STANDARD.encode(&format!("{}:{}", username, password))
             ))
@@ -78,20 +78,20 @@ impl ElasticsearchBuilder {
         Self { headers, ..self }
     }
 
-    pub fn build(self) -> Result<elasticsearch::Elasticsearch> {
+    pub fn build(self) -> Result<ElasticsearchClient> {
         let transport = TransportBuilder::new(self.connection_pool)
             .headers(self.headers)
             .cert_validation(self.cert_validation)
             .request_body_compression(true)
             .build()?;
-        Ok(elasticsearch::Elasticsearch::new(transport))
+        Ok(ElasticsearchClient::new(transport))
     }
 }
 
-impl TryFrom<KnownHost> for Elasticsearch {
+impl TryFrom<KnownHost> for ElasticsearchClient {
     type Error = eyre::Report;
 
-    fn try_from(host: KnownHost) -> Result<Elasticsearch> {
+    fn try_from(host: KnownHost) -> Result<ElasticsearchClient> {
         let client = match host {
             KnownHost::ApiKey {
                 apikey,

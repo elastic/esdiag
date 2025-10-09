@@ -2,12 +2,8 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use crate::processor::Product;
+use crate::data::{Auth, Product};
 use eyre::{Result, eyre};
-use reqwest::{
-    Error, Response,
-    header::{ACCEPT, AUTHORIZATION, HeaderMap},
-};
 use serde::{Deserialize, Serialize};
 use serde_yaml;
 use std::{
@@ -213,6 +209,16 @@ impl KnownHost {
         }
     }
 
+    pub fn get_auth(&self) -> Auth {
+        match self {
+            Self::ApiKey { apikey, .. } => Auth::Apikey(apikey.clone()),
+            Self::Basic {
+                username, password, ..
+            } => Auth::Basic(username.clone(), password.clone()),
+            Self::NoAuth { .. } => Auth::None,
+        }
+    }
+
     pub fn save(self, name: &String) -> Result<String> {
         // parse the ~/.esdiag/hosts.yml file into a HashMap<String, Host>
         let mut hosts = match KnownHost::parse_hosts_yml() {
@@ -261,95 +267,6 @@ impl KnownHost {
         KnownHost::NoAuth {
             app: Product::Elasticsearch,
             url: url.clone(),
-        }
-    }
-
-    async fn validate_application(&self, response: Response) -> (bool, String) {
-        let status = response.status();
-        let body = response.text().await.expect("Failed to read test body");
-        let json = serde_json::from_str(&body).unwrap_or(serde_json::Value::Null);
-        let app = match self {
-            Self::ApiKey { app, .. } | Self::Basic { app, .. } | Self::NoAuth { app, .. } => app,
-        };
-        log::debug!("Validation response {} ", json);
-        match app {
-            Product::Elasticsearch => match json.get("tagline") {
-                Some(_) => (true, format!("{} ✅ Elasticsearch", status)),
-                None => (
-                    false,
-                    format!(
-                        "{} ❌ No tagline? Host is not an Elasticsearch cluster!",
-                        status
-                    ),
-                ),
-            },
-            _ => (false, format!("{} ⛔️ Unsupported application", status)),
-        }
-    }
-
-    pub async fn test(&self) -> Result<(bool, String), Error> {
-        match self {
-            Self::ApiKey {
-                apikey,
-                app,
-                accept_invalid_certs,
-                cloud_id,
-                url,
-            } => {
-                // test the connection
-                log::info!("Testing {} connection", &app);
-                // create a client with the API key
-                let mut default_headers = HeaderMap::new();
-                if cloud_id.is_some() {
-                    default_headers.append("X-Management-Request", "true".parse().unwrap());
-                }
-                default_headers.append(ACCEPT, "application/json".parse().unwrap());
-                default_headers
-                    .append(AUTHORIZATION, format!("ApiKey {}", apikey).parse().unwrap());
-                let client = reqwest::Client::builder()
-                    .default_headers(default_headers)
-                    .danger_accept_invalid_certs(*accept_invalid_certs)
-                    .build()?;
-                log::trace!("Reqwest client: {:?}", client);
-                // The cloud API proxy requires the trailing slash
-                let url = format!("{}{}", url.as_str(), "/");
-                let response = client.get(url).send().await;
-                match response {
-                    Ok(response) => Ok(self.validate_application(response).await),
-                    Err(e) => Err(e),
-                }
-            }
-            Self::Basic {
-                app,
-                accept_invalid_certs,
-                password,
-                url,
-                username,
-            } => {
-                // test the connection
-                log::info!("Testing {} connection", &app);
-                let client = reqwest::Client::builder()
-                    .danger_accept_invalid_certs(*accept_invalid_certs)
-                    .build()?;
-                let response = client
-                    .get(url.as_str())
-                    .basic_auth(username, Some(password))
-                    .send()
-                    .await;
-                match response {
-                    Ok(response) => Ok(self.validate_application(response).await),
-                    Err(e) => Err(e),
-                }
-            }
-            Self::NoAuth { app, url } => {
-                // test the connection
-                log::info!("Testing {} connection", &app);
-                let response = reqwest::get(url.as_str()).await;
-                match response {
-                    Ok(response) => Ok(self.validate_application(response).await),
-                    Err(e) => Err(e),
-                }
-            }
         }
     }
 

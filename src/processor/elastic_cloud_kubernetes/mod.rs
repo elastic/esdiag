@@ -4,11 +4,9 @@
 
 use super::{
     DiagnosticProcessor, ProcessorSummary,
-    diagnostic::{
-        DiagPath, DiagnosticManifest, DiagnosticReport, DiagnosticReportBuilder, Lookup, Product,
-    },
+    diagnostic::{DiagPath, DiagnosticManifest, DiagnosticReport, DiagnosticReportBuilder, Lookup},
 };
-use crate::{exporter::Exporter, receiver::Receiver};
+use crate::{data::Product, exporter::Exporter, receiver::Receiver};
 use eyre::Result;
 use serde::Serialize;
 use std::sync::Arc;

@@ -4,12 +4,12 @@
 
 use super::Export;
 use crate::{
-    client::{Auth, ElasticsearchBuilder, KnownHost},
-    data,
+    client::{ElasticsearchBuilder, ElasticsearchClient},
+    data::{self, Auth, KnownHost},
     processor::{BatchResponse, DiagnosticReport},
 };
 use elasticsearch::{
-    BulkOperation, BulkParts, Elasticsearch, IndexParts,
+    BulkOperation, BulkParts, IndexParts,
     http::{Method, headers, request::JsonBody, response::Response},
 };
 use eyre::{Result, eyre};
@@ -22,7 +22,7 @@ use url::Url;
 /// An exporter that sends documents to an Elasticsearch cluster.
 #[derive(Clone)]
 pub struct ElasticsearchExporter {
-    client: Elasticsearch,
+    client: ElasticsearchClient,
     tx_limit: Arc<Semaphore>,
     docs_tx: Option<mpsc::Sender<usize>>,
     url: Url,
@@ -87,7 +87,7 @@ impl TryFrom<KnownHost> for ElasticsearchExporter {
 
     fn try_from(host: KnownHost) -> Result<Self> {
         let url = host.get_url();
-        let client = Elasticsearch::try_from(host)?;
+        let client = ElasticsearchClient::try_from(host)?;
         let limit = std::env::var("ESDIAG_OUTPUT_TASK_LIMIT")
             .ok()
             .and_then(|s| s.parse::<usize>().ok())

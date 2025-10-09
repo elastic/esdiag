@@ -8,11 +8,11 @@ use esdiag::server::Server;
 #[cfg(feature = "setup")]
 use esdiag::setup;
 use esdiag::{
-    client::{KnownHost, KnownHostBuilder},
-    data::Uri,
+    client::Client,
+    data::{KnownHost, KnownHostBuilder, Product, Uri},
     env::LOG_LEVEL,
     exporter::{DirectoryExporter, Exporter},
-    processor::{Collector, Identifiers, Processor, Product},
+    processor::{Collector, Identifiers, Processor},
     receiver::Receiver,
 };
 use eyre::{Result, eyre};
@@ -179,7 +179,9 @@ async fn run(cli: Cli) -> Result<&'static str> {
         } => {
             log::info!("Starting ESDiag server");
 
-            let output_uri = output.and_then(|o| Uri::try_from(o).ok());
+            let output_uri = output
+                .and_then(|o| Uri::try_from(o).ok())
+                .expect("Failed to determine output URL");
             let exporter = Exporter::try_from(output_uri)?;
 
             let kibana_url = kibana.unwrap_or_else(|| {
@@ -248,17 +250,15 @@ async fn run(cli: Cli) -> Result<&'static str> {
                 ))?
             };
 
-            let valid_connection = match host.test().await {
-                Ok((is_valid, message)) => {
-                    match is_valid {
-                        true => log::info!("Host {name}: {}", &message),
-                        false => log::warn!("Host {name}: {}", &message),
-                    }
-                    is_valid
+            let uri = Uri::try_from(host.clone())?;
+
+            let valid_connection = match Client::try_from(uri)?.test_connection().await {
+                Ok(message) => {
+                    log::info!("Host {name}: {}", &message);
+                    true
                 }
-                Err(e) => {
-                    log::error!("Host connection: FAILED ❌ {}", &e);
-                    log::debug!("{:?}", e);
+                Err(message) => {
+                    log::error!("Host connection: FAILED ❌ {}", &message);
                     log::warn!("Check your URL and certificates!");
                     false
                 }
@@ -276,7 +276,9 @@ async fn run(cli: Cli) -> Result<&'static str> {
         }
         Commands::Process { input, output } => {
             let input_uri = Uri::try_from(input)?;
-            let output_uri = output.and_then(|o| Uri::try_from(o).ok());
+            let output_uri = output
+                .and_then(|o| Uri::try_from(o).ok())
+                .expect("Failed to determine output URL");
 
             log::info!("input: {}", input_uri);
 
@@ -311,19 +313,12 @@ async fn run(cli: Cli) -> Result<&'static str> {
         }
         #[cfg(feature = "setup")]
         Commands::Setup { host } => {
-            let uri = match host {
-                Some(host) => match Uri::try_from(host) {
-                    Ok(uri) => Some(uri),
-                    Err(e) => {
-                        log::error!("Failed to convert host to Uri: {}", e);
-                        return Err(e.into());
-                    }
-                },
-                None => None,
-            };
-            let exporter = Exporter::try_from(uri)?;
-            log::info!("Setting up Elasticsearch assets in {exporter}");
-            setup::assets(exporter).await?;
+            let uri = host
+                .and_then(|s| Uri::try_from(s).ok())
+                .expect("Failed to determine output URL");
+            let client = Client::try_from(uri)?;
+            log::info!("Setting up Elasticsearch assets in {client}");
+            setup::assets(&client).await?;
             Ok("setup")
         }
     }

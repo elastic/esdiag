@@ -12,7 +12,10 @@ mod stats;
 mod template;
 
 use super::processor::Identifiers;
-use crate::{client::KnownHost, data::Uri, exporter::Exporter};
+use crate::{
+    data::{KnownHost, Uri},
+    exporter::Exporter,
+};
 use askama::Template;
 use axum::{
     Router,
