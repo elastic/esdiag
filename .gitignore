@@ -1,4 +1,4 @@
 .env*
 /target
 /output
-/assets/kibana/*.ndjson
+/assets/kibana/esdiag-dashboards*.ndjson
