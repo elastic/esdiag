@@ -126,14 +126,7 @@ function environment_setup() {
     export username=${ESDIAG_OUTPUT_USERNAME}
     export password=${ESDIAG_OUTPUT_PASSWORD}
 
-    # The `export.ndjson` file to import into Kibana, defaults to the newest
-    # dashboard file in `assets/kibana/esdiag-dashboards*.ndjson`
-    # Is overwritten by `dashboards_latest_release_download()` if a GITHUB_TOKEN is defined
-    dashboard_file=$(find assets/kibana -name "esdiag-dashboards*.ndjson" -type f 2>/dev/null | sort | tail -n 1)
-    export dashboard_file
-
     # Git repository information
-    export esdiag_dashboards_url="https://api.github.com/repos/elastic/esdiag-dashboards"
     export esdiag_github_url="https://api.github.com/repos/elastic/esdiag"
     export esdiag_branch=${ESDIAG_BRANCH:-"main"}
 }
@@ -260,49 +253,6 @@ function esdiag_version_check() {
     fi
 }
 
-function dashboards_latest_release_download() {
-    log_info "$(green fetching) latest ESDiag Dashboards release"
-
-    # Get the latest release metadata
-    local latest_release_json && latest_release_json=$(curl --silent --location \
-            --header "Accept: application/vnd.github+json" \
-            --header "Authorization: token ${GITHUB_TOKEN}" \
-            --header "X-GitHub-Api-Version: 2022-11-28" \
-            "${esdiag_dashboards_url}/releases/latest")
-
-    # Find the .ndjson asset download URL
-    local download_url && download_url=$(echo "${latest_release_json}" | jq -r '.assets[] | select(.name | endswith(".ndjson")) | .url' | head -1)
-    local file_name && file_name=$(echo "${latest_release_json}" | jq -r '.assets[] | select(.name | endswith(".ndjson")) | .name' | head -1)
-
-    if [[ -z "$download_url" || -z "$file_name" ]]; then
-        log_error "$(red missing) ESDiag Dashboards release, no $(gray assets/kibana/*.ndjson) files"
-        return 1
-    else
-        log_info "$(green found) ESDiag Dashboards release: $(gray "${file_name}")"
-    fi
-
-    if [[ ! -f "${assets_path}/${file_name}" ]]; then
-        # Download the asset using the GitHub API
-        curl --silent --location \
-                --header "Authorization: token ${GITHUB_TOKEN}" \
-                --header "Accept: application/octet-stream" \
-                --output "${assets_path}/${file_name}" \
-                "${download_url}"
-
-        if [[ $? -ne 0 || ! -f "${assets_path}/${file_name}" ]]; then
-            log_error "Failed to download dashboard file"
-            return 1
-        fi
-
-        log_info "$(green downloaded) dashboards file to $(gray "${assets_path}/${file_name}")"
-    else
-        # Skip download if we already have the latest release file
-        log_info "$(green found) dashboards file $(gray "${assets_path}/${file_name}"), skipping download"
-    fi
-
-    export dashboard_file="${assets_path}/${file_name}"
-}
-
 # ----- Kibana Functions -----
 
 function set_auth_header() {
@@ -337,77 +287,6 @@ function set_auth_header() {
         log_info "$(green setting) header $(cyan Authorization: None)"
         export auth_header="Authorization: None"
     fi
-}
-
-function kibana_objects_import() {
-    local kibana_space="${kibana_space:-esdiag}"
-    local response_file="target/kibana_import.json"
-    log_debug "$(green starting) import Kibana objects into space $(cyan "${kibana_space}")"
-
-    # Wait for Kibana to be ready
-    local http_status=0
-    while [[ $http_status -ne 200 ]]; do
-        http_status=$(curl --silent \
-            --max-time 5 \
-            --header "${auth_header}" \
-            --write-out "%{http_code}"\
-            --output /dev/null "${kibana_url}/app/home"
-        )
-        if [[ $http_status -ge 400 || $http_status == "000" ]]; then
-            log_error "$(magenta Kibana) returned HTTP status code $(magenta "${http_status}")"
-            error_message=$("${container}" logs esdiag-kibana | tail -n 20 | grep ERROR | sed -e 's/.*ERROR]//')
-            if [[ -n $error_message ]]; then
-                log_error "${error_message}"
-            fi
-            exit 1
-        elif [[ $http_status -ne 200 ]]; then
-            log_info "Waiting on $(magenta Kibana)..."
-            sleep 5
-        fi
-        # Make sure the container is still running
-        if [[ ! -z ${compose_file} ]]; then
-            local container_status
-            container_status=$(${container} inspect esdiag-kibana --format '{{.State.Status}}')
-            if [[ $container_status == "exited" ]]; then
-                log_info "$(green exited) $(magenta Kibana) container"
-                ${container} logs esdiag-kibana | tail -n 10
-                exit 1
-            fi
-        fi
-    done
-    log_info "$(green serving) $(magenta Kibana) at $(blue "${kibana_url}")"
-    # Kibana's "ready" is overly optimistic and imports may fail, so give it another second
-    sleep 1
-
-    # Import saved objects
-    set_auth_header
-    # check for a 404, if it is not found, create it:
-    # https://esdiag-prod.kb.us-west-2.aws.found.io/api/spaces/space/esdiag
-    log_info "$(green creating) $(magenta Kibana) space $(cyan "${kibana_space}")"
-    curl -X POST "${kibana_url}/api/spaces/space" \
-        --header "${auth_header}" \
-        --header "kbn-xsrf: true" \
-        --header "Content-Type: application/json" \
-        --silent \
-        --data @"assets/kibana/space.json" \
-        | jq > "${response_file}"
-
-    log_info "$(green importing) $(magenta Kibana) objects into space: $(cyan "${kibana_space}")"
-    curl -X POST "${kibana_url}/s/${kibana_space}/api/saved_objects/_import?overwrite=true" \
-        --header "${auth_header}" \
-        --header "kbn-xsrf: true" \
-        --compressed \
-        --silent \
-        --form file=@"${dashboard_file}" \
-        | jq > "${response_file}"
-
-    local success && success=$(jq -r .success "${response_file}")
-    if [[ $success != "true" ]]; then
-        log_error "Import failed, check $(gray "${response_file}") for details"
-        exit 1
-    fi
-    success_count=$(jq -r .successCount "${response_file}")
-    log_debug "$(green success) $(magenta Kibana) objects imported: $(cyan "${success_count}")"
 }
 
 function browser_open() {
@@ -787,7 +666,7 @@ function print_help_setup () {
     echo
 }
 
-function elasticsearch_templates_setup() {
+function esdiag_setup() {
     # Wait for Elasticsearch to be ready
     local http_status=0
     while [[ $http_status -ne 200 ]]; do
@@ -815,6 +694,41 @@ function elasticsearch_templates_setup() {
     done
     log_info "$(green serving) $(blue Elasticsearch) at $(blue "${elasticsearch_url}")"
 
+    # Wait for Kibana to be ready
+    http_status=0
+    while [[ $http_status -ne 200 ]]; do
+        http_status=$(curl --silent \
+            --max-time 5 \
+            --header "${auth_header}" \
+            --write-out "%{http_code}"\
+            --output /dev/null "${kibana_url}/app/home"
+        )
+        if [[ $http_status -ge 400 || $http_status == "000" ]]; then
+            log_error "$(magenta Kibana) returned HTTP status code $(magenta "${http_status}")"
+            error_message=$("${container}" logs esdiag-kibana | tail -n 20 | grep ERROR | sed -e 's/.*ERROR]//')
+            if [[ -n $error_message ]]; then
+                log_error "${error_message}"
+            fi
+            exit 1
+        elif [[ $http_status -ne 200 ]]; then
+            log_info "Waiting on $(magenta Kibana)..."
+            sleep 5
+        fi
+        # Make sure the container is still running
+        if [[ ! -z ${compose_file} ]]; then
+            local container_status
+            container_status=$(${container} inspect esdiag-kibana --format '{{.State.Status}}')
+            if [[ $container_status == "exited" ]]; then
+                log_info "$(green exited) $(magenta Kibana) container"
+                ${container} logs esdiag-kibana | tail -n 10
+                exit 1
+            fi
+        fi
+    done
+    log_info "$(green serving) $(magenta Kibana) at $(blue "${kibana_url}")"
+    # Kibana's "ready" is overly optimistic and imports may fail, so give it another second
+    sleep 1
+
     log_debug "$(green running) $(white "esdiag setup")"
     # If we already have a running container from compose, use it
     local compose_status && compose_status=$(${container} inspect esdiag --format '{{.State.Status}}')
@@ -824,6 +738,7 @@ function elasticsearch_templates_setup() {
     else
         ${container} run --rm --name="esdiag-setup" \
             --env ESDIAG_OUTPUT_URL="${elasticsearch_url}" \
+            ${kibana_url:+--env ESDIAG_KIBANA_URL="${kibana_url}"} \
             ${LOG_LEVEL:+--env LOG_LEVEL="${LOG_LEVEL}"} \
             ${apikey:+--env ESDIAG_OUTPUT_APIKEY="${apikey}"} \
             ${username:+--env ESDIAG_OUTPUT_USERNAME="${username}"} \
@@ -846,20 +761,11 @@ function command_setup() {
         log_info "$(green skipping) GitHub version checks (no access token), building from local version $(cyan "${version}")"
     else
         github_token_check \
-        && esdiag_version_check \
-        && dashboards_latest_release_download
+        && esdiag_version_check
     fi
 
-    set_auth_header
-    # If we have a dashboard file, proceed with setup
-    if [[ -f $dashboard_file ]]; then
-        log_debug "$(green found) dashboard file $(gray "${dashboard_file}")"
-        elasticsearch_templates_setup \
-        && kibana_objects_import
-    else
-        log_error "$(red missing) dashboards file $(magenta "${dashboard_file}")"
-        exit 1
-    fi
+    set_auth_header && \
+    esdiag_setup
 }
 
 # ----- Main -----
