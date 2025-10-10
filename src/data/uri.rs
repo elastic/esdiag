@@ -2,6 +2,8 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
+use crate::data::Product;
+
 use super::{ElasticCloud, KnownHost, KnownHostBuilder};
 use eyre::{OptionExt, Report, Result, eyre};
 use serde::{Deserialize, Deserializer};
@@ -34,6 +36,43 @@ pub enum Uri {
     File(PathBuf),
     /// An input/output stream (stdin/stdout)
     Stream,
+}
+
+impl Uri {
+    /// Create a new Uri from the environment variables
+    pub fn try_from_output_env() -> Result<Self> {
+        log::debug!("Creating URI from ESDIAG_OUTPUT_URL");
+        let url = std::env::var("ESDIAG_OUTPUT_URL")
+            .map_err(|_| eyre!("ESDIAG_OUTPUT_URL is not defined"))?;
+        log::info!("output: Env {}", url);
+        let apikey = std::env::var("ESDIAG_OUTPUT_APIKEY").ok();
+        let username = std::env::var("ESDIAG_OUTPUT_USERNAME").ok();
+        let password = std::env::var("ESDIAG_OUTPUT_PASSWORD").ok();
+        let host = KnownHostBuilder::new(Url::parse(&url)?)
+            .apikey(apikey)
+            .username(username)
+            .password(password)
+            .build()?;
+        host.try_into()
+    }
+
+    /// Create a new Uri from the environment variables
+    pub fn try_from_kibana_env() -> Result<Self> {
+        log::debug!("Creating URI from ESDIAG_KIBANA_URL");
+        let url = std::env::var("ESDIAG_KIBANA_URL")
+            .map_err(|_| eyre!("ESDIAG_KIBANA_URL is not defined"))?;
+        log::info!("kibana: Env {}", url);
+        let apikey = std::env::var("ESDIAG_OUTPUT_APIKEY").ok();
+        let username = std::env::var("ESDIAG_OUTPUT_USERNAME").ok();
+        let password = std::env::var("ESDIAG_OUTPUT_PASSWORD").ok();
+        let host = KnownHostBuilder::new(Url::parse(&url)?)
+            .product(Product::Kibana)
+            .apikey(apikey)
+            .username(username)
+            .password(password)
+            .build()?;
+        host.try_into()
+    }
 }
 
 impl<'de> Deserialize<'de> for Uri {
@@ -167,21 +206,7 @@ impl TryFrom<Option<String>> for Uri {
     fn try_from(uri: Option<String>) -> Result<Self> {
         match uri {
             Some(uri) => Uri::try_from(uri),
-            None => {
-                log::debug!("No output given, using ESDIAG_OUTPUT_URL");
-                let url = std::env::var("ESDIAG_OUTPUT_URL")
-                    .map_err(|_| eyre!("ESDIAG_OUTPUT_URL is not defined"))?;
-                log::info!("output: Env {}", url);
-                let apikey = std::env::var("ESDIAG_OUTPUT_APIKEY").ok();
-                let username = std::env::var("ESDIAG_OUTPUT_USERNAME").ok();
-                let password = std::env::var("ESDIAG_OUTPUT_PASSWORD").ok();
-                let host = KnownHostBuilder::new(Url::parse(&url)?)
-                    .apikey(apikey)
-                    .username(username)
-                    .password(password)
-                    .build()?;
-                host.try_into()
-            }
+            None => Uri::try_from_output_env(),
         }
     }
 }

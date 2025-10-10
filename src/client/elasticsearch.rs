@@ -22,6 +22,7 @@ pub struct ElasticsearchBuilder {
     headers: headers::HeaderMap,
 }
 
+/// A builder for the official Elasticsearch client
 impl ElasticsearchBuilder {
     pub fn new(url: Url) -> Self {
         let mut headers = headers::HeaderMap::new();
@@ -31,17 +32,6 @@ impl ElasticsearchBuilder {
             cert_validation: CertificateValidation::Default,
             connection_pool: SingleNodeConnectionPool::new(url),
             headers,
-        }
-    }
-
-    pub fn insecure(self, ignore_certs: bool) -> Self {
-        let cert_validation = match ignore_certs {
-            true => CertificateValidation::None,
-            false => CertificateValidation::Default,
-        };
-        Self {
-            cert_validation,
-            ..self
         }
     }
 
@@ -85,6 +75,17 @@ impl ElasticsearchBuilder {
             .request_body_compression(true)
             .build()?;
         Ok(ElasticsearchClient::new(transport))
+    }
+
+    pub fn insecure(self, ignore_certs: bool) -> Self {
+        let cert_validation = match ignore_certs {
+            true => CertificateValidation::None,
+            false => CertificateValidation::Default,
+        };
+        Self {
+            cert_validation,
+            ..self
+        }
     }
 }
 

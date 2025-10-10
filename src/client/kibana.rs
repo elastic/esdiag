@@ -16,32 +16,29 @@ pub struct KibanaClient {
     url: Url,
 }
 
+/// A reqwest-based client with authentication for Kibana
 impl KibanaClient {
     /// Create a new KibanaExporter from a URL and Auth
     pub fn try_new(url: Url, auth: Auth) -> Result<Self> {
         let mut headers = reqwest::header::HeaderMap::new();
-        headers.insert("kbn-xsrf", "true".parse().unwrap());
+        headers.insert("kbn-xsrf", "true".parse()?);
         match auth {
             Auth::Basic(username, password) => {
+                let credentials = base64::engine::general_purpose::STANDARD
+                    .encode(format!("{}:{}", username, password));
                 headers.append(
                     reqwest::header::AUTHORIZATION,
-                    format!(
-                        "Basic {}",
-                        base64::engine::general_purpose::STANDARD
-                            .encode(format!("{}:{}", username, password))
-                    )
-                    .parse()
-                    .unwrap(),
+                    format!("Basic {}", credentials).parse()?,
                 );
             }
             Auth::Apikey(apikey) => {
                 headers.append(
                     reqwest::header::AUTHORIZATION,
-                    format!("ApiKey {}", apikey).parse().unwrap(),
+                    format!("ApiKey {}", apikey).parse()?,
                 );
             }
             Auth::None => {
-                headers.append(reqwest::header::AUTHORIZATION, "None".parse().unwrap());
+                headers.append(reqwest::header::AUTHORIZATION, "None".parse()?);
             }
         }
         let client = Client::builder().default_headers(headers).build()?;
@@ -49,7 +46,7 @@ impl KibanaClient {
         Ok(Self { client, url })
     }
 
-    /// Request to an arbitrary path on the Kibana client
+    /// Send a request to a given path on the Kibana client
     pub async fn request(
         &self,
         method: Method,
@@ -69,8 +66,9 @@ impl KibanaClient {
             None => false,
         };
 
-        // Remove Content-Type header if using form-data
         if use_form_data {
+            // Reqwest inserts its own multipart Content-Type headers,
+            // this removal prevents conflicts
             headers.remove("Content-Type");
         }
 
@@ -90,6 +88,8 @@ impl KibanaClient {
 
         let response = match body {
             Some(body) if use_form_data => {
+                // As of October 2025 we're using a static filename, as the only
+                // use of form data is dashboards.ndjson for the saved objects API
                 log::debug!("Sending request with form-data");
                 let part = multipart::Part::bytes(body.to_vec())
                     .file_name("dashboards.ndjson")
@@ -106,6 +106,7 @@ impl KibanaClient {
         response.map_err(|e| eyre!("Failed to send request: {}", e))
     }
 
+    /// Verify the connection and authentication to Kibana
     pub async fn test_connection(&self) -> Result<reqwest::Response> {
         self.request(Method::GET, &HashMap::new(), "/api/status", None)
             .await

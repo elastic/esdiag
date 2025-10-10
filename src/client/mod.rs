@@ -16,12 +16,14 @@ use eyre::{Result, eyre};
 use reqwest::Method;
 use std::collections::HashMap;
 
+/// A standardized client for interacting with Elastic Stack APIs
 pub enum Client {
     Elasticsearch(ElasticsearchClient),
     Kibana(KibanaClient),
 }
 
 impl Client {
+    /// Send an HTTP request to a path on the client's base URL
     pub async fn request(
         &self,
         method: Method,
@@ -73,6 +75,7 @@ impl Client {
         }
     }
 
+    /// Verify the connection and authentication to the stack component
     pub async fn test_connection(&self) -> std::result::Result<String, String> {
         match self {
             Client::Elasticsearch(client) => {

@@ -313,13 +313,24 @@ async fn run(cli: Cli) -> Result<&'static str> {
         }
         #[cfg(feature = "setup")]
         Commands::Setup { host } => {
-            let uri = host
-                .and_then(|s| Uri::try_from(s).ok())
-                .expect("Failed to determine output URL");
-            let client = Client::try_from(uri)?;
-            log::info!("Setting up assets in {client}");
-            setup::assets(&client).await?;
-            Ok("setup")
+            if let Some(host) = host {
+                let uri = Uri::try_from(host)?;
+                let client = Client::try_from(uri)?;
+                log::info!("Setting up assets in {client}");
+                setup::assets(&client).await?;
+                Ok("setup")
+            } else {
+                log::debug!("Setting up assets with environment variables");
+                let es_uri = Uri::try_from_output_env()?;
+                let es_client = Client::try_from(es_uri)?;
+                log::info!("Setting up assets in {es_client}");
+                setup::assets(&es_client).await?;
+                let kb_uri = Uri::try_from_kibana_env()?;
+                let kb_client = Client::try_from(kb_uri)?;
+                log::info!("Setting up Kibana assets in {kb_client}");
+                setup::assets(&kb_client).await?;
+                Ok("setup")
+            }
         }
     }
 }

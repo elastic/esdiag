@@ -57,7 +57,7 @@ async fn send_asset(client: &Client, asset: &Asset, file: &File<'_>, named: bool
                 true => {
                     let body = response.text().await?;
                     log::info!("{} {} {} {}", &asset.name, &stem, &asset.method, status);
-                    log::debug!("Response body: {}", body);
+                    log::trace!("Response body: {}", body);
                     Ok(())
                 }
                 false => {
@@ -95,9 +95,8 @@ pub async fn assets(client: &Client) -> Result<()> {
         } else if let Some(file) = ASSETS_DIR.get_file(&path) {
             // do something with the file
             log::debug!("file.path: {:?}", &file.path());
-            match send_asset(client, &asset, file, false).await {
-                Ok(res) => log::debug!("Response: {:?}", res),
-                Err(e) => log::error!("Failed to send asset: {e:?}"),
+            if let Err(e) = send_asset(client, &asset, file, false).await {
+                log::error!("Failed to send asset: {e:?}");
             }
         } else {
             log::error!("Asset not found: {}", &asset.name);
