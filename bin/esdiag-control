@@ -726,7 +726,9 @@ function esdiag_setup() {
     local compose_status && compose_status=$(${container} inspect esdiag --format '{{.State.Status}}')
     if [[ "${compose_status}" == "running" ]]; then
         log_debug "$(green found) existing $(cyan esdiag) container"
-        ${container} compose --env-file "${env_file}" --file "${compose_file}" run --rm esdiag-webui setup &> /dev/null
+        ${container} compose --env-file "${env_file}" \
+            --env ESDIAG_KIBANA_URL="http://esdiag-kibana:5601" \
+            --file "${compose_file}" run --rm esdiag-webui setup &> /dev/null
     else
         ${container} run --rm --name="esdiag-setup" \
             --env ESDIAG_OUTPUT_URL="${elasticsearch_url}" \
