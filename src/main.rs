@@ -179,9 +179,7 @@ async fn run(cli: Cli) -> Result<&'static str> {
         } => {
             log::info!("Starting ESDiag server");
 
-            let output_uri = output
-                .and_then(|o| Uri::try_from(o).ok())
-                .expect("Failed to determine output URL");
+            let output_uri = Uri::try_from(output)?;
             let exporter = Exporter::try_from(output_uri)?;
 
             let kibana_url = kibana.unwrap_or_else(|| {
@@ -276,9 +274,7 @@ async fn run(cli: Cli) -> Result<&'static str> {
         }
         Commands::Process { input, output } => {
             let input_uri = Uri::try_from(input)?;
-            let output_uri = output
-                .and_then(|o| Uri::try_from(o).ok())
-                .expect("Failed to determine output URL");
+            let output_uri = Uri::try_from(output)?;
 
             log::info!("input: {}", input_uri);
 
