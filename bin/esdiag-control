@@ -735,7 +735,7 @@ function esdiag_setup() {
             ${apikey:+--env ESDIAG_OUTPUT_APIKEY="${apikey}"} \
             ${username:+--env ESDIAG_OUTPUT_USERNAME="${username}"} \
             ${password:+--env ESDIAG_OUTPUT_PASSWORD="${password}"} \
-            "${esdiag_image} setup"
+            "${esdiag_image}" setup
     fi
 
     # shellcheck disable=SC2181
