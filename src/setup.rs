@@ -74,10 +74,11 @@ async fn send_asset(client: &Client, asset: &Asset, file: &File<'_>, named: bool
     }
 }
 
-/// Submit saved assets to the Elasticsearch APIs
+/// Submit saved assets to the client APIs
 pub async fn assets(client: &Client) -> Result<()> {
     // load asset list from ./assets/{product}/assets.yml
     let assets = parse_assets_yml(client.into())?;
+    let mut error_count = 0;
 
     for asset in assets {
         log::info!("Processing asset: {}", &asset.name);
@@ -89,7 +90,10 @@ pub async fn assets(client: &Client) -> Result<()> {
                 log::debug!("file.path: {:?}", &file.path());
                 match send_asset(client, &asset, file, true).await {
                     Ok(res) => log::debug!("Response: {:?}", res),
-                    Err(e) => log::error!("Failed to send asset: {e:?}"),
+                    Err(e) => {
+                        log::error!("Failed to send asset: {e:?}");
+                        error_count += 1;
+                    }
                 }
             }
         } else if let Some(file) = ASSETS_DIR.get_file(&path) {
@@ -97,11 +101,16 @@ pub async fn assets(client: &Client) -> Result<()> {
             log::debug!("file.path: {:?}", &file.path());
             if let Err(e) = send_asset(client, &asset, file, false).await {
                 log::error!("Failed to send asset: {e:?}");
+                error_count += 1;
             }
         } else {
             log::error!("Asset not found: {}", &asset.name);
             return Err(eyre!("Asset not found: {}", asset.name));
         }
+    }
+    match error_count {
+        0 => log::info!("completed setup for {client}"),
+        _ => log::error!("{error_count} errors in setup for {client}"),
     }
     Ok(())
 }

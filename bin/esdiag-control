@@ -727,8 +727,9 @@ function esdiag_setup() {
     if [[ "${compose_status}" == "running" ]]; then
         log_debug "$(green found) existing $(cyan esdiag) container"
         ${container} compose --env-file "${env_file}" \
+            --file "${compose_file}" run --rm \
             --env ESDIAG_KIBANA_URL="http://esdiag-kibana:5601" \
-            --file "${compose_file}" run --rm esdiag-webui setup &> /dev/null
+            esdiag-webui setup &> /dev/null
     else
         ${container} run --rm --name="esdiag-setup" \
             --env ESDIAG_OUTPUT_URL="${elasticsearch_url}" \
@@ -742,7 +743,7 @@ function esdiag_setup() {
 
     # shellcheck disable=SC2181
     if [[ $? -eq 0 ]]; then
-        log_debug "$(green completed) $(white "esdiag setup")"
+        log_info "$(green completed) $(white "esdiag setup")"
     else
         log_error "$(red failed) $(white "esdiag setup") with exit status ${?}"
         exit $?

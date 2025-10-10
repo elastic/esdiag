@@ -185,7 +185,7 @@ function command_setup_completes_successfully() {
     test_start "command_setup_completes_successfully"
     esdiag_control setup
     sleep 1
-    success=$(tail -n 10 ${test_log} | grep --count "importing Kibana objects into space:")
+    success=$(tail -n 10 ${test_log} | grep --count "completed esdiag setup")
 
     log_debug "Setup success: $(white "${success}")"
     if [[ ${success} -eq 1 ]]; then
