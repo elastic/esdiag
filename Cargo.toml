@@ -46,7 +46,7 @@ tokio = { version = "^1.45.0", features = [
 url = { version = "^2.5.0", features = ["serde"] }
 urlencoding = "2.1.3"
 uuid = { version = "^1.8.0", features = ["v4", "fast-rng"] }
-zip = { version = "^2.1.3", default-features = false, features = [
+zip = { version = "^6.0.0", default-features = false, features = [
     "chrono",
     "deflate",
     "deflate64",
