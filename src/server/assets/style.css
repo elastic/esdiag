@@ -4,9 +4,15 @@ body {
     margin: 0px;
 }
 
-.info {
+info-text {
+    display: flex;
     color: rgb(81, 99, 129);
     font-size: 0.8em;
+    padding: 12px 0 0 0;
+}
+
+.margin-after {
+    margin: 0 0 12px 0;
 }
 
 code {
@@ -38,13 +44,35 @@ h3 {
     margin: 0px;
 }
 
-.links {
+header-links {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     justify-content: space-between;
+    height: 40px;
 }
 
-.header {
+header-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 40px;
+    width: 40px;
+    border-radius: 4px;
+}
+
+header-icon .link {
+    display: flex;
+    align-items: inherit;
+    justify-content: inherit;
+    height: 40px;
+    width: 40px;
+}
+
+header-icon:hover {
+    background-color: #101c3f;
+}
+
+header {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -54,7 +82,7 @@ h3 {
     color: #ffffff;
 }
 
-.header h1 {
+header h1 {
     display: inline-block;
     color: #ffffff;
     font-size: 1.2em;
@@ -63,21 +91,21 @@ h3 {
     padding-top: 8px;
 }
 
-.logo {
+img#logo {
     display: inline-block;
     vertical-align: middle;
     height: 26px;
     margin: 0px 4px 6px 4px;
 }
 
-.content {
+content {
     max-width: 800px;
     display: block;
     margin: 0 auto;
     padding: 24px 12px;
 }
 
-.input-form {
+input-form {
     display: flex;
     justify-content: space-evenly;
     background-color: #ffffff;
@@ -85,7 +113,7 @@ h3 {
     border: 1px solid #e3e8f2;
 }
 
-.metadata-form {
+metadata-form {
     display: block;
     width: 40%;
     background-color: #ffffff;
@@ -93,7 +121,7 @@ h3 {
     border-left: 1px solid #e3e8f2;
 }
 
-.diagnostic-form {
+diagnostic-form {
     display: block;
     width: 60%;
     background-color: #ffffff;
@@ -304,10 +332,10 @@ h3 {
     display: none;
 }
 
-.tabs {
+tab-links {
     display: flex;
     border-bottom: 1px solid #e3e8f2;
-    margin-bottom: 16px;
+    margin-bottom: 4px;
 }
 
 .tab {
@@ -341,11 +369,13 @@ h3 {
     width: 100%;
 }
 
-#tab-content {
+tab-content {
     display: block;
 }
 
-.form-group {
+input-group {
+    display: flex;
+    flex-direction: column;
     margin-bottom: 16px;
 }
 
@@ -414,24 +444,17 @@ h3 {
     cursor: not-allowed;
 }
 
-.clear-link {
+text-link {
+    display: flex;
     color: #1339ab;
     cursor: pointer;
     font-size: 14px;
     font-weight: 500;
     text-decoration: none;
-    align-self: flex-end;
+    padding: 4px 0px;
 }
 
-.clear-curl-link:hover {
-    text-decoration: underline;
-}
-
-.clear-curl-link.visible {
-    display: inline;
-}
-
-.user-menu {
+popup-menu {
     position: absolute;
     top: 95%;
     right: 0;
@@ -439,18 +462,13 @@ h3 {
     border: 1px solid #dce2ea;
     border-radius: 4px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-    padding: 12px;
     min-width: 180px;
     display: none;
     z-index: 1000;
+    padding: 4px;
 }
 
-.user-circle:hover .user-menu {
-    display: block;
-}
-
-.user-menu-header {
-    padding: 8px;
+popup-menu-header {
     font-size: 14px;
     font-weight: 600;
     color: #101c3f;
@@ -460,9 +478,11 @@ h3 {
     justify-content: space-between;
     text-decoration: none;
     border-bottom: 1px solid #e3e8f2;
+    padding: 8px;
+    margin-bottom: 4px;
 }
 
-.user-menu-item {
+popup-menu-item {
     padding: 8px;
     font-size: 14px;
     font-weight: 400;
@@ -473,13 +493,13 @@ h3 {
     text-decoration: none;
 }
 
-.user-menu-item:hover {
+popup-menu-item:hover {
     background-color: #f5f7fa;
     border-radius: 4px;
 }
 
-.user-menu-item a {
-    display: inline-block;
+popup-menu-item a {
+    display: flex;
     width: 100%;
     font-size: 14px;
     font-weight: 400;
@@ -488,21 +508,20 @@ h3 {
 }
 
 .icon {
-    width: 24px;
-    height: 24px;
-    margin: 0px 8px;
-    align-self: right;
+    color: #ffffff;
+    width: 16px;
+    height: 16px;
 }
 
 #kibana {
     position: relative;
 }
 
-#kibana:hover .user-menu {
+#kibana:hover popup-menu {
     display: block;
 }
 
-.github {
+github-icon {
     display: inline-block;
     height: 20px;
     width: 24px;
@@ -510,7 +529,7 @@ h3 {
     vertical-align: bottom;
 }
 
-.user-circle {
+user-icon {
     background-color: #45a8ff;
     border-radius: 50%;
     color: #153385;
@@ -519,11 +538,18 @@ h3 {
     justify-content: center;
     font-size: 12px;
     font-weight: 450;
-    margin: 0px 12px;
     height: 24px;
     width: 24px;
     position: relative;
     cursor: pointer;
+}
+
+#user-circle {
+    position: relative;
+}
+
+#user-circle:hover popup-menu {
+    display: block;
 }
 
 .debug-signals {
@@ -557,15 +583,15 @@ footer {
     width: 8em;
 }
 
-.text-left {
+footer-left {
     text-align: left;
 }
 
-.text-center {
+footer-center {
     text-align: center;
 }
 
-.text-right {
+footer-right {
     text-align: right;
 }
 

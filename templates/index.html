@@ -9,90 +9,109 @@
     </head>
 
     <body>
-        <header class="header">
+        <header>
             <div>
-                <img class="logo" src="/esdiag.svg" alt="Elastic Stack Diagnostics Logo" />
+                <img id="logo" src="/esdiag.svg" alt="Elastic Stack Diagnostics Logo" />
                 <h1>Elastic Stack Diagnostics</h1>
             </div>
-            <div class="links">
-                <div id="kibana">
-                    <a
-                        href="{{ kibana_url }}/app/dashboards#/view/2c8cd284-79ef-4787-8b79-0030e0df467b"
-                        target="_blank"
+            <header-links>
+                <header-icon id="help">
+                    <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="16"
+                        height="16"
+                        viewBox="0 0 16 16"
+                        class="icon"
+                        role="img"
+                        data-icon-type="question"
+                        data-is-loaded="true"
+                        aria-hidden="true"
+                        fill="#ffffff"
                     >
-                        <svg
-                            class="icon"
-                            width="64"
-                            height="64"
-                            viewBox="0 0 64 64"
-                            fill="none"
-                            xmlns="http://www.w3.org/2000/svg"
-                        >
-                            <g clip-path="url(#clip0_0_6522)">
-                                <path
-                                    fill-rule="evenodd"
-                                    clip-rule="evenodd"
-                                    d="M11 25.2499V53.5809L31.137 30.3919C25.149 27.1299 18.299 25.2499 11 25.2499Z"
-                                    fill="white"
-                                />
-                                <path
-                                    fill-rule="evenodd"
-                                    clip-rule="evenodd"
-                                    d="M11 4.99991V25.2499C18.299 25.2499 25.149 27.1299 31.137 30.3919L53.188 4.99991H11Z"
-                                    fill="white"
-                                />
-                                <path
-                                    fill-rule="evenodd"
-                                    clip-rule="evenodd"
-                                    d="M35.4434 33.059L14.7754 56.86L12.9164 59H52.3414C50.1784 48.342 43.9924 39.149 35.4434 33.059Z"
-                                    fill="white"
-                                />
-                            </g>
-                            <defs>
-                                <clipPath id="clip0_0_6522">
-                                    <rect width="64" height="64" fill="white" />
-                                </clipPath>
-                            </defs></svg
-                    ></a>
-                    <div class="user-menu">
-                        <div class="user-menu-header">Kibana Links</div>
-                        <div class="user-menu-item">
+                        <path
+                            fill-rule="evenodd"
+                            d="M8 14A6 6 0 1 0 8 2a6 6 0 0 0 0 12Zm0 1A7 7 0 1 0 8 1a7 7 0 0 0 0 14Z"
+                        ></path>
+                        <path d="M9 11a1 1 0 1 1-2 0 1 1 0 0 1 2 0Z"></path>
+                        <path
+                            fill-rule="evenodd"
+                            d="M8 4h.033l.067.004a2.343 2.343 0 0 1 .874.236c.246.124.508.317.708.616.2.302.318.682.318 1.144 0 .463-.117.843-.318 1.145-.2.299-.462.492-.708.615a2.274 2.274 0 0 1-.474.172V9h-1V7H8c.005 0 .015 0 .029-.002a1.344 1.344 0 0 0 .498-.133.817.817 0 0 0 .323-.275C8.93 6.47 9 6.288 9 6c0-.287-.07-.47-.15-.59a.818.818 0 0 0-.324-.275 1.344 1.344 0 0 0-.555-.133 1.344 1.344 0 0 0-.498.133.817.817 0 0 0-.323.275C7.07 5.53 7 5.713 7 6H6c0-.462.117-.843.318-1.144.2-.3.462-.492.708-.616a2.343 2.343 0 0 1 .94-.24H8Z"
+                        ></path>
+                    </svg>
+                </header-icon>
+                <header-icon id="kibana">
+                    <svg
+                        class="icon"
+                        width="16"
+                        height="16"
+                        viewBox="0 0 64 64"
+                        fill="none"
+                        xmlns="http://www.w3.org/2000/svg"
+                    >
+                        <g clip-path="url(#clip0_0_6522)">
+                            <path
+                                fill-rule="evenodd"
+                                clip-rule="evenodd"
+                                d="M11 25.2499V53.5809L31.137 30.3919C25.149 27.1299 18.299 25.2499 11 25.2499Z"
+                                fill="white"
+                            />
+                            <path
+                                fill-rule="evenodd"
+                                clip-rule="evenodd"
+                                d="M11 4.99991V25.2499C18.299 25.2499 25.149 27.1299 31.137 30.3919L53.188 4.99991H11Z"
+                                fill="white"
+                            />
+                            <path
+                                fill-rule="evenodd"
+                                clip-rule="evenodd"
+                                d="M35.4434 33.059L14.7754 56.86L12.9164 59H52.3414C50.1784 48.342 43.9924 39.149 35.4434 33.059Z"
+                                fill="white"
+                            />
+                        </g>
+                        <defs>
+                            <clipPath id="clip0_0_6522">
+                                <rect width="64" height="64" fill="white" />
+                            </clipPath>
+                        </defs>
+                    </svg>
+                    <popup-menu>
+                        <popup-menu-header>Kibana Links</popup-menu-header>
+                        <popup-menu-item>
                             <a
                                 target="_blank"
-                                href="{{ kibana_url }}/app/dashboards#/view/2c8cd284-79ef-4787-8b79-0030e0df467b?_g=(filters:!(),refreshInterval:(pause:!t,value:60000),time:(from:now-90d,to:now))"
-                                >{{ kibana_url }}</a
-                            >
-                        </div>
-                        <div class="user-menu-item">
-                            <a
-                                target="_blank"
-                                href="{{ kibana_url }}/app/dashboards#/view/578354da-7455-4b56-b2d8-b78425fb1710?_g=(filters:!(),refreshInterval:(pause:!t,value:60000),time:(from:now-90d,to:now))&_a=(filters:!(('$state':(store:appState),meta:(alias:!n,disabled:!f,index:'metrics-diagnostic-esdiag',key:diagnostic.user,negate:!f,params:(query:'{{ user }}'),type:phrase),query:(match_phrase:(diagnostic.user:'{{ user }}')))),viewMode:view)"
+                                href="{{ kibana_url }}/app/dashboards#/view/578354da-7455-4b56-b2d8-b78425fb1710?_g=(filters:!(),refreshInterval:(pause:!t,value:60000),time:(from:now-30d,to:now))&_a=(filters:!(('$state':(store:appState),meta:(alias:!n,disabled:!f,index:'metrics-diagnostic-esdiag',key:diagnostic.user,negate:!f,params:(query:'{{ user }}'),type:phrase),query:(match_phrase:(diagnostic.user:'{{ user }}')))),viewMode:view)"
                                 >My Diagnostics</a
                             >
-                        </div>
-                    </div>
-                </div>
-                <div id="user-circle" class="user-circle">
-                    {{ user_initial }}
-                    <div class="user-menu">
-                        <div class="user-menu-header">Username</div>
-                        <div
+                        </popup-menu-item>
+                        <popup-menu-item>
+                            <a
+                                target="_blank"
+                                href="{{ kibana_url }}/app/dashboards#/view/2c8cd284-79ef-4787-8b79-0030e0df467b?_g=(filters:!(),refreshInterval:(pause:!t,value:60000),time:(from:now-30d,to:now))"
+                                >ESDiag Readme</a
+                            >
+                        </popup-menu-item>
+                    </popup-menu>
+                </header-icon>
+                <header-icon id="user-circle">
+                    <user-icon class="user-circle"> {{ user_initial }} </user-icon>
+                    <popup-menu>
+                        <popup-menu-header>Username</popup-menu-header>
+                        <popup-menu-item
                             id="username-display"
                             data-signals-auth.header="{{ auth_header }}"
                             data-signals-metadata.user="'{{ user }}'"
                             data-text="$metadata.user"
-                            class="user-menu-item"
-                        ></div>
-                    </div>
-                </div>
-            </div>
+                        ></popup-menu-item>
+                    </popup-menu>
+                </header-icon>
+            </header-links>
         </header>
 
-        <div class="content">
+        <content>
             <h2>Process Diagnostics</h2>
-            <div class="input-form" id="input-form" data-signals-loading="false" data-signals-processing="false">
-                <div id="diagnostic-form" class="diagnostic-form">
-                    <div class="tabs" data-signals-tab="'file-upload'">
+            <input-form id="input-form" data-signals-loading="false" data-signals-processing="false">
+                <diagnostic-form id="diagnostic-form">
+                    <tab-links data-signals-tab="'file-upload'">
                         <button
                             id="tab-file-upload"
                             class="tab active"
@@ -117,8 +136,8 @@
                         >
                             API Key
                         </button>
-                    </div>
-                    <div id="tab-content" class="tab-content">
+                    </tab-links>
+                    <tab-content class="tab-content">
                         <form
                             id="upload-form"
                             data-show="$tab === 'file-upload'"
@@ -126,7 +145,7 @@
                             data-signals-file_upload.job_id="0"
                             enctype="multipart/form-data"
                         >
-                            <p class="info">Process a file uploaded from your local computer</p>
+                            <info-text class="margin-after">Process a file uploaded from your local computer</info-text>
                             <input
                                 type="file"
                                 id="file-input"
@@ -329,11 +348,11 @@
                             data-show="$tab === 'service-link'"
                             style="display: none"
                         >
-                            <p class="info">
+                            <info-text class="margin-after">
                                 Process from an Elastic upload service link:
                                 <a href="https://upload.elastic.co" target="_blank">https://upload.elastic.co</a>
-                            </p>
-                            <div class="form-group">
+                            </info-text>
+                            <input-group>
                                 <label for="curl-command" class="form-label"
                                     >Curl Command or Case Comment (Optional)</label
                                 >
@@ -348,7 +367,7 @@
                                     $service_link.filename = parseFilename($service_link._curl)
                                 }"
                                 ></textarea>
-                                <div
+                                <text-link
                                     id="curl-command-clear"
                                     data-show="$service_link._curl !== ''"
                                     data-on-click="{
@@ -357,13 +376,12 @@
                                     $service_link.token = '';
                                     $service_link.filename = '';
                                 }"
-                                    class="clear-link"
                                     style="display: none"
                                 >
                                     Clear
-                                </div>
-                            </div>
-                            <div class="form-group">
+                                </text-link>
+                            </input-group>
+                            <input-group>
                                 <label for="service-token" class="form-label">Token</label>
                                 <input
                                     type="text"
@@ -375,8 +393,8 @@
                                     required
                                     placeholder="Enter authentication token"
                                 />
-                            </div>
-                            <div class="form-group">
+                            </input-group>
+                            <input-group>
                                 <label for="service-url" class="form-label">URL</label>
                                 <input
                                     type="url"
@@ -388,8 +406,8 @@
                                     required
                                     placeholder="https://example.com/path/to/diagnostic.zip"
                                 />
-                            </div>
-                            <div class="form-group">
+                            </input-group>
+                            <input-group>
                                 <label for="service-filename" class="form-label">Filename</label>
                                 <input
                                     type="text"
@@ -401,7 +419,7 @@
                                     required
                                     placeholder="diagnostic.zip"
                                 />
-                            </div>
+                            </input-group>
                             <input
                                 id="service-link-button"
                                 class="button"
@@ -438,8 +456,10 @@
                         </form>
 
                         <form id="api-key-form" data-show="$tab === 'api-key'" style="display: none">
-                            <p class="info">Process directly from an Elasticsearch cluster's API.</p>
-                            <div class="form-group">
+                            <info-text class="margin-after"
+                                >Process directly from an Elasticsearch cluster's API.</info-text
+                            >
+                            <input-group>
                                 <label for="elasticsearch-url" class="form-label">Elasticsearch URL</label>
                                 <input
                                     type="url"
@@ -451,8 +471,8 @@
                                     required
                                     placeholder="https://elasticsearch.example.com/"
                                 />
-                            </div>
-                            <div class="form-group">
+                            </input-group>
+                            <input-group>
                                 <label for="api-key" class="form-label">Elasticsearch API Key</label>
                                 <input
                                     type="password"
@@ -464,8 +484,8 @@
                                     required
                                     placeholder="Cluster API key"
                                 />
-                                <p class="info"><i>API keys are not saved or logged.</i></p>
-                            </div>
+                                <info-text><i>API keys are not saved or logged.</i></info-text>
+                            </input-group>
                             <input
                                 id="es-api-key-button"
                                 class="button"
@@ -475,11 +495,11 @@
                                 data-attr-disabled="$loading || !$es_api.url || !$es_api.key"
                             />
                         </form>
-                    </div>
-                </div>
-                <div id="metadata" class="metadata-form">
+                    </tab-content>
+                </diagnostic-form>
+                <metadata-form id="metadata">
                     <h3>Metadata</h3>
-                    <div class="form-group">
+                    <input-group>
                         <label for="username" class="form-label">User</label>
                         <input
                             type="text"
@@ -491,8 +511,8 @@
                             class="form-input"
                             data-attr-disabled="$auth.header || $processing || $loading"
                         />
-                    </div>
-                    <div class="form-group">
+                    </input-group>
+                    <input-group>
                         <label for="account" class="form-label">Account</label>
                         <input
                             type="text"
@@ -503,8 +523,8 @@
                             class="form-input"
                             data-attr-disabled="$loading || $processing"
                         />
-                    </div>
-                    <div class="form-group">
+                    </input-group>
+                    <input-group>
                         <label for="case-number" class="form-label">Case Number</label>
                         <input
                             type="text"
@@ -515,8 +535,8 @@
                             class="form-input"
                             data-attr-disabled="$loading || $processing"
                         />
-                    </div>
-                    <div class="form-group">
+                    </input-group>
+                    <input-group>
                         <label for="opportunity" class="form-label">Opportunity</label>
                         <input
                             type="text"
@@ -527,8 +547,8 @@
                             class="form-input"
                             data-attr-disabled="$loading || $processing"
                         />
-                    </div>
-                    <div
+                    </input-group>
+                    <text-link
                         id="metadata-clear"
                         data-show="$metadata.account || $metadata.case_number || $metadata.opportunity"
                         data-on-click="{
@@ -536,13 +556,12 @@
                         $metadata.case_number = '';
                         $metadata.opportunity = '';
                     }"
-                        class="clear-link"
                         style="display: none"
                     >
                         Clear Metadata
-                    </div>
-                </div>
-            </div>
+                    </text-link>
+                </metadata-form>
+            </input-form>
 
             <div
                 id="current-status"
@@ -585,11 +604,11 @@
                 Loading file upload {{ upload_id }}
             </div>
             {% endif %}
-        </div>
+        </content>
 
         <footer>
-            <span class="text-left">
-                <span id="github" class="github">
+            <footer-left>
+                <github-icon id="github">
                     <a href="https://github.com/elastic/esdiag" target="_blank">
                         <svg viewBox="0 0 24 24">
                             <path
@@ -598,15 +617,14 @@
                             />
                         </svg>
                     </a>
-                </span>
+                </github-icon>
                 ESDiag
                 <a target="_blank" href="https://github.com/elastic/esdiag/releases/tag/{{ version }}" class="version"
                     >{{ version }}</a
                 >
-            </span>
-            <span id="exporter" class="text-center">Output: {{ exporter }}</span>
-            <span
-                class="text-right"
+            </footer-left>
+            <footer-center id="exporter">Output: {{ exporter }}</footer-center>
+            <footer-right
                 data-signals="{ 'stats': {{ stats }} }"
                 data-on-load="@patch('/stats')"
                 data-on-patch-signals-filter="stats"
@@ -614,7 +632,7 @@
                 <span id="status" data-text="$loading ? 'Loading' : $processing ? 'Processing' : 'Ready'">Ready </span>
                 | <span data-text="Intl.NumberFormat().format($stats.jobs.total)">0</span> diags |
                 <span data-text="Intl.NumberFormat().format($stats.docs.total)">0</span> docs
-            </span>
+            </footer-right>
         </footer>
 
         {% if debug %}
