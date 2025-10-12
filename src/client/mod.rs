@@ -44,13 +44,12 @@ impl Client {
                 };
                 let header_map: es::http::headers::HeaderMap = headers
                     .iter()
-                    .map(|(k, v)| {
-                        (
-                            k.parse()
-                                .expect(&format!("Failed to parse header key: {}", k)),
-                            v.parse()
-                                .expect(&format!("Failed to parse header value: {}", v)),
-                        )
+                    .filter_map(|(k, v)| match (k.parse(), v.parse()) {
+                        (Ok(k), Ok(v)) => Some((k, v)),
+                        x => {
+                            log::warn!("Failed to parse header: {:?}", x);
+                            None
+                        }
                     })
                     .collect();
                 use es::http::request::JsonBody;
