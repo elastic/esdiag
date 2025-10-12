@@ -9,58 +9,69 @@ Quickstart: MacOS Installation with Homebrew and Podman
 -------------------------------------------------------
 
 1. Install [Homebrew package manager](https://brew.sh/)
+
   ```bash
   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
   ```
 
 2. Install Podman and `esdiag-control` dependencies
+
   ```bash
   brew install podman podman-compose jq
   ```
 
 3. Setup Podman machine, increase it's resources, and start it
+
   ```sh
   podman machine init
   podman machine set --cpus 8 --memory 8192
   podman machine start
   ```
 
-4. Create the minimal `.env` file to pull dashboards with a [GitHub personal access token](github-token.md)
+4. Start a full security-enabled Elastic Stack. The script will attempt opening your default web browser to the ESDiag web interface.
+
   ```sh
-  export GITHUB_TOKEN=<your_github_token>
+  ./bin/esdiag-control up
   ```
 
-5. Start a full security-disabled Elastic Stack with the ESDiag web interface
-  ```sh
-  ./bin/esdiag-control up --insecure
+5. Retrieve your `elastic` password for logging into Kibana; it is saved into your `.env` file.
+
+  ```bash
+  grep "ELASTIC_PASSWORD" .env
   ```
 
 Examples
 --------
 
 Build a container image for the current host's platform
+
 ```sh
 esdiag-control build
 ```
 
 Build a multi-platform container image, pushing it to the container registry
+
 ```sh
 esdiag-control buildx --push
 ```
 
 Configure and start up a full Elastic Stack deployment, with security disabled, and open a browser to it
+
 ```sh
 esdiag-control up --insecure
 ```
 
 Setup an existing stack monitoring cluster with ESDiag assets
+
 ```sh
-export ESDIAG_OUTPUT_URL="https://elasticsearch.example.com"
 export ESDIAG_OUTPUT_APIKEY="abcdefghijklmnopqrstuvwxyz"
+export ESDIAG_OUTPUT_URL="https://elasticsearch.example.com"
+export ESDIAG_KIBANA_URL="https://kibana.example.com"
 esdiag-control setup
 ```
 
 Build the multi-platform container image, push it to your repository. You will need to pre-configure authentication in `registries.conf` and use `podman login` or `docker login`.
+
 ```sh
 export ESDIAG_REGISTRY="registry.example.co"
 esdiag-control buildx --push

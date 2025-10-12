@@ -11,7 +11,7 @@
 # ./min-diag.sh collect
 # ```
 #
-# Outputs one directory named `api-diagnostic-<timestamp>` with the diagnostic files in it.
+# Outputs one directory named `api-diagnostics-<timestamp>` with the diagnostic files in it.
 #
 # The `watch` command periodically collects diagnostic bundles from the cluster:
 #
@@ -19,7 +19,7 @@
 # ./min-diag.sh watch
 # ```
 #
-# Outputs many directories named `api-diagnostic-<timestamp>`.
+# Outputs many directories named `api-diagnostics-<timestamp>`.
 #
 # Only modify the variables in the `Configuration` section for your environment.
 
@@ -146,7 +146,7 @@ function get_api() {
 # creates a subdirectory with the current date and time, finally calling save_manifest.
 function collect_diag() {
     local DATE && DATE=$(date +"%Y%m%d-%H%M%S")
-    declare DIR="api-diagnostic-$DATE"
+    declare DIR="api-diagnostics-$DATE"
     log_info "$(green created) directory $(gray "$DIR")"
 
     mkdir -p "$DIR/commercial"
