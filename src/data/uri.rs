@@ -38,16 +38,27 @@ pub enum Uri {
     Stream,
 }
 
+/// Try reading the authentication environment variables.
+/// Returns a tuple of optional strings for (apikey, username, password)
+fn try_get_auth_env() -> Result<(Option<String>, Option<String>, Option<String>)> {
+    let apikey = std::env::var("ESDIAG_OUTPUT_APIKEY").ok();
+    let username = std::env::var("ESDIAG_OUTPUT_USERNAME").ok();
+    let password = std::env::var("ESDIAG_OUTPUT_PASSWORD").ok();
+    Ok((apikey, username, password))
+}
+
 impl Uri {
-    /// Create a new Uri from the environment variables
+    /// Try creating a new Elasticsearch Uri from the environment variables
+    /// - `ESDIAG_OUTPUT_URL` (required): The URL to use for Elasticsearch output.
+    /// - `ESDIAG_OUTPUT_APIKEY` (optional): API key for authentication.
+    /// - `ESDIAG_OUTPUT_USERNAME` (optional): Username for authentication.
+    /// - `ESDIAG_OUTPUT_PASSWORD` (optional): Password for authentication.
     pub fn try_from_output_env() -> Result<Self> {
         log::debug!("Creating URI from ESDIAG_OUTPUT_URL");
         let url = std::env::var("ESDIAG_OUTPUT_URL")
             .map_err(|_| eyre!("ESDIAG_OUTPUT_URL is not defined"))?;
-        log::info!("output: Env {}", url);
-        let apikey = std::env::var("ESDIAG_OUTPUT_APIKEY").ok();
-        let username = std::env::var("ESDIAG_OUTPUT_USERNAME").ok();
-        let password = std::env::var("ESDIAG_OUTPUT_PASSWORD").ok();
+        log::debug!("output: Env {}", url);
+        let (apikey, username, password) = try_get_auth_env()?;
         let host = KnownHostBuilder::new(Url::parse(&url)?)
             .apikey(apikey)
             .username(username)
@@ -56,15 +67,17 @@ impl Uri {
         host.try_into()
     }
 
-    /// Create a new Uri from the environment variables
+    /// Try creating a new Kibana Uri from the environment variables
+    /// - `ESDIAG_KIBANA_URL` (required): The URL to use for Kibana.
+    /// - `ESDIAG_OUTPUT_APIKEY` (optional): API key for authentication.
+    /// - `ESDIAG_OUTPUT_USERNAME` (optional): Username for authentication.
+    /// - `ESDIAG_OUTPUT_PASSWORD` (optional): Password for authentication.
     pub fn try_from_kibana_env() -> Result<Self> {
         log::debug!("Creating URI from ESDIAG_KIBANA_URL");
         let url = std::env::var("ESDIAG_KIBANA_URL")
             .map_err(|_| eyre!("ESDIAG_KIBANA_URL is not defined"))?;
-        log::info!("kibana: Env {}", url);
-        let apikey = std::env::var("ESDIAG_OUTPUT_APIKEY").ok();
-        let username = std::env::var("ESDIAG_OUTPUT_USERNAME").ok();
-        let password = std::env::var("ESDIAG_OUTPUT_PASSWORD").ok();
+        log::debug!("kibana: Env {}", url);
+        let (apikey, username, password) = try_get_auth_env()?;
         let host = KnownHostBuilder::new(Url::parse(&url)?)
             .product(Product::Kibana)
             .apikey(apikey)
