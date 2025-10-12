@@ -555,7 +555,7 @@ checksum = "48c757948c5ede0e46177b7add2e67155f70e33c07fea8284df6576da70b3719"
 [[package]]
 name = "elasticsearch"
 version = "9.1.0-alpha.1"
-source = "git+https://github.com/VimCommando/elasticsearch-rs#2eff23f3d908c177b8ecc03c4a8af0f8080d7a80"
+source = "git+https://github.com/VimCommando/elasticsearch-rs?rev=2eff23f3d908c177b8ecc03c4a8af0f8080d7a80#2eff23f3d908c177b8ecc03c4a8af0f8080d7a80"
 dependencies = [
  "base64",
  "bytes",
