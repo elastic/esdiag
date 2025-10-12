@@ -63,20 +63,23 @@
         "diagnostic": {
           "type": "object",
           "properties": {
+            "account": {
+              "type": "keyword"
+            },
             "collection_date": {
               "format": "strict_date_optional_time||epoch_millis",
               "index": true,
-              "ignore_malformed": false,
+              "ignore_malformed": true,
               "store": false,
               "type": "date",
               "doc_values": true
             },
-            "inputs": {
-              "type": "match_only_text"
-            },
-            "runner": {
+            "id": {
               "ignore_above": 1024,
               "type": "keyword"
+            },
+            "inputs": {
+              "type": "match_only_text"
             },
             "kibana_link": {
               "type": "object",
@@ -86,12 +89,13 @@
               "ignore_above": 1024,
               "type": "keyword"
             },
+            "runner": {
+              "type": "keyword"
+            },
             "uuid": {
-              "ignore_above": 1024,
               "type": "keyword"
             },
             "version": {
-              "ignore_above": 1024,
               "type": "keyword"
             }
           }

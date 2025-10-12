@@ -282,13 +282,6 @@
                 }
               }
             },
-            "diagnostic": {
-              "properties": {
-                "uuid": {
-                  "type": "keyword"
-                }
-              }
-            },
             "discovery": {
               "properties": {
                 "cluster_applier_stats": {
@@ -814,6 +807,27 @@
                 },
                 "dense_vector": {
                   "properties": {
+                    "off_heap": {
+                      "type": "object",
+                      "properties": {
+                        "total_vec_size": {
+                          "type": "object",
+                          "enabled": false
+                        },
+                        "total_vec_size_bytes": {
+                          "type": "long",
+                          "index": false
+                        },
+                        "total_vex_size": {
+                          "type": "object",
+                          "enabled": false
+                        },
+                        "total_vex_size_bytes": {
+                          "type": "long",
+                          "index": false
+                        }
+                      }
+                    },
                     "value_count": {
                       "type": "long",
                       "index": false
@@ -1247,6 +1261,10 @@
                     },
                     "query_total": {
                       "type": "long",
+                      "index": false
+                    },
+                    "recent_search_load": {
+                      "type": "float",
                       "index": false
                     },
                     "scroll_current": {
