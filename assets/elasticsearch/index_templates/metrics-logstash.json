@@ -33,7 +33,8 @@
           "type": "object",
           "properties": {
             "dataset": {
-              "type": "constant_keyword"
+              "type": "constant_keyword",
+              "value": "logstash"
             },
             "type": {
               "type": "constant_keyword",

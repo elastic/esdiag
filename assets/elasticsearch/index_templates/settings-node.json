@@ -12,7 +12,14 @@
   "priority": 300,
   "template": {
     "settings": {
-      "index.mapping.ignore_malformed": true
+      "index": {
+        "mapping": {
+          "ignore_malformed": true,
+          "total_fields": {
+            "limit": 1500
+          }
+        }
+      }
     },
     "mappings": {
       "numeric_detection": false,
@@ -690,6 +697,19 @@
                                   "type": "keyword"
                                 }
                               }
+                            },
+                            "cluster_concurrent_rebalance": {
+                              "type": "long"
+                            },
+                            "node_concurrent_recoveries": {
+                              "type": "long"
+                            }
+                          }
+                        },
+                        "rebalance": {
+                          "properties": {
+                            "enable": {
+                              "type": "keyword"
                             }
                           }
                         }

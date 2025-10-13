@@ -36,6 +36,10 @@
             "dataset": {
               "type": "constant_keyword",
               "value": "task"
+            },
+            "type": {
+              "type": "constant_keyword",
+              "value": "metrics"
             }
           }
         },

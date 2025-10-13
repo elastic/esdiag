@@ -28,6 +28,10 @@
             "dataset": {
               "type": "constant_keyword",
               "value": "searchable_snapshot"
+            },
+            "type": {
+              "type": "constant_keyword",
+              "value": "metrics"
             }
           }
         },

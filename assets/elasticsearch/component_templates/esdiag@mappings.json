@@ -150,12 +150,6 @@
         "data_stream": {
           "type": "object",
           "properties": {
-            "type": {
-              "type": "keyword"
-            },
-            "dataset": {
-              "type": "keyword"
-            },
             "namespace": {
               "type": "constant_keyword",
               "value": "esdiag"

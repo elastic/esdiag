@@ -12,6 +12,19 @@
       "numeric_detection": false,
       "dynamic": true,
       "properties": {
+        "data_stream": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "constant_keyword",
+              "value": "metrics"
+            },
+            "dataset": {
+              "type": "constant_keyword",
+              "value": "diagnostic"
+            }
+          }
+        },
         "agent": {
           "type": "object",
           "properties": {

@@ -26,7 +26,21 @@
           }
         }
       ],
-      "properties": {}
+      "properties": {
+        "data_stream": {
+          "type": "object",
+          "properties": {
+            "dataset": {
+              "type": "constant_keyword",
+              "value": "diagnosis"
+            },
+            "type": {
+              "type": "constant_keyword",
+              "value": "health"
+            }
+          }
+        }
+      }
     }
   }
 }

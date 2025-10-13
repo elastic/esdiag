@@ -27,6 +27,10 @@
             "dataset": {
               "type": "constant_keyword",
               "value": "node.adaptive_selection"
+            },
+            "type": {
+              "type": "constant_keyword",
+              "value": "metrics"
             }
           }
         },

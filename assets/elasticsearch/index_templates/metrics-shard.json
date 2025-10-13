@@ -27,6 +27,10 @@
             "dataset": {
               "type": "constant_keyword",
               "value": "shard"
+            },
+            "type": {
+              "type": "constant_keyword",
+              "value": "metrics"
             }
           }
         },

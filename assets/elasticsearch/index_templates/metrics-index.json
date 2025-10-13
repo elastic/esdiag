@@ -23,6 +23,10 @@
         "data_stream": {
           "type": "object",
           "properties": {
+            "type": {
+              "type": "constant_keyword",
+              "value": "metrics"
+            },
             "dataset": {
               "type": "constant_keyword",
               "value": "index"

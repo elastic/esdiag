@@ -16,6 +16,9 @@
   },
   "priority": 300,
   "template": {
+    "settings": {
+      "index.mapping.total_fields.limit": 1500
+    },
     "mappings": {
       "_routing": {
         "required": false
@@ -28,6 +31,19 @@
       ],
       "dynamic": true,
       "properties": {
+        "data_stream": {
+          "type": "object",
+          "properties": {
+            "dataset": {
+              "type": "constant_keyword",
+              "value": "node"
+            },
+            "type": {
+              "type": "constant_keyword",
+              "value": "metrics"
+            }
+          }
+        },
         "node": {
           "properties": {
             "adaptive_selection": {
@@ -725,6 +741,10 @@
                           "type": "long",
                           "index": false
                         },
+                        "large_operation_rejections": {
+                          "type": "long",
+                          "index": false
+                        },
                         "primary": {
                           "type": "object",
                           "enabled": false
@@ -993,8 +1013,16 @@
                     "is_throttled": {
                       "type": "boolean"
                     },
+                    "peak_write_load": {
+                      "type": "float",
+                      "index": false
+                    },
                     "noop_update_total": {
                       "type": "long",
+                      "index": false
+                    },
+                    "recent_write_load": {
+                      "type": "float",
                       "index": false
                     },
                     "throttle_time": {
@@ -2269,88 +2297,9 @@
               }
             },
             "repositories": {
-              "properties": {
-                "backup-s3appcl4": {
-                  "properties": {
-                    "total_read_throttled_time": {
-                      "type": "object",
-                      "enabled": false
-                    },
-                    "total_read_throttled_time_nanos": {
-                      "type": "long",
-                      "index": false
-                    },
-                    "total_write_throttled_time": {
-                      "type": "object",
-                      "enabled": false
-                    },
-                    "total_write_throttled_time_nanos": {
-                      "type": "long",
-                      "index": false
-                    }
-                  }
-                },
-                "esaas-snapshots-ipc2": {
-                  "properties": {
-                    "total_read_throttled_time": {
-                      "type": "object",
-                      "enabled": false
-                    },
-                    "total_read_throttled_time_nanos": {
-                      "type": "long",
-                      "index": false
-                    },
-                    "total_write_throttled_time": {
-                      "type": "object",
-                      "enabled": false
-                    },
-                    "total_write_throttled_time_nanos": {
-                      "type": "long",
-                      "index": false
-                    }
-                  }
-                },
-                "minio_repository": {
-                  "properties": {
-                    "total_read_throttled_time": {
-                      "type": "object",
-                      "enabled": false
-                    },
-                    "total_read_throttled_time_nanos": {
-                      "type": "long",
-                      "index": false
-                    },
-                    "total_write_throttled_time": {
-                      "type": "object",
-                      "enabled": false
-                    },
-                    "total_write_throttled_time_nanos": {
-                      "type": "long",
-                      "index": false
-                    }
-                  }
-                },
-                "my_minio_repository": {
-                  "properties": {
-                    "total_read_throttled_time": {
-                      "type": "object",
-                      "enabled": false
-                    },
-                    "total_read_throttled_time_nanos": {
-                      "type": "long",
-                      "index": false
-                    },
-                    "total_write_throttled_time": {
-                      "type": "object",
-                      "enabled": false
-                    },
-                    "total_write_throttled_time_nanos": {
-                      "type": "long",
-                      "index": false
-                    }
-                  }
-                }
-              }
+              "type": "object",
+              "dynamic": "false",
+              "enabled": false
             },
             "role": {
               "type": "keyword"
@@ -2363,6 +2312,22 @@
                 "cache_evictions": {
                   "type": "long",
                   "index": false
+                },
+                "cache_evictions_history": {
+                  "properties": {
+                    "15m": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "24h": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "5m": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
                 },
                 "compilation_limit_triggered": {
                   "type": "long",
@@ -3149,6 +3114,10 @@
                       "type": "long",
                       "index": false
                     },
+                    "queue_size": {
+                      "type": "long",
+                      "index": false
+                    },
                     "rejected": {
                       "type": "long",
                       "index": false
@@ -3580,6 +3549,38 @@
                   }
                 },
                 "write": {
+                  "properties": {
+                    "active": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "completed": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "largest": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "queue_size": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "rejected": {
+                      "type": "long",
+                      "index": false
+                    },
+                    "threads": {
+                      "type": "long",
+                      "index": false
+                    }
+                  }
+                },
+                "write_coordination": {
                   "properties": {
                     "active": {
                       "type": "long",
