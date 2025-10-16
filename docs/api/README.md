@@ -32,7 +32,26 @@ http://localhost:{port}
 |--------|----------|-------------|
 | GET | `/` | Serves the main application interface, may include a `?job_id=<job_id>` parameter to immediately start processing |
 | POST | `/api/service_link` | Stores a `link_id` for later processing |
-| POST | `/api/api_key` | Stores a `key_id` for later processing |
+| POST | `/api/api_key` | Stores a `key_id` for later processing, or processes synchronously with `?wait_for_completion` |
+
+## Query Parameters
+
+### `/api/api_key` Endpoint
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `wait_for_completion` | Boolean | `false` | When `true`, processes the diagnostic synchronously and returns the result. Can be specified as `?wait_for_completion`, `?wait_for_completion=true`, or `?wait_for_completion=false` |
+
+When `wait_for_completion=true`:
+- The request blocks until processing completes
+- Returns `diagnostic_id`, `kibana_url`, and `took` (processing time in milliseconds)
+- Returns HTTP 200 on success instead of 201
+- May take significantly longer to respond depending on diagnostic size
+
+When `wait_for_completion=false` (default):
+- Returns immediately with a `key_id`
+- Processing occurs asynchronously in the background
+- User must navigate to the web interface with the `key_id` to monitor progress
 
 ## Request Limits
 
