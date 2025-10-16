@@ -11,42 +11,23 @@ Running locally within containers
 Use the `bin/esdiag-control` command to quickly spin up a fully-local environment.
 
 1. Clone this repository to your local machine using either `git` or [GitHub Desktop](https://desktop.github.com/download/)
-2. Be sure you have the dependencies installed: `docker`, `jq`, `curl`, `grep`, and `sed`.
-3. Pick either the **Automated** or **Manual** dashboard update method (easily switched later)
+2. Install the `esdiag-control` dependencies: `docker`, `jq`, `curl`, `grep`, and `sed`.
+3. Have either `podman` or `docker` container runtime with `compose` subcommand support.
+4. Have at least 8GB of total RAM available for the containers
 
-> ℹ️ Note: You can use either the `podman` or `docker` container runtime, as long as you have the `compose` subcommand installed.
+> [!IMPORTANT]
+> By default containers running on Linux can typically access the host's total available memory, so the 8GB requirement applies to the host machine. On MacOS and Windows the containers run inside a virtual machine that commonly has less than 8GB RAM by default. Both the Docker and Podman Desktop apps have a `resources` section to configure it. Podman also has a command-line option: `podman machine set --cpus 8 --memory 8192`
 
-### 2a. Automated dashboard updates
+### 2. Running
 
-To automate version checks and dashboard updates, you will need a GitHub personal access token.
-
-Detailed instructions are in [docs/github_token.md](docs/github_token.md).
-
-Once you've generated the token, add it to the `.env` file in the repository root:
-
-```sh
-export GITHUB_TOKEN="github_pat_123..."
-```
-
-This will allow the `esdiag` scripts like `bin/esdiag-control` to read directly from private GitHub repositories.
-
-### 2b. Manual dashboard updates
-
-Each time you want to update the dashboards, you will have to download the latest [`esdiag-dashboards.ndjson release`](https://github.com/elastic/esdiag-dashboards/releases/latest) and move it to the `assets/kibana` directory.
-
-Without the GitHub token the script also cannot check the version of ESDiag itself. There will be a warning message about skipping version checks in the logs.
-
-You can add the GitHub token later at any time.
-
-### 3. Running
-
-Now run the script from this repository's root directory:
+Run the script from this repository's root directory:
 
 ```sh
 ./bin/esdiag-control up
 ```
 
-> NOTE: When running security enabled, the `elastic` user's password will be saved to the `ELASTIC_PASSWORD` environment variable in the `.env` file.
+> [!TIP]
+> When running security enabled, the `elastic` user's password will be saved to the `ELASTIC_PASSWORD` environment variable in the `.env` file. It will be printed last, before the browser is launched.
 
 or with security disabled:
 
@@ -54,18 +35,18 @@ or with security disabled:
 ./bin/esdiag-control up --insecure
 ```
 
-> NOTE: The AI assistant features will not be available with security disabled. Running with security disabled prevents Kibana from using an Kibana encryption key, which is required to configure anything with an external API key, like large-language model (LLM) providers.
+> [!NOTE]
+> The AI assistant features will not be available with security disabled. Running with security disabled prevents Kibana from using an Kibana encryption key, which is required to configure anything with an external API key, like large-language model (LLM) providers.
 
 Once the script is complete, you will have:
 1. A single Elasticsearch node with all index templates installed.
 2. A fully-configured Kibana instance with dashboards, data views, and saved searches imported.
 3. An `esdiag:latest` container serving the web interface.
-4. A web browser opened to the ESDiag web interface at http://localhost:2501
-5. If you configured `automated` dashboard updates, re-running the script will update and re-import the dashboards.
+4. A web browser opened to the ESDiag web interface at `http://localhost:2501`
 
-### 4. Processing diagnostics
+### 3. Processing diagnostics
 
-Open your browser to the ESDiag web interface to http://localhost:2501 and use your browser to upload a diagnostic bundle.
+Open your browser to the ESDiag web interface at `http://localhost:2501` and use your browser to upload a diagnostic bundle. The first time you open Kibana, use the `elastic` username and password printed to your terminal (also saved in the `.env` file).
 
 Full Rust Installation with Cargo
 ----------------------------------
@@ -188,8 +169,6 @@ Options:
 
 The `esdiag host` command allows you configure and test authentication information. On a succesful connection test, it writes the configuration to your `~/esdiag/hosts.yml` file for easy re-use.
 
-> ℹ️ Note: This command does not work with `bin/esdiag-docker.sh`
-
 Alternatively you can use a `.env` file and set `ESDIAG_OUTPUT_*` values; see `example.env`.
 
 ```
@@ -287,6 +266,9 @@ esdl diag-cluster
 
 #### Serve
 
+> [!NOTE]
+> This is the default entry command when run from a container.
+
 The `esdiag serve` command starts a web server that accepts diagnostic bundle uploads through a user-friendly interface. This makes it easy to receive and process diagnostics without requiring command-line access from the uploading user.
 
 ```
@@ -326,8 +308,6 @@ curl -F "file=@/path/to/diagnostic.zip" http://localhost:2501/upload
 The `esdiag collect` command pulls the minimum required diagnostics from an Elasticsearch host and saves them to a directory. These are JSON-only, not pretty-printed, and do not include human-readable metrics. This bunlde captures only what is needed to then import with `esdiag`.
 
 Authentication must be setup in advance with the `esdiag host` command or `hosts.yml` file. Direct access to the clsuter is required, this cannot be done through any Elastic Cloud API.
-
-> ℹ️ Note: This command does not work with `bin/esdiag-docker.sh`
 
 ```
 Collect a diagnostic bundle from a known host's API endpoints, writes output to a directory
