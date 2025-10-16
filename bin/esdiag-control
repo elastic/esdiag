@@ -310,6 +310,13 @@ function browser_open() {
     fi
 }
 
+function password_print() {
+    if [[ "${security}" == "true" ]]; then
+        echo "To log into Kibana, use the $(cyan elastic) user with password:"
+        echo "${ELASTIC_PASSWORD}"
+    fi
+}
+
 # ----- Main Functions -----
 
 function auth_registry_validate() {
@@ -913,7 +920,8 @@ case $command in
         command_setup && \
         log_info "$(green serving) $(cyan ESDiag) at $(blue "${esdiag_url}")" && \
         browser_open && \
-        log_debug "$(white up) complete"
+        log_debug "$(white up) complete" && \
+        password_print
     ;;
     * )
         if [[ $# == 0 ]]; then
