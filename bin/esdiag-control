@@ -117,7 +117,7 @@ function environment_setup() {
         export esdiag_image_latest="${ESDIAG_REGISTRY}/esdiag/esdiag:latest"
     fi
     # Save image tag to `.env` file
-    sed -i '' "s#^export ESDIAG_IMAGE_TAG=.*#export ESDIAG_IMAGE_TAG=\"${esdiag_image}\"#" "${env_file}"
+    sed -i -e "s#^export ESDIAG_IMAGE_TAG=.*#export ESDIAG_IMAGE_TAG=\"${esdiag_image}\"#" "${env_file}"
 
     export security=${security:-${ELASTIC_SECURITY_ENABLED:-"true"}}
     # Use ESDIAG_OUTPUT* environment variables to configure Elastic Stack authentication
