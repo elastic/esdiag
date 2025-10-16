@@ -5,9 +5,16 @@
 use super::{ApiKeyRequest, ServerState, UploadServiceRequest};
 use crate::{
     data::{KnownHostBuilder, Uri},
-    processor::new_job_id,
+    processor::{Processor, new_job_id},
+    receiver::Receiver,
 };
-use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
+use axum::{
+    Json,
+    extract::{Query, State},
+    http::StatusCode,
+    response::IntoResponse,
+};
+use serde::Deserialize;
 use serde_json::json;
 use std::sync::Arc;
 use url::Url;
@@ -94,9 +101,33 @@ pub async fn service_link(
     (StatusCode::CREATED, Json(json!({"link_id": job_id})))
 }
 
+#[derive(Deserialize)]
+pub struct ApiKeyQueryParams {
+    #[serde(default, deserialize_with = "deserialize_empty_as_true")]
+    wait_for_completion: bool,
+}
+
+/// Custom deserializer that treats empty string or "true" as true, and "false" or absence as false
+fn deserialize_empty_as_true<'de, D>(deserializer: D) -> Result<bool, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let opt = Option::<String>::deserialize(deserializer)?;
+    match opt.as_deref() {
+        None => Ok(false),
+        Some("") | Some("true") => Ok(true),
+        Some("false") => Ok(false),
+        Some(other) => Err(serde::de::Error::custom(format!(
+            "Invalid boolean value: '{}'. Expected 'true', 'false', or empty string",
+            other
+        ))),
+    }
+}
+
 #[axum::debug_handler]
 pub async fn api_key(
     State(state): State<Arc<ServerState>>,
+    Query(params): Query<ApiKeyQueryParams>,
     Json(payload): Json<ApiKeyRequest>,
 ) -> impl IntoResponse {
     log::info!("Received JSON api key request for: {}", payload.url);
@@ -143,9 +174,93 @@ pub async fn api_key(
         }
     };
 
-    // Stash the username and (filename, URI) into the server state for later use
-    state.push_key(job_id, payload.metadata, host).await;
+    // If wait_for_completion is true, process the job synchronously
+    if params.wait_for_completion {
+        log::info!("Processing job: {}", job_id);
 
-    // Respond with a JSON success
-    (StatusCode::CREATED, Json(json!({"key_id": job_id})))
+        // Create receiver from host
+        let receiver = match Receiver::try_from(host) {
+            Ok(receiver) => {
+                log::info!("Created receiver: {}", receiver);
+                Arc::new(receiver)
+            }
+            Err(e) => {
+                log::error!("Failed to create receiver: {}", e);
+                state.record_failure().await;
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({
+                        "error": format!("Failed to create receiver: {}", e)
+                    })),
+                );
+            }
+        };
+
+        let exporter = state.exporter.clone();
+        let identifiers = payload.metadata;
+
+        // Create and start the processor
+        let processor = match Processor::try_new(receiver, exporter, identifiers).await {
+            Ok(processor) => processor,
+            Err(error) => {
+                log::error!("Failed to create processor: {}", error);
+                state.record_failure().await;
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({
+                        "error": format!("Failed to create processor: {}", error)
+                    })),
+                );
+            }
+        };
+
+        let processing = match processor.start().await {
+            Ok(processing) => processing,
+            Err(failed) => {
+                log::error!("Failed to start processor: {}", failed.state.error);
+                state.record_failure().await;
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({
+                        "error": format!("Failed to start processor: {}", failed.state.error)
+                    })),
+                );
+            }
+        };
+
+        // Process the job
+        match processing.process().await {
+            Ok(completed) => {
+                let report = &completed.state.report;
+                state
+                    .record_success(report.docs.total, report.docs.errors)
+                    .await;
+
+                let response = json!({
+                    "diagnostic_id": report.metadata.id,
+                    "kibana_link": report.kibana_link.as_ref().unwrap_or(&"".to_string()),
+                    "took": completed.state.runtime
+                });
+
+                log::info!("Job completed successfully: {}", report.metadata.id);
+                (StatusCode::OK, Json(response))
+            }
+            Err(failed) => {
+                log::error!("Processing failed: {}", failed.state.error);
+                state.record_failure().await;
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({
+                        "error": format!("Processing failed: {}", failed.state.error)
+                    })),
+                )
+            }
+        }
+    } else {
+        // Stash the username and (filename, URI) into the server state for later use
+        state.push_key(job_id, payload.metadata, host).await;
+
+        // Respond with a JSON success
+        (StatusCode::CREATED, Json(json!({"key_id": job_id})))
+    }
 }

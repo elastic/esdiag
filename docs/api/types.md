@@ -88,9 +88,9 @@ Request payload for the `/api/api_key` endpoint.
 | `apikey` | String | API key for authenticating with the Elasticsearch cluster |
 | `url` | String | URL of the Elasticsearch cluster endpoint |
 
-### ApiKey Response
+### ApiKey Response (Asynchronous)
 
-Response from the `/api/api_key` endpoint.
+Response from the `/api/api_key` endpoint when `wait_for_completion` is `false` or not specified.
 
 ```json
 {
@@ -100,7 +100,25 @@ Response from the `/api/api_key` endpoint.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `key_id` | String | Unique identifier for the created API key job |
+| `key_id` | Integer | Unique identifier for the created API key job |
+
+### ApiKey Response (Synchronous)
+
+Response from the `/api/api_key` endpoint when `wait_for_completion` is `true`.
+
+```json
+{
+  "diagnostic_id": "string",
+  "kibana_url": "string",
+  "took": integer
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `diagnostic_id` | String | Unique identifier for the processed diagnostic |
+| `kibana_url` | String | URL to view the diagnostic in Kibana dashboard (empty string if `ESDIAG_KIBANA_URL` is not configured) |
+| `took` | Integer | Processing time in milliseconds |
 
 ### Error Response
 

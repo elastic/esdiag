@@ -79,6 +79,8 @@ curl -X POST http://localhost:2501/api/service_link \
 
 ## POST `/api/api_key` - API Key Processing
 
+### Asynchronous Processing (Default)
+
 ### Request
 ```bash
 curl -X POST http://localhost:2501/api/api_key \
@@ -99,6 +101,64 @@ curl -X POST http://localhost:2501/api/api_key \
 ```json
 {
   "key_id": 12345
+}
+```
+
+### Synchronous Processing with `wait_for_completion`
+
+Process the diagnostic synchronously and wait for completion. The response includes the diagnostic ID, Kibana URL, and processing time.
+
+### Request (with parameter but no value)
+```bash
+curl -X POST 'http://localhost:2501/api/api_key?wait_for_completion' \
+  -H "Content-Type: application/json" \
+  -d '{
+    "metadata": {
+      "account": "Acme, Inc.",
+      "case_number": "98765",
+      "opportunity": null,
+      "user": "user@example.com"
+    },
+    "apikey": "abcdefghijklmnopqrstuvwxyz=",
+    "url": "https://elasticsearch.example.com"
+  }'
+```
+
+### Request (with explicit true value)
+```bash
+curl -X POST 'http://localhost:2501/api/api_key?wait_for_completion=true' \
+  -H "Content-Type: application/json" \
+  -d '{
+    "metadata": {
+      "account": "Acme, Inc.",
+      "case_number": "98765",
+      "opportunity": null,
+      "user": "user@example.com"
+    },
+    "apikey": "abcdefghijklmnopqrstuvwxyz=",
+    "url": "https://elasticsearch.example.com"
+  }'
+```
+
+### Successful Response
+```json
+{
+  "diagnostic_id": "elasticsearch-diagnostic-2024-01-15-abc123",
+  "kibana_url": "https://kibana.example.com/app/dashboards#/view/4e0a26b2-e5f8-4b58-b617-86f5cdd0edad?_g=...",
+  "took": 12345
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `diagnostic_id` | String | Unique identifier for the processed diagnostic |
+| `kibana_url` | String | URL to view the diagnostic in Kibana (empty string if not configured) |
+| `took` | Number | Processing time in milliseconds |
+
+### Error Response - Processing Failed
+```json
+{
+  "error": "Processing failed: unable to connect to cluster"
 }
 ```
 
@@ -154,7 +214,7 @@ curl -X POST http://localhost:2501/api/service_link \
 open "http://localhost:2501/?link_id=45678"
 ```
 
-### Example: API key workflow
+### Example: API key workflow (asynchronous)
 
 1. Submit API key and Elasticsearch URL to ESDiag
 
@@ -182,4 +242,39 @@ curl -X POST http://localhost:2501/api/api_key \
 
 ```bash
 open "http://localhost:2501/?key_id=12345"
+```
+
+### Example: API key workflow (synchronous)
+
+1. Submit API key with `wait_for_completion` parameter
+
+```bash
+curl -X POST 'http://localhost:2501/api/api_key?wait_for_completion' \
+  -H "Content-Type: application/json" \
+  -d '{
+    "metadata": {
+      "account": "Acme, Inc",
+      "case_number": "12345",
+      "user": "user@example.com"
+    },
+    "apikey": "abcdefghijklmnopqrstuvwxyz=",
+    "url": "https://my-cluster.es.example.com"
+  }'
+```
+
+2. Response includes diagnostic ID and Kibana URL
+
+```json
+{
+  "diagnostic_id": "elasticsearch-diagnostic-2024-01-15-abc123",
+  "kibana_url": "https://kibana.example.com/app/dashboards#/view/4e0a26b2-e5f8-4b58-b617-86f5cdd0edad?_g=...",
+  "took": 12345
+}
+```
+
+3. Use the diagnostic ID and Kibana URL directly in your application
+
+```bash
+# Navigate directly to Kibana
+open "https://kibana.example.com/app/dashboards#/view/4e0a26b2-e5f8-4b58-b617-86f5cdd0edad?_g=..."
 ```
