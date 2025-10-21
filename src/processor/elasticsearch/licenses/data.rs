@@ -21,13 +21,13 @@ pub struct License {
     uid: String,
     r#type: String,
     //issue_date: String,
-    issue_date_in_millis: i64,
+    issue_date_in_millis: u64,
     //expiry_date: String,
-    expiry_date_in_millis: i64,
+    expiry_date_in_millis: u64,
     max_nodes: Option<i32>,
-    max_resource_units: i32,
+    max_resource_units: Option<i32>,
     issued_to: String,
-    issuer: String,
+    issuer: Option<String>,
     start_date_in_millis: i64,
 }
 

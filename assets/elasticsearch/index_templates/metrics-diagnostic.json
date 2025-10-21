@@ -41,9 +41,6 @@
         },
         "diagnostic": {
           "properties": {
-            "collection_date": {
-              "type": "date"
-            },
             "docs": {
               "properties": {
                 "created": {
@@ -60,11 +57,53 @@
                 }
               }
             },
-            "id": {
-              "type": "keyword"
-            },
-            "inputs": {
-              "type": "match_only_text"
+            "license": {
+              "properties": {
+                "status": {
+                  "type": "keyword"
+                },
+                "uid": {
+                  "type": "keyword"
+                },
+                "type": {
+                  "type": "keyword"
+                },
+                "issue_date": {
+                  "enabled": false,
+                  "type": "object"
+                },
+                "issue_date_in_millis": {
+                  "type": "long",
+                  "index": false
+                },
+                "expiry_date": {
+                  "enabled": false,
+                  "type": "object"
+                },
+                "expiry_date_in_millis": {
+                  "type": "long",
+                  "index": false
+                },
+                "max_nodes": {
+                  "type": "long",
+                  "index": false
+                },
+                "max_resource_units": {
+                  "type": "long",
+                  "index": false
+                },
+                "issued_to": {
+                  "type": "keyword"
+                },
+                "issuer": {
+                  "type": "keyword"
+                },
+                "start_date_in_millis": {
+                  "type": "date",
+                  "index": false,
+                  "ignore_malformed": true
+                }
+              }
             },
             "lookup": {
               "properties": {
@@ -129,10 +168,6 @@
                   }
                 }
               }
-            },
-            "node": {
-              "type": "keyword",
-              "ignore_above": 1024
             },
             "origin": {
               "properties": {
@@ -416,17 +451,6 @@
               }
             },
             "product": {
-              "type": "keyword"
-            },
-            "runner": {
-              "type": "keyword",
-              "ignore_above": 1024
-            },
-            "uuid": {
-              "type": "keyword",
-              "ignore_above": 1024
-            },
-            "version": {
               "type": "keyword"
             }
           }
