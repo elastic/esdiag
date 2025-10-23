@@ -81,6 +81,21 @@ pub struct Identifiers {
 }
 
 impl Identifiers {
+    pub fn new(
+        account: Option<String>,
+        case_number: Option<String>,
+        opportunity: Option<String>,
+        user: Option<String>,
+    ) -> Self {
+        Self {
+            account,
+            case_number,
+            filename: None,
+            opportunity,
+            user: user.or_else(|| std::env::var("ESDIAG_USER").ok()),
+        }
+    }
+
     pub fn default_user(self, username: Option<&String>) -> Self {
         Self {
             user: self.user.or_else(|| username.cloned()),

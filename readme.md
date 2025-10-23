@@ -236,6 +236,21 @@ Arguments:
           Target to send the processed diagnostic documents to (known host, file, stdout, or env). Strings will be checked against the known hosts stored in `~/.esdiag/hosts.yml` and will fallback to a filename if not found. Use `-` for stdout. If nothing is provided, the target will be determined based on the environment variables: ESDIAG_OUTPUT_URL, ESDIAG_OUTPUT_APIKEY, ESDIAG_OUTPUT_USERNAME, and ESDIAG_OUTPUT_PASSWORD.
 
 Options:
+  -a, --account <ACCOUNT>
+          Diagnostic report account name
+
+      --debug
+          Enable debug logging
+
+  -c, --case <CASE>
+          Diagnostic report case number
+
+  -o, --opportunity <OPPORTUNITY>
+          Diagnostic report opportunity
+
+  -u, --user <USER>
+          Diagnostic report user
+
   -h, --help
           Print help (see a summary with '-h')
 ```

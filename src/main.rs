@@ -119,6 +119,22 @@ enum Commands {
             long_help = "Target to send the processed diagnostic documents to (known host, file, stdout, or env). Strings will be checked against the known hosts stored in `~/.esdiag/hosts.yml` and will fallback to a filename if not found. Use `-` for stdout. If nothing is provided, the output will try using the environment variables: ESDIAG_OUTPUT_URL, ESDIAG_OUTPUT_APIKEY, ESDIAG_OUTPUT_USERNAME, and ESDIAG_OUTPUT_PASSWORD."
         )]
         output: Option<String>,
+
+        /// Diagnostic report account name
+        #[arg(help = "Diagnostic report account name", long, short)]
+        account: Option<String>,
+
+        /// Case number added to diagnostic report
+        #[arg(help = "Diagnostic report case number", long, short)]
+        case: Option<String>,
+
+        /// Diagnostic report opportunity
+        #[arg(help = "Diagnostic report opportunity", long, short)]
+        opportunity: Option<String>,
+
+        /// Diagnostic report user
+        #[arg(help = "Diagnostic report user", long, short)]
+        user: Option<String>,
     },
     #[cfg(feature = "setup")]
     /// Import assets (templates, ingest pipelines, etc.) to a known Elasticsearch host
@@ -272,7 +288,14 @@ async fn run(cli: Cli) -> Result<&'static str> {
                 Err(eyre!("Host connection failed"))
             }
         }
-        Commands::Process { input, output } => {
+        Commands::Process {
+            input,
+            output,
+            account,
+            case,
+            opportunity,
+            user,
+        } => {
             let input_uri = Uri::try_from(input)?;
             let output_uri = Uri::try_from(output)?;
 
@@ -281,7 +304,7 @@ async fn run(cli: Cli) -> Result<&'static str> {
             let receiver = Arc::new(Receiver::try_from(input_uri)?);
             let exporter = Arc::new(Exporter::try_from(output_uri)?);
 
-            let identifiers = Identifiers::default();
+            let identifiers = Identifiers::new(account, case, opportunity, user);
             let processor = Processor::try_new(receiver, exporter, identifiers).await?;
             let processor = match processor.start().await {
                 Ok(processor) => processor,
