@@ -56,6 +56,10 @@ impl Receive for DirectoryReceiver {
         is_dir
     }
 
+    fn filename(&self) -> Option<String> {
+        Some(self.path.to_str().unwrap_or("").to_string())
+    }
+
     async fn get<T>(&self) -> Result<T>
     where
         T: DeserializeOwned + DataSource,

@@ -71,6 +71,10 @@ impl Receive for ElasticsearchReceiver {
         }
     }
 
+    fn filename(&self) -> Option<String> {
+        None
+    }
+
     async fn get<T>(&self) -> Result<T>
     where
         T: DataSource + DeserializeOwned,

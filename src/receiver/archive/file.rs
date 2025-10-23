@@ -31,7 +31,7 @@ impl TryFrom<PathBuf> for ArchiveFileReceiver {
     type Error = eyre::Report;
 
     fn try_from(path: PathBuf) -> Result<Self> {
-        let filename = format!("{}", path.display());
+        let filename = format!("{}", path.file_name().unwrap_or_default().display());
         match path.is_file() {
             true => {
                 log::debug!("File is valid: {}", path.display());
@@ -68,6 +68,10 @@ impl Receive for ArchiveFileReceiver {
         }
         log::debug!("Directory {} is valid: {is_empty}", &self.filename);
         is_empty
+    }
+
+    fn filename(&self) -> Option<String> {
+        Some(self.filename.clone())
     }
 
     /// Read the type's file from the filesystem

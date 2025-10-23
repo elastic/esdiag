@@ -304,7 +304,8 @@ async fn run(cli: Cli) -> Result<&'static str> {
             let receiver = Arc::new(Receiver::try_from(input_uri)?);
             let exporter = Arc::new(Exporter::try_from(output_uri)?);
 
-            let identifiers = Identifiers::new(account, case, opportunity, user);
+            let identifiers =
+                Identifiers::new(account, case, receiver.filename(), opportunity, user);
             let processor = Processor::try_new(receiver, exporter, identifiers).await?;
             let processor = match processor.start().await {
                 Ok(processor) => processor,

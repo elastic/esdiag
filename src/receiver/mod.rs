@@ -30,6 +30,7 @@ use upload_service::UploadServiceDownloader;
 pub trait Receive {
     async fn is_connected(&self) -> bool;
     async fn collection_date(&self) -> String;
+    fn filename(&self) -> Option<String>;
     async fn get<T: DataSource + DeserializeOwned>(&self) -> Result<T>;
     async fn try_get_manifest(&self) -> Result<DiagnosticManifest> {
         match self.get::<DiagnosticManifest>().await {
@@ -150,6 +151,16 @@ impl Receiver {
             Receiver::Directory(receiver) => receiver.collection_date().await,
             Receiver::Elasticsearch(receiver) => receiver.collection_date().await,
             Receiver::ElasticCloudAdmin(receiver) => receiver.collection_date().await,
+        }
+    }
+
+    pub fn filename(&self) -> Option<String> {
+        match self {
+            Receiver::ArchiveBytes(receiver) => receiver.filename(),
+            Receiver::ArchiveFile(receiver) => receiver.filename(),
+            Receiver::Directory(receiver) => receiver.filename(),
+            Receiver::Elasticsearch(receiver) => receiver.filename(),
+            Receiver::ElasticCloudAdmin(receiver) => receiver.filename(),
         }
     }
 

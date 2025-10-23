@@ -84,13 +84,14 @@ impl Identifiers {
     pub fn new(
         account: Option<String>,
         case_number: Option<String>,
+        filename: Option<String>,
         opportunity: Option<String>,
         user: Option<String>,
     ) -> Self {
         Self {
             account,
             case_number,
-            filename: None,
+            filename,
             opportunity,
             user: user.or_else(|| std::env::var("ESDIAG_USER").ok()),
         }
@@ -105,6 +106,10 @@ impl Identifiers {
 
     pub fn filename_as_str(&self) -> &str {
         self.filename.as_deref().unwrap_or("none")
+    }
+
+    pub fn with_filename(self, filename: Option<String>) -> Self {
+        Self { filename, ..self }
     }
 }
 

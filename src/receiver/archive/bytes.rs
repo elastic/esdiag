@@ -38,6 +38,10 @@ impl Receive for ArchiveBytesReceiver {
         true
     }
 
+    fn filename(&self) -> Option<String> {
+        None
+    }
+
     /// Read the type's file from the in-memory archive
     async fn get<T>(&self) -> Result<T>
     where
