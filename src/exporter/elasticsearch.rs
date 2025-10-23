@@ -14,7 +14,7 @@ use elasticsearch::{
 };
 use eyre::{Result, eyre};
 use serde::Serialize;
-use serde_json::{Value, json};
+use serde_json::Value;
 use std::sync::Arc;
 use tokio::sync::{Semaphore, mpsc, oneshot};
 use url::Url;
@@ -205,20 +205,12 @@ impl Export for ElasticsearchExporter {
     /// Sends the final diagnostic report document to Elasticsearch.
     async fn save_report(&self, report: &DiagnosticReport) -> Result<()> {
         data::save_file("report.json", report)?;
-        let diagnostic_id = report.metadata.id.clone();
-        let body = json!({
-            "@timestamp": chrono::Utc::now().timestamp_millis(),
-            "diagnostic": report ,
-            "agent": {
-                "type": "esdiag",
-                "version": semver::Version::parse(env!("CARGO_PKG_VERSION"))?,
-            }
-        });
+        let diagnostic_id = report.diagnostic.metadata.id.clone();
         match self
             .client
             .index(IndexParts::Index("metrics-diagnostic-esdiag"))
             .pipeline("esdiag")
-            .body(body)
+            .body(&report)
             .send()
             .await
         {

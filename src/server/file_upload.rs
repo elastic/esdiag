@@ -174,15 +174,15 @@ pub async fn process(
                 match processor.process().await {
                     Ok(completed) => {
                         let report = &completed.state.report;
-                        state.record_success(report.docs.total, report.docs.errors).await;
+                        state.record_success(report.diagnostic.docs.total, report.diagnostic.docs.errors).await;
                         yield patch_template(template::JobCompleted {
                             job_id: job_id,
-                            diagnostic_id: &report.metadata.id,
-                            docs_created: &report.docs.created,
-                            duration: &format!("{:.3}", report.processing_duration as f64 / 1000.0),
+                            diagnostic_id: &report.diagnostic.metadata.id,
+                            docs_created: &report.diagnostic.docs.created,
+                            duration: &format!("{:.3}", report.diagnostic.processing_duration as f64 / 1000.0),
                             source: &filename,
-                            kibana_link: report.kibana_link.as_ref().unwrap_or(&"#".to_string()),
-                            product: &report.product.to_string(),
+                            kibana_link: report.diagnostic.kibana_link.as_ref().unwrap_or(&"#".to_string()),
+                            product: &report.diagnostic.product.to_string(),
                         });
                     },
                     Err(failed) => {

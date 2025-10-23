@@ -233,16 +233,19 @@ pub async fn api_key(
             Ok(completed) => {
                 let report = &completed.state.report;
                 state
-                    .record_success(report.docs.total, report.docs.errors)
+                    .record_success(report.diagnostic.docs.total, report.diagnostic.docs.errors)
                     .await;
 
                 let response = json!({
-                    "diagnostic_id": report.metadata.id,
-                    "kibana_link": report.kibana_link.as_ref().unwrap_or(&"".to_string()),
+                    "diagnostic_id": report.diagnostic.metadata.id,
+                    "kibana_link": report.diagnostic.kibana_link.as_ref().unwrap_or(&"".to_string()),
                     "took": completed.state.runtime
                 });
 
-                log::info!("Job completed successfully: {}", report.metadata.id);
+                log::info!(
+                    "Job completed successfully: {}",
+                    report.diagnostic.metadata.id
+                );
                 (StatusCode::OK, Json(response))
             }
             Err(failed) => {

@@ -45,7 +45,7 @@ pub use metadata::ElasticsearchMetadata;
 use tokio::sync::mpsc;
 pub use {
     licenses::License,
-    version::{Cluster, Version},
+    version::{Cluster, ClusterMetadata, Version},
 };
 
 use super::{
@@ -131,6 +131,7 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
             ElasticsearchMetadata::try_new(manifest, cluster.with_display_name(display_name))?;
 
         let mut report = DiagnosticReportBuilder::from(metadata.diagnostic.clone())
+            .cluster(metadata.cluster.clone())
             .product(Product::Elasticsearch)
             .receiver(receiver.to_string())
             .build()?;
@@ -177,7 +178,6 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
         if log::max_level() >= log::Level::Debug {
             data::save_file("diagnostic.json", &self)?;
         }
-        // self.report.add_identifiers(self.exporter.identifiers());
 
         let diag = Arc::new(self);
         // Thread 1: IndicesStats

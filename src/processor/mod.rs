@@ -248,18 +248,18 @@ impl Processor<Processing> {
 
         log::info!(
             "Created {} documents for {} diagnostic: {}",
-            report.docs.created,
-            report.product,
-            report.metadata.id,
+            report.diagnostic.docs.created,
+            report.diagnostic.product,
+            report.diagnostic.metadata.id,
         );
 
         if let Ok(kibana_url) = std::env::var("ESDIAG_KIBANA_URL") {
-            let url_safe_id = urlencoding::encode(&report.metadata.id);
+            let url_safe_id = urlencoding::encode(&report.diagnostic.metadata.id);
             let days_since_collection = (std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_millis() as u64
-                - report.metadata.collection_date)
+                - report.diagnostic.metadata.collection_date)
                 / (1000 * 60 * 60 * 24);
             let time_filter = match days_since_collection {
                 x if x < 90 => "from:now-90d,to:now",
