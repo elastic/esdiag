@@ -2,7 +2,7 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use super::super::elasticsearch::License as ElasticsearchLicense;
+use super::super::elasticsearch::{ClusterMetadata, License as ElasticsearchLicense};
 use super::{DiagnosticManifest, DiagnosticMetadata, Lookup};
 use crate::data::Product;
 use eyre::{OptionExt, Report, Result, eyre};
@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 pub struct DiagnosticReportBuilder {
+    cluster: Option<ClusterMetadata>,
     processors: HashMap<String, ProcessorSummary>,
     product: Option<Product>,
     metadata: DiagnosticMetadata,
@@ -34,12 +35,20 @@ impl DiagnosticReportBuilder {
             ..self
         }
     }
+
+    pub fn cluster(self, cluster: ClusterMetadata) -> Self {
+        Self {
+            cluster: Some(cluster),
+            ..self
+        }
+    }
 }
 
 impl From<DiagnosticMetadata> for DiagnosticReportBuilder {
     fn from(metadata: DiagnosticMetadata) -> Self {
         Self {
             metadata,
+            cluster: None,
             processors: HashMap::new(),
             product: None,
             origin: None,
@@ -53,6 +62,7 @@ impl TryFrom<DiagnosticManifest> for DiagnosticReportBuilder {
     fn try_from(manifest: DiagnosticManifest) -> Result<Self> {
         let metadata = DiagnosticMetadata::try_from(manifest)?;
         Ok(Self {
+            cluster: None,
             metadata,
             processors: HashMap::new(),
             product: None,
@@ -104,9 +114,24 @@ pub enum License {
 
 #[derive(Serialize)]
 pub struct DiagnosticReport {
+    #[serde(rename = "@timestamp")]
+    timestamp: i64,
+    cluster: Option<ClusterMetadata>,
+    pub diagnostic: DiagnosticStats,
+    agent: Agent,
+}
+
+#[derive(Serialize)]
+pub struct Agent {
+    pub r#type: &'static str,
+    pub version: semver::Version,
+}
+
+#[derive(Serialize)]
+pub struct DiagnosticStats {
+    pub docs: Docs,
     pub product: Product,
     origin: Origin,
-    pub docs: Docs,
     pub license: Option<License>,
     lookup: NestedStats<LookupSummary>,
     processor: NestedStats<ProcessorSummary>,
@@ -120,25 +145,25 @@ pub struct DiagnosticReport {
 
 impl DiagnosticReport {
     pub fn add_kibana_link(&mut self, link: String) {
-        self.kibana_link = Some(link);
+        self.diagnostic.kibana_link = Some(link);
     }
 
     pub fn add_identifiers(&mut self, identifiers: Identifiers) {
-        self.identifiers = identifiers;
+        self.diagnostic.identifiers = identifiers;
     }
 
     pub fn add_license(&mut self, license: Option<ElasticsearchLicense>) {
-        self.license = license.map(License::Elasticsearch);
+        self.diagnostic.license = license.map(License::Elasticsearch);
     }
 
     pub fn add_processing_duration(&mut self, time: u128) {
-        self.processing_duration = time;
+        self.diagnostic.processing_duration = time;
     }
 
     pub fn add_origin(&mut self, (name, id, scope): (String, String, String)) {
-        self.origin.name = Some(name);
-        self.origin.id = Some(id);
-        self.origin.scope = Some(scope);
+        self.diagnostic.origin.name = Some(name);
+        self.diagnostic.origin.id = Some(id);
+        self.diagnostic.origin.scope = Some(scope);
     }
 }
 
@@ -166,20 +191,25 @@ impl<T> NestedStats<T> {
 impl DiagnosticReport {
     pub fn add_processor_summary(&mut self, summary: ProcessorSummary) {
         if !summary.source.parsed {
-            self.processor.errors += 1;
-            self.processor.failures.push(summary.index.clone());
+            self.diagnostic.processor.errors += 1;
+            self.diagnostic
+                .processor
+                .failures
+                .push(summary.index.clone());
         }
-        self.docs.created += summary.docs;
-        self.docs.errors += summary.doc_errors;
-        self.docs.total += summary.docs + summary.doc_errors;
-        self.processor.push(summary.processor.clone(), summary);
+        self.diagnostic.docs.created += summary.docs;
+        self.diagnostic.docs.errors += summary.doc_errors;
+        self.diagnostic.docs.total += summary.docs + summary.doc_errors;
+        self.diagnostic
+            .processor
+            .push(summary.processor.clone(), summary);
     }
 
     pub fn add_lookup<T>(&mut self, name: &str, lookup: &Lookup<T>)
     where
         T: Clone + Serialize,
     {
-        self.lookup.push(
+        self.diagnostic.lookup.push(
             name.to_string(),
             LookupSummary {
                 docs: lookup.len() as u32,
@@ -193,30 +223,38 @@ impl TryFrom<DiagnosticReportBuilder> for DiagnosticReport {
 
     fn try_from(builder: DiagnosticReportBuilder) -> Result<Self> {
         Ok(Self {
-            docs: Docs {
-                created: 0,
-                errors: 0,
-                total: 0,
+            agent: Agent {
+                r#type: "esdiag",
+                version: semver::Version::parse(env!("CARGO_PKG_VERSION"))?,
             },
-            license: None,
-            lookup: NestedStats::<LookupSummary> {
-                count: 0,
-                errors: 0,
-                failures: Vec::new(),
-                stats: HashMap::<String, LookupSummary>::new(),
+            timestamp: chrono::Utc::now().timestamp_millis(),
+            cluster: builder.cluster,
+            diagnostic: DiagnosticStats {
+                docs: Docs {
+                    created: 0,
+                    errors: 0,
+                    total: 0,
+                },
+                license: None,
+                lookup: NestedStats::<LookupSummary> {
+                    count: 0,
+                    errors: 0,
+                    failures: Vec::new(),
+                    stats: HashMap::<String, LookupSummary>::new(),
+                },
+                metadata: builder.metadata,
+                origin: builder.origin.ok_or_else(|| eyre!("Origin not set"))?,
+                processor: NestedStats::<ProcessorSummary> {
+                    count: 0,
+                    errors: 0,
+                    failures: Vec::new(),
+                    stats: builder.processors,
+                },
+                product: builder.product.unwrap_or(Product::Unknown),
+                kibana_link: None,
+                identifiers: Identifiers::default(),
+                processing_duration: 0,
             },
-            metadata: builder.metadata,
-            origin: builder.origin.ok_or_else(|| eyre!("Origin not set"))?,
-            processor: NestedStats::<ProcessorSummary> {
-                count: 0,
-                errors: 0,
-                failures: Vec::new(),
-                stats: builder.processors,
-            },
-            product: builder.product.unwrap_or(Product::Unknown),
-            kibana_link: None,
-            identifiers: Identifiers::default(),
-            processing_duration: 0,
         })
     }
 }

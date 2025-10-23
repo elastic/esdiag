@@ -17,24 +17,15 @@ pub struct DiagnosticMetadata {
     pub id: String,
     /// Unique identifier
     pub uuid: String,
-    /// Collector version
-    pub version: Option<String>,
 }
 
 impl DiagnosticMetadata {
-    pub fn new(
-        collection_date: u64,
-        id: String,
-        runner: String,
-        uuid: String,
-        version: Option<String>,
-    ) -> Self {
+    pub fn new(collection_date: u64, id: String, runner: String, uuid: String) -> Self {
         DiagnosticMetadata {
             collection_date,
             runner,
             id,
             uuid,
-            version,
         }
     }
 }
@@ -55,7 +46,6 @@ impl TryFrom<DiagnosticManifest> for DiagnosticMetadata {
             manifest.diagnostic_id(&uuid).clone(),
             runner,
             uuid,
-            manifest.diagnostic,
         ))
     }
 }

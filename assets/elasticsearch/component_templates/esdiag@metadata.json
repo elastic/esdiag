@@ -94,9 +94,6 @@
             },
             "uuid": {
               "type": "keyword"
-            },
-            "version": {
-              "type": "keyword"
             }
           }
         },
