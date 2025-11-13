@@ -39,7 +39,7 @@ pub struct Node {
     transport: Option<Value>,
     transport_address: Option<String>,
     transport_version: Option<i64>,
-    pub version: Option<semver::Version>,
+    pub version: Option<String>,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
