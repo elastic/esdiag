@@ -33,10 +33,7 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for Tasks {
                 node.tasks
                     .par_drain()
                     .map(|(_, task)| {
-                        let node = lookup_node
-                            .by_id(node_id.as_str())
-                            .cloned()
-                            .expect("Node not found for task");
+                        let node = lookup_node.by_id(node_id.as_str()).cloned();
                         serde_json::to_value(EnrichedTask::new(task, task_metadata.clone(), node))
                             .unwrap_or_default()
                     })
@@ -58,14 +55,14 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for Tasks {
 pub struct EnrichedTask {
     #[serde(flatten)]
     metadata: Value,
-    node: NodeDocument,
+    node: Option<NodeDocument>,
     task: TaskWithParent,
     #[serde(flatten)]
     data: Option<TaskData>,
 }
 
 impl EnrichedTask {
-    pub fn new(task: Task, metadata: Value, node: NodeDocument) -> Self {
+    pub fn new(task: Task, metadata: Value, node: Option<NodeDocument>) -> Self {
         let parent = task
             .parent_task_id
             .as_ref()
