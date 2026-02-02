@@ -2,8 +2,7 @@ Elastic Stack Diagnostics (ESDiag)
 Copyright 2012-2025 Elasticsearch B.V.
 
 ---
-This product bundles code based on datastar@1.0.0 which is
-available under a "MIT" license.
+This product bundles code based on datastar@1.0.0 which is available under a "MIT" license.
 
 Copyright © Star Federation
 
