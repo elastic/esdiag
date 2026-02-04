@@ -199,8 +199,12 @@ async fn run(cli: Cli) -> Result<&'static str> {
             let exporter = Exporter::try_from(output_uri)?;
 
             let kibana_url = kibana.unwrap_or_else(|| {
-                esdiag::env::get_string("ESDIAG_KIBANA_URL")
-                    .unwrap_or_else(|_| "http://localhost:5601".to_string())
+                let url = esdiag::env::get_string("ESDIAG_KIBANA_URL")
+                    .unwrap_or_else(|_| "http://localhost:5601".to_string());
+                match esdiag::env::get_string("ESDIAG_KIBANA_SPACE").ok() {
+                    Some(space) => format!("{url}/s/{space}"),
+                    None => url,
+                }
             });
 
             let mut server = Server::new(port, exporter, kibana_url);
