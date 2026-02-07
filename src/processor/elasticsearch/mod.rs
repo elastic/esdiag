@@ -82,12 +82,12 @@ use {
 
 #[derive(Serialize)]
 pub struct ElasticsearchDiagnostic {
-    lookups: Lookups,
-    metadata: ElasticsearchMetadata,
+    pub lookups: Lookups,
+    pub metadata: ElasticsearchMetadata,
     #[serde(skip)]
-    exporter: Arc<Exporter>,
+    pub exporter: Arc<Exporter>,
     #[serde(skip)]
-    receiver: Arc<Receiver>,
+    pub receiver: Arc<Receiver>,
 }
 
 impl ElasticsearchDiagnostic {

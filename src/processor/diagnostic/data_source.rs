@@ -36,6 +36,6 @@ impl Default for Source {
 
 impl std::fmt::Display for Source {
     fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(fmt, "{}", self)
+        write!(fmt, "{:?}", self.subdir)
     }
 }

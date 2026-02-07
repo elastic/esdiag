@@ -149,11 +149,51 @@ impl Processor<Ready> {
         let (summary_tx, summary_rx) = mpsc::channel::<ProcessorSummary>(10);
 
         if let Some(included_diagnostics) = self.state.manifest.included_diagnostics.clone() {
+            let (diagnostic, report) = match Diagnostic::try_new(
+                self.receiver.clone(),
+                self.exporter.clone(),
+                self.state.manifest.clone(),
+            )
+            .await
+            {
+                Ok(res) => res,
+                Err(err) => {
+                    return Err(Processor {
+                        receiver: self.receiver,
+                        exporter: self.exporter,
+                        start_time: self.start_time,
+                        id: self.id,
+                        state: Failed {
+                            runtime: self.start_time.elapsed().as_millis(),
+                            error: err.to_string(),
+                        },
+                    });
+                }
+            };
+
+            let parent_uuid = diagnostic.uuid();
+            let mut identifiers = self.state.manifest.identifiers.clone().unwrap_or_default();
+            identifiers = identifiers.with_parent_id(parent_uuid);
+
+            let orchestration = match identifiers.orchestration.clone() {
+                Some(orch) => Some(orch),
+                None => match self.state.manifest.product {
+                    Product::ECK => Some("elastic-cloud-kubernetes".to_string()),
+                    Product::ECE => Some("elastic-cloud-enterprise".to_string()),
+                    Product::KubernetesPlatform => Some("kubernetes-platform".to_string()),
+                    _ => None,
+                },
+            };
+
+            if let Some(orchestration) = orchestration {
+                identifiers = identifiers.with_orchestration(orchestration);
+            }
+
             let handles = spawn_sub_processors(
                 included_diagnostics,
                 self.receiver.clone(),
                 self.exporter.clone(),
-                self.state.manifest.identifiers.clone(),
+                Some(identifiers),
             );
             for handle in handles {
                 match handle.await {
@@ -161,6 +201,21 @@ impl Processor<Ready> {
                     Err(_) => log::debug!("Sub-process task failed"),
                 }
             }
+
+            let processor = Processor {
+                receiver: self.receiver,
+                exporter: self.exporter,
+                id: self.id,
+                start_time: self.start_time,
+                state: Processing {
+                    diagnostic,
+                    identifiers: self.state.identifiers,
+                    summary_rx,
+                    summary_tx,
+                    report,
+                },
+            };
+            return Ok(processor);
         };
 
         match Diagnostic::try_new(
@@ -313,6 +368,15 @@ pub enum Diagnostic {
 }
 
 impl Diagnostic {
+    pub fn uuid(&self) -> String {
+        match self {
+            Diagnostic::Elasticsearch(diagnostic) => diagnostic.metadata.diagnostic.uuid.clone(),
+            Diagnostic::ElasticCloudKubernetes(_) => "unknown".to_string(),
+            Diagnostic::KubernetesPlatform(_) => "unknown".to_string(),
+            Diagnostic::Logstash(diagnostic) => diagnostic.metadata.diagnostic.uuid.clone(),
+        }
+    }
+
     pub async fn try_new(
         receiver: Arc<Receiver>,
         exporter: Arc<Exporter>,

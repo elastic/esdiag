@@ -35,12 +35,17 @@ use tokio::sync::mpsc;
 
 #[derive(Serialize)]
 pub struct LogstashDiagnostic {
-    lookups: Lookups,
-    metadata: LogstashMetadata,
+    pub lookups: Lookups,
+    pub metadata: LogstashMetadata,
     #[serde(skip)]
-    exporter: Arc<Exporter>,
+    pub exporter: Arc<Exporter>,
     #[serde(skip)]
-    receiver: Arc<Receiver>,
+    pub receiver: Arc<Receiver>,
+}
+
+#[derive(Serialize)]
+pub struct Lookups {
+    pub plugin_count: u32,
 }
 
 impl LogstashDiagnostic {
@@ -118,9 +123,4 @@ impl DiagnosticProcessor for LogstashDiagnostic {
             "node".to_string(),
         )
     }
-}
-
-#[derive(Serialize)]
-struct Lookups {
-    plugin_count: u32,
 }
