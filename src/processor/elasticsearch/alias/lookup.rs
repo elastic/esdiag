@@ -33,7 +33,7 @@ impl From<AliasList> for Lookup<Alias> {
 impl From<Result<AliasList>> for Lookup<Alias> {
     fn from(alias_list: Result<AliasList>) -> Self {
         match alias_list {
-            Ok(alias_list) => Lookup::<Alias>::from(alias_list),
+            Ok(alias_list) => Lookup::<Alias>::from(alias_list).was_parsed(),
             Err(e) => {
                 log::warn!("Failed to parse AliasList: {}", e);
                 Lookup::new()

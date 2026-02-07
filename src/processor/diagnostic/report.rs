@@ -5,7 +5,7 @@
 use super::super::elasticsearch::{ClusterMetadata, License as ElasticsearchLicense};
 use super::{DiagnosticManifest, DiagnosticMetadata, Lookup};
 use crate::data::Product;
-use eyre::{OptionExt, Report, Result, eyre};
+use eyre::{eyre, OptionExt, Report, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -263,10 +263,16 @@ impl DiagnosticReport {
     where
         T: Clone + Serialize,
     {
+        if !lookup.parsed {
+            self.diagnostic.lookup.errors += 1;
+            self.diagnostic.lookup.failures.push(name.to_string());
+        }
+
         self.diagnostic.lookup.push(
             name.to_string(),
             LookupSummary {
                 docs: lookup.len() as u32,
+                parsed: lookup.parsed,
             },
         );
     }
@@ -349,6 +355,7 @@ impl std::fmt::Display for BatchResponse {
 #[derive(Serialize, Clone)]
 pub struct LookupSummary {
     docs: u32,
+    pub parsed: bool,
 }
 
 #[derive(Serialize, Clone)]
@@ -489,5 +496,58 @@ impl TryFrom<String> for Origin {
             id: None,
             scope: None,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_lookup_parsed_status() {
+        let metadata = DiagnosticMetadata {
+            id: "test".to_string(),
+            collection_date: 0,
+            runner: "test".to_string(),
+            uuid: "test".to_string(),
+        };
+        let mut report = DiagnosticReport::try_from(
+            DiagnosticReportBuilder::from(metadata).receiver("file path".to_string()),
+        )
+        .unwrap();
+
+        let mut lookup = Lookup::<String>::new();
+        lookup = lookup.was_parsed();
+        lookup.add("data".to_string());
+
+        report.add_lookup("my_lookup", &lookup);
+
+        let stats = &report.diagnostic.lookup;
+        assert!(stats.stats.contains_key("my_lookup"));
+        assert!(stats.stats.get("my_lookup").unwrap().parsed);
+        assert_eq!(stats.errors, 0);
+    }
+
+    #[test]
+    fn test_lookup_failure_recording() {
+        let metadata = DiagnosticMetadata {
+            id: "test".to_string(),
+            collection_date: 0,
+            runner: "test".to_string(),
+            uuid: "test".to_string(),
+        };
+        let mut report = DiagnosticReport::try_from(
+            DiagnosticReportBuilder::from(metadata).receiver("file path".to_string()),
+        )
+        .unwrap();
+
+        let lookup = Lookup::<String>::new(); // parsed is false by default
+
+        report.add_lookup("failed_lookup", &lookup);
+
+        let stats = &report.diagnostic.lookup;
+        assert_eq!(stats.errors, 1);
+        assert!(stats.failures.contains(&"failed_lookup".to_string()));
+        assert!(!stats.stats.get("failed_lookup").unwrap().parsed);
     }
 }

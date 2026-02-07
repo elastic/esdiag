@@ -25,16 +25,16 @@ pub struct NodeDocument {
 }
 
 impl NodeDocument {
-    pub fn rename(self, name: &String) -> Self {
+    pub fn rename(self, name: &str) -> Self {
         NodeDocument {
-            name: name.clone(),
+            name: name.to_string(),
             ..self
         }
     }
 
-    pub fn with_id(self, id: &String) -> Self {
+    pub fn with_id(self, id: &str) -> Self {
         NodeDocument {
-            id: Some(id.clone()),
+            id: Some(id.to_string()),
             ..self
         }
     }
@@ -79,7 +79,7 @@ impl From<Nodes> for Lookup<NodeDocument> {
 impl From<Result<Nodes>> for Lookup<NodeDocument> {
     fn from(nodes_result: Result<Nodes>) -> Self {
         match nodes_result {
-            Ok(nodes) => Lookup::<NodeDocument>::from(nodes),
+            Ok(nodes) => Lookup::<NodeDocument>::from(nodes).was_parsed(),
             Err(e) => {
                 log::warn!("Failed to parse Nodes: {}", e);
                 Lookup::new()
@@ -95,7 +95,7 @@ impl std::fmt::Display for Node {
 }
 
 /// Determines a node's tier based on a precedence of assigned roles.
-fn get_tier(roles: &Vec<String>) -> String {
+fn get_tier(roles: &[String]) -> String {
     match () {
         _ if roles.contains(&"index".to_string()) => "index",
         _ if roles.contains(&"search".to_string()) => "search",
@@ -152,7 +152,7 @@ fn get_tier_node_name(node_name: String, tier: &str) -> String {
 }
 
 /// Collects single-character abbreviations for roles into a string.
-fn get_roles_abbreviation(role_list: &Vec<String>) -> String {
+fn get_roles_abbreviation(role_list: &[String]) -> String {
     let char_for = |role| {
         let c = match role {
             "data" => 'd',

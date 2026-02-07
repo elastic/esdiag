@@ -100,20 +100,22 @@ impl ElasticsearchDiagnostic {
             + Send
             + Sync,
     {
-        let summary = match self.receiver.get::<T>().await {
-            Ok(data) => data
-                .documents_export(&self.exporter, &self.lookups, &self.metadata)
-                .await
-                .was_parsed(),
+        match self.receiver.get::<T>().await {
+            Ok(data) => {
+                let summary = data
+                    .documents_export(&self.exporter, &self.lookups, &self.metadata)
+                    .await
+                    .was_parsed();
+                summary_tx.send(summary).await.map_err(|err| {
+                    log::error!("Failed to send summary: {}", err);
+                    eyre!(err)
+                })
+            }
             Err(err) => {
                 log::warn!("{}", err);
-                ProcessorSummary::new(T::name())
+                Ok(())
             }
-        };
-        summary_tx.send(summary).await.map_err(|err| {
-            log::error!("Failed to send summary: {}", err);
-            eyre!(err)
-        })
+        }
     }
 }
 
@@ -172,7 +174,7 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
 
     async fn process(self, summary_tx: mpsc::Sender<ProcessorSummary>) -> Result<()> {
         log::debug!("Running Elasticsearch diagnostic processors");
-        if self.exporter.is_connected().await == false {
+        if !self.exporter.is_connected().await {
             return Err(eyre!("Exporter is not connected"));
         }
 
