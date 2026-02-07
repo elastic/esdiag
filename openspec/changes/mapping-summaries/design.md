@@ -55,6 +55,7 @@ pub struct MappingSummary {
 }
 pub struct MultiFieldSummary {
     pub total: u64,
+    pub names: Vec<String>,
 }
 
 pub struct FieldSummary {

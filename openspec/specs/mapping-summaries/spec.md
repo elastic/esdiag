@@ -28,8 +28,8 @@ The `IndicesStats` exporter SHALL enrich its output with the mapping summary obt
 - **THEN** the exported document SHALL include a `mappings` object containing the summarized field counts, multi-field counts, `dynamic` setting, and `_meta` information
 
 ### Requirement: Multi-Field Counting
-The `MappingStats` processor SHALL count the number of fields that have one or more multi-fields defined.
+The `MappingStats` processor SHALL count the number of fields that have one or more multi-fields defined, and collect their names.
 
 #### Scenario: Count multi-fields in a mapping
-- **WHEN** an index mapping is processed with 3 fields, one of which has a `fields` property
-- **THEN** the resulting summary SHALL report `total: 1` under the `multi-fields` object
+- **WHEN** an index mapping is processed with 3 fields, one of which named "message" has a `fields` property
+- **THEN** the resulting summary SHALL report `total: 1` and `names: ["message"]` under the `multi-fields` object

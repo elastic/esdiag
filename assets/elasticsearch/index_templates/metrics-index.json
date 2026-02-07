@@ -409,6 +409,9 @@
                   "properties": {
                     "total": {
                       "type": "long"
+                    },
+                    "names": {
+                      "type": "keyword"
                     }
                   }
                 }
