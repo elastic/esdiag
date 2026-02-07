@@ -120,6 +120,44 @@ impl Client {
             }
         }
     }
+
+    /// Check if security is enabled on the cluster
+    pub async fn has_security_enabled(&self) -> Result<bool> {
+        match self {
+            Client::Elasticsearch(client) => {
+                let response = client
+                    .send(
+                        es::http::Method::Get,
+                        "/_xpack/usage",
+                        es::http::headers::HeaderMap::new(),
+                        Option::<&serde_json::Value>::None,
+                        Option::<es::http::request::JsonBody<serde_json::Value>>::None,
+                        None,
+                    )
+                    .await?;
+
+                if response.status_code().is_success() {
+                    let json: serde_json::Value = response.json().await?;
+                    let enabled = json
+                        .get("security")
+                        .and_then(|s| s.get("enabled"))
+                        .and_then(|e| e.as_bool())
+                        .unwrap_or(false);
+                    Ok(enabled)
+                } else {
+                    log::warn!(
+                        "Failed to check security status (HTTP {}). Assuming security is disabled.",
+                        response.status_code()
+                    );
+                    Ok(false)
+                }
+            }
+            Client::Kibana(_) => {
+                // For Kibana we assume true for now as requested
+                Ok(true)
+            }
+        }
+    }
 }
 
 impl From<Client> for Product {
