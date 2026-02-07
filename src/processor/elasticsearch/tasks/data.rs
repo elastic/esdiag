@@ -28,7 +28,7 @@ pub struct Task {
     cancelled: Option<bool>,
     pub description: Option<String>,
     headers: Option<Value>,
-    id: u64,
+    pub id: u64,
     //node: Option<String>, // omitted in favor of enriched node field
     #[serde(skip_serializing)] // skipped in favor of subobject field
     pub parent_task_id: Option<String>,

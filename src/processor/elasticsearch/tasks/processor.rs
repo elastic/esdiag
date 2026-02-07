@@ -35,7 +35,7 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for Tasks {
                     .map(|(_, task)| {
                         let node = lookup_node.by_id(node_id.as_str()).cloned();
                         if node.is_none() {
-                            log::warn!("Node not found for task (node_id: {})", node_id);
+                            log::warn!("Node [{}] not found for task [{}]", node_id, task.id);
                         }
                         serde_json::to_value(EnrichedTask::new(task, task_metadata.clone(), node))
                             .unwrap_or_default()
