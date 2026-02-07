@@ -38,3 +38,10 @@
 - [x] 6.3 Update summarization logic for new fields and renamed map
 - [x] 6.4 Update unit tests for final refinements
 - [x] 6.5 Update Elasticsearch index template `assets/elasticsearch/index_templates/metrics-index.json` for final refinements
+
+## 7. Multi-Field Counting
+
+- [x] 7.1 Update `MappingSummary` to include `multi_fields`
+- [x] 7.2 Implement multi-field counting logic in `FieldDefinition::summarize`
+- [x] 7.3 Update Elasticsearch index template with `multi-fields` mapping
+- [x] 7.4 Update unit tests for multi-field counting

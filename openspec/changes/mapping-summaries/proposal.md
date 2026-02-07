@@ -5,7 +5,7 @@ Bringing in full mapping files to Elasticsearch is inefficient and often unneces
 ## What Changes
 
 - **New Mapping Processor**: Create a `MappingStats` processor that parses `mapping.json` files from the diagnostic.
-- **Mapping Summarization**: Extract field type counts, `dynamic` setting, `dynamic_date_formats`, `dynamic_templates` count, `_data_stream_timestamp` status, and `_meta` information from mappings.
+- **Mapping Summarization**: Extract field type counts, multi-field counts, `dynamic` setting, `dynamic_date_formats`, `dynamic_templates` count, `_data_stream_timestamp` status, and `_meta` information from mappings.
 - **Indices Stats Enrichment**: Update the `IndicesStats` exporter to perform a lookup against the collected `MappingStats` and include a summarized `mappings` object in the exported documents.
 - **Data Stream Update**: The `mappings` object will be persisted in the `metrics-index-esdiag` data stream.
 

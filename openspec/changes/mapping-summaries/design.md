@@ -40,7 +40,7 @@ struct SourceMode {
 }
 ...
 pub struct MappingSummary {
-    pub dynamic: Option<serde_json::Value>,
+    pub dynamic: Option<String>,
     pub date_detection: Option<bool>,
     pub numeric_detection: Option<bool>,
     pub dynamic_date_formats: Option<Vec<String>>,
@@ -48,8 +48,15 @@ pub struct MappingSummary {
     pub _data_stream_timestamp: Option<DataStreamTimestamp>,
     pub _source: Option<SourceMode>,
     pub _meta: Option<serde_json::Value>,
-    pub field: FieldSummary,
+    #[serde(flatten)]
+    pub fields: HashMap<String, u64>,
+    #[serde(rename = "multi-fields")]
+    pub multi_fields: MultiFieldSummary,
 }
+pub struct MultiFieldSummary {
+    pub total: u64,
+}
+
 pub struct FieldSummary {
     pub fields: HashMap<String, u64>, // Renamed from count, includes "total"
 }

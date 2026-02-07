@@ -404,6 +404,13 @@
                       "type": "long"
                     }
                   }
+                },
+                "multi-fields": {
+                  "properties": {
+                    "total": {
+                      "type": "long"
+                    }
+                  }
                 }
               }
             },

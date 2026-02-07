@@ -67,6 +67,13 @@ pub struct MappingSummary {
     pub _meta: Option<serde_json::Value>,
     #[serde(flatten)]
     pub fields: HashMap<String, u64>,
+    #[serde(rename = "multi-fields")]
+    pub multi_fields: MultiFieldSummary,
+}
+
+#[derive(Clone, Default, Deserialize, Serialize)]
+pub struct MultiFieldSummary {
+    pub total: u64,
 }
 
 impl MappingStats {
@@ -102,7 +109,7 @@ impl IndexMapping {
 
         if let Some(properties) = &self.mappings.properties {
             for field in properties.values() {
-                field.summarize(&mut summary.fields);
+                field.summarize(&mut summary.fields, &mut summary.multi_fields);
             }
         }
 
@@ -111,7 +118,11 @@ impl IndexMapping {
 }
 
 impl FieldDefinition {
-    pub fn summarize(&self, fields: &mut HashMap<String, u64>) {
+    pub fn summarize(
+        &self,
+        fields: &mut HashMap<String, u64>,
+        multi_fields: &mut MultiFieldSummary,
+    ) {
         // Increment total count, avoiding repeated String allocation
         if let Some(count) = fields.get_mut("total") {
             *count += 1;
@@ -126,6 +137,11 @@ impl FieldDefinition {
             } else {
                 fields.insert(field_type.clone(), 1);
             }
+
+            // Check if it's a multi-field mapping (has type AND fields)
+            if self.fields.is_some() {
+                multi_fields.total += 1;
+            }
         } else if self.properties.is_some() {
             // It's likely an 'object' or 'nested' type without explicit 'type' field
             if let Some(count) = fields.get_mut("object") {
@@ -137,13 +153,13 @@ impl FieldDefinition {
 
         if let Some(properties) = &self.properties {
             for field in properties.values() {
-                field.summarize(fields);
+                field.summarize(fields, multi_fields);
             }
         }
 
         if let Some(fields_map) = &self.fields {
             for field in fields_map.values() {
-                field.summarize(fields);
+                field.summarize(fields, multi_fields);
             }
         }
     }
@@ -213,6 +229,7 @@ mod tests {
         assert_eq!(summary.fields.get("keyword").unwrap(), &1);
         assert_eq!(summary.fields.get("long").unwrap(), &1);
         assert_eq!(summary.fields.get("object").unwrap(), &1);
+        assert_eq!(summary.multi_fields.total, 0);
     }
 
     #[test]
@@ -239,5 +256,6 @@ mod tests {
         assert_eq!(summary.fields.get("total").unwrap(), &2); // field1, field1.keyword
         assert_eq!(summary.fields.get("text").unwrap(), &1);
         assert_eq!(summary.fields.get("keyword").unwrap(), &1);
+        assert_eq!(summary.multi_fields.total, 1); // field1 is a multi-field
     }
 }
