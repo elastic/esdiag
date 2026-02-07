@@ -14,16 +14,17 @@ mod elasticsearch;
 mod kubernetes_platform;
 /// Processors for Logstash diagnostics
 mod logstash;
+
 pub use collector::Collector;
 pub use diagnostic::{
     DataSource, DiagnosticManifest, DiagnosticReport, Manifest,
     data_source::PathType,
     manifest::ManifestBuilder,
-    report::{BatchResponse, Identifiers, ProcessorSummary},
+    report::{BatchResponse, Identifiers, ProcessorSummary, Source},
 };
 pub use elasticsearch::Cluster as ElasticsearchCluster;
-use futures::stream::FuturesUnordered;
 
+use futures::stream::FuturesUnordered;
 use crate::{data::Product, exporter::Exporter, receiver::Receiver};
 use elastic_cloud_kubernetes::ElasticCloudKubernetesDiagnostic;
 use elasticsearch::ElasticsearchDiagnostic;
@@ -148,6 +149,20 @@ impl Processor<Ready> {
         log::debug!("Transitioned: Processor<Processing>");
         let (summary_tx, summary_rx) = mpsc::channel::<ProcessorSummary>(10);
 
+        let mut identifiers = self.state.identifiers.clone();
+        if identifiers.orchestration.is_none() {
+            let orchestration = match self.state.manifest.product {
+                Product::ECK => Some("elastic-cloud-kubernetes".to_string()),
+                Product::ECE => Some("elastic-cloud-enterprise".to_string()),
+                Product::KubernetesPlatform => Some("kubernetes-platform".to_string()),
+                Product::ElasticCloudHosted => Some("elastic-cloud-hosted".to_string()),
+                _ => None,
+            };
+            if let Some(orch) = orchestration {
+                identifiers = identifiers.with_orchestration(orch);
+            }
+        }
+
         if let Some(included_diagnostics) = self.state.manifest.included_diagnostics.clone() {
             let (diagnostic, report) = match Diagnostic::try_new(
                 self.receiver.clone(),
@@ -171,36 +186,17 @@ impl Processor<Ready> {
                 }
             };
 
-            let parent_uuid = diagnostic.uuid();
-            let mut identifiers = self.state.manifest.identifiers.clone().unwrap_or_default();
-            identifiers = identifiers.with_parent_id(parent_uuid);
-
-            let orchestration = match identifiers.orchestration.clone() {
-                Some(orch) => Some(orch),
-                None => match self.state.manifest.product {
-                    Product::ECK => Some("elastic-cloud-kubernetes".to_string()),
-                    Product::ECE => Some("elastic-cloud-enterprise".to_string()),
-                    Product::KubernetesPlatform => Some("kubernetes-platform".to_string()),
-                    _ => None,
-                },
-            };
-
-            if let Some(orchestration) = orchestration {
-                identifiers = identifiers.with_orchestration(orchestration);
+            let mut child_identifiers = identifiers.clone();
+            if let Some(parent_uuid) = diagnostic.uuid() {
+                child_identifiers = child_identifiers.with_parent_id(parent_uuid);
             }
 
-            let handles = spawn_sub_processors(
+            let _handles = spawn_sub_processors(
                 included_diagnostics,
                 self.receiver.clone(),
                 self.exporter.clone(),
-                Some(identifiers),
+                Some(child_identifiers),
             );
-            for handle in handles {
-                match handle.await {
-                    Ok(_) => log::debug!("Sub-process task complete"),
-                    Err(_) => log::debug!("Sub-process task failed"),
-                }
-            }
 
             let processor = Processor {
                 receiver: self.receiver,
@@ -209,7 +205,7 @@ impl Processor<Ready> {
                 start_time: self.start_time,
                 state: Processing {
                     diagnostic,
-                    identifiers: self.state.identifiers,
+                    identifiers,
                     summary_rx,
                     summary_tx,
                     report,
@@ -233,7 +229,7 @@ impl Processor<Ready> {
                     start_time: self.start_time,
                     state: Processing {
                         diagnostic,
-                        identifiers: self.state.identifiers,
+                        identifiers,
                         summary_rx,
                         summary_tx,
                         report,
@@ -368,12 +364,12 @@ pub enum Diagnostic {
 }
 
 impl Diagnostic {
-    pub fn uuid(&self) -> String {
+    pub fn uuid(&self) -> Option<String> {
         match self {
-            Diagnostic::Elasticsearch(diagnostic) => diagnostic.metadata.diagnostic.uuid.clone(),
-            Diagnostic::ElasticCloudKubernetes(_) => "unknown".to_string(),
-            Diagnostic::KubernetesPlatform(_) => "unknown".to_string(),
-            Diagnostic::Logstash(diagnostic) => diagnostic.metadata.diagnostic.uuid.clone(),
+            Diagnostic::Elasticsearch(diagnostic) => Some(diagnostic.uuid().to_string()),
+            Diagnostic::ElasticCloudKubernetes(diagnostic) => Some(diagnostic.uuid().to_string()),
+            Diagnostic::KubernetesPlatform(diagnostic) => Some(diagnostic.uuid().to_string()),
+            Diagnostic::Logstash(diagnostic) => Some(diagnostic.uuid().to_string()),
         }
     }
 
@@ -434,7 +430,7 @@ impl Diagnostic {
     }
 }
 
-trait DocumentExporter<T, U> {
+pub trait DocumentExporter<T, U> {
     async fn documents_export(
         self,
         exporter: &Exporter,
@@ -443,7 +439,7 @@ trait DocumentExporter<T, U> {
     ) -> ProcessorSummary;
 }
 
-trait DiagnosticProcessor {
+pub trait DiagnosticProcessor {
     async fn try_new(
         receiver: Arc<Receiver>,
         exporter: Arc<Exporter>,
@@ -455,7 +451,7 @@ trait DiagnosticProcessor {
     fn origin(&self) -> (String, String, String);
 }
 
-trait Metadata {
+pub trait Metadata {
     fn as_meta_doc(&self) -> serde_json::Value;
 }
 

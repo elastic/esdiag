@@ -4,7 +4,7 @@
 
 use super::{
     DiagnosticProcessor, ProcessorSummary,
-    diagnostic::{DiagPath, DiagnosticManifest, DiagnosticReport, DiagnosticReportBuilder, Lookup},
+    diagnostic::{DiagPath, DiagnosticManifest, DiagnosticMetadata, DiagnosticReport, DiagnosticReportBuilder, Lookup},
 };
 use crate::{data::Product, exporter::Exporter, receiver::Receiver};
 use eyre::Result;
@@ -14,13 +14,15 @@ use tokio::sync::mpsc;
 
 #[derive(Clone, Serialize)]
 pub struct KubernetesPlatformDiagnostic {
-    pub lookups: Arc<Lookups>,
+    lookups: Arc<Lookups>,
     #[serde(skip)]
-    pub exporter: Arc<Exporter>,
+    exporter: Arc<Exporter>,
     #[serde(skip)]
-    pub receiver: Arc<Receiver>,
+    receiver: Arc<Receiver>,
     #[serde(skip)]
-    pub included_diagnostics: Vec<DiagPath>,
+    included_diagnostics: Vec<DiagPath>,
+    #[serde(flatten)]
+    metadata: DiagnosticMetadata,
 }
 
 impl DiagnosticProcessor for KubernetesPlatformDiagnostic {
@@ -43,10 +45,12 @@ impl DiagnosticProcessor for KubernetesPlatformDiagnostic {
             None => vec![],
         };
 
-        let report = DiagnosticReportBuilder::try_from(manifest)?
+        let report = DiagnosticReportBuilder::try_from(manifest.clone())?
             .product(Product::KubernetesPlatform)
             .receiver(receiver.to_string())
             .build()?;
+
+        let metadata = DiagnosticMetadata::try_from(manifest)?;
 
         Ok((
             Box::new(Self {
@@ -54,6 +58,7 @@ impl DiagnosticProcessor for KubernetesPlatformDiagnostic {
                 exporter,
                 receiver,
                 included_diagnostics,
+                metadata,
             }),
             report,
         ))
@@ -66,7 +71,7 @@ impl DiagnosticProcessor for KubernetesPlatformDiagnostic {
     }
 
     fn id(&self) -> &str {
-        "undefined"
+        &self.metadata.id
     }
 
     fn origin(&self) -> (String, String, String) {
@@ -81,6 +86,10 @@ impl DiagnosticProcessor for KubernetesPlatformDiagnostic {
 impl KubernetesPlatformDiagnostic {
     pub fn cloned_receiver(&self, next: &DiagPath) -> Result<Receiver> {
         self.receiver.clone_for_subdir(&next.diag_path)
+    }
+
+    pub fn uuid(&self) -> &str {
+        &self.metadata.uuid
     }
 }
 

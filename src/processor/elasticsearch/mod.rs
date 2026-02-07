@@ -3,43 +3,43 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 /// The `_alias` API
-mod alias;
+pub mod alias;
 /// The `_cluster/settings` API
-mod cluster_settings;
+pub mod cluster_settings;
 /// Collector definition for Elasticsearch diagnostics
 pub mod collector;
 /// The `_data_stream` API
-mod data_stream;
+pub mod data_stream;
 /// The `_health_report` API
-mod health_report;
+pub mod health_report;
 /// The `_ilm/explain` API
-mod ilm_explain;
+pub mod ilm_explain;
 /// The `_ilm/policy` API
-mod ilm_policies;
+pub mod ilm_policies;
 /// The `_settings` API
-mod indices_settings;
+pub mod indices_settings;
 /// The `_stats` API
-mod indices_stats;
+pub mod indices_stats;
 /// The `_license` API
-mod licenses;
+pub mod licenses;
 /// Elasticsearch diagnostics metadata
 mod metadata;
 /// The `_nodes` API
-mod nodes;
+pub mod nodes;
 /// The `_nodes/stats` API
-mod nodes_stats;
+pub mod nodes_stats;
 /// The `_pending_tasks` API
-mod pending_tasks;
+pub mod pending_tasks;
 /// The `_searchable_snapshots_cache/stats` API
-mod searchable_snapshots_cache_stats;
+pub mod searchable_snapshots_cache_stats;
 /// The `_searchable_snapshots/stats` API
-mod searchable_snapshots_stats;
+pub mod searchable_snapshots_stats;
 /// The `_slm/policy` API
-mod slm_policies;
+pub mod slm_policies;
 /// The `_tasks` API
-mod tasks;
+pub mod tasks;
 /// The cluster `/` API -- "You know, for search!"
-mod version;
+pub mod version;
 
 pub use metadata::ElasticsearchMetadata;
 use tokio::sync::mpsc;
@@ -82,12 +82,12 @@ use {
 
 #[derive(Serialize)]
 pub struct ElasticsearchDiagnostic {
-    pub lookups: Lookups,
-    pub metadata: ElasticsearchMetadata,
+    lookups: Lookups,
+    metadata: ElasticsearchMetadata,
     #[serde(skip)]
-    pub exporter: Arc<Exporter>,
+    exporter: Arc<Exporter>,
     #[serde(skip)]
-    pub receiver: Arc<Receiver>,
+    receiver: Arc<Receiver>,
 }
 
 impl ElasticsearchDiagnostic {
@@ -233,6 +233,12 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
             self.metadata.cluster.uuid.clone(),
             "cluster".to_string(),
         )
+    }
+}
+
+impl ElasticsearchDiagnostic {
+    pub fn uuid(&self) -> &str {
+        &self.metadata.diagnostic.uuid
     }
 }
 

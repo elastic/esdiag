@@ -42,8 +42,8 @@ pub struct DiagnosticManifest {
     pub identifiers: Option<Identifiers>,
 }
 
-impl DiagnosticManifest {
-    pub fn clone(&self) -> Self {
+impl Clone for DiagnosticManifest {
+    fn clone(&self) -> Self {
         let diagnostic_id = if let Ok(id) = self.diagnostic_id.read() {
             RwLock::new(id.clone())
         } else {
@@ -65,7 +65,9 @@ impl DiagnosticManifest {
             identifiers: self.identifiers.clone(),
         }
     }
+}
 
+impl DiagnosticManifest {
     pub fn new(
         collection_date: String,
         diagnostic: Option<String>,

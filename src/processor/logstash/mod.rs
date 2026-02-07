@@ -15,6 +15,8 @@ mod plugins;
 /// Logstash version
 mod version;
 
+pub use metadata::LogstashMetadata;
+
 use super::{
     DiagnosticProcessor, DocumentExporter, Metadata, ProcessorSummary,
     diagnostic::{DataSource, DiagnosticManifest, DiagnosticReport, DiagnosticReportBuilder},
@@ -25,7 +27,6 @@ use crate::{
     receiver::Receiver,
 };
 use eyre::{Result, eyre};
-use metadata::LogstashMetadata;
 use node::Node;
 use node_stats::NodeStats;
 use plugins::Plugins;
@@ -35,17 +36,12 @@ use tokio::sync::mpsc;
 
 #[derive(Serialize)]
 pub struct LogstashDiagnostic {
-    pub lookups: Lookups,
-    pub metadata: LogstashMetadata,
+    lookups: Lookups,
+    metadata: LogstashMetadata,
     #[serde(skip)]
-    pub exporter: Arc<Exporter>,
+    exporter: Arc<Exporter>,
     #[serde(skip)]
-    pub receiver: Arc<Receiver>,
-}
-
-#[derive(Serialize)]
-pub struct Lookups {
-    pub plugin_count: u32,
+    receiver: Arc<Receiver>,
 }
 
 impl LogstashDiagnostic {
@@ -68,6 +64,10 @@ impl LogstashDiagnostic {
             log::error!("Failed to send summary: {}", err);
             eyre!(err)
         })
+    }
+
+    pub fn uuid(&self) -> &str {
+        &self.metadata.diagnostic.uuid
     }
 }
 
@@ -123,4 +123,9 @@ impl DiagnosticProcessor for LogstashDiagnostic {
             "node".to_string(),
         )
     }
+}
+
+#[derive(Serialize)]
+pub struct Lookups {
+    pub plugin_count: u32,
 }
