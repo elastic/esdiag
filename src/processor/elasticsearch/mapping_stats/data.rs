@@ -57,7 +57,7 @@ pub struct FieldDefinition {
 #[skip_serializing_none]
 #[derive(Clone, Default, Deserialize, Serialize)]
 pub struct MappingSummary {
-    pub dynamic: Option<serde_json::Value>,
+    pub dynamic: Option<String>,
     pub date_detection: Option<bool>,
     pub numeric_detection: Option<bool>,
     pub dynamic_date_formats: Option<Vec<String>>,
@@ -85,7 +85,11 @@ impl MappingStats {
 impl IndexMapping {
     pub fn summarize(&self) -> MappingSummary {
         let mut summary = MappingSummary {
-            dynamic: self.mappings.dynamic.clone(),
+            dynamic: self.mappings.dynamic.as_ref().map(|v| match v {
+                serde_json::Value::Bool(b) => b.to_string(),
+                serde_json::Value::String(s) => s.clone(),
+                _ => v.to_string(),
+            }),
             date_detection: self.mappings.date_detection,
             numeric_detection: self.mappings.numeric_detection,
             dynamic_date_formats: self.mappings.dynamic_date_formats.clone(),
@@ -112,12 +116,27 @@ impl IndexMapping {
 
 impl FieldDefinition {
     pub fn summarize(&self, summary: &mut FieldSummary) {
-        *summary.fields.entry("total".to_string()).or_insert(0) += 1;
+        // Increment total count, avoiding repeated String allocation
+        if let Some(count) = summary.fields.get_mut("total") {
+            *count += 1;
+        } else {
+            summary.fields.insert("total".to_string(), 1);
+        }
+
         if let Some(field_type) = &self.field_type {
-            *summary.fields.entry(field_type.clone()).or_insert(0) += 1;
+            // Increment count for this field type, cloning only on first insert
+            if let Some(count) = summary.fields.get_mut(field_type) {
+                *count += 1;
+            } else {
+                summary.fields.insert(field_type.clone(), 1);
+            }
         } else if self.properties.is_some() {
             // It's likely an 'object' or 'nested' type without explicit 'type' field
-            *summary.fields.entry("object".to_string()).or_insert(0) += 1;
+            if let Some(count) = summary.fields.get_mut("object") {
+                *count += 1;
+            } else {
+                summary.fields.insert("object".to_string(), 1);
+            }
         }
 
         if let Some(properties) = &self.properties {
@@ -180,10 +199,7 @@ mod tests {
         let summaries = stats.summaries();
         let summary = summaries.get("test_index").unwrap();
 
-        assert_eq!(
-            summary.dynamic,
-            Some(serde_json::Value::String("strict".to_string()))
-        );
+        assert_eq!(summary.dynamic, Some("strict".to_string()));
         assert_eq!(summary.date_detection, Some(false));
         assert_eq!(summary.numeric_detection, Some(true));
         assert_eq!(
