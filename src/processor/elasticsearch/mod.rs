@@ -3,44 +3,45 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 /// The `_alias` API
-pub mod alias;
+mod alias;
 /// The `_cluster/settings` API
-pub mod cluster_settings;
+mod cluster_settings;
 /// Collector definition for Elasticsearch diagnostics
-pub mod collector;
+mod collector;
 /// The `_data_stream` API
-pub mod data_stream;
+mod data_stream;
 /// The `_health_report` API
-pub mod health_report;
+mod health_report;
 /// The `_ilm/explain` API
-pub mod ilm_explain;
+mod ilm_explain;
 /// The `_ilm/policy` API
-pub mod ilm_policies;
+mod ilm_policies;
 /// The `_settings` API
-pub mod indices_settings;
+mod indices_settings;
 /// The `_stats` API
-pub mod indices_stats;
+mod indices_stats;
 /// The `_license` API
-pub mod licenses;
+mod licenses;
 /// Elasticsearch diagnostics metadata
 mod metadata;
 /// The `_nodes` API
-pub mod nodes;
+mod nodes;
 /// The `_nodes/stats` API
-pub mod nodes_stats;
+mod nodes_stats;
 /// The `_pending_tasks` API
-pub mod pending_tasks;
+mod pending_tasks;
 /// The `_searchable_snapshots_cache/stats` API
-pub mod searchable_snapshots_cache_stats;
+mod searchable_snapshots_cache_stats;
 /// The `_searchable_snapshots/stats` API
-pub mod searchable_snapshots_stats;
+mod searchable_snapshots_stats;
 /// The `_slm/policy` API
-pub mod slm_policies;
+mod slm_policies;
 /// The `_tasks` API
-pub mod tasks;
+mod tasks;
 /// The cluster `/` API -- "You know, for search!"
-pub mod version;
+mod version;
 
+pub use collector::ElasticsearchCollector;
 pub use metadata::ElasticsearchMetadata;
 use tokio::sync::mpsc;
 pub use {

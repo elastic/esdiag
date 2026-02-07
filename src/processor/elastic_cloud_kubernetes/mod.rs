@@ -16,10 +16,7 @@ use tokio::sync::mpsc;
 pub struct ElasticCloudKubernetesDiagnostic {
     lookups: Arc<Lookups>,
     #[serde(skip)]
-    exporter: Arc<Exporter>,
-    #[serde(skip)]
     receiver: Arc<Receiver>,
-    included_diagnostics: Vec<DiagPath>,
     #[serde(flatten)]
     metadata: DiagnosticMetadata,
 }
@@ -27,22 +24,12 @@ pub struct ElasticCloudKubernetesDiagnostic {
 impl DiagnosticProcessor for ElasticCloudKubernetesDiagnostic {
     async fn try_new(
         receiver: Arc<Receiver>,
-        exporter: Arc<Exporter>,
-        mut manifest: DiagnosticManifest,
+        _exporter: Arc<Exporter>,
+        manifest: DiagnosticManifest,
     ) -> Result<(Box<Self>, DiagnosticReport)> {
         let lookups = Arc::new(Lookups {
             k8s_node: Lookup::new(),
         });
-
-        log::debug!(
-            "Eck diagnostic includes: {:?}",
-            &manifest.included_diagnostics
-        );
-
-        let included_diagnostics = match manifest.included_diagnostics.take() {
-            Some(diags) => diags,
-            None => vec![],
-        };
 
         let report = DiagnosticReportBuilder::try_from(manifest.clone())?
             .product(Product::ECK)
@@ -55,8 +42,6 @@ impl DiagnosticProcessor for ElasticCloudKubernetesDiagnostic {
             Box::new(Self {
                 lookups,
                 receiver,
-                exporter,
-                included_diagnostics,
                 metadata,
             }),
             report,
@@ -85,10 +70,6 @@ impl DiagnosticProcessor for ElasticCloudKubernetesDiagnostic {
 }
 
 impl ElasticCloudKubernetesDiagnostic {
-    pub fn cloned_receiver(&self, next: &DiagPath) -> Result<Receiver> {
-        self.receiver.clone_for_subdir(&next.diag_path)
-    }
-
     pub fn uuid(&self) -> &str {
         &self.metadata.uuid
     }

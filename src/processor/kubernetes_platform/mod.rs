@@ -16,11 +16,7 @@ use tokio::sync::mpsc;
 pub struct KubernetesPlatformDiagnostic {
     lookups: Arc<Lookups>,
     #[serde(skip)]
-    exporter: Arc<Exporter>,
-    #[serde(skip)]
     receiver: Arc<Receiver>,
-    #[serde(skip)]
-    included_diagnostics: Vec<DiagPath>,
     #[serde(flatten)]
     metadata: DiagnosticMetadata,
 }
@@ -28,22 +24,12 @@ pub struct KubernetesPlatformDiagnostic {
 impl DiagnosticProcessor for KubernetesPlatformDiagnostic {
     async fn try_new(
         receiver: Arc<Receiver>,
-        exporter: Arc<Exporter>,
-        mut manifest: DiagnosticManifest,
+        _exporter: Arc<Exporter>,
+        manifest: DiagnosticManifest,
     ) -> Result<(Box<Self>, DiagnosticReport)> {
         let lookups = Arc::new(Lookups {
             k8s_node: Lookup::new(),
         });
-
-        log::debug!(
-            "Kubernetes platform diagnostic includes: {:?}",
-            &manifest.included_diagnostics
-        );
-
-        let included_diagnostics = match manifest.included_diagnostics.take() {
-            Some(diags) => diags,
-            None => vec![],
-        };
 
         let report = DiagnosticReportBuilder::try_from(manifest.clone())?
             .product(Product::KubernetesPlatform)
@@ -55,9 +41,7 @@ impl DiagnosticProcessor for KubernetesPlatformDiagnostic {
         Ok((
             Box::new(Self {
                 lookups,
-                exporter,
                 receiver,
-                included_diagnostics,
                 metadata,
             }),
             report,
@@ -84,10 +68,6 @@ impl DiagnosticProcessor for KubernetesPlatformDiagnostic {
 }
 
 impl KubernetesPlatformDiagnostic {
-    pub fn cloned_receiver(&self, next: &DiagPath) -> Result<Receiver> {
-        self.receiver.clone_for_subdir(&next.diag_path)
-    }
-
     pub fn uuid(&self) -> &str {
         &self.metadata.uuid
     }

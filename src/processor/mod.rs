@@ -38,7 +38,7 @@ use tokio::{sync::mpsc, task::JoinHandle, time::Instant};
 pub struct Processor<S: State> {
     receiver: Arc<Receiver>,
     exporter: Arc<Exporter>,
-    pub start_time: Instant,
+    start_time: Instant,
     pub id: u64,
     pub state: S,
 }
@@ -355,7 +355,7 @@ impl std::fmt::Display for Processor<Failed> {
     }
 }
 
-pub enum Diagnostic {
+enum Diagnostic {
     Elasticsearch(Box<ElasticsearchDiagnostic>),
     ElasticCloudKubernetes(Box<ElasticCloudKubernetesDiagnostic>),
     KubernetesPlatform(Box<KubernetesPlatformDiagnostic>),
@@ -430,7 +430,7 @@ impl Diagnostic {
     }
 }
 
-pub trait DocumentExporter<T, U> {
+trait DocumentExporter<T, U> {
     async fn documents_export(
         self,
         exporter: &Exporter,
@@ -439,7 +439,7 @@ pub trait DocumentExporter<T, U> {
     ) -> ProcessorSummary;
 }
 
-pub trait DiagnosticProcessor {
+trait DiagnosticProcessor {
     async fn try_new(
         receiver: Arc<Receiver>,
         exporter: Arc<Exporter>,
@@ -451,7 +451,7 @@ pub trait DiagnosticProcessor {
     fn origin(&self) -> (String, String, String);
 }
 
-pub trait Metadata {
+trait Metadata {
     fn as_meta_doc(&self) -> serde_json::Value;
 }
 
