@@ -7,6 +7,7 @@ use eyre::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use serde_with::skip_serializing_none;
+use std::collections::HashSet;
 
 #[skip_serializing_none]
 #[derive(Clone, Deserialize, Serialize)]
@@ -18,7 +19,7 @@ pub struct NodeDocument {
     pub name: String,
     pub os: OsDetails,
     pub role: String,
-    pub roles: Vec<String>,
+    pub roles: HashSet<String>,
     pub tier: String,
     pub tier_order: usize,
     pub version: Option<String>,
@@ -95,24 +96,22 @@ impl std::fmt::Display for Node {
 }
 
 /// Determines a node's tier based on a precedence of assigned roles.
-fn get_tier(roles: &[String]) -> String {
-    let has = |role: &str| roles.iter().any(|r| r == role);
-
+fn get_tier(roles: &HashSet<String>) -> String {
     match () {
-        _ if has("index") => "index",
-        _ if has("search") => "search",
-        _ if has("data_hot") => "hot",
-        _ if has("data_warm") => "warm",
-        _ if has("data_cold") => "cold",
-        _ if has("data_frozen") => "frozen",
-        _ if has("data_content") => "content",
-        _ if has("data") => "data",
-        _ if has("ingest") => "ingest",
-        _ if has("ml") => "ml",
-        _ if has("transform") => "transform",
-        _ if has("voting_only") => "tiebreaker",
-        _ if has("master") => "master",
-        _ if has("remote_cluster_client") => "remote",
+        _ if roles.contains("index") => "index",
+        _ if roles.contains("search") => "search",
+        _ if roles.contains("data_hot") => "hot",
+        _ if roles.contains("data_warm") => "warm",
+        _ if roles.contains("data_cold") => "cold",
+        _ if roles.contains("data_frozen") => "frozen",
+        _ if roles.contains("data_content") => "content",
+        _ if roles.contains("data") => "data",
+        _ if roles.contains("ingest") => "ingest",
+        _ if roles.contains("ml") => "ml",
+        _ if roles.contains("transform") => "transform",
+        _ if roles.contains("voting_only") => "tiebreaker",
+        _ if roles.contains("master") => "master",
+        _ if roles.contains("remote_cluster_client") => "remote",
         _ if roles.is_empty() => "coord",
         _ => "node",
     }
@@ -154,8 +153,8 @@ fn get_tier_node_name(node_name: String, tier: &str) -> String {
 }
 
 /// Collects single-character abbreviations for roles into a string.
-fn get_roles_abbreviation(role_list: &[String]) -> String {
-    let char_for = |role| {
+fn get_roles_abbreviation(role_list: &HashSet<String>) -> String {
+    let char_for = |role: &str| {
         let c = match role {
             "data" => 'd',
             "data_content" => 's',

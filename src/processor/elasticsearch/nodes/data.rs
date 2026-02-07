@@ -8,7 +8,7 @@ use eyre::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use serde_with::skip_serializing_none;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 #[skip_serializing_none]
 #[derive(Clone, Deserialize, Serialize)]
@@ -31,7 +31,7 @@ pub struct Node {
     plugins: Option<Value>,
     process: Value,
     pub role: Option<String>,
-    pub roles: Vec<String>,
+    pub roles: HashSet<String>,
     settings: Option<Value>,
     thread_pool: Value,
     total_indexing_buffer: Option<Value>,

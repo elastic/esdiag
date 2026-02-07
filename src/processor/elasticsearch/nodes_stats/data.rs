@@ -9,7 +9,7 @@ use eyre::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use serde_with::skip_serializing_none;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Deserialize, Serialize)]
 pub struct NodesStats {
@@ -46,7 +46,7 @@ pub struct NodeStats {
     os: OsStats,
     process: Value,
     repositories: Option<Value>,
-    pub roles: Vec<String>,
+    pub roles: HashSet<String>,
     script: Value,
     script_cache: Value,
     thread_pool: Value,
