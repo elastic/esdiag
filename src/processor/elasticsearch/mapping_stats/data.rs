@@ -65,11 +65,7 @@ pub struct MappingSummary {
     pub _data_stream_timestamp: Option<DataStreamTimestamp>,
     pub _source: Option<SourceMode>,
     pub _meta: Option<serde_json::Value>,
-    pub field: FieldSummary,
-}
-
-#[derive(Clone, Default, Deserialize, Serialize)]
-pub struct FieldSummary {
+    #[serde(flatten)]
     pub fields: HashMap<String, u64>,
 }
 
@@ -106,7 +102,7 @@ impl IndexMapping {
 
         if let Some(properties) = &self.mappings.properties {
             for field in properties.values() {
-                field.summarize(&mut summary.field);
+                field.summarize(&mut summary.fields);
             }
         }
 
@@ -115,39 +111,39 @@ impl IndexMapping {
 }
 
 impl FieldDefinition {
-    pub fn summarize(&self, summary: &mut FieldSummary) {
+    pub fn summarize(&self, fields: &mut HashMap<String, u64>) {
         // Increment total count, avoiding repeated String allocation
-        if let Some(count) = summary.fields.get_mut("total") {
+        if let Some(count) = fields.get_mut("total") {
             *count += 1;
         } else {
-            summary.fields.insert("total".to_string(), 1);
+            fields.insert("total".to_string(), 1);
         }
 
         if let Some(field_type) = &self.field_type {
             // Increment count for this field type, cloning only on first insert
-            if let Some(count) = summary.fields.get_mut(field_type) {
+            if let Some(count) = fields.get_mut(field_type) {
                 *count += 1;
             } else {
-                summary.fields.insert(field_type.clone(), 1);
+                fields.insert(field_type.clone(), 1);
             }
         } else if self.properties.is_some() {
             // It's likely an 'object' or 'nested' type without explicit 'type' field
-            if let Some(count) = summary.fields.get_mut("object") {
+            if let Some(count) = fields.get_mut("object") {
                 *count += 1;
             } else {
-                summary.fields.insert("object".to_string(), 1);
+                fields.insert("object".to_string(), 1);
             }
         }
 
         if let Some(properties) = &self.properties {
             for field in properties.values() {
-                field.summarize(summary);
+                field.summarize(fields);
             }
         }
 
-        if let Some(fields) = &self.fields {
-            for field in fields.values() {
-                field.summarize(summary);
+        if let Some(fields_map) = &self.fields {
+            for field in fields_map.values() {
+                field.summarize(fields);
             }
         }
     }
@@ -212,11 +208,11 @@ mod tests {
             summary._source.as_ref().unwrap().mode,
             Some("synthetic".to_string())
         );
-        assert_eq!(summary.field.fields.get("total").unwrap(), &4); // field1, field2, object1, subfield1
-        assert_eq!(summary.field.fields.get("text").unwrap(), &1);
-        assert_eq!(summary.field.fields.get("keyword").unwrap(), &1);
-        assert_eq!(summary.field.fields.get("long").unwrap(), &1);
-        assert_eq!(summary.field.fields.get("object").unwrap(), &1);
+        assert_eq!(summary.fields.get("total").unwrap(), &4); // field1, field2, object1, subfield1
+        assert_eq!(summary.fields.get("text").unwrap(), &1);
+        assert_eq!(summary.fields.get("keyword").unwrap(), &1);
+        assert_eq!(summary.fields.get("long").unwrap(), &1);
+        assert_eq!(summary.fields.get("object").unwrap(), &1);
     }
 
     #[test]
@@ -240,8 +236,8 @@ mod tests {
         let summaries = stats.summaries();
         let summary = summaries.get("test_index").unwrap();
 
-        assert_eq!(summary.field.fields.get("total").unwrap(), &2); // field1, field1.keyword
-        assert_eq!(summary.field.fields.get("text").unwrap(), &1);
-        assert_eq!(summary.field.fields.get("keyword").unwrap(), &1);
+        assert_eq!(summary.fields.get("total").unwrap(), &2); // field1, field1.keyword
+        assert_eq!(summary.fields.get("text").unwrap(), &1);
+        assert_eq!(summary.fields.get("keyword").unwrap(), &1);
     }
 }

@@ -396,16 +396,12 @@
                   "type": "object",
                   "enabled": false
                 },
-                "field": {
+                "fields": {
+                  "type": "object",
+                  "dynamic": true,
                   "properties": {
-                    "fields": {
-                      "type": "object",
-                      "dynamic": true,
-                      "properties": {
-                        "total": {
-                          "type": "long"
-                        }
-                      }
+                    "total": {
+                      "type": "long"
                     }
                   }
                 }
