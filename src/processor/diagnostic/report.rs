@@ -544,9 +544,11 @@ mod tests {
         let lookup = Lookup::<String>::new(); // parsed is false by default
 
         report.add_lookup("failed_lookup", &lookup);
+        report.add_lookup("failed_lookup", &lookup); // Deduplication check
 
         let stats = &report.diagnostic.lookup;
         assert_eq!(stats.errors, 1);
+        assert_eq!(stats.failures.len(), 1);
         assert!(stats.failures.contains(&"failed_lookup".to_string()));
         assert!(!stats.stats.get("failed_lookup").unwrap().parsed);
     }
