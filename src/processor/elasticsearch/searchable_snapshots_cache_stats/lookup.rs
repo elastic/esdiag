@@ -10,7 +10,7 @@ impl From<&String> for Lookup<SharedCacheStats> {
         match serde_json::from_str::<SearchableSnapshotsCacheStats>(string) {
             Ok(nodes) => Lookup::<SharedCacheStats>::from(nodes).was_parsed(),
             Err(e) => {
-                log::warn!("Failed to parse SharedCacheStats: {}", e);
+                log::warn!("Failed to parse SearchableSnapshotsCacheStats: {}", e);
                 Lookup::new()
             }
         }
