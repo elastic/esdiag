@@ -7,7 +7,7 @@ mod alias;
 /// The `_cluster/settings` API
 mod cluster_settings;
 /// Collector definition for Elasticsearch diagnostics
-pub mod collector;
+mod collector;
 /// The `_data_stream` API
 mod data_stream;
 /// The `_health_report` API
@@ -41,6 +41,7 @@ mod tasks;
 /// The cluster `/` API -- "You know, for search!"
 mod version;
 
+pub use collector::ElasticsearchCollector;
 pub use metadata::ElasticsearchMetadata;
 use tokio::sync::mpsc;
 pub use {
@@ -233,6 +234,12 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
             self.metadata.cluster.uuid.clone(),
             "cluster".to_string(),
         )
+    }
+}
+
+impl ElasticsearchDiagnostic {
+    pub fn uuid(&self) -> &str {
+        &self.metadata.diagnostic.uuid
     }
 }
 

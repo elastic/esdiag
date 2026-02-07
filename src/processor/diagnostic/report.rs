@@ -71,15 +71,31 @@ impl TryFrom<DiagnosticManifest> for DiagnosticReportBuilder {
     }
 }
 
+/// Identifiers associated with a diagnostic report
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Identifiers {
+    /// Account identifier
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub account: Option<String>,
+    /// Case number associated with the diagnostic
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub case_number: Option<String>,
+    /// Filename of the diagnostic bundle
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub filename: Option<String>,
+    /// Opportunity identifier
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub opportunity: Option<String>,
+    /// User who generated the diagnostic
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub user: Option<String>,
+    /// Parent diagnostic identifier
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_id: Option<String>,
+    /// Orchestration platform
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub orchestration: Option<String>,
 }
-
 impl Identifiers {
     pub fn new(
         account: Option<String>,
@@ -94,6 +110,8 @@ impl Identifiers {
             filename,
             opportunity,
             user: user.or_else(|| std::env::var("ESDIAG_USER").ok()),
+            parent_id: None,
+            orchestration: None,
         }
     }
 
@@ -111,6 +129,20 @@ impl Identifiers {
     pub fn with_filename(self, filename: Option<String>) -> Self {
         Self { filename, ..self }
     }
+
+    pub fn with_parent_id(self, parent_id: String) -> Self {
+        Self {
+            parent_id: Some(parent_id),
+            ..self
+        }
+    }
+
+    pub fn with_orchestration(self, orchestration: String) -> Self {
+        Self {
+            orchestration: Some(orchestration),
+            ..self
+        }
+    }
 }
 
 impl Default for Identifiers {
@@ -122,6 +154,8 @@ impl Default for Identifiers {
             filename: None,
             opportunity: None,
             user,
+            parent_id: None,
+            orchestration: None,
         }
     }
 }

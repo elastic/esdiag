@@ -4,7 +4,9 @@
 
 use super::{
     DiagnosticProcessor, ProcessorSummary,
-    diagnostic::{DiagPath, DiagnosticManifest, DiagnosticReport, DiagnosticReportBuilder, Lookup},
+    diagnostic::{
+        DiagnosticManifest, DiagnosticMetadata, DiagnosticReport, DiagnosticReportBuilder, Lookup,
+    },
 };
 use crate::{data::Product, exporter::Exporter, receiver::Receiver};
 use eyre::Result;
@@ -14,45 +16,35 @@ use tokio::sync::mpsc;
 
 #[derive(Serialize)]
 pub struct ElasticCloudKubernetesDiagnostic {
-    pub lookups: Arc<Lookups>,
+    lookups: Arc<Lookups>,
     #[serde(skip)]
-    pub exporter: Arc<Exporter>,
-    #[serde(skip)]
-    pub receiver: Arc<Receiver>,
-    pub included_diagnostics: Vec<DiagPath>,
+    receiver: Arc<Receiver>,
+    #[serde(flatten)]
+    metadata: DiagnosticMetadata,
 }
 
 impl DiagnosticProcessor for ElasticCloudKubernetesDiagnostic {
     async fn try_new(
         receiver: Arc<Receiver>,
-        exporter: Arc<Exporter>,
-        mut manifest: DiagnosticManifest,
+        _exporter: Arc<Exporter>,
+        manifest: DiagnosticManifest,
     ) -> Result<(Box<Self>, DiagnosticReport)> {
         let lookups = Arc::new(Lookups {
             k8s_node: Lookup::new(),
         });
 
-        log::debug!(
-            "Eck diagnostic includes: {:?}",
-            &manifest.included_diagnostics
-        );
-
-        let included_diagnostics = match manifest.included_diagnostics.take() {
-            Some(diags) => diags,
-            None => vec![],
-        };
-
-        let report = DiagnosticReportBuilder::try_from(manifest)?
+        let report = DiagnosticReportBuilder::try_from(manifest.clone())?
             .product(Product::ECK)
             .receiver(receiver.to_string())
             .build()?;
+
+        let metadata = DiagnosticMetadata::try_from(manifest)?;
 
         Ok((
             Box::new(Self {
                 lookups,
                 receiver,
-                exporter,
-                included_diagnostics,
+                metadata,
             }),
             report,
         ))
@@ -67,7 +59,7 @@ impl DiagnosticProcessor for ElasticCloudKubernetesDiagnostic {
     }
 
     fn id(&self) -> &str {
-        "undefined"
+        &self.metadata.id
     }
 
     fn origin(&self) -> (String, String, String) {
@@ -80,8 +72,8 @@ impl DiagnosticProcessor for ElasticCloudKubernetesDiagnostic {
 }
 
 impl ElasticCloudKubernetesDiagnostic {
-    pub fn cloned_receiver(&self, next: &DiagPath) -> Result<Receiver> {
-        self.receiver.clone_for_subdir(&next.diag_path)
+    pub fn uuid(&self) -> &str {
+        &self.metadata.uuid
     }
 }
 

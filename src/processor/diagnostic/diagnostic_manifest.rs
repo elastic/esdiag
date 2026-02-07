@@ -3,10 +3,10 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::super::Identifiers;
-use super::{DataSource, DiagPath, Manifest, data_source::PathType};
+use super::{data_source::PathType, DataSource, DiagPath, Manifest};
 use crate::data::Product;
 use chrono::{DateTime, SecondsFormat, TimeZone, Utc};
-use eyre::{Result, eyre};
+use eyre::{eyre, Result};
 use serde::{Deserialize, Serialize};
 use std::sync::RwLock;
 
@@ -42,6 +42,31 @@ pub struct DiagnosticManifest {
     pub identifiers: Option<Identifiers>,
 }
 
+impl Clone for DiagnosticManifest {
+    fn clone(&self) -> Self {
+        let diagnostic_id = if let Ok(id) = self.diagnostic_id.read() {
+            RwLock::new(id.clone())
+        } else {
+            RwLock::new(None)
+        };
+        Self {
+            mode: self.mode.clone(),
+            product: self.product.clone(),
+            flags: self.flags.clone(),
+            diagnostic: self.diagnostic.clone(),
+            r#type: self.r#type.clone(),
+            runner: self.runner.clone(),
+            version: self.version.clone(),
+            collection_date: self.collection_date.clone(),
+            collection_date_millis: self.collection_date_millis,
+            included_diagnostics: self.included_diagnostics.clone(),
+            name: self.name.clone(),
+            diagnostic_id,
+            identifiers: self.identifiers.clone(),
+        }
+    }
+}
+
 impl DiagnosticManifest {
     pub fn new(
         collection_date: String,
@@ -58,7 +83,7 @@ impl DiagnosticManifest {
         let diagnostic_id = RwLock::new(None);
         let name = r#type.clone().unwrap_or("diagnostic".to_string());
 
-        return Self {
+        Self {
             collection_date,
             collection_date_millis,
             diagnostic,
@@ -72,7 +97,7 @@ impl DiagnosticManifest {
             r#type,
             runner,
             version,
-        };
+        }
     }
 
     pub fn collection_date_in_millis(&self) -> u64 {

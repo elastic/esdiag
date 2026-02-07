@@ -14,6 +14,7 @@ mod elasticsearch;
 mod kubernetes_platform;
 /// Processors for Logstash diagnostics
 mod logstash;
+
 pub use collector::Collector;
 pub use diagnostic::{
     DataSource, DiagnosticManifest, DiagnosticReport, Manifest,
@@ -22,12 +23,12 @@ pub use diagnostic::{
     report::{BatchResponse, Identifiers, ProcessorSummary},
 };
 pub use elasticsearch::Cluster as ElasticsearchCluster;
-use futures::stream::FuturesUnordered;
 
 use crate::{data::Product, exporter::Exporter, receiver::Receiver};
 use elastic_cloud_kubernetes::ElasticCloudKubernetesDiagnostic;
 use elasticsearch::ElasticsearchDiagnostic;
 use eyre::{Result, eyre};
+use futures::stream::FuturesUnordered;
 use kubernetes_platform::KubernetesPlatformDiagnostic;
 use logstash::LogstashDiagnostic;
 use std::sync::Arc;
@@ -37,7 +38,7 @@ use tokio::{sync::mpsc, task::JoinHandle, time::Instant};
 pub struct Processor<S: State> {
     receiver: Arc<Receiver>,
     exporter: Arc<Exporter>,
-    pub start_time: Instant,
+    start_time: Instant,
     pub id: u64,
     pub state: S,
 }
@@ -148,19 +149,69 @@ impl Processor<Ready> {
         log::debug!("Transitioned: Processor<Processing>");
         let (summary_tx, summary_rx) = mpsc::channel::<ProcessorSummary>(10);
 
+        let mut identifiers = self.state.identifiers.clone();
+        if identifiers.orchestration.is_none() {
+            let orchestration = match self.state.manifest.product {
+                Product::ECK => Some("elastic-cloud-kubernetes".to_string()),
+                Product::ECE => Some("elastic-cloud-enterprise".to_string()),
+                Product::KubernetesPlatform => Some("kubernetes-platform".to_string()),
+                Product::ElasticCloudHosted => Some("elastic-cloud-hosted".to_string()),
+                _ => None,
+            };
+            if let Some(orch) = orchestration {
+                identifiers = identifiers.with_orchestration(orch);
+            }
+        }
+
         if let Some(included_diagnostics) = self.state.manifest.included_diagnostics.clone() {
-            let handles = spawn_sub_processors(
+            let (diagnostic, report) = match Diagnostic::try_new(
+                self.receiver.clone(),
+                self.exporter.clone(),
+                self.state.manifest.clone(),
+            )
+            .await
+            {
+                Ok(res) => res,
+                Err(err) => {
+                    return Err(Processor {
+                        receiver: self.receiver,
+                        exporter: self.exporter,
+                        start_time: self.start_time,
+                        id: self.id,
+                        state: Failed {
+                            runtime: self.start_time.elapsed().as_millis(),
+                            error: err.to_string(),
+                        },
+                    });
+                }
+            };
+
+            let mut child_identifiers = identifiers.clone();
+            if let Some(parent_uuid) = diagnostic.uuid() {
+                child_identifiers = child_identifiers.with_parent_id(parent_uuid);
+            }
+
+            let _handles = spawn_sub_processors(
                 included_diagnostics,
                 self.receiver.clone(),
                 self.exporter.clone(),
-                self.state.manifest.identifiers.clone(),
+                Some(child_identifiers),
             );
-            for handle in handles {
-                match handle.await {
-                    Ok(_) => log::debug!("Sub-process task complete"),
-                    Err(_) => log::debug!("Sub-process task failed"),
-                }
-            }
+
+            let processor = Processor {
+                receiver: self.receiver,
+                exporter: self.exporter,
+                id: self.id,
+                start_time: self.start_time,
+                state: Processing {
+                    diagnostic,
+                    identifiers,
+                    summary_rx,
+                    summary_tx,
+                    report,
+                },
+            };
+            return Ok(processor);
         };
 
         match Diagnostic::try_new(
@@ -178,7 +229,7 @@ impl Processor<Ready> {
                     start_time: self.start_time,
                     state: Processing {
                         diagnostic,
-                        identifiers: self.state.identifiers,
+                        identifiers,
                         summary_rx,
                         summary_tx,
                         report,
@@ -304,7 +355,7 @@ impl std::fmt::Display for Processor<Failed> {
     }
 }
 
-pub enum Diagnostic {
+enum Diagnostic {
     Elasticsearch(Box<ElasticsearchDiagnostic>),
     ElasticCloudKubernetes(Box<ElasticCloudKubernetesDiagnostic>),
     KubernetesPlatform(Box<KubernetesPlatformDiagnostic>),
@@ -313,6 +364,15 @@ pub enum Diagnostic {
 }
 
 impl Diagnostic {
+    pub fn uuid(&self) -> Option<String> {
+        match self {
+            Diagnostic::Elasticsearch(diagnostic) => Some(diagnostic.uuid().to_string()),
+            Diagnostic::ElasticCloudKubernetes(diagnostic) => Some(diagnostic.uuid().to_string()),
+            Diagnostic::KubernetesPlatform(diagnostic) => Some(diagnostic.uuid().to_string()),
+            Diagnostic::Logstash(diagnostic) => Some(diagnostic.uuid().to_string()),
+        }
+    }
+
     pub async fn try_new(
         receiver: Arc<Receiver>,
         exporter: Arc<Exporter>,

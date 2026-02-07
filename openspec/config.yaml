@@ -1,0 +1,20 @@
+schema: spec-driven
+
+context: |
+  ESDiag: Rust CLI/Web tool transforming Elastic Stack diagnostics to Elasticsearch docs.
+  Stack: Async Rust (Tokio), Eyre (Errors), Serde, Clap (CLI), Axum/Askama/Datastar (Web).
+  Architecture: Type-state machines (Processor lifecycle), Trait-driven (Receiver/Processor/Exporter).
+  Constraints: Self-contained (no external binary dependencies); cross-platform.
+
+rules:
+  specs:
+    - Use Given/When/Then for logic verification
+  tasks:
+    - Include 'cargo clippy' and 'cargo test' verification
+    - Prefer atomic, testable modules following established traits
+  design:
+    - Explicitly define state transitions for type-state patterns
+    - Define trait boundaries for new receivers, processors, or exporters
+  proposal:
+    - Specify the target Elastic product (e.g., Elasticsearch, Logstash)
+    - Identify if changes affect CLI, Web UI, or core processing logic

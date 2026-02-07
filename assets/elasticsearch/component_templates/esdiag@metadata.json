@@ -94,6 +94,12 @@
             },
             "uuid": {
               "type": "keyword"
+            },
+            "parent_id": {
+              "type": "keyword"
+            },
+            "orchestration": {
+              "type": "keyword"
             }
           }
         },
