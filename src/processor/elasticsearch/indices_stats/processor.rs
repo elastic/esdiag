@@ -8,6 +8,7 @@ use super::super::{
     alias::Alias,
     data_stream::DataStreamDocument,
     indices_settings::{IndexSettingsDocument, StoreSettings},
+    mapping_stats::MappingSummary,
     metadata::MetadataDoc,
     nodes::NodeDocument,
 };
@@ -74,7 +75,10 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for IndicesStats {
                     let stats = enriched_stats
                         .name(index_name.clone())
                         .alias(lookups.alias.by_name(&index_name).cloned())
-                        .with_settings(index_settings.clone());
+                        .with_settings(
+                            index_settings.clone(),
+                            lookups.mapping_stats.by_name(&index_name).cloned(),
+                        );
                     let index_document =
                         IndexStatsDocument::new(stats, index_metadata.clone()).calculate();
                     let write_phase_sec = index_document.index.write_phase_sec;
@@ -320,6 +324,7 @@ struct EnrichedIndexStatsWithSettings {
     pub ilm: Option<IlmStats>,
     pub is_write_index: bool,
     pub lifecycle: Option<serde_json::Value>,
+    pub mappings: Option<MappingSummary>,
     pub mode: Option<String>,
     pub name: Option<String>,
     pub number_of_replicas: Option<u64>,
@@ -349,6 +354,7 @@ impl EnrichedIndexStats {
     fn with_settings(
         self,
         settings: Option<IndexSettingsDocument>,
+        mappings: Option<MappingSummary>,
     ) -> EnrichedIndexStatsWithSettings {
         match settings {
             Some(settings) => EnrichedIndexStatsWithSettings {
@@ -361,6 +367,7 @@ impl EnrichedIndexStats {
                 ilm: settings.ilm,
                 is_write_index: settings.is_write_index.unwrap_or(false),
                 lifecycle: settings.lifecycle,
+                mappings,
                 mode: Some(settings.mode),
                 name: Some(settings.name),
                 number_of_replicas: settings.number_of_replicas,
@@ -384,6 +391,7 @@ impl EnrichedIndexStats {
                 ilm: None,
                 is_write_index: true,
                 lifecycle: None,
+                mappings,
                 mode: None,
                 name: self.name,
                 number_of_replicas: None,

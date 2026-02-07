@@ -5,7 +5,7 @@
 use super::super::{collector::CollectionResult, diagnostic::PathType};
 use super::{
     AliasList, Cluster, ClusterSettings, DataSource, DataStreams, DiagnosticManifest, HealthReport,
-    IlmExplain, IlmPolicies, IndicesSettings, IndicesStats, Licenses, Nodes, NodesStats,
+    IlmExplain, IlmPolicies, IndicesSettings, IndicesStats, Licenses, MappingStats, Nodes, NodesStats,
     PendingTasks, SearchableSnapshotsCacheStats, SearchableSnapshotsStats, SlmPolicies, Tasks,
 };
 use crate::{data::Product, exporter::DirectoryExporter, receiver::Receiver};
@@ -31,7 +31,7 @@ impl ElasticsearchCollector {
         let mut result = CollectionResult {
             path: self.exporter.to_string().clone(),
             success: 0,
-            total: 18,
+            total: 19,
         };
 
         result.success += self.save_diagnostic_manifest().await?;
@@ -45,6 +45,7 @@ impl ElasticsearchCollector {
         result.success += self.save::<IndicesSettings>().await?;
         result.success += self.save::<IndicesStats>().await?;
         result.success += self.save::<Licenses>().await?;
+        result.success += self.save::<MappingStats>().await?;
         result.success += self.save::<Nodes>().await?;
         result.success += self.save::<NodesStats>().await?;
         result.success += self.save::<PendingTasks>().await?;

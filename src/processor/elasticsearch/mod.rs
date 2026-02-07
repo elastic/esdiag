@@ -20,6 +20,8 @@ mod ilm_policies;
 mod indices_settings;
 /// The `_stats` API
 mod indices_stats;
+/// The `_mapping` API
+mod mapping_stats;
 /// The `_license` API
 mod licenses;
 /// Elasticsearch diagnostics metadata
@@ -71,6 +73,7 @@ use {
     ilm_policies::IlmPolicies,
     indices_settings::{IndexSettings, IndicesSettings},
     indices_stats::IndicesStats,
+    mapping_stats::{MappingStats, MappingSummary},
     licenses::Licenses,
     nodes::{NodeDocument, Nodes},
     nodes_stats::NodesStats,
@@ -144,6 +147,7 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
             node: Lookup::from(receiver.get::<Nodes>().await),
             ilm_explain: Lookup::from(receiver.get::<IlmExplain>().await),
             shared_cache: Lookup::from(receiver.get::<SearchableSnapshotsCacheStats>().await),
+            mapping_stats: Lookup::from(receiver.get::<MappingStats>().await),
         };
         let license = receiver
             .get::<Licenses>()
@@ -158,6 +162,7 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
         report.add_lookup("node", &lookups.node);
         report.add_lookup("ilm_explain", &lookups.ilm_explain);
         report.add_lookup("shared_cache", &lookups.shared_cache);
+        report.add_lookup("mapping_stats", &lookups.mapping_stats);
 
         Ok((
             Box::new(Self {
@@ -249,6 +254,7 @@ pub struct Lookups {
     pub data_stream: Lookup<DataStreamDocument>,
     pub ilm_explain: Lookup<IlmStats>,
     pub index_settings: Lookup<IndexSettings>,
+    pub mapping_stats: Lookup<MappingSummary>,
     pub node: Lookup<NodeDocument>,
     pub shared_cache: Lookup<SharedCacheStats>,
 }
