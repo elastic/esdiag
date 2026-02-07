@@ -8,8 +8,8 @@ use eyre::Result;
 impl From<MappingStats> for Lookup<MappingSummary> {
     fn from(mapping_stats: MappingStats) -> Self {
         let mut lookup = Lookup::new();
-        for (index_name, summary) in mapping_stats.summaries() {
-            lookup.add(summary).with_name(&index_name);
+        for (index_name, index_mapping) in mapping_stats.indices {
+            lookup.add(index_mapping.summarize()).with_name(&index_name);
         }
         lookup
     }

@@ -138,12 +138,6 @@ impl FieldDefinition {
             } else {
                 fields.insert(field_type.clone(), 1);
             }
-
-            // Check if it's a multi-field mapping (has type AND fields)
-            if self.fields.is_some() {
-                multi_fields.total += 1;
-                multi_fields.names.push(name.to_string());
-            }
         } else if self.properties.is_some() {
             // It's likely an 'object' or 'nested' type without explicit 'type' field
             if let Some(count) = fields.get_mut("object") {
@@ -153,16 +147,30 @@ impl FieldDefinition {
             }
         }
 
+        // Check if it's a multi-field mapping (has fields property)
+        if let Some(fields_map) = &self.fields {
+            if !fields_map.is_empty() {
+                multi_fields.total += 1;
+                multi_fields.names.push(name.to_string());
+            }
+        }
+
         if let Some(properties) = &self.properties {
             for (sub_name, field) in properties {
-                let full_name = format!("{}.{}", name, sub_name);
+                let mut full_name = String::with_capacity(name.len() + 1 + sub_name.len());
+                full_name.push_str(name);
+                full_name.push('.');
+                full_name.push_str(sub_name);
                 field.summarize(&full_name, fields, multi_fields);
             }
         }
 
         if let Some(fields_map) = &self.fields {
             for (sub_name, field) in fields_map {
-                let full_name = format!("{}.{}", name, sub_name);
+                let mut full_name = String::with_capacity(name.len() + 1 + sub_name.len());
+                full_name.push_str(name);
+                full_name.push('.');
+                full_name.push_str(sub_name);
                 field.summarize(&full_name, fields, multi_fields);
             }
         }
@@ -263,5 +271,45 @@ mod tests {
         assert_eq!(summary.fields.get("keyword").unwrap(), &1);
         assert_eq!(summary.multi_fields.total, 1); // field1 is a multi-field
         assert_eq!(summary.multi_fields.names, vec!["field1".to_string()]);
+    }
+
+    #[test]
+    fn test_summarize_edge_cases() {
+        let json = r#"{
+            "test_index": {
+                "mappings": {
+                    "properties": {
+                        "empty_fields": {
+                            "type": "text",
+                            "fields": {}
+                        },
+                        "no_type_with_fields": {
+                            "fields": {
+                                "keyword": { "type": "keyword" }
+                            }
+                        },
+                        "object_with_no_type": {
+                            "properties": {
+                                "sub": { "type": "keyword" }
+                            }
+                        }
+                    }
+                }
+            }
+        }"#;
+
+        let stats: MappingStats = serde_json::from_str(json).unwrap();
+        let summaries = stats.summaries();
+        let summary = summaries.get("test_index").unwrap();
+
+        // empty_fields should NOT count as multi-field because map is empty
+        // no_type_with_fields SHOULD count as multi-field even without explicit 'type' (Elasticsearch default)
+        // object_with_no_type should count as 'object' in fields map
+        assert_eq!(summary.multi_fields.total, 1);
+        assert_eq!(
+            summary.multi_fields.names,
+            vec!["no_type_with_fields".to_string()]
+        );
+        assert_eq!(summary.fields.get("object").unwrap(), &1); // object_with_no_type
     }
 }

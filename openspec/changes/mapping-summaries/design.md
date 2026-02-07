@@ -48,9 +48,7 @@ pub struct MappingSummary {
     pub _data_stream_timestamp: Option<DataStreamTimestamp>,
     pub _source: Option<SourceMode>,
     pub _meta: Option<serde_json::Value>,
-    #[serde(flatten)]
     pub fields: HashMap<String, u64>,
-    #[serde(rename = "multi-fields")]
     pub multi_fields: MultiFieldSummary,
 }
 pub struct MultiFieldSummary {
