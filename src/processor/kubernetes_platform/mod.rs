@@ -4,7 +4,9 @@
 
 use super::{
     DiagnosticProcessor, ProcessorSummary,
-    diagnostic::{DiagPath, DiagnosticManifest, DiagnosticMetadata, DiagnosticReport, DiagnosticReportBuilder, Lookup},
+    diagnostic::{
+        DiagnosticManifest, DiagnosticMetadata, DiagnosticReport, DiagnosticReportBuilder, Lookup,
+    },
 };
 use crate::{data::Product, exporter::Exporter, receiver::Receiver};
 use eyre::Result;
