@@ -79,7 +79,7 @@ impl From<Nodes> for Lookup<NodeDocument> {
 impl From<Result<Nodes>> for Lookup<NodeDocument> {
     fn from(nodes_result: Result<Nodes>) -> Self {
         match nodes_result {
-            Ok(nodes) => Lookup::<NodeDocument>::from(nodes).was_parsed(),
+            Ok(nodes) => Lookup::<NodeDocument>::from_parsed(nodes),
             Err(e) => {
                 log::warn!("Failed to parse Nodes: {}", e);
                 Lookup::new()

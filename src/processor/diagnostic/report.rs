@@ -517,7 +517,7 @@ mod tests {
         .unwrap();
 
         let mut lookup = Lookup::<String>::new();
-        lookup = lookup.was_parsed();
+        lookup.parsed = true;
         lookup.add("data".to_string());
 
         report.add_lookup("my_lookup", &lookup);

@@ -8,7 +8,7 @@ use eyre::Result;
 impl From<&String> for Lookup<SharedCacheStats> {
     fn from(string: &String) -> Self {
         match serde_json::from_str::<SearchableSnapshotsCacheStats>(string) {
-            Ok(nodes) => Lookup::<SharedCacheStats>::from(nodes).was_parsed(),
+            Ok(nodes) => Lookup::<SharedCacheStats>::from_parsed(nodes),
             Err(e) => {
                 log::warn!("Failed to parse SearchableSnapshotsCacheStats: {}", e);
                 Lookup::new()
@@ -36,7 +36,7 @@ impl From<SearchableSnapshotsCacheStats> for Lookup<SharedCacheStats> {
 impl From<Result<SearchableSnapshotsCacheStats>> for Lookup<SharedCacheStats> {
     fn from(stats_result: Result<SearchableSnapshotsCacheStats>) -> Self {
         match stats_result {
-            Ok(stats) => Lookup::<SharedCacheStats>::from(stats).was_parsed(),
+            Ok(stats) => Lookup::<SharedCacheStats>::from_parsed(stats),
             Err(e) => {
                 log::warn!("Failed to parse SearchableSnapshotsCacheStats: {}", e);
                 Lookup::new()

@@ -28,7 +28,7 @@ impl From<IlmExplain> for Lookup<IlmStats> {
 impl From<Result<IlmExplain>> for Lookup<IlmStats> {
     fn from(ilm_explain_result: Result<IlmExplain>) -> Self {
         match ilm_explain_result {
-            Ok(ilm_explain) => Lookup::<IlmStats>::from(ilm_explain).was_parsed(),
+            Ok(ilm_explain) => Lookup::<IlmStats>::from_parsed(ilm_explain),
             Err(e) => {
                 log::warn!("Failed to parse IlmExplain: {}", e);
                 Lookup::new()

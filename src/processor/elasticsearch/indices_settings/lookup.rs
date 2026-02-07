@@ -25,7 +25,7 @@ impl From<IndicesSettings> for Lookup<IndexSettings> {
 impl From<Result<IndicesSettings>> for Lookup<IndexSettings> {
     fn from(indices_settings: Result<IndicesSettings>) -> Self {
         match indices_settings {
-            Ok(indices_settings) => Lookup::<IndexSettings>::from(indices_settings).was_parsed(),
+            Ok(indices_settings) => Lookup::<IndexSettings>::from_parsed(indices_settings),
             Err(e) => {
                 log::warn!("Failed to parse IndicesSettings: {}", e);
                 Lookup::new()

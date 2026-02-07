@@ -31,6 +31,13 @@ where
         self.parsed = true;
         self
     }
+
+    pub fn from_parsed<U>(value: U) -> Self
+    where
+        Self: From<U>,
+    {
+        Self::from(value).was_parsed()
+    }
 }
 
 impl<T> Default for Lookup<T>

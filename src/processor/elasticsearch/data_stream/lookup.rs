@@ -9,7 +9,7 @@ use eyre::Result;
 impl From<&String> for Lookup<DataStreamDocument> {
     fn from(string: &String) -> Self {
         match serde_json::from_str::<DataStreams>(string) {
-            Ok(data_streams) => Lookup::<DataStreamDocument>::from(data_streams).was_parsed(),
+            Ok(data_streams) => Lookup::<DataStreamDocument>::from_parsed(data_streams),
             Err(e) => {
                 log::warn!("Failed to parse DataStreams: {}", e);
                 Lookup::new()
@@ -64,7 +64,7 @@ impl From<DataStreams> for Lookup<DataStreamDocument> {
 impl From<Result<DataStreams>> for Lookup<DataStreamDocument> {
     fn from(data_streams: Result<DataStreams>) -> Self {
         match data_streams {
-            Ok(data_streams) => Lookup::<DataStreamDocument>::from(data_streams).was_parsed(),
+            Ok(data_streams) => Lookup::<DataStreamDocument>::from_parsed(data_streams),
             Err(e) => {
                 log::warn!("Failed to parse DataStreams: {}", e);
                 Lookup::new()
