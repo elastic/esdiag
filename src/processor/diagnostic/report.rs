@@ -263,7 +263,7 @@ impl DiagnosticReport {
     where
         T: Clone + Serialize,
     {
-        if !lookup.parsed {
+        if !lookup.parsed && !self.diagnostic.lookup.failures.iter().any(|f| f == name) {
             self.diagnostic.lookup.errors += 1;
             self.diagnostic.lookup.failures.push(name.to_string());
         }

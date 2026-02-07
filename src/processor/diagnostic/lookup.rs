@@ -6,7 +6,7 @@ use serde::Serialize;
 use std::collections::HashMap;
 
 /// A lookup table that allows for retrieving by four different keys: host, id, ip, and name
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct Lookup<T> {
     by_id: HashMap<String, usize>,
     by_name: HashMap<String, usize>,
