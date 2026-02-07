@@ -27,11 +27,54 @@ pub struct Mappings {
     pub date_detection: Option<bool>,
     pub numeric_detection: Option<bool>,
     pub dynamic_date_formats: Option<Vec<String>>,
-    pub dynamic_templates: Option<Vec<serde_json::Value>>,
+    #[serde(default, deserialize_with = "count_sequence_elements")]
+    pub dynamic_templates: Option<u32>,
     pub _data_stream_timestamp: Option<DataStreamTimestamp>,
     pub _source: Option<SourceMode>,
     pub _meta: Option<serde_json::Value>,
     pub properties: Option<HashMap<String, FieldDefinition>>,
+}
+
+fn count_sequence_elements<'de, D>(deserializer: D) -> Result<Option<u32>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    struct SequenceCounter;
+
+    impl<'de> serde::de::Visitor<'de> for SequenceCounter {
+        type Value = Option<u32>;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str("a sequence of objects")
+        }
+
+        fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+        where
+            A: serde::de::SeqAccess<'de>,
+        {
+            let mut count = 0;
+            while let Some(serde::de::IgnoredAny) = seq.next_element()? {
+                count += 1;
+            }
+            Ok(Some(count))
+        }
+
+        fn visit_none<E>(self) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            Ok(None)
+        }
+
+        fn visit_some<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+        where
+            D: serde::Deserializer<'de>,
+        {
+            deserializer.deserialize_any(self)
+        }
+    }
+
+    deserializer.deserialize_option(SequenceCounter)
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -96,11 +139,7 @@ impl IndexMapping {
             date_detection: self.mappings.date_detection,
             numeric_detection: self.mappings.numeric_detection,
             dynamic_date_formats: self.mappings.dynamic_date_formats.clone(),
-            dynamic_templates: self
-                .mappings
-                .dynamic_templates
-                .as_ref()
-                .map(|t| t.len() as u32),
+            dynamic_templates: self.mappings.dynamic_templates,
             _data_stream_timestamp: self.mappings._data_stream_timestamp.clone(),
             _source: self.mappings._source.clone(),
             _meta: self.mappings._meta.clone(),
