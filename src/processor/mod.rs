@@ -20,15 +20,15 @@ pub use diagnostic::{
     DataSource, DiagnosticManifest, DiagnosticReport, Manifest,
     data_source::PathType,
     manifest::ManifestBuilder,
-    report::{BatchResponse, Identifiers, ProcessorSummary, Source},
+    report::{BatchResponse, Identifiers, ProcessorSummary},
 };
 pub use elasticsearch::Cluster as ElasticsearchCluster;
 
-use futures::stream::FuturesUnordered;
 use crate::{data::Product, exporter::Exporter, receiver::Receiver};
 use elastic_cloud_kubernetes::ElasticCloudKubernetesDiagnostic;
 use elasticsearch::ElasticsearchDiagnostic;
 use eyre::{Result, eyre};
+use futures::stream::FuturesUnordered;
 use kubernetes_platform::KubernetesPlatformDiagnostic;
 use logstash::LogstashDiagnostic;
 use std::sync::Arc;
