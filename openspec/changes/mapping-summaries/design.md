@@ -23,59 +23,30 @@ Currently, `esdiag` collects index statistics via the `IndicesStats` processor, 
 - **Mappings Data Model**:
   ```rust
   struct MappingFile(HashMap<String, IndexMapping>);
-struct IndexMapping { mappings: Mappings }
-struct Mappings { 
-    dynamic: Option<serde_json::Value>, 
-    date_detection: Option<bool>,
-    numeric_detection: Option<bool>,
-    dynamic_date_formats: Option<Vec<String>>,
-    dynamic_templates: Option<Vec<serde_json::Value>>,
-    _data_stream_timestamp: Option<DataStreamTimestamp>,
-    _source: Option<SourceMode>,
-    _meta: Option<serde_json::Value>, 
-    properties: Option<HashMap<String, FieldDefinition>> 
-}
-struct SourceMode {
-    mode: Option<String>,
-}
-...
-pub struct MappingSummary {
-    pub dynamic: Option<String>,
-    pub date_detection: Option<bool>,
-    pub numeric_detection: Option<bool>,
-    pub dynamic_date_formats: Option<Vec<String>>,
-    pub dynamic_templates: Option<u32>,
-    pub _data_stream_timestamp: Option<DataStreamTimestamp>,
-    pub _source: Option<SourceMode>,
-    pub _meta: Option<serde_json::Value>,
-    pub fields: HashMap<String, u64>,
-    pub multi_fields: MultiFieldSummary,
-}
-pub struct MultiFieldSummary {
-    pub total: u64,
-    pub names: Vec<String>,
-}
 
-pub struct FieldSummary {
-    pub fields: HashMap<String, u64>, // Renamed from count, includes "total"
-}
+  struct IndexMapping {
+      mappings: Mappings
+  }
 
-struct DataStreamTimestamp {
-    enabled: bool,
-}
-#[derive(Deserialize)]
-...
-pub struct MappingSummary {
-    pub dynamic: Option<serde_json::Value>,
-    pub dynamic_date_formats: Option<Vec<String>>,
-    pub dynamic_templates: Option<u32>,
-    pub _data_stream_timestamp: Option<DataStreamTimestamp>,
-    pub _meta: Option<serde_json::Value>,
-    pub field: FieldSummary,
-}
-pub struct FieldSummary {
-    pub count: HashMap<String, u64>, // Includes "total" and type counts
-}
+  struct Mappings { 
+      dynamic: Option<serde_json::Value>, 
+      date_detection: Option<bool>,
+      numeric_detection: Option<bool>,
+      dynamic_date_formats: Option<Vec<String>>,
+      dynamic_templates: Option<Vec<serde_json::Value>>,
+      _data_stream_timestamp: Option<DataStreamTimestamp>,
+      _source: Option<SourceMode>,
+      _meta: Option<serde_json::Value>, 
+      properties: Option<HashMap<String, FieldDefinition>> 
+  }
+
+  struct DataStreamTimestamp {
+      enabled: bool,
+  }
+
+  struct SourceMode {
+      mode: Option<String>,
+  }
 
   #[derive(Deserialize)]
   #[serde(rename_all = "snake_case")]
@@ -86,6 +57,24 @@ pub struct FieldSummary {
       fields: Option<HashMap<String, FieldDefinition>>,
       #[serde(flatten)]
       _extra: HashMap<String, serde_json::Value>, // Permissive parsing
+  }
+
+  pub struct MappingSummary {
+      pub dynamic: Option<String>,
+      pub date_detection: Option<bool>,
+      pub numeric_detection: Option<bool>,
+      pub dynamic_date_formats: Option<Vec<String>>,
+      pub dynamic_templates: Option<u32>,
+      pub _data_stream_timestamp: Option<DataStreamTimestamp>,
+      pub _source: Option<SourceMode>,
+      pub _meta: Option<serde_json::Value>,
+      pub fields: HashMap<String, u64>, // Maps type name (or "total") to count
+      pub multi_fields: MultiFieldSummary,
+  }
+
+  pub struct MultiFieldSummary {
+      pub total: u64,
+      pub names: Vec<String>,
   }
   ```
 - **`Lookups` Integration**: Add `mapping_stats: Lookup<MappingSummary>` to the `Lookups` struct in `src/processor/elasticsearch/mod.rs`.
