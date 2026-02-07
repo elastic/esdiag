@@ -96,21 +96,23 @@ impl std::fmt::Display for Node {
 
 /// Determines a node's tier based on a precedence of assigned roles.
 fn get_tier(roles: &[String]) -> String {
+    let has = |role: &str| roles.iter().any(|r| r == role);
+
     match () {
-        _ if roles.contains(&"index".to_string()) => "index",
-        _ if roles.contains(&"search".to_string()) => "search",
-        _ if roles.contains(&"data_hot".to_string()) => "hot",
-        _ if roles.contains(&"data_warm".to_string()) => "warm",
-        _ if roles.contains(&"data_cold".to_string()) => "cold",
-        _ if roles.contains(&"data_frozen".to_string()) => "frozen",
-        _ if roles.contains(&"data_content".to_string()) => "content",
-        _ if roles.contains(&"data".to_string()) => "data",
-        _ if roles.contains(&"ingest".to_string()) => "ingest",
-        _ if roles.contains(&"ml".to_string()) => "ml",
-        _ if roles.contains(&"transform".to_string()) => "transform",
-        _ if roles.contains(&"voting_only".to_string()) => "tiebreaker",
-        _ if roles.contains(&"master".to_string()) => "master",
-        _ if roles.contains(&"remote_cluster_client".to_string()) => "remote",
+        _ if has("index") => "index",
+        _ if has("search") => "search",
+        _ if has("data_hot") => "hot",
+        _ if has("data_warm") => "warm",
+        _ if has("data_cold") => "cold",
+        _ if has("data_frozen") => "frozen",
+        _ if has("data_content") => "content",
+        _ if has("data") => "data",
+        _ if has("ingest") => "ingest",
+        _ if has("ml") => "ml",
+        _ if has("transform") => "transform",
+        _ if has("voting_only") => "tiebreaker",
+        _ if has("master") => "master",
+        _ if has("remote_cluster_client") => "remote",
         _ if roles.is_empty() => "coord",
         _ => "node",
     }

@@ -7,9 +7,13 @@ use eyre::Result;
 
 impl From<&String> for Lookup<SharedCacheStats> {
     fn from(string: &String) -> Self {
-        let nodes: SearchableSnapshotsCacheStats =
-            serde_json::from_str(string).expect("Failed to parse SharedCacheStats");
-        Lookup::<SharedCacheStats>::from(nodes)
+        match serde_json::from_str::<SearchableSnapshotsCacheStats>(string) {
+            Ok(nodes) => Lookup::<SharedCacheStats>::from(nodes).was_parsed(),
+            Err(e) => {
+                log::warn!("Failed to parse SharedCacheStats: {}", e);
+                Lookup::new()
+            }
+        }
     }
 }
 

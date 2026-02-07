@@ -113,7 +113,11 @@ impl ElasticsearchDiagnostic {
             }
             Err(err) => {
                 log::warn!("{}", err);
-                Ok(())
+                let summary = ProcessorSummary::new(T::name());
+                summary_tx.send(summary).await.map_err(|err| {
+                    log::error!("Failed to send summary: {}", err);
+                    eyre!(err)
+                })
             }
         }
     }
