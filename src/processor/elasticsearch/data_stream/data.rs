@@ -33,6 +33,7 @@ pub struct DataStream {
     pub system: Option<bool>,
     pub template: Option<String>,
     pub timestamp_field: TimestampField,
+    pub failure_store: Option<FailureStore>,
     #[serde(skip_deserializing)]
     pub dataset: String,
     #[serde(default)]
@@ -119,6 +120,7 @@ pub struct DataStreamDocument {
     pub system: Option<bool>,
     pub template: Option<String>,
     pub timestamp_field: TimestampField,
+    pub failure_store: Option<FailureStore>,
     pub dataset: String,
     pub is_write_index: bool,
     pub namespace: String,
@@ -141,6 +143,7 @@ impl From<DataStream> for DataStreamDocument {
             system: data_stream.system,
             template: data_stream.template,
             timestamp_field: data_stream.timestamp_field,
+            failure_store: data_stream.failure_store,
             dataset: data_stream.dataset,
             is_write_index: data_stream.is_write_index,
             namespace: data_stream.namespace,
@@ -162,6 +165,23 @@ pub struct IndexEntry {
     pub prefer_ilm: Option<bool>,
     pub ilm_policy: Option<String>,
     pub managed_by: Option<String>,
+}
+
+#[skip_serializing_none]
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct FailureStore {
+    pub enabled: bool,
+    pub rollover_on_write: Option<bool>,
+    pub indices: Vec<IndexEntry>,
+    pub lifecycle: Option<FailureStoreLifecycle>,
+}
+
+#[skip_serializing_none]
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct FailureStoreLifecycle {
+    pub enabled: bool,
+    pub effective_retention: Option<String>,
+    pub retention_determined_by: Option<String>,
 }
 
 impl DataSource for DataStreams {
