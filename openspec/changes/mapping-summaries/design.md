@@ -17,7 +17,7 @@ Currently, `esdiag` collects index statistics via the `IndicesStats` processor, 
 
 ## Decisions
 
-- **New `MappingStats` Module**: Create `src/processor/elasticsearch/mapping_stats/` with `data.rs` and `processor.rs`.
+- **New `MappingStats` Module**: Create `src/processor/elasticsearch/mapping_stats/` with `data.rs` and `lookup.rs`.
 - **`DataSource` Implementation**: `MappingStats` will implement `DataSource`, reading from `mapping.json`.
 - **Struct-based Deserialization**: To handle large mapping files efficiently, we will define a set of structs for deserialization instead of using `serde_json::Value`. The deserializer will be configured with `#[serde(flatten)]` or `#[serde(other)]` where appropriate, or simply by not defining fields we don't need (permissive parsing).
 - **Mappings Data Model**:
