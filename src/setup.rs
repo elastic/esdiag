@@ -4,7 +4,7 @@
 
 use crate::{client::Client, data::Product};
 //use bytes::Bytes;
-use eyre::{Result, eyre};
+use eyre::{Result, eyre, WrapErr};
 use include_dir::{Dir, File, include_dir};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
