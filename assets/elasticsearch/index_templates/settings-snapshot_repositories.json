@@ -1,0 +1,47 @@
+{
+  "_meta": {
+    "description": "ESDiag Elasticsearch Snapshot Repositories"
+  },
+  "index_patterns": ["settings-snapshot_repositories-esdiag*"],
+  "composed_of": ["esdiag@mappings", "esdiag@metadata", "esdiag@settings"],
+  "allow_auto_create": true,
+  "data_stream": {
+    "hidden": false,
+    "allow_custom_routing": false
+  },
+  "priority": 300,
+  "template": {
+    "mappings": {
+      "properties": {
+        "data_stream": {
+          "type": "object",
+          "properties": {
+            "dataset": {
+              "type": "constant_keyword",
+              "value": "snapshot_repositories"
+            },
+            "type": {
+              "type": "constant_keyword",
+              "value": "settings"
+            }
+          }
+        },
+        "repository": {
+          "properties": {
+            "name": {
+              "type": "keyword"
+            },
+            "type": {
+              "type": "keyword"
+            },
+            "settings": {
+              "type": "object",
+              "enabled": false
+            }
+          }
+        }
+      }
+    }
+  },
+  "version": 1
+}
