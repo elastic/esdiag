@@ -46,6 +46,7 @@ mod version;
 pub use collector::ElasticsearchCollector;
 pub use metadata::ElasticsearchMetadata;
 use tokio::sync::mpsc;
+use crate::processor::{StreamingDataSource, StreamingDocumentExporter};
 pub use {
     licenses::License,
     version::{Cluster, ClusterMetadata, Version},
@@ -124,6 +125,46 @@ impl ElasticsearchDiagnostic {
             }
         }
     }
+
+    async fn process_streaming_datasource<T>(
+        &self,
+        summary_tx: mpsc::Sender<ProcessorSummary>,
+    ) -> Result<()>
+    where
+        T: DataSource
+            + StreamingDataSource
+            + StreamingDocumentExporter<Lookups, ElasticsearchMetadata>
+            + DocumentExporter<Lookups, ElasticsearchMetadata>
+            + DeserializeOwned
+            + Send
+            + Sync,
+        T::Item: DeserializeOwned + Send + 'static,
+    {
+        match self.receiver.get_stream::<T>().await {
+            Ok(stream) => {
+                let summary = T::documents_export_stream(
+                    stream,
+                    &self.exporter,
+                    &self.lookups,
+                    &self.metadata,
+                )
+                .await
+                .was_parsed();
+                summary_tx.send(summary).await.map_err(|err| {
+                    log::error!("Failed to send summary: {}", err);
+                    eyre!(err)
+                })
+            }
+            Err(e) => {
+                log::debug!(
+                    "Streaming failed/not supported for {}, falling back to full load: {}",
+                    T::name(),
+                    e
+                );
+                self.process_datasource::<T>(summary_tx).await
+            }
+        }
+    }
 }
 
 impl DiagnosticProcessor for ElasticsearchDiagnostic {
@@ -153,7 +194,16 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
             node: Lookup::from(receiver.get::<Nodes>().await),
             ilm_explain: Lookup::from(receiver.get::<IlmExplain>().await),
             shared_cache: Lookup::from(receiver.get::<SearchableSnapshotsCacheStats>().await),
-            mapping_stats: Lookup::from(receiver.get::<MappingStats>().await),
+            mapping_stats: match receiver.get_stream::<MappingStats>().await {
+                Ok(stream) => Lookup::<MappingSummary>::from_stream(stream).await,
+                Err(e) => {
+                    log::debug!(
+                        "Streaming mappings failed: {}, falling back to full load",
+                        e
+                    );
+                    Lookup::from(receiver.get::<MappingStats>().await)
+                }
+            },
         };
         let license = receiver
             .get::<Licenses>()
@@ -196,7 +246,7 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
         let (diag_idx, summary_tx_idx) = (diag.clone(), summary_tx.clone());
         let thread1 = tokio::spawn(async move {
             diag_idx
-                .process_datasource::<IndicesStats>(summary_tx_idx)
+                .process_streaming_datasource::<IndicesStats>(summary_tx_idx)
                 .await?;
             Ok::<(), eyre::Error>(())
         });
@@ -205,7 +255,7 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
         let (diag_nodes, summary_tx_nodes) = (diag.clone(), summary_tx.clone());
         let thread2 = tokio::spawn(async move {
             diag_nodes
-                .process_datasource::<NodesStats>(summary_tx_nodes)
+                .process_streaming_datasource::<NodesStats>(summary_tx_nodes)
                 .await?;
             Ok::<(), eyre::Error>(())
         });

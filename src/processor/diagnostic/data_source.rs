@@ -3,8 +3,9 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use eyre::Result;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::BTreeMap;
+use tokio::sync::mpsc::Sender;
 
 pub enum PathType {
     Url,
@@ -14,6 +15,16 @@ pub enum PathType {
 pub trait DataSource {
     fn source(path: PathType) -> Result<&'static str>;
     fn name() -> String;
+}
+
+pub trait StreamingDataSource: DataSource {
+    type Item: Send + 'static;
+    fn deserialize_stream<'de, D>(
+        deserializer: D,
+        sender: Sender<Result<Self::Item>>,
+    ) -> std::result::Result<(), D::Error>
+    where
+        D: Deserializer<'de>;
 }
 
 #[allow(dead_code)] // For future use deserialzing the sources.yml

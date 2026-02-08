@@ -4,10 +4,12 @@
 
 use super::resolve_archive_path;
 use crate::{
-    processor::{DataSource, PathType},
+    processor::{DataSource, PathType, StreamingDataSource},
     receiver::{Receive, ReceiveMultiple, ReceiveRaw},
 };
+use async_stream::stream;
 use eyre::{Result, eyre};
+use futures::stream::BoxStream;
 use serde::de::DeserializeOwned;
 use std::{
     fs::File,
@@ -16,7 +18,7 @@ use std::{
     sync::Arc,
     time::SystemTime,
 };
-use tokio::sync::RwLock;
+use tokio::sync::{RwLock, mpsc};
 use zip::ZipArchive;
 
 #[derive(Clone)]
@@ -94,6 +96,59 @@ impl Receive for ArchiveFileReceiver {
         let reader = BufReader::new(file);
         let data: T = serde_json::from_reader(reader)?;
         Ok(data)
+    }
+
+    async fn get_stream<T>(&self) -> Result<BoxStream<'static, Result<T::Item>>>
+    where
+        T: StreamingDataSource + DeserializeOwned,
+        T::Item: DeserializeOwned + Send + 'static,
+    {
+        let archive = self.archive.clone();
+        let subdir = self.subdir.clone();
+        let (tx, mut rx) = mpsc::channel(100);
+
+        tokio::task::spawn_blocking(move || {
+            // This blocks other readers/writers of the archive for the duration of this file's processing
+            let mut archive_guard = archive.blocking_write();
+            let filename = match resolve_archive_path(
+                subdir.as_ref(),
+                &mut *archive_guard,
+                match T::source(PathType::File) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        let _ = tx.blocking_send(Err(eyre!(e)));
+                        return;
+                    }
+                },
+            ) {
+                Ok(f) => f,
+                Err(e) => {
+                    let _ = tx.blocking_send(Err(eyre!(e)));
+                    return;
+                }
+            };
+
+            log::debug!("Streaming from archive: {}", filename);
+            match archive_guard.by_name(&filename) {
+                Ok(file) => {
+                    let reader = BufReader::new(file);
+                    let mut deserializer = serde_json::Deserializer::from_reader(reader);
+                    if let Err(e) = T::deserialize_stream(&mut deserializer, tx.clone()) {
+                        log::error!("Error deserializing stream from archive: {}", e);
+                        let _ = tx.blocking_send(Err(eyre!(e)));
+                    }
+                }
+                Err(e) => {
+                    let _ = tx.blocking_send(Err(eyre!(e)));
+                }
+            }
+        });
+
+        Ok(Box::pin(stream! {
+            while let Some(item) = rx.recv().await {
+                yield item;
+            }
+        }))
     }
 }
 

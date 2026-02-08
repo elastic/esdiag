@@ -2,9 +2,11 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use super::super::processor::{DataSource, PathType};
+use super::super::processor::{DataSource, PathType, StreamingDataSource};
 use super::{Receive, ReceiveMultiple, ReceiveRaw};
+use async_stream::stream;
 use eyre::{Result, eyre};
+use futures::stream::BoxStream;
 use serde::de::DeserializeOwned;
 use std::{
     fs::File,
@@ -12,6 +14,7 @@ use std::{
     path::PathBuf,
     time::SystemTime,
 };
+use tokio::sync::mpsc;
 
 #[derive(Clone)]
 pub struct DirectoryReceiver {
@@ -73,6 +76,43 @@ impl Receive for DirectoryReceiver {
         let reader = BufReader::new(file);
         let data: T = serde_json::from_reader(reader)?;
         Ok(data)
+    }
+
+    async fn get_stream<T>(&self) -> Result<BoxStream<'static, Result<T::Item>>>
+    where
+        T: StreamingDataSource + DeserializeOwned,
+        T::Item: DeserializeOwned + Send + 'static,
+    {
+        let filename = self
+            .path
+            .join(&self.work_dir)
+            .join(T::source(PathType::File)?);
+        log::debug!("Streaming file: {}", &filename.display());
+
+        let filename_clone = filename.clone();
+        let (tx, mut rx) = mpsc::channel(100);
+
+        tokio::task::spawn_blocking(move || {
+            match File::open(&filename_clone) {
+                Ok(file) => {
+                    let reader = BufReader::new(file);
+                    let mut deserializer = serde_json::Deserializer::from_reader(reader);
+                    if let Err(e) = T::deserialize_stream(&mut deserializer, tx.clone()) {
+                        log::error!("Error deserializing stream: {}", e);
+                        let _ = tx.blocking_send(Err(eyre!(e)));
+                    }
+                }
+                Err(e) => {
+                    let _ = tx.blocking_send(Err(eyre!(e)));
+                }
+            }
+        });
+
+        Ok(Box::pin(stream! {
+            while let Some(item) = rx.recv().await {
+                yield item;
+            }
+        }))
     }
 }
 

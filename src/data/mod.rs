@@ -29,7 +29,6 @@ pub fn save_file<T: Serialize>(filename: &str, content: &T) -> Result<()> {
         .join("last_run")
         .join(filename);
     let mut file = OpenOptions::new()
-        .write(true)
         .create(true)
         .append(true)
         .open(home_file)?;
@@ -41,7 +40,6 @@ pub fn save_file<T: Serialize>(filename: &str, content: &T) -> Result<()> {
 
 /// The standard deserializer from serde_json does not deserializing u64 from
 /// strings. Unfortunately the _settings API frequently wraps numbers in quotes.
-
 pub fn u64_from_string<'de, D>(deserializer: D) -> Result<Option<u64>, D::Error>
 where
     D: Deserializer<'de>,
@@ -60,7 +58,6 @@ where
 
 /// The standard deserializer from serde_json does not deserializing i64 from
 /// strings. Unfortunately the _settings API frequently wraps numbers in quotes.
-
 pub fn i64_from_string<'de, D>(deserializer: D) -> Result<Option<i64>, D::Error>
 where
     D: Deserializer<'de>,
@@ -82,19 +79,32 @@ where
     D: Deserializer<'de>,
     T: Deserialize<'de>,
 {
-    let value: Value = Deserialize::deserialize(deserializer)?;
+    struct MapVisitor<T>(std::marker::PhantomData<T>);
 
-    match value {
-        Value::Object(map) => {
-            let mut result = Vec::new();
-            for (key, value) in map {
-                let deserialized_value = T::deserialize(value).map_err(serde::de::Error::custom)?;
-                result.push((key, deserialized_value));
-            }
-            Ok(result)
+    impl<'de, T> serde::de::Visitor<'de> for MapVisitor<T>
+    where
+        T: Deserialize<'de>,
+    {
+        type Value = Vec<(String, T)>;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str("a map")
         }
-        _ => Err(serde::de::Error::custom("expected an object")),
+
+        fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+        where
+            A: serde::de::MapAccess<'de>,
+        {
+            let mut values = Vec::new();
+            while let Some(key) = map.next_key()? {
+                let value = map.next_value()?;
+                values.push((key, value));
+            }
+            Ok(values)
+        }
     }
+
+    deserializer.deserialize_map(MapVisitor(std::marker::PhantomData))
 }
 
 pub fn option_map_as_vec_entries<'de, D, T>(
@@ -104,22 +114,32 @@ where
     D: Deserializer<'de>,
     T: Deserialize<'de>,
 {
-    // Deserialize into an Option<Value> so we can distinguish missing / null
-    let opt_value: Option<Value> = Option::deserialize(deserializer)?;
+    struct OptionMapVisitor<T>(std::marker::PhantomData<T>);
 
-    match opt_value {
-        None => Ok(None),
-        Some(Value::Null) => Ok(None),
-        Some(Value::Object(map)) => {
-            let mut result = Vec::with_capacity(map.len());
-            for (key, value) in map {
-                let deserialized_value = T::deserialize(value).map_err(serde::de::Error::custom)?;
-                result.push((key, deserialized_value));
-            }
-            Ok(Some(result))
+    impl<'de, T> serde::de::Visitor<'de> for OptionMapVisitor<T>
+    where
+        T: Deserialize<'de>,
+    {
+        type Value = Option<Vec<(String, T)>>;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str("an optional map")
         }
-        Some(_) => Err(serde::de::Error::custom(
-            "expected an object, null, or missing field",
-        )),
+
+        fn visit_none<E>(self) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            Ok(None)
+        }
+
+        fn visit_some<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            map_as_vec_entries(deserializer).map(Some)
+        }
     }
+
+    deserializer.deserialize_option(OptionMapVisitor(std::marker::PhantomData))
 }

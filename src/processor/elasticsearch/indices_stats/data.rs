@@ -2,20 +2,97 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use super::super::super::diagnostic::data_source::PathType;
+use super::super::super::diagnostic::data_source::{PathType, StreamingDataSource};
 use super::super::DataSource;
 use crate::data::{i64_from_string, map_as_vec_entries};
 use eyre::Result;
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 use std::collections::HashMap;
+use tokio::sync::mpsc::Sender;
 
 #[derive(Deserialize)]
 pub struct IndicesStats {
-    _shards: ShardsStats,
+    pub _shards: ShardsStats,
     // _all: Value,
     #[serde(deserialize_with = "map_as_vec_entries")]
     pub indices: Vec<(String, IndexStats)>,
+}
+
+impl StreamingDataSource for IndicesStats {
+    type Item = (String, IndexStats);
+
+    fn deserialize_stream<'de, D>(
+        deserializer: D,
+        sender: Sender<Result<Self::Item>>,
+    ) -> std::result::Result<(), D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct IndicesStatsVisitor {
+            sender: Sender<Result<(String, IndexStats)>>,
+        }
+
+        impl<'de> serde::de::Visitor<'de> for IndicesStatsVisitor {
+            type Value = ();
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("IndicesStats object")
+            }
+
+            fn visit_map<A>(self, mut map: A) -> std::result::Result<Self::Value, A::Error>
+            where
+                A: serde::de::MapAccess<'de>,
+            {
+                while let Some(key) = map.next_key::<String>()? {
+                    if key == "indices" {
+                        map.next_value_seed(IndicesMapVisitor {
+                            sender: self.sender.clone(),
+                        })?;
+                    } else {
+                        let _ = map.next_value::<serde::de::IgnoredAny>()?;
+                    }
+                }
+                Ok(())
+            }
+        }
+
+        struct IndicesMapVisitor {
+            sender: Sender<Result<(String, IndexStats)>>,
+        }
+
+        impl<'de> serde::de::DeserializeSeed<'de> for IndicesMapVisitor {
+            type Value = ();
+            fn deserialize<D>(self, deserializer: D) -> std::result::Result<Self::Value, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                deserializer.deserialize_map(self)
+            }
+        }
+
+        impl<'de> serde::de::Visitor<'de> for IndicesMapVisitor {
+            type Value = ();
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("indices map")
+            }
+
+            fn visit_map<A>(self, mut map: A) -> std::result::Result<Self::Value, A::Error>
+            where
+                A: serde::de::MapAccess<'de>,
+            {
+                while let Some(key) = map.next_key::<String>()? {
+                    let value = map.next_value::<IndexStats>()?;
+                    if self.sender.blocking_send(Ok((key, value))).is_err() {
+                        return Ok(());
+                    }
+                }
+                Ok(())
+            }
+        }
+
+        deserializer.deserialize_map(IndicesStatsVisitor { sender })
+    }
 }
 
 #[skip_serializing_none]

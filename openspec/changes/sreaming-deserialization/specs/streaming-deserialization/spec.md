@@ -24,10 +24,15 @@ The system SHALL support streaming deserialization of deeply nested structures, 
 - **THEN** it streams the top-level indices
 - **AND** it optionally streams the nested properties/fields to further reduce peak memory usage
 
-### Requirement: Robust error handling during streaming
-The streaming deserialization process SHALL handle malformed entries within a large payload gracefully, allowing the system to continue processing subsequent valid entries when possible.
+### Requirement: Performance benchmarks for large diagnostic archives
+The system SHALL meet specific performance targets for peak memory usage and execution time when processing large diagnostic archives.
 
-#### Scenario: Malformed node entry
-- **WHEN** a single node entry in a `node_stats` payload is malformed
-- **THEN** the system logs the error for that node
-- **AND** continues to process the remaining nodes in the payload
+#### Scenario: Benchmark peak memory usage
+- **WHEN** processing the large diagnostic archive `tests/archives/diagnostic-b33109-2025-Sep-29--22_30_33.zip`
+- **THEN** the peak memory usage (RSS) SHALL NOT exceed 500MB
+- **AND** the peak memory usage SHOULD be significantly lower than the baseline established before this change
+
+#### Scenario: Benchmark execution time
+- **WHEN** processing the large diagnostic archive `tests/archives/diagnostic-b33109-2025-Sep-29--22_30_33.zip`
+- **THEN** the total execution time SHALL NOT increase by more than 10% compared to the baseline
+- **AND** ideally, execution time SHOULD remain stable or decrease due to reduced allocation overhead

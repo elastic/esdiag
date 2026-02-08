@@ -2,7 +2,7 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use super::super::super::{Exporter, ProcessorSummary};
+use super::super::super::{Exporter, ProcessorSummary, StreamingDocumentExporter};
 use super::super::{
     DocumentExporter, ElasticsearchMetadata, IlmStats, Lookup, Lookups,
     alias::Alias,
@@ -14,9 +14,82 @@ use super::super::{
 };
 use super::{IndicesStats, data::*};
 use eyre::Report;
+use futures::stream::{BoxStream, StreamExt};
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 use tokio::sync::mpsc;
+
+async fn process_index(
+    index_name: String,
+    mut index_stats: IndexStats,
+    lookups: &Lookups,
+    metadata: &ElasticsearchMetadata,
+    index_metadata: &MetadataDoc,
+    shard_metadata: &MetadataDoc,
+    index_tx: &mpsc::Sender<IndexStatsDocument>,
+    shard_tx: &mpsc::Sender<ShardStatsDocument>,
+) {
+    let shards_stats = index_stats.shards.take();
+    let index_settings = lookups
+        .index_settings
+        .by_name(&index_name)
+        .cloned()
+        .map(|settings| {
+            settings
+                .data_stream(lookups.data_stream.by_id(&index_name).cloned())
+                .age(metadata.diagnostic.collection_date)
+        });
+
+    let index_settings = index_settings.map(|settings| {
+        IndexSettingsDocument::from(settings).ilm(lookups.ilm_explain.by_name(&index_name).cloned())
+    });
+
+    let write_phase_sec = match EnrichedIndexStats::try_from(index_stats) {
+        Ok(enriched_stats) => {
+            let stats = enriched_stats
+                .name(index_name.clone())
+                .alias(lookups.alias.by_name(&index_name).cloned())
+                .with_settings(
+                    index_settings.clone(),
+                    lookups.mapping_stats.by_name(&index_name).cloned(),
+                );
+            let index_document = IndexStatsDocument::new(stats, index_metadata.clone()).calculate();
+            let write_phase_sec = index_document.index.write_phase_sec;
+            if let Err(_) = index_tx.send(index_document).await {
+                log::warn!("Index channel closed unexpectedly");
+            }
+            write_phase_sec
+        }
+        Err(_) => {
+            log::warn!("Failed to create index document");
+            None
+        }
+    };
+
+    let index_settings = index_settings.map(|s| s.write_phase(write_phase_sec));
+
+    if let Some(shards) = shards_stats {
+        match extract_shard_documents(
+            shards,
+            shard_metadata,
+            index_name,
+            index_settings,
+            &lookups.node,
+        ) {
+            Ok(docs) => {
+                for doc in docs {
+                    if shard_tx.send(doc).await.is_err() {
+                        log::warn!("Shard channel closed unexpectedly");
+                        break;
+                    }
+                }
+            }
+            Err(err) => {
+                log::warn!("Failed to create shard documents: {}", err);
+            }
+        }
+    }
+}
 
 impl DocumentExporter<Lookups, ElasticsearchMetadata> for IndicesStats {
     async fn documents_export(
@@ -37,6 +110,7 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for IndicesStats {
 
         // Spawn document channels for concurrent processing with backpressure
         let (index_tx, index_rx) = mpsc::channel::<IndexStatsDocument>(BUFFER_SIZE);
+
         let index_processor =
             tokio::spawn(exporter.clone().document_channel::<IndexStatsDocument>(
                 index_rx,
@@ -52,70 +126,18 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for IndicesStats {
                 batch_size,
             ));
 
-        for (index_name, mut index_stats) in indices_stats {
-            let shards_stats = index_stats.shards.take();
-            let index_settings =
-                lookups
-                    .index_settings
-                    .by_name(&index_name)
-                    .cloned()
-                    .map(|settings| {
-                        settings
-                            .data_stream(lookups.data_stream.by_id(&index_name).cloned())
-                            .age(metadata.diagnostic.collection_date)
-                    });
-
-            let index_settings = index_settings.map(|settings| {
-                IndexSettingsDocument::from(settings)
-                    .ilm(lookups.ilm_explain.by_name(&index_name).cloned())
-            });
-
-            let write_phase_sec = match EnrichedIndexStats::try_from(index_stats) {
-                Ok(enriched_stats) => {
-                    let stats = enriched_stats
-                        .name(index_name.clone())
-                        .alias(lookups.alias.by_name(&index_name).cloned())
-                        .with_settings(
-                            index_settings.clone(),
-                            lookups.mapping_stats.by_name(&index_name).cloned(),
-                        );
-                    let index_document =
-                        IndexStatsDocument::new(stats, index_metadata.clone()).calculate();
-                    let write_phase_sec = index_document.index.write_phase_sec;
-                    if let Err(_) = index_tx.send(index_document).await {
-                        log::warn!("Index channel closed unexpectedly");
-                    }
-                    write_phase_sec
-                }
-                Err(_) => {
-                    log::warn!("Failed to create index document");
-                    None
-                }
-            };
-
-            let index_settings = index_settings.map(|s| s.write_phase(write_phase_sec));
-
-            if let Some(shards) = shards_stats {
-                match extract_shard_documents(
-                    shards,
-                    &shard_metadata,
-                    index_name,
-                    index_settings,
-                    &lookups.node,
-                ) {
-                    Ok(docs) => {
-                        for doc in docs {
-                            if shard_tx.send(doc).await.is_err() {
-                                log::warn!("Shard channel closed unexpectedly");
-                                break;
-                            }
-                        }
-                    }
-                    Err(err) => {
-                        log::warn!("Failed to create shard documents: {}", err);
-                    }
-                }
-            }
+        for (index_name, index_stats) in indices_stats {
+            process_index(
+                index_name,
+                index_stats,
+                lookups,
+                metadata,
+                &index_metadata,
+                &shard_metadata,
+                &index_tx,
+                &shard_tx,
+            )
+            .await;
         }
 
         // Close channels to signal completion
@@ -132,6 +154,73 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for IndicesStats {
         summary.merge(shard_result.map_err(|err| eyre::Report::new(err)));
 
         log::debug!("indices_stats processed: {}", summary.docs);
+        summary
+    }
+}
+
+impl StreamingDocumentExporter<Lookups, ElasticsearchMetadata> for IndicesStats {
+    async fn documents_export_stream(
+        mut stream: BoxStream<'static, Result<Self::Item, eyre::Report>>,
+        exporter: &Exporter,
+        lookups: &Lookups,
+        metadata: &ElasticsearchMetadata,
+    ) -> ProcessorSummary {
+        log::debug!("Processing indices_stats stream");
+        let data_stream_name = "metrics-index-esdiag".to_string();
+        let index_metadata = metadata.for_data_stream(&data_stream_name);
+        let shard_metadata = metadata.for_data_stream("metrics-shard-esdiag");
+
+        let batch_size = 5000;
+        const BUFFER_SIZE: usize = 5000;
+
+        let (index_tx, index_rx) = mpsc::channel::<IndexStatsDocument>(BUFFER_SIZE);
+        let index_processor =
+            tokio::spawn(exporter.clone().document_channel::<IndexStatsDocument>(
+                index_rx,
+                index_metadata.data_stream.to_string(),
+                batch_size,
+            ));
+
+        let (shard_tx, shard_rx) = mpsc::channel::<ShardStatsDocument>(BUFFER_SIZE);
+        let shard_processor =
+            tokio::spawn(exporter.clone().document_channel::<ShardStatsDocument>(
+                shard_rx,
+                shard_metadata.data_stream.to_string(),
+                batch_size,
+            ));
+
+        while let Some(result) = stream.next().await {
+            match result {
+                Ok((index_name, index_stats)) => {
+                    process_index(
+                        index_name,
+                        index_stats,
+                        lookups,
+                        metadata,
+                        &index_metadata,
+                        &shard_metadata,
+                        &index_tx,
+                        &shard_tx,
+                    )
+                    .await;
+                }
+                Err(e) => {
+                    log::error!("Error reading from indices stats stream: {}", e);
+                }
+            }
+        }
+
+        // Close channels to signal completion
+        drop(index_tx);
+        drop(shard_tx);
+
+        let (index_result, shard_result) = tokio::join!(index_processor, shard_processor);
+
+        let mut summary = ProcessorSummary::new(data_stream_name);
+        summary.merge(index_result.map_err(|err| eyre::Report::new(err)));
+        summary.merge(shard_result.map_err(|err| eyre::Report::new(err)));
+
+        log::debug!("indices_stats stream processed: {}", summary.docs);
         summary
     }
 }

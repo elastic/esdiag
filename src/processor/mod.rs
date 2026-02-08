@@ -24,11 +24,12 @@ pub use diagnostic::{
 };
 pub use elasticsearch::Cluster as ElasticsearchCluster;
 
+pub use crate::processor::diagnostic::data_source::StreamingDataSource;
 use crate::{data::Product, exporter::Exporter, receiver::Receiver};
 use elastic_cloud_kubernetes::ElasticCloudKubernetesDiagnostic;
 use elasticsearch::ElasticsearchDiagnostic;
 use eyre::{Result, eyre};
-use futures::stream::FuturesUnordered;
+use futures::stream::{BoxStream, FuturesUnordered};
 use kubernetes_platform::KubernetesPlatformDiagnostic;
 use logstash::LogstashDiagnostic;
 use std::sync::Arc;
@@ -433,6 +434,15 @@ impl Diagnostic {
 trait DocumentExporter<T, U> {
     async fn documents_export(
         self,
+        exporter: &Exporter,
+        lookups: &T,
+        metadata: &U,
+    ) -> ProcessorSummary;
+}
+
+trait StreamingDocumentExporter<T, U>: StreamingDataSource {
+    async fn documents_export_stream(
+        stream: BoxStream<'static, Result<Self::Item>>,
         exporter: &Exporter,
         lookups: &T,
         metadata: &U,
