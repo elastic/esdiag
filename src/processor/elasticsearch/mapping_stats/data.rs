@@ -207,21 +207,24 @@ impl FieldDefinition {
         multi_fields: &mut MultiFieldSummary,
     ) {
         // Increment total count
-        fields
-            .entry("total".to_string())
-            .and_modify(|c| *c += 1)
-            .or_insert(1);
+        if let Some(count) = fields.get_mut("total") {
+            *count += 1;
+        } else {
+            fields.insert("total".to_string(), 1);
+        }
 
         if let Some(field_type) = &self.field_type {
-            fields
-                .entry(field_type.clone())
-                .and_modify(|c| *c += 1)
-                .or_insert(1);
+            if let Some(count) = fields.get_mut(field_type) {
+                *count += 1;
+            } else {
+                fields.insert(field_type.clone(), 1);
+            }
         } else if self.properties.is_some() {
-            fields
-                .entry("object".to_string())
-                .and_modify(|c| *c += 1)
-                .or_insert(1);
+            if let Some(count) = fields.get_mut("object") {
+                *count += 1;
+            } else {
+                fields.insert("object".to_string(), 1);
+            }
         }
 
         // Check if it's a multi-field mapping (has fields property)
