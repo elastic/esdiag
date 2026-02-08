@@ -121,7 +121,10 @@ impl Client {
         }
     }
 
-    /// Check if security is enabled on the cluster
+    /// Check if security is enabled on the cluster.
+    ///
+    /// For Elasticsearch, this checks the `security.enabled` flag in `/_xpack/usage`.
+    /// For Kibana, this currently always returns `true`.
     pub async fn has_security_enabled(&self) -> Result<bool> {
         match self {
             Client::Elasticsearch(client) => {
