@@ -146,7 +146,7 @@ impl Client {
                         .get("security")
                         .and_then(|s| s.get("enabled"))
                         .and_then(|e| e.as_bool())
-                        .unwrap_or(false);
+                        .unwrap_or(true);
                     Ok(enabled)
                 } else {
                     match status.as_u16() {
