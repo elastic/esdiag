@@ -5,7 +5,7 @@
 use crate::data::Product;
 
 use super::{ElasticCloud, KnownHost, KnownHostBuilder};
-use eyre::{OptionExt, Report, Result, eyre};
+use eyre::{eyre, OptionExt, Report, Result};
 use serde::{Deserialize, Deserializer};
 use std::{
     path::{Path, PathBuf},

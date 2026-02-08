@@ -166,7 +166,7 @@ impl TaskData {
                         bulk: None,
                     }),
                     shard: Some(TaskShard {
-                        number: number,
+                        number,
                         primary: Some(is_primary),
                         bulk: Some(BulkDocs { docs }),
                     }),

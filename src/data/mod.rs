@@ -41,7 +41,6 @@ pub fn save_file<T: Serialize>(filename: &str, content: &T) -> Result<()> {
 
 /// The standard deserializer from serde_json does not deserializing u64 from
 /// strings. Unfortunately the _settings API frequently wraps numbers in quotes.
-
 pub fn u64_from_string<'de, D>(deserializer: D) -> Result<Option<u64>, D::Error>
 where
     D: Deserializer<'de>,
@@ -60,7 +59,6 @@ where
 
 /// The standard deserializer from serde_json does not deserializing i64 from
 /// strings. Unfortunately the _settings API frequently wraps numbers in quotes.
-
 pub fn i64_from_string<'de, D>(deserializer: D) -> Result<Option<i64>, D::Error>
 where
     D: Deserializer<'de>,
