@@ -86,7 +86,14 @@ pub async fn assets(client: &Client) -> Result<()> {
     let assets = parse_assets_yml(client.into())?;
 
     // Check security status
-    let security_enabled = client.has_security_enabled().await.unwrap_or(false);
+    let security_enabled = match client.has_security_enabled().await {
+        Ok(enabled) => enabled,
+        Err(e) => {
+            log::error!("Failed to determine security status: {e:?}");
+            return Err(eyre!("Failed to determine security status: {e:?}"));
+        }
+    };
+
     if !security_enabled {
         log::info!("Security is disabled on the cluster. Security-dependent assets will be skipped.");
     }

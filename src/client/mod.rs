@@ -136,7 +136,8 @@ impl Client {
                     )
                     .await?;
 
-                if response.status_code().is_success() {
+                let status = response.status_code();
+                if status.is_success() {
                     let json: serde_json::Value = response.json().await?;
                     let enabled = json
                         .get("security")
@@ -145,11 +146,20 @@ impl Client {
                         .unwrap_or(false);
                     Ok(enabled)
                 } else {
-                    log::warn!(
-                        "Failed to check security status (HTTP {}). Assuming security is disabled.",
-                        response.status_code()
-                    );
-                    Ok(false)
+                    match status.as_u16() {
+                        401 | 403 => {
+                            log::debug!("Security detection returned {status}. Security is enabled but access to /_xpack/usage is restricted.");
+                            Ok(true)
+                        }
+                        404 => {
+                            log::debug!("Security detection returned 404. Assuming security is disabled or not supported.");
+                            Ok(false)
+                        }
+                        _ => {
+                            log::warn!("Failed to check security status (HTTP {status}).");
+                            Err(eyre!("Failed to check security status: HTTP {status}"))
+                        }
+                    }
                 }
             }
             Client::Kibana(_) => {
