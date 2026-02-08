@@ -95,7 +95,8 @@ impl Receive for ElasticCloudAdminReceiver {
 
         log::debug!("Get Response: {:?}", response);
 
-        response.json::<T>().await.map_err(Into::into)
+        let bytes = response.bytes().await?;
+        serde_json::from_slice(&bytes).map_err(Into::into)
     }
 
     async fn try_get_manifest(&self) -> Result<DiagnosticManifest> {

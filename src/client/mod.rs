@@ -66,9 +66,8 @@ impl Client {
                         body,
                         None,
                     )
-                    .await
-                    .map_err(|e| e.into());
-                response.map(|response| response.into())
+                    .await?;
+                Ok(response.into())
             }
             Client::Kibana(client) => client.request(method, headers, path, body).await,
         }
@@ -92,7 +91,7 @@ impl Client {
 
                 let status = response.status_code();
                 let json: serde_json::Value = response
-                    .json()
+                    .json::<serde_json::Value>()
                     .await
                     .map_err(|e| format!("Failed to read test body: {e}"))?;
                 log::debug!("Test response {} ", json);
@@ -109,7 +108,7 @@ impl Client {
                 let response = client.test_connection().await.map_err(|e| format!("{e}"))?;
                 let status = response.status();
                 let json: serde_json::Value = response
-                    .json()
+                    .json::<serde_json::Value>()
                     .await
                     .map_err(|e| format!("Failed to read test body: {e}"))?;
                 log::debug!("Test response {} ", json);
