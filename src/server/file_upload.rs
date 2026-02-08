@@ -118,7 +118,7 @@ pub async fn process(
             None =>{
                 yield patch_signals(r#"{"processing":false}"#);
                 yield patch_template(template::JobFailed {
-                    job_id: job_id,
+                    job_id,
                     error: "Failed to upload file",
                     source: "User upload",
                 });
@@ -133,7 +133,7 @@ pub async fn process(
                 log::error!("{}", error);
                 yield patch_signals(r#"{"processing":false}"#);
                 yield patch_template(template::JobFailed {
-                    job_id: job_id,
+                    job_id,
                     error: "Failed to create file receiver",
                     source: &filename,
                 });
@@ -166,7 +166,7 @@ pub async fn process(
         match processor.start().await {
             Ok(processor) => {
                 yield patch_template(template::JobProcessing {
-                    job_id: job_id,
+                    job_id,
                     source: &filename,
                 });
                 yield patch_signals(r#"{"loading":false,"processing":true}"#);
@@ -176,7 +176,7 @@ pub async fn process(
                         let report = &completed.state.report;
                         state.record_success(report.diagnostic.docs.total, report.diagnostic.docs.errors).await;
                         yield patch_template(template::JobCompleted {
-                            job_id: job_id,
+                            job_id,
                             diagnostic_id: &report.diagnostic.metadata.id,
                             docs_created: &report.diagnostic.docs.created,
                             duration: &format!("{:.3}", report.diagnostic.processing_duration as f64 / 1000.0),
@@ -188,7 +188,7 @@ pub async fn process(
                     Err(failed) => {
                         state.record_failure().await;
                         yield patch_template(template::JobFailed {
-                            job_id: job_id,
+                            job_id,
                             error: &failed.state.error,
                             source: &filename,
                         });
@@ -198,7 +198,7 @@ pub async fn process(
             Err(failed) => {
                 state.record_failure().await;
                 yield patch_template(template::JobFailed {
-                    job_id: job_id,
+                    job_id,
                     error: &failed.state.error,
                     source: &filename,
                 });
