@@ -2,11 +2,17 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
+use crate::processor::{PathType, StreamingDataSource};
+use async_stream::stream;
 use eyre::Result;
+use futures::stream::BoxStream;
+use serde::de::DeserializeOwned;
 use std::{
-    io::{Read, Seek},
+    io::{BufReader, Read, Seek},
     path::PathBuf,
+    sync::Arc,
 };
+use tokio::sync::{RwLock, mpsc};
 use zip::ZipArchive;
 
 mod bytes;
@@ -14,6 +20,60 @@ mod file;
 
 pub use bytes::*;
 pub use file::*;
+
+pub async fn get_stream_from_archive<R, T>(
+    archive: Arc<RwLock<ZipArchive<R>>>,
+    subdir: Option<PathBuf>,
+) -> Result<BoxStream<'static, Result<T::Item>>>
+where
+    R: Read + Seek + Send + Sync + 'static,
+    T: StreamingDataSource + DeserializeOwned,
+    T::Item: DeserializeOwned + Send + 'static,
+{
+    let (tx, mut rx) = mpsc::channel(100);
+
+    tokio::task::spawn_blocking(move || {
+        let mut archive_guard = archive.blocking_write();
+        let filename = match resolve_archive_path(
+            subdir.as_ref(),
+            &mut *archive_guard,
+            match T::source(PathType::File) {
+                Ok(s) => s,
+                Err(e) => {
+                    let _ = tx.blocking_send(Err(eyre::eyre!(e)));
+                    return;
+                }
+            },
+        ) {
+            Ok(f) => f,
+            Err(e) => {
+                let _ = tx.blocking_send(Err(eyre::eyre!(e)));
+                return;
+            }
+        };
+
+        log::debug!("Streaming from archive: {}", filename);
+        match archive_guard.by_name(&filename) {
+            Ok(file) => {
+                let reader = BufReader::new(file);
+                let mut deserializer = serde_json::Deserializer::from_reader(reader);
+                if let Err(e) = T::deserialize_stream(&mut deserializer, tx.clone()) {
+                    log::error!("Error deserializing stream from archive: {}", e);
+                    let _ = tx.blocking_send(Err(eyre::eyre!(e)));
+                }
+            }
+            Err(e) => {
+                let _ = tx.blocking_send(Err(eyre::eyre!(e)));
+            }
+        }
+    });
+
+    Ok(Box::pin(stream! {
+        while let Some(item) = rx.recv().await {
+            yield item;
+        }
+    }))
+}
 
 pub fn trim_to_working_directory(path: &mut PathBuf) {
     // Drop any filename

@@ -99,62 +99,8 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for IndicesStats {
         metadata: &ElasticsearchMetadata,
     ) -> ProcessorSummary {
         log::debug!("index_stats indices: {}", self.indices.len());
-        let indices_stats = self.indices;
-        let data_stream_name = "metrics-index-esdiag".to_string();
-        let index_metadata = metadata.for_data_stream(&data_stream_name);
-        let shard_metadata = metadata.for_data_stream("metrics-shard-esdiag");
-
-        // Tune batch sizes and channel buffers for memory usage and write frequency
-        let batch_size = 5000;
-        const BUFFER_SIZE: usize = 5000;
-
-        // Spawn document channels for concurrent processing with backpressure
-        let (index_tx, index_rx) = mpsc::channel::<IndexStatsDocument>(BUFFER_SIZE);
-
-        let index_processor =
-            tokio::spawn(exporter.clone().document_channel::<IndexStatsDocument>(
-                index_rx,
-                index_metadata.data_stream.to_string(),
-                batch_size,
-            ));
-
-        let (shard_tx, shard_rx) = mpsc::channel::<ShardStatsDocument>(BUFFER_SIZE);
-        let shard_processor =
-            tokio::spawn(exporter.clone().document_channel::<ShardStatsDocument>(
-                shard_rx,
-                shard_metadata.data_stream.to_string(),
-                batch_size,
-            ));
-
-        for (index_name, index_stats) in indices_stats {
-            process_index(
-                index_name,
-                index_stats,
-                lookups,
-                metadata,
-                &index_metadata,
-                &shard_metadata,
-                &index_tx,
-                &shard_tx,
-            )
-            .await;
-        }
-
-        // Close channels to signal completion
-        drop(index_tx);
-        drop(shard_tx);
-
-        // Wait for processors to complete
-        let (index_result, shard_result) = tokio::join!(index_processor, shard_processor);
-
-        // Merge summaries
-
-        let mut summary = ProcessorSummary::new(data_stream_name);
-        summary.merge(index_result.map_err(|err| eyre::Report::new(err)));
-        summary.merge(shard_result.map_err(|err| eyre::Report::new(err)));
-
-        log::debug!("indices_stats processed: {}", summary.docs);
-        summary
+        let stream = futures::stream::iter(self.indices.into_iter().map(Ok));
+        Self::documents_export_stream(Box::pin(stream), exporter, lookups, metadata).await
     }
 }
 
