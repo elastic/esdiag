@@ -8,7 +8,7 @@ Implement streaming deserialization and buffer reuse for large data structures t
 
 - **Streaming**: Use `serde_json::StreamDeserializer` to process entries in batches instead of loading the entire top-level object into memory.
 - **Seeding**: Use `serde::de::DeserializeSeed` to reuse buffers (e.g., `Vec<T>`) across entries, reducing allocations.
-- **Targeting**: Initially target `node_stats`, `indices_stats`, and `mapping_stats` for Elasticsearch, and `node_stats` for Logstash processors.
+- **Targeting**: Initially target `node_stats`, `indices_stats`, and `mapping_stats` for Elasticsearch processors.
 
 ## Capabilities
 
@@ -23,5 +23,4 @@ Implement streaming deserialization and buffer reuse for large data structures t
 - `src/processor/elasticsearch/indices_stats/`: Deserialization logic will be refactored to use streaming.
 - `src/processor/elasticsearch/nodes_stats/`: Deserialization logic will be refactored to use streaming.
 - `src/processor/elasticsearch/mapping_stats/`: Deserialization logic will be refactored to use streaming. This is particularly critical as mappings can have tens of thousands of entries with deeply nested parent/child structures.
-- `src/processor/logstash/node_stats/`: Deserialization logic will be refactored to use streaming.
 - `serde` and `serde_json` usage will become more complex (manual `Visitor` or `DeserializeSeed` implementations).
