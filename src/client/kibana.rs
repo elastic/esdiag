@@ -72,7 +72,7 @@ impl KibanaClient {
             headers.remove("Content-Type");
         }
 
-        let client = match path.split_once('?') {
+        let request = match path.split_once('?') {
             Some((p, query)) => {
                 let query: Vec<_> = query.split('&').filter_map(|s| s.split_once('=')).collect();
                 self.client
@@ -95,13 +95,13 @@ impl KibanaClient {
                     .file_name("dashboards.ndjson")
                     .mime_str("application/x-ndjson")?;
                 let form = multipart::Form::new().part("file", part);
-                client.multipart(form).send().await
+                request.multipart(form).send().await
             }
             Some(body) => {
                 log::debug!("Sending request with body");
-                client.body(body.to_vec()).send().await
+                request.body(body.to_vec()).send().await
             }
-            None => client.send().await,
+            None => request.send().await,
         };
         response.map_err(|e| eyre!("Failed to send request: {}", e))
     }

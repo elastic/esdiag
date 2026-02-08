@@ -99,7 +99,7 @@ impl Receive for ElasticsearchReceiver {
         match response.status_code() {
             http::StatusCode::OK => response.json::<T>().await.map_err(Into::into),
             status => {
-                let body: Value = response.json().await?;
+                let body: Value = response.json::<Value>().await?;
                 log::debug!("Failed to get API response: {}", body);
                 let reason = body
                     .get("error")

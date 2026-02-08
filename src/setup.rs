@@ -5,16 +5,57 @@
 use crate::{client::Client, data::Product};
 //use bytes::Bytes;
 use eyre::{Result, eyre, WrapErr};
-use include_dir::{Dir, File, include_dir};
+use flate2::read::GzDecoder;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::io::Read;
+use std::path::{Path, PathBuf};
+use tar::Archive;
 
 // Subdirectory for templates and configs files
-pub static ASSETS_DIR: Dir = include_dir!("assets");
+pub static ASSETS_TAR_GZ: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/assets.tar.gz"));
 pub static ASSETS_FILE: &str = "assets.yml";
 pub static SOURCES_FILE: &str = "sources.yml";
+
+struct EmbeddedAssets {
+    files: HashMap<PathBuf, Vec<u8>>,
+}
+
+impl EmbeddedAssets {
+    fn new() -> Result<Self> {
+        let mut files = HashMap::new();
+        let tar_gz = GzDecoder::new(ASSETS_TAR_GZ);
+        let mut archive = Archive::new(tar_gz);
+        for entry in archive.entries()? {
+            let mut entry = entry?;
+            if entry.header().entry_type().is_file() {
+                let mut path = entry.path()?.to_path_buf();
+                if let Ok(stripped) = path.strip_prefix("assets") {
+                    path = stripped.to_path_buf();
+                }
+                let mut content = Vec::new();
+                entry.read_to_end(&mut content)?;
+                files.insert(path, content);
+            }
+        }
+        Ok(Self { files })
+    }
+
+    fn get_file(&self, path: &Path) -> Option<&[u8]> {
+        self.files.get(path).map(|v| v.as_slice())
+    }
+
+    fn get_dir_files(&self, path: &Path) -> Vec<(&Path, &[u8])> {
+        let mut files: Vec<_> = self.files
+            .iter()
+            .filter(|(p, _)| p.starts_with(path))
+            .map(|(p, v)| (p.as_path(), v.as_slice()))
+            .collect();
+        files.sort_by_key(|(p, _)| *p);
+        files
+    }
+}
 
 #[derive(Deserialize, Serialize)]
 pub struct Asset {
@@ -37,8 +78,8 @@ fn should_skip_asset(asset: &Asset, security_enabled: bool) -> bool {
     asset.requires_security && !security_enabled
 }
 
-async fn send_asset(client: &Client, asset: &Asset, file: &File<'_>, named: bool) -> Result<()> {
-    let stem = file.path().file_stem().unwrap().to_str().unwrap_or("");
+async fn send_asset(client: &Client, asset: &Asset, path: &Path, contents: &[u8], named: bool) -> Result<()> {
+    let stem = path.file_stem().unwrap().to_str().unwrap_or("");
     let endpoint = match named {
         true => &format!(
             "{}/{}{}",
@@ -53,7 +94,7 @@ async fn send_asset(client: &Client, asset: &Asset, file: &File<'_>, named: bool
             asset.method.parse()?,
             &asset.headers,
             endpoint,
-            Some(file.contents()),
+            Some(contents),
         )
         .await
     {
@@ -67,7 +108,8 @@ async fn send_asset(client: &Client, asset: &Asset, file: &File<'_>, named: bool
                     Ok(())
                 }
                 false => {
-                    let body = response.json::<Value>().await?;
+                    let bytes = response.bytes().await?;
+                    let body = serde_json::from_slice::<Value>(&bytes)?;
                     let message = format!("Asset: {body}");
                     Err(eyre!(message))
                 }
@@ -82,8 +124,9 @@ async fn send_asset(client: &Client, asset: &Asset, file: &File<'_>, named: bool
 
 /// Submit saved assets to the client APIs
 pub async fn assets(client: &Client) -> Result<()> {
+    let embedded_assets = EmbeddedAssets::new()?;
     // load asset list from ./assets/{product}/assets.yml
-    let assets = parse_assets_yml(client.into())?;
+    let assets = parse_assets_yml(client.into(), &embedded_assets)?;
 
     // Check security status
     let security_enabled = client
@@ -106,11 +149,13 @@ pub async fn assets(client: &Client) -> Result<()> {
         log::info!("Processing asset: {}", &asset.name);
         log::debug!("Asset: {}", serde_json::to_string(&asset).unwrap());
         let path = PathBuf::from(format!("{}/{}", client, asset.name));
-        if let Some(dir) = ASSETS_DIR.get_dir(&path) {
+        
+        let dir_files = embedded_assets.get_dir_files(&path);
+        if !dir_files.is_empty() {
             // do something with the directory
-            for file in dir.files() {
-                log::debug!("file.path: {:?}", &file.path());
-                match send_asset(client, &asset, file, true).await {
+            for (file_path, contents) in dir_files {
+                log::debug!("file.path: {:?}", file_path);
+                match send_asset(client, &asset, file_path, contents, true).await {
                     Ok(res) => log::debug!("Response: {:?}", res),
                     Err(e) => {
                         log::error!("Failed to send asset: {e:?}");
@@ -118,10 +163,10 @@ pub async fn assets(client: &Client) -> Result<()> {
                     }
                 }
             }
-        } else if let Some(file) = ASSETS_DIR.get_file(&path) {
+        } else if let Some(contents) = embedded_assets.get_file(&path) {
             // do something with the file
-            log::debug!("file.path: {:?}", &file.path());
-            if let Err(e) = send_asset(client, &asset, file, false).await {
+            log::debug!("file.path: {:?}", &path);
+            if let Err(e) = send_asset(client, &asset, &path, contents, false).await {
                 log::error!("Failed to send asset: {e:?}");
                 error_count += 1;
             }
@@ -138,12 +183,12 @@ pub async fn assets(client: &Client) -> Result<()> {
 }
 
 /// Parses the assets YAML file for the given exporter. Currently only supports Elasticsearch.
-fn parse_assets_yml(product: Product) -> Result<Vec<Asset>> {
+fn parse_assets_yml(product: Product, assets_store: &EmbeddedAssets) -> Result<Vec<Asset>> {
     let filename = format!("{}/{}", product.to_string().to_lowercase(), ASSETS_FILE);
-    let file = ASSETS_DIR
-        .get_file(&filename)
-        .ok_or(eyre!("Error reading {filename}"))?;
-    let assets = serde_yaml::from_slice(file.contents())?;
+    let contents = assets_store
+        .get_file(Path::new(&filename))
+        .ok_or(eyre!("embedded assets archive (assets.tar.gz) did not contain expected file {filename}"))?;
+    let assets = serde_yaml::from_slice(contents)?;
     Ok(assets)
 }
 
