@@ -111,9 +111,7 @@ impl Receive for DirectoryReceiver {
 
         tokio::spawn(async move {
             if let Err(e) = handle.await {
-                if e.is_panic() {
-                    let _ = tx_err.send(Err(eyre!("Streaming task panicked"))).await;
-                }
+                let _ = tx_err.send(Err(eyre!(e))).await;
             }
         });
 
