@@ -228,11 +228,9 @@ impl FieldDefinition {
         }
 
         // Check if it's a multi-field mapping (has fields property)
-        if let Some(fields_map) = &self.fields {
-            if !fields_map.is_empty() {
-                multi_fields.total += 1;
-                multi_fields.names.push(path.clone());
-            }
+        if self.fields.as_ref().is_some_and(|f| !f.is_empty()) {
+            multi_fields.total += 1;
+            multi_fields.names.push(path.clone());
         }
 
         if let Some(properties) = &self.properties {
@@ -425,7 +423,7 @@ mod tests {
         let mut deserializer = serde_json::Deserializer::from_str(json);
         let (tx, mut rx) = mpsc::channel(10);
 
-        tokio::task::spawn_blocking(move || {
+        let handle = tokio::task::spawn_blocking(move || {
             MappingStats::deserialize_stream(&mut deserializer, tx).unwrap();
         });
 
@@ -435,5 +433,6 @@ mod tests {
             count += 1;
         }
         assert_eq!(count, 2);
+        handle.await.unwrap();
     }
 }

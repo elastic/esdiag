@@ -35,7 +35,7 @@ async fn test_streaming_deserialization() {
     let mut deserializer = serde_json::Deserializer::from_str(json);
     let (tx, mut rx) = mpsc::channel(10);
 
-    tokio::task::spawn_blocking(move || {
+    let handle = tokio::task::spawn_blocking(move || {
         NodesStats::deserialize_stream(&mut deserializer, tx).unwrap();
     });
 
@@ -48,4 +48,5 @@ async fn test_streaming_deserialization() {
         count += 1;
     }
     assert_eq!(count, 1);
+    handle.await.unwrap();
 }

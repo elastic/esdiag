@@ -19,43 +19,47 @@ use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 use tokio::sync::mpsc;
 
+struct IndexProcessingContext<'a> {
+    lookups: &'a Lookups,
+    metadata: &'a ElasticsearchMetadata,
+    index_metadata: &'a MetadataDoc,
+    shard_metadata: &'a MetadataDoc,
+    index_tx: &'a mpsc::Sender<IndexStatsDocument>,
+    shard_tx: &'a mpsc::Sender<ShardStatsDocument>,
+}
+
 async fn process_index(
     index_name: String,
     mut index_stats: IndexStats,
-    lookups: &Lookups,
-    metadata: &ElasticsearchMetadata,
-    index_metadata: &MetadataDoc,
-    shard_metadata: &MetadataDoc,
-    index_tx: &mpsc::Sender<IndexStatsDocument>,
-    shard_tx: &mpsc::Sender<ShardStatsDocument>,
+    ctx: &IndexProcessingContext<'_>,
 ) {
     let shards_stats = index_stats.shards.take();
-    let index_settings = lookups
+    let index_settings = ctx.lookups
         .index_settings
         .by_name(&index_name)
         .cloned()
         .map(|settings| {
             settings
-                .data_stream(lookups.data_stream.by_id(&index_name).cloned())
-                .age(metadata.diagnostic.collection_date)
+                .data_stream(ctx.lookups.data_stream.by_id(&index_name).cloned())
+                .age(ctx.metadata.diagnostic.collection_date)
         });
 
     let index_settings = index_settings.map(|settings| {
-        IndexSettingsDocument::from(settings).ilm(lookups.ilm_explain.by_name(&index_name).cloned())
+        IndexSettingsDocument::from(settings).ilm(ctx.lookups.ilm_explain.by_name(&index_name).cloned())
     });
 
     let write_phase_sec = match EnrichedIndexStats::try_from(index_stats) {
         Ok(enriched_stats) => {
             let stats = enriched_stats
                 .name(index_name.clone())
-                .alias(lookups.alias.by_name(&index_name).cloned())
+                .alias(ctx.lookups.alias.by_name(&index_name).cloned())
                 .with_settings(
                     index_settings.clone(),
-                    lookups.mapping_stats.by_name(&index_name).cloned(),
+                    ctx.lookups.mapping_stats.by_name(&index_name).cloned(),
                 );
-            let index_document = IndexStatsDocument::new(stats, index_metadata.clone()).calculate();
+            let index_document = IndexStatsDocument::new(stats, ctx.index_metadata.clone()).calculate();
             let write_phase_sec = index_document.index.write_phase_sec;
-            if let Err(_) = index_tx.send(index_document).await {
+            if (ctx.index_tx.send(index_document).await).is_err() {
                 log::warn!("Index channel closed unexpectedly");
             }
             write_phase_sec
@@ -71,14 +75,14 @@ async fn process_index(
     if let Some(shards) = shards_stats {
         match extract_shard_documents(
             shards,
-            shard_metadata,
+            ctx.shard_metadata,
             index_name,
             index_settings,
-            &lookups.node,
+            &ctx.lookups.node,
         ) {
             Ok(docs) => {
                 for doc in docs {
-                    if shard_tx.send(doc).await.is_err() {
+                    if (ctx.shard_tx.send(doc).await).is_err() {
                         log::warn!("Shard channel closed unexpectedly");
                         break;
                     }
@@ -138,17 +142,15 @@ impl StreamingDocumentExporter<Lookups, ElasticsearchMetadata> for IndicesStats 
         while let Some(result) = stream.next().await {
             match result {
                 Ok((index_name, index_stats)) => {
-                    process_index(
-                        index_name,
-                        index_stats,
+                    let ctx = IndexProcessingContext {
                         lookups,
                         metadata,
-                        &index_metadata,
-                        &shard_metadata,
-                        &index_tx,
-                        &shard_tx,
-                    )
-                    .await;
+                        index_metadata: &index_metadata,
+                        shard_metadata: &shard_metadata,
+                        index_tx: &index_tx,
+                        shard_tx: &shard_tx,
+                    };
+                    process_index(index_name, index_stats, &ctx).await;
                 }
                 Err(e) => {
                     log::error!("Error reading from indices stats stream: {}", e);

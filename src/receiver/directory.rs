@@ -92,7 +92,8 @@ impl Receive for DirectoryReceiver {
         let filename_clone = filename.clone();
         let (tx, mut rx) = mpsc::channel(100);
 
-        tokio::task::spawn_blocking(move || {
+        let tx_err = tx.clone();
+        let handle = tokio::task::spawn_blocking(move || {
             match File::open(&filename_clone) {
                 Ok(file) => {
                     let reader = BufReader::new(file);
@@ -104,6 +105,14 @@ impl Receive for DirectoryReceiver {
                 }
                 Err(e) => {
                     let _ = tx.blocking_send(Err(eyre!(e)));
+                }
+            }
+        });
+
+        tokio::spawn(async move {
+            if let Err(e) = handle.await {
+                if e.is_panic() {
+                    let _ = tx_err.send(Err(eyre!("Streaming task panicked"))).await;
                 }
             }
         });

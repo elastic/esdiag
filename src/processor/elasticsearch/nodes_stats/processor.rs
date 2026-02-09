@@ -22,26 +22,30 @@ use tokio::sync::mpsc;
 
 static INGEST_ROLE: LazyLock<String> = LazyLock::new(|| String::from("ingest"));
 
+struct NodeProcessingContext<'a> {
+    lookups: &'a Lookups,
+    metadata: &'a ElasticsearchMetadata,
+    node_stats_metadata: &'a Value,
+    actions_metadata: &'a Value,
+    http_clients_metadata: &'a Value,
+    applier_metadata: &'a Value,
+    adaptive_metadata: &'a Value,
+    nodes_stats_tx: &'a mpsc::Sender<Value>,
+    actions_tx: &'a mpsc::Sender<Value>,
+    http_clients_tx: &'a mpsc::Sender<Value>,
+    applier_tx: &'a mpsc::Sender<Value>,
+    adaptive_tx: &'a mpsc::Sender<Value>,
+    pipelines_tx: &'a mpsc::Sender<Value>,
+    processors_tx: &'a mpsc::Sender<Value>,
+}
+
 async fn process_node(
     node_id: String,
     mut node_stats: super::data::NodeStats,
-    lookups: &Lookups,
-    metadata: &ElasticsearchMetadata,
-    node_stats_metadata: &Value,
-    actions_metadata: &Value,
-    http_clients_metadata: &Value,
-    applier_metadata: &Value,
-    adaptive_metadata: &Value,
-    nodes_stats_tx: &mpsc::Sender<Value>,
-    actions_tx: &mpsc::Sender<Value>,
-    http_clients_tx: &mpsc::Sender<Value>,
-    applier_tx: &mpsc::Sender<Value>,
-    adaptive_tx: &mpsc::Sender<Value>,
-    pipelines_tx: &mpsc::Sender<Value>,
-    processors_tx: &mpsc::Sender<Value>,
+    ctx: &NodeProcessingContext<'_>,
 ) {
-    let lookup_node = &lookups.node;
-    let lookup_shared_cache = &lookups.shared_cache;
+    let lookup_node = &ctx.lookups.node;
+    let lookup_shared_cache = &ctx.lookups.shared_cache;
 
     let node_metadata = lookup_node.by_id(&node_id);
     let allocated_processors = node_metadata
@@ -54,9 +58,9 @@ async fn process_node(
         let actions = transport["actions"].take();
         if !actions.is_null() {
             if let Err(e) = transport_actions::extract(
-                actions_tx,
+                ctx.actions_tx,
                 actions,
-                actions_metadata,
+                ctx.actions_metadata,
                 node_metadata,
             )
             .await
@@ -72,9 +76,9 @@ async fn process_node(
 
     // Extract HTTP clients
     if let Err(e) = http_clients::extract(
-        http_clients_tx,
+        ctx.http_clients_tx,
         node_stats.http["clients"].take(),
-        http_clients_metadata,
+        ctx.http_clients_metadata,
         node_metadata,
     )
     .await
@@ -84,9 +88,9 @@ async fn process_node(
 
     // Extract adaptive replica selection stats
     if let Err(e) = adaptive_selections::extract(
-        adaptive_tx,
+        ctx.adaptive_tx,
         node_stats.adaptive_selection.take(),
-        adaptive_metadata,
+        ctx.adaptive_metadata,
         node_metadata,
         lookup_node,
     )
@@ -97,9 +101,9 @@ async fn process_node(
 
     // Extract cluster applier state
     if let Err(e) = cluster_applier_stats::extract(
-        applier_tx,
+        ctx.applier_tx,
         node_stats.discovery["cluster_applier_stats"].take(),
-        applier_metadata,
+        ctx.applier_metadata,
         node_metadata,
     )
     .await
@@ -110,10 +114,10 @@ async fn process_node(
     // Extract ingest pipeline stats, but only on nodes with the `ingest` role
     if node_stats.roles.contains(&*INGEST_ROLE) {
         if let Err(e) = ingest_pipelines::extract(
-            pipelines_tx,
-            processors_tx,
+            ctx.pipelines_tx,
+            ctx.processors_tx,
             node_stats.ingest.pipelines.take(),
-            metadata.clone(),
+            ctx.metadata.clone(),
             node_metadata,
         )
         .await
@@ -136,11 +140,11 @@ async fn process_node(
 
     let node_summary_patch = json!({"node": node_metadata});
 
-    merge(&mut doc, node_stats_metadata);
+    merge(&mut doc, ctx.node_stats_metadata);
     merge(&mut doc, &node_summary_patch);
     merge(&mut doc, &omit_patch);
 
-    if nodes_stats_tx.send(doc).await.is_err() {
+    if (ctx.nodes_stats_tx.send(doc).await).is_err() {
         log::warn!("Nodes stats channel closed unexpectedly");
     }
 }
@@ -242,25 +246,23 @@ impl StreamingDocumentExporter<Lookups, ElasticsearchMetadata> for NodesStats {
         while let Some(result) = stream.next().await {
             match result {
                 Ok((node_id, node_stats)) => {
-                    process_node(
-                        node_id,
-                        node_stats,
+                    let ctx = NodeProcessingContext {
                         lookups,
                         metadata,
-                        &node_stats_metadata,
-                        &actions_metadata,
-                        &http_clients_metadata,
-                        &applier_metadata,
-                        &adaptive_metadata,
-                        &nodes_stats_tx,
-                        &actions_tx,
-                        &http_clients_tx,
-                        &applier_tx,
-                        &adaptive_tx,
-                        &pipelines_tx,
-                        &processors_tx,
-                    )
-                    .await;
+                        node_stats_metadata: &node_stats_metadata,
+                        actions_metadata: &actions_metadata,
+                        http_clients_metadata: &http_clients_metadata,
+                        applier_metadata: &applier_metadata,
+                        adaptive_metadata: &adaptive_metadata,
+                        nodes_stats_tx: &nodes_stats_tx,
+                        actions_tx: &actions_tx,
+                        http_clients_tx: &http_clients_tx,
+                        applier_tx: &applier_tx,
+                        adaptive_tx: &adaptive_tx,
+                        pipelines_tx: &pipelines_tx,
+                        processors_tx: &processors_tx,
+                    };
+                    process_node(node_id, node_stats, &ctx).await;
                 }
                 Err(e) => {
                     log::error!("Error reading from node stats stream: {}", e);

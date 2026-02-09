@@ -32,7 +32,8 @@ where
 {
     let (tx, mut rx) = mpsc::channel(100);
 
-    tokio::task::spawn_blocking(move || {
+    let tx_err = tx.clone();
+    let handle = tokio::task::spawn_blocking(move || {
         let mut archive_guard = archive.blocking_write();
         let filename = match resolve_archive_path(
             subdir.as_ref(),
@@ -64,6 +65,14 @@ where
             }
             Err(e) => {
                 let _ = tx.blocking_send(Err(eyre::eyre!(e)));
+            }
+        }
+    });
+
+    tokio::spawn(async move {
+        if let Err(e) = handle.await {
+            if e.is_panic() {
+                let _ = tx_err.send(Err(eyre::eyre!("Streaming task panicked"))).await;
             }
         }
     });

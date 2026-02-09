@@ -95,7 +95,7 @@ where
         where
             A: serde::de::MapAccess<'de>,
         {
-            let mut values = Vec::new();
+            let mut values = Vec::with_capacity(map.size_hint().unwrap_or(0));
             while let Some(key) = map.next_key()? {
                 let value = map.next_value()?;
                 values.push((key, value));

@@ -41,7 +41,7 @@ pub trait Receive {
         T: StreamingDataSource + DeserializeOwned,
         T::Item: DeserializeOwned + Send + 'static,
     {
-        Err(eyre!("Streaming not supported for this receiver"))
+        Err(eyre!("Streaming is not supported for this receiver"))
     }
     async fn try_get_manifest(&self) -> Result<DiagnosticManifest> {
         match self.get::<DiagnosticManifest>().await {
@@ -125,11 +125,11 @@ impl Receiver {
         T::Item: DeserializeOwned + Send + 'static,
     {
         match self {
+            Receiver::ArchiveBytes(receiver) => receiver.get_stream::<T>().await,
+            Receiver::ArchiveFile(receiver) => receiver.get_stream::<T>().await,
             Receiver::Directory(receiver) => receiver.get_stream::<T>().await,
             Receiver::Elasticsearch(receiver) => receiver.get_stream::<T>().await,
-            Receiver::ArchiveFile(receiver) => receiver.get_stream::<T>().await,
-            Receiver::ArchiveBytes(receiver) => receiver.get_stream::<T>().await,
-            _ => Err(eyre!("Streaming is not supported for this receiver")),
+            Receiver::ElasticCloudAdmin(receiver) => receiver.get_stream::<T>().await,
         }
     }
 
