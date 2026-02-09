@@ -3,7 +3,7 @@
 - [x] 1.1 Define `StreamingDataSource` trait in `src/processor/diagnostic/data_source.rs`
 - [x] 1.2 Implement a streaming map visitor in `src/data/mod.rs` to allow memory-efficient iteration over large JSON objects
 - [x] 1.3 Add `get_stream` method to the `Receive` trait or a new `StreamingReceive` trait in `src/receiver/mod.rs`
-- [x] 1.4 Implement streaming retrieval in `src/receiver/directory.rs` using `serde_json::StreamDeserializer`
+- [x] 1.4 Implement streaming retrieval in `src/receiver/directory.rs` using `serde_json::Deserializer::from_reader` and `StreamingDataSource::deserialize_stream`
 - [ ] 1.5 Implement streaming retrieval in `src/receiver/elasticsearch.rs`
 
 ## 2. Refactor Indices Stats
