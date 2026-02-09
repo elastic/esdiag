@@ -4,10 +4,11 @@
 
 use super::resolve_archive_path;
 use crate::{
-    processor::{DataSource, PathType},
+    processor::{DataSource, PathType, StreamingDataSource},
     receiver::{Receive, ReceiveMultiple, ReceiveRaw},
 };
 use eyre::{Result, eyre};
+use futures::stream::BoxStream;
 use serde::de::DeserializeOwned;
 use std::{
     fs::File,
@@ -94,6 +95,14 @@ impl Receive for ArchiveFileReceiver {
         let reader = BufReader::new(file);
         let data: T = serde_json::from_reader(reader)?;
         Ok(data)
+    }
+
+    async fn get_stream<T>(&self) -> Result<BoxStream<'static, Result<T::Item>>>
+    where
+        T: StreamingDataSource + DeserializeOwned,
+        T::Item: DeserializeOwned + Send + 'static,
+    {
+        super::get_stream_from_archive::<File, T>(self.archive.clone(), self.subdir.clone()).await
     }
 }
 

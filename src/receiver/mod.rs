@@ -17,12 +17,16 @@ pub use elasticsearch::ElasticsearchReceiver;
 
 use super::{
     data::{KnownHost, Uri},
-    processor::{DataSource, DiagnosticManifest, ElasticsearchCluster, Manifest, ManifestBuilder},
+    processor::{
+        DataSource, DiagnosticManifest, ElasticsearchCluster, Manifest, ManifestBuilder,
+        StreamingDataSource,
+    },
 };
 use archive::{ArchiveBytesReceiver, ArchiveFileReceiver};
 use directory::DirectoryReceiver;
 use elastic_cloud_admin::ElasticCloudAdminReceiver;
 use eyre::{Result, eyre};
+use futures::stream::BoxStream;
 use serde::de::DeserializeOwned;
 use upload_service::UploadServiceDownloader;
 
@@ -32,6 +36,13 @@ pub trait Receive {
     async fn collection_date(&self) -> String;
     fn filename(&self) -> Option<String>;
     async fn get<T: DataSource + DeserializeOwned>(&self) -> Result<T>;
+    async fn get_stream<T>(&self) -> Result<BoxStream<'static, Result<T::Item>>>
+    where
+        T: StreamingDataSource + DeserializeOwned,
+        T::Item: DeserializeOwned + Send + 'static,
+    {
+        Err(eyre!("Streaming is not supported for this receiver"))
+    }
     async fn try_get_manifest(&self) -> Result<DiagnosticManifest> {
         match self.get::<DiagnosticManifest>().await {
             Ok(manifest) => {
@@ -105,6 +116,20 @@ impl Receiver {
             Receiver::Directory(receiver) => receiver.get::<T>().await,
             Receiver::Elasticsearch(receiver) => receiver.get::<T>().await,
             Receiver::ElasticCloudAdmin(receiver) => receiver.get::<T>().await,
+        }
+    }
+
+    pub async fn get_stream<T>(&self) -> Result<BoxStream<'static, Result<T::Item>>>
+    where
+        T: StreamingDataSource + DeserializeOwned,
+        T::Item: DeserializeOwned + Send + 'static,
+    {
+        match self {
+            Receiver::ArchiveBytes(receiver) => receiver.get_stream::<T>().await,
+            Receiver::ArchiveFile(receiver) => receiver.get_stream::<T>().await,
+            Receiver::Directory(receiver) => receiver.get_stream::<T>().await,
+            Receiver::Elasticsearch(receiver) => receiver.get_stream::<T>().await,
+            Receiver::ElasticCloudAdmin(receiver) => receiver.get_stream::<T>().await,
         }
     }
 

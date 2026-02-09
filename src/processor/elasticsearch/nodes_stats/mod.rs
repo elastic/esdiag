@@ -4,5 +4,7 @@
 
 mod data;
 mod processor;
+#[cfg(test)]
+mod tests;
 
 pub use data::*;

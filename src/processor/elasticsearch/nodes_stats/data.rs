@@ -2,7 +2,7 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use super::super::super::diagnostic::data_source::PathType;
+use super::super::super::diagnostic::data_source::{PathType, StreamingDataSource};
 use super::super::DataSource;
 use crate::data::option_map_as_vec_entries;
 use eyre::Result;
@@ -10,12 +10,89 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use serde_with::skip_serializing_none;
 use std::collections::{HashMap, HashSet};
+use tokio::sync::mpsc::Sender;
 
 #[derive(Deserialize, Serialize)]
 pub struct NodesStats {
     _nodes: NodeCount,
     //cluster_name: String,
     pub nodes: HashMap<String, NodeStats>,
+}
+
+impl StreamingDataSource for NodesStats {
+    type Item = (String, NodeStats);
+
+    fn deserialize_stream<'de, D>(
+        deserializer: D,
+        sender: Sender<Result<Self::Item>>,
+    ) -> std::result::Result<(), D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct NodesStatsVisitor {
+            sender: Sender<Result<(String, NodeStats)>>,
+        }
+
+        impl<'de> serde::de::Visitor<'de> for NodesStatsVisitor {
+            type Value = ();
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("NodesStats object")
+            }
+
+            fn visit_map<A>(self, mut map: A) -> std::result::Result<Self::Value, A::Error>
+            where
+                A: serde::de::MapAccess<'de>,
+            {
+                while let Some(key) = map.next_key::<String>()? {
+                    if key == "nodes" {
+                        map.next_value_seed(NodesMapVisitor {
+                            sender: self.sender.clone(),
+                        })?;
+                    } else {
+                        let _ = map.next_value::<serde::de::IgnoredAny>()?;
+                    }
+                }
+                Ok(())
+            }
+        }
+
+        struct NodesMapVisitor {
+            sender: Sender<Result<(String, NodeStats)>>,
+        }
+
+        impl<'de> serde::de::DeserializeSeed<'de> for NodesMapVisitor {
+            type Value = ();
+            fn deserialize<D>(self, deserializer: D) -> std::result::Result<Self::Value, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                deserializer.deserialize_map(self)
+            }
+        }
+
+        impl<'de> serde::de::Visitor<'de> for NodesMapVisitor {
+            type Value = ();
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("nodes map")
+            }
+
+            fn visit_map<A>(self, mut map: A) -> std::result::Result<Self::Value, A::Error>
+            where
+                A: serde::de::MapAccess<'de>,
+            {
+                while let Some(key) = map.next_key::<String>()? {
+                    let value = map.next_value::<NodeStats>()?;
+                    if self.sender.blocking_send(Ok((key, value))).is_err() {
+                        return Ok(());
+                    }
+                }
+                Ok(())
+            }
+        }
+
+        deserializer.deserialize_map(NodesStatsVisitor { sender })
+    }
 }
 
 #[derive(Deserialize, Serialize)]
@@ -148,7 +225,11 @@ pub type IngestPipelines = Vec<(String, IngestPipeline)>;
 #[derive(Deserialize, Serialize)]
 pub struct Ingest {
     total: Value,
-    #[serde(deserialize_with = "option_map_as_vec_entries", skip_serializing)]
+    #[serde(
+        default,
+        deserialize_with = "option_map_as_vec_entries",
+        skip_serializing
+    )]
     pub pipelines: Option<Vec<(String, IngestPipeline)>>,
 }
 

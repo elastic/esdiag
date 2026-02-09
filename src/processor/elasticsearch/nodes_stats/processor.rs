@@ -9,14 +9,145 @@ mod ingest_pipelines;
 mod transport_actions;
 
 use super::super::super::{Exporter, ProcessorSummary};
-use super::super::{DocumentExporter, ElasticsearchMetadata, Lookups, Metadata};
+use crate::processor::StreamingDocumentExporter;
+use super::super::{
+    DocumentExporter, ElasticsearchMetadata, Lookups, Metadata,
+};
 use super::NodesStats;
+use futures::stream::{BoxStream, StreamExt};
 use json_patch::merge;
 use serde_json::{Value, json};
 use std::sync::LazyLock;
 use tokio::sync::mpsc;
 
 static INGEST_ROLE: LazyLock<String> = LazyLock::new(|| String::from("ingest"));
+
+struct NodeProcessingContext<'a> {
+    lookups: &'a Lookups,
+    metadata: &'a ElasticsearchMetadata,
+    node_stats_metadata: &'a Value,
+    actions_metadata: &'a Value,
+    http_clients_metadata: &'a Value,
+    applier_metadata: &'a Value,
+    adaptive_metadata: &'a Value,
+    nodes_stats_tx: &'a mpsc::Sender<Value>,
+    actions_tx: &'a mpsc::Sender<Value>,
+    http_clients_tx: &'a mpsc::Sender<Value>,
+    applier_tx: &'a mpsc::Sender<Value>,
+    adaptive_tx: &'a mpsc::Sender<Value>,
+    pipelines_tx: &'a mpsc::Sender<Value>,
+    processors_tx: &'a mpsc::Sender<Value>,
+}
+
+async fn process_node(
+    node_id: String,
+    mut node_stats: super::data::NodeStats,
+    ctx: &NodeProcessingContext<'_>,
+) {
+    let lookup_node = &ctx.lookups.node;
+    let lookup_shared_cache = &ctx.lookups.shared_cache;
+
+    let node_metadata = lookup_node.by_id(&node_id);
+    let allocated_processors = node_metadata
+        .map(|node| node.os.allocated_processors)
+        .unwrap_or(1);
+    node_stats.calculate_stats(allocated_processors);
+
+    // Extract transport actions
+    if let Some(ref mut transport) = node_stats.transport {
+        let actions = transport["actions"].take();
+        if !actions.is_null() {
+            if let Err(e) = transport_actions::extract(
+                ctx.actions_tx,
+                actions,
+                ctx.actions_metadata,
+                node_metadata,
+            )
+            .await
+            {
+                log::error!(
+                    "Error extracting transport stats for node {}: {}",
+                    node_id,
+                    e
+                );
+            }
+        }
+    }
+
+    // Extract HTTP clients
+    if let Err(e) = http_clients::extract(
+        ctx.http_clients_tx,
+        node_stats.http["clients"].take(),
+        ctx.http_clients_metadata,
+        node_metadata,
+    )
+    .await
+    {
+        log::error!("Error extracting HTTP clients stats: {}", e);
+    }
+
+    // Extract adaptive replica selection stats
+    if let Err(e) = adaptive_selections::extract(
+        ctx.adaptive_tx,
+        node_stats.adaptive_selection.take(),
+        ctx.adaptive_metadata,
+        node_metadata,
+        lookup_node,
+    )
+    .await
+    {
+        log::error!("Error extracting adaptive selection stats: {}", e);
+    }
+
+    // Extract cluster applier state
+    if let Err(e) = cluster_applier_stats::extract(
+        ctx.applier_tx,
+        node_stats.discovery["cluster_applier_stats"].take(),
+        ctx.applier_metadata,
+        node_metadata,
+    )
+    .await
+    {
+        log::error!("Error extracting cluster applier stats: {}", e);
+    }
+
+    // Extract ingest pipeline stats, but only on nodes with the `ingest` role
+    if node_stats.roles.contains(&*INGEST_ROLE) {
+        if let Err(e) = ingest_pipelines::extract(
+            ctx.pipelines_tx,
+            ctx.processors_tx,
+            node_stats.ingest.pipelines.take(),
+            ctx.metadata.clone(),
+            node_metadata,
+        )
+        .await
+        {
+            log::error!("Error extracting ingest pipelines stats: {}", e);
+        }
+    }
+
+    // Final node_stats document
+    let mut doc = json!({
+        "node": &node_stats,
+        "shared_cache": lookup_shared_cache.by_id(node_id.as_str()),
+    });
+
+    let omit_patch = json!({
+        "node" : {
+            "http": { "routes": null },
+        }
+    });
+
+    let node_summary_patch = json!({"node": node_metadata});
+
+    merge(&mut doc, ctx.node_stats_metadata);
+    merge(&mut doc, &node_summary_patch);
+    merge(&mut doc, &omit_patch);
+
+    if (ctx.nodes_stats_tx.send(doc).await).is_err() {
+        log::warn!("Nodes stats channel closed unexpectedly");
+    }
+}
 
 impl DocumentExporter<Lookups, ElasticsearchMetadata> for NodesStats {
     async fn documents_export(
@@ -25,11 +156,21 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for NodesStats {
         lookups: &Lookups,
         metadata: &ElasticsearchMetadata,
     ) -> ProcessorSummary {
-        let nodes_stats = self.nodes;
-        log::debug!("nodes: {}", nodes_stats.len());
+        log::debug!("nodes: {}", self.nodes.len());
+        let stream = futures::stream::iter(self.nodes.into_iter().map(Ok));
+        Self::documents_export_stream(Box::pin(stream), exporter, lookups, metadata).await
+    }
+}
+
+impl StreamingDocumentExporter<Lookups, ElasticsearchMetadata> for NodesStats {
+    async fn documents_export_stream(
+        mut stream: BoxStream<'static, Result<Self::Item, eyre::Report>>,
+        exporter: &Exporter,
+        lookups: &Lookups,
+        metadata: &ElasticsearchMetadata,
+    ) -> ProcessorSummary {
+        log::debug!("Processing node_stats stream");
         let data_stream = "metrics-node-esdiag".to_string();
-        let lookup_node = &lookups.node;
-        let lookup_shared_cache = &lookups.shared_cache;
         let mut summary = ProcessorSummary::new(data_stream.clone());
 
         // Tune batch sizes and channel buffers for memory usage and write frequency
@@ -102,106 +243,30 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for NodesStats {
             batch_size,
         ));
 
-        for (node_id, mut node_stats) in nodes_stats {
-            let node_metadata = lookup_node.by_id(&node_id);
-            let allocated_processors = node_metadata
-                .map(|node| node.os.allocated_processors)
-                .unwrap_or(1);
-            node_stats.calculate_stats(allocated_processors);
-
-            // Extract transport actions
-            if let Some(ref mut transport) = node_stats.transport {
-                let actions = transport["actions"].take();
-                if !actions.is_null() {
-                    if let Err(e) = transport_actions::extract(
-                        &actions_tx,
-                        actions,
-                        &actions_metadata,
-                        node_metadata,
-                    )
-                    .await
-                    {
-                        log::error!(
-                            "Error extracting transport stats for node {}: {}",
-                            node_id,
-                            e
-                        );
-                    }
+        while let Some(result) = stream.next().await {
+            match result {
+                Ok((node_id, node_stats)) => {
+                    let ctx = NodeProcessingContext {
+                        lookups,
+                        metadata,
+                        node_stats_metadata: &node_stats_metadata,
+                        actions_metadata: &actions_metadata,
+                        http_clients_metadata: &http_clients_metadata,
+                        applier_metadata: &applier_metadata,
+                        adaptive_metadata: &adaptive_metadata,
+                        nodes_stats_tx: &nodes_stats_tx,
+                        actions_tx: &actions_tx,
+                        http_clients_tx: &http_clients_tx,
+                        applier_tx: &applier_tx,
+                        adaptive_tx: &adaptive_tx,
+                        pipelines_tx: &pipelines_tx,
+                        processors_tx: &processors_tx,
+                    };
+                    process_node(node_id, node_stats, &ctx).await;
                 }
-            }
-
-            // Extract HTTP clients
-            if let Err(e) = http_clients::extract(
-                &http_clients_tx,
-                node_stats.http["clients"].take(),
-                &http_clients_metadata,
-                node_metadata,
-            )
-            .await
-            {
-                log::error!("Error extracting HTTP clients stats: {}", e);
-            }
-
-            // Extract adaptive replica selection stats
-            if let Err(e) = adaptive_selections::extract(
-                &adaptive_tx,
-                node_stats.adaptive_selection.take(),
-                &adaptive_metadata,
-                node_metadata,
-                lookup_node,
-            )
-            .await
-            {
-                log::error!("Error extracting adaptive selection stats: {}", e);
-            }
-
-            // Extract cluster applier state
-            if let Err(e) = cluster_applier_stats::extract(
-                &applier_tx,
-                node_stats.discovery["cluster_applier_stats"].take(),
-                &applier_metadata,
-                node_metadata,
-            )
-            .await
-            {
-                log::error!("Error extracting cluster applier stats: {}", e);
-            }
-
-            // Extract ingest pipeline stats, but only on nodes with the `ingest` role
-            if node_stats.roles.contains(&*INGEST_ROLE) {
-                if let Err(e) = ingest_pipelines::extract(
-                    &pipelines_tx,
-                    &processors_tx,
-                    node_stats.ingest.pipelines.take(),
-                    metadata.clone(),
-                    node_metadata,
-                )
-                .await
-                {
-                    log::error!("Error extracting ingest pipelines stats: {}", e);
+                Err(e) => {
+                    log::error!("Error reading from node stats stream: {}", e);
                 }
-            }
-
-            // Final node_stats document
-            let mut doc = json!({
-                "node": &node_stats,
-                "shared_cache": lookup_shared_cache.by_id(node_id.as_str()),
-            });
-
-            let omit_patch = json!({
-                "node" : {
-                    "http": { "routes": null },
-                }
-            });
-
-            let node_summary_patch = json!({"node": node_metadata});
-
-            merge(&mut doc, &node_stats_metadata);
-            merge(&mut doc, &node_summary_patch);
-            merge(&mut doc, &omit_patch);
-
-            if nodes_stats_tx.send(doc).await.is_err() {
-                log::warn!("Nodes stats channel closed unexpectedly");
             }
         }
 
@@ -240,7 +305,7 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for NodesStats {
         summary.merge(pipelines_result.map_err(|err| eyre::Report::new(err)));
         summary.merge(processors_result.map_err(|err| eyre::Report::new(err)));
 
-        log::debug!("node_stats docs: {}", summary.docs);
+        log::debug!("node_stats stream processed: {}", summary.docs);
         summary
     }
 }

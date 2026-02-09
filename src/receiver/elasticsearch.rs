@@ -4,11 +4,13 @@
 
 use super::super::processor::{
     DataSource, DiagnosticManifest, ElasticsearchCluster, ManifestBuilder, PathType,
+    StreamingDataSource,
 };
 use super::{Receive, ReceiveRaw};
 use crate::data::KnownHost;
 use elasticsearch::{Elasticsearch, http};
 use eyre::{Result, eyre};
+use futures::stream::BoxStream;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 use url::Url;
@@ -108,6 +110,19 @@ impl Receive for ElasticsearchReceiver {
                 Err(eyre!("http {} - {}", status, reason))
             }
         }
+    }
+
+    async fn get_stream<T>(&self) -> Result<BoxStream<'static, Result<T::Item>>>
+    where
+        T: StreamingDataSource + DeserializeOwned,
+        T::Item: DeserializeOwned + Send + 'static,
+    {
+        // TODO: Implement proper streaming from Elasticsearch response body
+        // The elasticsearch-rs client currently doesn't easily expose a streaming response body
+        // compatible with serde_json::Deserializer.
+        Err(eyre!(
+            "Streaming is not yet implemented for Elasticsearch receiver"
+        ))
     }
 
     async fn try_get_manifest(&self) -> Result<DiagnosticManifest> {

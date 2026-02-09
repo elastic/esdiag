@@ -2,17 +2,57 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use crate::processor::diagnostic::PathType;
+use crate::processor::diagnostic::data_source::{PathType, StreamingDataSource};
 use crate::processor::elasticsearch::DataSource;
 use eyre::Result;
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 use std::collections::HashMap;
+use tokio::sync::mpsc::Sender;
 
 #[derive(Default, Deserialize, Serialize)]
 pub struct MappingStats {
     #[serde(flatten)]
     pub indices: HashMap<String, IndexMapping>,
+}
+
+impl StreamingDataSource for MappingStats {
+    type Item = (String, IndexMapping);
+
+    fn deserialize_stream<'de, D>(
+        deserializer: D,
+        sender: Sender<Result<Self::Item>>,
+    ) -> std::result::Result<(), D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct MappingStatsVisitor {
+            sender: Sender<Result<(String, IndexMapping)>>,
+        }
+
+        impl<'de> serde::de::Visitor<'de> for MappingStatsVisitor {
+            type Value = ();
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("MappingStats object")
+            }
+
+            fn visit_map<A>(self, mut map: A) -> std::result::Result<Self::Value, A::Error>
+            where
+                A: serde::de::MapAccess<'de>,
+            {
+                while let Some(key) = map.next_key::<String>()? {
+                    let value = map.next_value::<IndexMapping>()?;
+                    if self.sender.blocking_send(Ok((key, value))).is_err() {
+                        return Ok(());
+                    }
+                }
+                Ok(())
+            }
+        }
+
+        deserializer.deserialize_map(MappingStatsVisitor { sender })
+    }
 }
 
 #[derive(Deserialize, Serialize)]
@@ -147,8 +187,11 @@ impl IndexMapping {
         };
 
         if let Some(properties) = &self.mappings.properties {
+            let mut path = String::with_capacity(128);
             for (name, field) in properties {
-                field.summarize(name, &mut summary.fields, &mut summary.multi_fields);
+                path.push_str(name);
+                field.summarize(&mut path, &mut summary.fields, &mut summary.multi_fields);
+                path.clear();
             }
         }
 
@@ -159,11 +202,11 @@ impl IndexMapping {
 impl FieldDefinition {
     pub fn summarize(
         &self,
-        name: &str,
+        path: &mut String,
         fields: &mut HashMap<String, u64>,
         multi_fields: &mut MultiFieldSummary,
     ) {
-        // Increment total count, avoiding repeated String allocation
+        // Increment total count
         if let Some(count) = fields.get_mut("total") {
             *count += 1;
         } else {
@@ -171,14 +214,12 @@ impl FieldDefinition {
         }
 
         if let Some(field_type) = &self.field_type {
-            // Increment count for this field type, cloning only on first insert
             if let Some(count) = fields.get_mut(field_type) {
                 *count += 1;
             } else {
                 fields.insert(field_type.clone(), 1);
             }
         } else if self.properties.is_some() {
-            // It's likely an 'object' or 'nested' type without explicit 'type' field
             if let Some(count) = fields.get_mut("object") {
                 *count += 1;
             } else {
@@ -187,31 +228,35 @@ impl FieldDefinition {
         }
 
         // Check if it's a multi-field mapping (has fields property)
-        if let Some(fields_map) = &self.fields {
-            if !fields_map.is_empty() {
-                multi_fields.total += 1;
-                multi_fields.names.push(name.to_string());
-            }
+        if self.fields.as_ref().is_some_and(|f| !f.is_empty()) {
+            multi_fields.total += 1;
+            multi_fields.names.push(path.clone());
         }
 
         if let Some(properties) = &self.properties {
+            let original_len = path.len();
+            path.push('.');
+            let dot_len = path.len();
+
             for (sub_name, field) in properties {
-                let mut full_name = String::with_capacity(name.len() + 1 + sub_name.len());
-                full_name.push_str(name);
-                full_name.push('.');
-                full_name.push_str(sub_name);
-                field.summarize(&full_name, fields, multi_fields);
+                path.push_str(sub_name);
+                field.summarize(path, fields, multi_fields);
+                path.truncate(dot_len);
             }
+            path.truncate(original_len);
         }
 
         if let Some(fields_map) = &self.fields {
+            let original_len = path.len();
+            path.push('.');
+            let dot_len = path.len();
+
             for (sub_name, field) in fields_map {
-                let mut full_name = String::with_capacity(name.len() + 1 + sub_name.len());
-                full_name.push_str(name);
-                full_name.push('.');
-                full_name.push_str(sub_name);
-                field.summarize(&full_name, fields, multi_fields);
+                path.push_str(sub_name);
+                field.summarize(path, fields, multi_fields);
+                path.truncate(dot_len);
             }
+            path.truncate(original_len);
         }
     }
 }
@@ -350,5 +395,44 @@ mod tests {
             vec!["no_type_with_fields".to_string()]
         );
         assert_eq!(summary.fields.get("object").unwrap(), &1); // object_with_no_type
+    }
+
+    #[tokio::test]
+    async fn test_streaming_deserialization() {
+        use crate::processor::diagnostic::data_source::StreamingDataSource;
+        use crate::processor::elasticsearch::mapping_stats::MappingStats;
+        use tokio::sync::mpsc;
+
+        let json = r#"{
+            "index1": {
+                "mappings": {
+                    "properties": {
+                        "field1": { "type": "text" }
+                    }
+                }
+            },
+            "index2": {
+                "mappings": {
+                    "properties": {
+                        "field1": { "type": "keyword" }
+                    }
+                }
+            }
+        }"#;
+
+        let mut deserializer = serde_json::Deserializer::from_str(json);
+        let (tx, mut rx) = mpsc::channel(10);
+
+        let handle = tokio::task::spawn_blocking(move || {
+            MappingStats::deserialize_stream(&mut deserializer, tx).unwrap();
+        });
+
+        let mut count = 0;
+        while let Some(res) = rx.recv().await {
+            assert!(res.is_ok());
+            count += 1;
+        }
+        assert_eq!(count, 2);
+        handle.await.unwrap();
     }
 }
