@@ -41,10 +41,7 @@ async fn test_streaming_deserialization() {
 
     let mut count = 0;
     while let Some(res) = rx.recv().await {
-        if let Err(e) = &res {
-            println!("Error: {}", e);
-        }
-        assert!(res.is_ok());
+        let _ = res.unwrap_or_else(|e| panic!("Error: {}", e));
         count += 1;
     }
     assert_eq!(count, 1);
