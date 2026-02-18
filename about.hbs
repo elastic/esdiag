@@ -1,0 +1,26 @@
+Elastic Stack Diagnostics (ESDiag)
+Copyright 2012-2025 Elasticsearch B.V.
+
+# Third Party License Notifications
+This document lists the licenses of the projects used in esdiag.
+
+## Overview of licenses
+{{#each overview}}
+- [{{{name}}}](#{{{id}}}) ({{count}})
+{{/each}}
+
+## All license text
+{{#each licenses}}
+### {{{id}}}
+{{{name}}}
+
+#### Used by
+{{#each used_by}}
+- [{{{crate.name}}}]({{#if crate.repository}} {{crate.repository}} {{else}} https://crates.io/crates/{{crate.name}} {{/if}}) {{{crate.version}}}
+{{/each}}
+
+#### License
+```
+{{{text}}}
+```
+{{/each}}
