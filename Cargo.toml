@@ -1,6 +1,6 @@
 [package]
 name = "esdiag"
-version = "0.14.0-SNAPSHOT"
+version = "0.14.0"
 edition = "2024"
 rust-version = "1.89"
 license = "Elastic-2.0"
