@@ -3,7 +3,12 @@
     "description": "ESDiag Elasticsearch node settings"
   },
   "index_patterns": ["settings-node-esdiag*"],
-  "composed_of": ["esdiag@mappings", "esdiag@metadata", "esdiag@settings"],
+  "composed_of": [
+    "esdiag@mappings",
+    "esdiag@metadata",
+    "esdiag@settings",
+    "esdiag@node"
+  ],
   "allow_auto_create": true,
   "data_stream": {
     "hidden": false,
