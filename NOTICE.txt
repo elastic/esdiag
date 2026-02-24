@@ -5,7 +5,7 @@ Copyright 2012-2025 Elasticsearch B.V.
 This document lists the licenses of the projects used in esdiag.
 
 ## Overview of licenses
-- [Apache License 2.0](#Apache-2.0) (190)
+- [Apache License 2.0](#Apache-2.0) (193)
 - [MIT License](#MIT) (52)
 - [Unicode License v3](#Unicode-3.0) (19)
 - [BSD 3-Clause "New" or "Revised" License](#BSD-3-Clause) (2)
@@ -1119,22 +1119,22 @@ Apache License 2.0
 #### Used by
 - [anstream]( https://github.com/rust-cli/anstyle.git ) 0.6.21
 - [anstyle-parse]( https://github.com/rust-cli/anstyle.git ) 0.2.7
-- [anstyle-query]( https://github.com/rust-cli/anstyle.git ) 1.1.4
-- [anstyle-wincon]( https://github.com/rust-cli/anstyle.git ) 3.0.10
+- [anstyle-query]( https://github.com/rust-cli/anstyle.git ) 1.1.5
+- [anstyle-wincon]( https://github.com/rust-cli/anstyle.git ) 3.0.11
 - [anstyle]( https://github.com/rust-cli/anstyle.git ) 1.0.13
-- [clap]( https://github.com/clap-rs/clap ) 4.5.48
-- [clap_builder]( https://github.com/clap-rs/clap ) 4.5.48
-- [clap_derive]( https://github.com/clap-rs/clap ) 4.5.47
-- [clap_lex]( https://github.com/clap-rs/clap ) 0.7.5
+- [clap]( https://github.com/clap-rs/clap ) 4.5.60
+- [clap_builder]( https://github.com/clap-rs/clap ) 4.5.60
+- [clap_derive]( https://github.com/clap-rs/clap ) 4.5.55
+- [clap_lex]( https://github.com/clap-rs/clap ) 1.0.0
 - [colorchoice]( https://github.com/rust-cli/anstyle.git ) 1.0.4
 - [crc32fast]( https://github.com/srijs/rust-crc32fast ) 1.5.0
-- [env_filter]( https://github.com/rust-cli/env_logger ) 0.1.3
-- [env_logger]( https://github.com/rust-cli/env_logger ) 0.11.8
+- [env_filter]( https://github.com/rust-cli/env_logger ) 1.0.0
+- [env_logger]( https://github.com/rust-cli/env_logger ) 0.11.9
 - [foreign-types-shared]( https://github.com/sfackler/foreign-types ) 0.1.1
 - [foreign-types]( https://github.com/sfackler/foreign-types ) 0.3.2
-- [is_terminal_polyfill]( https://github.com/polyfill-rs/is_terminal_polyfill ) 1.70.1
-- [native-tls]( https://github.com/sfackler/rust-native-tls ) 0.2.14
-- [once_cell_polyfill]( https://github.com/polyfill-rs/once_cell_polyfill ) 1.70.1
+- [is_terminal_polyfill]( https://github.com/polyfill-rs/is_terminal_polyfill ) 1.70.2
+- [native-tls]( https://github.com/rust-native-tls/rust-native-tls ) 0.2.18
+- [once_cell_polyfill]( https://github.com/polyfill-rs/once_cell_polyfill ) 1.70.2
 - [openssl-macros]( https://crates.io/crates/openssl-macros ) 0.1.1
 - [openssl]( https://github.com/rust-openssl/rust-openssl ) 0.10.75
 
@@ -1559,15 +1559,15 @@ limitations under the License.
 Apache License 2.0
 
 #### Used by
-- [futures-channel]( https://github.com/rust-lang/futures-rs ) 0.3.31
-- [futures-core]( https://github.com/rust-lang/futures-rs ) 0.3.31
-- [futures-executor]( https://github.com/rust-lang/futures-rs ) 0.3.31
-- [futures-io]( https://github.com/rust-lang/futures-rs ) 0.3.31
-- [futures-macro]( https://github.com/rust-lang/futures-rs ) 0.3.31
-- [futures-sink]( https://github.com/rust-lang/futures-rs ) 0.3.31
-- [futures-task]( https://github.com/rust-lang/futures-rs ) 0.3.31
-- [futures-util]( https://github.com/rust-lang/futures-rs ) 0.3.31
-- [futures]( https://github.com/rust-lang/futures-rs ) 0.3.31
+- [futures-channel]( https://github.com/rust-lang/futures-rs ) 0.3.32
+- [futures-core]( https://github.com/rust-lang/futures-rs ) 0.3.32
+- [futures-executor]( https://github.com/rust-lang/futures-rs ) 0.3.32
+- [futures-io]( https://github.com/rust-lang/futures-rs ) 0.3.32
+- [futures-macro]( https://github.com/rust-lang/futures-rs ) 0.3.32
+- [futures-sink]( https://github.com/rust-lang/futures-rs ) 0.3.32
+- [futures-task]( https://github.com/rust-lang/futures-rs ) 0.3.32
+- [futures-util]( https://github.com/rust-lang/futures-rs ) 0.3.32
+- [futures]( https://github.com/rust-lang/futures-rs ) 0.3.32
 
 #### License
 ```
@@ -3263,11 +3263,12 @@ Apache License 2.0
 - [atomic-waker]( https://github.com/smol-rs/atomic-waker ) 1.1.2
 - [autocfg]( https://github.com/cuviper/autocfg ) 1.5.0
 - [base64]( https://github.com/marshallpierce/rust-base64 ) 0.22.1
-- [bitflags]( https://github.com/bitflags/bitflags ) 2.10.0
-- [bumpalo]( https://github.com/fitzgen/bumpalo ) 3.19.1
-- [cc]( https://github.com/rust-lang/cc-rs ) 1.2.55
+- [bitflags]( https://github.com/bitflags/bitflags ) 2.11.0
+- [bumpalo]( https://github.com/fitzgen/bumpalo ) 3.20.2
+- [cc]( https://github.com/rust-lang/cc-rs ) 1.2.56
 - [cfg-if]( https://github.com/rust-lang/cfg-if ) 1.0.4
 - [core-foundation-sys]( https://github.com/servo/core-foundation-rs ) 0.8.7
+- [core-foundation]( https://github.com/servo/core-foundation-rs ) 0.10.1
 - [core-foundation]( https://github.com/servo/core-foundation-rs ) 0.9.4
 - [crossbeam-deque]( https://github.com/crossbeam-rs/crossbeam ) 0.8.6
 - [crossbeam-epoch]( https://github.com/crossbeam-rs/crossbeam ) 0.9.18
@@ -3290,15 +3291,15 @@ Apache License 2.0
 - [idna]( https://github.com/servo/rust-url/ ) 1.1.0
 - [idna_adapter]( https://github.com/hsivonen/idna_adapter ) 1.2.1
 - [indexmap]( https://github.com/indexmap-rs/indexmap ) 2.13.0
-- [js-sys]( https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/js-sys ) 0.3.85
+- [js-sys]( https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/js-sys ) 0.3.89
 - [lazy_static]( https://github.com/rust-lang-nursery/lazy-static.rs ) 1.5.0
-- [linux-raw-sys]( https://github.com/sunfishcode/linux-raw-sys ) 0.11.0
+- [linux-raw-sys]( https://github.com/sunfishcode/linux-raw-sys ) 0.12.1
 - [lock_api]( https://github.com/Amanieu/parking_lot ) 0.4.14
 - [log]( https://github.com/rust-lang/log ) 0.4.29
 - [mime]( https://github.com/hyperium/mime ) 0.3.17
 - [num-traits]( https://github.com/rust-num/num-traits ) 0.2.19
 - [once_cell]( https://github.com/matklad/once_cell ) 1.21.3
-- [openssl-probe]( https://github.com/alexcrichton/openssl-probe ) 0.1.6
+- [openssl-probe]( https://github.com/rustls/openssl-probe ) 0.2.1
 - [parking_lot]( https://github.com/Amanieu/parking_lot ) 0.12.5
 - [parking_lot_core]( https://github.com/Amanieu/parking_lot ) 0.9.12
 - [percent-encoding]( https://github.com/servo/rust-url/ ) 2.3.2
@@ -3306,13 +3307,13 @@ Apache License 2.0
 - [rayon-core]( https://github.com/rayon-rs/rayon ) 1.13.0
 - [rayon]( https://github.com/rayon-rs/rayon ) 1.11.0
 - [regex-automata]( https://github.com/rust-lang/regex ) 0.4.14
-- [regex-syntax]( https://github.com/rust-lang/regex ) 0.8.9
+- [regex-syntax]( https://github.com/rust-lang/regex ) 0.8.10
 - [regex]( https://github.com/rust-lang/regex ) 1.12.3
 - [rustc_version]( https://github.com/djc/rustc-version-rs ) 0.4.1
-- [rustix]( https://github.com/bytecodealliance/rustix ) 1.1.3
+- [rustix]( https://github.com/bytecodealliance/rustix ) 1.1.4
 - [scopeguard]( https://github.com/bluss/scopeguard ) 1.2.0
-- [security-framework-sys]( https://github.com/kornelski/rust-security-framework ) 2.15.0
-- [security-framework]( https://github.com/kornelski/rust-security-framework ) 2.11.1
+- [security-framework-sys]( https://github.com/kornelski/rust-security-framework ) 2.17.0
+- [security-framework]( https://github.com/kornelski/rust-security-framework ) 3.7.0
 - [serde_with]( https://github.com/jonasbb/serde_with/ ) 3.16.1
 - [serde_with_macros]( https://github.com/jonasbb/serde_with/ ) 3.16.1
 - [signal-hook-registry]( https://github.com/vorner/signal-hook ) 1.4.8
@@ -3322,18 +3323,18 @@ Apache License 2.0
 - [system-configuration-sys]( https://github.com/mullvad/system-configuration-rs ) 0.6.0
 - [system-configuration]( https://github.com/mullvad/system-configuration-rs ) 0.7.0
 - [tar]( https://github.com/alexcrichton/tar-rs ) 0.4.44
-- [tempfile]( https://github.com/Stebalien/tempfile ) 3.24.0
+- [tempfile]( https://github.com/Stebalien/tempfile ) 3.26.0
 - [unicase]( https://github.com/seanmonstar/unicase ) 2.9.0
 - [url]( https://github.com/servo/rust-url ) 2.5.8
-- [uuid]( https://github.com/uuid-rs/uuid ) 1.20.0
+- [uuid]( https://github.com/uuid-rs/uuid ) 1.21.0
 - [version_check]( https://github.com/SergioBenitez/version_check ) 0.9.5
 - [wasi]( https://github.com/bytecodealliance/wasi ) 0.11.1+wasi-snapshot-preview1
-- [wasm-bindgen-futures]( https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/futures ) 0.4.58
-- [wasm-bindgen-macro-support]( https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/macro-support ) 0.2.108
-- [wasm-bindgen-macro]( https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/macro ) 0.2.108
-- [wasm-bindgen-shared]( https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/shared ) 0.2.108
-- [wasm-bindgen]( https://github.com/wasm-bindgen/wasm-bindgen ) 0.2.108
-- [web-sys]( https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/web-sys ) 0.3.85
+- [wasm-bindgen-futures]( https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/futures ) 0.4.62
+- [wasm-bindgen-macro-support]( https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/macro-support ) 0.2.112
+- [wasm-bindgen-macro]( https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/macro ) 0.2.112
+- [wasm-bindgen-shared]( https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/shared ) 0.2.112
+- [wasm-bindgen]( https://github.com/wasm-bindgen/wasm-bindgen ) 0.2.112
+- [web-sys]( https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/web-sys ) 0.3.89
 - [wit-bindgen]( https://github.com/bytecodealliance/wit-bindgen ) 0.51.0
 
 #### License
@@ -3745,6 +3746,7 @@ Apache License 2.0
 #### Used by
 - [getrandom]( https://github.com/rust-random/getrandom ) 0.2.17
 - [getrandom]( https://github.com/rust-random/getrandom ) 0.3.4
+- [getrandom]( https://github.com/rust-random/getrandom ) 0.4.1
 - [rand_chacha]( https://github.com/rust-random/rand ) 0.3.1
 
 #### License
@@ -4592,18 +4594,18 @@ Apache License 2.0
 #### Used by
 - [elasticsearch]( https://github.com/elastic/elasticsearch-rs ) 9.1.0-alpha.1
 - [android_system_properties]( https://github.com/nical/android_system_properties ) 0.1.5
-- [async-compression]( https://github.com/Nullus157/async-compression ) 0.4.39
-- [compression-codecs]( https://github.com/Nullus157/async-compression ) 0.4.36
+- [async-compression]( https://github.com/Nullus157/async-compression ) 0.4.40
+- [compression-codecs]( https://github.com/Nullus157/async-compression ) 0.4.37
 - [compression-core]( https://github.com/Nullus157/async-compression ) 0.4.31
 - [dyn-clone]( https://github.com/dtolnay/dyn-clone ) 1.0.20
 - [ident_case]( https://github.com/TedDriggs/ident_case ) 1.0.1
 - [indenter]( https://github.com/yaahc/indenter ) 0.3.4
 - [itoa]( https://github.com/dtolnay/itoa ) 1.0.17
-- [libc]( https://github.com/rust-lang/libc ) 0.2.180
+- [libc]( https://github.com/rust-lang/libc ) 0.2.182
 - [miniz_oxide]( https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide ) 0.8.9
 - [pin-project-lite]( https://github.com/taiki-e/pin-project-lite ) 0.2.16
-- [portable-atomic-util]( https://github.com/taiki-e/portable-atomic ) 0.2.4
-- [portable-atomic]( https://github.com/taiki-e/portable-atomic ) 1.11.1
+- [portable-atomic-util]( https://github.com/taiki-e/portable-atomic ) 0.2.5
+- [portable-atomic]( https://github.com/taiki-e/portable-atomic ) 1.13.1
 - [proc-macro2]( https://github.com/dtolnay/proc-macro2 ) 1.0.106
 - [quote]( https://github.com/dtolnay/quote ) 1.0.44
 - [r-efi]( https://github.com/r-efi/r-efi ) 5.3.0
@@ -4612,7 +4614,7 @@ Apache License 2.0
 - [rand_chacha]( https://github.com/rust-random/rand ) 0.9.0
 - [rustc-hash]( https://github.com/rust-lang/rustc-hash ) 2.1.1
 - [rustversion]( https://github.com/dtolnay/rustversion ) 1.0.22
-- [ryu]( https://github.com/dtolnay/ryu ) 1.0.22
+- [ryu]( https://github.com/dtolnay/ryu ) 1.0.23
 - [semver]( https://github.com/dtolnay/semver ) 1.0.27
 - [serde]( https://github.com/serde-rs/serde ) 1.0.228
 - [serde_core]( https://github.com/serde-rs/serde ) 1.0.228
@@ -4622,14 +4624,15 @@ Apache License 2.0
 - [serde_urlencoded]( https://github.com/nox/serde_urlencoded ) 0.7.1
 - [serde_yaml]( https://github.com/dtolnay/serde-yaml ) 0.9.34+deprecated
 - [shlex]( https://github.com/comex/rust-shlex ) 1.3.0
-- [syn]( https://github.com/dtolnay/syn ) 2.0.114
+- [syn]( https://github.com/dtolnay/syn ) 2.0.117
 - [sync_wrapper]( https://github.com/Actyx/sync_wrapper ) 1.0.2
 - [thiserror-impl]( https://github.com/dtolnay/thiserror ) 1.0.69
 - [thiserror]( https://github.com/dtolnay/thiserror ) 1.0.69
-- [typed-path]( https://github.com/chipsenkbeil/typed-path ) 0.12.2
-- [unicode-ident]( https://github.com/dtolnay/unicode-ident ) 1.0.22
+- [typed-path]( https://github.com/chipsenkbeil/typed-path ) 0.12.3
+- [unicode-ident]( https://github.com/dtolnay/unicode-ident ) 1.0.24
 - [utf8parse]( https://github.com/alacritty/vte ) 0.2.2
 - [wasip2]( https://github.com/bytecodealliance/wasi-rs ) 1.0.2+wasi-0.2.9
+- [wasip3]( https://github.com/bytecodealliance/wasi-rs ) 0.4.0+wasi-0.3.0-rc-2026-01-06
 
 #### License
 ```
@@ -4712,7 +4715,7 @@ limitations under the License.
 Apache License 2.0
 
 #### Used by
-- [chrono]( https://github.com/chronotope/chrono ) 0.4.43
+- [chrono]( https://github.com/chronotope/chrono ) 0.4.44
 
 #### License
 ```
@@ -5037,7 +5040,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 Elastic License 2.0
 
 #### Used by
-- [esdiag]( https://crates.io/crates/esdiag ) 0.14.0-SNAPSHOT
+- [esdiag]( https://crates.io/crates/esdiag ) 0.14.0
 
 #### License
 ```
@@ -6060,7 +6063,7 @@ MIT License
 
 #### Used by
 - [unsafe-libyaml]( https://github.com/dtolnay/unsafe-libyaml ) 0.2.11
-- [zmij]( https://github.com/dtolnay/zmij ) 1.0.19
+- [zmij]( https://github.com/dtolnay/zmij ) 1.0.21
 
 #### License
 ```
@@ -6185,7 +6188,7 @@ MIT License
 
 #### Used by
 - [aho-corasick]( https://github.com/BurntSushi/aho-corasick ) 1.1.4
-- [jiff]( https://github.com/BurntSushi/jiff ) 0.2.15
+- [jiff]( https://github.com/BurntSushi/jiff ) 0.2.21
 - [memchr]( https://github.com/BurntSushi/memchr ) 2.8.0
 
 #### License
@@ -6312,7 +6315,7 @@ THE SOFTWARE.
 Unicode License v3
 
 #### Used by
-- [unicode-ident]( https://github.com/dtolnay/unicode-ident ) 1.0.22
+- [unicode-ident]( https://github.com/dtolnay/unicode-ident ) 1.0.24
 
 #### License
 ```
