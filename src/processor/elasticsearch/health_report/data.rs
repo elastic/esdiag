@@ -6,7 +6,7 @@ use super::super::super::diagnostic::data_source::PathType;
 use super::super::DataSource;
 use eyre::Result;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::value::RawValue;
 use std::collections::HashMap;
 
 #[derive(Deserialize)]
@@ -22,7 +22,7 @@ pub type HealthIndicators = HashMap<String, HealthIndicator>;
 pub struct HealthIndicator {
     pub status: String,
     pub symptom: String,
-    pub details: Option<Value>,
+    pub details: Option<Box<RawValue>>,
     #[serde(skip_serializing)]
     pub impacts: Option<Vec<HealthImpact>>,
     #[serde(skip_serializing)]
@@ -43,7 +43,7 @@ pub struct HealthDiagnosis {
     pub cause: String,
     pub action: String,
     pub help_url: String,
-    pub affected_resources: Value,
+    pub affected_resources: Box<RawValue>,
 }
 
 impl DataSource for HealthReport {

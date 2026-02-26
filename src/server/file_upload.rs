@@ -65,6 +65,18 @@ pub async fn submit(
             match field.bytes().await {
                 Ok(data) => {
                     state.push_upload(job_id, filename, data).await;
+
+                    // Add a cleanup task to prevent memory leaks if /upload/process is never called
+                    let state_clone = state.clone();
+                    tokio::spawn(async move {
+                        tokio::time::sleep(tokio::time::Duration::from_secs(300)).await;
+                        if let Some(_) = state_clone.pop_upload(job_id).await {
+                            log::warn!(
+                                "Upload job {} was never processed and was removed from state to free memory",
+                                job_id
+                            );
+                        }
+                    });
                 }
                 Err(e) => {
                     let error_msg = format!("Failed to read upload data: {}", e);

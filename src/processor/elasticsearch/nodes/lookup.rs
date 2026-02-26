@@ -5,14 +5,14 @@
 use super::{super::Lookup, Node, Nodes, OsDetails};
 use eyre::Result;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::value::RawValue;
 use serde_with::skip_serializing_none;
 use std::collections::HashSet;
 
 #[skip_serializing_none]
 #[derive(Clone, Deserialize, Serialize)]
 pub struct NodeDocument {
-    pub attributes: Option<Value>,
+    pub attributes: Option<Box<RawValue>>,
     pub host: Option<String>,
     pub id: Option<String>,
     pub ip: Option<String>,

@@ -5,8 +5,9 @@
 use super::super::{collector::CollectionResult, diagnostic::PathType};
 use super::{
     AliasList, Cluster, ClusterSettings, DataSource, DataStreams, DiagnosticManifest, HealthReport,
-    IlmExplain, IlmPolicies, IndicesSettings, IndicesStats, Licenses, MappingStats, Nodes, NodesStats,
-    PendingTasks, SearchableSnapshotsCacheStats, SearchableSnapshotsStats, SlmPolicies, Tasks,
+    IlmExplain, IlmPolicies, IndicesSettings, IndicesStats, Licenses, MappingStats, Nodes,
+    NodesStats, PendingTasks, SearchableSnapshotsCacheStats, SearchableSnapshotsStats, SlmPolicies,
+    Tasks,
 };
 use crate::{data::Product, exporter::DirectoryExporter, receiver::Receiver};
 use eyre::Result;

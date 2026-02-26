@@ -150,11 +150,15 @@ impl Client {
                 } else {
                     match status.as_u16() {
                         401 | 403 => {
-                            log::debug!("Security detection returned {status}. Security is enabled but access to /_xpack/usage is restricted.");
+                            log::debug!(
+                                "Security detection returned {status}. Security is enabled but access to /_xpack/usage is restricted."
+                            );
                             Ok(true)
                         }
                         404 => {
-                            log::debug!("Security detection returned 404. Assuming security is disabled or not supported.");
+                            log::debug!(
+                                "Security detection returned 404. Assuming security is disabled or not supported."
+                            );
                             Ok(false)
                         }
                         _ => {

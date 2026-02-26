@@ -93,19 +93,17 @@ impl Receive for DirectoryReceiver {
         let (tx, mut rx) = mpsc::channel(100);
 
         let tx_err = tx.clone();
-        let handle = tokio::task::spawn_blocking(move || {
-            match File::open(&filename_clone) {
-                Ok(file) => {
-                    let reader = BufReader::new(file);
-                    let mut deserializer = serde_json::Deserializer::from_reader(reader);
-                    if let Err(e) = T::deserialize_stream(&mut deserializer, tx.clone()) {
-                        log::error!("Error deserializing stream: {}", e);
-                        let _ = tx.blocking_send(Err(eyre!(e)));
-                    }
-                }
-                Err(e) => {
+        let handle = tokio::task::spawn_blocking(move || match File::open(&filename_clone) {
+            Ok(file) => {
+                let reader = BufReader::new(file);
+                let mut deserializer = serde_json::Deserializer::from_reader(reader);
+                if let Err(e) = T::deserialize_stream(&mut deserializer, tx.clone()) {
+                    log::error!("Error deserializing stream: {}", e);
                     let _ = tx.blocking_send(Err(eyre!(e)));
                 }
+            }
+            Err(e) => {
+                let _ = tx.blocking_send(Err(eyre!(e)));
             }
         });
 

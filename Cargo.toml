@@ -28,12 +28,13 @@ flate2 = { version = "1.1", optional = true, default-features = false, features 
 futures = "0.3"
 json-patch = "4.1"
 log = "0.4"
+mimalloc = "0.1.48"
 rayon = "1.11"
 regex = "1.12"
 reqwest = { version = "0.12.28", features = ["json", "blocking", "multipart"] }
 semver = { version = "1.0.27", features = ["serde"] }
 serde = { version = "1.0.228", features = ["derive", "rc"] }
-serde_json = "1.0.149"
+serde_json = { version = "1.0.149", features = ["float_roundtrip", "raw_value"] }
 serde_with = { version = "3.16.1", default-features = false, features = ["macros"] }
 serde_yaml = "0.9"
 tar = { version = "0.4.44", optional = true, default-features = false }

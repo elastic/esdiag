@@ -7,7 +7,7 @@ use super::SearchableSnapshotsStats;
 use crate::exporter::Exporter;
 use rayon::prelude::*;
 use serde::Serialize;
-use serde_json::Value;
+use serde_json::{Value, value::RawValue};
 
 impl DocumentExporter<Lookups, ElasticsearchMetadata> for SearchableSnapshotsStats {
     async fn documents_export(
@@ -34,8 +34,7 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for SearchableSnapshotsSta
                             index: IndexName {
                                 name: index_name.clone(),
                             },
-                            searchable_snapshot: serde_json::to_value(index_stats)
-                                .expect("Failed to serialize searchable snapshot stats"),
+                            searchable_snapshot: index_stats,
                         })
                         .unwrap_or_default()
                     })
@@ -64,7 +63,7 @@ pub struct SearchableSnapshotStatsDoc {
     #[serde(flatten)]
     metadata: Value,
     index: IndexName,
-    searchable_snapshot: Value,
+    searchable_snapshot: Box<RawValue>,
 }
 
 #[derive(Clone, Serialize)]

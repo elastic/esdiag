@@ -5,7 +5,7 @@
 use super::super::elasticsearch::{ClusterMetadata, License as ElasticsearchLicense};
 use super::{DiagnosticManifest, DiagnosticMetadata, Lookup};
 use crate::data::Product;
-use eyre::{eyre, OptionExt, Report, Result};
+use eyre::{OptionExt, Report, Result, eyre};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 

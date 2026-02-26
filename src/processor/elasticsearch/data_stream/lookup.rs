@@ -75,9 +75,9 @@ impl From<Result<DataStreams>> for Lookup<DataStreamDocument> {
 
 #[cfg(test)]
 mod tests {
-    use crate::processor::elasticsearch::data_stream::data::DataStreams;
-    use crate::processor::elasticsearch::data_stream::DataStreamDocument;
     use crate::processor::elasticsearch::Lookup;
+    use crate::processor::elasticsearch::data_stream::DataStreamDocument;
+    use crate::processor::elasticsearch::data_stream::data::DataStreams;
 
     #[test]
     fn test_failure_store_enrichment() {
