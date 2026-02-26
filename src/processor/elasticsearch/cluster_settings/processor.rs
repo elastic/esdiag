@@ -3,7 +3,7 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::super::super::diagnostic::DataStreamName;
-use super::super::{DocumentExporter, ElasticsearchMetadata, Lookups, Metadata};
+use super::super::{DocumentExporter, ElasticsearchMetadata, Lookups};
 use super::ClusterSettings;
 use crate::{exporter::Exporter, processor::ProcessorSummary};
 use json_patch::merge;
