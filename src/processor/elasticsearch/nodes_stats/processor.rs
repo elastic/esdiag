@@ -9,11 +9,9 @@ mod ingest_pipelines;
 mod transport_actions;
 
 use super::super::super::{Exporter, ProcessorSummary};
-use crate::processor::StreamingDocumentExporter;
-use super::super::{
-    DocumentExporter, ElasticsearchMetadata, Lookups, Metadata,
-};
+use super::super::{DocumentExporter, ElasticsearchMetadata, Lookups, Metadata};
 use super::NodesStats;
+use crate::processor::StreamingDocumentExporter;
 use futures::stream::{BoxStream, StreamExt};
 use json_patch::merge;
 use serde_json::{Value, json};
@@ -54,61 +52,87 @@ async fn process_node(
     node_stats.calculate_stats(allocated_processors);
 
     // Extract transport actions
-    if let Some(ref mut transport) = node_stats.transport {
-        let actions = transport["actions"].take();
-        if !actions.is_null() {
-            if let Err(e) = transport_actions::extract(
-                ctx.actions_tx,
-                actions,
-                ctx.actions_metadata,
-                node_metadata,
-            )
-            .await
-            {
-                log::error!(
-                    "Error extracting transport stats for node {}: {}",
-                    node_id,
-                    e
-                );
+    if let Some(transport_raw) = node_stats.transport.take() {
+        if let Ok(mut transport_val) = serde_json::from_str::<Value>(transport_raw.get()) {
+            let actions = transport_val["actions"].take();
+            if !actions.is_null() {
+                if let Err(e) = transport_actions::extract(
+                    ctx.actions_tx,
+                    actions,
+                    ctx.actions_metadata,
+                    node_metadata,
+                )
+                .await
+                {
+                    log::error!(
+                        "Error extracting transport stats for node {}: {}",
+                        node_id,
+                        e
+                    );
+                }
             }
+            node_stats.transport =
+                serde_json::value::RawValue::from_string(transport_val.to_string()).ok();
+        } else {
+            node_stats.transport = Some(transport_raw);
         }
     }
 
     // Extract HTTP clients
-    if let Err(e) = http_clients::extract(
-        ctx.http_clients_tx,
-        node_stats.http["clients"].take(),
-        ctx.http_clients_metadata,
-        node_metadata,
-    )
-    .await
-    {
-        log::error!("Error extracting HTTP clients stats: {}", e);
+    if let Ok(mut http_val) = serde_json::from_str::<Value>(node_stats.http.get()) {
+        let clients = http_val["clients"].take();
+        if !clients.is_null() {
+            if let Err(e) = http_clients::extract(
+                ctx.http_clients_tx,
+                clients,
+                ctx.http_clients_metadata,
+                node_metadata,
+            )
+            .await
+            {
+                log::error!("Error extracting HTTP clients stats: {}", e);
+            }
+            if let Ok(raw) = serde_json::value::RawValue::from_string(http_val.to_string()) {
+                node_stats.http = raw;
+            }
+        }
     }
 
     // Extract adaptive replica selection stats
-    if let Err(e) = adaptive_selections::extract(
-        ctx.adaptive_tx,
-        node_stats.adaptive_selection.take(),
-        ctx.adaptive_metadata,
-        node_metadata,
-        lookup_node,
-    )
-    .await
-    {
-        log::error!("Error extracting adaptive selection stats: {}", e);
+    if let Some(adaptive_raw) = node_stats.adaptive_selection.take() {
+        if let Ok(adaptive_val) = serde_json::from_str::<Value>(adaptive_raw.get()) {
+            if let Err(e) = adaptive_selections::extract(
+                ctx.adaptive_tx,
+                Some(adaptive_val),
+                ctx.adaptive_metadata,
+                node_metadata,
+                lookup_node,
+            )
+            .await
+            {
+                log::error!("Error extracting adaptive selection stats: {}", e);
+            }
+        }
     }
 
     // Extract cluster applier state
-    if let Err(e) = cluster_applier_stats::extract(
-        ctx.applier_tx,
-        node_stats.discovery["cluster_applier_stats"].take(),
-        ctx.applier_metadata,
-        node_metadata,
-    )
-    .await
-    {
-        log::error!("Error extracting cluster applier stats: {}", e);
+    if let Ok(mut discovery_val) = serde_json::from_str::<Value>(node_stats.discovery.get()) {
+        let cluster_applier_stats = discovery_val["cluster_applier_stats"].take();
+        if !cluster_applier_stats.is_null() {
+            if let Err(e) = cluster_applier_stats::extract(
+                ctx.applier_tx,
+                cluster_applier_stats,
+                ctx.applier_metadata,
+                node_metadata,
+            )
+            .await
+            {
+                log::error!("Error extracting cluster applier stats: {}", e);
+            }
+            if let Ok(raw) = serde_json::value::RawValue::from_string(discovery_val.to_string()) {
+                node_stats.discovery = raw;
+            }
+        }
     }
 
     // Extract ingest pipeline stats, but only on nodes with the `ingest` role

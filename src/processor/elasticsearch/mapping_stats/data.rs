@@ -11,9 +11,18 @@ use std::collections::HashMap;
 use tokio::sync::mpsc::Sender;
 
 #[derive(Default, Deserialize, Serialize)]
+#[serde(transparent)]
 pub struct MappingStats {
-    #[serde(flatten)]
     pub indices: HashMap<String, IndexMapping>,
+}
+
+impl MappingStats {
+    pub fn summaries(&self) -> HashMap<String, MappingSummary> {
+        self.indices
+            .iter()
+            .map(|(name, index_mapping)| (name.clone(), index_mapping.summarize()))
+            .collect()
+    }
 }
 
 impl StreamingDataSource for MappingStats {
@@ -63,7 +72,7 @@ pub struct IndexMapping {
 #[skip_serializing_none]
 #[derive(Deserialize, Serialize)]
 pub struct Mappings {
-    pub dynamic: Option<serde_json::Value>,
+    pub dynamic: Option<Box<serde_json::value::RawValue>>,
     pub date_detection: Option<bool>,
     pub numeric_detection: Option<bool>,
     pub dynamic_date_formats: Option<Vec<String>>,
@@ -71,7 +80,7 @@ pub struct Mappings {
     pub dynamic_templates: Option<u32>,
     pub _data_stream_timestamp: Option<DataStreamTimestamp>,
     pub _source: Option<SourceMode>,
-    pub _meta: Option<serde_json::Value>,
+    pub _meta: Option<Box<serde_json::value::RawValue>>,
     pub properties: Option<HashMap<String, FieldDefinition>>,
 }
 
@@ -147,7 +156,7 @@ pub struct MappingSummary {
     pub dynamic_templates: Option<u32>,
     pub _data_stream_timestamp: Option<DataStreamTimestamp>,
     pub _source: Option<SourceMode>,
-    pub _meta: Option<serde_json::Value>,
+    pub _meta: Option<Box<serde_json::value::RawValue>>,
     pub fields: HashMap<String, u64>,
     #[serde(rename = "multi-fields")]
     pub multi_fields: MultiFieldSummary,
@@ -159,22 +168,16 @@ pub struct MultiFieldSummary {
     pub names: Vec<String>,
 }
 
-impl MappingStats {
-    pub fn summaries(&self) -> HashMap<String, MappingSummary> {
-        self.indices
-            .iter()
-            .map(|(name, index_mapping)| (name.clone(), index_mapping.summarize()))
-            .collect()
-    }
-}
-
 impl IndexMapping {
     pub fn summarize(&self) -> MappingSummary {
         let mut summary = MappingSummary {
-            dynamic: self.mappings.dynamic.as_ref().map(|v| match v {
-                serde_json::Value::Bool(b) => b.to_string(),
-                serde_json::Value::String(s) => s.clone(),
-                _ => v.to_string(),
+            dynamic: self.mappings.dynamic.as_ref().map(|v| {
+                let s = v.get();
+                if s.starts_with('"') && s.ends_with('"') && s.len() >= 2 {
+                    s[1..s.len() - 1].to_string()
+                } else {
+                    s.to_string()
+                }
             }),
             date_detection: self.mappings.date_detection,
             numeric_detection: self.mappings.numeric_detection,

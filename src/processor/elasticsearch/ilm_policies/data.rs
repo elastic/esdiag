@@ -6,7 +6,7 @@ use super::super::super::diagnostic::data_source::PathType;
 use super::super::DataSource;
 use eyre::Result;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::value::RawValue;
 use serde_with::skip_serializing_none;
 use std::collections::HashMap;
 
@@ -24,18 +24,18 @@ pub struct IlmPolicy {
 #[skip_serializing_none]
 #[derive(Serialize, Deserialize)]
 struct Policy {
-    _meta: Option<Value>,
+    _meta: Option<Box<RawValue>>,
     phases: Phases,
 }
 
 #[skip_serializing_none]
 #[derive(Serialize, Deserialize)]
 struct Phases {
-    hot: Option<Value>,
-    warm: Option<Value>,
-    cold: Option<Value>,
-    frozen: Option<Value>,
-    delete: Option<Value>,
+    hot: Option<Box<RawValue>>,
+    warm: Option<Box<RawValue>>,
+    cold: Option<Box<RawValue>>,
+    frozen: Option<Box<RawValue>>,
+    delete: Option<Box<RawValue>>,
 }
 
 #[skip_serializing_none]

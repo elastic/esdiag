@@ -7,7 +7,7 @@ use super::{HealthDiagnosis, HealthImpact, HealthIndicator, HealthReport};
 use crate::exporter::Exporter;
 use rayon::prelude::*;
 use serde::Serialize;
-use serde_json::Value;
+use serde_json::{Value, value::RawValue};
 
 impl DocumentExporter<Lookups, ElasticsearchMetadata> for HealthReport {
     async fn documents_export(
@@ -94,7 +94,7 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for HealthReport {
 struct NamedHealthIndicator {
     status: String,
     symptom: String,
-    details: Option<Value>,
+    details: Option<Box<RawValue>>,
     indicator: String,
 }
 

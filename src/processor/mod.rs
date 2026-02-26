@@ -57,6 +57,7 @@ pub struct Processing {
     summary_tx: mpsc::Sender<ProcessorSummary>,
     summary_rx: mpsc::Receiver<ProcessorSummary>,
     report: DiagnosticReport,
+    sub_processors: FuturesUnordered<JoinHandle<()>>,
 }
 
 /// The `Completed` state represents a succesfull processing job
@@ -192,7 +193,7 @@ impl Processor<Ready> {
                 child_identifiers = child_identifiers.with_parent_id(parent_uuid);
             }
 
-            let _handles = spawn_sub_processors(
+            let sub_processors = spawn_sub_processors(
                 included_diagnostics,
                 self.receiver.clone(),
                 self.exporter.clone(),
@@ -210,6 +211,7 @@ impl Processor<Ready> {
                     summary_rx,
                     summary_tx,
                     report,
+                    sub_processors,
                 },
             };
             return Ok(processor);
@@ -234,6 +236,7 @@ impl Processor<Ready> {
                         summary_rx,
                         summary_tx,
                         report,
+                        sub_processors: FuturesUnordered::new(),
                     },
                 };
                 Ok(processor)
@@ -279,6 +282,14 @@ impl Processor<Processing> {
                     error: err.to_string(),
                 },
             });
+        }
+
+        // Wait for sub processors to finish
+        let mut sub_processors = self.state.sub_processors;
+        while let Some(res) = futures::stream::StreamExt::next(&mut sub_processors).await {
+            if let Err(e) = res {
+                log::error!("Sub-processor task panicked or failed to join: {}", e);
+            }
         }
 
         let mut report = match summary_handle.await {

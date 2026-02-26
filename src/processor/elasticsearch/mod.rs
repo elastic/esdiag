@@ -20,10 +20,10 @@ mod ilm_policies;
 mod indices_settings;
 /// The `_stats` API
 mod indices_stats;
-/// The `_mapping` API
-mod mapping_stats;
 /// The `_license` API
 mod licenses;
+/// The `_mapping` API
+mod mapping_stats;
 /// Elasticsearch diagnostics metadata
 mod metadata;
 /// The `_nodes` API
@@ -43,10 +43,10 @@ mod tasks;
 /// The cluster `/` API -- "You know, for search!"
 mod version;
 
+use crate::processor::{StreamingDataSource, StreamingDocumentExporter};
 pub use collector::ElasticsearchCollector;
 pub use metadata::ElasticsearchMetadata;
 use tokio::sync::mpsc;
-use crate::processor::{StreamingDataSource, StreamingDocumentExporter};
 pub use {
     licenses::License,
     version::{Cluster, ClusterMetadata, Version},
@@ -74,8 +74,8 @@ use {
     ilm_policies::IlmPolicies,
     indices_settings::{IndexSettings, IndicesSettings},
     indices_stats::IndicesStats,
-    mapping_stats::{MappingStats, MappingSummary},
     licenses::Licenses,
+    mapping_stats::{MappingStats, MappingSummary},
     nodes::{NodeDocument, Nodes},
     nodes_stats::NodesStats,
     pending_tasks::PendingTasks,

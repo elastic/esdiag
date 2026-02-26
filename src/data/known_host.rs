@@ -3,7 +3,7 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use crate::data::{Auth, Product};
-use eyre::{eyre, Result};
+use eyre::{Result, eyre};
 use serde::{Deserialize, Serialize};
 use serde_yaml;
 use std::{

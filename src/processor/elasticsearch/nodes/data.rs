@@ -6,37 +6,37 @@ use super::super::super::diagnostic::data_source::PathType;
 use super::super::DataSource;
 use eyre::Result;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::value::RawValue;
 use serde_with::skip_serializing_none;
 use std::collections::{HashMap, HashSet};
 
 #[skip_serializing_none]
 #[derive(Clone, Deserialize, Serialize)]
 pub struct Node {
-    aggregations: Option<Value>,
-    pub attributes: Option<Value>,
+    aggregations: Option<Box<RawValue>>,
+    pub attributes: Option<Box<RawValue>>,
     build_flavor: String,
     build_hash: String,
     build_type: String,
     component_version: Option<ComponentVersion>,
     pub host: Option<String>,
-    http: Option<Value>,
+    http: Option<Box<RawValue>>,
     index_version: Option<i64>,
-    //ingest: Value,
+    //ingest: Box<RawValue>,
     pub ip: Option<String>,
-    jvm: Value,
-    //modules: Value,
+    jvm: Box<RawValue>,
+    //modules: Box<RawValue>,
     pub name: String,
     pub os: OsDetails,
-    plugins: Option<Value>,
-    process: Value,
+    plugins: Option<Box<RawValue>>,
+    process: Box<RawValue>,
     pub role: Option<String>,
     pub roles: HashSet<String>,
-    settings: Option<Value>,
-    thread_pool: Value,
-    total_indexing_buffer: Option<Value>,
-    total_indexing_buffer_in_bytes: Option<Value>,
-    transport: Option<Value>,
+    settings: Option<Box<RawValue>>,
+    thread_pool: Box<RawValue>,
+    total_indexing_buffer: Option<Box<RawValue>>,
+    total_indexing_buffer_in_bytes: Option<Box<RawValue>>,
+    transport: Option<Box<RawValue>>,
     transport_address: Option<String>,
     transport_version: Option<i64>,
     pub version: Option<String>,
@@ -62,7 +62,7 @@ pub struct OsDetails {
 
 #[derive(Deserialize, Serialize)]
 pub struct Nodes {
-    _nodes: Value,
+    _nodes: Box<RawValue>,
     //cluster_name: String,
     pub nodes: HashMap<String, Node>,
 }

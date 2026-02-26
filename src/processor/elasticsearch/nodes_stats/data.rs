@@ -7,7 +7,7 @@ use super::super::DataSource;
 use crate::data::option_map_as_vec_entries;
 use eyre::Result;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::value::RawValue;
 use serde_with::skip_serializing_none;
 use std::collections::{HashMap, HashSet};
 use tokio::sync::mpsc::Sender;
@@ -106,29 +106,29 @@ pub struct NodeCount {
 #[derive(Deserialize, Serialize)]
 pub struct NodeStats {
     #[serde(skip_serializing)] // Docs split into separate datastream
-    pub adaptive_selection: Option<Value>,
-    allocations: Option<Value>, // Only present on data nodes
-    attributes: Option<Value>,
-    breakers: Value,
-    pub discovery: Value,
+    pub adaptive_selection: Option<Box<RawValue>>,
+    allocations: Option<Box<RawValue>>, // Only present on data nodes
+    attributes: Option<Box<RawValue>>,
+    breakers: Box<RawValue>,
+    pub discovery: Box<RawValue>,
     pub fs: Filesystem,
-    host: Option<Value>,
-    pub http: Value,
-    indexing_pressure: Value,
-    indices: Value,
+    host: Option<Box<RawValue>>,
+    pub http: Box<RawValue>,
+    indexing_pressure: Box<RawValue>,
+    indices: Box<RawValue>,
     pub ingest: Ingest,
-    ip: Option<Value>,
-    jvm: Value,
-    name: Value,
+    ip: Option<Box<RawValue>>,
+    jvm: Box<RawValue>,
+    name: Box<RawValue>,
     os: OsStats,
-    process: Value,
-    repositories: Option<Value>,
+    process: Box<RawValue>,
+    repositories: Option<Box<RawValue>>,
     pub roles: HashSet<String>,
-    script: Value,
-    script_cache: Value,
-    thread_pool: Value,
-    pub transport: Option<Value>,
-    transport_address: Option<Value>,
+    script: Box<RawValue>,
+    script_cache: Box<RawValue>,
+    thread_pool: Box<RawValue>,
+    pub transport: Option<Box<RawValue>>,
+    transport_address: Option<Box<RawValue>>,
     timestamp: Option<usize>,
 }
 
@@ -166,9 +166,9 @@ impl Default for LoadPercent {
 pub struct OsStats {
     timestamp: usize,
     cpu: CpuStats,
-    mem: Value,
-    swap: Option<Value>,
-    cgroup: Option<Value>,
+    mem: Box<RawValue>,
+    swap: Option<Box<RawValue>>,
+    cgroup: Option<Box<RawValue>>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -202,8 +202,8 @@ pub struct Filesystem {
 
 #[derive(Deserialize, Serialize)]
 struct IoStats {
-    //devices: Vec<Value>,
-    total: Option<Value>,
+    //devices: Vec<Box<RawValue>>,
+    total: Option<Box<RawValue>>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -224,7 +224,7 @@ pub type IngestPipelines = Vec<(String, IngestPipeline)>;
 
 #[derive(Deserialize, Serialize)]
 pub struct Ingest {
-    total: Value,
+    total: Box<RawValue>,
     #[serde(
         default,
         deserialize_with = "option_map_as_vec_entries",

@@ -34,7 +34,8 @@ async fn process_index(
     ctx: &IndexProcessingContext<'_>,
 ) {
     let shards_stats = index_stats.shards.take();
-    let index_settings = ctx.lookups
+    let index_settings = ctx
+        .lookups
         .index_settings
         .by_name(&index_name)
         .cloned()
@@ -45,7 +46,8 @@ async fn process_index(
         });
 
     let index_settings = index_settings.map(|settings| {
-        IndexSettingsDocument::from(settings).ilm(ctx.lookups.ilm_explain.by_name(&index_name).cloned())
+        IndexSettingsDocument::from(settings)
+            .ilm(ctx.lookups.ilm_explain.by_name(&index_name).cloned())
     });
 
     let write_phase_sec = match EnrichedIndexStats::try_from(index_stats) {
@@ -57,7 +59,8 @@ async fn process_index(
                     index_settings.clone(),
                     ctx.lookups.mapping_stats.by_name(&index_name).cloned(),
                 );
-            let index_document = IndexStatsDocument::new(stats, ctx.index_metadata.clone()).calculate();
+            let index_document =
+                IndexStatsDocument::new(stats, ctx.index_metadata.clone()).calculate();
             let write_phase_sec = index_document.index.write_phase_sec;
             if (ctx.index_tx.send(index_document).await).is_err() {
                 log::warn!("Index channel closed unexpectedly");
@@ -360,7 +363,7 @@ struct EnrichedIndexStatsWithSettings {
     pub health: Option<String>,
     pub ilm: Option<IlmStats>,
     pub is_write_index: bool,
-    pub lifecycle: Option<serde_json::Value>,
+    pub lifecycle: Option<Box<serde_json::value::RawValue>>,
     pub mappings: Option<MappingSummary>,
     pub mode: Option<String>,
     pub name: Option<String>,
