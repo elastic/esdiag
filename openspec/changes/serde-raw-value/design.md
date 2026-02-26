@@ -20,10 +20,13 @@ Because `serde_json::Value` allocates a new `BTreeMap` node for every nested obj
 1. **Enable the `raw_value` feature in `serde_json`:**
    By modifying `Cargo.toml` to include `features = ["raw_value"]`, Serde enables the opaque `RawValue` type.
 
-2. **Replace `Option<serde_json::Value>` with `Option<Box<serde_json::value::RawValue>>`:**
-   We will globally replace `serde_json::Value` with `Box<RawValue>`. `RawValue` validates that the bytes are valid JSON, but stops parsing there. It holds the string representation. When `serde_json` serializes the struct to export it, it writes those exact bytes directly to the output stream.
+2. **Replace `Option<serde_json::Value>` with `Option<Box<serde_json::value::RawValue>>` for pass-through data:**
+   We will replace `serde_json::Value` with `Box<RawValue>` for all passive, pass-through fields in diagnostic structs. `RawValue` validates that the bytes are valid JSON, but stops parsing there. This is ideal for large objects we don't need to inspect or mutate.
 
-3. **Verify `json_patch` mutations:**
+3. **Retain `serde_json::Value` for active mutations:**
+   Data structures that require inspection (e.g., `.get()`) or mutation (e.g., `json_patch`) will continue to use `serde_json::Value` or explicit structs. Metadata objects, which are small and reused, are exempt from `RawValue` migration.
+
+4. **Verify `json_patch` mutations:**
    We must audit the codebase (using `rg "patch" src/`) to ensure no logic currently performs a `.pointer_mut()` or `.apply()` on a field that we are migrating away from `Value`.
 
 ## Risks / Trade-offs

@@ -2,15 +2,11 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use super::super::super::{Exporter, ProcessorSummary, StreamingDocumentExporter};
+use super::super::metadata::PreSerializedMetadata;
 use super::super::{
-    DocumentExporter, ElasticsearchMetadata, IlmStats, Lookup, Lookups,
-    alias::Alias,
-    data_stream::DataStreamDocument,
-    indices_settings::{IndexSettingsDocument, StoreSettings},
-    mapping_stats::MappingSummary,
-    metadata::MetadataDoc,
-    nodes::NodeDocument,
+    Alias, DataStreamDocument, DocumentExporter, ElasticsearchMetadata, Exporter, IlmStats, Lookup,
+    Lookups, MappingSummary, NodeDocument, ProcessorSummary, StreamingDocumentExporter,
+    indices_settings::{IndexSettings, IndexSettingsDocument, StoreSettings},
 };
 use super::{IndicesStats, data::*};
 use eyre::Report;
@@ -19,19 +15,19 @@ use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 use tokio::sync::mpsc;
 
-struct IndexProcessingContext<'a> {
-    lookups: &'a Lookups,
-    metadata: &'a ElasticsearchMetadata,
-    index_metadata: &'a MetadataDoc,
-    shard_metadata: &'a MetadataDoc,
-    index_tx: &'a mpsc::Sender<IndexStatsDocument>,
-    shard_tx: &'a mpsc::Sender<ShardStatsDocument>,
+struct IndexProcessingContext {
+    lookups: Lookups,
+    metadata: ElasticsearchMetadata,
+    index_metadata: PreSerializedMetadata,
+    shard_metadata: PreSerializedMetadata,
+    index_tx: mpsc::Sender<IndexStatsDocument>,
+    shard_tx: mpsc::Sender<ShardStatsDocument>,
 }
 
 async fn process_index(
     index_name: String,
     mut index_stats: IndexStats,
-    ctx: &IndexProcessingContext<'_>,
+    ctx: &IndexProcessingContext,
 ) {
     let shards_stats = index_stats.shards.take();
     let index_settings = ctx
@@ -39,7 +35,7 @@ async fn process_index(
         .index_settings
         .by_name(&index_name)
         .cloned()
-        .map(|settings| {
+        .map(|settings: IndexSettings| {
             settings
                 .data_stream(ctx.lookups.data_stream.by_id(&index_name).cloned())
                 .age(ctx.metadata.diagnostic.collection_date)
@@ -60,7 +56,8 @@ async fn process_index(
                     ctx.lookups.mapping_stats.by_name(&index_name).cloned(),
                 );
             let index_document =
-                IndexStatsDocument::new(stats, ctx.index_metadata.clone()).calculate();
+                IndexStatsDocument::new(stats, ctx.index_metadata.clone())
+                    .calculate(ctx.metadata.diagnostic.collection_date);
             let write_phase_sec = index_document.index.write_phase_sec;
             if (ctx.index_tx.send(index_document).await).is_err() {
                 log::warn!("Index channel closed unexpectedly");
@@ -73,15 +70,16 @@ async fn process_index(
         }
     };
 
-    let index_settings = index_settings.map(|s| s.write_phase(write_phase_sec));
+    let index_settings = index_settings.map(|s: IndexSettingsDocument| s.write_phase(write_phase_sec));
 
     if let Some(shards) = shards_stats {
         match extract_shard_documents(
             shards,
-            ctx.shard_metadata,
+            ctx.shard_metadata.clone(),
             index_name,
             index_settings,
             &ctx.lookups.node,
+            ctx.metadata.diagnostic.collection_date,
         ) {
             Ok(docs) => {
                 for doc in docs {
@@ -120,8 +118,8 @@ impl StreamingDocumentExporter<Lookups, ElasticsearchMetadata> for IndicesStats 
     ) -> ProcessorSummary {
         log::debug!("Processing indices_stats stream");
         let data_stream_name = "metrics-index-esdiag".to_string();
-        let index_metadata = metadata.for_data_stream(&data_stream_name);
-        let shard_metadata = metadata.for_data_stream("metrics-shard-esdiag");
+        let index_metadata = metadata.for_data_stream(&data_stream_name).pre_serialize();
+        let shard_metadata = metadata.for_data_stream("metrics-shard-esdiag").pre_serialize();
 
         let batch_size = 5000;
         const BUFFER_SIZE: usize = 5000;
@@ -130,7 +128,7 @@ impl StreamingDocumentExporter<Lookups, ElasticsearchMetadata> for IndicesStats 
         let index_processor =
             tokio::spawn(exporter.clone().document_channel::<IndexStatsDocument>(
                 index_rx,
-                index_metadata.data_stream.to_string(),
+                data_stream_name.clone(),
                 batch_size,
             ));
 
@@ -138,7 +136,7 @@ impl StreamingDocumentExporter<Lookups, ElasticsearchMetadata> for IndicesStats 
         let shard_processor =
             tokio::spawn(exporter.clone().document_channel::<ShardStatsDocument>(
                 shard_rx,
-                shard_metadata.data_stream.to_string(),
+                "metrics-shard-esdiag".to_string(),
                 batch_size,
             ));
 
@@ -146,12 +144,12 @@ impl StreamingDocumentExporter<Lookups, ElasticsearchMetadata> for IndicesStats 
             match result {
                 Ok((index_name, index_stats)) => {
                     let ctx = IndexProcessingContext {
-                        lookups,
-                        metadata,
-                        index_metadata: &index_metadata,
-                        shard_metadata: &shard_metadata,
-                        index_tx: &index_tx,
-                        shard_tx: &shard_tx,
+                        lookups: lookups.clone(),
+                        metadata: metadata.clone(),
+                        index_metadata: index_metadata.clone(),
+                        shard_metadata: shard_metadata.clone(),
+                        index_tx: index_tx.clone(),
+                        shard_tx: shard_tx.clone(),
                     };
                     process_index(index_name, index_stats, &ctx).await;
                 }
@@ -178,10 +176,11 @@ impl StreamingDocumentExporter<Lookups, ElasticsearchMetadata> for IndicesStats 
 
 fn extract_shard_documents(
     mut shards: std::collections::HashMap<u16, Vec<ShardEntry>>,
-    shard_metadata: &MetadataDoc,
+    shard_metadata: PreSerializedMetadata,
     index_name: String,
     index_settings: Option<IndexSettingsDocument>,
     lookup_node: &Lookup<NodeDocument>,
+    collection_date: u64,
 ) -> Result<Vec<ShardStatsDocument>, eyre::Report> {
     let shard_docs: Vec<ShardStatsDocument> = shards
         .drain()
@@ -197,7 +196,7 @@ fn extract_shard_documents(
                                 ShardStatsDocument::new(enriched_stats, shard_metadata.clone())
                                     .index_settings(index_settings.clone())
                                     .node(node)
-                                    .calculate(),
+                                    .calculate(collection_date),
                             )
                         }
                         Err(err) => {
@@ -223,15 +222,15 @@ fn extract_shard_documents(
 pub struct IndexStatsDocument {
     index: EnrichedIndexStatsWithSettings,
     #[serde(flatten)]
-    metadata: MetadataDoc,
+    metadata: PreSerializedMetadata,
 }
 
 impl IndexStatsDocument {
-    fn new(index: EnrichedIndexStatsWithSettings, metadata: MetadataDoc) -> Self {
+    fn new(index: EnrichedIndexStatsWithSettings, metadata: PreSerializedMetadata) -> Self {
         IndexStatsDocument { index, metadata }
     }
 
-    fn calculate(mut self) -> Self {
+    fn calculate(mut self, collection_date: u64) -> Self {
         let is_write_alias = self
             .index
             .alias
@@ -247,8 +246,6 @@ impl IndexStatsDocument {
             .unwrap_or(false);
 
         self.index.is_write_index = is_write_alias || is_write_data_stream;
-
-        let collection_date = self.metadata.diagnostic.collection_date;
 
         let since_creation = collection_date - self.index.creation_date.unwrap_or(collection_date);
 
@@ -294,8 +291,6 @@ impl IndexStatsDocument {
             });
         }
 
-        // Estimate bytes per day
-
         self.index.primaries.indexing.est_bytes_per_day = match self.index.write_phase_sec {
             None => None,
             Some(0) => Some(0),
@@ -321,8 +316,6 @@ impl IndexStatsDocument {
                     as u64,
             ),
         };
-
-        // Determine average index time per shard
 
         self.index.primaries.indexing.index_time_per_shard_in_millis = Some(
             self.index.primaries.indexing.index_time_in_millis
@@ -516,11 +509,11 @@ pub struct ShardStatsDocument {
     index: Option<IndexSettingsDocument>,
     node: Option<NodeDocument>,
     #[serde(flatten)]
-    metadata: MetadataDoc,
+    metadata: PreSerializedMetadata,
 }
 
 impl ShardStatsDocument {
-    pub fn new(shard: EnrichedShardStats, metadata: MetadataDoc) -> Self {
+    pub fn new(shard: EnrichedShardStats, metadata: PreSerializedMetadata) -> Self {
         ShardStatsDocument {
             shard,
             metadata,
@@ -540,7 +533,7 @@ impl ShardStatsDocument {
         Self { node, ..self }
     }
 
-    pub fn calculate(mut self) -> Self {
+    pub fn calculate(mut self, _collection_date: u64) -> Self {
         let stats = &mut self.shard.stats;
         let write_phase_sec = &self
             .index
@@ -606,20 +599,20 @@ impl ShardStatsDocument {
             let since_creation = self.index.as_ref().map(|i| i.age.unwrap_or(0));
 
             search.avg_query_cpu_millis = Some(match since_creation {
-                Some(x) => search.query_time_in_millis / (x / 1000),
-                None => 0,
+                Some(x) if x > 0 => search.query_time_in_millis / (x / 1000),
+                _ => 0,
             });
             search.avg_query_rate = Some(match since_creation {
-                Some(x) => search.query_total as f64 / (x as f64 / 1000.0),
-                None => 0.0,
+                Some(x) if x > 0 => search.query_total as f64 / (x as f64 / 1000.0),
+                _ => 0.0,
             });
             search.avg_fetch_cpu_millis = Some(match since_creation {
-                Some(x) => search.fetch_time_in_millis / (x / 1000),
-                None => 0,
+                Some(x) if x > 0 => search.fetch_time_in_millis / (x / 1000),
+                _ => 0,
             });
             search.avg_fetch_rate = Some(match since_creation {
-                Some(x) => search.fetch_total as f64 / (x as f64 / 1000.0),
-                None => 0.0,
+                Some(x) if x > 0 => search.fetch_total as f64 / (x as f64 / 1000.0),
+                _ => 0.0,
             });
         }
 

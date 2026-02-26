@@ -3,8 +3,8 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::super::{
-    DocumentExporter, ElasticsearchMetadata, Lookups, Metadata, ProcessorSummary,
-    nodes::NodeDocument,
+    DocumentExporter, ElasticsearchMetadata, Lookups, ProcessorSummary,
+    metadata::PreSerializedMetadata, nodes::NodeDocument,
 };
 use super::{NodeTasks, ParentTask, Task, Tasks};
 use crate::exporter::Exporter;
@@ -23,7 +23,7 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for Tasks {
         log::debug!("processing tasks");
         let data_stream = "metrics-task-esdiag".to_string();
         let lookup_node = &lookups.node;
-        let task_metadata = metadata.for_data_stream(&data_stream).as_meta_doc();
+        let task_metadata = metadata.for_data_stream(&data_stream).pre_serialize();
 
         let mut nodes: Vec<(String, NodeTasks)> = self.nodes.into_par_iter().collect();
 
@@ -57,7 +57,7 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for Tasks {
 #[derive(Clone, Serialize)]
 pub struct EnrichedTask {
     #[serde(flatten)]
-    metadata: Value,
+    metadata: PreSerializedMetadata,
     node: Option<NodeDocument>,
     task: TaskWithParent,
     #[serde(flatten)]
@@ -65,13 +65,13 @@ pub struct EnrichedTask {
 }
 
 impl EnrichedTask {
-    pub fn new(task: Task, metadata: Value, node: Option<NodeDocument>) -> Self {
+    pub fn new(task: Task, metadata: PreSerializedMetadata, node: Option<NodeDocument>) -> Self {
         let parent = task
             .parent_task_id
             .as_ref()
             .map(|id| ParentTask::from(id.clone()));
         EnrichedTask {
-            metadata: metadata.clone(),
+            metadata,
             node,
             data: TaskData::new((task.action.clone(), task.description.clone())),
             task: TaskWithParent { task, parent },

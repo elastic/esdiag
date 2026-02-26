@@ -304,7 +304,7 @@ impl ElasticsearchDiagnostic {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 pub struct Lookups {
     pub alias: Lookup<Alias>,
     pub data_stream: Lookup<DataStreamDocument>,
