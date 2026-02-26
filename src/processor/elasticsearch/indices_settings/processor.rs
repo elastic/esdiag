@@ -2,7 +2,7 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use super::super::{DocumentExporter, ElasticsearchMetadata, Lookups, Metadata, ProcessorSummary};
+use super::super::{DocumentExporter, ElasticsearchMetadata, Lookups, ProcessorSummary};
 use super::{IndexSettings, IndicesSettings};
 use crate::exporter::Exporter;
 use rayon::prelude::*;
@@ -17,7 +17,8 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for IndicesSettings {
         metadata: &ElasticsearchMetadata,
     ) -> ProcessorSummary {
         log::debug!("processing indices: {}", self.len());
-        let index_metadata = metadata.for_data_stream("settings-index-esdiag");
+        let data_stream = "settings-index-esdiag";
+        let index_metadata = metadata.for_data_stream(data_stream);
         let collection_date = metadata.timestamp;
         let metadata_doc = index_metadata.as_meta_doc();
 
@@ -40,9 +41,9 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for IndicesSettings {
             .collect();
 
         log::debug!("index settings docs: {}", index_settings.len());
-        let mut summary = ProcessorSummary::new(index_metadata.data_stream.to_string());
+        let mut summary = ProcessorSummary::new(data_stream.to_string());
         match exporter
-            .send(index_metadata.data_stream.to_string(), index_settings)
+            .send(data_stream.to_string(), index_settings)
             .await
         {
             Ok(batch) => summary.add_batch(batch),

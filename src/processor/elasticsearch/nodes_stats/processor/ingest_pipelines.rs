@@ -3,8 +3,8 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::super::super::{
-    ElasticsearchMetadata, Metadata,
-    metadata::PreSerializedMetadata,
+    ElasticsearchMetadata,
+    metadata::MetadataRawValue,
     nodes::NodeDocument,
     nodes_stats::{IngestPipelines, IngestProcessor, IngestProcessorStats, IngestProcessors},
 };
@@ -20,7 +20,7 @@ pub async fn extract(
     sender_pipelines: &Sender<Value>,
     sender_processors: &Sender<Value>,
     mut pipelines: Option<IngestPipelines>,
-    metadata: ElasticsearchMetadata,
+    metadata: &ElasticsearchMetadata,
     node_metadata: Option<&NodeDocument>,
 ) -> Result<()> {
     let ingest_pipeline_metadata = metadata
@@ -29,7 +29,7 @@ pub async fn extract(
 
     let ingest_processor_metadata = metadata
         .for_data_stream("metrics-ingest.processor-esdiag")
-        .pre_serialize();
+        ;
 
     if let Some(pipelines) = pipelines.take() {
         for (name, mut pipeline) in pipelines {
@@ -75,7 +75,7 @@ async fn extract_ingest_processors(
     sender: &Sender<Value>,
     processors: Option<IngestProcessors>,
     pipeline_name: &str,
-    metadata: PreSerializedMetadata,
+    metadata: MetadataRawValue,
     node_summary: Option<NodeDocument>,
 ) -> Result<()> {
     let docs: Vec<Value> = match processors {
@@ -117,7 +117,7 @@ async fn extract_ingest_processors(
 #[derive(Serialize)]
 struct IngestDoc {
     #[serde(flatten)]
-    metadata: PreSerializedMetadata,
+    metadata: MetadataRawValue,
     node: Option<NodeDocument>,
     ingest: IngestProcessorDoc,
 }

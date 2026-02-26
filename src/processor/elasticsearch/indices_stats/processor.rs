@@ -2,7 +2,7 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use super::super::metadata::PreSerializedMetadata;
+use super::super::metadata::MetadataRawValue;
 use super::super::{
     Alias, DataStreamDocument, DocumentExporter, ElasticsearchMetadata, Exporter, IlmStats, Lookup,
     Lookups, MappingSummary, NodeDocument, ProcessorSummary, StreamingDocumentExporter,
@@ -15,19 +15,19 @@ use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 use tokio::sync::mpsc;
 
-struct IndexProcessingContext {
-    lookups: Lookups,
-    metadata: ElasticsearchMetadata,
-    index_metadata: PreSerializedMetadata,
-    shard_metadata: PreSerializedMetadata,
-    index_tx: mpsc::Sender<IndexStatsDocument>,
-    shard_tx: mpsc::Sender<ShardStatsDocument>,
+struct IndexProcessingContext<'a> {
+    lookups: &'a Lookups,
+    metadata: &'a ElasticsearchMetadata,
+    index_metadata: &'a MetadataRawValue,
+    shard_metadata: &'a MetadataRawValue,
+    index_tx: &'a mpsc::Sender<IndexStatsDocument>,
+    shard_tx: &'a mpsc::Sender<ShardStatsDocument>,
 }
 
 async fn process_index(
     index_name: String,
     mut index_stats: IndexStats,
-    ctx: &IndexProcessingContext,
+    ctx: &IndexProcessingContext<'_>,
 ) {
     let shards_stats = index_stats.shards.take();
     let index_settings = ctx
@@ -57,7 +57,7 @@ async fn process_index(
                 );
             let index_document =
                 IndexStatsDocument::new(stats, ctx.index_metadata.clone())
-                    .calculate(ctx.metadata.diagnostic.collection_date);
+                    .calculate();
             let write_phase_sec = index_document.index.write_phase_sec;
             if (ctx.index_tx.send(index_document).await).is_err() {
                 log::warn!("Index channel closed unexpectedly");
@@ -75,12 +75,11 @@ async fn process_index(
     if let Some(shards) = shards_stats {
         match extract_shard_documents(
             shards,
-            ctx.shard_metadata.clone(),
+            ctx.shard_metadata,
             index_name,
             index_settings,
             &ctx.lookups.node,
-            ctx.metadata.diagnostic.collection_date,
-        ) {
+            ) {
             Ok(docs) => {
                 for doc in docs {
                     if (ctx.shard_tx.send(doc).await).is_err() {
@@ -118,8 +117,8 @@ impl StreamingDocumentExporter<Lookups, ElasticsearchMetadata> for IndicesStats 
     ) -> ProcessorSummary {
         log::debug!("Processing indices_stats stream");
         let data_stream_name = "metrics-index-esdiag".to_string();
-        let index_metadata = metadata.for_data_stream(&data_stream_name).pre_serialize();
-        let shard_metadata = metadata.for_data_stream("metrics-shard-esdiag").pre_serialize();
+        let index_metadata = metadata.for_data_stream(&data_stream_name);
+        let shard_metadata = metadata.for_data_stream("metrics-shard-esdiag");
 
         let batch_size = 5000;
         const BUFFER_SIZE: usize = 5000;
@@ -144,12 +143,12 @@ impl StreamingDocumentExporter<Lookups, ElasticsearchMetadata> for IndicesStats 
             match result {
                 Ok((index_name, index_stats)) => {
                     let ctx = IndexProcessingContext {
-                        lookups: lookups.clone(),
-                        metadata: metadata.clone(),
-                        index_metadata: index_metadata.clone(),
-                        shard_metadata: shard_metadata.clone(),
-                        index_tx: index_tx.clone(),
-                        shard_tx: shard_tx.clone(),
+                        lookups,
+                        metadata,
+                        index_metadata: &index_metadata,
+                        shard_metadata: &shard_metadata,
+                        index_tx: &index_tx,
+                        shard_tx: &shard_tx,
                     };
                     process_index(index_name, index_stats, &ctx).await;
                 }
@@ -176,11 +175,10 @@ impl StreamingDocumentExporter<Lookups, ElasticsearchMetadata> for IndicesStats 
 
 fn extract_shard_documents(
     mut shards: std::collections::HashMap<u16, Vec<ShardEntry>>,
-    shard_metadata: PreSerializedMetadata,
+    shard_metadata: &MetadataRawValue,
     index_name: String,
     index_settings: Option<IndexSettingsDocument>,
     lookup_node: &Lookup<NodeDocument>,
-    collection_date: u64,
 ) -> Result<Vec<ShardStatsDocument>, eyre::Report> {
     let shard_docs: Vec<ShardStatsDocument> = shards
         .drain()
@@ -196,7 +194,7 @@ fn extract_shard_documents(
                                 ShardStatsDocument::new(enriched_stats, shard_metadata.clone())
                                     .index_settings(index_settings.clone())
                                     .node(node)
-                                    .calculate(collection_date),
+                                    .calculate(),
                             )
                         }
                         Err(err) => {
@@ -222,15 +220,15 @@ fn extract_shard_documents(
 pub struct IndexStatsDocument {
     index: EnrichedIndexStatsWithSettings,
     #[serde(flatten)]
-    metadata: PreSerializedMetadata,
+    metadata: MetadataRawValue,
 }
 
 impl IndexStatsDocument {
-    fn new(index: EnrichedIndexStatsWithSettings, metadata: PreSerializedMetadata) -> Self {
+    fn new(index: EnrichedIndexStatsWithSettings, metadata: MetadataRawValue) -> Self {
         IndexStatsDocument { index, metadata }
     }
 
-    fn calculate(mut self, collection_date: u64) -> Self {
+    fn calculate(mut self) -> Self {
         let is_write_alias = self
             .index
             .alias
@@ -247,14 +245,8 @@ impl IndexStatsDocument {
 
         self.index.is_write_index = is_write_alias || is_write_data_stream;
 
-        let since_creation = collection_date - self.index.creation_date.unwrap_or(collection_date);
-
-        let since_rollover = self
-            .index
-            .ilm
-            .as_ref()
-            .and_then(|ilm| ilm.lifecycle_date_millis)
-            .map(|lifecycle_date| collection_date - lifecycle_date);
+        let age = self.index.age.unwrap_or(0);
+        let since_rollover = self.index.since_rollover;
 
         let is_before_rollover = self.index.ilm.as_ref().is_some_and(|ilm| {
             ilm.action
@@ -263,16 +255,15 @@ impl IndexStatsDocument {
         });
 
         let write_phase_sec = if let Some(rollover) = since_rollover {
-            match since_creation > rollover {
-                true => (since_creation - rollover) / 1000,
-                false if is_before_rollover => since_creation / 1000,
+            match age > rollover {
+                true => (age - rollover) / 1000,
+                false if is_before_rollover => age / 1000,
                 _ => 0,
             }
         } else {
             0
         };
 
-        self.index.since_rollover = since_rollover;
         self.index.write_phase_sec = Some(write_phase_sec);
 
         if let Some(ref mut docs) = self.index.total.docs {
@@ -397,7 +388,7 @@ impl EnrichedIndexStats {
                 creation_date: Some(settings.creation_date),
                 data_stream: settings.data_stream,
                 health: self.health,
-                ilm: settings.ilm,
+                ilm: settings.ilm.clone(),
                 is_write_index: settings.is_write_index.unwrap_or(false),
                 lifecycle: settings.lifecycle,
                 mappings,
@@ -407,7 +398,7 @@ impl EnrichedIndexStats {
                 number_of_shards: settings.number_of_shards,
                 primaries: self.primaries,
                 refresh_interval: Some(settings.refresh_interval),
-                since_rollover: self.since_rollover,
+                since_rollover: settings.ilm.and_then(|ilm| ilm.lifecycle_date_millis).and_then(|lifecycle_date| settings.age.map(|age| age + settings.creation_date - lifecycle_date)),
                 source: settings.source,
                 store: settings.store,
                 total: self.total,
@@ -509,11 +500,11 @@ pub struct ShardStatsDocument {
     index: Option<IndexSettingsDocument>,
     node: Option<NodeDocument>,
     #[serde(flatten)]
-    metadata: PreSerializedMetadata,
+    metadata: MetadataRawValue,
 }
 
 impl ShardStatsDocument {
-    pub fn new(shard: EnrichedShardStats, metadata: PreSerializedMetadata) -> Self {
+    pub fn new(shard: EnrichedShardStats, metadata: MetadataRawValue) -> Self {
         ShardStatsDocument {
             shard,
             metadata,
@@ -533,7 +524,7 @@ impl ShardStatsDocument {
         Self { node, ..self }
     }
 
-    pub fn calculate(mut self, _collection_date: u64) -> Self {
+    pub fn calculate(mut self) -> Self {
         let stats = &mut self.shard.stats;
         let write_phase_sec = &self
             .index
