@@ -9,7 +9,7 @@ mod ingest_pipelines;
 mod transport_actions;
 
 use super::super::super::{Exporter, ProcessorSummary};
-use super::super::{DocumentExporter, ElasticsearchMetadata, Lookups, metadata::PreSerializedMetadata};
+use super::super::{DocumentExporter, ElasticsearchMetadata, Lookups, metadata::MetadataRawValue};
 use super::NodesStats;
 use crate::processor::StreamingDocumentExporter;
 use futures::stream::{BoxStream, StreamExt};
@@ -20,27 +20,27 @@ use tokio::sync::mpsc;
 
 static INGEST_ROLE: LazyLock<String> = LazyLock::new(|| String::from("ingest"));
 
-struct NodeProcessingContext {
-    lookups: Lookups,
-    metadata: ElasticsearchMetadata,
-    node_stats_metadata: PreSerializedMetadata,
-    actions_metadata: PreSerializedMetadata,
-    http_clients_metadata: PreSerializedMetadata,
-    applier_metadata: PreSerializedMetadata,
-    adaptive_metadata: PreSerializedMetadata,
-    nodes_stats_tx: mpsc::Sender<Value>,
-    actions_tx: mpsc::Sender<Value>,
-    http_clients_tx: mpsc::Sender<Value>,
-    applier_tx: mpsc::Sender<Value>,
-    adaptive_tx: mpsc::Sender<Value>,
-    pipelines_tx: mpsc::Sender<Value>,
-    processors_tx: mpsc::Sender<Value>,
+struct NodeProcessingContext<'a> {
+    lookups: &'a Lookups,
+    metadata: &'a ElasticsearchMetadata,
+    node_stats_metadata: &'a MetadataRawValue,
+    actions_metadata: &'a MetadataRawValue,
+    http_clients_metadata: &'a MetadataRawValue,
+    applier_metadata: &'a MetadataRawValue,
+    adaptive_metadata: &'a MetadataRawValue,
+    nodes_stats_tx: &'a mpsc::Sender<Value>,
+    actions_tx: &'a mpsc::Sender<Value>,
+    http_clients_tx: &'a mpsc::Sender<Value>,
+    applier_tx: &'a mpsc::Sender<Value>,
+    adaptive_tx: &'a mpsc::Sender<Value>,
+    pipelines_tx: &'a mpsc::Sender<Value>,
+    processors_tx: &'a mpsc::Sender<Value>,
 }
 
 async fn process_node(
     node_id: String,
     mut node_stats: super::data::NodeStats,
-    ctx: &NodeProcessingContext,
+    ctx: &NodeProcessingContext<'_>,
 ) {
     let lookup_node = &ctx.lookups.node;
     let lookup_shared_cache = &ctx.lookups.shared_cache;
@@ -61,7 +61,7 @@ async fn process_node(
                 // We'll convert it back if needed or update the helper.
                 let actions_meta_val = serde_json::to_value(&ctx.actions_metadata).unwrap();
                 if let Err(e) = transport_actions::extract(
-                    &ctx.actions_tx,
+                    ctx.actions_tx,
                     actions,
                     &actions_meta_val,
                     node_metadata,
@@ -88,7 +88,7 @@ async fn process_node(
         if !clients.is_null() {
             let http_meta_val = serde_json::to_value(&ctx.http_clients_metadata).unwrap();
             if let Err(e) = http_clients::extract(
-                &ctx.http_clients_tx,
+                ctx.http_clients_tx,
                 clients,
                 &http_meta_val,
                 node_metadata,
@@ -108,7 +108,7 @@ async fn process_node(
         if let Ok(adaptive_val) = serde_json::from_str::<Value>(adaptive_raw.get()) {
             let adaptive_meta_val = serde_json::to_value(&ctx.adaptive_metadata).unwrap();
             if let Err(e) = adaptive_selections::extract(
-                &ctx.adaptive_tx,
+                ctx.adaptive_tx,
                 Some(adaptive_val),
                 &adaptive_meta_val,
                 node_metadata,
@@ -127,7 +127,7 @@ async fn process_node(
         if !cluster_applier_stats.is_null() {
             let applier_meta_val = serde_json::to_value(&ctx.applier_metadata).unwrap();
             if let Err(e) = cluster_applier_stats::extract(
-                &ctx.applier_tx,
+                ctx.applier_tx,
                 cluster_applier_stats,
                 &applier_meta_val,
                 node_metadata,
@@ -145,10 +145,10 @@ async fn process_node(
     // Extract ingest pipeline stats, but only on nodes with the `ingest` role
     if node_stats.roles.contains(&*INGEST_ROLE) {
         if let Err(e) = ingest_pipelines::extract(
-            &ctx.pipelines_tx,
-            &ctx.processors_tx,
+            ctx.pipelines_tx,
+            ctx.processors_tx,
             node_stats.ingest.pipelines.take(),
-            ctx.metadata.clone(),
+            ctx.metadata,
             node_metadata,
         )
         .await
@@ -209,7 +209,7 @@ impl StreamingDocumentExporter<Lookups, ElasticsearchMetadata> for NodesStats {
         const BUFFER_SIZE: usize = 5000;
 
         let (nodes_stats_tx, nodes_stats_rx) = mpsc::channel::<Value>(BUFFER_SIZE);
-        let node_stats_metadata = metadata.for_data_stream(&data_stream).pre_serialize();
+        let node_stats_metadata = metadata.for_data_stream(&data_stream);
         let nodes_stats_processor = tokio::spawn(exporter.clone().document_channel::<Value>(
             nodes_stats_rx,
             "metrics-node-esdiag".to_string(),
@@ -218,7 +218,7 @@ impl StreamingDocumentExporter<Lookups, ElasticsearchMetadata> for NodesStats {
 
         let (actions_tx, actions_rx) = mpsc::channel::<Value>(BUFFER_SIZE);
         let actions_data_stream = "metrics-node.transport.actions-esdiag".to_string();
-        let actions_metadata = metadata.for_data_stream(&actions_data_stream).pre_serialize();
+        let actions_metadata = metadata.for_data_stream(&actions_data_stream);
         let actions_processor = tokio::spawn(exporter.clone().document_channel::<Value>(
             actions_rx,
             actions_data_stream,
@@ -229,7 +229,7 @@ impl StreamingDocumentExporter<Lookups, ElasticsearchMetadata> for NodesStats {
         let http_clients_data_stream = "metrics-node.http.clients-esdiag".to_string();
         let http_clients_metadata = metadata
             .for_data_stream(&http_clients_data_stream)
-            .pre_serialize();
+            ;
         let http_clients_processor = tokio::spawn(exporter.clone().document_channel::<Value>(
             http_clients_rx,
             http_clients_data_stream,
@@ -238,7 +238,7 @@ impl StreamingDocumentExporter<Lookups, ElasticsearchMetadata> for NodesStats {
 
         let (applier_tx, applier_rx) = mpsc::channel::<Value>(BUFFER_SIZE);
         let applier_data_stream = "metrics-node.discovery.cluster_applier-esdiag".to_string();
-        let applier_metadata = metadata.for_data_stream(&applier_data_stream).pre_serialize();
+        let applier_metadata = metadata.for_data_stream(&applier_data_stream);
         let applier_processor = tokio::spawn(exporter.clone().document_channel::<Value>(
             applier_rx,
             applier_data_stream,
@@ -249,7 +249,7 @@ impl StreamingDocumentExporter<Lookups, ElasticsearchMetadata> for NodesStats {
         let adaptive_data_stream = "metrics-node.discovery.cluster_adaptive-esdiag".to_string();
         let adaptive_metadata = metadata
             .for_data_stream(&adaptive_data_stream)
-            .pre_serialize();
+            ;
         let adaptive_processor = tokio::spawn(exporter.clone().document_channel::<Value>(
             adaptive_rx,
             adaptive_data_stream,
@@ -276,20 +276,20 @@ impl StreamingDocumentExporter<Lookups, ElasticsearchMetadata> for NodesStats {
             match result {
                 Ok((node_id, node_stats)) => {
                     let ctx = NodeProcessingContext {
-                        lookups: lookups.clone(),
-                        metadata: metadata.clone(),
-                        node_stats_metadata: node_stats_metadata.clone(),
-                        actions_metadata: actions_metadata.clone(),
-                        http_clients_metadata: http_clients_metadata.clone(),
-                        applier_metadata: applier_metadata.clone(),
-                        adaptive_metadata: adaptive_metadata.clone(),
-                        nodes_stats_tx: nodes_stats_tx.clone(),
-                        actions_tx: actions_tx.clone(),
-                        http_clients_tx: http_clients_tx.clone(),
-                        applier_tx: applier_tx.clone(),
-                        adaptive_tx: adaptive_tx.clone(),
-                        pipelines_tx: pipelines_tx.clone(),
-                        processors_tx: processors_tx.clone(),
+                        lookups,
+                        metadata,
+                        node_stats_metadata: &node_stats_metadata,
+                        actions_metadata: &actions_metadata,
+                        http_clients_metadata: &http_clients_metadata,
+                        applier_metadata: &applier_metadata,
+                        adaptive_metadata: &adaptive_metadata,
+                        nodes_stats_tx: &nodes_stats_tx,
+                        actions_tx: &actions_tx,
+                        http_clients_tx: &http_clients_tx,
+                        applier_tx: &applier_tx,
+                        adaptive_tx: &adaptive_tx,
+                        pipelines_tx: &pipelines_tx,
+                        processors_tx: &processors_tx,
                     };
                     process_node(node_id, node_stats, &ctx).await;
                 }

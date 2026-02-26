@@ -4,7 +4,7 @@
 
 use super::super::{
     DocumentExporter, ElasticsearchMetadata, Lookups, ProcessorSummary,
-    metadata::PreSerializedMetadata, nodes::NodeDocument,
+    metadata::MetadataRawValue, nodes::NodeDocument,
 };
 use super::{NodeTasks, ParentTask, Task, Tasks};
 use crate::exporter::Exporter;
@@ -23,7 +23,7 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for Tasks {
         log::debug!("processing tasks");
         let data_stream = "metrics-task-esdiag".to_string();
         let lookup_node = &lookups.node;
-        let task_metadata = metadata.for_data_stream(&data_stream).pre_serialize();
+        let task_metadata = metadata.for_data_stream(&data_stream);
 
         let mut nodes: Vec<(String, NodeTasks)> = self.nodes.into_par_iter().collect();
 
@@ -57,7 +57,7 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for Tasks {
 #[derive(Clone, Serialize)]
 pub struct EnrichedTask {
     #[serde(flatten)]
-    metadata: PreSerializedMetadata,
+    metadata: MetadataRawValue,
     node: Option<NodeDocument>,
     task: TaskWithParent,
     #[serde(flatten)]
@@ -65,7 +65,7 @@ pub struct EnrichedTask {
 }
 
 impl EnrichedTask {
-    pub fn new(task: Task, metadata: PreSerializedMetadata, node: Option<NodeDocument>) -> Self {
+    pub fn new(task: Task, metadata: MetadataRawValue, node: Option<NodeDocument>) -> Self {
         let parent = task
             .parent_task_id
             .as_ref()
