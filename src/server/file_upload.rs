@@ -70,7 +70,7 @@ pub async fn submit(
                     let state_clone = state.clone();
                     tokio::spawn(async move {
                         tokio::time::sleep(tokio::time::Duration::from_secs(300)).await;
-                        if let Some(_) = state_clone.pop_upload(job_id).await {
+                        if state_clone.pop_upload(job_id).await.is_some() {
                             log::warn!(
                                 "Upload job {} was never processed and was removed from state to free memory",
                                 job_id

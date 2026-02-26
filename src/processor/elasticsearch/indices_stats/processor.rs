@@ -590,19 +590,19 @@ impl ShardStatsDocument {
             let since_creation = self.index.as_ref().map(|i| i.age.unwrap_or(0));
 
             search.avg_query_cpu_millis = Some(match since_creation {
-                Some(x) if x > 0 => search.query_time_in_millis / (x / 1000),
+                Some(x) if x > 0 => search.query_time_in_millis / (x / 1000).max(1),
                 _ => 0,
             });
             search.avg_query_rate = Some(match since_creation {
-                Some(x) if x > 0 => search.query_total as f64 / (x as f64 / 1000.0),
+                Some(x) if x > 0 => search.query_total as f64 / (x as f64 / 1000.0).max(1.0),
                 _ => 0.0,
             });
             search.avg_fetch_cpu_millis = Some(match since_creation {
-                Some(x) if x > 0 => search.fetch_time_in_millis / (x / 1000),
+                Some(x) if x > 0 => search.fetch_time_in_millis / (x / 1000).max(1),
                 _ => 0,
             });
             search.avg_fetch_rate = Some(match since_creation {
-                Some(x) if x > 0 => search.fetch_total as f64 / (x as f64 / 1000.0),
+                Some(x) if x > 0 => search.fetch_total as f64 / (x as f64 / 1000.0).max(1.0),
                 _ => 0.0,
             });
         }
