@@ -3,13 +3,11 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::super::diagnostic::{DataStreamName, DiagnosticManifest, DiagnosticMetadata};
-use super::{
-    Metadata,
-    version::{Cluster, ClusterMetadata},
-};
+use super::version::{Cluster, ClusterMetadata};
+use super::Metadata;
 use eyre::Result;
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde::{Deserialize, Serialize, Serializer};
+use serde_json::value::RawValue;
 
 #[derive(Clone, Serialize)]
 pub struct ElasticsearchMetadata {
@@ -37,8 +35,38 @@ pub struct MetadataDoc {
     pub data_stream: DataStreamName,
 }
 
+impl MetadataDoc {
+    pub fn as_raw_value(&self) -> Box<RawValue> {
+        serde_json::value::to_raw_value(&self).expect("Failed to serialize metadata")
+    }
+
+    /// Creates a pre-serialized version of this metadata for high-performance reuse.
+    pub fn pre_serialize(&self) -> PreSerializedMetadata {
+        PreSerializedMetadata {
+            raw: self.as_raw_value(),
+        }
+    }
+}
+
+#[derive(Clone, Deserialize)]
+pub struct PreSerializedMetadata {
+    raw: Box<RawValue>,
+}
+
+impl Serialize for PreSerializedMetadata {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        // When flattened, we want to emit the fields of the inner JSON object.
+        let value: serde_json::Value =
+            serde_json::from_str(self.raw.get()).map_err(serde::ser::Error::custom)?;
+        value.serialize(serializer)
+    }
+}
+
 impl Metadata for MetadataDoc {
-    fn as_meta_doc(&self) -> Value {
+    fn as_meta_doc(&self) -> serde_json::Value {
         serde_json::to_value(&self).expect("Failed to serialize metadata")
     }
 }

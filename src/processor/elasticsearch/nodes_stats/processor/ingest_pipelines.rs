@@ -4,6 +4,7 @@
 
 use super::super::super::{
     ElasticsearchMetadata, Metadata,
+    metadata::PreSerializedMetadata,
     nodes::NodeDocument,
     nodes_stats::{IngestPipelines, IngestProcessor, IngestProcessorStats, IngestProcessors},
 };
@@ -28,7 +29,7 @@ pub async fn extract(
 
     let ingest_processor_metadata = metadata
         .for_data_stream("metrics-ingest.processor-esdiag")
-        .as_meta_doc();
+        .pre_serialize();
 
     if let Some(pipelines) = pipelines.take() {
         for (name, mut pipeline) in pipelines {
@@ -74,7 +75,7 @@ async fn extract_ingest_processors(
     sender: &Sender<Value>,
     processors: Option<IngestProcessors>,
     pipeline_name: &str,
-    metadata: Value,
+    metadata: PreSerializedMetadata,
     node_summary: Option<NodeDocument>,
 ) -> Result<()> {
     let docs: Vec<Value> = match processors {
@@ -116,7 +117,7 @@ async fn extract_ingest_processors(
 #[derive(Serialize)]
 struct IngestDoc {
     #[serde(flatten)]
-    metadata: Value,
+    metadata: PreSerializedMetadata,
     node: Option<NodeDocument>,
     ingest: IngestProcessorDoc,
 }
