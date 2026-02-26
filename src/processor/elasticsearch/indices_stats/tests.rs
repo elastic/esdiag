@@ -1,4 +1,4 @@
-
+use super::processor::{IndexStatsDocument, ShardStatsDocument};
 use tokio::fs::File;
 use tokio::io::{AsyncBufReadExt, BufReader};
 
@@ -14,12 +14,12 @@ async fn deserialize_shard_documents_is_ok() {
 
     while let Some(line) = lines.next_line().await.unwrap() {
         if !line.trim().is_empty() {
-            let doc: serde_json::Value = serde_json::from_str(&line).unwrap();
+            let doc: ShardStatsDocument = serde_json::from_str(&line).unwrap();
             documents.push(doc);
         }
     }
 
-    let result = Ok::<Vec<serde_json::Value>, std::io::Error>(documents);
+    let result = Ok::<Vec<ShardStatsDocument>, std::io::Error>(documents);
     assert!(result.is_ok());
 }
 
@@ -35,12 +35,12 @@ async fn deserialize_index_documents_is_ok() {
 
     while let Some(line) = lines.next_line().await.unwrap() {
         if !line.trim().is_empty() {
-            let doc: serde_json::Value = serde_json::from_str(&line).unwrap();
+            let doc: IndexStatsDocument = serde_json::from_str(&line).unwrap();
             documents.push(doc);
         }
     }
 
-    let result = Ok::<Vec<serde_json::Value>, std::io::Error>(documents);
+    let result = Ok::<Vec<IndexStatsDocument>, std::io::Error>(documents);
     assert!(result.is_ok());
 }
 

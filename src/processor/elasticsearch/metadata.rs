@@ -6,7 +6,7 @@ use super::super::diagnostic::{DataStreamName, DiagnosticManifest, DiagnosticMet
 use super::version::{Cluster, ClusterMetadata};
 use super::Metadata;
 use eyre::Result;
-use serde::{Deserialize, Serialize, Serializer};
+use serde::{Deserialize, Serialize, Serializer, Deserializer};
 use serde_json::value::RawValue;
 use std::sync::Arc;
 
@@ -63,7 +63,7 @@ impl ElasticsearchMetadata {
     }
 }
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone)]
 pub struct MetadataRawValue(pub Arc<RawValue>);
 
 impl Serialize for MetadataRawValue {
@@ -71,10 +71,24 @@ impl Serialize for MetadataRawValue {
     where
         S: Serializer,
     {
-        // When flattened, we want to emit the fields of the inner JSON object.
+        // MetadataRawValue is always flattened, so we want to emit the fields of the inner JSON object.
         let value: serde_json::Value =
             serde_json::from_str(self.0.get()).map_err(serde::ser::Error::custom)?;
         value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for MetadataRawValue {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        // For testing we need to be able to deserialize flattened values back into a string,
+        // although this doesn't fully reconstruct the original string, we don't care about it
+        // during tests
+        let value: serde_json::Value = Deserialize::deserialize(deserializer)?;
+        let raw = serde_json::value::to_raw_value(&value).map_err(serde::de::Error::custom)?;
+        Ok(MetadataRawValue(Arc::from(raw)))
     }
 }
 

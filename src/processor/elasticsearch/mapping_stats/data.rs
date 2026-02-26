@@ -172,11 +172,10 @@ impl IndexMapping {
     pub fn summarize(&self) -> MappingSummary {
         let mut summary = MappingSummary {
             dynamic: self.mappings.dynamic.as_ref().map(|v| {
-                let s = v.get();
-                if s.starts_with('"') && s.ends_with('"') && s.len() >= 2 {
-                    s[1..s.len() - 1].to_string()
-                } else {
-                    s.to_string()
+                match serde_json::from_str::<serde_json::Value>(v.get()) {
+                    Ok(serde_json::Value::String(s)) => s,
+                    Ok(val) => val.to_string(),
+                    Err(_) => v.get().to_string(),
                 }
             }),
             date_detection: self.mappings.date_detection,

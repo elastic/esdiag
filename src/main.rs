@@ -1,4 +1,3 @@
-#[cfg(target_env = "gnu")]
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 // Copyright Elasticsearch B.V. and/or licensed to Elasticsearch B.V. under one

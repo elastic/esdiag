@@ -75,8 +75,15 @@ async fn process_node(
                     );
                 }
             }
-            node_stats.transport =
-                serde_json::value::RawValue::from_string(transport_val.to_string()).ok();
+            match serde_json::value::RawValue::from_string(transport_val.to_string()) {
+                Ok(raw) => node_stats.transport = Some(raw),
+                Err(e) => {
+                    log::error!("Failed to re-serialize transport stats: {}", e);
+                    // Trade-off: mutating RawValue requires serialization cycle. If it fails, fallback to un-mutated.
+                    // This means transport.actions remain in the doc, leading to potentially larger payload.
+                    node_stats.transport = Some(transport_raw);
+                }
+            }
         } else {
             node_stats.transport = Some(transport_raw);
         }
@@ -97,8 +104,11 @@ async fn process_node(
             {
                 log::error!("Error extracting HTTP clients stats: {}", e);
             }
-            if let Ok(raw) = serde_json::value::RawValue::from_string(http_val.to_string()) {
-                node_stats.http = raw;
+            match serde_json::value::RawValue::from_string(http_val.to_string()) {
+                Ok(raw) => node_stats.http = raw,
+                Err(e) => {
+                    log::error!("Failed to re-serialize HTTP clients stats: {}", e);
+                }
             }
         }
     }
@@ -136,8 +146,11 @@ async fn process_node(
             {
                 log::error!("Error extracting cluster applier stats: {}", e);
             }
-            if let Ok(raw) = serde_json::value::RawValue::from_string(discovery_val.to_string()) {
-                node_stats.discovery = raw;
+            match serde_json::value::RawValue::from_string(discovery_val.to_string()) {
+                Ok(raw) => node_stats.discovery = raw,
+                Err(e) => {
+                    log::error!("Failed to re-serialize cluster applier stats: {}", e);
+                }
             }
         }
     }
