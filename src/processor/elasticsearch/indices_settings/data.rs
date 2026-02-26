@@ -7,7 +7,7 @@ use super::super::{DataSource, data_stream::DataStreamDocument};
 use crate::data::u64_from_string;
 use eyre::Result;
 use serde::{Deserialize, Deserializer, Serialize};
-use serde_json::{Value, json};
+use serde_json::{Value, json, value::RawValue};
 use serde_with::skip_serializing_none;
 use std::collections::HashMap;
 
@@ -16,9 +16,9 @@ pub type IndicesSettings = HashMap<String, Settings>;
 #[skip_serializing_none]
 #[derive(Clone, Deserialize, Serialize)]
 pub struct IndexSettings {
-    pub allocation: Option<Value>,
+    pub allocation: Option<Box<RawValue>>,
     pub auto_expand_replicas: Option<String>,
-    pub blocks: Option<Value>,
+    pub blocks: Option<Box<RawValue>>,
     #[serde(default = "default_to_default", deserialize_with = "deserialize_codec")]
     pub codec: String,
     #[serde(deserialize_with = "u64_from_string")]
@@ -28,8 +28,8 @@ pub struct IndexSettings {
     pub hidden: Option<String>,
     #[serde(default)]
     pub is_write_index: bool,
-    pub lifecycle: Option<Value>,
-    pub mapping: Option<Value>,
+    pub lifecycle: Option<Box<RawValue>>,
+    pub mapping: Option<Box<RawValue>>,
     #[serde(default = "default_to_standard")]
     pub mode: String,
     #[serde(deserialize_with = "u64_from_string")]
@@ -38,17 +38,17 @@ pub struct IndexSettings {
     pub number_of_shards: Option<u64>,
     pub priority: Option<String>,
     pub provided_name: Option<String>,
-    pub query: Option<Value>,
+    pub query: Option<Box<RawValue>>,
     #[serde(default = "default_to_default")]
     pub refresh_interval: String,
-    pub routing: Option<Value>,
-    pub shard: Option<Value>,
-    pub shard_limit: Option<Value>,
-    pub sort: Option<Value>,
+    pub routing: Option<Box<RawValue>>,
+    pub shard: Option<Box<RawValue>>,
+    pub shard_limit: Option<Box<RawValue>>,
+    pub sort: Option<Box<RawValue>>,
     pub source: Option<String>,
     pub store: Option<StoreSettings>,
     pub uuid: String,
-    pub version: Value,
+    pub version: Box<RawValue>,
     // Not in source json
     #[serde(skip_deserializing)]
     pub age: Option<u64>,
@@ -126,9 +126,13 @@ impl IndexSettings {
 
     /// Returns the mapping.source.mode
     fn source_mode(&self) -> String {
-        self.mapping
+        let mapping = self
+            .mapping
             .as_ref()
-            .and_then(|mapping_settings| mapping_settings.as_object())
+            .and_then(|r| serde_json::from_str::<Value>(r.get()).ok())
+            .unwrap_or(Value::Null);
+        mapping
+            .as_object()
             .and_then(|mapping| mapping.get("source"))
             .and_then(|source| source.get("mode"))
             .and_then(|mode| mode.as_str())
@@ -138,10 +142,15 @@ impl IndexSettings {
 
     /// Returns select lifecycle fields (name, rollover_alias and indexing_complete)
     pub fn get_lifecycle(&self) -> Value {
+        let lifecycle = self
+            .lifecycle
+            .as_ref()
+            .and_then(|r| serde_json::from_str::<Value>(r.get()).ok())
+            .unwrap_or(Value::Null);
         json!({
-            "name": self.lifecycle.as_ref().and_then(|lifecycle| lifecycle.get("name")),
-            "rollover_alias": self.lifecycle.as_ref().and_then(|lifecycle| lifecycle.get("rollover_alias")),
-            "indexing_complete": self.lifecycle.as_ref().and_then(|lifecycle| lifecycle.get("indexing_complete")),
+            "name": lifecycle.get("name"),
+            "rollover_alias": lifecycle.get("rollover_alias"),
+            "indexing_complete": lifecycle.get("indexing_complete"),
         })
     }
 }
@@ -174,7 +183,7 @@ impl std::default::Default for IndexSettings {
             store: None,
             sort: None,
             uuid: "".to_string(),
-            version: Value::Null,
+            version: serde_json::value::RawValue::from_string("{}".to_string()).unwrap(),
             age: None,
             data_stream: None,
             name: None,

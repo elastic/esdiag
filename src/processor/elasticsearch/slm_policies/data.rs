@@ -6,7 +6,7 @@ use super::super::super::diagnostic::data_source::PathType;
 use super::super::DataSource;
 use eyre::Result;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::value::RawValue;
 use serde_with::skip_serializing_none;
 use std::collections::HashMap;
 
@@ -18,12 +18,12 @@ pub struct SlmPolicy {
     version: u32,
     // modified_date: String,
     modified_date_millis: u64,
-    policy: Value,
-    last_success: Option<Value>,
-    last_failure: Option<Value>,
+    policy: Box<RawValue>,
+    last_success: Option<Box<RawValue>>,
+    last_failure: Option<Box<RawValue>>,
     // next_execution: Option<String>,
     next_execution_millis: Option<u64>,
-    stats: Option<Value>,
+    stats: Option<Box<RawValue>>,
 }
 
 impl DataSource for SlmPolicies {

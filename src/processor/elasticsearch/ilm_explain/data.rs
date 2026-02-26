@@ -51,7 +51,7 @@ pub struct StepInfo {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct PhaseDefinition {
     min_age: Option<String>,
-    actions: Option<serde_json::Value>,
+    actions: Option<Box<serde_json::value::RawValue>>,
 }
 
 #[skip_serializing_none]

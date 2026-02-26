@@ -4,7 +4,7 @@
 
 use crate::{client::Client, data::Product};
 //use bytes::Bytes;
-use eyre::{Result, eyre, WrapErr};
+use eyre::{Result, WrapErr, eyre};
 use flate2::read::GzDecoder;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -47,7 +47,8 @@ impl EmbeddedAssets {
     }
 
     fn get_dir_files(&self, path: &Path) -> Vec<(&Path, &[u8])> {
-        let mut files: Vec<_> = self.files
+        let mut files: Vec<_> = self
+            .files
             .iter()
             .filter(|(p, _)| p.starts_with(path))
             .map(|(p, v)| (p.as_path(), v.as_slice()))
@@ -78,7 +79,13 @@ fn should_skip_asset(asset: &Asset, security_enabled: bool) -> bool {
     asset.requires_security && !security_enabled
 }
 
-async fn send_asset(client: &Client, asset: &Asset, path: &Path, contents: &[u8], named: bool) -> Result<()> {
+async fn send_asset(
+    client: &Client,
+    asset: &Asset,
+    path: &Path,
+    contents: &[u8],
+    named: bool,
+) -> Result<()> {
     let stem = path.file_stem().unwrap().to_str().unwrap_or("");
     let endpoint = match named {
         true => &format!(
@@ -135,7 +142,9 @@ pub async fn assets(client: &Client) -> Result<()> {
         .wrap_err("Failed to determine security status")?;
 
     if !security_enabled {
-        log::info!("Security is disabled on the cluster. Security-dependent assets will be skipped.");
+        log::info!(
+            "Security is disabled on the cluster. Security-dependent assets will be skipped."
+        );
     }
 
     let mut error_count = 0;
@@ -149,7 +158,7 @@ pub async fn assets(client: &Client) -> Result<()> {
         log::info!("Processing asset: {}", &asset.name);
         log::debug!("Asset: {}", serde_json::to_string(&asset).unwrap());
         let path = PathBuf::from(format!("{}/{}", client, asset.name));
-        
+
         let dir_files = embedded_assets.get_dir_files(&path);
         if !dir_files.is_empty() {
             // do something with the directory
@@ -185,9 +194,9 @@ pub async fn assets(client: &Client) -> Result<()> {
 /// Parses the assets YAML file for the given exporter. Currently only supports Elasticsearch.
 fn parse_assets_yml(product: Product, assets_store: &EmbeddedAssets) -> Result<Vec<Asset>> {
     let filename = format!("{}/{}", product.to_string().to_lowercase(), ASSETS_FILE);
-    let contents = assets_store
-        .get_file(Path::new(&filename))
-        .ok_or(eyre!("embedded assets archive (assets.tar.gz) did not contain expected file {filename}"))?;
+    let contents = assets_store.get_file(Path::new(&filename)).ok_or(eyre!(
+        "embedded assets archive (assets.tar.gz) did not contain expected file {filename}"
+    ))?;
     let assets = serde_yaml::from_slice(contents)?;
     Ok(assets)
 }

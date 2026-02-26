@@ -6,7 +6,7 @@ use super::super::super::diagnostic::data_source::PathType;
 use super::super::DataSource;
 use eyre::Result;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::value::RawValue;
 use serde_with::skip_serializing_none;
 use std::collections::HashMap;
 
@@ -27,7 +27,7 @@ pub struct Task {
     cancellable: bool,
     cancelled: Option<bool>,
     pub description: Option<String>,
-    headers: Option<Value>,
+    headers: Option<Box<RawValue>>,
     pub id: u64,
     //node: Option<String>, // omitted in favor of enriched node field
     #[serde(skip_serializing)] // skipped in favor of subobject field
@@ -37,7 +37,7 @@ pub struct Task {
     r#type: String,
     running_time_in_nanos: u64,
     start_time_in_millis: u64,
-    status: Option<Value>,
+    status: Option<Box<RawValue>>,
 }
 
 impl DataSource for Tasks {

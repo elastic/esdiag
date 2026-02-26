@@ -3,7 +3,7 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::{
-    super::{data_stream::DataStreamDocument, ilm_explain::IlmStats, Lookup},
+    super::{Lookup, data_stream::DataStreamDocument, ilm_explain::IlmStats},
     IndexSettings, IndicesSettings, StoreSettings,
 };
 use eyre::Result;
@@ -41,7 +41,7 @@ pub struct IndexSettingsDocument {
     pub codec: String,
     pub creation_date: u64,
     pub data_stream: Option<DataStreamDocument>,
-    pub lifecycle: Option<serde_json::Value>,
+    pub lifecycle: Option<Box<serde_json::value::RawValue>>,
     pub ilm: Option<IlmStats>,
     pub is_write_index: Option<bool>,
     pub mode: String,
