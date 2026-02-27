@@ -53,3 +53,53 @@ pub async fn marked_alert() -> impl IntoResponse {
         None => StatusCode::NOT_FOUND.into_response(),
     }
 }
+
+pub async fn prism() -> impl IntoResponse {
+    match Assets::get("prism.js") {
+        Some(content) => {
+            let body = content.data.into_owned();
+            ([(header::CONTENT_TYPE, "text/javascript")], body).into_response()
+        }
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+
+pub async fn prism_bash() -> impl IntoResponse {
+    match Assets::get("prism-bash.js") {
+        Some(content) => {
+            let body = content.data.into_owned();
+            ([(header::CONTENT_TYPE, "text/javascript")], body).into_response()
+        }
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+
+pub async fn prism_json() -> impl IntoResponse {
+    match Assets::get("prism-json.js") {
+        Some(content) => {
+            let body = content.data.into_owned();
+            ([(header::CONTENT_TYPE, "text/javascript")], body).into_response()
+        }
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+
+pub async fn prism_json5() -> impl IntoResponse {
+    match Assets::get("prism-json5.js") {
+        Some(content) => {
+            let body = content.data.into_owned();
+            ([(header::CONTENT_TYPE, "text/javascript")], body).into_response()
+        }
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+
+pub async fn prism_css() -> impl IntoResponse {
+    match Assets::get("prism.css") {
+        Some(content) => {
+            let body = content.data.into_owned();
+            ([(header::CONTENT_TYPE, "text/css")], body).into_response()
+        }
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
+}

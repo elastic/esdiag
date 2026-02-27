@@ -3,9 +3,14 @@
     <head>
         <title>ESDiag Documentation</title>
         <link rel="stylesheet" href="/style.css" />
+        <link rel="stylesheet" href="/prism.css" />
         <link rel="icon" type="image/svg+xml" href="/esdiag.svg" />
         <link rel="apple-touch-icon" href="/esdiag.svg" />
         <script type="module" src="/datastar.js"></script>
+        <script src="/prism.js"></script>
+        <script src="/prism-bash.js"></script>
+        <script src="/prism-json.js"></script>
+        <script src="/prism-json5.js"></script>
         <style>
             .docs-container {
                 display: flex;
@@ -58,13 +63,13 @@
                 padding-bottom: 0.3em;
                 margin-top: 1.5em;
             }
-            .docs-content code {
+            .docs-content code:not([class*="language-"]) {
                 background-color: #f6f8fa;
                 padding: 0.2em 0.4em;
                 border-radius: 3px;
                 font-size: 85%;
             }
-            .docs-content pre {
+            .docs-content pre:not([class*="language-"]) {
                 background-color: #f6f8fa;
                 padding: 16px;
                 overflow: auto;
@@ -181,6 +186,11 @@
 
                 const markdownContent = document.getElementById('markdown-raw').textContent;
                 document.getElementById('markdown-rendered').innerHTML = marked.parse(markdownContent);
+                
+                // Trigger Prism to highlight any code blocks
+                if (window.Prism) {
+                    window.Prism.highlightAll();
+                }
             </script>
         </content>
     </body>
