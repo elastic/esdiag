@@ -1,496 +1,498 @@
-            </header-links>
-        </header>
-
-        <content>
-            <h2>Process Diagnostics</h2>
-            <input-form id="input-form" data-signals-loading="false" data-signals-processing="false">
-                <diagnostic-form id="diagnostic-form">
-                    <tab-links data-signals-tab="'file-upload'">
-                        <button
-                            id="tab-file-upload"
-                            class="tab active"
-                            data-on-click="$tab = 'file-upload'"
-                            data-class-active="$tab === 'file-upload'"
-                        >
-                            File Upload
-                        </button>
-                        <button
-                            id="tab-service-link"
-                            class="tab"
-                            data-on-click="$tab = 'service-link'"
-                            data-class-active="$tab === 'service-link'"
-                        >
-                            Service Link
-                        </button>
-                        <button
-                            id="tab-api-key"
-                            class="tab"
-                            data-on-click="$tab = 'api-key'"
-                            data-class-active="$tab === 'api-key'"
-                        >
-                            API Key
-                        </button>
-                    </tab-links>
-                    <tab-content class="tab-content">
-                        <form
-                            id="upload-form"
-                            data-show="$tab === 'file-upload'"
-                            data-signals-loading="false"
-                            data-signals-file_upload.job_id="0"
-                            enctype="multipart/form-data"
-                        >
-                            <info-text class="margin-after">Process a file uploaded from your local computer</info-text>
-                            <input
-                                type="file"
-                                id="file-input"
-                                name="file"
-                                accept=".zip"
-                                required
-                                value=""
-                                style="opacity: 0"
-                            />
-                            <div
-                                id="dropzone"
-                                data-on-dragenter="$_drag-on=true"
-                                data-on-dragover="$_drag-on=true"
-                                data-on-dragleave="$_drag-on=false"
-                                data-on-drop="$_drag-on=false"
-                                data-class-drag-over="$_drag-on"
-                                class="dropzone"
+<content id="main-content">
+    <h2>Process Diagnostics</h2>
+    <input-form id="input-form" data-signals-loading="false" data-signals-processing="false">
+        <diagnostic-form id="diagnostic-form">
+            <tab-links data-signals-tab="'file-upload'">
+                <button
+                    id="tab-file-upload"
+                    class="tab active"
+                    data-on-click="$tab = 'file-upload'"
+                    data-class-active="$tab === 'file-upload'"
+                >
+                    File Upload
+                </button>
+                <button
+                    id="tab-service-link"
+                    class="tab"
+                    data-on-click="$tab = 'service-link'"
+                    data-class-active="$tab === 'service-link'"
+                >
+                    Service Link
+                </button>
+                <button
+                    id="tab-api-key"
+                    class="tab"
+                    data-on-click="$tab = 'api-key'"
+                    data-class-active="$tab === 'api-key'"
+                >
+                    API Key
+                </button>
+            </tab-links>
+            <tab-content class="tab-content">
+                <form
+                    id="upload-form"
+                    data-show="$tab === 'file-upload'"
+                    data-signals-loading="false"
+                    data-signals-file_upload.job_id="0"
+                    enctype="multipart/form-data"
+                >
+                    <info-text class="margin-after">Process a file uploaded from your local computer</info-text>
+                    <input
+                        type="file"
+                        id="file-input"
+                        name="file"
+                        accept=".zip"
+                        required
+                        value=""
+                        style="opacity: 0"
+                    />
+                    <div
+                        id="dropzone"
+                        data-on-dragenter="$_drag-on=true"
+                        data-on-dragover="$_drag-on=true"
+                        data-on-dragleave="$_drag-on=false"
+                        data-on-drop="$_drag-on=false"
+                        data-class-drag-over="$_drag-on"
+                        class="dropzone"
+                    >
+                        <div class="file-icon">
+                            <!--- upload icon -->
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
                             >
-                                <div class="file-icon">
-                                    <!--- upload icon -->
-                                    <svg
-                                        xmlns="http://www.w3.org/2000/svg"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        stroke-width="2"
-                                        stroke-linecap="round"
-                                        stroke-linejoin="round"
-                                    >
-                                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                                        <polyline points="14 2 14 8 20 8"></polyline>
-                                        <line x1="12" y1="18" x2="12" y2="12"></line>
-                                        <line x1="9" y1="15" x2="15" y2="15"></line>
-                                    </svg>
-                                </div>
-                                <div id="upload-instructions">
-                                    <p>Select or drag and drop a <code>.zip</code> file</p>
-                                </div>
-                                <div id="file-info" class="file-info hidden">
-                                    <span id="file-name" class="file-name"></span>
-                                </div>
-                                <div class="upload-progress-container" id="upload-progress-container">
-                                    <div class="upload-progress-bar" id="upload-progress-bar"></div>
-                                </div>
-                                <div class="upload-progress-text" id="upload-progress-text">0%</div>
-                            </div>
-                            <input id="upload-button" class="button" type="submit" value="Process" disabled />
-                            <script>
-                                // File upload handling
-                                const dropzone = document.getElementById("dropzone");
-                                const fileInput = document.getElementById("file-input");
-                                const fileName = document.getElementById("file-name");
-                                const uploadInstructions = document.getElementById("upload-instructions");
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                <polyline points="14 2 14 8 20 8"></polyline>
+                                <line x1="12" y1="18" x2="12" y2="12"></line>
+                                <line x1="9" y1="15" x2="15" y2="15"></line>
+                            </svg>
+                        </div>
+                        <div id="upload-instructions">
+                            <p>Select or drag and drop a <code>.zip</code> file</p>
+                        </div>
+                        <div id="file-info" class="file-info hidden">
+                            <span id="file-name" class="file-name"></span>
+                        </div>
+                        <div class="upload-progress-container" id="upload-progress-container">
+                            <div class="upload-progress-bar" id="upload-progress-bar"></div>
+                        </div>
+                        <div class="upload-progress-text" id="upload-progress-text">0%</div>
+                    </div>
+                    <input id="upload-button" class="button" type="submit" value="Process" disabled />
+                    <script>
+                        // File upload handling
+                        const dropzone = document.getElementById("dropzone");
+                        const fileInput = document.getElementById("file-input");
+                        const fileName = document.getElementById("file-name");
+                        const uploadInstructions = document.getElementById("upload-instructions");
 
-                                // Prevent default drag behaviors
-                                ["dragenter", "dragover", "dragleave", "drop"].forEach((eventName) => {
-                                    dropzone.addEventListener(eventName, preventDefaults, false);
-                                    document.body.addEventListener(eventName, preventDefaults, false);
-                                });
+                        // Prevent default drag behaviors
+                        ["dragenter", "dragover", "dragleave", "drop"].forEach((eventName) => {
+                            dropzone.addEventListener(eventName, preventDefaults, false);
+                            document.body.addEventListener(eventName, preventDefaults, false);
+                        });
 
-                                function preventDefaults(e) {
-                                    e.preventDefault();
-                                    e.stopPropagation();
+                        function preventDefaults(e) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                        }
+
+                        // Handle dropped files
+                        dropzone.addEventListener("drop", handleDrop, false);
+
+                        function handleDrop(e) {
+                            const dt = e.dataTransfer;
+                            const files = dt.files;
+                            handleFiles(files);
+                        }
+
+                        function handleFiles(files) {
+                            if (files.length > 0) {
+                                fileInput.files = files;
+                                updateFileInfo(files[0]);
+                            }
+                        }
+
+                        function updateFileInfo(file) {
+                            const uploadButton = document.getElementById("upload-button");
+                            const fileIcon = document.querySelector(".file-icon");
+                            const fileInfo = document.querySelector(".file-info");
+                            const currentStatus = document.getElementById("current-status");
+
+                            if (file) {
+                                fileName.textContent = file.name;
+                                fileInfo.classList.remove("hidden");
+                                uploadButton.disabled = false;
+                                uploadInstructions.classList.add("hidden");
+                                fileIcon.style.color = "#1339ab"; // Change to button text blue
+
+                                // Change the icon to a check mark
+                                document.querySelector(".file-icon svg").innerHTML = `
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                <polyline points="14 2 14 8 20 8"></polyline>
+                                <path d="M9 15L11 17L15 13"></path>
+                            `;
+                            } else {
+                                fileInput.value = "";
+                                fileInfo.classList.add("hidden");
+                                uploadButton.disabled = true;
+                                uploadInstructions.classList.remove("hidden");
+                                fileIcon.style.color = "#516381"; // Reset to original color
+
+                                // Reset to upload icon
+                                document.querySelector(".file-icon svg").innerHTML = `
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                <polyline points="14 2 14 8 20 8"></polyline>
+                                <line x1="12" y1="18" x2="12" y2="12"></line>
+                                <line x1="9" y1="15" x2="15" y2="15"></line>
+                            `;
+                            }
+                        }
+
+                        // Open file picker when clicking drop area
+                        dropzone.addEventListener("click", () => {
+                            fileInput.click();
+                        });
+
+                        // Handle selected file when using file picker
+                        fileInput.addEventListener("change", function () {
+                            if (this.files && this.files[0]) {
+                                updateFileInfo(this.files[0]);
+                            }
+                        });
+
+                        // Initialize button state when page loads
+                        document.addEventListener("DOMContentLoaded", function () {
+                            const uploadButton = document.getElementById("upload-button");
+                            uploadButton.disabled = fileInput.files.length === 0;
+                        });
+                        document.getElementById("upload-form").addEventListener("submit", function (e) {
+                            e.preventDefault();
+                            const formData = new FormData(this);
+                            // Keep the file visible while uploading
+                            const currentFile = fileInput.files[0];
+
+                            // Use XMLHttpRequest to track upload progress
+                            const xhr = new XMLHttpRequest();
+                            const progressBar = document.getElementById("upload-progress-bar");
+                            const progressContainer = document.getElementById("upload-progress-container");
+                            const progressText = document.getElementById("upload-progress-text");
+
+                            // Show progress elements
+                            progressContainer.classList.add("active");
+                            progressText.classList.add("active");
+
+                            // Reset progress bar
+                            progressBar.style.width = "0%";
+                            progressText.textContent = "0%";
+
+                            xhr.upload.addEventListener("progress", function (event) {
+                                if (event.lengthComputable) {
+                                    const percentComplete = (event.loaded / event.total) * 100;
+                                    const percentFormatted = Math.round(percentComplete) + "%";
+
+                                    progressBar.style.width = percentFormatted;
+                                    progressText.textContent = percentFormatted;
                                 }
+                            });
 
-                                // Handle dropped files
-                                dropzone.addEventListener("drop", handleDrop, false);
-
-                                function handleDrop(e) {
-                                    const dt = e.dataTransfer;
-                                    const files = dt.files;
-                                    handleFiles(files);
-                                }
-
-                                function handleFiles(files) {
-                                    if (files.length > 0) {
-                                        fileInput.files = files;
-                                        updateFileInfo(files[0]);
-                                    }
-                                }
-
-                                function updateFileInfo(file) {
-                                    const uploadButton = document.getElementById("upload-button");
-                                    const fileIcon = document.querySelector(".file-icon");
-                                    const fileInfo = document.querySelector(".file-info");
-                                    const currentStatus = document.getElementById("current-status");
-
-                                    if (file) {
-                                        fileName.textContent = file.name;
-                                        fileInfo.classList.remove("hidden");
-                                        uploadButton.disabled = false;
-                                        uploadInstructions.classList.add("hidden");
-                                        fileIcon.style.color = "#1339ab"; // Change to button text blue
-
-                                        // Change the icon to a check mark
-                                        document.querySelector(".file-icon svg").innerHTML = `
-                                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                                        <polyline points="14 2 14 8 20 8"></polyline>
-                                        <path d="M9 15L11 17L15 13"></path>
-                                    `;
-                                    } else {
-                                        fileInput.value = "";
-                                        fileInfo.classList.add("hidden");
-                                        uploadButton.disabled = true;
-                                        uploadInstructions.classList.remove("hidden");
-                                        fileIcon.style.color = "#516381"; // Reset to original color
-
-                                        // Reset to upload icon
-                                        document.querySelector(".file-icon svg").innerHTML = `
-                                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                                        <polyline points="14 2 14 8 20 8"></polyline>
-                                        <line x1="12" y1="18" x2="12" y2="12"></line>
-                                        <line x1="9" y1="15" x2="15" y2="15"></line>
-                                    `;
-                                    }
-                                }
-
-                                // Open file picker when clicking drop area
-                                dropzone.addEventListener("click", () => {
-                                    fileInput.click();
-                                });
-
-                                // Handle selected file when using file picker
-                                fileInput.addEventListener("change", function () {
-                                    if (this.files && this.files[0]) {
-                                        updateFileInfo(this.files[0]);
-                                    }
-                                });
-
-                                // Initialize button state when page loads
-                                document.addEventListener("DOMContentLoaded", function () {
-                                    const uploadButton = document.getElementById("upload-button");
-                                    uploadButton.disabled = fileInput.files.length === 0;
-                                });
-                                document.getElementById("upload-form").addEventListener("submit", function (e) {
-                                    e.preventDefault();
-                                    const formData = new FormData(this);
-                                    // Keep the file visible while uploading
-                                    const currentFile = fileInput.files[0];
-
-                                    // Use XMLHttpRequest to track upload progress
-                                    const xhr = new XMLHttpRequest();
-                                    const progressBar = document.getElementById("upload-progress-bar");
-                                    const progressContainer = document.getElementById("upload-progress-container");
-                                    const progressText = document.getElementById("upload-progress-text");
-
-                                    // Show progress elements
-                                    progressContainer.classList.add("active");
-                                    progressText.classList.add("active");
-
-                                    // Reset progress bar
-                                    progressBar.style.width = "0%";
-                                    progressText.textContent = "0%";
-
-                                    xhr.upload.addEventListener("progress", function (event) {
-                                        if (event.lengthComputable) {
-                                            const percentComplete = (event.loaded / event.total) * 100;
-                                            const percentFormatted = Math.round(percentComplete) + "%";
-
-                                            progressBar.style.width = percentFormatted;
-                                            progressText.textContent = percentFormatted;
-                                        }
-                                    });
-
-                                    xhr.onload = function () {
-                                        const jobFeed = document.getElementById("job-feed");
-                                        if (xhr.status >= 200 && xhr.status < 300) {
-                                            setTimeout(() => {
-                                                progressBar.style.width = "0%";
-                                                progressContainer.classList.remove("active");
-                                                progressText.classList.remove("active");
-                                                updateFileInfo(null);
-                                                document.getElementById("dropzone").style.pointerEvents = "";
-                                            }, 500);
-                                        } else {
-                                            progressContainer.classList.remove("active");
-                                            progressText.classList.remove("active");
-                                            updateFileInfo(null);
-                                            document.getElementById("dropzone").style.pointerEvents = "";
-                                        }
-                                        jobFeed.insertAdjacentHTML("afterend", xhr.responseText);
-                                    };
-
-                                    xhr.onerror = function () {
+                            xhr.onload = function () {
+                                const jobFeed = document.getElementById("job-feed");
+                                if (xhr.status >= 200 && xhr.status < 300) {
+                                    setTimeout(() => {
+                                        progressBar.style.width = "0%";
                                         progressContainer.classList.remove("active");
                                         progressText.classList.remove("active");
                                         updateFileInfo(null);
                                         document.getElementById("dropzone").style.pointerEvents = "";
-                                    };
+                                    }, 500);
+                                } else {
+                                    progressContainer.classList.remove("active");
+                                    progressText.classList.remove("active");
+                                    updateFileInfo(null);
+                                    document.getElementById("dropzone").style.pointerEvents = "";
+                                }
+                                jobFeed.insertAdjacentHTML("afterend", xhr.responseText);
+                            };
 
-                                    xhr.open("POST", "/upload/submit", true);
-                                    xhr.send(formData);
-                                });
-                            </script>
-                        </form>
+                            xhr.onerror = function () {
+                                progressContainer.classList.remove("active");
+                                progressText.classList.remove("active");
+                                updateFileInfo(null);
+                                document.getElementById("dropzone").style.pointerEvents = "";
+                            };
 
-                        <form
-                            id="service-link-form"
-                            enctype="multipart/form-data"
-                            data-show="$tab === 'service-link'"
+                            xhr.open("POST", "/upload/submit", true);
+                            xhr.send(formData);
+                        });
+                    </script>
+                </form>
+
+                <form
+                    id="service-link-form"
+                    enctype="multipart/form-data"
+                    data-show="$tab === 'service-link'"
+                    style="display: none"
+                >
+                    <info-text class="margin-after">
+                        Process from an Elastic upload service link:
+                        <a href="https://upload.elastic.co" target="_blank">https://upload.elastic.co</a>
+                    </info-text>
+                    <input-group>
+                        <label for="curl-command" class="form-label"
+                            >Curl Command or Case Comment (Optional)</label
+                        >
+                        <textarea
+                            id="curl-command"
+                            class="curl-textarea"
+                            placeholder="Paste a curl command or case comment to auto-fill the form"
+                            data-bind-service_link._curl
+                            data-on-input="{
+                            $service_link.url = parseUrl($service_link._curl),
+                            $service_link.token = parseToken($service_link._curl),
+                            $service_link.filename = parseFilename($service_link._curl)
+                        }"
+                        ></textarea>
+                        <text-link
+                            id="curl-command-clear"
+                            data-show="$service_link._curl !== ''"
+                            data-on-click="{
+                            $service_link._curl = '';
+                            $service_link.url = '';
+                            $service_link.token = '';
+                            $service_link.filename = '';
+                        }"
                             style="display: none"
                         >
-                            <info-text class="margin-after">
-                                Process from an Elastic upload service link:
-                                <a href="https://upload.elastic.co" target="_blank">https://upload.elastic.co</a>
-                            </info-text>
-                            <input-group>
-                                <label for="curl-command" class="form-label"
-                                    >Curl Command or Case Comment (Optional)</label
-                                >
-                                <textarea
-                                    id="curl-command"
-                                    class="curl-textarea"
-                                    placeholder="Paste a curl command or case comment to auto-fill the form"
-                                    data-bind-service_link._curl
-                                    data-on-input="{
-                                    $service_link.url = parseUrl($service_link._curl),
-                                    $service_link.token = parseToken($service_link._curl),
-                                    $service_link.filename = parseFilename($service_link._curl)
-                                }"
-                                ></textarea>
-                                <text-link
-                                    id="curl-command-clear"
-                                    data-show="$service_link._curl !== ''"
-                                    data-on-click="{
-                                    $service_link._curl = '';
-                                    $service_link.url = '';
-                                    $service_link.token = '';
-                                    $service_link.filename = '';
-                                }"
-                                    style="display: none"
-                                >
-                                    Clear
-                                </text-link>
-                            </input-group>
-                            <input-group>
-                                <label for="service-token" class="form-label">Token</label>
-                                <input
-                                    type="text"
-                                    id="service-token"
-                                    name="token"
-                                    data-bind-service_link.token
-                                    data-attr-readonly="$service_link._curl !== ''"
-                                    class="form-input"
-                                    required
-                                    placeholder="Enter authentication token"
-                                />
-                            </input-group>
-                            <input-group>
-                                <label for="service-url" class="form-label">URL</label>
-                                <input
-                                    type="url"
-                                    id="service-url"
-                                    name="url"
-                                    data-bind-service_link.url
-                                    data-attr-readonly="$service_link._curl !== ''"
-                                    class="form-input"
-                                    required
-                                    placeholder="https://example.com/path/to/diagnostic.zip"
-                                />
-                            </input-group>
-                            <input-group>
-                                <label for="service-filename" class="form-label">Filename</label>
-                                <input
-                                    type="text"
-                                    id="service-filename"
-                                    name="filename"
-                                    data-bind-service_link.filename
-                                    data-attr-readonly="$service_link._curl !== ''"
-                                    class="form-input"
-                                    required
-                                    placeholder="diagnostic.zip"
-                                />
-                            </input-group>
-                            <input
-                                id="service-link-button"
-                                class="button"
-                                type="button"
-                                value="Process"
-                                data-on-click="$loading = true; $message = 'Connecting to Elastic Upload service...'; @post('/service_link')"
-                                data-attr-disabled="$loading || !$service_link.url || !$service_link.token"
-                            />
-                            <script>
-                                // Extract token from Authorization header
-                                const parseToken = (cmd) => {
-                                    const token = cmd.match(/Authorization(?: Token)?:\s*([^ '"]+[^ '"])/);
-                                    return token ? token[1] : null;
-                                };
+                            Clear
+                        </text-link>
+                    </input-group>
+                    <input-group>
+                        <label for="service-token" class="form-label">Token</label>
+                        <input
+                            type="text"
+                            id="service-token"
+                            name="token"
+                            data-bind-service_link.token
+                            data-attr-readonly="$service_link._curl !== ''"
+                            class="form-input"
+                            required
+                            placeholder="Enter authentication token"
+                        />
+                    </input-group>
+                    <input-group>
+                        <label for="service-url" class="form-label">URL</label>
+                        <input
+                            type="url"
+                            id="service-url"
+                            name="url"
+                            data-bind-service_link.url
+                            data-attr-readonly="$service_link._curl !== ''"
+                            class="form-input"
+                            required
+                            placeholder="https://example.com/path/to/diagnostic.zip"
+                        />
+                    </input-group>
+                    <input-group>
+                        <label for="service-filename" class="form-label">Filename</label>
+                        <input
+                            type="text"
+                            id="service-filename"
+                            name="filename"
+                            data-bind-service_link.filename
+                            data-attr-readonly="$service_link._curl !== ''"
+                            class="form-input"
+                            required
+                            placeholder="diagnostic.zip"
+                        />
+                    </input-group>
+                    <input
+                        id="service-link-button"
+                        class="button"
+                        type="button"
+                        value="Process"
+                        data-on-click="$loading = true; $message = 'Connecting to Elastic Upload service...'; @post('/service_link')"
+                        data-attr-disabled="$loading || !$service_link.url || !$service_link.token"
+                    />
+                    <script>
+                        // Extract token from Authorization header
+                        const parseToken = (cmd) => {
+                            const token = cmd.match(/Authorization(?: Token)?:\s*([^ '"]+[^ '"])/);
+                            return token ? token[1] : null;
+                        };
 
-                                // Extract filename from -o option
-                                const parseFilename = (cmd) => {
-                                    const filename =
-                                        cmd.match(/File name:\s*(\S+)/) ||
-                                        cmd.match(/-o\s+['"]([^'"]+)['"]/) ||
-                                        cmd.match(/-o\s+(\S+)/) ||
-                                        cmd.match(/--output\s+['"]([^'"]+)['"]/) ||
-                                        cmd.match(/--output\s+(\S+)/);
-                                    return filename ? filename[1] : null;
-                                };
+                        // Extract filename from -o option
+                        const parseFilename = (cmd) => {
+                            const filename =
+                                cmd.match(/File name:\s*(\S+)/) ||
+                                cmd.match(/-o\s+['"]([^'"]+)['"]/) ||
+                                cmd.match(/-o\s+(\S+)/) ||
+                                cmd.match(/--output\s+['"]([^'"]+)['"]/) ||
+                                cmd.match(/--output\s+(\S+)/);
+                            return filename ? filename[1] : null;
+                        };
 
-                                // Extract URL
-                                const parseUrl = (cmd) => {
-                                    const match = cmd.match(/https?:\/\/\S+/);
-                                    const url = match ? match[0].replace(/\.$/, "") : null;
-                                    return url;
-                                };
-                            </script>
-                        </form>
+                        // Extract URL
+                        const parseUrl = (cmd) => {
+                            const match = cmd.match(/https?:\/\/\S+/);
+                            const url = match ? match[0].replace(/\.$/, "") : null;
+                            return url;
+                        };
+                    </script>
+                </form>
 
-                        <form id="api-key-form" data-show="$tab === 'api-key'" style="display: none">
-                            <info-text class="margin-after"
-                                >Process directly from an Elasticsearch cluster's API.</info-text
-                            >
-                            <input-group>
-                                <label for="elasticsearch-url" class="form-label">Elasticsearch URL</label>
-                                <input
-                                    type="url"
-                                    id="elasticsearch-url"
-                                    name="url"
-                                    autocomplete="username"
-                                    data-bind-es_api.url
-                                    class="form-input"
-                                    required
-                                    placeholder="https://elasticsearch.example.com/"
-                                />
-                            </input-group>
-                            <input-group>
-                                <label for="api-key" class="form-label">Elasticsearch API Key</label>
-                                <input
-                                    type="password"
-                                    id="api-key"
-                                    name="api-key"
-                                    autocomplete="current-password"
-                                    data-bind-es_api.key
-                                    class="form-input"
-                                    required
-                                    placeholder="Cluster API key"
-                                />
-                                <info-text><i>API keys are not saved or logged.</i></info-text>
-                            </input-group>
-                            <input
-                                id="es-api-key-button"
-                                class="button"
-                                type="button"
-                                value="Process"
-                                data-on-click="$loading = true; $message = 'Connecting with API key...'; @post('/api_key')"
-                                data-attr-disabled="$loading || !$es_api.url || !$es_api.key"
-                            />
-                        </form>
-                    </tab-content>
-                </diagnostic-form>
-                <metadata-form id="metadata">
-                    <h3>Metadata</h3>
-                    <input-group>
-                        <label for="username" class="form-label">User</label>
-                        <input
-                            type="text"
-                            id="username"
-                            name="username"
-                            data-bind-metadata.user
-                            placeholder="Username"
-                            autocomplete="none"
-                            class="form-input"
-                            data-attr-disabled="$auth.header || $processing || $loading"
-                        />
-                    </input-group>
-                    <input-group>
-                        <label for="account" class="form-label">Account</label>
-                        <input
-                            type="text"
-                            id="account"
-                            name="account"
-                            data-bind-metadata.account
-                            placeholder="Account"
-                            class="form-input"
-                            data-attr-disabled="$loading || $processing"
-                        />
-                    </input-group>
-                    <input-group>
-                        <label for="case-number" class="form-label">Case Number</label>
-                        <input
-                            type="text"
-                            id="case-number"
-                            name="case-number"
-                            data-bind-metadata.case_number
-                            placeholder="Case Number"
-                            class="form-input"
-                            data-attr-disabled="$loading || $processing"
-                        />
-                    </input-group>
-                    <input-group>
-                        <label for="opportunity" class="form-label">Opportunity</label>
-                        <input
-                            type="text"
-                            id="opportunity"
-                            name="opportunity"
-                            data-bind-metadata.opportunity
-                            placeholder="Opportunity"
-                            class="form-input"
-                            data-attr-disabled="$loading || $processing"
-                        />
-                    </input-group>
-                    <text-link
-                        id="metadata-clear"
-                        data-show="$metadata.account || $metadata.case_number || $metadata.opportunity"
-                        data-on-click="{
-                        $metadata.account = '';
-                        $metadata.case_number = '';
-                        $metadata.opportunity = '';
-                    }"
-                        style="display: none"
+                <form id="api-key-form" data-show="$tab === 'api-key'" style="display: none">
+                    <info-text class="margin-after"
+                        >Process directly from an Elasticsearch cluster's API.</info-text
                     >
-                        Clear Metadata
-                    </text-link>
-                </metadata-form>
-            </input-form>
-
-            <div
-                id="current-status"
-                data-show="$loading && $_job_id === '' "
-                class="status-box loading"
+                    <input-group>
+                        <label for="elasticsearch-url" class="form-label">Elasticsearch URL</label>
+                        <input
+                            type="url"
+                            id="elasticsearch-url"
+                            name="url"
+                            autocomplete="username"
+                            data-bind-es_api.url
+                            class="form-input"
+                            required
+                            placeholder="https://elasticsearch.example.com/"
+                        />
+                    </input-group>
+                    <input-group>
+                        <label for="api-key" class="form-label">Elasticsearch API Key</label>
+                        <input
+                            type="password"
+                            id="api-key"
+                            name="api-key"
+                            autocomplete="current-password"
+                            data-bind-es_api.key
+                            class="form-input"
+                            required
+                            placeholder="Cluster API key"
+                        />
+                        <info-text><i>API keys are not saved or logged.</i></info-text>
+                    </input-group>
+                    <input
+                        id="es-api-key-button"
+                        class="button"
+                        type="button"
+                        value="Process"
+                        data-on-click="$loading = true; $message = 'Connecting with API key...'; @post('/api_key')"
+                        data-attr-disabled="$loading || !$es_api.url || !$es_api.key"
+                    />
+                </form>
+            </tab-content>
+        </diagnostic-form>
+        <metadata-form id="metadata">
+            <h3>Metadata</h3>
+            <input-group>
+                <label for="username" class="form-label">User</label>
+                <input
+                    type="text"
+                    id="username"
+                    name="username"
+                    data-bind-metadata.user
+                    placeholder="Username"
+                    autocomplete="none"
+                    class="form-input"
+                    data-attr-disabled="$auth.header || $processing || $loading"
+                />
+            </input-group>
+            <input-group>
+                <label for="account" class="form-label">Account</label>
+                <input
+                    type="text"
+                    id="account"
+                    name="account"
+                    data-bind-metadata.account
+                    placeholder="Account"
+                    class="form-input"
+                    data-attr-disabled="$loading || $processing"
+                />
+            </input-group>
+            <input-group>
+                <label for="case-number" class="form-label">Case Number</label>
+                <input
+                    type="text"
+                    id="case-number"
+                    name="case-number"
+                    data-bind-metadata.case_number
+                    placeholder="Case Number"
+                    class="form-input"
+                    data-attr-disabled="$loading || $processing"
+                />
+            </input-group>
+            <input-group>
+                <label for="opportunity" class="form-label">Opportunity</label>
+                <input
+                    type="text"
+                    id="opportunity"
+                    name="opportunity"
+                    data-bind-metadata.opportunity
+                    placeholder="Opportunity"
+                    class="form-input"
+                    data-attr-disabled="$loading || $processing"
+                />
+            </input-group>
+            <text-link
+                id="metadata-clear"
+                data-show="$metadata.account || $metadata.case_number || $metadata.opportunity"
+                data-on-click="{
+                $metadata.account = '';
+                $metadata.case_number = '';
+                $metadata.opportunity = '';
+            }"
                 style="display: none"
             >
-                <div class="spinner"></div>
-                <span id="status-message" data-text="$message">Uploading...</span>
-            </div>
-            <div id="job-feed"></div>
-            {% if let Some(key_id) = key_id %}
-            <div
-                id="job-{{ key_id }}"
-                data-signals-_job_id="true"
-                data-on-load="$loading = true; $tab='api-key'; $message = 'Processing api key {{ key_id }}'; @post('/api_key/{{ key_id }}')"
-                class="status-box loading"
-            >
-                <div class="spinner"></div>
-                Processing api key for {{ key_id }}
-            </div>
-            {% else if let Some(link_id) = link_id %}
-            <div
-                id="job-{{ link_id }}"
-                data-signals-_job_id="true"
-                data-on-load="$loading = true; $tab='service-link'; $message = 'Forwarding service link {{ link_id }}'; @post('/service_link/{{ link_id }}')"
-                class="status-box loading"
-            >
-                <div class="spinner"></div>
-                Loading service link {{ link_id }}
-            </div>
-            {% else if let Some(upload_id) = upload_id %}
-            <div
-                id="job-{{ upload_id }}"
-                data-signals-_job_id="true"
-                data-on-load="$loading = true; $message = 'Processing file upload {{ upload_id }}'; @post('/file_upload/{{ upload_id }}')"
-                class="status-box loading"
-            >
+                Clear Metadata
+            </text-link>
+        </metadata-form>
+    </input-form>
+
+    <div
+        id="current-status"
+        data-show="$loading && $_job_id === '' "
+        class="status-box loading"
+        style="display: none"
+    >
+        <div class="spinner"></div>
+        <span id="status-message" data-text="$message">Uploading...</span>
+    </div>
+    <div id="job-feed"></div>
+    {% if let Some(key_id) = key_id %}
+    <div
+        id="job-{{ key_id }}"
+        data-signals-_job_id="true"
+        data-on-load="$loading = true; $tab='api-key'; $message = 'Processing api key {{ key_id }}'; @post('/api_key/{{ key_id }}')"
+        class="status-box loading"
+    >
+        <div class="spinner"></div>
+        Processing api key for {{ key_id }}
+    </div>
+    {% else if let Some(link_id) = link_id %}
+    <div
+        id="job-{{ link_id }}"
+        data-signals-_job_id="true"
+        data-on-load="$loading = true; $tab='service-link'; $message = 'Forwarding service link {{ link_id }}'; @post('/service_link/{{ link_id }}')"
+        class="status-box loading"
+    >
+        <div class="spinner"></div>
+        Loading service link {{ link_id }}
+    </div>
+    {% else if let Some(upload_id) = upload_id %}
+    <div
+        id="job-{{ upload_id }}"
+        data-signals-_job_id="true"
+        data-on-load="$loading = true; $message = 'Processing file upload {{ upload_id }}'; @post('/file_upload/{{ upload_id }}')"
+        class="status-box loading"
+    >
+        <div class="spinner"></div>
+        Loading file upload {{ upload_id }}
+    </div>
+    {% endif %}
+</content>
