@@ -2,37 +2,54 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use axum::http::StatusCode;
+use axum::{
+    http::{header, StatusCode},
+    response::IntoResponse,
+};
+use crate::embeds::{Assets, ServerAssets};
 
-static DATASTAR_JS: &str = include_str!("datastar.js");
-static DATASTAR_JS_MAP: &str = include_str!("datastar.js.map");
-static ESDIAG_SVG: &str = include_str!("esdiag.svg");
-static STYLE_CSS: &str = include_str!("style.css");
-
-pub async fn datastar() -> (StatusCode, [(&'static str, &'static str); 1], &'static str) {
-    (
-        StatusCode::OK,
-        [("Content-Type", "text/javascript")],
-        DATASTAR_JS,
-    )
+fn serve_server_asset(path: &str, content_type: &'static str) -> impl IntoResponse {
+    match ServerAssets::get(path) {
+        Some(content) => {
+            let body = content.data.into_owned();
+            ([(header::CONTENT_TYPE, content_type)], body).into_response()
+        }
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
 }
 
-pub async fn datastar_map() -> (StatusCode, [(&'static str, &'static str); 1], &'static str) {
-    (
-        StatusCode::OK,
-        [("Content-Type", "application/json")],
-        DATASTAR_JS_MAP,
-    )
+pub async fn datastar() -> impl IntoResponse {
+    serve_server_asset("datastar.js", "text/javascript")
 }
 
-pub async fn logo() -> (StatusCode, [(&'static str, &'static str); 1], &'static str) {
-    (
-        StatusCode::OK,
-        [("Content-Type", "image/svg+xml")],
-        ESDIAG_SVG,
-    )
+pub async fn datastar_map() -> impl IntoResponse {
+    serve_server_asset("datastar.js.map", "application/json")
 }
 
-pub async fn style() -> (StatusCode, [(&'static str, &'static str); 1], &'static str) {
-    (StatusCode::OK, [("Content-Type", "text/css")], STYLE_CSS)
+pub async fn logo() -> impl IntoResponse {
+    serve_server_asset("esdiag.svg", "image/svg+xml")
+}
+
+pub async fn style() -> impl IntoResponse {
+    serve_server_asset("style.css", "text/css")
+}
+
+pub async fn marked() -> impl IntoResponse {
+    match Assets::get("marked.js") {
+        Some(content) => {
+            let body = content.data.into_owned();
+            ([(header::CONTENT_TYPE, "text/javascript")], body).into_response()
+        }
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+
+pub async fn marked_alert() -> impl IntoResponse {
+    match Assets::get("marked-alert.js") {
+        Some(content) => {
+            let body = content.data.into_owned();
+            ([(header::CONTENT_TYPE, "text/javascript")], body).into_response()
+        }
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
 }

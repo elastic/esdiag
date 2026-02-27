@@ -2,58 +2,44 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use crate::{client::Client, data::Product};
+use crate::{client::Client, data::Product, embeds::Assets};
 //use bytes::Bytes;
 use eyre::{Result, WrapErr, eyre};
-use flate2::read::GzDecoder;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
-use std::io::Read;
 use std::path::{Path, PathBuf};
-use tar::Archive;
 
 // Subdirectory for templates and configs files
-pub static ASSETS_TAR_GZ: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/assets.tar.gz"));
 pub static ASSETS_FILE: &str = "assets.yml";
 pub static SOURCES_FILE: &str = "sources.yml";
 
-struct EmbeddedAssets {
-    files: HashMap<PathBuf, Vec<u8>>,
-}
+struct EmbeddedAssets;
 
 impl EmbeddedAssets {
     fn new() -> Result<Self> {
-        let mut files = HashMap::new();
-        let tar_gz = GzDecoder::new(ASSETS_TAR_GZ);
-        let mut archive = Archive::new(tar_gz);
-        for entry in archive.entries()? {
-            let mut entry = entry?;
-            if entry.header().entry_type().is_file() {
-                let mut path = entry.path()?.to_path_buf();
-                if let Ok(stripped) = path.strip_prefix("assets") {
-                    path = stripped.to_path_buf();
-                }
-                let mut content = Vec::new();
-                entry.read_to_end(&mut content)?;
-                files.insert(path, content);
-            }
+        Ok(Self)
+    }
+
+    fn get_file(&self, path: &Path) -> Option<std::borrow::Cow<'static, [u8]>> {
+        if let Some(path_str) = path.to_str() {
+            Assets::get(path_str).map(|f| f.data)
+        } else {
+            None
         }
-        Ok(Self { files })
     }
 
-    fn get_file(&self, path: &Path) -> Option<&[u8]> {
-        self.files.get(path).map(|v| v.as_slice())
-    }
-
-    fn get_dir_files(&self, path: &Path) -> Vec<(&Path, &[u8])> {
-        let mut files: Vec<_> = self
-            .files
-            .iter()
-            .filter(|(p, _)| p.starts_with(path))
-            .map(|(p, v)| (p.as_path(), v.as_slice()))
+    fn get_dir_files(&self, path: &Path) -> Vec<(PathBuf, std::borrow::Cow<'static, [u8]>)> {
+        let prefix = path.to_str().unwrap_or("");
+        let mut files: Vec<_> = Assets::iter()
+            .filter(|p| p.starts_with(prefix))
+            .filter_map(|p| {
+                let p_str = p.as_ref();
+                let p_buf = PathBuf::from(p_str);
+                Assets::get(p_str).map(|f| (p_buf, f.data))
+            })
             .collect();
-        files.sort_by_key(|(p, _)| *p);
+        files.sort_by(|(p1, _), (p2, _)| p1.cmp(p2));
         files
     }
 }
@@ -164,7 +150,7 @@ pub async fn assets(client: &Client) -> Result<()> {
             // do something with the directory
             for (file_path, contents) in dir_files {
                 log::debug!("file.path: {:?}", file_path);
-                match send_asset(client, &asset, file_path, contents, true).await {
+                match send_asset(client, &asset, &file_path, &contents, true).await {
                     Ok(res) => log::debug!("Response: {:?}", res),
                     Err(e) => {
                         log::error!("Failed to send asset: {e:?}");
@@ -175,7 +161,7 @@ pub async fn assets(client: &Client) -> Result<()> {
         } else if let Some(contents) = embedded_assets.get_file(&path) {
             // do something with the file
             log::debug!("file.path: {:?}", &path);
-            if let Err(e) = send_asset(client, &asset, &path, contents, false).await {
+            if let Err(e) = send_asset(client, &asset, &path, &contents, false).await {
                 log::error!("Failed to send asset: {e:?}");
                 error_count += 1;
             }
@@ -195,9 +181,9 @@ pub async fn assets(client: &Client) -> Result<()> {
 fn parse_assets_yml(product: Product, assets_store: &EmbeddedAssets) -> Result<Vec<Asset>> {
     let filename = format!("{}/{}", product.to_string().to_lowercase(), ASSETS_FILE);
     let contents = assets_store.get_file(Path::new(&filename)).ok_or(eyre!(
-        "embedded assets archive (assets.tar.gz) did not contain expected file {filename}"
+        "embedded assets did not contain expected file {filename}"
     ))?;
-    let assets = serde_yaml::from_slice(contents)?;
+    let assets = serde_yaml::from_slice(&contents)?;
     Ok(assets)
 }
 

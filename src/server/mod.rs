@@ -5,6 +5,7 @@
 mod api;
 mod api_key;
 mod assets;
+mod docs;
 mod file_upload;
 mod index;
 mod service_link;
@@ -105,6 +106,10 @@ impl Server {
                 .route("/service_link", post(service_link::form))
                 .route("/service_link/{id}", post(service_link::id))
                 .route("/style.css", get(assets::style))
+                .route("/marked.js", get(assets::marked))
+                .route("/marked-alert.js", get(assets::marked_alert))
+                .route("/docs/{*path}", get(docs::handler))
+                .route("/docs", get(|| async { axum::response::Redirect::to("/docs/index") }))
                 .route("/upload/process", post(file_upload::process))
                 .route("/upload/submit", post(file_upload::submit))
                 .route("/stats", patch(stats::handler))
