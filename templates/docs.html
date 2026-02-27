@@ -1,197 +1,134 @@
-<!doctype html>
-<html>
-    <head>
-        <title>ESDiag Documentation</title>
-        <link rel="stylesheet" href="/style.css" />
-        <link rel="stylesheet" href="/prism.css" />
-        <link rel="icon" type="image/svg+xml" href="/esdiag.svg" />
-        <link rel="apple-touch-icon" href="/esdiag.svg" />
-        <script type="module" src="/datastar.js"></script>
-        <script src="/prism.js"></script>
-        <script src="/prism-bash.js"></script>
-        <script src="/prism-json.js"></script>
-        <script src="/prism-json5.js"></script>
-        <style>
-            .docs-container {
-                display: flex;
-                flex-direction: row;
-                height: calc(100vh - 80px); /* Adjust based on header height */
-                overflow: hidden;
-            }
-            .docs-nav {
-                width: 250px;
-                background-color: #f8f9fa;
-                border-right: 1px solid #e0e0e0;
-                padding: 1rem;
-                overflow-y: auto;
-            }
-            .docs-nav ul {
-                list-style-type: none;
-                padding-left: 0;
-            }
-            .docs-nav li {
-                margin-bottom: 0.5rem;
-            }
-            .docs-nav a {
-                text-decoration: none;
-                color: #0068B5;
-            }
-            .docs-nav a:hover {
-                text-decoration: underline;
-            }
-            .docs-nav .active {
-                font-weight: bold;
-                color: #333;
-            }
-            .docs-nav .dir {
-                font-weight: bold;
-                margin-top: 1rem;
-                margin-bottom: 0.2rem;
-                color: #555;
-            }
-            .docs-nav .nested {
-                padding-left: 1rem;
-            }
-            .docs-content {
-                flex-grow: 1;
-                padding: 2rem 4rem;
-                overflow-y: auto;
-                background-color: #ffffff;
-            }
-            .docs-content h1, .docs-content h2, .docs-content h3 {
-                border-bottom: 1px solid #eee;
-                padding-bottom: 0.3em;
-                margin-top: 1.5em;
-            }
-            .docs-content code:not([class*="language-"]) {
-                background-color: #f6f8fa;
-                padding: 0.2em 0.4em;
-                border-radius: 3px;
-                font-size: 85%;
-            }
-            .docs-content pre:not([class*="language-"]) {
-                background-color: #f6f8fa;
-                padding: 16px;
-                overflow: auto;
-                border-radius: 3px;
-            }
-            /* GFM Alerts */
-            .markdown-alert {
-                padding: 8px 16px;
-                margin-bottom: 16px;
-                color: inherit;
-                border-left: 0.25em solid #d0d7de;
-            }
-            .markdown-alert > *:first-child {
-                margin-top: 0;
-            }
-            .markdown-alert > *:last-child {
-                margin-bottom: 0;
-            }
-            .markdown-alert .markdown-alert-title {
-                display: flex;
-                font-weight: 500;
-                align-items: center;
-                line-height: 1;
-                margin-bottom: 8px;
-            }
-            .markdown-alert .markdown-alert-title svg {
-                margin-right: 8px;
-                fill: currentColor;
-            }
-            .markdown-alert.markdown-alert-note {
-                border-left-color: #0969da;
-            }
-            .markdown-alert.markdown-alert-note .markdown-alert-title {
-                color: #0969da;
-            }
-            .markdown-alert.markdown-alert-tip {
-                border-left-color: #1a7f37;
-            }
-            .markdown-alert.markdown-alert-tip .markdown-alert-title {
-                color: #1a7f37;
-            }
-            .markdown-alert.markdown-alert-important {
-                border-left-color: #8250df;
-            }
-            .markdown-alert.markdown-alert-important .markdown-alert-title {
-                color: #8250df;
-            }
-            .markdown-alert.markdown-alert-warning {
-                border-left-color: #9a6700;
-            }
-            .markdown-alert.markdown-alert-warning .markdown-alert-title {
-                color: #9a6700;
-            }
-            .markdown-alert.markdown-alert-caution {
-                border-left-color: #cf222e;
-            }
-            .markdown-alert.markdown-alert-caution .markdown-alert-title {
-                color: #cf222e;
-            }
-        </style>
-    </head>
+{% extends "layout.html" %}
 
-    <body>
-        <header>
-            <div>
-                <a href="/" style="display: flex; align-items: center; text-decoration: none; color: inherit;">
-                    <img id="logo" src="/esdiag.svg" alt="Elastic Stack Diagnostics Logo" />
-                    <h1>Elastic Stack Diagnostics</h1>
-                </a>
-            </div>
-            <header-links>
-                <header-icon id="docs" title="Documentation">
-                    <a href="/docs/index" style="color: inherit; text-decoration: none;">
-                        <svg class="icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="16" height="16">
-                            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                            <path d="M6.5 2H20V22H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                        </svg>
-                    </a>
-                </header-icon>
-            </header-links>
-        </header>
+{% block title %}ESDiag Documentation{% endblock %}
 
-        <content>
-            <div class="docs-container" id="docs-container">
-                <nav class="docs-nav">
-                    <h3>Documentation</h3>
-                    <ul>
-                    {% for entry in toc %}
-                        {% if entry.is_dir %}
-                            <li class="dir">{{ entry.title }}</li>
-                        {% else %}
-                            <li class="{% if entry.level > 0 %}nested{% endif %}">
-                                <a style="cursor: pointer" data-on-click="@get('/docs/{{ entry.path }}')" class="{% if current_path == entry.path %}active{% endif %}">
-                                    {{ entry.title }}
-                                </a>
-                            </li>
-                        {% endif %}
-                    {% endfor %}
-                    </ul>
-                </nav>
-                
-                <main class="docs-content">
-                    <div id="markdown-rendered">Loading documentation...</div>
-                    <!-- Hide raw markdown content to prevent flashing before render -->
-                    <script type="text/markdown" id="markdown-raw" style="display:none">{{ markdown_content|safe }}</script>
-                </main>
-            </div>
-            
-            <script type="module">
-                import { marked } from "/marked.js";
-                import markedAlert from "/marked-alert.js";
-                
-                marked.use(markedAlert());
+{% block extra_head %}
+<link rel="stylesheet" href="/prism.css" />
+<script src="/prism.js"></script>
+<script src="/prism-bash.js"></script>
+<script src="/prism-json.js"></script>
+<script src="/prism-json5.js"></script>
+<style>
+    .docs-container {
+        display: flex;
+        flex-direction: row;
+        height: calc(100vh - 80px); /* Adjust based on header height */
+        overflow: hidden;
+    }
+    .docs-nav {
+        width: 250px;
+        background-color: #f8f9fa;
+        border-right: 1px solid #e0e0e0;
+        padding: 1rem;
+        overflow-y: auto;
+    }
+    .docs-nav ul {
+        list-style-type: none;
+        padding-left: 0;
+    }
+    .docs-nav li {
+        margin-bottom: 0.5rem;
+    }
+    .docs-nav a {
+        text-decoration: none;
+        color: #0068B5;
+    }
+    .docs-nav a:hover {
+        text-decoration: underline;
+    }
+    .docs-nav .active {
+        font-weight: bold;
+        color: #333;
+    }
+    .docs-nav .dir {
+        font-weight: bold;
+        margin-top: 1rem;
+        margin-bottom: 0.2rem;
+        color: #555;
+    }
+    .docs-nav .nested {
+        padding-left: 1rem;
+    }
+    .docs-content {
+        flex-grow: 1;
+        padding: 2rem 4rem;
+        overflow-y: auto;
+        background-color: #ffffff;
+    }
+    .docs-content h1, .docs-content h2, .docs-content h3 {
+        border-bottom: 1px solid #eee;
+        padding-bottom: 0.3em;
+        margin-top: 1.5em;
+    }
+    .docs-content code:not([class*="language-"]) {
+        background-color: #f6f8fa;
+        padding: 0.2em 0.4em;
+        border-radius: 3px;
+        font-size: 85%;
+    }
+    .docs-content pre:not([class*="language-"]) {
+        background-color: #f6f8fa;
+        padding: 16px;
+        overflow: auto;
+        border-radius: 3px;
+    }
+    /* GFM Alerts */
+    .markdown-alert {
+        padding: 8px 16px;
+        margin-bottom: 16px;
+        color: inherit;
+        border-left: 0.25em solid #d0d7de;
+    }
+    .markdown-alert > *:first-child {
+        margin-top: 0;
+    }
+    .markdown-alert > *:last-child {
+        margin-bottom: 0;
+    }
+    .markdown-alert .markdown-alert-title {
+        display: flex;
+        font-weight: 500;
+        align-items: center;
+        line-height: 1;
+        margin-bottom: 8px;
+    }
+    .markdown-alert .markdown-alert-title svg {
+        margin-right: 8px;
+        fill: currentColor;
+    }
+    .markdown-alert.markdown-alert-note {
+        border-left-color: #0969da;
+    }
+    .markdown-alert.markdown-alert-note .markdown-alert-title {
+        color: #0969da;
+    }
+    .markdown-alert.markdown-alert-tip {
+        border-left-color: #1a7f37;
+    }
+    .markdown-alert.markdown-alert-tip .markdown-alert-title {
+        color: #1a7f37;
+    }
+    .markdown-alert.markdown-alert-important {
+        border-left-color: #8250df;
+    }
+    .markdown-alert.markdown-alert-important .markdown-alert-title {
+        color: #8250df;
+    }
+    .markdown-alert.markdown-alert-warning {
+        border-left-color: #9a6700;
+    }
+    .markdown-alert.markdown-alert-warning .markdown-alert-title {
+        color: #9a6700;
+    }
+    .markdown-alert.markdown-alert-caution {
+        border-left-color: #cf222e;
+    }
+    .markdown-alert.markdown-alert-caution .markdown-alert-title {
+        color: #cf222e;
+    }
+</style>
+{% endblock %}
 
-                const markdownContent = document.getElementById('markdown-raw').textContent;
-                document.getElementById('markdown-rendered').innerHTML = marked.parse(markdownContent);
-                
-                // Trigger Prism to highlight any code blocks
-                if (window.Prism) {
-                    window.Prism.highlightAll();
-                }
-            </script>
-        </content>
-    </body>
-</html>
+{% block content %}
+{% include "docs-component.html" %}
+{% endblock %}

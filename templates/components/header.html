@@ -1,0 +1,100 @@
+        <header>
+            <div>
+                <img id="logo" src="/esdiag.svg" alt="Elastic Stack Diagnostics Logo" />
+                <h1>Elastic Stack Diagnostics</h1>
+            </div>
+            <header-links>
+                <header-icon id="docs" title="Documentation">
+                    <a style="cursor: pointer" data-on-click="@get('/docs/index')" style="color: inherit; text-decoration: none;">
+                        <svg class="icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="16" height="16">
+                            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            <path d="M6.5 2H20V22H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </a>
+                </header-icon>
+                <header-icon id="help">
+                    <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="16"
+                        height="16"
+                        viewBox="0 0 16 16"
+                        class="icon"
+                        role="img"
+                        data-icon-type="question"
+                        data-is-loaded="true"
+                        aria-hidden="true"
+                        fill="#ffffff"
+                    >
+                        <path
+                            fill-rule="evenodd"
+                            d="M8 14A6 6 0 1 0 8 2a6 6 0 0 0 0 12Zm0 1A7 7 0 1 0 8 1a7 7 0 0 0 0 14Z"
+                        ></path>
+                        <path d="M9 11a1 1 0 1 1-2 0 1 1 0 0 1 2 0Z"></path>
+                        <path
+                            fill-rule="evenodd"
+                            d="M8 4h.033l.067.004a2.343 2.343 0 0 1 .874.236c.246.124.508.317.708.616.2.302.318.682.318 1.144 0 .463-.117.843-.318 1.145-.2.299-.462.492-.708.615a2.274 2.274 0 0 1-.474.172V9h-1V7H8c.005 0 .015 0 .029-.002a1.344 1.344 0 0 0 .498-.133.817.817 0 0 0 .323-.275C8.93 6.47 9 6.288 9 6c0-.287-.07-.47-.15-.59a.818.818 0 0 0-.324-.275 1.344 1.344 0 0 0-.555-.133 1.344 1.344 0 0 0-.498.133.817.817 0 0 0-.323.275C7.07 5.53 7 5.713 7 6H6c0-.462.117-.843.318-1.144.2-.3.462-.492.708-.616a2.343 2.343 0 0 1 .94-.24H8Z"
+                        ></path>
+                    </svg>
+                </header-icon>
+                <header-icon id="kibana">
+                    <svg
+                        class="icon"
+                        width="16"
+                        height="16"
+                        viewBox="0 0 64 64"
+                        fill="none"
+                        xmlns="http://www.w3.org/2000/svg"
+                    >
+                        <g clip-path="url(#clip0_0_6522)">
+                            <path
+                                fill-rule="evenodd"
+                                clip-rule="evenodd"
+                                d="M11 25.2499V53.5809L31.137 30.3919C25.149 27.1299 18.299 25.2499 11 25.2499Z"
+                                fill="white"
+                            />
+                            <path
+                                fill-rule="evenodd"
+                                clip-rule="evenodd"
+                                d="M11 4.99991V25.2499C18.299 25.2499 25.149 27.1299 31.137 30.3919L53.188 4.99991H11Z"
+                                fill="white"
+                            />
+                            <path
+                                fill-rule="evenodd"
+                                clip-rule="evenodd"
+                                d="M35.4434 33.059L14.7754 56.86L12.9164 59H52.3414C50.1784 48.342 43.9924 39.149 35.4434 33.059Z"
+                                fill="white"
+                            />
+                        </g>
+                        <defs>
+                            <clipPath id="clip0_0_6522">
+                                <rect width="64" height="64" fill="white" />
+                            </clipPath>
+                        </defs>
+                    </svg>
+                    <popup-menu>
+                        <popup-menu-header>Kibana Links</popup-menu-header>
+                        <popup-menu-item>
+                            <a
+                                target="_blank"
+                                href="{{ kibana_url }}/app/dashboards#/view/diagnostic-list?_g=(filters:!(),refreshInterval:(pause:!t,value:60000),time:(from:now-30d,to:now))&_a=(filters:!(('$state':(store:appState),meta:(alias:!n,disabled:!f,index:'metrics-diagnostic-esdiag',key:diagnostic.user,negate:!f,params:(query:'{{ user }}'),type:phrase),query:(match_phrase:(diagnostic.user:'{{ user }}')))),viewMode:view)"
+                                >My Diagnostics</a
+                            >
+                        </popup-menu-item>
+                        <popup-menu-item>
+                            <a
+                                target="_blank"
+                                href="{{ kibana_url }}/app/dashboards#/view/esdiag-readme?_g=(filters:!(),refreshInterval:(pause:!t,value:60000),time:(from:now-30d,to:now))"
+                                >ESDiag Readme</a
+                            >
+                        </popup-menu-item>
+                    </popup-menu>
+                </header-icon>
+                <header-icon id="user-circle">
+                    <user-icon class="user-circle"> {{ user_initial }} </user-icon>
+                    <popup-menu>
+                        <popup-menu-header>Username</popup-menu-header>
+                        <popup-menu-item
+                            id="username-display"
+                            data-signals-auth.header="{{ auth_header }}"
+                            data-signals-metadata.user="'{{ user }}'"
+                            data-text="$metadata.user"

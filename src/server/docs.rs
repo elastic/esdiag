@@ -21,6 +21,23 @@ pub struct DocsTemplate {
     pub toc: Vec<TocEntry>,
     pub current_path: String,
     pub markdown_content: String,
+    // Add layout vars
+    pub auth_header: bool,
+    pub debug: bool,
+    pub user: String,
+    pub user_initial: char,
+    pub version: String,
+    pub kibana_url: String,
+    pub exporter: String,
+    pub stats: String,
+}
+
+#[derive(Template)]
+#[template(path = "docs-component.html")]
+pub struct DocsComponentTemplate {
+    pub toc: Vec<TocEntry>,
+    pub current_path: String,
+    pub markdown_content: String,
 }
 
 pub struct TocEntry {
@@ -30,7 +47,11 @@ pub struct TocEntry {
     pub is_dir: bool,
 }
 
-pub async fn handler(headers: HeaderMap, Path(mut path): Path<String>) -> impl IntoResponse {
+pub async fn handler(
+    headers: HeaderMap, 
+    axum::extract::State(state): axum::extract::State<std::sync::Arc<crate::server::ServerState>>,
+    Path(mut path): Path<String>
+) -> impl IntoResponse {
     if path.is_empty() {
         path = "index".to_string();
     }
@@ -56,13 +77,12 @@ pub async fn handler(headers: HeaderMap, Path(mut path): Path<String>) -> impl I
                 path
             };
 
-            let template = DocsTemplate {
-                toc,
-                current_path,
-                markdown_content,
-            };
-
             if is_datastar {
+                let template = DocsComponentTemplate {
+                    toc,
+                    current_path,
+                    markdown_content,
+                };
                 match patch_template(template) {
                     Ok(event) => {
                         let stream = stream::once(async move { Ok::<Event, Infallible>(event) });
@@ -74,6 +94,29 @@ pub async fn handler(headers: HeaderMap, Path(mut path): Path<String>) -> impl I
                     }
                 }
             } else {
+                let (auth_header, user_initial, user_email) = match crate::server::get_user_email(&headers) {
+                    (auth_header, Some(email)) => (
+                        auth_header,
+                        email.chars().next().unwrap_or('_').to_ascii_uppercase(),
+                        email,
+                    ),
+                    _ => (false, '_', "Anonymous".to_string()),
+                };
+
+                let template = DocsTemplate {
+                    toc,
+                    current_path,
+                    markdown_content,
+                    auth_header,
+                    debug: log::max_level() == log::Level::Debug,
+                    exporter: state.exporter.to_string(),
+                    kibana_url: state.kibana_url.clone(),
+                    stats: state.get_stats_as_signals().await,
+                    user: user_email,
+                    user_initial,
+                    version: env!("CARGO_PKG_VERSION").to_string(),
+                };
+                
                 match template.render() {
                     Ok(html) => Html(html).into_response(),
                     Err(err) => {
