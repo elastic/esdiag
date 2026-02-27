@@ -1,0 +1,4 @@
+interface:
+  display_name: "ESDiag CLI"
+  short_description: "Run and operate esdiag diagnostic workflows"
+  default_prompt: "Use $esdiag to configure hosts, run setup, and process diagnostics with the right command sequence."
