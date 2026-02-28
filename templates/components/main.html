@@ -1,29 +1,29 @@
 <content id="main-content">
     <h2>Process Diagnostics</h2>
-    <input-form id="input-form" data-signals-loading="false" data-signals-processing="false">
+    <input-form id="input-form" data-signals:loading="false" data-signals:processing="false">
         <diagnostic-form id="diagnostic-form">
-            <tab-links data-signals-tab="'file-upload'">
+            <tab-links data-signals:tab="'file-upload'">
                 <button
                     id="tab-file-upload"
                     class="tab active"
-                    data-on-click="$tab = 'file-upload'"
-                    data-class-active="$tab === 'file-upload'"
+                    data-on:click="$tab = 'file-upload'"
+                    data-class:active="$tab === 'file-upload'"
                 >
                     File Upload
                 </button>
                 <button
                     id="tab-service-link"
                     class="tab"
-                    data-on-click="$tab = 'service-link'"
-                    data-class-active="$tab === 'service-link'"
+                    data-on:click="$tab = 'service-link'"
+                    data-class:active="$tab === 'service-link'"
                 >
                     Service Link
                 </button>
                 <button
                     id="tab-api-key"
                     class="tab"
-                    data-on-click="$tab = 'api-key'"
-                    data-class-active="$tab === 'api-key'"
+                    data-on:click="$tab = 'api-key'"
+                    data-class:active="$tab === 'api-key'"
                 >
                     API Key
                 </button>
@@ -32,19 +32,19 @@
                 <form
                     id="upload-form"
                     data-show="$tab === 'file-upload'"
-                    data-signals-loading="false"
-                    data-signals-file_upload.job_id="0"
+                    data-signals:loading="false"
+                    data-signals:file_upload.job_id="0"
                     enctype="multipart/form-data"
                 >
                     <info-text class="margin-after">Process a file uploaded from your local computer</info-text>
                     <input type="file" id="file-input" name="file" accept=".zip" required value="" style="opacity: 0" />
                     <div
                         id="dropzone"
-                        data-on-dragenter="$_drag-on=true"
-                        data-on-dragover="$_drag-on=true"
-                        data-on-dragleave="$_drag-on=false"
-                        data-on-drop="$_drag-on=false"
-                        data-class-drag-over="$_drag-on"
+                        data-on:dragenter="$_drag-on=true"
+                        data-on:dragover="$_drag-on=true"
+                        data-on:dragleave="$_drag-on=false"
+                        data-on:drop="$_drag-on=false"
+                        data-class:drag-over="$_drag-on"
                         class="dropzone"
                     >
                         <div class="file-icon">
@@ -241,8 +241,8 @@
                             id="curl-command"
                             class="curl-textarea"
                             placeholder="Paste a curl command or case comment to auto-fill the form"
-                            data-bind-service_link._curl
-                            data-on-input="{
+                            data-bind:service_link._curl
+                            data-on:input="{
                             $service_link.url = parseUrl($service_link._curl),
                             $service_link.token = parseToken($service_link._curl),
                             $service_link.filename = parseFilename($service_link._curl)
@@ -251,7 +251,7 @@
                         <text-link
                             id="curl-command-clear"
                             data-show="$service_link._curl !== ''"
-                            data-on-click="{
+                            data-on:click="{
                             $service_link._curl = '';
                             $service_link.url = '';
                             $service_link.token = '';
@@ -268,8 +268,8 @@
                             type="text"
                             id="service-token"
                             name="token"
-                            data-bind-service_link.token
-                            data-attr-readonly="$service_link._curl !== ''"
+                            data-bind:service_link.token
+                            data-attr:readonly="$service_link._curl !== ''"
                             class="form-input"
                             required
                             placeholder="Enter authentication token"
@@ -281,8 +281,8 @@
                             type="url"
                             id="service-url"
                             name="url"
-                            data-bind-service_link.url
-                            data-attr-readonly="$service_link._curl !== ''"
+                            data-bind:service_link.url
+                            data-attr:readonly="$service_link._curl !== ''"
                             class="form-input"
                             required
                             placeholder="https://example.com/path/to/diagnostic.zip"
@@ -294,8 +294,8 @@
                             type="text"
                             id="service-filename"
                             name="filename"
-                            data-bind-service_link.filename
-                            data-attr-readonly="$service_link._curl !== ''"
+                            data-bind:service_link.filename
+                            data-attr:readonly="$service_link._curl !== ''"
                             class="form-input"
                             required
                             placeholder="diagnostic.zip"
@@ -306,8 +306,8 @@
                         class="button"
                         type="button"
                         value="Process"
-                        data-on-click="$loading = true; $message = 'Connecting to Elastic Upload service...'; @post('/service_link')"
-                        data-attr-disabled="$loading || !$service_link.url || !$service_link.token"
+                        data-on:click="$loading = true; $message = 'Connecting to Elastic Upload service...'; @post('/service_link')"
+                        data-attr:disabled="$loading || !$service_link.url || !$service_link.token"
                     />
                     <script>
                         // Extract token from Authorization header
@@ -345,7 +345,7 @@
                             id="elasticsearch-url"
                             name="url"
                             autocomplete="username"
-                            data-bind-es_api.url
+                            data-bind:es_api.url
                             class="form-input"
                             required
                             placeholder="https://elasticsearch.example.com/"
@@ -358,7 +358,7 @@
                             id="api-key"
                             name="api-key"
                             autocomplete="current-password"
-                            data-bind-es_api.key
+                            data-bind:es_api.key
                             class="form-input"
                             required
                             placeholder="Cluster API key"
@@ -370,8 +370,8 @@
                         class="button"
                         type="button"
                         value="Process"
-                        data-on-click="$loading = true; $message = 'Connecting with API key...'; @post('/api_key')"
-                        data-attr-disabled="$loading || !$es_api.url || !$es_api.key"
+                        data-on:click="$loading = true; $message = 'Connecting with API key...'; @post('/api_key')"
+                        data-attr:disabled="$loading || !$es_api.url || !$es_api.key"
                     />
                 </form>
             </tab-content>
@@ -384,11 +384,11 @@
                     type="text"
                     id="username"
                     name="username"
-                    data-bind-metadata.user
+                    data-bind:metadata.user
                     placeholder="Username"
                     autocomplete="none"
                     class="form-input"
-                    data-attr-disabled="$auth.header || $processing || $loading"
+                    data-attr:disabled="$auth.header || $processing || $loading"
                 />
             </input-group>
             <input-group>
@@ -397,10 +397,10 @@
                     type="text"
                     id="account"
                     name="account"
-                    data-bind-metadata.account
+                    data-bind:metadata.account
                     placeholder="Account"
                     class="form-input"
-                    data-attr-disabled="$loading || $processing"
+                    data-attr:disabled="$loading || $processing"
                 />
             </input-group>
             <input-group>
@@ -409,10 +409,10 @@
                     type="text"
                     id="case-number"
                     name="case-number"
-                    data-bind-metadata.case_number
+                    data-bind:metadata.case_number
                     placeholder="Case Number"
                     class="form-input"
-                    data-attr-disabled="$loading || $processing"
+                    data-attr:disabled="$loading || $processing"
                 />
             </input-group>
             <input-group>
@@ -421,16 +421,16 @@
                     type="text"
                     id="opportunity"
                     name="opportunity"
-                    data-bind-metadata.opportunity
+                    data-bind:metadata.opportunity
                     placeholder="Opportunity"
                     class="form-input"
-                    data-attr-disabled="$loading || $processing"
+                    data-attr:disabled="$loading || $processing"
                 />
             </input-group>
             <text-link
                 id="metadata-clear"
                 data-show="$metadata.account || $metadata.case_number || $metadata.opportunity"
-                data-on-click="{
+                data-on:click="{
                 $metadata.account = '';
                 $metadata.case_number = '';
                 $metadata.opportunity = '';
@@ -450,8 +450,8 @@
     {% if let Some(key_id) = key_id %}
     <div
         id="job-{{ key_id }}"
-        data-signals-_job_id="true"
-        data-on-load="$loading = true; $tab='api-key'; $message = 'Processing api key {{ key_id }}'; @post('/api_key/{{ key_id }}')"
+        data-signals:_job_id="true"
+        data-on:load="$loading = true; $tab='api-key'; $message = 'Processing api key {{ key_id }}'; @post('/api_key/{{ key_id }}')"
         class="status-box loading"
     >
         <div class="spinner"></div>
@@ -460,8 +460,8 @@
     {% else if let Some(link_id) = link_id %}
     <div
         id="job-{{ link_id }}"
-        data-signals-_job_id="true"
-        data-on-load="$loading = true; $tab='service-link'; $message = 'Forwarding service link {{ link_id }}'; @post('/service_link/{{ link_id }}')"
+        data-signals:_job_id="true"
+        data-on:load="$loading = true; $tab='service-link'; $message = 'Forwarding service link {{ link_id }}'; @post('/service_link/{{ link_id }}')"
         class="status-box loading"
     >
         <div class="spinner"></div>
@@ -470,8 +470,8 @@
     {% else if let Some(upload_id) = upload_id %}
     <div
         id="job-{{ upload_id }}"
-        data-signals-_job_id="true"
-        data-on-load="$loading = true; $message = 'Processing file upload {{ upload_id }}'; @post('/file_upload/{{ upload_id }}')"
+        data-signals:_job_id="true"
+        data-on:load="$loading = true; $message = 'Processing file upload {{ upload_id }}'; @post('/file_upload/{{ upload_id }}')"
         class="status-box loading"
     >
         <div class="spinner"></div>

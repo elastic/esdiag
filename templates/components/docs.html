@@ -1,9 +1,9 @@
 <docs-content
     id="main-content"
-    data-on-hashchange__window="@get('/docs/'+window.location.hash.substring(1), {
+    data-on:hashchange__window="@get('/docs/'+window.location.hash.substring(1), {
     filterSignals: {exclude: /.*/}
     })"
-    data-on-hashchange__window__delay.100ms="if (window.Prism) { window.Prism.highlightAllUnder(el); }"
+    data-on:hashchange__window__delay.100ms="if (window.Prism) { window.Prism.highlightAllUnder($el); }"
 >
     <docs-nav>
         <h3>Documentation</h3>

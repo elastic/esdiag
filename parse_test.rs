@@ -2,7 +2,7 @@ extern crate pulldown_cmark;
 use pulldown_cmark::{html, Options, Parser};
 
 fn main() {
-    let markdown_content = std::fs::read_to_string("test.md").unwrap();
+    let markdown_content = "```json\n{\"foo\": \"bar\"}\n```".to_string();
     let mut options = Options::empty();
     options.insert(Options::ENABLE_STRIKETHROUGH);
     options.insert(Options::ENABLE_TABLES);

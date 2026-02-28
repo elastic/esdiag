@@ -18,8 +18,8 @@
             <footer-center id="exporter">Output: {{ exporter }}</footer-center>
             <footer-right
                 data-signals="{ 'stats': {{ stats }} }"
-                data-on-load="@patch('/stats')"
-                data-on-patch-signals-filter="stats"
+                data-on:load="@patch('/stats')"
+                data-on:patch-signals-filter="stats"
             >
                 <span id="status" data-text="$loading ? 'Loading' : $processing ? 'Processing' : 'Ready'">Ready </span>
                 | <span data-text="Intl.NumberFormat().format($stats.jobs.total)">0</span> diags |
