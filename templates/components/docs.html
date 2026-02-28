@@ -122,7 +122,7 @@
         }
     </style>
 
-    <div class="docs-container">
+    <div class="docs-container" data-init="if (window.Prism) { window.Prism.highlightAllUnder($el); }">
         <nav class="docs-nav">
             <h3>Documentation</h3>
             <ul>
@@ -131,7 +131,7 @@
                 {% else %}
                 <li class="{% if entry.level > 0 %}nested{% endif %}">
                     <a
-                        href="/docs/{{ entry.path }}"
+                        href="#/docs/{{ entry.path }}"
                         data-on-click="@get('/docs/{{ entry.path }}')"
                         class="{% if current_path == entry.path %}active{% endif %}"
                     >
@@ -152,10 +152,5 @@
         import "/prism-bash.js";
         import "/prism-json.js";
         import "/prism-json5.js";
-
-        // Trigger Prism to highlight any code blocks
-        if (window.Prism) {
-            window.Prism.highlightAll();
-        }
     </script>
 </content>
