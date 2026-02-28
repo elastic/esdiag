@@ -18,7 +18,7 @@ mod logstash;
 pub use collector::Collector;
 pub use diagnostic::{
     DataSource, DiagnosticManifest, DiagnosticReport, Manifest,
-    data_source::PathType,
+    data_source::{PathType, init_sources},
     manifest::ManifestBuilder,
     report::{BatchResponse, Identifiers, ProcessorSummary},
 };

@@ -77,6 +77,27 @@ pub fn get_sources() -> &'static HashMap<&'static str, HashMap<String, Source>> 
     })
 }
 
+pub fn init_sources(override_path: Option<String>) -> Result<()> {
+    let mut products = HashMap::new();
+
+    let es_content = if let Some(path) = override_path {
+        std::fs::read_to_string(&path)
+            .map_err(|e| eyre!("Failed to read override sources file at {}: {}", path, e))?
+    } else {
+        include_str!("../../../assets/elasticsearch/sources.yml").to_string()
+    };
+
+    let es_sources: HashMap<String, Source> = serde_yaml::from_str(&es_content)
+        .map_err(|e| eyre!("Failed to parse sources.yml: {}", e))?;
+
+    products.insert("elasticsearch", es_sources);
+
+    SOURCES
+        .set(products)
+        .map_err(|_| eyre!("Sources already initialized"))?;
+    Ok(())
+}
+
 pub fn get_source(product: &str, name: &str) -> Result<&'static Source> {
     let sources = get_sources();
     let product_sources = sources

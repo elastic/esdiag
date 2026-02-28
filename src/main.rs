@@ -38,6 +38,9 @@ struct Cli {
     /// Enable debug logging
     #[arg(global = true, long)]
     debug: bool,
+    /// Override the path to sources.yml
+    #[arg(global = true, long)]
+    sources: Option<String>,
     /// Commands
     #[command(subcommand)]
     command: Commands,
@@ -174,6 +177,10 @@ async fn main() -> Result<()> {
     }));
 
     clear_last_run_files()?;
+
+    if let Some(sources) = cli.sources.clone() {
+        esdiag::processor::init_sources(Some(sources))?;
+    }
 
     match run(cli).await {
         Ok(cmd) => {
