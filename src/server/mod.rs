@@ -112,7 +112,7 @@ impl Server {
                 .route("/prism-json5.js", get(assets::prism_json5))
                 .route("/prism.css", get(assets::prism_css))
                 .route("/docs/{*path}", get(docs::handler))
-                .route("/docs", get(|| async { axum::response::Redirect::to("/docs/index") }))
+                .route("/docs", get(docs::handler_index))
                 .route("/upload/process", post(file_upload::process))
                 .route("/upload/submit", post(file_upload::submit))
                 .route("/stats", patch(stats::handler))

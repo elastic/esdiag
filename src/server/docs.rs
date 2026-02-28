@@ -44,6 +44,13 @@ pub struct TocEntry {
     pub is_dir: bool,
 }
 
+pub async fn handler_index(
+    headers: HeaderMap, 
+    state: axum::extract::State<std::sync::Arc<crate::server::ServerState>>
+) -> impl IntoResponse {
+    handler(headers, state, Path("index".to_string())).await
+}
+
 pub async fn handler(
     headers: HeaderMap, 
     axum::extract::State(state): axum::extract::State<std::sync::Arc<crate::server::ServerState>>,
