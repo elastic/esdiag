@@ -34,25 +34,6 @@ pub async fn style() -> impl IntoResponse {
     serve_server_asset("style.css", "text/css")
 }
 
-pub async fn marked() -> impl IntoResponse {
-    match Assets::get("marked.js") {
-        Some(content) => {
-            let body = content.data.into_owned();
-            ([(header::CONTENT_TYPE, "text/javascript")], body).into_response()
-        }
-        None => StatusCode::NOT_FOUND.into_response(),
-    }
-}
-
-pub async fn marked_alert() -> impl IntoResponse {
-    match Assets::get("marked-alert.js") {
-        Some(content) => {
-            let body = content.data.into_owned();
-            ([(header::CONTENT_TYPE, "text/javascript")], body).into_response()
-        }
-        None => StatusCode::NOT_FOUND.into_response(),
-    }
-}
 
 pub async fn prism() -> impl IntoResponse {
     match Assets::get("prism.js") {

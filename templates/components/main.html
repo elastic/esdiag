@@ -1,4 +1,4 @@
-
+<content id="main-content">
     <h2>Process Diagnostics</h2>
     <input-form id="input-form" data-signals-loading="false" data-signals-processing="false">
         <diagnostic-form id="diagnostic-form">
@@ -37,15 +37,7 @@
                     enctype="multipart/form-data"
                 >
                     <info-text class="margin-after">Process a file uploaded from your local computer</info-text>
-                    <input
-                        type="file"
-                        id="file-input"
-                        name="file"
-                        accept=".zip"
-                        required
-                        value=""
-                        style="opacity: 0"
-                    />
+                    <input type="file" id="file-input" name="file" accept=".zip" required value="" style="opacity: 0" />
                     <div
                         id="dropzone"
                         data-on-dragenter="$_drag-on=true"
@@ -244,9 +236,7 @@
                         <a href="https://upload.elastic.co" target="_blank">https://upload.elastic.co</a>
                     </info-text>
                     <input-group>
-                        <label for="curl-command" class="form-label"
-                            >Curl Command or Case Comment (Optional)</label
-                        >
+                        <label for="curl-command" class="form-label">Curl Command or Case Comment (Optional)</label>
                         <textarea
                             id="curl-command"
                             class="curl-textarea"
@@ -347,9 +337,7 @@
                 </form>
 
                 <form id="api-key-form" data-show="$tab === 'api-key'" style="display: none">
-                    <info-text class="margin-after"
-                        >Process directly from an Elasticsearch cluster's API.</info-text
-                    >
+                    <info-text class="margin-after">Process directly from an Elasticsearch cluster's API.</info-text>
                     <input-group>
                         <label for="elasticsearch-url" class="form-label">Elasticsearch URL</label>
                         <input
@@ -454,12 +442,7 @@
         </metadata-form>
     </input-form>
 
-    <div
-        id="current-status"
-        data-show="$loading && $_job_id === '' "
-        class="status-box loading"
-        style="display: none"
-    >
+    <div id="current-status" data-show="$loading && $_job_id === '' " class="status-box loading" style="display: none">
         <div class="spinner"></div>
         <span id="status-message" data-text="$message">Uploading...</span>
     </div>
@@ -495,4 +478,4 @@
         Loading file upload {{ upload_id }}
     </div>
     {% endif %}
-
+</content>

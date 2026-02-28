@@ -106,8 +106,6 @@ impl Server {
                 .route("/service_link", post(service_link::form))
                 .route("/service_link/{id}", post(service_link::id))
                 .route("/style.css", get(assets::style))
-                .route("/marked.js", get(assets::marked))
-                .route("/marked-alert.js", get(assets::marked_alert))
                 .route("/prism.js", get(assets::prism))
                 .route("/prism-bash.js", get(assets::prism_bash))
                 .route("/prism-json.js", get(assets::prism_json))

@@ -5,8 +5,8 @@ Copyright 2012-2025 Elasticsearch B.V.
 This document lists the licenses of the projects used in esdiag.
 
 ## Overview of licenses
-- [Apache License 2.0](#Apache-2.0) (212)
-- [MIT License](#MIT) (64)
+- [Apache License 2.0](#Apache-2.0) (214)
+- [MIT License](#MIT) (66)
 - [Unicode License v3](#Unicode-3.0) (19)
 - [BSD 3-Clause "New" or "Revised" License](#BSD-3-Clause) (2)
 - [zlib License](#Zlib) (2)
@@ -3708,6 +3708,7 @@ Apache License 2.0
 - [flate2]( https://github.com/rust-lang/flate2-rs ) 1.1.9
 - [fnv]( https://github.com/servo/rust-fnv ) 1.0.7
 - [form_urlencoded]( https://github.com/servo/rust-url ) 1.2.2
+- [getopts]( https://github.com/rust-lang/getopts ) 0.2.24
 - [hashbrown]( https://github.com/rust-lang/hashbrown ) 0.16.1
 - [heck]( https://github.com/withoutboats/heck ) 0.5.0
 - [httparse]( https://github.com/seanmonstar/httparse ) 1.10.1
@@ -3751,6 +3752,7 @@ Apache License 2.0
 - [tar]( https://github.com/alexcrichton/tar-rs ) 0.4.44
 - [tempfile]( https://github.com/Stebalien/tempfile ) 3.26.0
 - [unicase]( https://github.com/seanmonstar/unicase ) 2.9.0
+- [unicode-width]( https://github.com/unicode-rs/unicode-width ) 0.2.2
 - [url]( https://github.com/servo/rust-url ) 2.5.8
 - [uuid]( https://github.com/uuid-rs/uuid ) 1.21.0
 - [version_check]( https://github.com/SergioBenitez/version_check ) 0.9.5
@@ -7056,6 +7058,38 @@ MIT License
 The MIT License
 
 Copyright (c) 2016 Takeru Ohta <phjgt308@gmail.com>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+
+```
+### MIT
+MIT License
+
+#### Used by
+- [pulldown-cmark-escape]( https://github.com/raphlinus/pulldown-cmark ) 0.11.0
+- [pulldown-cmark]( https://github.com/raphlinus/pulldown-cmark ) 0.13.1
+
+#### License
+```
+The MIT License
+
+Copyright 2015 Google Inc. All rights reserved.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

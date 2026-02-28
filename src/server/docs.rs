@@ -2,30 +2,22 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
+use crate::embeds::DocsAssets;
 use askama::Template;
 use axum::{
     extract::Path,
-    http::{HeaderMap, StatusCode},
+    http::StatusCode,
     response::{Html, IntoResponse},
 };
-use crate::embeds::DocsAssets;
+use pulldown_cmark::{html, Options, Parser};
 use std::path::PathBuf;
 
 #[derive(Template)]
-#[template(path = "docs.html")]
+#[template(path = "components/docs.html")]
 pub struct DocsTemplate {
     pub toc: Vec<TocEntry>,
     pub current_path: String,
-    pub markdown_content: String,
-    // Add layout vars
-    pub auth_header: bool,
-    pub debug: bool,
-    pub user: String,
-    pub user_initial: char,
-    pub version: String,
-    pub kibana_url: String,
-    pub exporter: String,
-    pub stats: String,
+    pub html_content: String,
 }
 
 pub struct TocEntry {
@@ -35,15 +27,11 @@ pub struct TocEntry {
     pub is_dir: bool,
 }
 
-pub async fn handler(
-    headers: HeaderMap, 
-    axum::extract::State(state): axum::extract::State<std::sync::Arc<crate::server::ServerState>>,
-    Path(mut path): Path<String>
-) -> impl IntoResponse {
+pub async fn handler(Path(mut path): Path<String>) -> impl IntoResponse {
     if path.is_empty() {
         path = "index".to_string();
     }
-    
+
     // Add .md extension if not present
     let file_path = if !path.ends_with(".md") {
         format!("{}.md", path)
@@ -53,41 +41,46 @@ pub async fn handler(
 
     match DocsAssets::get(&file_path) {
         Some(content) => {
-            let markdown_content = String::from_utf8_lossy(&content.data).into_owned();
-            let toc = generate_toc();
+            let markdown_content = String::from_utf8_lossy(&content.data);
             
+            // Set up pulldown-cmark parser with options
+            let mut options = Options::empty();
+            options.insert(Options::ENABLE_STRIKETHROUGH);
+            options.insert(Options::ENABLE_TABLES);
+            options.insert(Options::ENABLE_FOOTNOTES);
+            options.insert(Options::ENABLE_TASKLISTS);
+            options.insert(Options::ENABLE_HEADING_ATTRIBUTES);
+            options.insert(Options::ENABLE_GFM); // GitHub Flavored Markdown
+            
+            let parser = Parser::new_ext(&markdown_content, options);
+
+            // Write to a new String buffer.
+            let mut html_content = String::new();
+            html::push_html(&mut html_content, parser);
+
+            let toc = generate_toc();
+
             // Remove .md suffix for the current_path comparison
             let current_path = if path.ends_with(".md") {
-                path[0..path.len()-3].to_string()
+                path[0..path.len() - 3].to_string()
             } else {
                 path
-            };
-
-            let (auth_header, user_initial, user_email) = match crate::server::get_user_email(&headers) {
-                (auth_header, Some(email)) => (
-                    auth_header,
-                    email.chars().next().unwrap_or('_').to_ascii_uppercase(),
-                    email,
-                ),
-                _ => (false, '_', "Anonymous".to_string()),
             };
 
             let template = DocsTemplate {
                 toc,
                 current_path,
-                markdown_content,
-                auth_header,
-                debug: log::max_level() == log::Level::Debug,
-                exporter: state.exporter.to_string(),
-                kibana_url: state.kibana_url.clone(),
-                stats: state.get_stats_as_signals().await,
-                user: user_email,
-                user_initial,
-                version: env!("CARGO_PKG_VERSION").to_string(),
+                html_content,
             };
-            
+
             match template.render() {
-                Ok(html) => Html(html).into_response(),
+                Ok(html) => {
+                    let mut response = Html(html).into_response();
+                    let headers = response.headers_mut();
+                    headers.insert("datastar-selector", "#main-content".parse().unwrap());
+                    headers.insert("datastar-mode", "inner".parse().unwrap());
+                    response
+                },
                 Err(err) => {
                     log::error!("Template rendering error: {}", err);
                     (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error").into_response()
@@ -101,7 +94,7 @@ pub async fn handler(
 fn generate_toc() -> Vec<TocEntry> {
     let mut entries = Vec::new();
     let mut files: Vec<_> = DocsAssets::iter().map(|p| p.into_owned()).collect();
-    
+
     // Simple sort to ensure stable ordering
     files.sort();
 
@@ -109,7 +102,7 @@ fn generate_toc() -> Vec<TocEntry> {
 
     for file in files {
         let path = PathBuf::from(&file);
-        
+
         // Handle directories
         if let Some(parent) = path.parent() {
             let parent_str = parent.to_string_lossy().into_owned();
@@ -127,11 +120,16 @@ fn generate_toc() -> Vec<TocEntry> {
         }
 
         // Format title from filename
-        let title = format_title(path.file_stem().unwrap_or_default().to_str().unwrap_or(&file));
-        
+        let title = format_title(
+            path.file_stem()
+                .unwrap_or_default()
+                .to_str()
+                .unwrap_or(&file),
+        );
+
         // Path without .md
         let display_path = if file.ends_with(".md") {
-            file[0..file.len()-3].to_string()
+            file[0..file.len() - 3].to_string()
         } else {
             file.clone()
         };
