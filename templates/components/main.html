@@ -450,8 +450,8 @@
     {% if let Some(key_id) = key_id %}
     <div
         id="job-{{ key_id }}"
+        data-init="$loading = true; $tab='api-key'; $message = 'Processing api key {{ key_id }}'; @post('/api_key/{{ key_id }}')"
         data-signals:_job_id="true"
-        data-on:load="$loading = true; $tab='api-key'; $message = 'Processing api key {{ key_id }}'; @post('/api_key/{{ key_id }}')"
         class="status-box loading"
     >
         <div class="spinner"></div>
@@ -460,8 +460,8 @@
     {% else if let Some(link_id) = link_id %}
     <div
         id="job-{{ link_id }}"
+        data-init="$loading = true; $tab='service-link'; $message = 'Forwarding service link {{ link_id }}'; @post('/service_link/{{ link_id }}')"
         data-signals:_job_id="true"
-        data-on:load="$loading = true; $tab='service-link'; $message = 'Forwarding service link {{ link_id }}'; @post('/service_link/{{ link_id }}')"
         class="status-box loading"
     >
         <div class="spinner"></div>
@@ -470,8 +470,8 @@
     {% else if let Some(upload_id) = upload_id %}
     <div
         id="job-{{ upload_id }}"
+        data-init="$loading = true; $message = 'Processing file upload {{ upload_id }}'; @post('/file_upload/{{ upload_id }}')"
         data-signals:_job_id="true"
-        data-on:load="$loading = true; $message = 'Processing file upload {{ upload_id }}'; @post('/file_upload/{{ upload_id }}')"
         class="status-box loading"
     >
         <div class="spinner"></div>

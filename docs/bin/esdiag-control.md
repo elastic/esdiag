@@ -85,7 +85,7 @@ Commands
 `esdiag-control help` - Prints out the latest commands and usage guides
 `esdiag-control help <command>` or `esdiag-control <command> --help` - prints out specific help for each subcommand.
 
-```
+```text
 Description:
     Elastic Stack Diagnostics Control esdiag-control is the deployment assistant for ESDiag
 
@@ -110,7 +110,7 @@ Options:
 
 ### up
 
-```
+```text
 Command: up [options]
     Configure and start up a full Elastic Stack deployment with podman compose up -d
 
@@ -127,7 +127,7 @@ Environment Variables:
 
 ### down
 
-```
+```text
 Command: down
     Remove all containers with podman compose down, optionally also delete the volume
 
@@ -140,7 +140,7 @@ Options:
 
 ### auth
 
-```
+```text
 Command: auth
     Test the configured authorization for Elasticsearch and Kibana
 
@@ -157,7 +157,7 @@ Environment Variables:
 
 ### build
 
-```
+```text
 Command: build
     Build an ESDiag container image for the local host's platform
 
@@ -172,7 +172,7 @@ Environment Variables:
 
 ### buildx
 
-```
+```text
 Command: buildx
     Build a multi-platform ESDiag container image for x86_64 and arm64
 
@@ -187,7 +187,7 @@ Environment Variables:
 
 ### setup
 
-```
+```text
 Command: setup
     Configure and start up a full Elastic Stack deployment with compose up -d
 
@@ -213,7 +213,7 @@ Troubleshooting and Errors
 ### podman/docker compose up failed with exit status 0
 
 If you have used Docker compose with Docker Desktop on your machine in the past, you may see an error like this:
-```
+```text
 [2025-08-24 18:22:44 Info esdiag-control] Running podman compose up --detach
 [2025-08-24 18:23:27 Error esdiag-control] podman compose up failed with exit status 0
 
