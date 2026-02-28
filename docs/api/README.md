@@ -2,7 +2,7 @@ ESDiag API Documentation
 ========================
 
 > [!WARNING]
-> 🚧 The API is not stable and is still a work-in-progress 🚧
+> The API is not stable and is still a work-in-progress
 
 This directory contains the API documentation for the ESDiag service, which processes Elastic Stack diagnostic bundles.
 

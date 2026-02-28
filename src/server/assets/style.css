@@ -15,7 +15,7 @@ info-text {
     margin: 0 0 12px 0;
 }
 
-code {
+code:not([class*="language-"]) {
     background-color: rgb(246, 249, 252);
     border-radius: 4px;
     color: rgb(107, 60, 159);
@@ -693,7 +693,7 @@ doc-viewer pre:not([class*="language-"]) {
 /* GFM Alerts */
 blockquote {
     padding: 1em;
-    margin: 1em;
+    margin: 0 0 1em 0;
     color: inherit;
     border-left: 0.25em solid #d0d7de;
 }

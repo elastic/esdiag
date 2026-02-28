@@ -3,7 +3,7 @@
     data-on-hashchange__window="@get('/docs/'+window.location.hash.substring(1), {
     filterSignals: {exclude: /.*/}
     })"
-    data-init="if (window.Prism) { window.Prism.highlightAllUnder($el); }"
+    data-on-hashchange__window__delay.100ms="if (window.Prism) { window.Prism.highlightAllUnder(el); }"
 >
     <docs-nav>
         <h3>Documentation</h3>
@@ -20,5 +20,5 @@
         </ul>
     </docs-nav>
 
-    <doc-viewer ="docs-content">{{ html_content|safe }}</doc-viewer>
+    <doc-viewer>{{ html_content|safe }}</doc-viewer>
 </docs-content>
