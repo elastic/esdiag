@@ -27,10 +27,10 @@ struct Pipeline {
 }
 
 impl DataSource for Version {
-    fn source(path: PathType) -> Result<&'static str> {
+    fn source(path: PathType, _version: Option<&semver::Version>) -> Result<String> {
         match path {
-            PathType::File => Ok("logstash_version.json"),
-            PathType::Url => Ok("/"),
+            PathType::File => Ok("logstash_version.json".to_string()),
+            PathType::Url => Ok("/".to_string()),
         }
     }
 

@@ -83,11 +83,8 @@ impl Receive for ArchiveFileReceiver {
         let mut archive = self.archive.write().await;
 
         // Determine the fully-qualified filename within the archive
-        let filename = resolve_archive_path(
-            self.subdir.as_ref(),
-            &mut *archive,
-            T::source(PathType::File)?,
-        )?;
+        let source_path = T::source(PathType::File, None)?;
+        let filename = resolve_archive_path(self.subdir.as_ref(), &mut *archive, &source_path)?;
 
         // Read lines directly from the compressed file
         log::debug!("Reading {}", filename);
@@ -114,11 +111,8 @@ impl ReceiveRaw for ArchiveFileReceiver {
         let mut archive = self.archive.write().await;
 
         // Determine the fully-qualified filename within in the archive
-        let filename = resolve_archive_path(
-            self.subdir.as_ref(),
-            &mut *archive,
-            T::source(PathType::File)?,
-        )?;
+        let source_path = T::source(PathType::File, None)?;
+        let filename = resolve_archive_path(self.subdir.as_ref(), &mut *archive, &source_path)?;
 
         // Read lines directly from the compressed file
         log::debug!("Reading {}", filename);

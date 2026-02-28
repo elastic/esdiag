@@ -152,9 +152,9 @@ impl DiagnosticManifest {
 }
 
 impl DataSource for DiagnosticManifest {
-    fn source(path: PathType) -> Result<&'static str> {
+    fn source(path: PathType, _version: Option<&semver::Version>) -> Result<String> {
         match path {
-            PathType::File => Ok("diagnostic_manifest.json"),
+            PathType::File => Ok("diagnostic_manifest.json".to_string()),
             _ => Err(eyre!("Unsupported source for manifest")),
         }
     }

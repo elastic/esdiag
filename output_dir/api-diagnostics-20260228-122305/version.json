@@ -1,0 +1,17 @@
+{
+  "name" : "esdiag-node",
+  "cluster_name" : "esdiag-cluster",
+  "cluster_uuid" : "jNJr4OzJSxaoURAUGaxhXg",
+  "version" : {
+    "number" : "9.3.0-SNAPSHOT",
+    "build_flavor" : "default",
+    "build_type" : "docker",
+    "build_hash" : "75b7ed828b9988eddc0f0b59ba3bfb07d5f98c40",
+    "build_date" : "2025-11-23T21:56:45.240238199Z",
+    "build_snapshot" : true,
+    "lucene_version" : "10.3.2",
+    "minimum_wire_compatibility_version" : "8.19.0",
+    "minimum_index_compatibility_version" : "8.0.0"
+  },
+  "tagline" : "You Know, for Search"
+}

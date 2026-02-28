@@ -15,16 +15,52 @@ use serde::de::DeserializeOwned;
 use serde_json::Value;
 use url::Url;
 
+use std::sync::Arc;
+use tokio::sync::OnceCell;
+
 #[derive(Clone)]
 pub struct ElasticsearchReceiver {
     client: Elasticsearch,
     url: Url,
+    version: Arc<OnceCell<semver::Version>>,
 }
 
 impl ElasticsearchReceiver {
     pub fn new(url: Url) -> Result<Self> {
         let client = Elasticsearch::default();
-        Ok(Self { client, url })
+        Ok(Self {
+            client,
+            url,
+            version: Arc::new(OnceCell::new()),
+        })
+    }
+
+    async fn get_version(&self) -> Result<&semver::Version> {
+        self.version
+            .get_or_try_init(|| async {
+                log::debug!("Fetching version from {}", self.url);
+                let response = self
+                    .client
+                    .send(
+                        http::Method::Get,
+                        "",
+                        http::headers::HeaderMap::new(),
+                        Option::<&String>::None,
+                        Option::<&String>::None,
+                        None,
+                    )
+                    .await?;
+                let bytes = response.bytes().await?;
+                let cluster: Value = serde_json::from_slice(&bytes)?;
+                let version_str = cluster
+                    .get("version")
+                    .and_then(|v| v.get("number"))
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| eyre!("No version found in root response"))?;
+                semver::Version::parse(version_str)
+                    .map_err(|e| eyre!("Failed to parse version: {}", e))
+            })
+            .await
     }
 }
 
@@ -34,7 +70,11 @@ impl TryFrom<KnownHost> for ElasticsearchReceiver {
     fn try_from(host: KnownHost) -> Result<Self> {
         let url = host.get_url();
         let client = Elasticsearch::try_from(host)?;
-        Ok(Self { client, url })
+        Ok(Self {
+            client,
+            url,
+            version: Arc::new(OnceCell::new()),
+        })
     }
 }
 
@@ -82,7 +122,8 @@ impl Receive for ElasticsearchReceiver {
         T: DataSource + DeserializeOwned,
     {
         // Get the API URL path for the provided type
-        let path = T::source(PathType::Url)?;
+        let version = self.get_version().await.ok();
+        let path = T::source(PathType::Url, version)?;
         log::debug!("Getting API: {}", &path);
 
         // Send a simple GET request to the API path
@@ -149,7 +190,8 @@ impl ReceiveRaw for ElasticsearchReceiver {
         T: DataSource,
     {
         // Get the API URL path for the provided type
-        let path = T::source(PathType::Url)?;
+        let version = self.get_version().await.ok();
+        let path = T::source(PathType::Url, version)?;
         log::debug!("Getting API: {}", &path);
 
         // Send a simple GET request to the API path

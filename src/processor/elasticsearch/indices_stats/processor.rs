@@ -56,8 +56,7 @@ async fn process_index(
                     ctx.lookups.mapping_stats.by_name(&index_name).cloned(),
                 );
             let index_document =
-                IndexStatsDocument::new(stats, ctx.index_metadata.clone())
-                    .calculate();
+                IndexStatsDocument::new(stats, ctx.index_metadata.clone()).calculate();
             let write_phase_sec = index_document.index.write_phase_sec;
             if (ctx.index_tx.send(index_document).await).is_err() {
                 log::warn!("Index channel closed unexpectedly");
@@ -70,7 +69,8 @@ async fn process_index(
         }
     };
 
-    let index_settings = index_settings.map(|s: IndexSettingsDocument| s.write_phase(write_phase_sec));
+    let index_settings =
+        index_settings.map(|s: IndexSettingsDocument| s.write_phase(write_phase_sec));
 
     if let Some(shards) = shards_stats {
         match extract_shard_documents(
@@ -79,7 +79,7 @@ async fn process_index(
             index_name,
             index_settings,
             &ctx.lookups.node,
-            ) {
+        ) {
             Ok(docs) => {
                 for doc in docs {
                     if (ctx.shard_tx.send(doc).await).is_err() {
@@ -398,7 +398,14 @@ impl EnrichedIndexStats {
                 number_of_shards: settings.number_of_shards,
                 primaries: self.primaries,
                 refresh_interval: Some(settings.refresh_interval),
-                since_rollover: settings.ilm.and_then(|ilm| ilm.lifecycle_date_millis).and_then(|lifecycle_date| settings.age.map(|age| age + settings.creation_date - lifecycle_date)),
+                since_rollover: settings
+                    .ilm
+                    .and_then(|ilm| ilm.lifecycle_date_millis)
+                    .and_then(|lifecycle_date| {
+                        settings
+                            .age
+                            .map(|age| age + settings.creation_date - lifecycle_date)
+                    }),
                 source: settings.source,
                 store: settings.store,
                 total: self.total,

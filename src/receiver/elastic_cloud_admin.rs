@@ -13,10 +13,14 @@ use reqwest::{Client, ClientBuilder, header::HeaderMap};
 use serde::de::DeserializeOwned;
 use url::Url;
 
+use std::sync::Arc;
+use tokio::sync::OnceCell;
+
 #[derive(Clone)]
 pub struct ElasticCloudAdminReceiver {
     client: Client,
     url: Url,
+    version: Arc<OnceCell<semver::Version>>,
 }
 
 impl ElasticCloudAdminReceiver {
@@ -32,7 +36,30 @@ impl ElasticCloudAdminReceiver {
         let client = ClientBuilder::new()
             .default_headers(default_headers)
             .build()?;
-        Ok(Self { client, url })
+        Ok(Self {
+            client,
+            url,
+            version: Arc::new(OnceCell::new()),
+        })
+    }
+
+    async fn get_version(&self) -> Result<&semver::Version> {
+        self.version
+            .get_or_try_init(|| async {
+                log::debug!("Fetching version from {}", self.url);
+                let url = self.url.join(&format!("{}/", self.url.path()))?;
+                let response = self.client.get(url).send().await?;
+                let bytes = response.bytes().await?;
+                let cluster: serde_json::Value = serde_json::from_slice(&bytes)?;
+                let version_str = cluster
+                    .get("version")
+                    .and_then(|v| v.get("number"))
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| eyre::eyre!("No version found in root response"))?;
+                semver::Version::parse(version_str)
+                    .map_err(|e| eyre::eyre!("Failed to parse version: {}", e))
+            })
+            .await
     }
 }
 
@@ -83,13 +110,14 @@ impl Receive for ElasticCloudAdminReceiver {
         T: DataSource + DeserializeOwned,
     {
         // Get the API URL path for the provided type
-        let path = T::source(PathType::Url)?;
+        let version = self.get_version().await.ok();
+        let source_path = T::source(PathType::Url, version)?;
         // Prepend the API proxy base path
-        let path = match path {
-            "/" => &format!("{}/", self.url.path()),
-            _ => &format!("{}/{}", self.url.path(), path),
+        let path = match source_path.as_str() {
+            "/" => format!("{}/", self.url.path()),
+            _ => format!("{}/{}", self.url.path(), source_path),
         };
-        let url = self.url.join(path)?;
+        let url = self.url.join(&path)?;
         log::debug!("Getting API: {}", url);
         let response = self.client.get(url).send().await?;
 
@@ -117,11 +145,12 @@ impl ReceiveRaw for ElasticCloudAdminReceiver {
         T: DataSource,
     {
         // Get the API URL path for the provided type
-        let path = T::source(PathType::Url)?;
+        let version = self.get_version().await.ok();
+        let source_path = T::source(PathType::Url, version)?;
         // Prepend the API proxy base path
-        let path = match path {
-            "/" => &format!("{}/", self.url.path()),
-            _ => &format!("{}/{}", self.url.path(), path),
+        let path = match source_path.as_str() {
+            "/" => format!("{}/", self.url.path()),
+            _ => format!("{}/{}", self.url.path(), source_path),
         };
         let url = self.url.join(&path)?;
         log::debug!("Getting API: {}", url);

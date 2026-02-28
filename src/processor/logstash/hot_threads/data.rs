@@ -32,10 +32,10 @@ struct Thread {
 }
 
 impl DataSource for NodeHotThreads {
-    fn source(path: PathType) -> Result<&'static str> {
+    fn source(path: PathType, _version: Option<&semver::Version>) -> Result<String> {
         match path {
-            PathType::File => Ok("logstash_nodes_hot_threads.json"),
-            PathType::Url => Ok("_node/hot_threads?threads=10000"),
+            PathType::File => Ok("logstash_nodes_hot_threads.json".to_string()),
+            PathType::Url => Ok("_node/hot_threads?threads=10000".to_string()),
         }
     }
 

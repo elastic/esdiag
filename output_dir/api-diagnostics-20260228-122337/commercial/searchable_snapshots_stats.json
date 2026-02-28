@@ -1,0 +1,1 @@
+{"error":{"root_cause":[{"type":"resource_not_found_exception","reason":"No searchable snapshots indices found"}],"type":"resource_not_found_exception","reason":"No searchable snapshots indices found"},"status":404}

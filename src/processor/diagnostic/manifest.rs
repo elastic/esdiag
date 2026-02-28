@@ -138,9 +138,9 @@ impl TryFrom<elasticsearch::Cluster> for Manifest {
 }
 
 impl DataSource for Manifest {
-    fn source(path: PathType) -> Result<&'static str> {
+    fn source(path: PathType, _version: Option<&semver::Version>) -> Result<String> {
         match path {
-            PathType::File => Ok("manifest.json"),
+            PathType::File => Ok("manifest.json".to_string()),
             _ => Err(eyre!("Unsupported source for manifest")),
         }
     }

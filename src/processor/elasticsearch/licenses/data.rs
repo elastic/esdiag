@@ -32,10 +32,25 @@ pub struct License {
 }
 
 impl DataSource for Licenses {
-    fn source(kind: PathType) -> Result<&'static str> {
-        match kind {
-            PathType::File => Ok("licenses.json"),
-            PathType::Url => Ok("_license"),
+    fn source(path: PathType, version: Option<&semver::Version>) -> Result<String> {
+        let name = Self::name();
+        if let Ok(source_conf) =
+            crate::processor::diagnostic::data_source::get_source(Self::product(), &name)
+        {
+            match path {
+                PathType::File => Ok(source_conf.get_file_path(&name)),
+                PathType::Url => {
+                    let v = version.ok_or_else(|| eyre::eyre!("Version required for URL"))?;
+                    source_conf.get_url(v)
+                }
+            }
+        } else {
+            // Fallback for missing or not-yet-supported sources
+            eyre::bail!(
+                "Source configuration missing for product: {}, name: {}",
+                Self::product(),
+                name
+            )
         }
     }
 

@@ -70,7 +70,7 @@ impl Receive for DirectoryReceiver {
         let filename = &self
             .path
             .join(&self.work_dir)
-            .join(T::source(PathType::File)?);
+            .join(T::source(PathType::File, None)?);
         log::debug!("Reading file: {}", &filename.display());
         let file = File::open(&filename)?;
         let reader = BufReader::new(file);
@@ -86,7 +86,7 @@ impl Receive for DirectoryReceiver {
         let filename = self
             .path
             .join(&self.work_dir)
-            .join(T::source(PathType::File)?);
+            .join(T::source(PathType::File, None)?);
         log::debug!("Streaming file: {}", &filename.display());
 
         let filename_clone = filename.clone();
@@ -129,7 +129,7 @@ impl ReceiveRaw for DirectoryReceiver {
         let filename = &self
             .path
             .join(&self.work_dir)
-            .join(T::source(PathType::File)?);
+            .join(T::source(PathType::File, None)?);
         log::debug!("Reading file: {}", &filename.display());
         let file = File::open(&filename)?;
         let mut reader = BufReader::new(file);

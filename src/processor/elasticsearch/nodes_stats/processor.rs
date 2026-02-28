@@ -94,13 +94,9 @@ async fn process_node(
         let clients = http_val["clients"].take();
         if !clients.is_null() {
             let http_meta_val = serde_json::to_value(&ctx.http_clients_metadata).unwrap();
-            if let Err(e) = http_clients::extract(
-                ctx.http_clients_tx,
-                clients,
-                &http_meta_val,
-                node_metadata,
-            )
-            .await
+            if let Err(e) =
+                http_clients::extract(ctx.http_clients_tx, clients, &http_meta_val, node_metadata)
+                    .await
             {
                 log::error!("Error extracting HTTP clients stats: {}", e);
             }
@@ -240,9 +236,7 @@ impl StreamingDocumentExporter<Lookups, ElasticsearchMetadata> for NodesStats {
 
         let (http_clients_tx, http_clients_rx) = mpsc::channel::<Value>(BUFFER_SIZE);
         let http_clients_data_stream = "metrics-node.http.clients-esdiag".to_string();
-        let http_clients_metadata = metadata
-            .for_data_stream(&http_clients_data_stream)
-            ;
+        let http_clients_metadata = metadata.for_data_stream(&http_clients_data_stream);
         let http_clients_processor = tokio::spawn(exporter.clone().document_channel::<Value>(
             http_clients_rx,
             http_clients_data_stream,
@@ -260,9 +254,7 @@ impl StreamingDocumentExporter<Lookups, ElasticsearchMetadata> for NodesStats {
 
         let (adaptive_tx, adaptive_rx) = mpsc::channel::<Value>(BUFFER_SIZE);
         let adaptive_data_stream = "metrics-node.discovery.cluster_adaptive-esdiag".to_string();
-        let adaptive_metadata = metadata
-            .for_data_stream(&adaptive_data_stream)
-            ;
+        let adaptive_metadata = metadata.for_data_stream(&adaptive_data_stream);
         let adaptive_processor = tokio::spawn(exporter.clone().document_channel::<Value>(
             adaptive_rx,
             adaptive_data_stream,

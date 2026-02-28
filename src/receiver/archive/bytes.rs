@@ -51,11 +51,8 @@ impl Receive for ArchiveBytesReceiver {
         let mut archive = self.archive.write().await;
 
         // Determine the fully-qualified filename within in the archive
-        let filename = resolve_archive_path(
-            self.subdir.as_ref(),
-            &mut *archive,
-            T::source(PathType::File)?,
-        )?;
+        let source_path = T::source(PathType::File, None)?;
+        let filename = resolve_archive_path(self.subdir.as_ref(), &mut *archive, &source_path)?;
 
         // Read and deserialize the file from the archive
         log::debug!("Reading {}", filename);

@@ -20,10 +20,10 @@ pub struct Plugin {
 }
 
 impl DataSource for Plugins {
-    fn source(path: PathType) -> Result<&'static str> {
+    fn source(path: PathType, _version: Option<&semver::Version>) -> Result<String> {
         match path {
-            PathType::File => Ok("logstash_plugins.json"),
-            PathType::Url => Ok("_node/plugins"),
+            PathType::File => Ok("logstash_plugins.json".to_string()),
+            PathType::Url => Ok("_node/plugins".to_string()),
         }
     }
 

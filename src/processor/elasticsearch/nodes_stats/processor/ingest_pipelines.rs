@@ -27,9 +27,7 @@ pub async fn extract(
         .for_data_stream("metrics-ingest.pipeline-esdiag")
         .as_meta_doc();
 
-    let ingest_processor_metadata = metadata
-        .for_data_stream("metrics-ingest.processor-esdiag")
-        ;
+    let ingest_processor_metadata = metadata.for_data_stream("metrics-ingest.processor-esdiag");
 
     if let Some(pipelines) = pipelines.take() {
         for (name, mut pipeline) in pipelines {

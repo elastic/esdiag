@@ -3,10 +3,10 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::super::diagnostic::{DataStreamName, DiagnosticManifest, DiagnosticMetadata};
-use super::version::{Cluster, ClusterMetadata};
 use super::Metadata;
+use super::version::{Cluster, ClusterMetadata};
 use eyre::Result;
-use serde::{Deserialize, Serialize, Serializer, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::value::RawValue;
 use std::sync::Arc;
 

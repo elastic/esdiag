@@ -63,7 +63,7 @@ impl ElasticsearchCollector {
         T: DataSource,
     {
         let content = self.receiver.get_raw::<T>().await?;
-        let path = PathBuf::from(T::source(PathType::File)?);
+        let path = PathBuf::from(T::source(PathType::File, None)?);
         let filename = format!("{}", path.display());
         match self.exporter.save(path, content).await {
             Ok(()) => {
@@ -91,7 +91,7 @@ impl ElasticsearchCollector {
             Some(cluster.version.number.to_string()),
         );
 
-        let path = PathBuf::from(DiagnosticManifest::source(PathType::File)?);
+        let path = PathBuf::from(DiagnosticManifest::source(PathType::File, None)?);
         let filename = format!("{}", path.display());
         let content = serde_json::to_string_pretty(&manifest)?;
         self.exporter.save(path, content).await?;

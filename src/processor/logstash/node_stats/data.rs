@@ -288,10 +288,10 @@ struct QueueStats {
 }
 
 impl DataSource for NodeStats {
-    fn source(path: PathType) -> Result<&'static str> {
+    fn source(path: PathType, _version: Option<&semver::Version>) -> Result<String> {
         match path {
-            PathType::File => Ok("logstash_node_stats.json"),
-            PathType::Url => Ok("_node/stats"),
+            PathType::File => Ok("logstash_node_stats.json".to_string()),
+            PathType::Url => Ok("_node/stats".to_string()),
         }
     }
 

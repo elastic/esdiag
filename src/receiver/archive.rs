@@ -35,23 +35,21 @@ where
     let tx_err = tx.clone();
     let handle = tokio::task::spawn_blocking(move || {
         let mut archive_guard = archive.blocking_write();
-        let filename = match resolve_archive_path(
-            subdir.as_ref(),
-            &mut *archive_guard,
-            match T::source(PathType::File) {
-                Ok(s) => s,
-                Err(e) => {
-                    let _ = tx.blocking_send(Err(eyre::eyre!(e)));
-                    return;
-                }
-            },
-        ) {
-            Ok(f) => f,
+        let source_path = match T::source(PathType::File, None) {
+            Ok(s) => s,
             Err(e) => {
                 let _ = tx.blocking_send(Err(eyre::eyre!(e)));
                 return;
             }
         };
+        let filename =
+            match resolve_archive_path(subdir.as_ref(), &mut *archive_guard, &source_path) {
+                Ok(f) => f,
+                Err(e) => {
+                    let _ = tx.blocking_send(Err(eyre::eyre!(e)));
+                    return;
+                }
+            };
 
         log::debug!("Streaming from archive: {}", filename);
         match archive_guard.by_name(&filename) {

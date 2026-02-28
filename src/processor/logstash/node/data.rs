@@ -75,10 +75,10 @@ struct Memory {
 }
 
 impl DataSource for Node {
-    fn source(path: PathType) -> Result<&'static str> {
+    fn source(path: PathType, _version: Option<&semver::Version>) -> Result<String> {
         match path {
-            PathType::File => Ok("logstash_node.json"),
-            PathType::Url => Ok("_node"),
+            PathType::File => Ok("logstash_node.json".to_string()),
+            PathType::Url => Ok("_node".to_string()),
         }
     }
 

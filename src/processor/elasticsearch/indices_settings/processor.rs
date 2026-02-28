@@ -42,10 +42,7 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for IndicesSettings {
 
         log::debug!("index settings docs: {}", index_settings.len());
         let mut summary = ProcessorSummary::new(data_stream.to_string());
-        match exporter
-            .send(data_stream.to_string(), index_settings)
-            .await
-        {
+        match exporter.send(data_stream.to_string(), index_settings).await {
             Ok(batch) => summary.add_batch(batch),
             Err(err) => log::error!("Failed to send index settings: {}", err),
         }
