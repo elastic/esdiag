@@ -109,7 +109,7 @@ pub async fn handler(
                         let mut response = Html(html).into_response();
                         let headers = response.headers_mut();
                         headers.insert("datastar-selector", "#main-content".parse().unwrap());
-                        headers.insert("datastar-mode", "inner".parse().unwrap());
+                        headers.insert("datastar-mode", "outer".parse().unwrap());
                         response
                     },
                     Err(err) => {
