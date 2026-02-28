@@ -703,44 +703,49 @@ blockquote > *:first-child {
 blockquote > *:last-child {
     margin-bottom: 0;
 }
-blockquote.markdown-alert-title {
-    display: flex;
+blockquote[class^="markdown-alert-"]::before {
+    display: block;
     font-weight: 500;
-    align-items: center;
     line-height: 1;
     margin-bottom: 8px;
 }
-blockquote.markdown-alert-title svg {
-    margin-right: 8px;
-    fill: currentColor;
-}
 blockquote.markdown-alert-note {
     border-left-color: #0969da;
+    background-color: rgba(9, 105, 218, 0.05);
 }
-blockquote.markdown-alert-note .markdown-alert-title {
+blockquote.markdown-alert-note::before {
+    content: "ℹ️ Note";
     color: #0969da;
 }
 blockquote.markdown-alert-tip {
     border-left-color: #1a7f37;
+    background-color: rgba(26, 127, 55, 0.05);
 }
-blockquote.markdown-alert-tip .markdown-alert-title {
+blockquote.markdown-alert-tip::before {
+    content: "💡 Tip";
     color: #1a7f37;
 }
 blockquote.markdown-alert-important {
     border-left-color: #8250df;
+    background-color: rgba(130, 80, 223, 0.05);
 }
-blockquote.markdown-alert-important .markdown-alert-title {
+blockquote.markdown-alert-important::before {
+    content: "⚠️ Important";
     color: #8250df;
 }
 blockquote.markdown-alert-warning {
     border-left-color: #9a6700;
+    background-color: rgba(154, 103, 0, 0.05);
 }
-blockquote.markdown-alert-warning .markdown-alert-title {
+blockquote.markdown-alert-warning::before {
+    content: "🚧 Warning";
     color: #9a6700;
 }
 blockquote.markdown-alert-caution {
     border-left-color: #cf222e;
+    background-color: rgba(207, 34, 46, 0.05);
 }
-blockquote.markdown-alert-caution .markdown-alert-title {
+blockquote.markdown-alert-caution::before {
+    content: "🛑 Caution";
     color: #cf222e;
 }
