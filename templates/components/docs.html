@@ -3,7 +3,7 @@
     data-on-hashchange__window="@get('/docs/'+window.location.hash.substring(1), {
     filterSignals: {exclude: /.*/}
     })"
-    data-init="if (window.Prism) { window.Prism.highlightAllUnder(el); }"
+    data-init="if (window.Prism) { window.Prism.highlightAllUnder($el); }"
 >
     <docs-nav>
         <h3>Documentation</h3>
