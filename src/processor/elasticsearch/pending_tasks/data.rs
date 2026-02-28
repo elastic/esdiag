@@ -2,7 +2,7 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use crate::processor::{DataSource};
+use crate::processor::DataSource;
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Serialize)]
@@ -20,8 +20,7 @@ pub struct PendingTask {
 }
 
 impl DataSource for PendingTasks {
-
     fn name() -> String {
-        "tasks".to_string()
+        "cluster_pending_tasks".to_string()
     }
 }
