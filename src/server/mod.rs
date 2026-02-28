@@ -71,7 +71,7 @@ pub struct Server {
 }
 
 impl Server {
-    pub fn new(port: u16, mut exporter: Exporter, kibana_url: String) -> Self {
+    pub async fn start(port: Option<u16>, mut exporter: Exporter, kibana_url: String) -> (Self, std::net::SocketAddr) {
         let (_, rx) = mpsc::channel::<(Identifiers, Bytes)>(1);
         let rx = Arc::new(RwLock::new(rx));
         let rx_clone = rx.clone();
@@ -95,6 +95,9 @@ impl Server {
                 stats_clone.write().await.docs.total += docs;
             }
         });
+
+        let handle = axum_server::Handle::new();
+        let handle_clone = handle.clone();
 
         // Start the Axum server
         let server_handle = tokio::spawn(async move {
@@ -127,11 +130,12 @@ impl Server {
                 .layer(DefaultBodyLimit::max(FIVE_HUNDRED_TWELVE_MEBIBYTES))
                 .layer(middleware::map_response(add_client_hint_headers));
 
-            let addr = SocketAddr::from(([0, 0, 0, 0], port));
+            let addr = SocketAddr::from(([127, 0, 0, 1], port.unwrap_or(0)));
 
             // Start the server
-            log::info!("Listening on port {}", port);
+            log::info!("Starting server bind to {:?}", addr);
             match axum_server::bind(addr)
+                .handle(handle_clone)
                 .serve(app.with_state(state).into_make_service())
                 .await
             {
@@ -140,11 +144,15 @@ impl Server {
             }
         });
 
-        Self {
+        // wait for the server to bind
+        let bound_addr = handle.listening().await.expect("Server failed to bind");
+        log::info!("Listening on port {}", bound_addr.port());
+
+        (Self {
             server_handle: Some(Arc::new(server_handle)),
             stats_handle: Some(Arc::new(stats_handle)),
             rx: Some(rx_clone),
-        }
+        }, bound_addr)
     }
 
     pub async fn shutdown(&mut self) {
@@ -163,11 +171,7 @@ impl Server {
 
 impl Default for Server {
     fn default() -> Self {
-        let port = std::env::var("ESDIAG_PORT")
-            .ok()
-            .and_then(|s| s.parse::<u16>().ok())
-            .unwrap_or(2501);
-        Self::new(port, Exporter::default(), String::new())
+        panic!("Server::default() is no longer supported since start() is async. Use start() instead.");
     }
 }
 
