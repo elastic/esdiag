@@ -130,5 +130,43 @@
 {% endblock %}
 
 {% block content %}
-{% include "docs-component.html" %}
+<div class="docs-container" id="docs-container">
+    <nav class="docs-nav">
+        <h3>Documentation</h3>
+        <ul>
+        {% for entry in toc %}
+            {% if entry.is_dir %}
+                <li class="dir">{{ entry.title }}</li>
+            {% else %}
+                <li class="{% if entry.level > 0 %}nested{% endif %}">
+                    <a href="/docs/{{ entry.path }}" class="{% if current_path == entry.path %}active{% endif %}" >
+                        {{ entry.title }}
+                    </a>
+                </li>
+            {% endif %}
+        {% endfor %}
+        </ul>
+    </nav>
+    
+    <main class="docs-content">
+        <div id="markdown-rendered">Loading documentation...</div>
+        <!-- Hide raw markdown content to prevent flashing before render -->
+        <script type="text/markdown" id="markdown-raw" style="display:none">{{ markdown_content|safe }}</script>
+    </main>
+
+    <script type="module">
+        import { marked } from "/marked.js";
+        import markedAlert from "/marked-alert.js";
+        
+        marked.use(markedAlert());
+
+        const markdownContent = document.getElementById('markdown-raw').textContent;
+        document.getElementById('markdown-rendered').innerHTML = marked.parse(markdownContent);
+        
+        // Trigger Prism to highlight any code blocks
+        if (window.Prism) {
+            window.Prism.highlightAll();
+        }
+    </script>
+</div>
 {% endblock %}
