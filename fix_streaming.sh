@@ -1,0 +1,1 @@
+sed -i '' 's/use super::super::super::diagnostic::data_source::PathType;/use super::super::super::diagnostic::data_source::{PathType, StreamingDataSource};/' src/processor/elasticsearch/indices_stats/data.rs

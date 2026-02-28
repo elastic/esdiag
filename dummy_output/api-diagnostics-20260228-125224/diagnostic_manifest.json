@@ -1,0 +1,15 @@
+{
+  "mode": "standard",
+  "product": "elasticsearch",
+  "flags": null,
+  "diagnostic": "esdiag-0.15.0-SNAPSHOT",
+  "type": "elasticsearch_diagnostic",
+  "runner": "esdiag",
+  "version": "9.3.0-SNAPSHOT",
+  "timestamp": "2026-02-28T20:52:24.259Z",
+  "collection_date_millis": 0,
+  "included_diagnostics": null,
+  "name": "elasticsearch_diagnostic",
+  "diagnostic_id": null,
+  "identifiers": null
+}

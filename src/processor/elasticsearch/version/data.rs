@@ -3,9 +3,7 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 #![allow(unreachable_patterns)] // supresses a warning about the `name` alias
-use super::super::super::diagnostic::data_source::PathType;
 use super::super::DataSource;
-use eyre::Result;
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 
@@ -81,27 +79,6 @@ pub struct Version {
 }
 
 impl DataSource for Cluster {
-    fn source(path: PathType, version: Option<&semver::Version>) -> Result<String> {
-        let name = Self::name();
-        if let Ok(source_conf) =
-            crate::processor::diagnostic::data_source::get_source(Self::product(), &name)
-        {
-            match path {
-                PathType::File => Ok(source_conf.get_file_path(&name)),
-                PathType::Url => {
-                    let v = version.ok_or_else(|| eyre::eyre!("Version required for URL"))?;
-                    source_conf.get_url(v)
-                }
-            }
-        } else {
-            // Fallback for missing or not-yet-supported sources
-            eyre::bail!(
-                "Source configuration missing for product: {}, name: {}",
-                Self::product(),
-                name
-            )
-        }
-    }
 
     fn name() -> String {
         "version".to_string()

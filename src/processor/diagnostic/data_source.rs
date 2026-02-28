@@ -14,11 +14,48 @@ pub enum PathType {
     File,
 }
 
+#[derive(Debug)]
+pub enum DataSourceError {
+    UnsupportedVersion(Version),
+    MissingSource(String, String),
+}
+
+impl std::fmt::Display for DataSourceError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::UnsupportedVersion(v) => write!(f, "API not supported on target version {}", v),
+            Self::MissingSource(product, name) => {
+                write!(
+                    f,
+                    "Source configuration missing for product: {}, name: {}",
+                    product, name
+                )
+            }
+        }
+    }
+}
+
+impl std::error::Error for DataSourceError {}
+
 pub trait DataSource {
-    fn source(path: PathType, version: Option<&Version>) -> Result<String>;
     fn name() -> String;
+    fn aliases() -> Vec<&'static str> {
+        Vec::new()
+    }
     fn product() -> &'static str {
         "elasticsearch"
+    }
+    fn source(path: PathType, version: Option<&Version>) -> Result<String> {
+        let name = Self::name();
+        let aliases = Self::aliases();
+        let (matched_name, source_conf) = get_source(Self::product(), &name, &aliases)?;
+        match path {
+            PathType::File => Ok(source_conf.get_file_path(matched_name)),
+            PathType::Url => {
+                let v = version.ok_or_else(|| eyre!("Version required for URL"))?;
+                source_conf.get_url(v).map_err(Into::into)
+            }
+        }
     }
 }
 
@@ -98,14 +135,27 @@ pub fn init_sources(override_path: Option<String>) -> Result<()> {
     Ok(())
 }
 
-pub fn get_source(product: &str, name: &str) -> Result<&'static Source> {
+pub fn get_source<'a>(
+    product: &str,
+    name: &'a str,
+    aliases: &[&'a str],
+) -> std::result::Result<(&'a str, &'static Source), DataSourceError> {
     let sources = get_sources();
     let product_sources = sources
         .get(product)
-        .ok_or_else(|| eyre!("Product '{}' not found in sources config", product))?;
-    product_sources
-        .get(name)
-        .ok_or_else(|| eyre!("Source '{}' not found for product '{}'", name, product))
+        .ok_or_else(|| DataSourceError::MissingSource(product.to_string(), name.to_string()))?;
+    if let Some(source) = product_sources.get(name) {
+        return Ok((name, source));
+    }
+    for alias in aliases {
+        if let Some(source) = product_sources.get(*alias) {
+            return Ok((*alias, source));
+        }
+    }
+    Err(DataSourceError::MissingSource(
+        product.to_string(),
+        name.to_string(),
+    ))
 }
 
 fn convert_npm_semver_to_cargo(req: &str) -> String {
@@ -156,6 +206,6 @@ impl Source {
                 return Ok(url.clone());
             }
         }
-        Err(eyre!("API not supported on target version {}", version))
+        Err(DataSourceError::UnsupportedVersion(version.clone()).into())
     }
 }

@@ -62,7 +62,16 @@ impl ElasticsearchCollector {
     where
         T: DataSource,
     {
-        let content = self.receiver.get_raw::<T>().await?;
+        let content = match self.receiver.get_raw::<T>().await {
+            Ok(c) => c,
+            Err(e) => {
+                if let Some(ds_err) = e.downcast_ref::<crate::processor::diagnostic::data_source::DataSourceError>() {
+                    log::debug!("Skipping {} collection: {}", T::name(), ds_err);
+                    return Ok(0);
+                }
+                return Err(e);
+            }
+        };
         let path = PathBuf::from(T::source(PathType::File, None)?);
         let filename = format!("{}", path.display());
         match self.exporter.save(path, content).await {
