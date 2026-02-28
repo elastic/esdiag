@@ -6,14 +6,10 @@ use askama::Template;
 use axum::{
     extract::Path,
     http::{HeaderMap, StatusCode},
-    response::{Html, IntoResponse, Sse},
+    response::{Html, IntoResponse},
 };
-use axum::response::sse::Event;
 use crate::embeds::DocsAssets;
-use crate::server::patch_template;
 use std::path::PathBuf;
-use std::convert::Infallible;
-use futures_util::stream;
 
 #[derive(Template)]
 #[template(path = "docs.html")]
@@ -83,10 +79,15 @@ pub async fn handler(
                     current_path,
                     markdown_content,
                 };
-                match patch_template(template) {
-                    Ok(event) => {
-                        let stream = stream::once(async move { Ok::<Event, Infallible>(event) });
-                        Sse::new(stream).into_response()
+                
+                match template.render() {
+                    Ok(html) => {
+                        let mut response = Html(html).into_response();
+                        let headers = response.headers_mut();
+                        // Datastar headers to instruct morphing on standard HTML response
+                        headers.insert("datastar-selector", "#main-content".parse().unwrap());
+                        headers.insert("datastar-mode", "inner".parse().unwrap());
+                        response
                     },
                     Err(err) => {
                         log::error!("Template rendering error: {}", err);
