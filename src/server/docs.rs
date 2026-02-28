@@ -6,15 +6,32 @@ use crate::embeds::DocsAssets;
 use askama::Template;
 use axum::{
     extract::Path,
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::{Html, IntoResponse},
 };
 use pulldown_cmark::{html, Options, Parser};
 use std::path::PathBuf;
 
 #[derive(Template)]
-#[template(path = "components/docs.html")]
+#[template(path = "docs.html")]
 pub struct DocsTemplate {
+    pub toc: Vec<TocEntry>,
+    pub current_path: String,
+    pub html_content: String,
+    // Add layout vars
+    pub auth_header: bool,
+    pub debug: bool,
+    pub user: String,
+    pub user_initial: char,
+    pub version: String,
+    pub kibana_url: String,
+    pub exporter: String,
+    pub stats: String,
+}
+
+#[derive(Template)]
+#[template(path = "components/docs.html")]
+pub struct DocsComponentTemplate {
     pub toc: Vec<TocEntry>,
     pub current_path: String,
     pub html_content: String,
@@ -27,7 +44,11 @@ pub struct TocEntry {
     pub is_dir: bool,
 }
 
-pub async fn handler(Path(mut path): Path<String>) -> impl IntoResponse {
+pub async fn handler(
+    headers: HeaderMap, 
+    axum::extract::State(state): axum::extract::State<std::sync::Arc<crate::server::ServerState>>,
+    Path(mut path): Path<String>
+) -> impl IntoResponse {
     if path.is_empty() {
         path = "index".to_string();
     }
@@ -38,6 +59,8 @@ pub async fn handler(Path(mut path): Path<String>) -> impl IntoResponse {
     } else {
         path.clone()
     };
+
+    let is_datastar = headers.contains_key("datastar-request");
 
     match DocsAssets::get(&file_path) {
         Some(content) => {
@@ -67,23 +90,56 @@ pub async fn handler(Path(mut path): Path<String>) -> impl IntoResponse {
                 path
             };
 
-            let template = DocsTemplate {
-                toc,
-                current_path,
-                html_content,
-            };
+            if is_datastar {
+                let template = DocsComponentTemplate {
+                    toc,
+                    current_path,
+                    html_content,
+                };
 
-            match template.render() {
-                Ok(html) => {
-                    let mut response = Html(html).into_response();
-                    let headers = response.headers_mut();
-                    headers.insert("datastar-selector", "#main-content".parse().unwrap());
-                    headers.insert("datastar-mode", "inner".parse().unwrap());
-                    response
-                },
-                Err(err) => {
-                    log::error!("Template rendering error: {}", err);
-                    (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error").into_response()
+                match template.render() {
+                    Ok(html) => {
+                        let mut response = Html(html).into_response();
+                        let headers = response.headers_mut();
+                        headers.insert("datastar-selector", "#main-content".parse().unwrap());
+                        headers.insert("datastar-mode", "inner".parse().unwrap());
+                        response
+                    },
+                    Err(err) => {
+                        log::error!("Template rendering error: {}", err);
+                        (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error").into_response()
+                    }
+                }
+            } else {
+                let (auth_header, user_initial, user_email) = match crate::server::get_user_email(&headers) {
+                    (auth_header, Some(email)) => (
+                        auth_header,
+                        email.chars().next().unwrap_or('_').to_ascii_uppercase(),
+                        email,
+                    ),
+                    _ => (false, '_', "Anonymous".to_string()),
+                };
+
+                let template = DocsTemplate {
+                    toc,
+                    current_path,
+                    html_content,
+                    auth_header,
+                    debug: log::max_level() == log::Level::Debug,
+                    exporter: state.exporter.to_string(),
+                    kibana_url: state.kibana_url.clone(),
+                    stats: state.get_stats_as_signals().await,
+                    user: user_email,
+                    user_initial,
+                    version: env!("CARGO_PKG_VERSION").to_string(),
+                };
+                
+                match template.render() {
+                    Ok(html) => Html(html).into_response(),
+                    Err(err) => {
+                        log::error!("Template rendering error: {}", err);
+                        (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error").into_response()
+                    }
                 }
             }
         }

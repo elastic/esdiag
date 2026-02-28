@@ -1,127 +1,4 @@
 <content id="main-content">
-    <link rel="stylesheet" href="/prism.css" />
-    <style>
-        .docs-container {
-            display: flex;
-            flex-direction: row;
-            height: calc(100vh - 80px); /* Adjust based on header height */
-            overflow: hidden;
-        }
-        .docs-nav {
-            width: 250px;
-            background-color: #f8f9fa;
-            border-right: 1px solid #e0e0e0;
-            padding: 1rem;
-            overflow-y: auto;
-        }
-        .docs-nav ul {
-            list-style-type: none;
-            padding-left: 0;
-        }
-        .docs-nav li {
-            margin-bottom: 0.5rem;
-        }
-        .docs-nav a {
-            text-decoration: none;
-            color: #0068b5;
-        }
-        .docs-nav a:hover {
-            text-decoration: underline;
-        }
-        .docs-nav .active {
-            font-weight: bold;
-            color: #333;
-        }
-        .docs-nav .dir {
-            font-weight: bold;
-            margin-top: 1rem;
-            margin-bottom: 0.2rem;
-            color: #555;
-        }
-        .docs-nav .nested {
-            padding-left: 1rem;
-        }
-        .docs-content {
-            flex-grow: 1;
-            padding: 2rem 4rem;
-            overflow-y: auto;
-            background-color: #ffffff;
-        }
-        .docs-content h1,
-        .docs-content h2,
-        .docs-content h3 {
-            border-bottom: 1px solid #eee;
-            padding-bottom: 0.3em;
-            margin-top: 1.5em;
-        }
-        .docs-content code:not([class*="language-"]) {
-            background-color: #f6f8fa;
-            padding: 0.2em 0.4em;
-            border-radius: 3px;
-            font-size: 85%;
-        }
-        .docs-content pre:not([class*="language-"]) {
-            background-color: #f6f8fa;
-            padding: 16px;
-            overflow: auto;
-            border-radius: 3px;
-        }
-        /* GFM Alerts */
-        .markdown-alert {
-            padding: 8px 16px;
-            margin-bottom: 16px;
-            color: inherit;
-            border-left: 0.25em solid #d0d7de;
-        }
-        .markdown-alert > *:first-child {
-            margin-top: 0;
-        }
-        .markdown-alert > *:last-child {
-            margin-bottom: 0;
-        }
-        .markdown-alert .markdown-alert-title {
-            display: flex;
-            font-weight: 500;
-            align-items: center;
-            line-height: 1;
-            margin-bottom: 8px;
-        }
-        .markdown-alert .markdown-alert-title svg {
-            margin-right: 8px;
-            fill: currentColor;
-        }
-        .markdown-alert.markdown-alert-note {
-            border-left-color: #0969da;
-        }
-        .markdown-alert.markdown-alert-note .markdown-alert-title {
-            color: #0969da;
-        }
-        .markdown-alert.markdown-alert-tip {
-            border-left-color: #1a7f37;
-        }
-        .markdown-alert.markdown-alert-tip .markdown-alert-title {
-            color: #1a7f37;
-        }
-        .markdown-alert.markdown-alert-important {
-            border-left-color: #8250df;
-        }
-        .markdown-alert.markdown-alert-important .markdown-alert-title {
-            color: #8250df;
-        }
-        .markdown-alert.markdown-alert-warning {
-            border-left-color: #9a6700;
-        }
-        .markdown-alert.markdown-alert-warning .markdown-alert-title {
-            color: #9a6700;
-        }
-        .markdown-alert.markdown-alert-caution {
-            border-left-color: #cf222e;
-        }
-        .markdown-alert.markdown-alert-caution .markdown-alert-title {
-            color: #cf222e;
-        }
-    </style>
-
     <div class="docs-container" data-init="if (window.Prism) { window.Prism.highlightAllUnder($el); }">
         <nav class="docs-nav">
             <h3>Documentation</h3>
@@ -131,7 +8,7 @@
                 {% else %}
                 <li class="{% if entry.level > 0 %}nested{% endif %}">
                     <a
-                        href="#/docs/{{ entry.path }}"
+                        href="#{{ entry.path }}"
                         data-on-click="@get('/docs/{{ entry.path }}')"
                         class="{% if current_path == entry.path %}active{% endif %}"
                     >
@@ -142,15 +19,6 @@
             </ul>
         </nav>
 
-        <main class="docs-content">
-            {{ html_content|safe }}
-        </main>
+        <main class="docs-content">{{ html_content|safe }}</main>
     </div>
-
-    <script type="module">
-        import "/prism.js";
-        import "/prism-bash.js";
-        import "/prism-json.js";
-        import "/prism-json5.js";
-    </script>
 </content>

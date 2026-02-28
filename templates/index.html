@@ -1,18 +1,5 @@
-<!doctype html>
-<html>
-    <head>
-        <title>ESDiag</title>
-        <link rel="stylesheet" href="/style.css" />
-        <link rel="icon" type="image/svg+xml" href="/esdiag.svg" />
-        <link rel="apple-touch-icon" href="/esdiag.svg" />
-        <script type="module" src="/datastar.js"></script>
-    </head>
+{% extends "layout.html" %}
 
-    <body>
-        {% include "components/header.html" %}
-        <content id="main-content">{% include "components/main.html" %}</content>
-        {% include "components/footer.html" %} {% if debug %}
-        <pre class="debug-signals" data-json-signals="{exclude: /files/}"></pre>
-        {% endif %}
-    </body>
-</html>
+{% block content %}
+{% include "components/main.html" %}
+{% endblock %}
