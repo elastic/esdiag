@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::processor::diagnostic::data_source::{Source, get_sources};
+    use crate::processor::diagnostic::data_source::get_sources;
     use semver::Version;
 
     #[test]
