@@ -61,37 +61,61 @@ pub async fn handler(
     Query(params): Query<Params>,
     headers: HeaderMap,
 ) -> impl IntoResponse {
-    let (auth_header, user_initial, user_email) = match get_user_email(&headers) {
-        (auth_header, Some(email)) => (
+    let is_datastar = headers.contains_key("datastar-request");
+
+    if is_datastar {
+        let index_html = template::IndexComponent {
+            key_id: params.key_id,
+            link_id: params.link_id,
+            upload_id: params.upload_id,
+        };
+
+        match index_html.render() {
+            Ok(html) => {
+                let mut response = Html(html).into_response();
+                let headers_mut = response.headers_mut();
+                headers_mut.insert("datastar-selector", "#main-content".parse().unwrap());
+                headers_mut.insert("datastar-mode", "inner".parse().unwrap());
+                response
+            }
+            Err(err) => {
+                log::error!("Template rendering error: {}", err);
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR.into_response()
+            }
+        }
+    } else {
+        let (auth_header, user_initial, user_email) = match get_user_email(&headers) {
+            (auth_header, Some(email)) => (
+                auth_header,
+                email.chars().next().unwrap_or('_').to_ascii_uppercase(),
+                email,
+            ),
+            _ => (false, '_', "Anonymous".to_string()),
+        };
+
+        let exporter_target = { state.exporter.to_string() };
+        let index_html = template::Index {
             auth_header,
-            email.chars().next().unwrap_or('_').to_ascii_uppercase(),
-            email,
-        ),
-        _ => (false, '_', "Anonymous".to_string()),
-    };
+            debug: log::max_level() == log::Level::Debug,
+            exporter: exporter_target,
+            kibana_url: state.kibana_url.clone(),
+            key_id: params.key_id,
+            link_id: params.link_id,
+            upload_id: params.upload_id,
+            stats: state.get_stats_as_signals().await,
+            user: user_email,
+            user_initial,
+            version: env!("CARGO_PKG_VERSION").to_string(),
+        };
 
-    let exporter_target = { state.exporter.to_string() };
-    let index_html = template::Index {
-        auth_header,
-        debug: log::max_level() == log::Level::Debug,
-        exporter: exporter_target,
-        kibana_url: state.kibana_url.clone(),
-        key_id: params.key_id,
-        link_id: params.link_id,
-        upload_id: params.upload_id,
-        stats: state.get_stats_as_signals().await,
-        user: user_email,
-        user_initial,
-        version: env!("CARGO_PKG_VERSION").to_string(),
-    };
+        let index_html = match index_html.render() {
+            Ok(html) => html,
+            Err(err) => format!(
+                "<html><body><h1>Internal Server Error</h1><p>{}</p></body></html>",
+                err
+            ),
+        };
 
-    let index_html = match index_html.render() {
-        Ok(html) => html,
-        Err(err) => format!(
-            "<html><body><h1>Internal Server Error</h1><p>{}</p></body></html>",
-            err
-        ),
-    };
-
-    Html(index_html)
+        Html(index_html).into_response()
+    }
 }

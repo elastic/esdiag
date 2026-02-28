@@ -29,6 +29,14 @@ pub struct Index {
 }
 
 #[derive(Template)]
+#[template(path = "components/main.html")]
+pub struct IndexComponent {
+    pub key_id: Option<u64>,
+    pub link_id: Option<u64>,
+    pub upload_id: Option<u64>,
+}
+
+#[derive(Template)]
 #[template(path = "job/completed.html")]
 pub struct JobCompleted<'a> {
     pub job_id: u64,
