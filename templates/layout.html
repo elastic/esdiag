@@ -10,14 +10,7 @@
     </head>
 
     <body>
-        {% include "components/header.html" %}
-
-        <main id="main-content">
-            {% block content %}{% endblock %}
-        </main>
-
-        {% include "components/footer.html" %}
-
+        {% include "components/header.html" %} {% block content %}{% endblock %} {% include "components/footer.html" %}
         {% if debug %}
         <pre class="debug-signals" data-json-signals="{exclude: /files/}"></pre>
         {% endif %}

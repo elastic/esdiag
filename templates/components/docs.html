@@ -1,24 +1,24 @@
-<content id="main-content">
-    <div class="docs-container" data-init="if (window.Prism) { window.Prism.highlightAllUnder($el); }">
-        <nav class="docs-nav">
-            <h3>Documentation</h3>
-            <ul>
-                {% for entry in toc %} {% if entry.is_dir %}
-                <li class="dir">{{ entry.title }}</li>
-                {% else %}
-                <li class="{% if entry.level > 0 %}nested{% endif %}">
-                    <a
-                        href="#{{ entry.path }}"
-                        data-on-click="@get('/docs/{{ entry.path }}')"
-                        class="{% if current_path == entry.path %}active{% endif %}"
-                    >
-                        {{ entry.title }}
-                    </a>
-                </li>
-                {% endif %} {% endfor %}
-            </ul>
-        </nav>
+<docs-content
+    id="main-content"
+    data-on-hashchange__window="@get('/docs/'+window.location.hash.substring(1), {
+    filterSignals: {exclude: /.*/}
+    })"
+    data-init="if (window.Prism) { window.Prism.highlightAllUnder(el); }"
+>
+    <docs-nav>
+        <h3>Documentation</h3>
+        <ul>
+            {% for entry in toc %} {% if entry.is_dir %}
+            <li class="dir">{{ entry.title }}</li>
+            {% else %}
+            <li class="{% if entry.level > 0 %}nested{% endif %}">
+                <a href="#{{ entry.path }}" class="{% if current_path == entry.path %}active{% endif %}">
+                    {{ entry.title }}
+                </a>
+            </li>
+            {% endif %} {% endfor %}
+        </ul>
+    </docs-nav>
 
-        <main class="docs-content">{{ html_content|safe }}</main>
-    </div>
-</content>
+    <doc-viewer ="docs-content">{{ html_content|safe }}</doc-viewer>
+</docs-content>

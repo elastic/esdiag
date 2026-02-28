@@ -87,15 +87,14 @@ header h1 {
     color: #ffffff;
     font-size: 1.2em;
     font-weight: 200;
-    margin: 0px;
-    padding-top: 8px;
+    margin: 0px 4px;
 }
 
 img#logo {
     display: inline-block;
     vertical-align: middle;
     height: 26px;
-    margin: 0px 4px 6px 4px;
+    margin: 4px;
 }
 
 content {
@@ -602,4 +601,146 @@ footer-right {
 
 .version:hover {
     text-decoration: underline;
+}
+
+/* Documentation Elements */
+
+docs-content {
+    display: flex;
+    flex-direction: row;
+    overflow: hidden;
+}
+
+docs-nav {
+    display: flex;
+    box-sizing: border-box;
+    flex-direction: column;
+    width: 250px;
+    border-right: 1px solid #e0e0e0;
+    padding: 1rem;
+    overflow-y: auto;
+    min-height: 100vh;
+}
+
+docs-nav h3 {
+    margin-top: 0px;
+}
+
+docs-nav ul {
+    list-style-type: none;
+    padding-left: 0;
+    margin-top: 0;
+}
+
+docs-nav li {
+    margin-bottom: 0.5rem;
+}
+
+docs-nav a {
+    text-decoration: none;
+    color: #0068b5;
+}
+
+docs-nav a:hover {
+    text-decoration: underline;
+}
+
+docs-nav .active {
+    font-weight: bold;
+    color: #333;
+}
+
+docs-nav .dir {
+    font-weight: bold;
+    margin-top: 1rem;
+    margin-bottom: 0.2rem;
+    color: #555;
+}
+
+docs-nav .nested {
+    padding-left: 1rem;
+}
+
+doc-viewer {
+    max-width: 900px;
+    padding: 2rem 4rem;
+    overflow-y: auto;
+    background-color: #ffffff;
+}
+
+doc-viewer h1,
+doc-viewer h2,
+doc-viewer h3 {
+    border-bottom: 1px solid #eee;
+    padding-bottom: 0.3em;
+    margin-top: 1.5em;
+}
+
+doc-viewer code:not([class*="language-"]) {
+    background-color: #f6f8fa;
+    padding: 0.2em 0.4em;
+    border-radius: 3px;
+    font-size: 85%;
+}
+
+doc-viewer pre:not([class*="language-"]) {
+    background-color: #f6f8fa;
+    padding: 16px;
+    overflow: auto;
+    border-radius: 3px;
+}
+
+/* GFM Alerts */
+blockquote {
+    padding: 1em;
+    margin: 1em;
+    color: inherit;
+    border-left: 0.25em solid #d0d7de;
+}
+blockquote > *:first-child {
+    margin-top: 0;
+}
+blockquote > *:last-child {
+    margin-bottom: 0;
+}
+blockquote.markdown-alert-title {
+    display: flex;
+    font-weight: 500;
+    align-items: center;
+    line-height: 1;
+    margin-bottom: 8px;
+}
+blockquote.markdown-alert-title svg {
+    margin-right: 8px;
+    fill: currentColor;
+}
+blockquote.markdown-alert-note {
+    border-left-color: #0969da;
+}
+blockquote.markdown-alert-note .markdown-alert-title {
+    color: #0969da;
+}
+blockquote.markdown-alert-tip {
+    border-left-color: #1a7f37;
+}
+blockquote.markdown-alert-tip .markdown-alert-title {
+    color: #1a7f37;
+}
+blockquote.markdown-alert-important {
+    border-left-color: #8250df;
+}
+blockquote.markdown-alert-important .markdown-alert-title {
+    color: #8250df;
+}
+blockquote.markdown-alert-warning {
+    border-left-color: #9a6700;
+}
+blockquote.markdown-alert-warning .markdown-alert-title {
+    color: #9a6700;
+}
+blockquote.markdown-alert-caution {
+    border-left-color: #cf222e;
+}
+blockquote.markdown-alert-caution .markdown-alert-title {
+    color: #cf222e;
 }
