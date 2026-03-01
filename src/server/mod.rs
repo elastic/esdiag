@@ -34,6 +34,7 @@ use axum::{
 use bytes::Bytes;
 use datastar::prelude::{ElementPatchMode, PatchElements, PatchSignals};
 use serde::{Deserialize, Serialize};
+use eyre::Result;
 use std::{collections::HashMap, convert::Infallible, net::SocketAddr, sync::Arc};
 use tokio::sync::{RwLock, mpsc};
 
@@ -71,7 +72,7 @@ pub struct Server {
 }
 
 impl Server {
-    pub async fn start(port: Option<u16>, mut exporter: Exporter, kibana_url: String) -> (Self, std::net::SocketAddr) {
+    pub async fn start(bind_addr: [u8; 4], port: u16, mut exporter: Exporter, kibana_url: String) -> Result<(Self, std::net::SocketAddr)> {
         let (_, rx) = mpsc::channel::<(Identifiers, Bytes)>(1);
         let rx = Arc::new(RwLock::new(rx));
         let rx_clone = rx.clone();
@@ -130,7 +131,7 @@ impl Server {
                 .layer(DefaultBodyLimit::max(FIVE_HUNDRED_TWELVE_MEBIBYTES))
                 .layer(middleware::map_response(add_client_hint_headers));
 
-            let addr = SocketAddr::from(([127, 0, 0, 1], port.unwrap_or(0)));
+            let addr = SocketAddr::from((bind_addr, port));
 
             // Start the server
             log::info!("Starting server bind to {:?}", addr);
@@ -148,11 +149,11 @@ impl Server {
         let bound_addr = handle.listening().await.expect("Server failed to bind");
         log::info!("Listening on port {}", bound_addr.port());
 
-        (Self {
+        Ok((Self {
             server_handle: Some(Arc::new(server_handle)),
             stats_handle: Some(Arc::new(stats_handle)),
             rx: Some(rx_clone),
-        }, bound_addr)
+        }, bound_addr))
     }
 
     pub async fn shutdown(&mut self) {
@@ -166,12 +167,6 @@ impl Server {
             Arc::try_unwrap(handle).map(|handle| handle.abort()).ok();
             log::debug!("Server thread stopped");
         }
-    }
-}
-
-impl Default for Server {
-    fn default() -> Self {
-        panic!("Server::default() is no longer supported since start() is async. Use start() instead.");
     }
 }
 
