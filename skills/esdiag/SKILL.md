@@ -3,7 +3,7 @@ name: esdiag
 description: Operate Elastic Stack Diagnostics (`esdiag`) end-to-end for host configuration, asset setup, diagnostic collection, processing, and upload-service workflows. Use when a user asks to run or troubleshoot `esdiag` commands (`host`, `setup`, `collect`, `process`, `serve`), wire output targets via known hosts or `ESDIAG_OUTPUT_*` environment variables, process support-diagnostics archives/directories/upload links, or expose the local web/API service.
 ---
 
-# Esdiag
+# ESDiag
 
 Use this skill to choose and run the right `esdiag` command sequence quickly and safely.
 
@@ -49,11 +49,11 @@ Prefer command output from `esdiag help` and `esdiag <command> --help` over memo
   - Unpacked diagnostic directory
   - Known host name from `~/.esdiag/hosts.yml`
   - Elastic Upload URL (`https://token:...@upload.elastic.co/d/...`)
-- Resolve `[OUTPUT]` in this order:
-  - Known host name
-  - Filename fallback
-  - `-` for stdout
-  - Environment-variable output target if omitted
+- Resolve `[OUTPUT]` using these rules:
+  - If `[OUTPUT]` is `-`, write to stdout.
+  - Otherwise, if it matches a saved host name, use that host.
+  - Otherwise, treat it as a URL when it starts with `http://` or `https://`; treat remaining values as file/directory targets.
+  - If `[OUTPUT]` is omitted entirely, fall back to `ESDIAG_OUTPUT_*` environment variables.
 - Attach report metadata when provided by user:
   - `--account`
   - `--case`

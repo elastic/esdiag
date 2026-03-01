@@ -1,6 +1,6 @@
 # ESDiag CLI Reference
 
-Use this file for exact command syntax when building or checking command lines.
+Use this file as a concise command map. For complete and version-accurate options, run `esdiag --help` and `esdiag <command> --help`.
 
 ## Top-level
 
@@ -14,6 +14,11 @@ Commands:
   process
   setup
   help
+
+Options:
+      --debug
+  -h, --help
+  -V, --version
 ```
 
 ## collect
@@ -24,6 +29,7 @@ Usage: esdiag collect [OPTIONS] <HOST> <OUTPUT>
 
 - `<HOST>`: known Elasticsearch host to collect from.
 - `<OUTPUT>`: existing directory where a diagnostic directory is created.
+- For complete option support (including future flags), check `esdiag collect --help`.
 
 ## host
 
