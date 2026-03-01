@@ -29,7 +29,6 @@ pub struct SharedCacheStats {
 }
 
 impl DataSource for SearchableSnapshotsCacheStats {
-
     fn name() -> String {
         "searchable_snapshots_cache_stats".to_string()
     }

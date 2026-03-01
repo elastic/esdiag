@@ -66,7 +66,6 @@ pub struct Nodes {
 }
 
 impl DataSource for Nodes {
-
     fn name() -> String {
         "nodes".to_string()
     }

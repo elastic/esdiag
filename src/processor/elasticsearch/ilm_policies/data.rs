@@ -45,7 +45,6 @@ struct InUseBy {
 }
 
 impl DataSource for IlmPolicies {
-
     fn name() -> String {
         "ilm_policies".to_string()
     }

@@ -30,7 +30,6 @@ pub struct License {
 }
 
 impl DataSource for Licenses {
-
     fn name() -> String {
         "licenses".to_string()
     }

@@ -160,7 +160,9 @@ impl ElasticsearchCollector {
         let content = match self.receiver.get_raw::<T>().await {
             Ok(c) => c,
             Err(e) => {
-                if let Some(ds_err) = e.downcast_ref::<crate::processor::diagnostic::data_source::DataSourceError>() {
+                if let Some(ds_err) =
+                    e.downcast_ref::<crate::processor::diagnostic::data_source::DataSourceError>()
+                {
                     log::debug!("Skipping {} collection: {}", T::name(), ds_err);
                     return Ok(0);
                 }

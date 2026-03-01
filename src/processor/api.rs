@@ -115,7 +115,9 @@ impl ElasticsearchApi {
             "nodes" => Ok(ElasticsearchApi::Nodes),
             "nodes_stats" => Ok(ElasticsearchApi::NodesStats),
             "pending_tasks" => Ok(ElasticsearchApi::PendingTasks),
-            "searchable_snapshots_cache_stats" => Ok(ElasticsearchApi::SearchableSnapshotsCacheStats),
+            "searchable_snapshots_cache_stats" => {
+                Ok(ElasticsearchApi::SearchableSnapshotsCacheStats)
+            }
             "searchable_snapshots_stats" => Ok(ElasticsearchApi::SearchableSnapshotsStats),
             "slm_policies" => Ok(ElasticsearchApi::SlmPolicies),
             "tasks" => Ok(ElasticsearchApi::Tasks),
@@ -180,10 +182,7 @@ impl ApiResolver {
 
     pub fn es_base_apis(diag_type: &DiagnosticType) -> Vec<&'static str> {
         match diag_type {
-            DiagnosticType::Minimal => vec![
-                "cluster",
-                "nodes",
-            ],
+            DiagnosticType::Minimal => vec!["cluster", "nodes"],
             DiagnosticType::Standard | DiagnosticType::Support => vec![
                 "alias",
                 "cluster",
@@ -252,12 +251,12 @@ impl ApiResolver {
 
         let deps = Self::es_dependencies();
         let mut final_set: IndexSet<String> = IndexSet::new();
-        
+
         fn resolve_deps(
-            api: &str, 
-            deps_map: &HashMap<&'static str, Vec<&'static str>>, 
+            api: &str,
+            deps_map: &HashMap<&'static str, Vec<&'static str>>,
             final_set: &mut IndexSet<String>,
-            visited: &mut IndexSet<String>
+            visited: &mut IndexSet<String>,
         ) {
             if visited.contains(api) {
                 return;
@@ -320,12 +319,12 @@ impl ApiResolver {
 
         let deps = Self::ls_dependencies();
         let mut final_set: IndexSet<String> = IndexSet::new();
-        
+
         fn resolve_deps(
-            api: &str, 
-            deps_map: &HashMap<&'static str, Vec<&'static str>>, 
+            api: &str,
+            deps_map: &HashMap<&'static str, Vec<&'static str>>,
             final_set: &mut IndexSet<String>,
-            visited: &mut IndexSet<String>
+            visited: &mut IndexSet<String>,
         ) {
             if visited.contains(api) {
                 return;
@@ -363,7 +362,8 @@ mod tests {
             &DiagnosticType::Minimal,
             Some(&vec!["nodes_stats".to_string()]),
             None,
-        ).unwrap();
+        )
+        .unwrap();
 
         let api_strs: Vec<&str> = apis.iter().map(|a| a.as_str()).collect();
         assert!(api_strs.contains(&"cluster")); // required
@@ -378,7 +378,8 @@ mod tests {
             &DiagnosticType::Standard,
             None,
             Some(&vec!["cluster".to_string()]),
-        ).unwrap();
+        )
+        .unwrap();
 
         let api_strs: Vec<&str> = apis.iter().map(|a| a.as_str()).collect();
         assert!(api_strs.contains(&"cluster")); // Should still be there because it's required
@@ -400,7 +401,8 @@ mod tests {
             &DiagnosticType::Minimal,
             Some(&vec!["nodes".to_string(), "nodes".to_string()]),
             None,
-        ).unwrap();
+        )
+        .unwrap();
 
         let api_strs: Vec<&str> = apis.iter().map(|a| a.as_str()).collect();
         assert_eq!(api_strs.iter().filter(|&&x| x == "nodes").count(), 1);

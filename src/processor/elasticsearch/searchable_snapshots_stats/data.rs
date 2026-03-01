@@ -20,7 +20,6 @@ pub struct Total {
 }
 
 impl DataSource for SearchableSnapshotsStats {
-
     fn name() -> String {
         "searchable_snapshots_stats".to_string()
     }

@@ -25,7 +25,6 @@ pub struct SlmPolicy {
 }
 
 impl DataSource for SlmPolicies {
-
     fn name() -> String {
         "slm_policies".to_string()
     }

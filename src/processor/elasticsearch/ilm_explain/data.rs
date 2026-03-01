@@ -62,7 +62,6 @@ pub struct PhaseExecution {
 }
 
 impl DataSource for IlmExplain {
-
     fn name() -> String {
         "ilm_explain".to_string()
     }

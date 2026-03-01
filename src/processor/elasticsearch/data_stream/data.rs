@@ -183,7 +183,6 @@ pub struct FailureStoreLifecycle {
 }
 
 impl DataSource for DataStreams {
-
     fn name() -> String {
         "data_stream".to_string()
     }
