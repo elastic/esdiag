@@ -8,6 +8,12 @@ fn main() {
     println!("cargo:rerun-if-changed=Cargo.toml");
     println!("cargo:rerun-if-changed=about.hbs");
 
+    #[cfg(feature = "desktop")]
+    {
+        println!("cargo:rerun-if-changed=tauri.conf.json");
+        println!("cargo:rerun-if-changed=icons");
+    }
+
     let notice_path = Path::new("NOTICE.txt");
     let sbom_path = Path::new("esdiag.spdx.json");
     let cargo_toml_path = Path::new("Cargo.toml");
