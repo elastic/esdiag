@@ -1,0 +1,369 @@
+use eyre::{Result, eyre};
+use indexmap::IndexSet;
+use std::collections::HashMap;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DiagnosticType {
+    Minimal,
+    Standard,
+    Support,
+    Light,
+}
+
+impl std::str::FromStr for DiagnosticType {
+    type Err = eyre::Report;
+
+    fn from_str(s: &str) -> Result<Self> {
+        match s.to_lowercase().as_str() {
+            "minimal" => Ok(DiagnosticType::Minimal),
+            "standard" => Ok(DiagnosticType::Standard),
+            "support" => Ok(DiagnosticType::Support),
+            "light" => Ok(DiagnosticType::Light),
+            _ => Err(eyre!("Invalid diagnostic type: {}", s)),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ApiWeight {
+    Light,
+    Heavy,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ElasticsearchApi {
+    AliasList,
+    Cluster,
+    ClusterSettings,
+    DataStreams,
+    HealthReport,
+    IlmExplain,
+    IlmPolicies,
+    IndicesSettings,
+    IndicesStats,
+    Licenses,
+    MappingStats,
+    Nodes,
+    NodesStats,
+    PendingTasks,
+    SearchableSnapshotsCacheStats,
+    SearchableSnapshotsStats,
+    SlmPolicies,
+    Tasks,
+}
+
+impl ElasticsearchApi {
+    pub fn weight(&self) -> ApiWeight {
+        match self {
+            ElasticsearchApi::AliasList => ApiWeight::Heavy,
+            ElasticsearchApi::Cluster => ApiWeight::Light,
+            ElasticsearchApi::ClusterSettings => ApiWeight::Light,
+            ElasticsearchApi::DataStreams => ApiWeight::Heavy,
+            ElasticsearchApi::HealthReport => ApiWeight::Light,
+            ElasticsearchApi::IlmExplain => ApiWeight::Light,
+            ElasticsearchApi::IlmPolicies => ApiWeight::Light,
+            ElasticsearchApi::IndicesSettings => ApiWeight::Heavy,
+            ElasticsearchApi::IndicesStats => ApiWeight::Heavy,
+            ElasticsearchApi::Licenses => ApiWeight::Light,
+            ElasticsearchApi::MappingStats => ApiWeight::Heavy,
+            ElasticsearchApi::Nodes => ApiWeight::Light,
+            ElasticsearchApi::NodesStats => ApiWeight::Heavy,
+            ElasticsearchApi::PendingTasks => ApiWeight::Light,
+            ElasticsearchApi::SearchableSnapshotsCacheStats => ApiWeight::Light,
+            ElasticsearchApi::SearchableSnapshotsStats => ApiWeight::Light,
+            ElasticsearchApi::SlmPolicies => ApiWeight::Light,
+            ElasticsearchApi::Tasks => ApiWeight::Heavy,
+        }
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ElasticsearchApi::AliasList => "alias",
+            ElasticsearchApi::Cluster => "cluster",
+            ElasticsearchApi::ClusterSettings => "cluster_settings",
+            ElasticsearchApi::DataStreams => "data_streams",
+            ElasticsearchApi::HealthReport => "health_report",
+            ElasticsearchApi::IlmExplain => "ilm_explain",
+            ElasticsearchApi::IlmPolicies => "ilm_policies",
+            ElasticsearchApi::IndicesSettings => "indices_settings",
+            ElasticsearchApi::IndicesStats => "indices_stats",
+            ElasticsearchApi::Licenses => "licenses",
+            ElasticsearchApi::MappingStats => "mapping_stats",
+            ElasticsearchApi::Nodes => "nodes",
+            ElasticsearchApi::NodesStats => "nodes_stats",
+            ElasticsearchApi::PendingTasks => "pending_tasks",
+            ElasticsearchApi::SearchableSnapshotsCacheStats => "searchable_snapshots_cache_stats",
+            ElasticsearchApi::SearchableSnapshotsStats => "searchable_snapshots_stats",
+            ElasticsearchApi::SlmPolicies => "slm_policies",
+            ElasticsearchApi::Tasks => "tasks",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Result<Self> {
+        match s {
+            "alias" => Ok(ElasticsearchApi::AliasList),
+            "cluster" => Ok(ElasticsearchApi::Cluster),
+            "cluster_settings" => Ok(ElasticsearchApi::ClusterSettings),
+            "data_streams" => Ok(ElasticsearchApi::DataStreams),
+            "health_report" => Ok(ElasticsearchApi::HealthReport),
+            "ilm_explain" => Ok(ElasticsearchApi::IlmExplain),
+            "ilm_policies" => Ok(ElasticsearchApi::IlmPolicies),
+            "indices_settings" => Ok(ElasticsearchApi::IndicesSettings),
+            "indices_stats" => Ok(ElasticsearchApi::IndicesStats),
+            "licenses" => Ok(ElasticsearchApi::Licenses),
+            "mapping_stats" => Ok(ElasticsearchApi::MappingStats),
+            "nodes" => Ok(ElasticsearchApi::Nodes),
+            "nodes_stats" => Ok(ElasticsearchApi::NodesStats),
+            "pending_tasks" => Ok(ElasticsearchApi::PendingTasks),
+            "searchable_snapshots_cache_stats" => {
+                Ok(ElasticsearchApi::SearchableSnapshotsCacheStats)
+            }
+            "searchable_snapshots_stats" => Ok(ElasticsearchApi::SearchableSnapshotsStats),
+            "slm_policies" => Ok(ElasticsearchApi::SlmPolicies),
+            "tasks" => Ok(ElasticsearchApi::Tasks),
+            _ => Err(eyre!("Invalid Elasticsearch API: {}", s)),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum LogstashApi {
+    Node,
+    NodeStats,
+}
+
+impl LogstashApi {
+    pub fn weight(&self) -> ApiWeight {
+        match self {
+            LogstashApi::Node => ApiWeight::Light,
+            LogstashApi::NodeStats => ApiWeight::Heavy,
+        }
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            LogstashApi::Node => "node",
+            LogstashApi::NodeStats => "node_stats",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Result<Self> {
+        match s {
+            "node" => Ok(LogstashApi::Node),
+            "node_stats" => Ok(LogstashApi::NodeStats),
+            _ => Err(eyre!("Invalid Logstash API: {}", s)),
+        }
+    }
+}
+
+pub struct ApiResolver;
+
+impl ApiResolver {
+    pub fn es_minimum_required() -> Vec<&'static str> {
+        vec!["cluster"]
+    }
+
+    pub fn ls_minimum_required() -> Vec<&'static str> {
+        vec!["node"]
+    }
+
+    pub fn es_dependencies() -> HashMap<&'static str, Vec<&'static str>> {
+        let mut deps = HashMap::new();
+        deps.insert("nodes_stats", vec!["nodes"]);
+        deps.insert("nodes", vec!["cluster_settings"]);
+        deps
+    }
+
+    pub fn ls_dependencies() -> HashMap<&'static str, Vec<&'static str>> {
+        let mut deps = HashMap::new();
+        deps.insert("node_stats", vec!["node"]);
+        deps
+    }
+
+    pub fn es_base_apis(diag_type: &DiagnosticType) -> Vec<&'static str> {
+        match diag_type {
+            DiagnosticType::Minimal => vec![
+                "cluster",
+                "alias",
+                "cluster_settings",
+                "data_streams",
+                "ilm_explain",
+                "ilm_policies",
+                "indices_settings",
+                "indices_stats",
+                "licenses",
+                "nodes",
+                "nodes_stats",
+                "pending_tasks",
+                "searchable_snapshots_cache_stats",
+                "slm_policies",
+                "tasks",
+            ],
+            DiagnosticType::Standard | DiagnosticType::Support => vec![
+                "alias",
+                "cluster",
+                "cluster_settings",
+                "data_streams",
+                "health_report",
+                "ilm_explain",
+                "ilm_policies",
+                "indices_settings",
+                "indices_stats",
+                "licenses",
+                "mapping_stats",
+                "nodes",
+                "nodes_stats",
+                "pending_tasks",
+                "searchable_snapshots_cache_stats",
+                "searchable_snapshots_stats",
+                "slm_policies",
+                "tasks",
+            ],
+            DiagnosticType::Light => vec![
+                "cluster",
+                "cluster_settings",
+                "health_report",
+                "ilm_explain",
+                "ilm_policies",
+                "licenses",
+                "nodes",
+                "pending_tasks",
+                "searchable_snapshots_cache_stats",
+                "searchable_snapshots_stats",
+                "slm_policies",
+                "tasks",
+            ],
+        }
+    }
+
+    pub fn resolve_es(
+        diag_type: &DiagnosticType,
+        include: Option<&Vec<String>>,
+        exclude: Option<&Vec<String>>,
+    ) -> Result<Vec<ElasticsearchApi>> {
+        let mut requested: IndexSet<String> = IndexSet::new();
+
+        for api in Self::es_base_apis(diag_type) {
+            requested.insert(api.to_string());
+        }
+
+        if let Some(incs) = include {
+            for api in incs {
+                ElasticsearchApi::from_str(api)?;
+                requested.insert(api.to_string());
+            }
+        }
+
+        if let Some(excs) = exclude {
+            for api in excs {
+                ElasticsearchApi::from_str(api)?;
+                requested.swap_remove(api);
+            }
+        }
+
+        for req in Self::es_minimum_required() {
+            requested.insert(req.to_string());
+        }
+
+        let deps = Self::es_dependencies();
+        let mut final_set: IndexSet<String> = IndexSet::new();
+
+        fn resolve_deps(
+            api: &str,
+            deps_map: &HashMap<&'static str, Vec<&'static str>>,
+            final_set: &mut IndexSet<String>,
+            visited: &mut IndexSet<String>,
+        ) {
+            if visited.contains(api) {
+                return;
+            }
+            visited.insert(api.to_string());
+            if let Some(api_deps) = deps_map.get(api) {
+                for dep in api_deps {
+                    resolve_deps(dep, deps_map, final_set, visited);
+                }
+            }
+            final_set.insert(api.to_string());
+        }
+
+        let mut visited = IndexSet::new();
+        for api in requested.iter() {
+            resolve_deps(api, &deps, &mut final_set, &mut visited);
+        }
+
+        let mut apis = Vec::new();
+        for api in final_set.iter() {
+            apis.push(ElasticsearchApi::from_str(api)?);
+        }
+
+        Ok(apis)
+    }
+
+    pub fn resolve_ls(
+        diag_type: &DiagnosticType,
+        include: Option<&Vec<String>>,
+        exclude: Option<&Vec<String>>,
+    ) -> Result<Vec<LogstashApi>> {
+        let mut requested: IndexSet<String> = IndexSet::new();
+
+        for api in match diag_type {
+            DiagnosticType::Minimal => vec!["node"],
+            DiagnosticType::Standard | DiagnosticType::Support | DiagnosticType::Light => {
+                vec!["node", "node_stats"]
+            }
+        } {
+            requested.insert(api.to_string());
+        }
+
+        if let Some(incs) = include {
+            for api in incs {
+                LogstashApi::from_str(api)?;
+                requested.insert(api.to_string());
+            }
+        }
+
+        if let Some(excs) = exclude {
+            for api in excs {
+                LogstashApi::from_str(api)?;
+                requested.swap_remove(api);
+            }
+        }
+
+        for req in Self::ls_minimum_required() {
+            requested.insert(req.to_string());
+        }
+
+        let deps = Self::ls_dependencies();
+        let mut final_set: IndexSet<String> = IndexSet::new();
+
+        fn resolve_deps(
+            api: &str,
+            deps_map: &HashMap<&'static str, Vec<&'static str>>,
+            final_set: &mut IndexSet<String>,
+            visited: &mut IndexSet<String>,
+        ) {
+            if visited.contains(api) {
+                return;
+            }
+            visited.insert(api.to_string());
+            if let Some(api_deps) = deps_map.get(api) {
+                for dep in api_deps {
+                    resolve_deps(dep, deps_map, final_set, visited);
+                }
+            }
+            final_set.insert(api.to_string());
+        }
+
+        let mut visited = IndexSet::new();
+        for api in requested.iter() {
+            resolve_deps(api, &deps, &mut final_set, &mut visited);
+        }
+
+        let mut apis = Vec::new();
+        for api in final_set.iter() {
+            apis.push(LogstashApi::from_str(api)?);
+        }
+
+        Ok(apis)
+    }
+}
