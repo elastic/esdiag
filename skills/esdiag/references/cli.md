@@ -17,6 +17,7 @@ Commands:
 
 Options:
       --debug
+      --sources <SOURCES>
   -h, --help
   -V, --version
 ```
@@ -29,7 +30,15 @@ Usage: esdiag collect [OPTIONS] <HOST> <OUTPUT>
 
 - `<HOST>`: known Elasticsearch host to collect from.
 - `<OUTPUT>`: existing directory where a diagnostic directory is created.
-- For complete option support (including future flags), check `esdiag collect --help`.
+- Common options:
+  - `--type <TYPE>` (`minimal`, `light`, `standard`, `support`; default `standard`)
+  - `--include <INCLUDE>` (comma-separated APIs)
+  - `--exclude <EXCLUDE>` (comma-separated APIs)
+  - `-a, --account <ACCOUNT>`
+  - `-c, --case <CASE>`
+  - `-o, --opportunity <OPPORTUNITY>`
+  - `-u, --user <USER>`
+- Use `esdiag collect --help` for the full version-specific option list.
 
 ## host
 
@@ -43,6 +52,7 @@ Key options:
 - `-u, --username <USERNAME>`
 - `-p, --password <PASSWORD>`
 - `-n, --nosave`
+- `--sources <SOURCES>`
 
 ## process
 
@@ -58,6 +68,7 @@ Report options:
 - `-c, --case <CASE>`
 - `-o, --opportunity <OPPORTUNITY>`
 - `-u, --user <USER>`
+- `--sources <SOURCES>`
 
 ## serve
 
@@ -68,12 +79,16 @@ Usage: esdiag serve [OPTIONS] [OUTPUT]
 Key options:
 - `-p, --port <PORT>` (default `2501`)
 - `--kibana <KIBANA>`
+- `--sources <SOURCES>`
 
 ## setup
 
 ```text
 Usage: esdiag setup [OPTIONS] [HOST]
 ```
+
+Key options:
+- `--sources <SOURCES>`
 
 If `[HOST]` is omitted, resolve output from:
 - `ESDIAG_OUTPUT_URL`

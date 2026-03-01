@@ -8,6 +8,7 @@ description: Operate Elastic Stack Diagnostics (`esdiag`) end-to-end for host co
 Use this skill to choose and run the right `esdiag` command sequence quickly and safely.
 
 Prefer command output from `esdiag help` and `esdiag <command> --help` over memory when behavior is unclear.
+Use `--sources <path/to/sources.yml>` when diagnostics API selection must follow a custom or version-specific sources definition.
 
 ## Workflow Decision Tree
 
@@ -59,11 +60,16 @@ Prefer command output from `esdiag help` and `esdiag <command> --help` over memo
   - `--case`
   - `--opportunity`
   - `--user`
+- Use `--sources` to override endpoint source definitions when testing new API mappings or reproducing source-selection behavior.
 
 ## Step 4: Collect Then Process (Optional)
 
-- Use `esdiag collect <HOST> <OUTPUT>` when the user needs fresh API diagnostics.
+- Use `esdiag collect [OPTIONS] <HOST> <OUTPUT>` when the user needs fresh API diagnostics.
 - Ensure `<OUTPUT>` already exists; command creates a diagnostic subdirectory within it.
+- Use `--type` to control collection level (`minimal`, `light`, `standard`, `support`).
+- Use `--include` and `--exclude` to explicitly control which APIs are collected.
+- Use metadata options (`--account`, `--case`, `--opportunity`, `--user`) when collected artifacts should carry report context.
+- Use `--sources` when the collection endpoints should come from a non-default `sources.yml`.
 - For repeated captures, use `bin/min-diag.sh watch` and process each generated directory with `esdiag process`.
 
 ## Step 5: Run Upload Service (Optional)
