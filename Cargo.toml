@@ -26,6 +26,7 @@ env_logger = { version = "0.11" }
 eyre = "0.6.12"
 flate2 = { version = "1.1", optional = true, default-features = false, features = ["rust_backend"] }
 futures = "0.3"
+indexmap = "2.13.0"
 json-patch = "4.1"
 log = "0.4"
 mimalloc = "0.1.48"
@@ -66,6 +67,7 @@ tokio = { version = "1.49", features = [
     "sync",
     "io-util",
 ] }
+tempfile = "3.26.0"
 
 [build-dependencies]
 flate2 = { version = "1.1", default-features = false, features = ["rust_backend"] }

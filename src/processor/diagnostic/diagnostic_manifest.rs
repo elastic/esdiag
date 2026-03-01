@@ -40,6 +40,8 @@ pub struct DiagnosticManifest {
     diagnostic_id: RwLock<Option<String>>,
     /// Additional identifiers not included in the diagnostic itself
     pub identifiers: Option<Identifiers>,
+    /// Exact APIs collected during this run
+    pub collected_apis: Option<Vec<String>>,
 }
 
 impl Clone for DiagnosticManifest {
@@ -63,6 +65,7 @@ impl Clone for DiagnosticManifest {
             name: self.name.clone(),
             diagnostic_id,
             identifiers: self.identifiers.clone(),
+            collected_apis: self.collected_apis.clone(),
         }
     }
 }
@@ -91,6 +94,7 @@ impl DiagnosticManifest {
             flags,
             included_diagnostics,
             identifiers: None,
+            collected_apis: None,
             mode,
             name,
             product,
@@ -146,6 +150,13 @@ impl DiagnosticManifest {
     pub fn with_identifiers(self, identifiers: Identifiers) -> Self {
         Self {
             identifiers: Some(identifiers),
+            ..self
+        }
+    }
+
+    pub fn with_collected_apis(self, collected_apis: Vec<String>) -> Self {
+        Self {
+            collected_apis: Some(collected_apis),
             ..self
         }
     }

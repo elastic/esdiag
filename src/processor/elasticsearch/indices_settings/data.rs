@@ -2,10 +2,11 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use super::super::{data_stream::DataStreamDocument, DataSource};
+use super::super::super::diagnostic::data_source::PathType;
+use super::super::{DataSource, data_stream::DataStreamDocument};
 use crate::data::u64_from_string;
 use serde::{Deserialize, Deserializer, Serialize};
-use serde_json::{json, value::RawValue, Value};
+use serde_json::{Value, json, value::RawValue};
 use serde_with::skip_serializing_none;
 use std::collections::HashMap;
 

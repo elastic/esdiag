@@ -56,6 +56,39 @@ enum Commands {
         /// The output directory to save the diagnostics to
         #[arg(help = "An existing directory to create a diagnostic directory and files in")]
         output: String,
+        /// Diagnostic type
+        #[arg(
+            long,
+            default_value = "standard",
+            help = "Diagnostic type (minimal, light, standard, support)"
+        )]
+        r#type: String,
+        /// Explicitly include APIs
+        #[arg(
+            long,
+            help = "Comma-separated list of APIs to include",
+            value_delimiter = ','
+        )]
+        include: Option<Vec<String>>,
+        /// Explicitly exclude APIs
+        #[arg(
+            long,
+            help = "Comma-separated list of APIs to exclude",
+            value_delimiter = ','
+        )]
+        exclude: Option<Vec<String>>,
+        /// Diagnostic report account name
+        #[arg(help = "Diagnostic report account name", long, short)]
+        account: Option<String>,
+        /// Case number added to diagnostic report
+        #[arg(help = "Diagnostic report case number", long, short)]
+        case: Option<String>,
+        /// Diagnostic report opportunity
+        #[arg(help = "Diagnostic report opportunity", long, short)]
+        opportunity: Option<String>,
+        /// Diagnostic report user
+        #[arg(help = "Diagnostic report user", long, short)]
+        user: Option<String>,
     },
     /// Start a web server to receive diagnostic bundle uploads
     #[cfg(feature = "server")]
@@ -233,7 +266,17 @@ async fn run(cli: Cli) -> Result<&'static str> {
             server.shutdown().await;
             Ok("serve")
         }
-        Commands::Collect { host, output } => {
+        Commands::Collect {
+            host,
+            output,
+            r#type,
+            include,
+            exclude,
+            account,
+            case,
+            opportunity,
+            user,
+        } => {
             let known_host = Uri::try_from(host)?;
             let output = Uri::try_from(output)?;
             match known_host {
@@ -242,7 +285,21 @@ async fn run(cli: Cli) -> Result<&'static str> {
                     log::info!("Saving diagnostic to {output}");
                     let receiver = Receiver::try_from(known_host)?;
                     let exporter = DirectoryExporter::try_from(output)?;
-                    let collector = Collector::try_new(receiver, exporter).await?;
+
+                    let filename =
+                        format!("esdiag-{}.zip", chrono::Utc::now().format("%Y%m%d-%H%M%S"));
+                    let identifiers =
+                        Identifiers::new(account, case, Some(filename), opportunity, user);
+
+                    let collector = Collector::try_new(
+                        receiver,
+                        exporter,
+                        r#type,
+                        include,
+                        exclude,
+                        identifiers,
+                    )
+                    .await?;
                     collector.collect().await?;
                     Ok("collect")
                 }
