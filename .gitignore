@@ -3,3 +3,5 @@
 /output
 /assets/kibana/esdiag-dashboards*.ndjson
 .opencode/
+.codex/
+esdiag.spdx.json
