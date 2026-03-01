@@ -1,1 +1,1 @@
-{"identifier": "com.elastic.esdiag", "build": {"frontendDist": "../tauri"}, "app": {"withGlobalTauri": true, "windows": [{"title": "ESDiag", "width": 1200, "height": 800}]}, "bundle": {"icon": []}}
+{"identifier": "com.elastic.esdiag", "build": {"frontendDist": "../tauri"}, "app": {"withGlobalTauri": true, "windows": [{"title": "ESDiag", "width": 1200, "height": 800, "theme": "Light"}]}, "bundle": {"icon": []}}
