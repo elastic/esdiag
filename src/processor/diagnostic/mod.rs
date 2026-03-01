@@ -33,4 +33,3 @@ pub struct DiagPath {
     pub diag_type: String,
     pub diag_path: String,
 }
-mod data_source_tests;
