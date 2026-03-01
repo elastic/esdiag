@@ -29,3 +29,14 @@
 - [x] 5.4 Update `build.rs` to only run `tauri_build::build()` when `feature = "desktop"` is active.
 - [x] 5.5 Update `src/main.rs` to guard the Tauri entrypoint initialization with `#[cfg(feature = "desktop")]`. Ensure the code falls back or exits with an error if no arguments are passed and `desktop` is not enabled.
 - [x] 5.6 Run `cargo check` and verify the project builds properly both with and without the `desktop` feature flag.
+
+## 6. PR Review Feedback
+
+- [x] 6.1 `Server::start`: Return a `Result` instead of panicking on `expect` if the bind fails.
+- [x] 6.2 `frontendDist`: Fix the `tauri.conf.json` so `frontendDist` points to a valid directory to prevent bundle errors.
+- [x] 6.3 Icons: Add the generated icons to `bundle.icon` in `tauri.conf.json`.
+- [x] 6.4 Bind Address: Fix `127.0.0.1` vs `0.0.0.0` to preserve the original CLI behavior (CLI uses `0.0.0.0`, Tauri uses `127.0.0.1`).
+- [x] 6.5 Port Parameter: Clean up `Option<u16>` to `u16` in `Server::start` if `0` means ephemeral.
+- [x] 6.6 Remove Panicking Default: Remove the panicking `Default` impl for `Server`.
+- [x] 6.7 Graceful Shutdown: Handle graceful shutdown in Tauri instead of `pending().await` blocking forever.
+- [x] 6.8 Desktop Defaults: Share the `Exporter::default()` and Kibana URL logic between CLI serve and Desktop start to ensure consistent initialization defaults.
