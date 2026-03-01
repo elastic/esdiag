@@ -34,7 +34,6 @@ impl ClusterSettings {
 }
 
 impl DataSource for ClusterSettings {
-
     fn name() -> String {
         "cluster_settings".to_string()
     }

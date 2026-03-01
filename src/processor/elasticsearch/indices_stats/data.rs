@@ -416,7 +416,6 @@ pub struct Bulk {
 }
 
 impl DataSource for IndicesStats {
-
     fn name() -> String {
         "indices_stats".to_string()
     }

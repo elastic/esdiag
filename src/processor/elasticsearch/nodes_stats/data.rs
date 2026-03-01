@@ -260,7 +260,6 @@ pub struct IngestProcessorStats {
 }
 
 impl DataSource for NodesStats {
-
     fn name() -> String {
         "nodes_stats".to_string()
     }

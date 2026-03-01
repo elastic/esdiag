@@ -46,7 +46,6 @@ impl From<AliasSettings> for Alias {
 }
 
 impl DataSource for AliasList {
-
     fn name() -> String {
         "alias".to_string()
     }

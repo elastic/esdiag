@@ -9,12 +9,14 @@ fn test_collect_minimal() {
     let dir = tempdir().unwrap();
     let out_dir = dir.path().to_str().unwrap();
 
+    // This test expects a known host named "elasticsearch-local" to be configured in ~/.esdiag/hosts.yml
+    // You can create this with: `esdiag host elasticsearch-local http://localhost:9200`
     let status = Command::new("cargo")
         .args(&[
             "run",
             "--",
             "collect",
-            "localhost",
+            "elasticsearch-local",
             out_dir,
             "--type",
             "minimal",
@@ -68,18 +70,19 @@ fn find_diag_dir(path: &Path) -> Option<std::path::PathBuf> {
     None
 }
 
-
 #[test]
 fn test_collect_light() {
     let dir = tempdir().unwrap();
     let out_dir = dir.path().to_str().unwrap();
 
+    // This test expects a known host named "elasticsearch-local" to be configured in ~/.esdiag/hosts.yml
+    // You can create this with: `esdiag host elasticsearch-local http://localhost:9200`
     let status = Command::new("cargo")
         .args(&[
             "run",
             "--",
             "collect",
-            "localhost",
+            "elasticsearch-local",
             out_dir,
             "--include",
             "licenses,health_report,tasks",
@@ -108,12 +111,14 @@ fn test_collect_support_all_endpoints() {
     let dir = tempdir().unwrap();
     let out_dir = dir.path().to_str().unwrap();
 
+    // This test expects a known host named "elasticsearch-local" to be configured in ~/.esdiag/hosts.yml
+    // You can create this with: `esdiag host elasticsearch-local http://localhost:9200`
     let status = Command::new("cargo")
         .args(&[
             "run",
             "--",
             "collect",
-            "localhost",
+            "elasticsearch-local",
             out_dir,
             "--type",
             "support",

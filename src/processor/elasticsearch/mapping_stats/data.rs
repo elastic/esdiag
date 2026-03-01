@@ -264,7 +264,6 @@ impl FieldDefinition {
 }
 
 impl DataSource for MappingStats {
-
     fn name() -> String {
         "mapping".to_string()
     }

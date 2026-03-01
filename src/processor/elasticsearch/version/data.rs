@@ -79,7 +79,6 @@ pub struct Version {
 }
 
 impl DataSource for Cluster {
-
     fn name() -> String {
         "version".to_string()
     }

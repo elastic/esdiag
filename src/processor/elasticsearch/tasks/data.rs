@@ -40,7 +40,6 @@ pub struct Task {
 }
 
 impl DataSource for Tasks {
-
     fn name() -> String {
         "tasks".to_string()
     }
