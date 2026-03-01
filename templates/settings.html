@@ -1,0 +1,49 @@
+<div id="settings-modal" class="modal">
+    <div class="modal-content">
+        <span class="close-button" data-on-click="document.getElementById('settings-modal').remove()">&times;</span>
+        <h2>Settings</h2>
+        <form id="settings-form" data-on-submit="@post('/api/settings/update')">
+            <input-group>
+                <label for="target-host" class="form-label">Output Target (Hosts.yml)</label>
+                <select id="target-host" name="target" class="form-input">
+                    {% for host in hosts %}
+                        <option value="{{ host }}" {% if host == &active_target %}selected{% endif %}>{{ host }}</option>
+                    {% endfor %}
+                    <option value="new_host">-- Add New Host --</option>
+                </select>
+            </input-group>
+
+            <div id="new-host-form" style="display: none;">
+                <input-group>
+                    <label for="new-host-name" class="form-label">New Host Name</label>
+                    <input type="text" id="new-host-name" name="new_host_name" class="form-input" placeholder="my-cluster" />
+                </input-group>
+                <input-group>
+                    <label for="new-host-url" class="form-label">Elasticsearch URL</label>
+                    <input type="url" id="new-host-url" name="new_host_url" class="form-input" placeholder="https://..." />
+                </input-group>
+                <input-group>
+                    <label for="new-host-apikey" class="form-label">API Key</label>
+                    <input type="password" id="new-host-apikey" name="new_host_apikey" class="form-input" placeholder="Secret" />
+                </input-group>
+            </div>
+
+            <input-group>
+                <label for="kibana-url" class="form-label">Kibana URL</label>
+                <input type="url" id="kibana-url" name="kibana_url" class="form-input" value="{{ kibana_url }}" />
+            </input-group>
+
+            <input class="button" type="submit" value="Save Settings" />
+        </form>
+        <script>
+            document.getElementById('target-host').addEventListener('change', function() {
+                var newHostForm = document.getElementById('new-host-form');
+                if (this.value === 'new_host') {
+                    newHostForm.style.display = 'block';
+                } else {
+                    newHostForm.style.display = 'none';
+                }
+            });
+        </script>
+    </div>
+</div>

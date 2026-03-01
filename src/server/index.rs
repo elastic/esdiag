@@ -70,13 +70,15 @@ pub async fn handler(
         _ => (false, '_', "Anonymous".to_string()),
     };
 
-    let exporter_target = { state.exporter.to_string() };
+    let exporter_target = { state.exporter.read().await.to_string() };
     let theme_dark = get_theme_dark(&headers);
+    let kibana_url = { state.kibana_url.read().await.clone() };
     let index_html = template::Index {
         auth_header,
         debug: log::max_level() == log::Level::Debug,
+        desktop: cfg!(feature = "desktop"),
         exporter: exporter_target,
-        kibana_url: state.kibana_url.clone(),
+        kibana_url,
         key_id: params.key_id,
         link_id: params.link_id,
         upload_id: params.upload_id,

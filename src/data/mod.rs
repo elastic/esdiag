@@ -8,12 +8,15 @@ mod auth;
 mod known_host;
 /// Elastic stack products
 mod product;
+/// Application Settings
+pub mod settings;
 /// Universal resource identifiers
 mod uri;
 
 pub use auth::{Auth, AuthType};
 pub use known_host::{ElasticCloud, KnownHost, KnownHostBuilder};
 pub use product::Product;
+pub use settings::Settings;
 pub use uri::Uri;
 
 use crate::env;

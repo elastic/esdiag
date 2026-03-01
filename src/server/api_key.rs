@@ -61,7 +61,7 @@ pub async fn form(
             }
         };
 
-        let exporter = state.exporter.clone();
+        let exporter = Arc::new(state.exporter.read().await.clone());
         let identifiers = Identifiers {
             user: signals.metadata.user,
             ..signals.metadata
@@ -175,7 +175,7 @@ pub async fn id(
             }
         };
 
-        let exporter = state.exporter.clone();
+        let exporter = Arc::new(state.exporter.read().await.clone());
 
         let processor = match Processor::try_new(receiver, exporter, identifiers).await {
             Ok(job) => job,

@@ -203,7 +203,7 @@ pub async fn api_key(
             }
         };
 
-        let exporter = state.exporter.clone();
+        let exporter = Arc::new(state.exporter.read().await.clone());
         let identifiers = payload.metadata;
         log::debug!("[fsm][api.api_key] ready->try_new: job_id={job_id}");
 

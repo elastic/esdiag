@@ -9,6 +9,7 @@ mod docs;
 mod file_upload;
 mod index;
 mod service_link;
+mod settings;
 mod stats;
 mod template;
 mod theme;
@@ -80,9 +81,9 @@ impl Server {
 
         // Create shared state
         let state = Arc::new(ServerState {
-            exporter: Arc::new(exporter),
+            exporter: Arc::new(RwLock::new(exporter)),
             keys: Arc::new(RwLock::new(HashMap::new())),
-            kibana_url,
+            kibana_url: Arc::new(RwLock::new(kibana_url)),
             links: Arc::new(RwLock::new(HashMap::new())),
             signals: Arc::new(RwLock::new(Signals::default())),
             stats: Arc::new(RwLock::new(Stats::default())),
@@ -128,6 +129,8 @@ impl Server {
                 .route("/upload/process", post(file_upload::process))
                 .route("/upload/submit", post(file_upload::submit))
                 .route("/stats", patch(stats::handler))
+                .route("/settings/modal", get(settings::get_modal))
+                .route("/api/settings/update", post(settings::update_settings))
                 .layer(DefaultBodyLimit::max(FIVE_HUNDRED_TWELVE_MEBIBYTES))
                 .layer(middleware::map_response(add_client_hint_headers));
 
@@ -182,8 +185,8 @@ impl Drop for Server {
 }
 
 pub struct ServerState {
-    pub exporter: Arc<Exporter>,
-    pub kibana_url: String,
+    pub exporter: Arc<RwLock<Exporter>>,
+    pub kibana_url: Arc<RwLock<String>>,
     pub signals: Arc<RwLock<Signals>>,
     pub uploads: Arc<RwLock<HashMap<u64, (String, Bytes)>>>,
     pub links: Arc<RwLock<HashMap<u64, (Identifiers, Uri)>>>,
