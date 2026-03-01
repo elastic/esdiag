@@ -115,9 +115,7 @@ impl ElasticsearchApi {
             "nodes" => Ok(ElasticsearchApi::Nodes),
             "nodes_stats" => Ok(ElasticsearchApi::NodesStats),
             "pending_tasks" => Ok(ElasticsearchApi::PendingTasks),
-            "searchable_snapshots_cache_stats" => {
-                Ok(ElasticsearchApi::SearchableSnapshotsCacheStats)
-            }
+            "searchable_snapshots_cache_stats" => Ok(ElasticsearchApi::SearchableSnapshotsCacheStats),
             "searchable_snapshots_stats" => Ok(ElasticsearchApi::SearchableSnapshotsStats),
             "slm_policies" => Ok(ElasticsearchApi::SlmPolicies),
             "tasks" => Ok(ElasticsearchApi::Tasks),
@@ -184,20 +182,7 @@ impl ApiResolver {
         match diag_type {
             DiagnosticType::Minimal => vec![
                 "cluster",
-                "alias",
-                "cluster_settings",
-                "data_streams",
-                "ilm_explain",
-                "ilm_policies",
-                "indices_settings",
-                "indices_stats",
-                "licenses",
                 "nodes",
-                "nodes_stats",
-                "pending_tasks",
-                "searchable_snapshots_cache_stats",
-                "slm_policies",
-                "tasks",
             ],
             DiagnosticType::Standard | DiagnosticType::Support => vec![
                 "alias",
@@ -267,12 +252,12 @@ impl ApiResolver {
 
         let deps = Self::es_dependencies();
         let mut final_set: IndexSet<String> = IndexSet::new();
-
+        
         fn resolve_deps(
-            api: &str,
-            deps_map: &HashMap<&'static str, Vec<&'static str>>,
+            api: &str, 
+            deps_map: &HashMap<&'static str, Vec<&'static str>>, 
             final_set: &mut IndexSet<String>,
-            visited: &mut IndexSet<String>,
+            visited: &mut IndexSet<String>
         ) {
             if visited.contains(api) {
                 return;
@@ -335,12 +320,12 @@ impl ApiResolver {
 
         let deps = Self::ls_dependencies();
         let mut final_set: IndexSet<String> = IndexSet::new();
-
+        
         fn resolve_deps(
-            api: &str,
-            deps_map: &HashMap<&'static str, Vec<&'static str>>,
+            api: &str, 
+            deps_map: &HashMap<&'static str, Vec<&'static str>>, 
             final_set: &mut IndexSet<String>,
-            visited: &mut IndexSet<String>,
+            visited: &mut IndexSet<String>
         ) {
             if visited.contains(api) {
                 return;
@@ -365,5 +350,59 @@ impl ApiResolver {
         }
 
         Ok(apis)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_es_resolve_minimal_dependencies() {
+        let apis = ApiResolver::resolve_es(
+            &DiagnosticType::Minimal,
+            Some(&vec!["nodes_stats".to_string()]),
+            None,
+        ).unwrap();
+
+        let api_strs: Vec<&str> = apis.iter().map(|a| a.as_str()).collect();
+        assert!(api_strs.contains(&"cluster")); // required
+        assert!(api_strs.contains(&"nodes")); // resolved as dependency of nodes_stats
+        assert!(api_strs.contains(&"nodes_stats")); // explicitly included
+        assert!(api_strs.contains(&"cluster_settings")); // resolved as dependency of nodes
+    }
+
+    #[test]
+    fn test_es_resolve_exclude_required() {
+        let apis = ApiResolver::resolve_es(
+            &DiagnosticType::Standard,
+            None,
+            Some(&vec!["cluster".to_string()]),
+        ).unwrap();
+
+        let api_strs: Vec<&str> = apis.iter().map(|a| a.as_str()).collect();
+        assert!(api_strs.contains(&"cluster")); // Should still be there because it's required
+    }
+
+    #[test]
+    fn test_es_invalid_include() {
+        let res = ApiResolver::resolve_es(
+            &DiagnosticType::Standard,
+            Some(&vec!["not_a_real_api".to_string()]),
+            None,
+        );
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn test_es_deduplication() {
+        let apis = ApiResolver::resolve_es(
+            &DiagnosticType::Minimal,
+            Some(&vec!["nodes".to_string(), "nodes".to_string()]),
+            None,
+        ).unwrap();
+
+        let api_strs: Vec<&str> = apis.iter().map(|a| a.as_str()).collect();
+        assert_eq!(api_strs.iter().filter(|&&x| x == "nodes").count(), 1);
     }
 }
