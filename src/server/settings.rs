@@ -1,12 +1,15 @@
-use super::{ServerState, template::SettingsModal};
+use super::ServerState;
+use crate::server::template::SettingsModal;
 use crate::data::{KnownHost, KnownHostBuilder, Settings, Uri};
 use crate::exporter::Exporter;
 use askama::Template;
+use async_stream::stream;
 use axum::{
     extract::State,
-    response::{Html, IntoResponse},
+    response::{IntoResponse, Sse},
     Form,
 };
+use datastar::prelude::{ElementPatchMode, PatchElements};
 use serde::Deserialize;
 use std::sync::Arc;
 
@@ -25,10 +28,12 @@ pub async fn get_modal(State(state): State<Arc<ServerState>>) -> impl IntoRespon
         kibana_url,
     };
 
-    match modal.render() {
-        Ok(html) => Html(html),
-        Err(err) => Html(format!("<div>Error rendering template: {}</div>", err)),
-    }
+    Sse::new(stream! {
+        match modal.render() {
+            Ok(html) => yield Ok::<_, std::convert::Infallible>(PatchElements::new(html).mode(ElementPatchMode::Append).selector("body").write_as_axum_sse_event()),
+            Err(err) => yield Ok::<_, std::convert::Infallible>(PatchElements::new(format!("<div>Error: {}</div>", err)).write_as_axum_sse_event()),
+        }
+    })
 }
 
 #[derive(Deserialize)]
@@ -83,13 +88,13 @@ pub async fn update_settings(
     }
     
     // 5. Build response to remove modal and update exporter text
-    // Ideally we would send back multiple events. For now we will return standard HTML to close it and force a hard refresh
-    // Or we can just use Datastar signals to trigger a reload.
-    // Easiest is to close the modal and update the UI with a reload.
-    Html(r#"
-        <script>
-            document.getElementById('settings-modal').remove();
-            window.location.reload();
-        </script>
-    "#.to_string())
+    // Return HTML block to close the modal using JavaScript, or we can use Datastar events here
+    // but the easiest is simple HTML since we just need to execute it or trigger a reload
+    Sse::new(stream! {
+        yield Ok::<_, std::convert::Infallible>(PatchElements::new(r#"
+        <div id="settings-modal" data-on-load="window.location.reload();">
+            Reloading...
+        </div>
+        "#).write_as_axum_sse_event());
+    })
 }
