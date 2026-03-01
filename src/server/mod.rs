@@ -319,6 +319,7 @@ pub struct Signals {
     pub file_upload: FileUpload,
     pub service_link: ServiceLink,
     pub es_api: EsApiKey,
+    pub settings: settings::UpdateSettingsForm,
     pub stats: Stats,
     pub tab: Tab,
 }
@@ -341,6 +342,7 @@ impl Default for Signals {
                 key: String::new(),
                 url: Uri::default(),
             },
+            settings: settings::UpdateSettingsForm::default(),
             stats: Stats::default(),
             tab: Tab::FileUpload,
         }

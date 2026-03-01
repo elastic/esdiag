@@ -7,7 +7,6 @@ use async_stream::stream;
 use axum::{
     extract::State,
     response::{IntoResponse, Sse},
-    Form,
 };
 use datastar::prelude::{ElementPatchMode, PatchElements};
 use serde::Deserialize;
@@ -36,7 +35,7 @@ pub async fn get_modal(State(state): State<Arc<ServerState>>) -> impl IntoRespon
     })
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Default)]
 pub struct UpdateSettingsForm {
     target: String,
     new_host_name: Option<String>,
@@ -47,9 +46,10 @@ pub struct UpdateSettingsForm {
 
 pub async fn update_settings(
     State(state): State<Arc<ServerState>>,
-    Form(form): Form<UpdateSettingsForm>,
+    datastar::axum::ReadSignals(signals): datastar::axum::ReadSignals<super::Signals>,
 ) -> impl IntoResponse {
     let mut settings = Settings::load().unwrap_or_default();
+    let form = signals.settings;
 
     // 1. Process target selection
     if form.target == "new_host" {
