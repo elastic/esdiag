@@ -95,3 +95,4 @@ If `[HOST]` is omitted, resolve output from:
 - `ESDIAG_OUTPUT_APIKEY`
 - `ESDIAG_OUTPUT_USERNAME`
 - `ESDIAG_OUTPUT_PASSWORD`
+- `ESDIAG_KIBANA_URL` (required for Kibana asset setup when host is omitted)

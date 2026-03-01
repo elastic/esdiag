@@ -31,7 +31,7 @@ Use `--sources <path/to/sources.yml>` when diagnostics API selection must follow
 - Use `--apikey` for API key auth or `--username`/`--password` for basic auth.
 - Use `--accept-invalid-certs` for lab/self-signed environments.
 - Use `--nosave` for connectivity tests that should not persist.
-- Use `.env`/environment variables when the user does not want a saved host.
+- Use environment variables (optionally by sourcing a `.env` file in the shell) when the user does not want a saved host.
 
 ## Step 2: Setup Output Cluster
 
@@ -41,6 +41,8 @@ Use `--sources <path/to/sources.yml>` when diagnostics API selection must follow
   - `ESDIAG_OUTPUT_APIKEY`
   - `ESDIAG_OUTPUT_USERNAME`
   - `ESDIAG_OUTPUT_PASSWORD`
+  - `ESDIAG_KIBANA_URL` (required for Kibana asset setup in host-omitted mode)
+- In host-omitted mode, `setup` attempts both Elasticsearch and Kibana asset setup.
 
 ## Step 3: Process Diagnostics
 
@@ -53,8 +55,9 @@ Use `--sources <path/to/sources.yml>` when diagnostics API selection must follow
 - Resolve `[OUTPUT]` using these rules:
   - If `[OUTPUT]` is `-`, write to stdout.
   - Otherwise, if it matches a saved host name, use that host.
-  - Otherwise, treat it as a URL when it starts with `http://` or `https://`; treat remaining values as file/directory targets.
-  - If `[OUTPUT]` is omitted entirely, fall back to `ESDIAG_OUTPUT_*` environment variables.
+  - Otherwise, treat it as a filesystem target (file or directory).
+  - If `[OUTPUT]` is omitted entirely, fall back to `ESDIAG_OUTPUT_*` environment variables (Elasticsearch output target).
+  - Do not treat raw `http(s)` output strings as valid output targets unless they are saved and resolved as known hosts.
 - Attach report metadata when provided by user:
   - `--account`
   - `--case`
