@@ -328,7 +328,7 @@ panel > footer > button:focus-visible {
 
 .dropzone {
     border-radius: var(--border-radius);
-    border: dashed 2px var(--border-color);
+    border: dashed 2px var(--dropzone-border-color, var(--border-color));
     background-color: var(--background-color-dimmed);
     cursor: pointer;
     margin-bottom: var(--size-m);

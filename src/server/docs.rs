@@ -9,7 +9,7 @@ use axum::{
     http::{HeaderMap, StatusCode},
     response::{Html, IntoResponse},
 };
-use pulldown_cmark::{Options, Parser, html};
+use pulldown_cmark::{Event, Options, Parser, html};
 use std::{collections::BTreeMap, path::PathBuf};
 
 #[derive(Template)]
@@ -83,7 +83,11 @@ pub async fn handler(
             options.insert(Options::ENABLE_HEADING_ATTRIBUTES);
             options.insert(Options::ENABLE_GFM); // GitHub Flavored Markdown
 
-            let parser = Parser::new_ext(&markdown_content, options);
+            let parser = Parser::new_ext(&markdown_content, options).map(|event| match event {
+                // Do not allow raw HTML from markdown input in rendered docs.
+                Event::Html(text) | Event::InlineHtml(text) => Event::Text(text),
+                _ => event,
+            });
 
             // Write to a new String buffer.
             let mut html_content = String::new();

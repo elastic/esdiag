@@ -456,7 +456,13 @@ async fn add_client_hint_headers(mut response: Response) -> Response {
             .parse()
             .expect("valid Critical-CH value"),
     );
-    headers.append(VARY, SEC_CH_PREFERS_COLOR_SCHEME.parse().expect("valid Vary value"));
+    headers.append(
+        VARY,
+        SEC_CH_PREFERS_COLOR_SCHEME
+            .parse()
+            .expect("valid Vary value"),
+    );
+    headers.append(VARY, "Cookie".parse().expect("valid Vary value"));
 
     response
 }

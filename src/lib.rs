@@ -2,12 +2,12 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-/// Embedded assets
-pub mod embeds;
 /// Shared client libraries for remote connections
 pub mod client;
 /// Data structures and types for serializing and deserializing
 pub mod data;
+/// Embedded assets
+pub mod embeds;
 /// Environment variables
 pub mod env;
 /// Exports data to various destinations

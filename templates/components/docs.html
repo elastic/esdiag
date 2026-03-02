@@ -1,6 +1,6 @@
 <docs-content
     id="main-content"
-    data-init="@get('/docs/'+(window.location.hash.substring(1) || '{{ current_path }}'))"
+    data-init="window.location.hash && @get('/docs/'+window.location.hash.substring(1), { filterSignals: {exclude: /.*/} })"
     data-on:hashchange__window="@get('/docs/'+(window.location.hash.substring(1) || '{{ current_path }}'), {
     filterSignals: {exclude: /.*/}
     })"

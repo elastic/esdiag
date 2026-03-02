@@ -13,9 +13,8 @@
         ESDiag
         <a
             target="_blank"
-            class="stealth"
+            class="stealth version"
             href="https://github.com/elastic/esdiag/releases/tag/{{ version }}"
-            class="version"
             >{{ version }}</a
         >
     </footer-left>
@@ -23,7 +22,7 @@
     <footer-right
         data-init="@patch('/stats')"
         data-signals="{ 'stats': {{ stats }} }"
-        data-on:patch-signals-filter="stats"
+        data-on-signal-patch:filter="stats"
     >
         <span id="status" data-text="$loading ? 'Loading' : $processing ? 'Processing' : 'Ready'">Ready </span>
         | <span data-text="Intl.NumberFormat().format($stats.jobs.total)">0</span> diags |
