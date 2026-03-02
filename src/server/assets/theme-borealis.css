@@ -1,7 +1,5 @@
 :root {
-    --color-danger: #fa383e;
     --color-info: #54c7ec;
-    --color-primary: #3578e5;
     --color-secondary: #ebedf0;
     --color-success: #00a400;
     --color-warning: #ffba00;
@@ -51,9 +49,7 @@ html {
 }
 
 html:has(#dark-mode:checked) {
-    --color-danger: #fa383e;
     --color-info: #54c7ec;
-    --color-primary: #3578e5;
     --color-secondary: #ebedf0;
     --color-success: #00a400;
     --color-warning: #ffba00;
@@ -87,7 +83,6 @@ html:has(#dark-mode:checked) {
     --form-background-color: #0b1628;
     --form-placeholder-color: #98a8c3;
     --page-top-color: #111c2c;
-    --background-color-dimmed: #050f21;
     background: var(--background-color-dimmed);
 }
 
