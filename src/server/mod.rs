@@ -11,6 +11,7 @@ mod index;
 mod service_link;
 mod stats;
 mod template;
+mod theme;
 
 use super::processor::Identifiers;
 use crate::{
@@ -111,6 +112,8 @@ impl Server {
                 .route("/prism-json.js", get(assets::prism_json))
                 .route("/prism-json5.js", get(assets::prism_json5))
                 .route("/prism.css", get(assets::prism_css))
+                .route("/theme-borealis.css", get(assets::theme_borealis))
+                .route("/theme", post(theme::set_theme))
                 .route("/docs/{*path}", get(docs::handler))
                 .route("/docs", get(docs::handler_index))
                 .route("/upload/process", post(file_upload::process))
@@ -387,7 +390,7 @@ pub fn patch_job_feed(template: impl Template) -> Result<Event, Infallible> {
     Ok(sse_event)
 }
 
-fn get_user_email(headers: &HeaderMap) -> (bool, Option<String>) {
+pub(super) fn get_user_email(headers: &HeaderMap) -> (bool, Option<String>) {
     match std::env::var("ESDIAG_USER").ok() {
         Some(user) => (false, Some(user)),
         None => {
@@ -402,4 +405,29 @@ fn get_user_email(headers: &HeaderMap) -> (bool, Option<String>) {
             (has_header, email)
         }
     }
+}
+
+fn parse_cookie(headers: &HeaderMap, key: &str) -> Option<String> {
+    headers
+        .get(axum::http::header::COOKIE)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|raw| {
+            raw.split(';').find_map(|part| {
+                let trimmed = part.trim();
+                let (k, v) = trimmed.split_once('=')?;
+                if k == key { Some(v.to_string()) } else { None }
+            })
+        })
+}
+
+pub(super) fn get_theme_dark(headers: &HeaderMap) -> bool {
+    if let Some(cookie_dark) = parse_cookie(headers, "theme_dark") {
+        return matches!(cookie_dark.as_str(), "1" | "true");
+    }
+
+    headers
+        .get("sec-ch-prefers-color-scheme")
+        .and_then(|v| v.to_str().ok())
+        .map(|v| v.to_ascii_lowercase().contains("dark"))
+        .unwrap_or(false)
 }

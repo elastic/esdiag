@@ -26,6 +26,7 @@ pub struct Index {
     pub user: String,
     pub user_initial: char,
     pub version: String,
+    pub theme_dark: bool,
 }
 
 #[derive(Template)]

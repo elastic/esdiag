@@ -1,11 +1,11 @@
 ## ADDED Requirements
 
 ### Requirement: Embedded Documentation Renderer
-The application MUST embed the `marked.js` library into the binary and serve it to the frontend to support offline Markdown rendering.
+The application MUST render embedded markdown documentation to HTML on the server using the built-in markdown pipeline.
 
-#### Scenario: Requesting the Markdown renderer script
-- **WHEN** a client requests the embedded `marked.js` library
-- **THEN** the server successfully responds with the minified `marked.js` content from the binary.
+#### Scenario: Requesting a documentation page
+- **WHEN** a client requests a docs route for an existing markdown document
+- **THEN** the server responds with HTML generated from that markdown source.
 
 ### Requirement: Embedded Documentation Assets
 The application MUST access Markdown documentation files from the `docs/` directory at the project root. This directory and its nested subdirectories MUST be accessible by the application to ensure offline availability.

@@ -7,7 +7,7 @@
     </div>
     <header-links>
         <header-icon id="docs" title="Documentation">
-            <a href="/docs" style="color: inherit; text-decoration: none">
+            <a href="/docs" class="link" style="color: inherit; text-decoration: none">
                 <svg
                     class="icon"
                     viewBox="0 0 24 24"
@@ -18,20 +18,37 @@
                 >
                     <path
                         d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"
-                        stroke="#ffffff"
+                        stroke="currentColor"
                         stroke-width="2"
                         stroke-linecap="round"
                         stroke-linejoin="round"
                     />
                     <path
                         d="M6.5 2H20V22H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"
-                        stroke="#ffffff"
+                        stroke="currentColor"
                         stroke-width="2"
                         stroke-linecap="round"
                         stroke-linejoin="round"
                     />
                 </svg>
             </a>
+        </header-icon>
+        <header-icon id="theme-toggle" title="Toggle dark mode">
+            <button type="button" class="theme-toggle-button" aria-label="Enable dark mode" data-show="!$theme.dark" data-on:click="$theme.dark = true; @post('/theme')">
+                <theme-icon class="sun">
+                    <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                        <circle cx="8" cy="8" r="2.5"></circle>
+                        <path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3 3l1.5 1.5M11.5 11.5L13 13M13 3l-1.5 1.5M4.5 11.5L3 13"></path>
+                    </svg>
+                </theme-icon>
+            </button>
+            <button type="button" class="theme-toggle-button" aria-label="Disable dark mode" data-show="$theme.dark" data-on:click="$theme.dark = false; @post('/theme')">
+                <theme-icon class="moon">
+                    <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                        <path d="M8 2a4 4 0 0 0 6 6A6 6 0 1 1 8 2z"></path>
+                    </svg>
+                </theme-icon>
+            </button>
         </header-icon>
         <header-icon id="help">
             <svg
@@ -44,7 +61,7 @@
                 data-icon-type="question"
                 data-is-loaded="true"
                 aria-hidden="true"
-                fill="#ffffff"
+                fill="currentColor"
             >
                 <path
                     fill-rule="evenodd"
@@ -64,19 +81,19 @@
                         fill-rule="evenodd"
                         clip-rule="evenodd"
                         d="M11 25.2499V53.5809L31.137 30.3919C25.149 27.1299 18.299 25.2499 11 25.2499Z"
-                        fill="white"
+                        fill="currentColor"
                     />
                     <path
                         fill-rule="evenodd"
                         clip-rule="evenodd"
                         d="M11 4.99991V25.2499C18.299 25.2499 25.149 27.1299 31.137 30.3919L53.188 4.99991H11Z"
-                        fill="white"
+                        fill="currentColor"
                     />
                     <path
                         fill-rule="evenodd"
                         clip-rule="evenodd"
                         d="M35.4434 33.059L14.7754 56.86L12.9164 59H52.3414C50.1784 48.342 43.9924 39.149 35.4434 33.059Z"
-                        fill="white"
+                        fill="currentColor"
                     />
                 </g>
                 <defs>

@@ -121,7 +121,7 @@
                                 fileInfo.classList.remove("hidden");
                                 uploadButton.disabled = false;
                                 uploadInstructions.classList.add("hidden");
-                                fileIcon.style.color = "#1339ab"; // Change to button text blue
+                                fileIcon.style.color = "var(--primary)";
 
                                 // Change the icon to a check mark
                                 document.querySelector(".file-icon svg").innerHTML = `
@@ -134,7 +134,7 @@
                                 fileInfo.classList.add("hidden");
                                 uploadButton.disabled = true;
                                 uploadInstructions.classList.remove("hidden");
-                                fileIcon.style.color = "#516381"; // Reset to original color
+                                fileIcon.style.color = "var(--text-subdued-color)";
 
                                 // Reset to upload icon
                                 document.querySelector(".file-icon svg").innerHTML = `

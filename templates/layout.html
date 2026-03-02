@@ -2,6 +2,7 @@
 <html>
     <head>
         <title>{% block title %}ESDiag{% endblock %}</title>
+        <link id="theme-stylesheet" rel="stylesheet" href="/theme-borealis.css" />
         <link rel="stylesheet" href="/style.css" />
         <link rel="icon" type="image/svg+xml" href="/esdiag.svg" />
         <link rel="apple-touch-icon" href="/esdiag.svg" />
@@ -9,7 +10,8 @@
         {% block extra_head %}{% endblock %}
     </head>
 
-    <body>
+    <body data-signals="{theme: {dark: {% if theme_dark %}true{% else %}false{% endif %}}}">
+        <input id="dark-mode" type="checkbox" data-bind:theme.dark {% if theme_dark %}checked{% endif %} />
         {% include "components/header.html" %} {% block content %}{% endblock %} {% include "components/footer.html" %}
         {% if debug %}
         <pre class="debug-signals" data-json-signals="{exclude: /files/}"></pre>

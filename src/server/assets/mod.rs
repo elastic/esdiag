@@ -34,6 +34,10 @@ pub async fn style() -> impl IntoResponse {
     serve_server_asset("style.css", "text/css")
 }
 
+pub async fn theme_borealis() -> impl IntoResponse {
+    serve_server_asset("theme-borealis.css", "text/css")
+}
+
 pub async fn prism() -> impl IntoResponse {
     serve_server_asset("prism.js", "text/javascript")
 }

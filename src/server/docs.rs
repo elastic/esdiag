@@ -9,7 +9,7 @@ use axum::{
     http::{HeaderMap, StatusCode},
     response::{Html, IntoResponse},
 };
-use pulldown_cmark::{html, Options, Parser};
+use pulldown_cmark::{Options, Parser, html};
 use std::path::PathBuf;
 
 #[derive(Template)]
@@ -27,6 +27,7 @@ pub struct DocsTemplate {
     pub kibana_url: String,
     pub exporter: String,
     pub stats: String,
+    pub theme_dark: bool,
 }
 
 #[derive(Template)]
@@ -45,16 +46,16 @@ pub struct TocEntry {
 }
 
 pub async fn handler_index(
-    headers: HeaderMap, 
-    state: axum::extract::State<std::sync::Arc<crate::server::ServerState>>
+    headers: HeaderMap,
+    state: axum::extract::State<std::sync::Arc<crate::server::ServerState>>,
 ) -> impl IntoResponse {
     handler(headers, state, Path("index".to_string())).await
 }
 
 pub async fn handler(
-    headers: HeaderMap, 
+    headers: HeaderMap,
     axum::extract::State(state): axum::extract::State<std::sync::Arc<crate::server::ServerState>>,
-    Path(mut path): Path<String>
+    Path(mut path): Path<String>,
 ) -> impl IntoResponse {
     if path.is_empty() {
         path = "index".to_string();
@@ -72,7 +73,7 @@ pub async fn handler(
     match DocsAssets::get(&file_path) {
         Some(content) => {
             let markdown_content = String::from_utf8_lossy(&content.data);
-            
+
             // Set up pulldown-cmark parser with options
             let mut options = Options::empty();
             options.insert(Options::ENABLE_STRIKETHROUGH);
@@ -81,7 +82,7 @@ pub async fn handler(
             options.insert(Options::ENABLE_TASKLISTS);
             options.insert(Options::ENABLE_HEADING_ATTRIBUTES);
             options.insert(Options::ENABLE_GFM); // GitHub Flavored Markdown
-            
+
             let parser = Parser::new_ext(&markdown_content, options);
 
             // Write to a new String buffer.
@@ -111,21 +112,22 @@ pub async fn handler(
                         headers.insert("datastar-selector", "#main-content".parse().unwrap());
                         headers.insert("datastar-mode", "outer".parse().unwrap());
                         response
-                    },
+                    }
                     Err(err) => {
                         log::error!("Template rendering error: {}", err);
                         (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error").into_response()
                     }
                 }
             } else {
-                let (auth_header, user_initial, user_email) = match crate::server::get_user_email(&headers) {
-                    (auth_header, Some(email)) => (
-                        auth_header,
-                        email.chars().next().unwrap_or('_').to_ascii_uppercase(),
-                        email,
-                    ),
-                    _ => (false, '_', "Anonymous".to_string()),
-                };
+                let (auth_header, user_initial, user_email) =
+                    match crate::server::get_user_email(&headers) {
+                        (auth_header, Some(email)) => (
+                            auth_header,
+                            email.chars().next().unwrap_or('_').to_ascii_uppercase(),
+                            email,
+                        ),
+                        _ => (false, '_', "Anonymous".to_string()),
+                    };
 
                 let template = DocsTemplate {
                     toc,
@@ -139,8 +141,9 @@ pub async fn handler(
                     user: user_email,
                     user_initial,
                     version: env!("CARGO_PKG_VERSION").to_string(),
+                    theme_dark: crate::server::get_theme_dark(&headers),
                 };
-                
+
                 match template.render() {
                     Ok(html) => Html(html).into_response(),
                     Err(err) => {

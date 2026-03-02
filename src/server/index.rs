@@ -2,7 +2,7 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use super::{ServerState, get_user_email, template};
+use super::{ServerState, get_theme_dark, get_user_email, template};
 use askama::Template;
 use axum::{
     extract::{Query, State},
@@ -71,6 +71,7 @@ pub async fn handler(
     };
 
     let exporter_target = { state.exporter.to_string() };
+    let theme_dark = get_theme_dark(&headers);
     let index_html = template::Index {
         auth_header,
         debug: log::max_level() == log::Level::Debug,
@@ -83,6 +84,7 @@ pub async fn handler(
         user: user_email,
         user_initial,
         version: env!("CARGO_PKG_VERSION").to_string(),
+        theme_dark,
     };
 
     let index_html = match index_html.render() {
