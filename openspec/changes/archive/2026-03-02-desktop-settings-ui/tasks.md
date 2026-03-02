@@ -19,6 +19,6 @@
 
 ## 4. Verification & Polish
 
-- [ ] 4.1 Test starting the application without flags to confirm it loads defaults from `settings.yml`.
-- [ ] 4.2 Test modifying the Kibana URL and Target Host via the UI and verify `settings.yml` is updated immediately.
-- [ ] 4.3 Run `cargo clippy` and `cargo test` to ensure trait adherence and lack of regressions.
+- [x] 4.1 Test starting the application without flags to confirm it loads defaults from `settings.yml`.
+- [x] 4.2 Test modifying the Kibana URL and Target Host via the UI and verify `settings.yml` is updated immediately.
+- [x] 4.3 Run `cargo clippy` and `cargo test` to ensure trait adherence and lack of regressions.
