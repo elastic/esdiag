@@ -1,4 +1,3 @@
-use crate::env;
 use eyre::Result;
 use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf};
@@ -11,8 +10,10 @@ pub struct Settings {
 
 impl Settings {
     fn get_path() -> Result<PathBuf> {
-        let home_dir = PathBuf::from(env::get_string("HOME")?);
-        let esdiag_dir = home_dir.join(env::get_string("ESDIAG_HOME")?);
+        let esdiag_dir = super::KnownHost::get_hosts_path()
+            .parent()
+            .unwrap()
+            .to_path_buf();
         if !esdiag_dir.exists() {
             fs::create_dir_all(&esdiag_dir)?;
         }

@@ -54,17 +54,26 @@ pub async fn update_settings(
     // 1. Process target selection
     if form.target == "new_host" {
         // Build new host
-        if let (Some(name), Some(url), Some(apikey)) = (form.new_host_name, form.new_host_url, form.new_host_apikey) {
+        if let (Some(name), Some(url), Some(apikey)) = (&form.new_host_name, &form.new_host_url, &form.new_host_apikey) {
             if !name.is_empty() && !url.is_empty() {
-                let builder = KnownHostBuilder::new(url.parse().unwrap());
-                if let Ok(host) = builder.apikey(Some(apikey)).build() {
-                    let _ = host.save(&name);
-                    settings.active_target = Some(name);
+                match url.parse() {
+                    Ok(parsed_url) => {
+                        let builder = KnownHostBuilder::new(parsed_url);
+                        if let Ok(host) = builder.apikey(Some(apikey.clone())).build() {
+                            let _ = host.save(name);
+                            settings.active_target = Some(name.clone());
+                        }
+                    }
+                    Err(e) => {
+                        log::error!("Invalid URL provided for new host: {}", e);
+                        // Ideally we would return an SSE error patch here, 
+                        // but for now we just log it and don't save the invalid host
+                    }
                 }
             }
         }
     } else {
-        settings.active_target = Some(form.target);
+        settings.active_target = Some(form.target.clone());
     }
 
     // 2. Process kibana URL

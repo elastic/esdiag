@@ -20,7 +20,7 @@
     </footer-left>
     <footer-center id="exporter">
         {% if desktop %}
-        <a href="#" data-on-click="@get('/settings/modal')">Output: {{ exporter }}</a>
+        <a href="#" data-on:click="@get('/settings/modal')">Output: {{ exporter }}</a>
         {% else %}
         Output: {{ exporter }}
         {% endif %}
