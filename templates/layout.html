@@ -12,6 +12,25 @@
 
     <body data-signals="{theme: {dark: {% if theme_dark %}true{% else %}false{% endif %}}}">
         <input id="dark-mode" type="checkbox" data-bind:theme.dark {% if theme_dark %}checked{% endif %} />
+        
+        <!-- Fix Tauri external links and dark mode native app headers -->
+        <script>
+            document.addEventListener('click', function(e) {
+                var a = e.target.closest('a');
+                if (a && a.target === '_blank') {
+                    if (window.__TAURI_INTERNALS__) {
+                        e.preventDefault();
+                        window.__TAURI_INTERNALS__.invoke('plugin:opener|open_url', { url: a.href });
+                    }
+                }
+            });
+            document.getElementById('dark-mode').addEventListener('change', function(e) {
+                if (window.__TAURI_INTERNALS__) {
+                    window.__TAURI_INTERNALS__.invoke('plugin:window|set_theme', { theme: e.target.checked ? 'dark' : 'light' });
+                }
+            });
+        </script>
+        
         {% include "components/header.html" %} {% block content %}{% endblock %} {% include "components/footer.html" %}
         {% if debug %}
         <pre class="debug-signals" data-json-signals="{exclude: /files/}"></pre>

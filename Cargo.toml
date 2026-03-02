@@ -10,7 +10,7 @@ default = ["full"]
 full = ["server", "setup"]
 setup = []
 server = []
-desktop = ["server", "dep:tauri", "dep:tauri-build"]
+desktop = ["server", "dep:tauri", "dep:tauri-build", "dep:tauri-plugin-opener"]
 
 [dependencies]
 askama = { version = "0.15.4", default-features = false, features = ["derive", "std"] }
@@ -42,6 +42,7 @@ serde_with = { version = "3.16.1", default-features = false, features = ["macros
 serde_yaml = "0.9"
 tar = { version = "0.4.44", optional = true, default-features = false }
 tauri = { version = "2.10.2", optional = true , features = [] }
+tauri-plugin-opener = { version = "2.5.3", optional = true }
 tokio = { version = "1.49", features = [
     "rt-multi-thread",
     "macros",
