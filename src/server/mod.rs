@@ -22,7 +22,12 @@ use askama::Template;
 use axum::{
     Router,
     extract::DefaultBodyLimit,
-    http::HeaderMap,
+    http::{
+        HeaderMap,
+        header::{HeaderName, VARY},
+    },
+    middleware,
+    response::Response,
     response::sse::Event,
     routing::{get, patch, post},
 };
@@ -119,7 +124,8 @@ impl Server {
                 .route("/upload/process", post(file_upload::process))
                 .route("/upload/submit", post(file_upload::submit))
                 .route("/stats", patch(stats::handler))
-                .layer(DefaultBodyLimit::max(FIVE_HUNDRED_TWELVE_MEBIBYTES));
+                .layer(DefaultBodyLimit::max(FIVE_HUNDRED_TWELVE_MEBIBYTES))
+                .layer(middleware::map_response(add_client_hint_headers));
 
             let addr = SocketAddr::from(([0, 0, 0, 0], port));
 
@@ -430,4 +436,27 @@ pub(super) fn get_theme_dark(headers: &HeaderMap) -> bool {
         .and_then(|v| v.to_str().ok())
         .map(|v| v.to_ascii_lowercase().contains("dark"))
         .unwrap_or(false)
+}
+
+async fn add_client_hint_headers(mut response: Response) -> Response {
+    const SEC_CH_PREFERS_COLOR_SCHEME: &str = "Sec-CH-Prefers-Color-Scheme";
+    const ACCEPT_CH: HeaderName = HeaderName::from_static("accept-ch");
+    const CRITICAL_CH: HeaderName = HeaderName::from_static("critical-ch");
+
+    let headers = response.headers_mut();
+    headers.insert(
+        ACCEPT_CH,
+        SEC_CH_PREFERS_COLOR_SCHEME
+            .parse()
+            .expect("valid Accept-CH value"),
+    );
+    headers.insert(
+        CRITICAL_CH,
+        SEC_CH_PREFERS_COLOR_SCHEME
+            .parse()
+            .expect("valid Critical-CH value"),
+    );
+    headers.append(VARY, SEC_CH_PREFERS_COLOR_SCHEME.parse().expect("valid Vary value"));
+
+    response
 }

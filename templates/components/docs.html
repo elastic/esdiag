@@ -1,17 +1,16 @@
 <docs-content
     id="main-content"
-    data-init="@get('/docs/'+window.location.hash.substring(1))"
-    data-on:hashchange__window="@get('/docs/'+window.location.hash.substring(1), {
+    data-init="@get('/docs/'+(window.location.hash.substring(1) || '{{ current_path }}'))"
+    data-on:hashchange__window="@get('/docs/'+(window.location.hash.substring(1) || '{{ current_path }}'), {
     filterSignals: {exclude: /.*/}
     })"
 >
     <docs-nav>
-        <h3>Documentation</h3>
         <ul>
             {% for entry in toc %} {% if entry.is_dir %}
             <li class="dir">{{ entry.title }}</li>
             {% else %}
-            <li class="{% if entry.level > 0 %}nested{% endif %}">
+            <li class="{% if entry.level > 0 %}nested{% else %}top{% endif %}">
                 <a href="#{{ entry.path }}" class="{% if current_path == entry.path %}active{% endif %}">
                     {{ entry.title }}
                 </a>

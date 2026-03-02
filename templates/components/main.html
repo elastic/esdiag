@@ -1,6 +1,6 @@
 <content id="main-content">
-    <h2>Process Diagnostics</h2>
-    <input-form id="input-form" data-signals:loading="false" data-signals:processing="false">
+    <section-title>Process Diagnostics</section-title>
+    <panel class="no-padding" id="input-form" data-signals:loading="false" data-signals:processing="false">
         <diagnostic-form id="diagnostic-form">
             <tab-links data-signals:tab="'file-upload'">
                 <button
@@ -440,7 +440,7 @@
                 Clear Metadata
             </text-link>
         </metadata-form>
-    </input-form>
+    </panel>
 
     <div id="current-status" data-show="$loading && $_job_id === '' " class="status-box loading" style="display: none">
         <div class="spinner"></div>

@@ -26,7 +26,7 @@ Currently, ESDiag serves web pages utilizing Askama for templating and Datastar 
 - **Markdown Rendering Pipeline**: The Axum docs handler will load markdown from embedded docs, parse with `pulldown-cmark` (GFM-friendly options), and pass rendered HTML to Askama templates.
 - **Frontend Rendering**: The docs template receives server-rendered HTML content and applies syntax highlighting with Prism where needed.
 - **Docs Layout**: A dedicated Askama template will be created for the docs view, establishing a two-column layout. The left column will contain a list of all available documentation files (Table of Contents), and the right column will hold the `id="content"` element for rendering the Markdown.
-- **Routing**: The Axum router will be updated to handle `/docs/:doc` which returns the templated HTML page. A fallback route for `/docs` might redirect to `/docs/index` or the first available document.
+- **Routing**: The Axum router will be updated to handle `/docs/:doc` which returns the templated HTML page. A fallback route for `/docs` might redirect to `/docs/documentation` or the first available document.
 
 ## Risks / Trade-offs
 

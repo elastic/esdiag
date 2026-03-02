@@ -35,7 +35,7 @@
 
 ## 6. Verification
 
-- [ ] 6.1 Verify manual behavior: first-load OS preference, user mode toggle override, cookie persistence across reload/routes.
-- [ ] 6.2 Verify global coverage: index/upload flow, docs routes (`/docs`, `/docs/*path`), header/footer, and Datastar partial updates.
-- [ ] 6.3 Verify offline behavior by running without network access and confirming themed assets load from embedded sources.
+- [x] 6.1 Verify manual behavior: first-load OS preference, user mode toggle override, cookie persistence across reload/routes.
+- [x] 6.2 Verify global coverage: index/upload flow, docs routes (`/docs`, `/docs/*path`), header/footer, and Datastar partial updates.
+- [x] 6.3 Verify offline behavior by running without network access and confirming themed assets load from embedded sources.
 - [x] 6.4 Run `cargo clippy` and `cargo test` and resolve any regressions introduced by the theming changes.

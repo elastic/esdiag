@@ -10,7 +10,7 @@ use axum::{
     response::{Html, IntoResponse},
 };
 use pulldown_cmark::{Options, Parser, html};
-use std::path::PathBuf;
+use std::{collections::BTreeMap, path::PathBuf};
 
 #[derive(Template)]
 #[template(path = "docs.html")]
@@ -49,7 +49,7 @@ pub async fn handler_index(
     headers: HeaderMap,
     state: axum::extract::State<std::sync::Arc<crate::server::ServerState>>,
 ) -> impl IntoResponse {
-    handler(headers, state, Path("index".to_string())).await
+    handler(headers, state, Path("documentation".to_string())).await
 }
 
 pub async fn handler(
@@ -58,7 +58,7 @@ pub async fn handler(
     Path(mut path): Path<String>,
 ) -> impl IntoResponse {
     if path.is_empty() {
-        path = "index".to_string();
+        path = "documentation".to_string();
     }
 
     // Add .md extension if not present
@@ -158,70 +158,85 @@ pub async fn handler(
 }
 
 fn generate_toc() -> Vec<TocEntry> {
-    let mut entries = Vec::new();
-    let mut files: Vec<_> = DocsAssets::iter().map(|p| p.into_owned()).collect();
+    let mut sections: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut root_files = Vec::new();
 
-    // Simple sort to ensure stable ordering
-    files.sort();
-
-    let mut current_dir = String::new();
-
-    for file in files {
-        let path = PathBuf::from(&file);
-
-        // Handle directories
-        if let Some(parent) = path.parent() {
-            let parent_str = parent.to_string_lossy().into_owned();
-            if !parent_str.is_empty() && parent_str != current_dir {
-                current_dir = parent_str.clone();
-                entries.push(TocEntry {
-                    title: format_title(&current_dir),
-                    path: String::new(),
-                    level: 0,
-                    is_dir: true,
-                });
-            }
-        } else if !current_dir.is_empty() {
-            current_dir = String::new();
+    for file in DocsAssets::iter().map(|p| p.into_owned()) {
+        if !file.ends_with(".md") {
+            continue;
         }
 
-        // Format title from filename
-        let title = format_title(
-            path.file_stem()
-                .unwrap_or_default()
-                .to_str()
-                .unwrap_or(&file),
-        );
+        let path = PathBuf::from(&file);
+        let section = path
+            .components()
+            .next()
+            .map(|c| c.as_os_str().to_string_lossy().into_owned())
+            .unwrap_or_default();
 
-        // Path without .md
-        let display_path = if file.ends_with(".md") {
-            file[0..file.len() - 3].to_string()
+        if path.parent().map_or(true, |p| p.as_os_str().is_empty()) {
+            root_files.push(file.trim_end_matches(".md").to_string());
         } else {
-            file.clone()
-        };
+            let display_path = file.trim_end_matches(".md").to_string();
+            sections.entry(section).or_default().push(display_path);
+        }
+    }
 
-        let level = if path.parent().map_or(true, |p| p.as_os_str().is_empty()) {
-            0
-        } else {
-            1
-        };
-
+    let mut entries = Vec::new();
+    root_files.sort();
+    for file in root_files {
         entries.push(TocEntry {
-            title,
-            path: display_path,
-            level,
+            title: PathBuf::from(file.as_str())
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .map(format_title)
+                .unwrap_or_else(|| format_title(file.as_str())),
+            path: file,
+            level: 0,
             is_dir: false,
         });
+    }
+
+    for (section, files) in &mut sections {
+        files.sort();
+        entries.push(TocEntry {
+            title: format_title(section),
+            path: String::new(),
+            level: 0,
+            is_dir: true,
+        });
+
+        for file in files {
+            let remainder = file
+                .strip_prefix(&format!("{section}/"))
+                .unwrap_or(file.as_str());
+            let title = remainder
+                .split('/')
+                .map(format_title)
+                .collect::<Vec<_>>()
+                .join(" / ");
+
+            entries.push(TocEntry {
+                title,
+                path: file.clone(),
+                level: 1,
+                is_dir: false,
+            });
+        }
     }
 
     entries
 }
 
 fn format_title(s: &str) -> String {
-    // Capitalize and replace hyphens/underscores with spaces
-    let mut title = s.replace(['-', '_'], " ");
-    if let Some(first) = title.chars().next() {
-        title = format!("{}{}", first.to_uppercase(), &title[first.len_utf8()..]);
-    }
-    title
+    s.replace(['-', '_'], " ")
+        .split_whitespace()
+        .map(|word| {
+            let mut chars = word.chars();
+            match chars.next() {
+                Some(first) => format!("{}{}", first.to_uppercase(), chars.as_str().to_lowercase()),
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }

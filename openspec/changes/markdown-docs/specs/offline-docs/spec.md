@@ -11,7 +11,7 @@ The application MUST render embedded markdown documentation to HTML on the serve
 The application MUST access Markdown documentation files from the `docs/` directory at the project root. This directory and its nested subdirectories MUST be accessible by the application to ensure offline availability.
 
 #### Scenario: Requesting an existing documentation page
-- **WHEN** a user navigates to a documentation path (e.g. `/docs/index` or `/docs/subfolder/topic`) and the file exists
+- **WHEN** a user navigates to a documentation path (e.g. `/docs/documentation` or `/docs/subfolder/topic`) and the file exists
 - **THEN** the system serves the corresponding rendered HTML page including the Markdown content string or source.
 
 #### Scenario: Requesting a missing documentation page
@@ -37,4 +37,4 @@ The application Web UI header MUST include a "Book" button or link that navigate
 
 #### Scenario: Clicking the header docs link
 - **WHEN** a user clicks the "Book" button in the application header
-- **THEN** the user is navigated to the main documentation page (`/docs/index` or similar).
+- **THEN** the user is navigated to the main documentation page (`/docs/documentation` or similar).
