@@ -33,7 +33,7 @@ pulldown-cmark = "0.13.1"
 rayon = "1.11"
 regex = "1.12"
 reqwest = { version = "0.12.28", features = ["json", "blocking", "multipart"] }
-rust-embed = "8.9.0"
+rust-embed = { version = "8.9.0", features = ["compression", "debug-embed"] }
 semver = { version = "1.0.27", features = ["serde"] }
 serde = { version = "1.0.228", features = ["derive", "rc"] }
 serde_json = { version = "1.0.149", features = ["float_roundtrip", "raw_value"] }
