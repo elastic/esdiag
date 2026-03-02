@@ -5,6 +5,16 @@
   "windows": [
     "main"
   ],
+  "webviews": [
+    "main"
+  ],
+  "local": false,
+  "remote": {
+    "urls": [
+      "http://localhost:*",
+      "http://127.0.0.1:*"
+    ]
+  },
   "permissions": [
     "opener:default",
     "opener:allow-open-url"
