@@ -12,7 +12,7 @@ use super::{
     NodesStats, PendingTasks, SearchableSnapshotsCacheStats, SearchableSnapshotsStats, SlmPolicies,
     Tasks,
 };
-use crate::{data::Product, exporter::DirectoryExporter, receiver::Receiver};
+use crate::{data::Product, exporter::ArchiveExporter, receiver::Receiver};
 use eyre::Result;
 use std::path::PathBuf;
 
@@ -23,21 +23,28 @@ use std::time::Duration;
 
 pub struct ElasticsearchCollector {
     receiver: Receiver,
-    exporter: DirectoryExporter,
+    exporter: ArchiveExporter,
     options: CollectOptions,
 }
 
 impl ElasticsearchCollector {
     pub async fn new(
         receiver: Receiver,
-        exporter: DirectoryExporter,
+        exporter: ArchiveExporter,
         options: CollectOptions,
     ) -> Result<Self> {
         let timestamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
-        let directory = format!("api-diagnostics-{}", timestamp);
+        let collection_name = options
+            .identifiers
+            .filename
+            .as_ref()
+            .and_then(|name| std::path::Path::new(name).file_stem())
+            .map(|stem| stem.to_string_lossy().to_string())
+            .filter(|name| !name.is_empty())
+            .unwrap_or_else(|| format!("api-diagnostics-{}", timestamp));
         Ok(Self {
             receiver,
-            exporter: exporter.collection_directory(directory)?,
+            exporter: exporter.with_archive_name(&collection_name)?,
             options,
         })
     }
@@ -89,6 +96,7 @@ impl ElasticsearchCollector {
             result.success += self.save_api_with_retry(&api).await;
         }
 
+        self.exporter.finalize()?;
         Ok(result)
     }
 
@@ -155,13 +163,15 @@ impl ElasticsearchCollector {
     }
 
     async fn save_raw(&self, name: &str) -> Result<usize> {
-        let source_conf = match crate::processor::diagnostic::data_source::get_source("elasticsearch", name, &[]) {
-            Ok((_, conf)) => conf,
-            Err(e) => {
-                log::debug!("Skipping {} collection: {}", name, e);
-                return Ok(0);
-            }
-        };
+        let source_conf =
+            match crate::processor::diagnostic::data_source::get_source("elasticsearch", name, &[])
+            {
+                Ok((_, conf)) => conf,
+                Err(e) => {
+                    log::debug!("Skipping {} collection: {}", name, e);
+                    return Ok(0);
+                }
+            };
 
         let version = match &self.receiver {
             Receiver::Elasticsearch(r) => match r.get_version().await {
@@ -197,7 +207,7 @@ impl ElasticsearchCollector {
 
         let file_path = PathBuf::from(source_conf.get_file_path(name));
         let filename = format!("{}", file_path.display());
-        
+
         match self.exporter.save(file_path, content).await {
             Ok(()) => {
                 log::info!("Saved {filename}");

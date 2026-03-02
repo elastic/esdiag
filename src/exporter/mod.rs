@@ -2,7 +2,9 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-/// Write to a directory
+/// Write collection output to a zip archive
+mod archive;
+/// Write collection output to a directory
 mod directory;
 /// Send to an Elasticsearch cluster with the `_bulk` API
 mod elasticsearch;
@@ -15,11 +17,13 @@ use crate::{
     data::{KnownHost, Product, Uri},
     processor::{BatchResponse, DiagnosticReport, ProcessorSummary},
 };
+pub use archive::ArchiveExporter;
 pub use directory::DirectoryExporter;
 use elasticsearch::ElasticsearchExporter;
 use eyre::{Result, eyre};
 use file::FileExporter;
 use serde::Serialize;
+use std::path::PathBuf;
 use stream::StreamExporter;
 use tokio::sync::{mpsc, oneshot};
 
@@ -50,6 +54,8 @@ trait Export {
 /// - `Stream`: Exports data to standard output (stdout).
 #[derive(Clone)]
 pub enum Exporter {
+    /// Export collection artifacts to a directory or zip archive
+    Archive(ArchiveExporter),
     /// Export to an Elasticsearch cluster with the `_bulk` API
     Elasticsearch(ElasticsearchExporter),
     /// Export to an `.ndjson` file
@@ -61,6 +67,30 @@ pub enum Exporter {
 }
 
 impl Exporter {
+    pub fn for_collect(uri: Uri) -> Result<Self> {
+        match uri {
+            Uri::Directory(path) => Ok(Self::Directory(DirectoryExporter::try_from(path)?)),
+            _ => Err(eyre!(
+                "Collect requires a local directory output when --zip is not set"
+            )),
+        }
+    }
+
+    pub fn for_collect_archive(output_dir: PathBuf) -> Result<Self> {
+        Ok(Self::Archive(ArchiveExporter::zip(output_dir)?))
+    }
+
+    pub fn into_collect_exporter(self) -> Result<ArchiveExporter> {
+        match self {
+            Self::Archive(exporter) => Ok(exporter),
+            Self::Directory(exporter) => Ok(ArchiveExporter::Directory(exporter)),
+            unsupported => Err(eyre!(
+                "Collect supports only directory or archive exporters, got {}",
+                unsupported
+            )),
+        }
+    }
+
     /// Consume a channel of documents and export them in batches with parallelism.
     ///
     /// This helper continuously receives documents from the provided
@@ -127,6 +157,7 @@ impl Exporter {
         T: Serialize + Sized + Send + Sync,
     {
         match self {
+            Exporter::Archive(_) => Err(eyre!("batch send not supported for archive exporter")),
             Exporter::Directory(exporter) => exporter.batch_send(index, docs).await,
             Exporter::Elasticsearch(exporter) => exporter.batch_send(index, docs).await,
             Exporter::File(exporter) => exporter.batch_send(index, docs).await,
@@ -136,6 +167,10 @@ impl Exporter {
 
     pub fn get_docs_rx(&mut self) -> mpsc::Receiver<usize> {
         match self {
+            Exporter::Archive(_) => {
+                let (_tx, rx) = mpsc::channel::<usize>(1);
+                rx
+            }
             Exporter::Directory(exporter) => exporter.get_docs_rx(),
             Exporter::Elasticsearch(exporter) => exporter.get_docs_rx(),
             Exporter::File(exporter) => exporter.get_docs_rx(),
@@ -152,6 +187,7 @@ impl Exporter {
         T: Serialize + Sized + Send + Sync + 'static,
     {
         match self {
+            Exporter::Archive(_) => Err(eyre!("batch tx not supported for archive exporter")),
             Exporter::Directory(exporter) => exporter.batch_tx(index, docs).await,
             Exporter::Elasticsearch(exporter) => exporter.batch_tx(index, docs).await,
             Exporter::File(exporter) => exporter.batch_tx(index, docs).await,
@@ -166,6 +202,7 @@ impl Exporter {
         value: Option<&serde_json::Value>,
     ) -> Result<::elasticsearch::http::response::Response> {
         match self {
+            Exporter::Archive(_) => Err(eyre!("request not supported for archive exporter")),
             Exporter::Directory(_) => Err(eyre!("request not supported for directory exporter")),
             Exporter::Elasticsearch(exporter) => exporter.request(method, path, value).await,
             Exporter::File(_) => Err(eyre!("request not supported for file exporter")),
@@ -175,6 +212,7 @@ impl Exporter {
 
     pub fn as_str(&self) -> &'static str {
         match self {
+            Exporter::Archive(_) => "archive",
             Exporter::Directory(_) => "directory",
             Exporter::Elasticsearch(_) => "elasticsearch",
             Exporter::File(_) => "file",
@@ -188,6 +226,7 @@ impl Exporter {
 
     pub async fn save_report(&self, report: &DiagnosticReport) -> Result<()> {
         match self {
+            Exporter::Archive(_) => Ok(()),
             Exporter::Directory(exporter) => exporter.save_report(report).await,
             Exporter::Elasticsearch(exporter) => exporter.save_report(report).await,
             Exporter::File(exporter) => exporter.save_report(report).await,
@@ -197,6 +236,7 @@ impl Exporter {
 
     pub async fn is_connected(&self) -> bool {
         match self {
+            Exporter::Archive(exporter) => exporter.is_connected(),
             Exporter::Directory(exporter) => exporter.is_connected().await,
             Exporter::Elasticsearch(exporter) => exporter.is_connected().await,
             Exporter::File(exporter) => exporter.is_connected().await,
@@ -229,6 +269,7 @@ impl TryFrom<Uri> for Exporter {
 impl std::fmt::Display for Exporter {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Exporter::Archive(exporter) => write!(f, "Archive {}", exporter),
             Exporter::Directory(exporter) => write!(f, "Directory {}", exporter),
             Exporter::Elasticsearch(exporter) => write!(f, "Elasticsearch {}", exporter),
             Exporter::File(exporter) => write!(f, "File {}", exporter),

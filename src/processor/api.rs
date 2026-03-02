@@ -1,4 +1,4 @@
-use eyre::{eyre, Result};
+use eyre::{Result, eyre};
 use indexmap::IndexSet;
 use std::collections::HashMap;
 
@@ -106,6 +106,9 @@ impl ElasticsearchApi {
         match s {
             "alias" => Ok(ElasticsearchApi::AliasList),
             "cluster" => Ok(ElasticsearchApi::Cluster),
+            // `version` in sources.yml corresponds to `/` and maps to `version.json`,
+            // which is the same typed datasource used by `cluster`.
+            "version" => Ok(ElasticsearchApi::Cluster),
             "cluster_settings" => Ok(ElasticsearchApi::ClusterSettings),
             "data_streams" => Ok(ElasticsearchApi::DataStreams),
             "health_report" => Ok(ElasticsearchApi::HealthReport),
@@ -313,11 +316,12 @@ impl ApiResolver {
             resolve_deps(api, &deps, &mut final_set, &mut visited);
         }
 
-        let mut apis = Vec::new();
+        let mut api_set: IndexSet<ElasticsearchApi> = IndexSet::new();
         for api in final_set.iter() {
-            apis.push(ElasticsearchApi::from_str(api)?);
+            api_set.insert(ElasticsearchApi::from_str(api)?);
         }
 
+        let apis: Vec<ElasticsearchApi> = api_set.into_iter().collect();
         Ok(apis)
     }
 
@@ -444,5 +448,21 @@ mod tests {
 
         let api_strs: Vec<&str> = apis.iter().map(|a| a.as_str()).collect();
         assert_eq!(api_strs.iter().filter(|&&x| x == "nodes").count(), 1);
+    }
+
+    #[test]
+    fn test_es_version_alias_dedupes_to_cluster() {
+        let apis = ApiResolver::resolve_es(
+            &DiagnosticType::Minimal,
+            Some(&vec!["version".to_string()]),
+            None,
+        )
+        .unwrap();
+
+        let cluster_count = apis
+            .iter()
+            .filter(|api| matches!(api, ElasticsearchApi::Cluster))
+            .count();
+        assert_eq!(cluster_count, 1);
     }
 }

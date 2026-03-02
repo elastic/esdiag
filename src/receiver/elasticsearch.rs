@@ -219,10 +219,11 @@ impl ReceiveRaw for ElasticsearchReceiver {
         // Get the API URL path for the provided type
         let version = self.get_version().await.ok();
         let path = T::source(PathType::Url, version)?;
-        
+
         let name = T::name();
         let aliases = T::aliases();
-        let source_conf = crate::processor::diagnostic::data_source::get_source(T::product(), &name, &aliases)?;
+        let source_conf =
+            crate::processor::diagnostic::data_source::get_source(T::product(), &name, &aliases)?;
         let extension = source_conf.1.extension.as_deref().unwrap_or(".json");
 
         self.get_raw_by_path(&path, extension).await

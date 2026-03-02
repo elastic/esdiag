@@ -13,11 +13,12 @@ use esdiag::{
     client::Client,
     data::{KnownHost, KnownHostBuilder, Product, Uri},
     env::LOG_LEVEL,
-    exporter::{DirectoryExporter, Exporter},
+    exporter::Exporter,
     processor::{Collector, Identifiers, Processor},
     receiver::Receiver,
 };
 use eyre::{Result, eyre};
+use std::path::PathBuf;
 use std::sync::Arc;
 #[cfg(feature = "server")]
 use tokio::signal::unix::{SignalKind, signal};
@@ -48,14 +49,20 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Commands {
-    /// Collect a diagnostic bundle from a known host's API endpoints, writes output to a directory
+    /// Collect a diagnostic bundle from a known host's API endpoints
     Collect {
         /// The host to collect diagnostics from
         #[arg(help = "The Elasticsearch host to collect diagnostics from")]
         host: String,
         /// The output directory to save the diagnostics to
-        #[arg(help = "An existing directory to create a diagnostic directory and files in")]
+        #[arg(
+            help = "An existing directory to create a diagnostic directory and files in",
+            default_value = "."
+        )]
         output: String,
+        /// Write collected API output directly to a zip archive
+        #[arg(long)]
+        zip: bool,
         /// Diagnostic type
         #[arg(
             long,
@@ -173,6 +180,14 @@ enum Commands {
         /// Diagnostic report user
         #[arg(help = "Diagnostic report user", long, short)]
         user: Option<String>,
+        /// Save all fetched API call output to a diagnostic zip file in the optional destination directory
+        #[arg(
+            long,
+            num_args = 0..=1,
+            default_missing_value = ".",
+            value_name = "OUTPUT_DIR"
+        )]
+        zip: Option<String>,
     },
     #[cfg(feature = "setup")]
     /// Import assets (templates, ingest pipelines, etc.) to a known Elasticsearch host
@@ -269,6 +284,7 @@ async fn run(cli: Cli) -> Result<&'static str> {
         Commands::Collect {
             host,
             output,
+            zip,
             r#type,
             include,
             exclude,
@@ -278,18 +294,29 @@ async fn run(cli: Cli) -> Result<&'static str> {
             user,
         } => {
             let known_host = Uri::try_from(host)?;
-            let output = Uri::try_from(output)?;
             match known_host {
                 Uri::KnownHost(_) | Uri::ElasticCloudAdmin(_) | Uri::ElasticGovCloudAdmin(_) => {
                     log::info!("Collecting diagnostic from {known_host}");
-                    log::info!("Saving diagnostic to {output}");
                     let receiver = Receiver::try_from(known_host)?;
-                    let exporter = DirectoryExporter::try_from(output)?;
+                    let output_uri = Uri::try_from(output)?;
+                    let exporter = if zip {
+                        log::info!("Saving diagnostic as zip in {output_uri}");
+                        let output_dir = match output_uri {
+                            Uri::Directory(path) => path,
+                            _ => {
+                                return Err(eyre!(
+                                    "Collect output must be a local directory path"
+                                ));
+                            }
+                        };
+                        Exporter::for_collect_archive(output_dir)?
+                    } else {
+                        let exporter = Exporter::for_collect(output_uri.clone())?;
+                        log::info!("Saving diagnostic to {output_uri}");
+                        exporter
+                    };
 
-                    let filename =
-                        format!("esdiag-{}.zip", chrono::Utc::now().format("%Y%m%d-%H%M%S"));
-                    let identifiers =
-                        Identifiers::new(account, case, Some(filename), opportunity, user);
+                    let identifiers = Identifiers::new(account, case, None, opportunity, user);
 
                     let collector = Collector::try_new(
                         receiver,
@@ -300,7 +327,7 @@ async fn run(cli: Cli) -> Result<&'static str> {
                         identifiers,
                     )
                     .await?;
-                    collector.collect().await?;
+                    let _ = collector.collect().await?;
                     Ok("collect")
                 }
                 Uri::ElasticCloud(_) => {
@@ -365,17 +392,42 @@ async fn run(cli: Cli) -> Result<&'static str> {
             case,
             opportunity,
             user,
+            zip,
         } => {
             let input_uri = Uri::try_from(input)?;
             let output_uri = Uri::try_from(output)?;
+            let input_receiver = Receiver::try_from(input_uri.clone())?;
+            let identifiers = Identifiers::new(
+                account,
+                case,
+                input_receiver.filename(),
+                opportunity,
+                user,
+            );
 
-            log::info!("input: {}", input_uri);
+            let receiver = match zip {
+                Some(zip_path) => {
+                    let archive_exporter = Exporter::for_collect_archive(PathBuf::from(zip_path))?;
+                    let collect_identifiers = identifiers.clone().with_filename(None);
+                    let collector = Collector::try_new(
+                        input_receiver,
+                        archive_exporter,
+                        "standard".to_string(),
+                        None,
+                        None,
+                        collect_identifiers,
+                    )
+                    .await?;
+                    let collected = collector.collect().await?;
+                    log::info!("Collected API output archive {}", collected.path);
+                    Arc::new(Receiver::try_from(Uri::File(PathBuf::from(collected.path)))?)
+                }
+                None => Arc::new(input_receiver),
+            };
 
-            let receiver = Arc::new(Receiver::try_from(input_uri)?);
+            log::info!("input: {}", receiver);
             let exporter = Arc::new(Exporter::try_from(output_uri)?);
 
-            let identifiers =
-                Identifiers::new(account, case, receiver.filename(), opportunity, user);
             let processor = Processor::try_new(receiver, exporter, identifiers).await?;
             let processor = match processor.start().await {
                 Ok(processor) => processor,
