@@ -66,12 +66,18 @@ impl ElasticsearchReceiver {
     pub async fn get_raw_by_path(&self, path: &str) -> Result<String> {
         log::debug!("Getting raw API path: {}", path);
 
+        let mut headers = http::headers::HeaderMap::new();
+        // By default, the Elasticsearch client enforces Accept: application/json
+        // For raw paths (especially _cat APIs), we must explicitly request text/plain
+        // so that Elasticsearch does not forcefully convert the output to JSON.
+        headers.append(http::headers::ACCEPT, "text/plain".parse().unwrap());
+
         let response = self
             .client
             .send(
                 http::Method::Get,
                 path,
-                http::headers::HeaderMap::new(),
+                headers,
                 Option::<&String>::None,
                 Option::<&String>::None,
                 None,
