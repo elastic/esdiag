@@ -6,7 +6,7 @@
 pub mod api;
 mod collector;
 /// Universal diagnostic processor
-mod diagnostic;
+pub mod diagnostic;
 /// Processors for Elastic Cloud Kubernetes (ECK) diagnostics
 mod elastic_cloud_kubernetes;
 /// Processors for Elasticsearch diagnostics

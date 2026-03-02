@@ -63,14 +63,17 @@ impl ElasticsearchReceiver {
             .await
     }
 
-    pub async fn get_raw_by_path(&self, path: &str) -> Result<String> {
+    pub async fn get_raw_by_path(&self, path: &str, extension: &str) -> Result<String> {
         log::debug!("Getting raw API path: {}", path);
 
         let mut headers = http::headers::HeaderMap::new();
         // By default, the Elasticsearch client enforces Accept: application/json
-        // For raw paths (especially _cat APIs), we must explicitly request text/plain
-        // so that Elasticsearch does not forcefully convert the output to JSON.
-        headers.append(http::headers::ACCEPT, "text/plain".parse().unwrap());
+        // We use the configured file extension to request the appropriate content type
+        if extension == ".txt" {
+            headers.append(http::headers::ACCEPT, "text/plain".parse().unwrap());
+        } else {
+            headers.append(http::headers::ACCEPT, "application/json".parse().unwrap());
+        }
 
         let response = self
             .client
@@ -216,7 +219,13 @@ impl ReceiveRaw for ElasticsearchReceiver {
         // Get the API URL path for the provided type
         let version = self.get_version().await.ok();
         let path = T::source(PathType::Url, version)?;
-        self.get_raw_by_path(&path).await
+        
+        let name = T::name();
+        let aliases = T::aliases();
+        let source_conf = crate::processor::diagnostic::data_source::get_source(T::product(), &name, &aliases)?;
+        let extension = source_conf.1.extension.as_deref().unwrap_or(".json");
+
+        self.get_raw_by_path(&path, extension).await
     }
 }
 

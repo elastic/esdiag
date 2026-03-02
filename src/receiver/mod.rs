@@ -144,9 +144,9 @@ impl Receiver {
         }
     }
 
-    pub async fn get_raw_by_path(&self, path: &str) -> Result<String> {
+    pub async fn get_raw_by_path(&self, path: &str, extension: &str) -> Result<String> {
         match self {
-            Receiver::Elasticsearch(receiver) => receiver.get_raw_by_path(path).await,
+            Receiver::Elasticsearch(receiver) => receiver.get_raw_by_path(path, extension).await,
             _ => Err(eyre!("Raw data by path is only supported for Elasticsearch receiver")),
         }
     }

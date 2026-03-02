@@ -186,7 +186,8 @@ impl ElasticsearchCollector {
             }
         };
 
-        let content = match self.receiver.get_raw_by_path(&path).await {
+        let extension = source_conf.extension.as_deref().unwrap_or(".json");
+        let content = match self.receiver.get_raw_by_path(&path, extension).await {
             Ok(c) => c,
             Err(e) => {
                 log::warn!("Failed to get raw API {}: {}", name, e);
