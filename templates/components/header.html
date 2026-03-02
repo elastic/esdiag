@@ -34,7 +34,7 @@
             </a>
         </header-icon>
         <header-icon id="theme-toggle" title="Toggle dark mode">
-            <button type="button" class="theme-toggle-button" aria-label="Enable dark mode" data-show="!$theme.dark" data-on:click="$theme.dark = true; @post('/theme')">
+            <button type="button" class="theme-toggle-button" aria-label="Enable dark mode" data-show="!$theme.dark" data-on:click="$theme.dark = true; if(window.__TAURI_INTERNALS__) window.__TAURI_INTERNALS__.invoke('plugin:window|set_theme', { theme: 'dark' }); @post('/theme')">
                 <theme-icon class="sun">
                     <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
                         <circle cx="8" cy="8" r="2.5"></circle>
@@ -42,7 +42,7 @@
                     </svg>
                 </theme-icon>
             </button>
-            <button type="button" class="theme-toggle-button" aria-label="Disable dark mode" data-show="$theme.dark" data-on:click="$theme.dark = false; @post('/theme')">
+            <button type="button" class="theme-toggle-button" aria-label="Disable dark mode" data-show="$theme.dark" data-on:click="$theme.dark = false; if(window.__TAURI_INTERNALS__) window.__TAURI_INTERNALS__.invoke('plugin:window|set_theme', { theme: 'light' }); @post('/theme')">
                 <theme-icon class="moon">
                     <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
                         <path d="M8 2a4 4 0 0 0 6 6A6 6 0 1 1 8 2z"></path>
