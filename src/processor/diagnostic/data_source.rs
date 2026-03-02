@@ -2,7 +2,7 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use eyre::{Result, eyre};
+use eyre::{eyre, Result};
 use semver::{Version, VersionReq};
 use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::{BTreeMap, HashMap};
@@ -74,6 +74,7 @@ pub trait StreamingDataSource: DataSource {
 pub struct Source {
     pub extension: Option<String>,
     pub subdir: Option<String>,
+    pub tags: Option<String>,
     pub versions: BTreeMap<String, String>,
 }
 
@@ -82,6 +83,7 @@ impl Default for Source {
         Self {
             extension: Some(String::from(".json")),
             subdir: None,
+            tags: None,
             versions: BTreeMap::new(),
         }
     }

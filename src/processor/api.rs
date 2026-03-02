@@ -1,4 +1,4 @@
-use eyre::{Result, eyre};
+use eyre::{eyre, Result};
 use indexmap::IndexSet;
 use std::collections::HashMap;
 
@@ -50,6 +50,7 @@ pub enum ElasticsearchApi {
     SearchableSnapshotsStats,
     SlmPolicies,
     Tasks,
+    Raw(String, ApiWeight),
 }
 
 impl ElasticsearchApi {
@@ -73,10 +74,11 @@ impl ElasticsearchApi {
             ElasticsearchApi::SearchableSnapshotsStats => ApiWeight::Light,
             ElasticsearchApi::SlmPolicies => ApiWeight::Light,
             ElasticsearchApi::Tasks => ApiWeight::Heavy,
+            ElasticsearchApi::Raw(_, weight) => weight.clone(),
         }
     }
 
-    pub fn as_str(&self) -> &'static str {
+    pub fn as_str(&self) -> &str {
         match self {
             ElasticsearchApi::AliasList => "alias",
             ElasticsearchApi::Cluster => "cluster",
@@ -96,6 +98,7 @@ impl ElasticsearchApi {
             ElasticsearchApi::SearchableSnapshotsStats => "searchable_snapshots_stats",
             ElasticsearchApi::SlmPolicies => "slm_policies",
             ElasticsearchApi::Tasks => "tasks",
+            ElasticsearchApi::Raw(name, _) => name.as_str(),
         }
     }
 
@@ -121,7 +124,23 @@ impl ElasticsearchApi {
             "searchable_snapshots_stats" => Ok(ElasticsearchApi::SearchableSnapshotsStats),
             "slm_policies" => Ok(ElasticsearchApi::SlmPolicies),
             "tasks" => Ok(ElasticsearchApi::Tasks),
-            _ => Err(eyre!("Invalid Elasticsearch API: {}", s)),
+            _ => {
+                let weight = match crate::processor::diagnostic::data_source::get_source(
+                    "elasticsearch",
+                    s,
+                    &[],
+                ) {
+                    Ok((_, source)) => {
+                        if source.tags.as_deref() == Some("light") {
+                            ApiWeight::Light
+                        } else {
+                            ApiWeight::Heavy
+                        }
+                    }
+                    Err(_) => return Err(eyre!("Invalid Elasticsearch API: {}", s)),
+                };
+                Ok(ElasticsearchApi::Raw(s.to_string(), weight))
+            }
         }
     }
 }
@@ -180,43 +199,62 @@ impl ApiResolver {
         deps
     }
 
-    pub fn es_base_apis(diag_type: &DiagnosticType) -> Vec<&'static str> {
+    pub fn es_base_apis(diag_type: &DiagnosticType) -> Vec<String> {
         match diag_type {
-            DiagnosticType::Minimal => vec!["cluster", "nodes"],
-            DiagnosticType::Standard | DiagnosticType::Support => vec![
-                "alias",
-                "cluster",
-                "cluster_settings",
-                "data_streams",
-                "health_report",
-                "ilm_explain",
-                "ilm_policies",
-                "indices_settings",
-                "indices_stats",
-                "licenses",
-                "mapping_stats",
-                "nodes",
-                "nodes_stats",
-                "pending_tasks",
-                "searchable_snapshots_cache_stats",
-                "searchable_snapshots_stats",
-                "slm_policies",
-                "tasks",
+            DiagnosticType::Minimal => vec!["cluster".to_string(), "nodes".to_string()],
+            DiagnosticType::Standard => vec![
+                "alias".to_string(),
+                "cluster".to_string(),
+                "cluster_settings".to_string(),
+                "data_streams".to_string(),
+                "health_report".to_string(),
+                "ilm_explain".to_string(),
+                "ilm_policies".to_string(),
+                "indices_settings".to_string(),
+                "indices_stats".to_string(),
+                "licenses".to_string(),
+                "mapping_stats".to_string(),
+                "nodes".to_string(),
+                "nodes_stats".to_string(),
+                "pending_tasks".to_string(),
+                "searchable_snapshots_cache_stats".to_string(),
+                "searchable_snapshots_stats".to_string(),
+                "slm_policies".to_string(),
+                "tasks".to_string(),
             ],
-            DiagnosticType::Light => vec![
-                "cluster",
-                "cluster_settings",
-                "health_report",
-                "ilm_explain",
-                "ilm_policies",
-                "licenses",
-                "nodes",
-                "pending_tasks",
-                "searchable_snapshots_cache_stats",
-                "searchable_snapshots_stats",
-                "slm_policies",
-                "tasks",
-            ],
+            DiagnosticType::Support => {
+                let sources = crate::processor::diagnostic::data_source::get_sources();
+                if let Some(es_sources) = sources.get("elasticsearch") {
+                    es_sources.keys().cloned().collect()
+                } else {
+                    vec![]
+                }
+            }
+            DiagnosticType::Light => {
+                let sources = crate::processor::diagnostic::data_source::get_sources();
+                if let Some(es_sources) = sources.get("elasticsearch") {
+                    let mut light_apis: Vec<String> = es_sources
+                        .iter()
+                        .filter_map(|(k, v)| {
+                            if v.tags.as_deref() == Some("light") {
+                                Some(k.clone())
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
+                    // Ensure minimums are included
+                    if !light_apis.contains(&"cluster".to_string()) {
+                        light_apis.push("cluster".to_string());
+                    }
+                    if !light_apis.contains(&"nodes".to_string()) {
+                        light_apis.push("nodes".to_string());
+                    }
+                    light_apis
+                } else {
+                    vec![]
+                }
+            }
         }
     }
 

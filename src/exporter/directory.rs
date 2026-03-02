@@ -54,6 +54,9 @@ impl DirectoryExporter {
     pub async fn save(&self, path: PathBuf, content: String) -> Result<()> {
         let path = &self.path.join(path);
         log::debug!("Writing file: {}", &path.display());
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
         let mut file = File::create(path)?;
         file.write_all(content.as_bytes())?;
         Ok(())
@@ -62,7 +65,7 @@ impl DirectoryExporter {
     pub fn collection_directory(mut self, directory: String) -> Result<Self> {
         log::debug!("Creating directory: {}", &directory);
         self.path = self.path.join(directory);
-        std::fs::create_dir_all(self.path.clone().join("commercial"))?;
+        std::fs::create_dir_all(&self.path)?;
         Ok(self)
     }
 }

@@ -144,6 +144,13 @@ impl Receiver {
         }
     }
 
+    pub async fn get_raw_by_path(&self, path: &str) -> Result<String> {
+        match self {
+            Receiver::Elasticsearch(receiver) => receiver.get_raw_by_path(path).await,
+            _ => Err(eyre!("Raw data by path is only supported for Elasticsearch receiver")),
+        }
+    }
+
     pub async fn is_connected(&self) -> bool {
         match self {
             Receiver::ArchiveBytes(receiver) => receiver.is_connected().await,

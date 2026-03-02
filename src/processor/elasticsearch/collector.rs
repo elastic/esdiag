@@ -150,6 +150,62 @@ impl ElasticsearchCollector {
             }
             ElasticsearchApi::SlmPolicies => self.save::<SlmPolicies>().await,
             ElasticsearchApi::Tasks => self.save::<Tasks>().await,
+            ElasticsearchApi::Raw(name, _) => self.save_raw(name).await,
+        }
+    }
+
+    async fn save_raw(&self, name: &str) -> Result<usize> {
+        let source_conf = match crate::processor::diagnostic::data_source::get_source("elasticsearch", name, &[]) {
+            Ok((_, conf)) => conf,
+            Err(e) => {
+                log::debug!("Skipping {} collection: {}", name, e);
+                return Ok(0);
+            }
+        };
+
+        let version = match &self.receiver {
+            Receiver::Elasticsearch(r) => match r.get_version().await {
+                Ok(v) => v,
+                Err(e) => {
+                    log::debug!("Cannot collect raw API without version: {}", e);
+                    return Ok(0);
+                }
+            },
+            Receiver::ElasticCloudAdmin(_) => {
+                log::debug!("ElasticCloudAdmin receiver not fully supported for raw by path yet");
+                return Ok(0);
+            }
+            _ => return Ok(0),
+        };
+
+        let path = match source_conf.get_url(version) {
+            Ok(p) => p,
+            Err(e) => {
+                log::debug!("Skipping {} collection on version {}: {}", name, version, e);
+                return Ok(0);
+            }
+        };
+
+        let content = match self.receiver.get_raw_by_path(&path).await {
+            Ok(c) => c,
+            Err(e) => {
+                log::warn!("Failed to get raw API {}: {}", name, e);
+                return Err(eyre::eyre!(e));
+            }
+        };
+
+        let file_path = PathBuf::from(source_conf.get_file_path(name));
+        let filename = format!("{}", file_path.display());
+        
+        match self.exporter.save(file_path, content).await {
+            Ok(()) => {
+                log::info!("Saved {filename}");
+                Ok(1)
+            }
+            Err(e) => {
+                log::error!("Failed to save {filename}: {e}");
+                Ok(0)
+            }
         }
     }
 

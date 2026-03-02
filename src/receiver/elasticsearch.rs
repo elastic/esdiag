@@ -35,7 +35,7 @@ impl ElasticsearchReceiver {
         })
     }
 
-    async fn get_version(&self) -> Result<&semver::Version> {
+    pub async fn get_version(&self) -> Result<&semver::Version> {
         self.version
             .get_or_try_init(|| async {
                 log::debug!("Fetching version from {}", self.url);
@@ -61,6 +61,24 @@ impl ElasticsearchReceiver {
                     .map_err(|e| eyre!("Failed to parse version: {}", e))
             })
             .await
+    }
+
+    pub async fn get_raw_by_path(&self, path: &str) -> Result<String> {
+        log::debug!("Getting raw API path: {}", path);
+
+        let response = self
+            .client
+            .send(
+                http::Method::Get,
+                path,
+                http::headers::HeaderMap::new(),
+                Option::<&String>::None,
+                Option::<&String>::None,
+                None,
+            )
+            .await?;
+
+        response.text().await.map_err(Into::into)
     }
 }
 
@@ -192,22 +210,7 @@ impl ReceiveRaw for ElasticsearchReceiver {
         // Get the API URL path for the provided type
         let version = self.get_version().await.ok();
         let path = T::source(PathType::Url, version)?;
-        log::debug!("Getting API: {}", &path);
-
-        // Send a simple GET request to the API path
-        let response = self
-            .client
-            .send(
-                http::Method::Get,
-                &path,
-                http::headers::HeaderMap::new(),
-                Option::<&String>::None,
-                Option::<&String>::None,
-                None,
-            )
-            .await?;
-
-        response.text().await.map_err(Into::into)
+        self.get_raw_by_path(&path).await
     }
 }
 
