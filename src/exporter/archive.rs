@@ -31,7 +31,10 @@ impl ArchiveExporter {
 
     pub async fn save(&self, path: PathBuf, content: String) -> Result<()> {
         match self {
-            Self::Directory(exporter) => exporter.save(path, content).await,
+            Self::Directory(exporter) => {
+                validate_relative_output_path(path.as_path())?;
+                exporter.save(path, content).await
+            }
             Self::Zip(exporter) => exporter.save(path, content).await,
         }
     }
@@ -213,6 +216,21 @@ fn normalize_archive_path(path: &Path) -> Result<String> {
     Ok(parts.join("/"))
 }
 
+fn validate_relative_output_path(path: &Path) -> Result<()> {
+    if path.components().any(|component| {
+        matches!(
+            component,
+            Component::Prefix(_) | Component::RootDir | Component::ParentDir
+        )
+    }) {
+        return Err(eyre!(
+            "Output path must be relative and remain within the destination directory: {}",
+            path.display()
+        ));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -231,6 +249,13 @@ mod tests {
     fn normalize_archive_path_rejects_parent_components() {
         let err = normalize_archive_path(Path::new("../api/stats.json")).expect_err("reject path");
         assert!(err.to_string().contains("parent directory"));
+    }
+
+    #[test]
+    fn validate_relative_output_path_rejects_parent_components() {
+        let err =
+            validate_relative_output_path(Path::new("../api/stats.json")).expect_err("reject path");
+        assert!(err.to_string().contains("relative"));
     }
 
     #[tokio::test]

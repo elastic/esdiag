@@ -6,7 +6,8 @@
 
 **Goals:**
 - Add `--zip` output mode to `collect` and `process` CLI commands.
-- For `collect`, support `--zip` as `Option<Path>` with default `.` and explicit output-directory targeting.
+- For `collect`, support `--zip` as a boolean mode switch while continuing to use the existing `output` positional argument for destination (`.` by default).
+- For `process`, support `--zip` as optional destination directory semantics (`Option<Path>`, default `.` when flag is provided without an explicit value).
 - Preserve existing diagnostic base naming and append `.zip`.
 - Stream API output directly into archive entries while processing each API result (no temporary full directory output).
 - Keep existing non-zip behavior unchanged and backward compatible.
@@ -19,9 +20,14 @@
 ## Decisions
 
 - **CLI contract for `collect --zip`**
+  - Decision: Model `--zip` as a boolean mode selector; destination remains the existing `output` positional path used by `collect`.
+  - Rationale: Keeps `collect` CLI simple and aligns with implemented behavior where `output` already determines destination.
+  - Alternative considered: `--zip <path>` optional value. Rejected to avoid overloading `collect` destination semantics and to keep explicit separation between mode (`--zip`) and destination (`output`).
+
+- **CLI contract for `process --zip`**
   - Decision: Model `--zip` as optional path-like destination semantics where omission means current directory and explicit value means output directory.
-  - Rationale: Matches requested UX while preserving deterministic output placement.
-  - Alternative considered: `--zip <file>` exact path. Rejected because it diverges from requested Option<Path> directory behavior and naming convention.
+  - Rationale: `process` has no positional output directory argument for collection artifacts, so optional-path `--zip` is the least ambiguous destination control.
+  - Alternative considered: boolean-only `--zip` with no destination control. Rejected because it prevents directing intermediate archive output.
 
 - **Archive filename derivation**
   - Decision: Reuse the same base diagnostic name generation currently used for directory output and append `.zip`.
@@ -34,8 +40,8 @@
   - Alternative considered: Continue writing to directory then bundle. Rejected because it violates requirement and doubles IO.
 
 - **`process --zip` behavior**
-  - Decision: When enabled, persist all API-call output into `{diagnostic}.zip`, with entry names matching existing per-API path conventions.
-  - Rationale: Enables a single artifact from processed output while preserving internal file naming expectations.
+  - Decision: When enabled, collect API-call output into a single archive using the same base naming convention as `collect` (for example, `api-diagnostics-<timestamp>.zip`), with entry names matching existing per-API path conventions.
+  - Rationale: Preserves naming parity between `collect --zip` and `process --zip` flows.
   - Alternative considered: Per-API standalone zip files. Rejected because it fragments output and does not match requirement.
 
 ## Risks / Trade-offs

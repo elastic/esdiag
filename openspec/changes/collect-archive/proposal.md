@@ -5,10 +5,10 @@ The legacy support diagnostic workflow produces a single archive, while the curr
 ## What Changes
 
 - Add a `--zip` option to `esdiag collect` to write a single `.zip` diagnostic artifact instead of a directory tree.
-- Define `collect --zip` as `Option<Path>` where omission means `.` (current directory), and allowing an explicit output directory.
+- Define `collect --zip` as a boolean mode switch. Destination is controlled by the existing `output` positional argument (which defaults to `.`).
 - Use the same base naming convention as the existing directory output and append `.zip` (for example, `diagnostic-<id>-<timestamp>.zip`).
 - Write API outputs directly into the zip archive during collection, rather than writing to a directory first and bundling afterward.
-- Add a `--zip` option to `esdiag process` that stores all API call outputs in a `{diagnostic}.zip` file.
+- Add a `--zip` option to `esdiag process` with optional destination directory semantics (`Option<Path>`, default `.` when omitted) that stores all API call outputs in the standard diagnostic archive naming format.
 
 ## Capabilities
 

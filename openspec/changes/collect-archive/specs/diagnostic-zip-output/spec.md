@@ -9,14 +9,14 @@ The system SHALL expose a `--zip` option on the `collect` command that enables w
 - **AND** it does not require the user to run a separate bundling step
 
 ### Requirement: Collect zip destination semantics
-The `collect --zip` option SHALL accept an optional path interpreted as an output directory, where the default destination is the current directory (`.`) when no explicit path is provided.
+The `collect --zip` option SHALL be a boolean mode switch, and archive destination SHALL be controlled by the `collect` command's `output` positional argument (defaulting to current directory `.`).
 
 #### Scenario: Collect zip with default destination
-- **WHEN** a user runs `esdiag collect --zip` without a path
+- **WHEN** a user runs `esdiag collect --zip`
 - **THEN** the archive is written to the current working directory
 
 #### Scenario: Collect zip with explicit destination directory
-- **WHEN** a user runs `esdiag collect --zip /tmp/out`
+- **WHEN** a user runs `esdiag collect <host> /tmp/out --zip`
 - **THEN** the archive is written under `/tmp/out`
 
 ### Requirement: Collect zip filename parity
@@ -35,8 +35,15 @@ In zip mode, the system MUST write API output entries directly into the target z
 - **AND** no final "bundle directory into zip" pass is required
 
 ### Requirement: Process supports zip output mode
-The system SHALL expose a `--zip` option on the `process` command that stores all processed API outputs in a `{diagnostic}.zip` archive.
+The system SHALL expose a `--zip` option on the `process` command that stores collected API outputs in a single archive using the standard diagnostic naming format (for example, `api-diagnostics-<timestamp>.zip`).
+
+### Requirement: Process zip destination semantics
+The `process --zip` option SHALL accept an optional path interpreted as an output directory, where the default destination is the current directory (`.`) when no explicit path is provided.
 
 #### Scenario: Process emits diagnostic zip artifact
 - **WHEN** a user runs `esdiag process --zip`
-- **THEN** all API output files for that diagnostic are written to `{diagnostic}.zip`
+- **THEN** all API output files for that diagnostic are written to one `api-diagnostics-*.zip` archive
+
+#### Scenario: Process zip with explicit destination directory
+- **WHEN** a user runs `esdiag process --zip /tmp/out`
+- **THEN** the archive is written under `/tmp/out`
