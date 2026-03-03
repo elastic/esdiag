@@ -62,7 +62,7 @@ impl ElasticsearchCollector {
             log::debug!("Resolved APIs for collection: {:?}", api_names);
 
             let mut result = CollectionResult {
-                path: self.exporter.to_string().clone(),
+                path: self.exporter.to_string(),
                 success: 0,
                 total: apis.len() + 1, // +1 for manifest
             };

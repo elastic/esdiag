@@ -23,3 +23,4 @@
 - [x] 4.2 Add/update tests verifying `process --zip` writes a standard `api-diagnostics-*.zip` archive with expected entries.
 - [x] 4.3 Run `cargo clippy` and address any introduced warnings.
 - [x] 4.4 Run `cargo test` and confirm zip-mode scenarios pass.
+- [x] 4.5 Apply post-review cleanup nits (for example removing redundant allocations) and re-run targeted checks.
