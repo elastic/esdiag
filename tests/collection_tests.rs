@@ -13,10 +13,8 @@ fn test_collect_minimal() {
 
     // This test expects a known host named "elasticsearch-local" to be configured in ~/.esdiag/hosts.yml
     // You can create this with: `esdiag host elasticsearch-local http://localhost:9200`
-    let status = Command::new("cargo")
+    let status = Command::new(env!("CARGO_BIN_EXE_esdiag"))
         .args([
-            "run",
-            "--",
             "collect",
             "elasticsearch-local",
             out_dir,
@@ -79,10 +77,8 @@ fn test_collect_light() {
 
     // This test expects a known host named "elasticsearch-local" to be configured in ~/.esdiag/hosts.yml
     // You can create this with: `esdiag host elasticsearch-local http://localhost:9200`
-    let status = Command::new("cargo")
+    let status = Command::new(env!("CARGO_BIN_EXE_esdiag"))
         .args([
-            "run",
-            "--",
             "collect",
             "elasticsearch-local",
             out_dir,
@@ -115,10 +111,8 @@ fn test_collect_support_all_endpoints() {
 
     // This test expects a known host named "elasticsearch-local" to be configured in ~/.esdiag/hosts.yml
     // You can create this with: `esdiag host elasticsearch-local http://localhost:9200`
-    let status = Command::new("cargo")
+    let status = Command::new(env!("CARGO_BIN_EXE_esdiag"))
         .args([
-            "run",
-            "--",
             "collect",
             "elasticsearch-local",
             out_dir,
@@ -145,14 +139,12 @@ fn test_collect_zip_writes_archive() {
     let dir = tempdir().unwrap();
     let out_dir = dir.path().to_str().unwrap();
 
-    let status = Command::new("cargo")
+    let status = Command::new(env!("CARGO_BIN_EXE_esdiag"))
         .args([
-            "run",
-            "--",
             "collect",
             "elasticsearch-local",
-            "--zip",
             out_dir,
+            "--zip",
             "--type",
             "minimal",
         ])

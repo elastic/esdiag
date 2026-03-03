@@ -72,7 +72,14 @@ pub struct ZipArchiveExporter {
 
 impl ZipArchiveExporter {
     pub fn new(output_dir: PathBuf) -> Result<Self> {
-        if !output_dir.exists() {
+        if output_dir.exists() {
+            if !output_dir.is_dir() {
+                return Err(eyre!(
+                    "Zip output destination must be a directory: {}",
+                    output_dir.display()
+                ));
+            }
+        } else {
             std::fs::create_dir_all(&output_dir)?;
         }
         Ok(Self {
@@ -256,6 +263,18 @@ mod tests {
         let err =
             validate_relative_output_path(Path::new("../api/stats.json")).expect_err("reject path");
         assert!(err.to_string().contains("relative"));
+    }
+
+    #[test]
+    fn zip_archive_exporter_new_rejects_file_output_path() {
+        let dir = tempdir().expect("temp dir");
+        let file_path = dir.path().join("not-a-directory");
+        File::create(&file_path).expect("create file");
+
+        let err = ZipArchiveExporter::new(file_path)
+            .err()
+            .expect("reject non-directory path");
+        assert!(err.to_string().contains("must be a directory"));
     }
 
     #[tokio::test]
