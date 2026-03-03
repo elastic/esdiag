@@ -202,9 +202,9 @@ pub async fn update_settings(
     // 5. Build response to remove modal and update exporter text
     Sse::new(stream! {
         yield Ok::<_, std::convert::Infallible>(PatchElements::new(r#"
-        <div id="settings-modal" data-on-load="window.location.reload();">
+        <div id="settings-modal" data-init="window.location.reload();">
             Reloading...
         </div>
-        "#.replace("data-on-load", "data-on:load")).write_as_axum_sse_event());
+        "#).write_as_axum_sse_event());
     })
 }
