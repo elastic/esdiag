@@ -68,7 +68,7 @@ use serde::{Serialize, de::DeserializeOwned};
 use std::sync::Arc;
 use {
     alias::{Alias, AliasList},
-    cluster_settings::ClusterSettings,
+    cluster_settings::{ClusterSettings, ClusterSettingsDefaults},
     data_stream::{DataStreamDocument, DataStreams},
     ilm_explain::{IlmExplain, IlmStats},
     ilm_policies::IlmPolicies,
@@ -96,6 +96,43 @@ pub struct ElasticsearchDiagnostic {
 }
 
 impl ElasticsearchDiagnostic {
+    async fn process_cluster_settings(
+        &self,
+        summary_tx: mpsc::Sender<ProcessorSummary>,
+    ) -> Result<()> {
+        let summary = match self.receiver.get::<ClusterSettingsDefaults>().await {
+            Ok(settings) => settings
+                .documents_export(&self.exporter, &self.lookups, &self.metadata)
+                .await
+                .was_parsed(),
+            Err(defaults_err) => {
+                log::debug!(
+                    "Failed to read cluster_settings_defaults, falling back to cluster_settings: {}",
+                    defaults_err
+                );
+                match self.receiver.get::<ClusterSettings>().await {
+                    Ok(settings) => settings
+                        .documents_export(&self.exporter, &self.lookups, &self.metadata)
+                        .await
+                        .was_parsed(),
+                    Err(settings_err) => {
+                        log::warn!(
+                            "Failed to read cluster_settings_defaults and cluster_settings: {}; {}",
+                            defaults_err,
+                            settings_err
+                        );
+                        ProcessorSummary::new(ClusterSettings::name())
+                    }
+                }
+            }
+        };
+
+        summary_tx.send(summary).await.map_err(|err| {
+            log::error!("Failed to send summary: {}", err);
+            eyre!(err)
+        })
+    }
+
     async fn process_datasource<T>(&self, summary_tx: mpsc::Sender<ProcessorSummary>) -> Result<()>
     where
         T: DataSource
@@ -174,10 +211,16 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
         manifest: DiagnosticManifest,
     ) -> Result<(Box<Self>, DiagnosticReport)> {
         let cluster = receiver.get::<version::Cluster>().await?;
-        let display_name = receiver
-            .get::<cluster_settings::ClusterSettings>()
-            .await?
-            .get_display_name();
+        let display_name = match receiver.get::<ClusterSettingsDefaults>().await {
+            Ok(settings) => settings.get_display_name(),
+            Err(err) => {
+                log::debug!(
+                    "Failed to read cluster_settings_defaults for display name, falling back to cluster_settings: {}",
+                    err
+                );
+                receiver.get::<ClusterSettings>().await?.get_display_name()
+            }
+        };
         let metadata =
             ElasticsearchMetadata::try_new(manifest, cluster.with_display_name(display_name))?;
 
@@ -242,28 +285,27 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
         }
 
         let diag = Arc::new(self);
-        // Thread 1: IndicesStats
+        // Future 1: IndicesStats
         let (diag_idx, summary_tx_idx) = (diag.clone(), summary_tx.clone());
-        let thread1 = tokio::spawn(async move {
+        let thread1 = async move {
             diag_idx
                 .process_streaming_datasource::<IndicesStats>(summary_tx_idx)
                 .await?;
             Ok::<(), eyre::Error>(())
-        });
+        };
 
-        // Thread 2: NodesStats
+        // Future 2: NodesStats
         let (diag_nodes, summary_tx_nodes) = (diag.clone(), summary_tx.clone());
-        let thread2 = tokio::spawn(async move {
+        let thread2 = async move {
             diag_nodes
                 .process_streaming_datasource::<NodesStats>(summary_tx_nodes)
                 .await?;
             Ok::<(), eyre::Error>(())
-        });
+        };
 
-        // Thread 3: Everything else
-        let thread3 = tokio::spawn(async move {
-            diag.process_datasource::<ClusterSettings>(summary_tx.clone())
-                .await?;
+        // Future 3: Everything else
+        let thread3 = async move {
+            diag.process_cluster_settings(summary_tx.clone()).await?;
             diag.process_datasource::<HealthReport>(summary_tx.clone())
                 .await?;
             diag.process_datasource::<IlmPolicies>(summary_tx.clone())
@@ -277,12 +319,10 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
                 .await?;
             diag.process_datasource::<Tasks>(summary_tx.clone()).await?;
             Ok::<(), eyre::Error>(())
-        });
+        };
 
-        match tokio::try_join!(thread1, thread2, thread3) {
-            Ok(_) => Ok(()),
-            Err(err) => Err(eyre!(err)),
-        }
+        let _ = tokio::try_join!(thread1, thread2, thread3)?;
+        Ok(())
     }
 
     fn id(&self) -> &str {

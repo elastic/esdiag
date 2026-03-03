@@ -22,7 +22,6 @@
     <footer-right
         data-init="@patch('/stats')"
         data-signals="{ 'stats': {{ stats }} }"
-        data-on-signal-patch:filter="stats"
     >
         <span id="status" data-text="$loading ? 'Loading' : $processing ? 'Processing' : 'Ready'">Ready </span>
         | <span data-text="Intl.NumberFormat().format($stats.jobs.total)">0</span> diags |

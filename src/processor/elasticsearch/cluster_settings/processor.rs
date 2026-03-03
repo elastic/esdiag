@@ -4,7 +4,7 @@
 
 use super::super::super::diagnostic::DataStreamName;
 use super::super::{DocumentExporter, ElasticsearchMetadata, Lookups};
-use super::ClusterSettings;
+use super::{ClusterSettings, ClusterSettingsDefaults};
 use crate::{exporter::Exporter, processor::ProcessorSummary};
 use json_patch::merge;
 use serde::Serialize;
@@ -21,19 +21,50 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for ClusterSettings {
         _lookups: &Lookups,
         metadata: &ElasticsearchMetadata,
     ) -> ProcessorSummary {
-        let data_stream = "settings-cluster-esdiag".to_string();
-        let data_stream_name = DataStreamName::from(data_stream.as_str());
-        let metadata = metadata.for_data_stream(&data_stream).as_meta_doc();
+        export_cluster_settings_docs(
+            exporter,
+            metadata,
+            vec![(TRANSIENT, self.transient), (PERSISTENT, self.persistent)],
+        )
+        .await
+    }
+}
 
-        let scopes: Vec<_> = vec![
-            (DEFAULT, self.defaults),
-            (TRANSIENT, self.transient),
-            (PERSISTENT, self.persistent),
-        ];
-        log::debug!("cluster_settings scopes: {}", scopes.len());
-        let cluster_settings_doc = ClusterSettingsDoc::new(metadata.clone(), data_stream_name);
+impl DocumentExporter<Lookups, ElasticsearchMetadata> for ClusterSettingsDefaults {
+    async fn documents_export(
+        self,
+        exporter: &Exporter,
+        _lookups: &Lookups,
+        metadata: &ElasticsearchMetadata,
+    ) -> ProcessorSummary {
+        export_cluster_settings_docs(
+            exporter,
+            metadata,
+            vec![
+                (DEFAULT, self.defaults),
+                (TRANSIENT, self.transient),
+                (PERSISTENT, self.persistent),
+            ],
+        )
+        .await
+    }
+}
 
-        let cluster_settings: Vec<Value> = scopes.into_iter().map(|(priority, settings)| {
+async fn export_cluster_settings_docs(
+    exporter: &Exporter,
+    metadata: &ElasticsearchMetadata,
+    scopes: Vec<(&'static str, Value)>,
+) -> ProcessorSummary {
+    let data_stream = "settings-cluster-esdiag".to_string();
+    let data_stream_name = DataStreamName::from(data_stream.as_str());
+    let metadata = metadata.for_data_stream(&data_stream).as_meta_doc();
+
+    log::debug!("cluster_settings scopes: {}", scopes.len());
+    let cluster_settings_doc = ClusterSettingsDoc::new(metadata.clone(), data_stream_name);
+
+    let cluster_settings: Vec<Value> = scopes
+        .into_iter()
+        .map(|(priority, settings)| {
             let cluster_patch = json!({
                 "cluster.max_shards_per_node.frozen": null,
                 "cluster.max_shards_per_node": null,
@@ -79,14 +110,13 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for ClusterSettings {
             json!(cluster_settings_doc)
         })
         .collect();
-        log::debug!("cluster_settings docs: {}", cluster_settings.len());
-        let mut summary = ProcessorSummary::new(data_stream.clone());
-        match exporter.send(data_stream, cluster_settings).await {
-            Ok(batch) => summary.add_batch(batch),
-            Err(err) => log::error!("Failed to send cluster settings: {}", err),
-        }
-        summary
+    log::debug!("cluster_settings docs: {}", cluster_settings.len());
+    let mut summary = ProcessorSummary::new(data_stream.clone());
+    match exporter.send(data_stream, cluster_settings).await {
+        Ok(batch) => summary.add_batch(batch),
+        Err(err) => log::error!("Failed to send cluster settings: {}", err),
     }
+    summary
 }
 
 // Serializing data structures
