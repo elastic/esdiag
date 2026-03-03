@@ -42,7 +42,7 @@ impl Collector {
                 Ok(Self::Elasticsearch(collector))
             }
             _ => Err(eyre!(
-                "Collect is only implemented from Elasticsearch receivers"
+                "Collect is only implemented for Elasticsearch-based receivers"
             )),
         }
     }
