@@ -16,7 +16,10 @@
         <!-- Fix Tauri external links -->
         <script>
             document.addEventListener('click', function(e) {
-                var a = e.target.closest('a');
+                var target = e.target instanceof Element ? e.target : e.target.parentElement;
+                if (!target) return;
+                
+                var a = target.closest('a');
                 if (a && a.target === '_blank') {
                     if (window.__TAURI_INTERNALS__) {
                         e.preventDefault();
