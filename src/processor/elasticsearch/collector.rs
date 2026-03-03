@@ -12,8 +12,8 @@ use super::{
     NodesStats, PendingTasks, SearchableSnapshotsCacheStats, SearchableSnapshotsStats, SlmPolicies,
     Tasks,
 };
-use crate::{data::Product, exporter::DirectoryExporter, receiver::Receiver};
-use eyre::Result;
+use crate::{data::Product, exporter::ArchiveExporter, receiver::Receiver};
+use eyre::{Result, WrapErr};
 use std::path::PathBuf;
 
 use crate::processor::api::{ApiResolver, ApiWeight, DiagnosticType, ElasticsearchApi};
@@ -23,73 +23,91 @@ use std::time::Duration;
 
 pub struct ElasticsearchCollector {
     receiver: Receiver,
-    exporter: DirectoryExporter,
+    exporter: ArchiveExporter,
     options: CollectOptions,
 }
 
 impl ElasticsearchCollector {
     pub async fn new(
         receiver: Receiver,
-        exporter: DirectoryExporter,
+        exporter: ArchiveExporter,
         options: CollectOptions,
     ) -> Result<Self> {
         let timestamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
-        let directory = format!("api-diagnostics-{}", timestamp);
+        let collection_name = options
+            .identifiers
+            .filename
+            .as_ref()
+            .and_then(|name| std::path::Path::new(name).file_stem())
+            .map(|stem| stem.to_string_lossy().to_string())
+            .filter(|name| !name.is_empty())
+            .unwrap_or_else(|| format!("api-diagnostics-{}", timestamp));
         Ok(Self {
             receiver,
-            exporter: exporter.collection_directory(directory)?,
+            exporter: exporter.with_archive_name(&collection_name)?,
             options,
         })
     }
 
     pub async fn collect(&self) -> Result<CollectionResult> {
-        let diag_type = DiagnosticType::from_str(&self.options.r#type)?;
-        let apis = ApiResolver::resolve_es(
-            &diag_type,
-            self.options.include.as_ref(),
-            self.options.exclude.as_ref(),
-        )?;
+        let collect_result: Result<CollectionResult> = async {
+            let diag_type = DiagnosticType::from_str(&self.options.r#type)?;
+            let apis = ApiResolver::resolve_es(
+                &diag_type,
+                self.options.include.as_ref(),
+                self.options.exclude.as_ref(),
+            )?;
 
-        let api_names: Vec<&str> = apis.iter().map(|a| a.as_str()).collect();
-        log::debug!("Resolved APIs for collection: {:?}", api_names);
+            let api_names: Vec<&str> = apis.iter().map(|a| a.as_str()).collect();
+            log::debug!("Resolved APIs for collection: {:?}", api_names);
 
-        let mut result = CollectionResult {
-            path: self.exporter.to_string().clone(),
-            success: 0,
-            total: apis.len() + 1, // +1 for manifest
-        };
+            let mut result = CollectionResult {
+                path: self.exporter.to_string(),
+                success: 0,
+                total: apis.len() + 1, // +1 for manifest
+            };
 
-        let mut collected_api_names = Vec::new();
+            let mut heavy_apis = Vec::new();
+            let mut light_apis = Vec::new();
 
-        result.success += self.save_diagnostic_manifest(&apis).await?;
+            result.success += self.save_diagnostic_manifest(&apis).await?;
 
-        let mut heavy_apis = Vec::new();
-        let mut light_apis = Vec::new();
+            for api in apis {
+                if api.weight() == ApiWeight::Heavy {
+                    heavy_apis.push(api);
+                } else {
+                    light_apis.push(api);
+                }
+            }
 
-        for api in apis {
-            collected_api_names.push(api.as_str().to_string());
-            if api.weight() == ApiWeight::Heavy {
-                heavy_apis.push(api);
-            } else {
-                light_apis.push(api);
+            // Concurrent fetch for Light APIs
+            let mut light_stream = stream::iter(light_apis)
+                .map(|api| async move { self.save_api_with_retry(&api).await })
+                .buffer_unordered(5);
+
+            while let Some(res) = light_stream.next().await {
+                result.success += res;
+            }
+
+            // Sequential fetch for Heavy APIs
+            for api in heavy_apis {
+                result.success += self.save_api_with_retry(&api).await;
+            }
+
+            Ok(result)
+        }
+        .await;
+
+        let finalize_result = self.exporter.finalize();
+
+        match (collect_result, finalize_result) {
+            (Ok(result), Ok(())) => Ok(result),
+            (Err(err), Ok(())) => Err(err),
+            (Ok(_), Err(finalize_err)) => Err(finalize_err),
+            (Err(err), Err(finalize_err)) => {
+                Err(err).wrap_err(format!("Failed to finalize archive: {}", finalize_err))
             }
         }
-
-        // Concurrent fetch for Light APIs
-        let mut light_stream = stream::iter(light_apis)
-            .map(|api| async move { self.save_api_with_retry(&api).await })
-            .buffer_unordered(5);
-
-        while let Some(res) = light_stream.next().await {
-            result.success += res;
-        }
-
-        // Sequential fetch for Heavy APIs
-        for api in heavy_apis {
-            result.success += self.save_api_with_retry(&api).await;
-        }
-
-        Ok(result)
     }
 
     async fn save_api_with_retry(&self, api: &ElasticsearchApi) -> usize {
@@ -155,13 +173,15 @@ impl ElasticsearchCollector {
     }
 
     async fn save_raw(&self, name: &str) -> Result<usize> {
-        let source_conf = match crate::processor::diagnostic::data_source::get_source("elasticsearch", name, &[]) {
-            Ok((_, conf)) => conf,
-            Err(e) => {
-                log::debug!("Skipping {} collection: {}", name, e);
-                return Ok(0);
-            }
-        };
+        let source_conf =
+            match crate::processor::diagnostic::data_source::get_source("elasticsearch", name, &[])
+            {
+                Ok((_, conf)) => conf,
+                Err(e) => {
+                    log::debug!("Skipping {} collection: {}", name, e);
+                    return Ok(0);
+                }
+            };
 
         let version = match &self.receiver {
             Receiver::Elasticsearch(r) => match r.get_version().await {
@@ -197,7 +217,7 @@ impl ElasticsearchCollector {
 
         let file_path = PathBuf::from(source_conf.get_file_path(name));
         let filename = format!("{}", file_path.display());
-        
+
         match self.exporter.save(file_path, content).await {
             Ok(()) => {
                 log::info!("Saved {filename}");
