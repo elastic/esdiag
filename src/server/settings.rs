@@ -200,13 +200,11 @@ pub async fn update_settings(
     }
     
     // 5. Build response to remove modal and update exporter text
-    // Return HTML block to close the modal using JavaScript, or we can use Datastar events here
-    // but the easiest is simple HTML since we just need to execute it or trigger a reload
     Sse::new(stream! {
         yield Ok::<_, std::convert::Infallible>(PatchElements::new(r#"
         <div id="settings-modal" data-on-load="window.location.reload();">
             Reloading...
         </div>
-        "#).write_as_axum_sse_event());
+        "#.replace("data-on-load", "data-on:load")).write_as_axum_sse_event());
     })
 }

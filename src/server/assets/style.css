@@ -970,23 +970,26 @@ blockquote.markdown-alert-caution::before {
 }
 
 .modal-content {
-    background-color: #fefefe;
+    background-color: var(--background-color);
     padding: 24px;
     border-radius: 8px;
     width: 80%;
     max-width: 500px;
-    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    box-shadow: 0 4px 6px rgba(0,0,0,0.3);
     position: relative;
+    border: 1px solid var(--border-color);
 }
 
 .modal-content h2 {
     margin-top: 0;
     margin-bottom: 20px;
-    color: #1a1c21;
+    color: var(--text-color);
 }
 
 .close-button {
-    color: #aaa;
+    color: var(--text-color-muted);
+    background: none;
+    border: none;
     position: absolute;
     top: 10px;
     right: 15px;
@@ -997,6 +1000,6 @@ blockquote.markdown-alert-caution::before {
 
 .close-button:hover,
 .close-button:focus {
-    color: black;
+    color: var(--text-color);
     text-decoration: none;
 }

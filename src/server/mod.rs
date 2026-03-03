@@ -69,7 +69,6 @@ impl From<ApiKeyRequest> for Identifiers {
 #[derive(Clone)]
 pub struct Server {
     server_handle: Option<Arc<tokio::task::JoinHandle<()>>>,
-    stats_handle: Option<Arc<tokio::task::JoinHandle<()>>>,
     pub rx: Option<Arc<RwLock<mpsc::Receiver<(Identifiers, Bytes)>>>>,
 }
 
@@ -78,7 +77,7 @@ impl Server {
         let (_, rx) = mpsc::channel::<(Identifiers, Bytes)>(1);
         let rx = Arc::new(RwLock::new(rx));
         let rx_clone = rx.clone();
-        let mut docs_rx = exporter.get_docs_rx();
+        let docs_rx = exporter.get_docs_rx();
 
         // Create shared state
         let state = Arc::new(ServerState {
@@ -91,13 +90,7 @@ impl Server {
             uploads: Arc::new(RwLock::new(HashMap::new())),
         });
 
-        let stats_clone = state.stats.clone();
-        let stats_handle = tokio::spawn(async move {
-            while let Some(docs) = docs_rx.recv().await {
-                log::debug!("docs_rx: {docs}");
-                stats_clone.write().await.docs.total += docs;
-            }
-        });
+        let _ = docs_rx; // Deprecated by direct atomic increments
 
         let handle = axum_server::Handle::new();
         let handle_clone = handle.clone();
@@ -160,17 +153,11 @@ impl Server {
 
         Ok((Self {
             server_handle: Some(Arc::new(server_handle)),
-            stats_handle: Some(Arc::new(stats_handle)),
             rx: Some(rx_clone),
         }, bound_addr))
     }
 
     pub async fn shutdown(&mut self) {
-        // Shutdown the stats thread
-        if let Some(handle) = self.stats_handle.take() {
-            Arc::try_unwrap(handle).map(|handle| handle.abort()).ok();
-            log::debug!("Stats thread stopped");
-        }
         // Shutdown the main server
         if let Some(handle) = self.server_handle.take() {
             Arc::try_unwrap(handle).map(|handle| handle.abort()).ok();
@@ -201,9 +188,9 @@ pub struct ServerState {
 }
 
 impl ServerState {
-    pub async fn record_success(&self, _docs: u32, errors: u32) {
+    pub async fn record_success(&self, docs: u32, errors: u32) {
         let mut stats = self.stats.write().await;
-        //stats.docs.total += docs as usize;
+        stats.docs.total += docs as usize;
         stats.docs.errors += errors as usize;
         stats.jobs.total += 1;
         stats.jobs.success += 1;
