@@ -27,8 +27,6 @@ impl Collector {
         exclude: Option<Vec<String>>,
         identifiers: Identifiers,
     ) -> Result<Self> {
-        let collect_exporter = exporter.into_collect_exporter()?;
-
         let options = CollectOptions {
             r#type,
             include,
@@ -36,18 +34,16 @@ impl Collector {
             identifiers,
         };
 
-        if let Receiver::Elasticsearch(_) = &receiver {
-            let collector =
-                ElasticsearchCollector::new(receiver, collect_exporter, options).await?;
-            Ok(Self::Elasticsearch(collector))
-        } else if let Receiver::ElasticCloudAdmin(_) = &receiver {
-            let collector =
-                ElasticsearchCollector::new(receiver, collect_exporter, options).await?;
-            Ok(Self::Elasticsearch(collector))
-        } else {
-            Err(eyre!(
+        match receiver {
+            receiver @ (Receiver::Elasticsearch(_) | Receiver::ElasticCloudAdmin(_)) => {
+                let collect_exporter = exporter.into_collect_exporter()?;
+                let collector =
+                    ElasticsearchCollector::new(receiver, collect_exporter, options).await?;
+                Ok(Self::Elasticsearch(collector))
+            }
+            _ => Err(eyre!(
                 "Collect is only implemented from Elasticsearch receivers"
-            ))
+            )),
         }
     }
 

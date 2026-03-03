@@ -122,15 +122,24 @@ impl ZipArchiveExporter {
     }
 
     pub fn finalize(&self) -> Result<()> {
-        let mut writer_guard = self
-            .writer
-            .lock()
-            .map_err(|_| eyre!("Failed to acquire zip writer lock"))?;
+        let finalize_inner = || -> Result<()> {
+            let mut writer_guard = self
+                .writer
+                .lock()
+                .map_err(|_| eyre!("Failed to acquire zip writer lock"))?;
 
-        if let Some(writer) = writer_guard.take() {
-            writer.finish()?;
+            if let Some(writer) = writer_guard.take() {
+                writer.finish()?;
+            }
+            Ok(())
+        };
+
+        match tokio::runtime::Handle::try_current() {
+            Ok(handle) if handle.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread => {
+                tokio::task::block_in_place(finalize_inner)
+            }
+            _ => finalize_inner(),
         }
-        Ok(())
     }
 
     fn is_connected(&self) -> bool {
