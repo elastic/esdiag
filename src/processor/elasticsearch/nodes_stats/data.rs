@@ -81,10 +81,16 @@ impl StreamingDataSource for NodesStats {
             where
                 A: serde::de::MapAccess<'de>,
             {
+                let mut sender_closed = false;
                 while let Some(key) = map.next_key::<String>()? {
+                    if sender_closed {
+                        let _ = map.next_value::<serde::de::IgnoredAny>()?;
+                        continue;
+                    }
+
                     let value = map.next_value::<NodeStats>()?;
                     if self.sender.blocking_send(Ok((key, value))).is_err() {
-                        return Ok(());
+                        sender_closed = true;
                     }
                 }
                 Ok(())

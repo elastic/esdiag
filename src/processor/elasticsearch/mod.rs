@@ -105,16 +105,25 @@ impl ElasticsearchDiagnostic {
                 .documents_export(&self.exporter, &self.lookups, &self.metadata)
                 .await
                 .was_parsed(),
-            Err(err) => {
+            Err(defaults_err) => {
                 log::debug!(
                     "Failed to read cluster_settings_defaults, falling back to cluster_settings: {}",
-                    err
+                    defaults_err
                 );
-                let settings = self.receiver.get::<ClusterSettings>().await?;
-                settings
-                    .documents_export(&self.exporter, &self.lookups, &self.metadata)
-                    .await
-                    .was_parsed()
+                match self.receiver.get::<ClusterSettings>().await {
+                    Ok(settings) => settings
+                        .documents_export(&self.exporter, &self.lookups, &self.metadata)
+                        .await
+                        .was_parsed(),
+                    Err(settings_err) => {
+                        log::warn!(
+                            "Failed to read cluster_settings_defaults and cluster_settings: {}; {}",
+                            defaults_err,
+                            settings_err
+                        );
+                        ProcessorSummary::new(ClusterSettings::name())
+                    }
+                }
             }
         };
 
