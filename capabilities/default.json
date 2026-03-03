@@ -16,6 +16,7 @@
     ]
   },
   "permissions": [
+    "core:window:allow-set-theme",
     "opener:default",
     "opener:allow-open-url"
   ]

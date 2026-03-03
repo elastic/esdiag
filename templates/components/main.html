@@ -121,6 +121,7 @@
                                 fileInfo.classList.remove("hidden");
                                 uploadButton.disabled = false;
                                 uploadInstructions.classList.add("hidden");
+                                dropzone.classList.add("active");
                                 fileIcon.style.color = "var(--primary)";
 
                                 // Change the icon to a check mark
@@ -134,6 +135,7 @@
                                 fileInfo.classList.add("hidden");
                                 uploadButton.disabled = true;
                                 uploadInstructions.classList.remove("hidden");
+                                dropzone.classList.remove("active");
                                 fileIcon.style.color = "var(--text-subdued-color)";
 
                                 // Reset to upload icon

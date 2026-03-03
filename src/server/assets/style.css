@@ -61,6 +61,10 @@ a[href].stealth:hover {
     background-color: var(--color-overlay);
 }
 
+button {
+    font-size: var(--font-size-m);
+}
+
 #dark-mode {
     position: absolute;
     width: 1px;
@@ -343,6 +347,12 @@ panel > footer > button:focus-visible {
     --dropzone-border-color: var(--color-primary);
 }
 
+.dropzone.active {
+    background-color: var(--background-color-primary);
+    --dropzone-border-color: var(--border-color-strong);
+    border-style: solid;
+}
+
 .upload-progress-container {
     position: absolute;
     bottom: 0;
@@ -404,10 +414,7 @@ panel > footer > button:focus-visible {
 }
 
 .file-info {
-    font-size: var(--font-size-s);
     align-items: center;
-    background-color: var(--background-color-dimmed);
-    border-radius: var(--border-radius-small);
     display: flex;
     justify-content: center;
     margin-top: var(--size-m);
