@@ -69,7 +69,9 @@ pub enum Exporter {
 impl Exporter {
     pub fn for_collect(uri: Uri) -> Result<Self> {
         match uri {
-            Uri::Directory(path) => Ok(Self::Directory(DirectoryExporter::try_from(path)?)),
+            Uri::Directory(path) | Uri::File(path) => {
+                Ok(Self::Directory(DirectoryExporter::try_from(path)?))
+            }
             _ => Err(eyre!(
                 "Collect requires a local directory output when --zip is not set"
             )),

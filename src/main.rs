@@ -302,7 +302,7 @@ async fn run(cli: Cli) -> Result<&'static str> {
                     let exporter = if zip {
                         log::info!("Saving diagnostic as zip in {output_uri}");
                         let output_dir = match output_uri {
-                            Uri::Directory(path) => path,
+                            Uri::Directory(path) | Uri::File(path) => path,
                             _ => {
                                 return Err(eyre!("Collect output must be a local directory path"));
                             }
@@ -402,7 +402,7 @@ async fn run(cli: Cli) -> Result<&'static str> {
                 Some(zip_path) => {
                     let zip_uri = Uri::try_from(zip_path)?;
                     let zip_dir = match zip_uri {
-                        Uri::Directory(path) => path,
+                        Uri::Directory(path) | Uri::File(path) => path,
                         _ => return Err(eyre!("`--zip` must be a local directory path")),
                     };
                     let archive_exporter = Exporter::for_collect_archive(zip_dir)?;

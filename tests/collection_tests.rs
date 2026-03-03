@@ -303,3 +303,47 @@ fn test_collect_support_zip_repeated_has_no_duplicate_entry_errors() {
         );
     }
 }
+
+#[test]
+fn test_collect_zip_accepts_output_directory_with_dot() {
+    let dir = tempdir().unwrap();
+    let dotted_out = dir.path().join("out.v1");
+
+    let status = Command::new(env!("CARGO_BIN_EXE_esdiag"))
+        .args([
+            "collect",
+            "elasticsearch-local",
+            dotted_out.to_str().unwrap(),
+            "--zip",
+            "--type",
+            "minimal",
+        ])
+        .status()
+        .expect("Failed to execute collect with dotted output directory");
+
+    assert!(status.success());
+    let zip_path = find_diag_zip(&dotted_out).expect("missing zip output in dotted directory");
+    assert!(zip_path.exists());
+}
+
+#[test]
+fn test_process_zip_accepts_output_directory_with_dot() {
+    let dir = tempdir().unwrap();
+    let dotted_out = dir.path().join("out.v1");
+
+    let status = Command::new(env!("CARGO_BIN_EXE_esdiag"))
+        .args([
+            "process",
+            "elasticsearch-local",
+            "-",
+            "--zip",
+            dotted_out.to_str().unwrap(),
+        ])
+        .status()
+        .expect("Failed to execute process with dotted zip directory");
+
+    // Process may fail on local cluster contents, but zip artifact should be produced.
+    assert!(status.code().is_some());
+    let zip_path = find_diag_zip(&dotted_out).expect("missing zip output in dotted directory");
+    assert!(zip_path.exists());
+}
