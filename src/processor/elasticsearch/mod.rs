@@ -276,7 +276,7 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
         }
 
         let diag = Arc::new(self);
-        // Thread 1: IndicesStats
+        // Future 1: IndicesStats
         let (diag_idx, summary_tx_idx) = (diag.clone(), summary_tx.clone());
         let thread1 = async move {
             diag_idx
@@ -285,7 +285,7 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
             Ok::<(), eyre::Error>(())
         };
 
-        // Thread 2: NodesStats
+        // Future 2: NodesStats
         let (diag_nodes, summary_tx_nodes) = (diag.clone(), summary_tx.clone());
         let thread2 = async move {
             diag_nodes
@@ -294,7 +294,7 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
             Ok::<(), eyre::Error>(())
         };
 
-        // Thread 3: Everything else
+        // Future 3: Everything else
         let thread3 = async move {
             diag.process_cluster_settings(summary_tx.clone()).await?;
             diag.process_datasource::<HealthReport>(summary_tx.clone())

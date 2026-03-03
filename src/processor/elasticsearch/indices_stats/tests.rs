@@ -79,3 +79,43 @@ async fn test_streaming_deserialization() {
     assert_eq!(count, 2);
     handle.await.unwrap();
 }
+
+
+#[tokio::test]
+async fn test_streaming_deserialization_handles_receiver_closed_mid_stream() {
+    use crate::processor::diagnostic::data_source::StreamingDataSource;
+    use crate::processor::elasticsearch::indices_stats::IndicesStats;
+    use tokio::sync::mpsc;
+
+    let json = r#"{
+        "_shards": { "total": 1, "successful": 1, "failed": 0 },
+        "indices": {
+            "index1": {
+                "primaries": { "shard_stats": { "total_count": 1 } },
+                "total": { "shard_stats": { "total_count": 1 } }
+            },
+            "index2": {
+                "primaries": { "shard_stats": { "total_count": 1 } },
+                "total": { "shard_stats": { "total_count": 1 } }
+            },
+            "index3": {
+                "primaries": { "shard_stats": { "total_count": 1 } },
+                "total": { "shard_stats": { "total_count": 1 } }
+            }
+        }
+    }"#;
+
+    let mut deserializer = serde_json::Deserializer::from_str(json);
+    let (tx, mut rx) = mpsc::channel(1);
+
+    let handle = tokio::task::spawn_blocking(move || {
+        IndicesStats::deserialize_stream(&mut deserializer, tx).unwrap();
+    });
+
+    // Receive one streamed item, then close the receiver to simulate downstream shutdown.
+    let _ = rx.recv().await;
+    drop(rx);
+
+    // Deserialization should still finish cleanly without trailing-comma parse failures.
+    handle.await.unwrap();
+}

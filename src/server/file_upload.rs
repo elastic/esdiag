@@ -19,6 +19,22 @@ use reqwest::StatusCode;
 use std::{path::PathBuf, sync::Arc};
 use uuid::Uuid;
 
+struct TempFileCleanup {
+    path: PathBuf,
+}
+
+impl Drop for TempFileCleanup {
+    fn drop(&mut self) {
+        if let Err(err) = std::fs::remove_file(&self.path) {
+            log::debug!(
+                "Failed to remove temp upload file {}: {}",
+                self.path.display(),
+                err
+            );
+        }
+    }
+}
+
 pub async fn submit(
     State(state): State<Arc<ServerState>>,
     mut multipart: Multipart,
@@ -126,22 +142,6 @@ pub async fn process(
     let job_id = signals.file_upload.job_id;
 
     Sse::new(stream! {
-        struct TempFileCleanup {
-            path: PathBuf,
-        }
-
-        impl Drop for TempFileCleanup {
-            fn drop(&mut self) {
-                if let Err(err) = std::fs::remove_file(&self.path) {
-                    log::debug!(
-                        "Failed to remove temp upload file {}: {}",
-                        self.path.display(),
-                        err
-                    );
-                }
-            }
-        }
-
         yield patch_signals(r#"{"processing":true}"#);
         let (filename, data): (String, Bytes) = match state.pop_upload(job_id).await{
             Some((filename, data)) => (filename, data),
@@ -169,6 +169,7 @@ pub async fn process(
             });
             return
         }
+        drop(data);
         let _temp_upload_cleanup = TempFileCleanup {
             path: temp_upload_path.clone(),
         };
