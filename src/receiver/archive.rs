@@ -7,11 +7,7 @@ use async_stream::stream;
 use eyre::Result;
 use futures::stream::BoxStream;
 use serde::de::DeserializeOwned;
-use std::{
-    io::{BufReader, Read, Seek},
-    path::PathBuf,
-    sync::Arc,
-};
+use std::{io::{BufReader, Read, Seek}, path::PathBuf, sync::Arc};
 use tokio::sync::{RwLock, mpsc};
 use zip::ZipArchive;
 
@@ -52,18 +48,19 @@ where
             };
 
         log::debug!("Streaming from archive: {}", filename);
-        match archive_guard.by_name(&filename) {
+        let stream_result = match archive_guard.by_name(&filename) {
             Ok(file) => {
                 let reader = BufReader::new(file);
                 let mut deserializer = serde_json::Deserializer::from_reader(reader);
-                if let Err(e) = T::deserialize_stream(&mut deserializer, tx.clone()) {
-                    log::error!("Error deserializing stream from archive: {}", e);
-                    let _ = tx.blocking_send(Err(eyre::eyre!(e)));
-                }
+                T::deserialize_stream(&mut deserializer, tx.clone())
+                    .map_err(|e| eyre::eyre!(e.to_string()))
             }
-            Err(e) => {
-                let _ = tx.blocking_send(Err(eyre::eyre!(e)));
-            }
+            Err(e) => Err(eyre::eyre!(e)),
+        };
+
+        if let Err(e) = stream_result {
+            log::error!("Error deserializing stream from archive: {}", e);
+            let _ = tx.blocking_send(Err(e));
         }
     });
 

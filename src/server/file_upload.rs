@@ -4,6 +4,7 @@
 
 use super::{Identifiers, ServerState, Signals, patch_signals, patch_template, template};
 use crate::{
+    data::Uri,
     processor::{Processor, new_job_id},
     receiver::Receiver,
 };
@@ -15,7 +16,8 @@ use axum::{
 use bytes::Bytes;
 use datastar::axum::ReadSignals;
 use reqwest::StatusCode;
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
+use uuid::Uuid;
 
 pub async fn submit(
     State(state): State<Arc<ServerState>>,
@@ -124,6 +126,22 @@ pub async fn process(
     let job_id = signals.file_upload.job_id;
 
     Sse::new(stream! {
+        struct TempFileCleanup {
+            path: PathBuf,
+        }
+
+        impl Drop for TempFileCleanup {
+            fn drop(&mut self) {
+                if let Err(err) = std::fs::remove_file(&self.path) {
+                    log::debug!(
+                        "Failed to remove temp upload file {}: {}",
+                        self.path.display(),
+                        err
+                    );
+                }
+            }
+        }
+
         yield patch_signals(r#"{"processing":true}"#);
         let (filename, data): (String, Bytes) = match state.pop_upload(job_id).await{
             Some((filename, data)) => (filename, data),
@@ -138,7 +156,24 @@ pub async fn process(
             }
         };
 
-        let receiver = match Receiver::try_from(data) {
+        let temp_upload_path =
+            std::env::temp_dir().join(format!("esdiag-upload-{job_id}-{}.zip", Uuid::new_v4()));
+        if let Err(e) = std::fs::write(&temp_upload_path, &data) {
+            let error = format!("Failed to write temp upload file: {}", e);
+            log::error!("{}", error);
+            yield patch_signals(r#"{"processing":false}"#);
+            yield patch_template(template::JobFailed {
+                job_id: job_id,
+                error: "Failed to stage uploaded file",
+                source: &filename,
+            });
+            return
+        }
+        let _temp_upload_cleanup = TempFileCleanup {
+            path: temp_upload_path.clone(),
+        };
+
+        let receiver = match Receiver::try_from(Uri::File(temp_upload_path)) {
             Ok(receiver) => Arc::new(receiver),
             Err(e) => {
                 let error = format!("Failed to create receiver: {}", e);

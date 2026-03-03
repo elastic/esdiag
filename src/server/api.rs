@@ -133,6 +133,11 @@ pub async fn api_key(
     log::info!("Received JSON api key request for: {}", payload.url);
 
     let job_id = new_job_id();
+    log::debug!(
+        "[fsm][api.api_key] start: job_id={}, wait_for_completion={}",
+        job_id,
+        params.wait_for_completion
+    );
 
     // Build the known host from the URL
     let url = match Url::parse(&payload.url) {
@@ -177,11 +182,13 @@ pub async fn api_key(
     // If wait_for_completion is true, process the job synchronously
     if params.wait_for_completion {
         log::info!("Processing job: {}", job_id);
+        log::debug!("[fsm][api.api_key] queued -> processing(sync): job_id={job_id}");
 
         // Create receiver from host
         let receiver = match Receiver::try_from(host) {
             Ok(receiver) => {
                 log::info!("Created receiver: {}", receiver);
+                log::debug!("[fsm][api.api_key] receiver created: job_id={job_id}");
                 Arc::new(receiver)
             }
             Err(e) => {
@@ -198,10 +205,14 @@ pub async fn api_key(
 
         let exporter = state.exporter.clone();
         let identifiers = payload.metadata;
+        log::debug!("[fsm][api.api_key] ready->try_new: job_id={job_id}");
 
         // Create and start the processor
         let processor = match Processor::try_new(receiver, exporter, identifiers).await {
-            Ok(processor) => processor,
+            Ok(processor) => {
+                log::debug!("[fsm][api.api_key] try_new ok: processor_id={}, job_id={job_id}", processor.id);
+                processor
+            },
             Err(error) => {
                 log::error!("Failed to create processor: {}", error);
                 state.record_failure().await;
@@ -214,8 +225,12 @@ pub async fn api_key(
             }
         };
 
+        log::debug!("[fsm][api.api_key] ready->start: processor_id={}, job_id={job_id}", processor.id);
         let processing = match processor.start().await {
-            Ok(processing) => processing,
+            Ok(processing) => {
+                log::debug!("[fsm][api.api_key] start ok -> processing: processor_id={}, job_id={job_id}", processing.id);
+                processing
+            },
             Err(failed) => {
                 log::error!("Failed to start processor: {}", failed.state.error);
                 state.record_failure().await;
@@ -229,8 +244,10 @@ pub async fn api_key(
         };
 
         // Process the job
+        log::debug!("[fsm][api.api_key] processing->process await: processor_id={}, job_id={job_id}", processing.id);
         match processing.process().await {
             Ok(completed) => {
+                log::debug!("[fsm][api.api_key] process ok -> completed: processor_id={}, job_id={job_id}", completed.id);
                 let report = &completed.state.report;
                 state
                     .record_success(report.diagnostic.docs.total, report.diagnostic.docs.errors)
@@ -249,6 +266,7 @@ pub async fn api_key(
                 (StatusCode::OK, Json(response))
             }
             Err(failed) => {
+                log::debug!("[fsm][api.api_key] process failed -> failed: processor_id={}, job_id={job_id}", failed.id);
                 log::error!("Processing failed: {}", failed.state.error);
                 state.record_failure().await;
                 (
@@ -261,6 +279,7 @@ pub async fn api_key(
         }
     } else {
         // Stash the username and (filename, URI) into the server state for later use
+        log::debug!("[fsm][api.api_key] queued(in state): job_id={job_id}");
         state.push_key(job_id, payload.metadata, host).await;
 
         // Respond with a JSON success
