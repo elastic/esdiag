@@ -585,6 +585,7 @@ mod tests {
 #[cfg(all(test, feature = "server", feature = "desktop"))]
 mod desktop_startup_tests {
     use super::*;
+    use std::net::TcpListener;
 
     #[tokio::test]
     async fn embedded_server_starts_and_serves_local_url() {
@@ -607,5 +608,40 @@ mod desktop_startup_tests {
         );
 
         server.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn embedded_server_avoids_occupied_port_by_using_ephemeral_binding() {
+        let occupied_listener =
+            TcpListener::bind("127.0.0.1:0").expect("should reserve a local test port");
+        let occupied_port = occupied_listener
+            .local_addr()
+            .expect("reserved listener has local addr")
+            .port();
+
+        let exporter = Exporter::default();
+        let kibana_url = String::new();
+        let (mut server, bound_addr) = Server::start([127, 0, 0, 1], 0, exporter, kibana_url)
+            .await
+            .expect("desktop embedded server should start while another port is occupied");
+
+        assert_ne!(
+            bound_addr.port(),
+            occupied_port,
+            "ephemeral bind should avoid occupied ports"
+        );
+
+        let url = format!("http://localhost:{}", bound_addr.port());
+        let response = reqwest::get(&url)
+            .await
+            .expect("embedded server should accept HTTP requests");
+        assert!(
+            response.status().is_success(),
+            "expected success status from embedded server, got {}",
+            response.status()
+        );
+
+        server.shutdown().await;
+        drop(occupied_listener);
     }
 }
