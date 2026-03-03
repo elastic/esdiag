@@ -4,6 +4,7 @@
 
 use super::resolve_archive_path;
 use crate::{
+    processor::diagnostic::data_source::get_source,
     processor::{DataSource, PathType, StreamingDataSource},
     receiver::{Receive, ReceiveMultiple, ReceiveRaw},
 };
@@ -81,17 +82,29 @@ impl Receive for ArchiveFileReceiver {
         T: DeserializeOwned + DataSource,
     {
         let mut archive = self.archive.write().await;
+        let source_paths = candidate_file_paths::<T>()?;
+        let mut last_resolve_error = None;
 
-        // Determine the fully-qualified filename within the archive
-        let source_path = T::source(PathType::File, None)?;
-        let filename = resolve_archive_path(self.subdir.as_ref(), &mut *archive, &source_path)?;
+        for source_path in source_paths {
+            match resolve_archive_path(self.subdir.as_ref(), &mut *archive, &source_path) {
+                Ok(filename) => {
+                    log::debug!("Reading {}", filename);
+                    let file = archive.by_name(&filename)?;
+                    let reader = BufReader::new(file);
+                    let data: T = serde_json::from_reader(reader)?;
+                    return Ok(data);
+                }
+                Err(e) => {
+                    last_resolve_error = Some(e);
+                    continue;
+                }
+            }
+        }
 
-        // Read lines directly from the compressed file
-        log::debug!("Reading {}", filename);
-        let file = archive.by_name(&filename)?;
-        let reader = BufReader::new(file);
-        let data: T = serde_json::from_reader(reader)?;
-        Ok(data)
+        match last_resolve_error {
+            Some(e) => Err(e),
+            None => Err(eyre!("No candidate source files available for {}", T::name())),
+        }
     }
 
     async fn get_stream<T>(&self) -> Result<BoxStream<'static, Result<T::Item>>>
@@ -109,18 +122,30 @@ impl ReceiveRaw for ArchiveFileReceiver {
         T: DataSource,
     {
         let mut archive = self.archive.write().await;
+        let source_paths = candidate_file_paths::<T>()?;
+        let mut last_resolve_error = None;
 
-        // Determine the fully-qualified filename within in the archive
-        let source_path = T::source(PathType::File, None)?;
-        let filename = resolve_archive_path(self.subdir.as_ref(), &mut *archive, &source_path)?;
+        for source_path in source_paths {
+            match resolve_archive_path(self.subdir.as_ref(), &mut *archive, &source_path) {
+                Ok(filename) => {
+                    log::debug!("Reading {}", filename);
+                    let file = archive.by_name(&filename)?;
+                    let mut reader = BufReader::new(file);
+                    let mut data = String::new();
+                    reader.read_to_string(&mut data)?;
+                    return Ok(data);
+                }
+                Err(e) => {
+                    last_resolve_error = Some(e);
+                    continue;
+                }
+            }
+        }
 
-        // Read lines directly from the compressed file
-        log::debug!("Reading {}", filename);
-        let file = archive.by_name(&filename)?;
-        let mut reader = BufReader::new(file);
-        let mut data = String::new();
-        reader.read_to_string(&mut data)?;
-        Ok(data)
+        match last_resolve_error {
+            Some(e) => Err(e),
+            None => Err(eyre!("No candidate source files available for {}", T::name())),
+        }
     }
 }
 
@@ -136,4 +161,20 @@ impl std::fmt::Display for ArchiveFileReceiver {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "{}", self.filename)
     }
+}
+
+fn candidate_file_paths<T: DataSource>() -> Result<Vec<String>> {
+    let mut paths = Vec::new();
+    paths.push(T::source(PathType::File, None)?);
+
+    for alias in T::aliases() {
+        if let Ok((matched_name, source_conf)) = get_source(T::product(), alias, &[]) {
+            let path = source_conf.get_file_path(matched_name);
+            if !paths.contains(&path) {
+                paths.push(path);
+            }
+        }
+    }
+
+    Ok(paths)
 }

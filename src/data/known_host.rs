@@ -3,7 +3,7 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use crate::data::{Auth, Product};
-use eyre::{Result, eyre};
+use eyre::{eyre, Result};
 use serde::{Deserialize, Serialize};
 use serde_yaml;
 use std::{
@@ -261,6 +261,13 @@ impl KnownHost {
                 .join(", ")
         );
         hosts.get(host).cloned()
+    }
+
+    pub fn list_all() -> Option<Vec<String>> {
+        let hosts = KnownHost::parse_hosts_yml().ok()?;
+        let mut names: Vec<String> = hosts.keys().cloned().collect();
+        names.sort();
+        Some(names)
     }
 
     pub fn from_url(url: &Url) -> Self {

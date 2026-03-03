@@ -17,6 +17,7 @@ pub struct Error<'e> {
 pub struct Index {
     pub auth_header: bool,
     pub debug: bool,
+    pub desktop: bool,
     pub exporter: String,
     pub kibana_url: String,
     pub key_id: Option<u64>,
@@ -29,6 +30,13 @@ pub struct Index {
     pub theme_dark: bool,
 }
 
+#[derive(Template)]
+#[template(path = "settings.html")]
+pub struct SettingsModal {
+    pub hosts: Vec<String>,
+    pub active_target: String,
+    pub kibana_url: String,
+}
 #[derive(Template)]
 #[template(path = "job/completed.html")]
 pub struct JobCompleted<'a> {

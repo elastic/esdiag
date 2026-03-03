@@ -17,6 +17,7 @@ use serde::Serialize;
 use serde_json::Value;
 use std::sync::Arc;
 use tokio::sync::{Semaphore, mpsc, oneshot};
+use tokio::time::{Duration, timeout};
 use url::Url;
 
 /// An exporter that sends documents to an Elasticsearch cluster.
@@ -29,6 +30,15 @@ pub struct ElasticsearchExporter {
 }
 
 impl ElasticsearchExporter {
+    fn request_timeout() -> Duration {
+        Duration::from_millis(
+            std::env::var("ESDIAG_REQUEST_TIMEOUT_MS")
+                .ok()
+                .and_then(|s| s.parse::<u64>().ok())
+                .unwrap_or(30_000),
+        )
+    }
+
     /// Create a new ElasticsearchExporter from a URL and Auth
     pub fn try_new(url: Url, auth: Auth) -> Result<Self> {
         let client = ElasticsearchBuilder::new(url.clone())
@@ -68,17 +78,20 @@ impl ElasticsearchExporter {
             Some(value) => Some(JsonBody::new(value)),
             None => None,
         };
-        self.client
-            .send(
+        timeout(
+            Self::request_timeout(),
+            self.client.send(
                 method,
                 path,
                 headers::HeaderMap::new(),
                 Option::<&Value>::None,
                 body,
                 None,
-            )
-            .await
-            .map_err(|e| e.into())
+            ),
+        )
+        .await
+        .map_err(|_| eyre!("Request timeout for {method:?} {path}"))?
+        .map_err(|e| e.into())
     }
 }
 
@@ -113,14 +126,21 @@ impl Export for ElasticsearchExporter {
 
     /// Check if the exporter has a valid connection to Elasticsearch.
     async fn is_connected(&self) -> bool {
-        let status_code = match self.client.info().send().await {
-            Ok(res) => {
+        let status_code = match timeout(Self::request_timeout(), self.client.info().send()).await {
+            Ok(Ok(res)) => {
                 log::debug!("Exporter is connected: {}", res.status_code());
                 log::trace!("{:?}", res);
                 res.status_code().as_u16()
             }
-            Err(e) => {
+            Ok(Err(e)) => {
                 log::error!("{e}");
+                599
+            }
+            Err(_) => {
+                log::error!(
+                    "Timed out checking exporter connection after {:?}",
+                    Self::request_timeout()
+                );
                 599
             }
         };
@@ -139,12 +159,18 @@ impl Export for ElasticsearchExporter {
             .map(|doc| BulkOperation::create(doc).pipeline("esdiag").into())
             .collect();
 
-        let response = self
-            .client
-            .bulk(BulkParts::Index(&index))
-            .body(batch)
-            .send()
-            .await;
+        let response = timeout(
+            Self::request_timeout(),
+            self.client.bulk(BulkParts::Index(&index)).body(batch).send(),
+        )
+        .await
+        .map_err(|_| {
+            eyre!(
+                "Timed out sending bulk request to {} for index {}",
+                self.url,
+                index
+            )
+        })?;
 
         parse_response(index, response).await
     }
@@ -177,13 +203,21 @@ impl Export for ElasticsearchExporter {
                 .map(|doc| BulkOperation::create(doc).pipeline("esdiag").into())
                 .collect();
 
-            let response = client
-                .bulk(BulkParts::Index(&index))
-                .body(batch)
-                .send()
-                .await;
+            let response = timeout(
+                ElasticsearchExporter::request_timeout(),
+                client.bulk(BulkParts::Index(&index)).body(batch).send(),
+            )
+            .await;
 
-            match parse_response(index, response).await {
+            let parsed = match response {
+                Ok(response) => parse_response(index, response).await,
+                Err(_) => Err(eyre!(
+                    "Timed out sending bulk request after {:?}",
+                    ElasticsearchExporter::request_timeout()
+                )),
+            };
+
+            match parsed {
                 Ok(batch_response) => {
                     if tx.send(batch_response).is_err() {
                         log::error!("Failed to send batch response: receiver dropped");
@@ -206,14 +240,22 @@ impl Export for ElasticsearchExporter {
     async fn save_report(&self, report: &DiagnosticReport) -> Result<()> {
         data::save_file("report.json", report)?;
         let diagnostic_id = report.diagnostic.metadata.id.clone();
-        match self
-            .client
-            .index(IndexParts::Index("metrics-diagnostic-esdiag"))
-            .pipeline("esdiag")
-            .body(&report)
-            .send()
-            .await
+        match timeout(
+            Self::request_timeout(),
+            self.client
+                .index(IndexParts::Index("metrics-diagnostic-esdiag"))
+                .pipeline("esdiag")
+                .body(&report)
+                .send(),
+        )
+        .await
         {
+            Err(_) => Err(eyre!(
+                "Timed out saving report {} after {:?}",
+                diagnostic_id,
+                Self::request_timeout()
+            )),
+            Ok(res) => match res {
             Ok(res) => {
                 let status_code = res.status_code().as_u16();
                 let body = res.json::<Value>().await?;
@@ -234,7 +276,7 @@ impl Export for ElasticsearchExporter {
                 log::error!("{e}");
                 Err(e.into())
             }
-        }
+        }}
     }
 }
 

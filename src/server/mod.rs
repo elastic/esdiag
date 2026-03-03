@@ -9,6 +9,8 @@ mod docs;
 mod file_upload;
 mod index;
 mod service_link;
+#[cfg(feature = "desktop")]
+mod settings;
 mod stats;
 mod template;
 mod theme;
@@ -34,6 +36,7 @@ use axum::{
 use bytes::Bytes;
 use datastar::prelude::{ElementPatchMode, PatchElements, PatchSignals};
 use serde::{Deserialize, Serialize};
+use eyre::Result;
 use std::{collections::HashMap, convert::Infallible, net::SocketAddr, sync::Arc};
 use tokio::sync::{RwLock, mpsc};
 
@@ -66,35 +69,31 @@ impl From<ApiKeyRequest> for Identifiers {
 #[derive(Clone)]
 pub struct Server {
     server_handle: Option<Arc<tokio::task::JoinHandle<()>>>,
-    stats_handle: Option<Arc<tokio::task::JoinHandle<()>>>,
     pub rx: Option<Arc<RwLock<mpsc::Receiver<(Identifiers, Bytes)>>>>,
 }
 
 impl Server {
-    pub fn new(port: u16, mut exporter: Exporter, kibana_url: String) -> Self {
+    pub async fn start(bind_addr: [u8; 4], port: u16, mut exporter: Exporter, kibana_url: String) -> Result<(Self, std::net::SocketAddr)> {
         let (_, rx) = mpsc::channel::<(Identifiers, Bytes)>(1);
         let rx = Arc::new(RwLock::new(rx));
         let rx_clone = rx.clone();
-        let mut docs_rx = exporter.get_docs_rx();
+        let docs_rx = exporter.get_docs_rx();
 
         // Create shared state
         let state = Arc::new(ServerState {
-            exporter: Arc::new(exporter),
+            exporter: Arc::new(RwLock::new(exporter)),
             keys: Arc::new(RwLock::new(HashMap::new())),
-            kibana_url,
+            kibana_url: Arc::new(RwLock::new(kibana_url)),
             links: Arc::new(RwLock::new(HashMap::new())),
             signals: Arc::new(RwLock::new(Signals::default())),
             stats: Arc::new(RwLock::new(Stats::default())),
             uploads: Arc::new(RwLock::new(HashMap::new())),
         });
 
-        let stats_clone = state.stats.clone();
-        let stats_handle = tokio::spawn(async move {
-            while let Some(docs) = docs_rx.recv().await {
-                log::debug!("docs_rx: {docs}");
-                stats_clone.write().await.docs.total += docs;
-            }
-        });
+        let _ = docs_rx; // Deprecated by direct atomic increments
+
+        let handle = axum_server::Handle::new();
+        let handle_clone = handle.clone();
 
         // Start the Axum server
         let server_handle = tokio::spawn(async move {
@@ -123,15 +122,23 @@ impl Server {
                 .route("/docs", get(docs::handler_index))
                 .route("/upload/process", post(file_upload::process))
                 .route("/upload/submit", post(file_upload::submit))
-                .route("/stats", patch(stats::handler))
+                .route("/stats", patch(stats::handler));
+
+            #[cfg(feature = "desktop")]
+            let app = app
+                .route("/settings/modal", get(settings::get_modal))
+                .route("/api/settings/update", post(settings::update_settings));
+
+            let app = app
                 .layer(DefaultBodyLimit::max(FIVE_HUNDRED_TWELVE_MEBIBYTES))
                 .layer(middleware::map_response(add_client_hint_headers));
 
-            let addr = SocketAddr::from(([0, 0, 0, 0], port));
+            let addr = SocketAddr::from((bind_addr, port));
 
             // Start the server
-            log::info!("Listening on port {}", port);
+            log::info!("Starting server bind to {:?}", addr);
             match axum_server::bind(addr)
+                .handle(handle_clone)
                 .serve(app.with_state(state).into_make_service())
                 .await
             {
@@ -140,34 +147,25 @@ impl Server {
             }
         });
 
-        Self {
+        // wait for the server to bind
+        let bound_addr = handle
+            .listening()
+            .await
+            .ok_or_else(|| eyre::eyre!("Server failed to bind"))?;
+        log::info!("Listening on port {}", bound_addr.port());
+
+        Ok((Self {
             server_handle: Some(Arc::new(server_handle)),
-            stats_handle: Some(Arc::new(stats_handle)),
             rx: Some(rx_clone),
-        }
+        }, bound_addr))
     }
 
     pub async fn shutdown(&mut self) {
-        // Shutdown the stats thread
-        if let Some(handle) = self.stats_handle.take() {
-            Arc::try_unwrap(handle).map(|handle| handle.abort()).ok();
-            log::debug!("Stats thread stopped");
-        }
         // Shutdown the main server
         if let Some(handle) = self.server_handle.take() {
             Arc::try_unwrap(handle).map(|handle| handle.abort()).ok();
             log::debug!("Server thread stopped");
         }
-    }
-}
-
-impl Default for Server {
-    fn default() -> Self {
-        let port = std::env::var("ESDIAG_PORT")
-            .ok()
-            .and_then(|s| s.parse::<u16>().ok())
-            .unwrap_or(2501);
-        Self::new(port, Exporter::default(), String::new())
     }
 }
 
@@ -183,8 +181,8 @@ impl Drop for Server {
 }
 
 pub struct ServerState {
-    pub exporter: Arc<Exporter>,
-    pub kibana_url: String,
+    pub exporter: Arc<RwLock<Exporter>>,
+    pub kibana_url: Arc<RwLock<String>>,
     pub signals: Arc<RwLock<Signals>>,
     pub uploads: Arc<RwLock<HashMap<u64, (String, Bytes)>>>,
     pub links: Arc<RwLock<HashMap<u64, (Identifiers, Uri)>>>,
@@ -193,9 +191,9 @@ pub struct ServerState {
 }
 
 impl ServerState {
-    pub async fn record_success(&self, _docs: u32, errors: u32) {
+    pub async fn record_success(&self, docs: u32, errors: u32) {
         let mut stats = self.stats.write().await;
-        //stats.docs.total += docs as usize;
+        stats.docs.total += docs as usize;
         stats.docs.errors += errors as usize;
         stats.jobs.total += 1;
         stats.jobs.success += 1;
@@ -317,6 +315,9 @@ pub struct Signals {
     pub file_upload: FileUpload,
     pub service_link: ServiceLink,
     pub es_api: EsApiKey,
+    #[cfg(feature = "desktop")]
+    #[serde(default)]
+    pub settings: settings::UpdateSettingsForm,
     pub stats: Stats,
     pub tab: Tab,
 }
@@ -339,6 +340,8 @@ impl Default for Signals {
                 key: String::new(),
                 url: Uri::default(),
             },
+            #[cfg(feature = "desktop")]
+            settings: settings::UpdateSettingsForm::default(),
             stats: Stats::default(),
             tab: Tab::FileUpload,
         }
@@ -465,4 +468,41 @@ async fn add_client_hint_headers(mut response: Response) -> Response {
     headers.append(VARY, "Cookie".parse().expect("valid Vary value"));
 
     response
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Server;
+    use crate::exporter::Exporter;
+    #[cfg(feature = "desktop")]
+    use super::Signals;
+
+    #[tokio::test]
+    async fn start_with_ephemeral_port_binds_and_reports_socket() {
+        let (mut server, bound_addr) = Server::start(
+            [127, 0, 0, 1],
+            0,
+            Exporter::default(),
+            String::new(),
+        )
+        .await
+        .expect("server should bind on ephemeral port");
+
+        assert!(bound_addr.ip().is_loopback());
+        assert!(bound_addr.port() > 0);
+
+        server.shutdown().await;
+    }
+
+    #[cfg(feature = "desktop")]
+    #[test]
+    fn signals_deserialize_without_settings_field_in_desktop_mode() {
+        let payload = r#"{"loading":false,"processing":false,"tab":"file-upload","message":"","stats":{"jobs":{"total":0,"success":0,"failed":0},"docs":{"total":0,"errors":0}},"es_api":{"url":"","key":""},"service_link":{"token":"","url":"","filename":""},"file_upload":{"job_id":22775},"metadata":{"user":"Anonymous","account":"","case_number":"","opportunity":""},"auth":{"header":false},"theme":{"dark":true}}"#;
+
+        let parsed = serde_json::from_str::<Signals>(payload);
+        assert!(
+            parsed.is_ok(),
+            "desktop signals payload without settings should deserialize"
+        );
+    }
 }

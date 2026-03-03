@@ -189,7 +189,7 @@ pub async fn process(
             }
         };
 
-        let exporter = state.exporter.clone();
+        let exporter = Arc::new(state.exporter.read().await.clone());
 
         let identifiers = Identifiers {
             user: signals.metadata.user,

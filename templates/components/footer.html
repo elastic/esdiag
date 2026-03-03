@@ -18,7 +18,13 @@
             >{{ version }}</a
         >
     </footer-left>
-    <footer-center id="exporter">Output: {{ exporter }}</footer-center>
+    <footer-center id="exporter">
+        {% if desktop %}
+        <a href="#" data-on:click="@get('/settings/modal')">Output: {{ exporter }}</a>
+        {% else %}
+        Output: {{ exporter }}
+        {% endif %}
+    </footer-center>
     <footer-right
         data-init="@patch('/stats')"
         data-signals="{ 'stats': {{ stats }} }"

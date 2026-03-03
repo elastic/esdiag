@@ -33,9 +33,15 @@ pub async fn set_theme(ReadSignals(signals): ReadSignals<ThemeSignals>) -> impl 
         }
     })
     .to_string();
-    let body = datastar::prelude::PatchSignals::new(payload)
+    let mut body = datastar::prelude::PatchSignals::new(payload)
         .as_datastar_event()
         .to_string();
+
+    #[cfg(feature = "desktop")]
+    {
+        // In desktop mode, we need a hard reload so the Tauri window frame reads the new theme_dark cookie
+        body.push_str(&datastar::prelude::ExecuteScript::new("window.location.reload();").as_datastar_event().to_string());
+    }
 
     let mut headers = HeaderMap::new();
     headers.insert(CONTENT_TYPE, HeaderValue::from_static("text/event-stream"));

@@ -61,6 +61,10 @@ a[href].stealth:hover {
     background-color: var(--color-overlay);
 }
 
+button {
+    font-size: var(--font-size-m);
+}
+
 #dark-mode {
     position: absolute;
     width: 1px;
@@ -343,6 +347,12 @@ panel > footer > button:focus-visible {
     --dropzone-border-color: var(--color-primary);
 }
 
+.dropzone.active {
+    background-color: var(--background-color-primary);
+    --dropzone-border-color: var(--border-color-strong);
+    border-style: solid;
+}
+
 .upload-progress-container {
     position: absolute;
     bottom: 0;
@@ -404,10 +414,7 @@ panel > footer > button:focus-visible {
 }
 
 .file-info {
-    font-size: var(--font-size-s);
     align-items: center;
-    background-color: var(--background-color-dimmed);
-    border-radius: var(--border-radius-small);
     display: flex;
     justify-content: center;
     margin-top: var(--size-m);
@@ -953,4 +960,53 @@ blockquote.markdown-alert-caution {
 blockquote.markdown-alert-caution::before {
     content: "🛑 Caution";
     color: var(--color-danger);
+}
+
+/* Modal */
+.modal {
+    position: fixed;
+    z-index: 100;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0,0,0,0.4);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.modal-content {
+    background-color: var(--background-color);
+    padding: 24px;
+    border-radius: 8px;
+    width: 80%;
+    max-width: 500px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+    position: relative;
+    border: 1px solid var(--border-color);
+}
+
+.modal-content h2 {
+    margin-top: 0;
+    margin-bottom: 20px;
+    color: var(--text-color);
+}
+
+.close-button {
+    color: var(--text-color-muted);
+    background: none;
+    border: none;
+    position: absolute;
+    top: 10px;
+    right: 15px;
+    font-size: 28px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.close-button:hover,
+.close-button:focus {
+    color: var(--text-color);
+    text-decoration: none;
 }

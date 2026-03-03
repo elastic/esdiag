@@ -5,3 +5,5 @@
 .opencode/
 .codex/
 esdiag.spdx.json
+/tauri-dist
+/frontend-dist/
