@@ -26,6 +26,16 @@
                     <label for="new-host-apikey" class="form-label">API Key</label>
                     <input type="password" id="new-host-apikey" name="new_host_apikey" data-bind:settings.new_host_apikey class="form-input" placeholder="Secret" />
                 </input-group>
+                <div style="display: flex; gap: var(--size-m);">
+                    <input-group style="flex: 1;">
+                        <label for="new-host-username" class="form-label">Username</label>
+                        <input type="text" id="new-host-username" name="new_host_username" data-bind:settings.new_host_username class="form-input" placeholder="elastic" style="width: 100%;" />
+                    </input-group>
+                    <input-group style="flex: 1;">
+                        <label for="new-host-password" class="form-label">Password</label>
+                        <input type="password" id="new-host-password" name="new_host_password" data-bind:settings.new_host_password class="form-input" placeholder="Secret" style="width: 100%;" />
+                    </input-group>
+                </div>
             </div>
 
             <input-group>

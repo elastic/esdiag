@@ -5,8 +5,8 @@ Copyright 2012-2025 Elasticsearch B.V.
 This document lists the licenses of the projects used in esdiag.
 
 ## Overview of licenses
-- [Apache License 2.0](#Apache-2.0) (212)
-- [MIT License](#MIT) (65)
+- [Apache License 2.0](#Apache-2.0) (215)
+- [MIT License](#MIT) (66)
 - [Unicode License v3](#Unicode-3.0) (19)
 - [BSD 3-Clause "New" or "Revised" License](#BSD-3-Clause) (2)
 - [zlib License](#Zlib) (2)
@@ -3703,6 +3703,7 @@ Apache License 2.0
 - [errno]( https://github.com/lambda-fairy/rust-errno ) 0.3.14
 - [eyre]( https://github.com/eyre-rs/eyre ) 0.6.12
 - [fastrand]( https://github.com/smol-rs/fastrand ) 2.3.0
+- [filetime]( https://github.com/alexcrichton/filetime ) 0.2.27
 - [find-msvc-tools]( https://github.com/rust-lang/cc-rs ) 0.1.9
 - [flate2]( https://github.com/rust-lang/flate2-rs ) 1.1.9
 - [fnv]( https://github.com/servo/rust-fnv ) 1.0.7
@@ -3729,6 +3730,7 @@ Apache License 2.0
 - [parking_lot_core]( https://github.com/Amanieu/parking_lot ) 0.9.12
 - [percent-encoding]( https://github.com/servo/rust-url/ ) 2.3.2
 - [pkg-config]( https://github.com/rust-lang/pkg-config-rs ) 0.3.32
+- [plain]( https://github.com/randomites/plain ) 0.2.3
 - [rayon-core]( https://github.com/rayon-rs/rayon ) 1.13.0
 - [rayon]( https://github.com/rayon-rs/rayon ) 1.11.0
 - [regex-automata]( https://github.com/rust-lang/regex ) 0.4.14
@@ -3748,6 +3750,7 @@ Apache License 2.0
 - [syn]( https://github.com/dtolnay/syn ) 1.0.109
 - [system-configuration-sys]( https://github.com/mullvad/system-configuration-rs ) 0.6.0
 - [system-configuration]( https://github.com/mullvad/system-configuration-rs ) 0.7.0
+- [tar]( https://github.com/alexcrichton/tar-rs ) 0.4.44
 - [tempfile]( https://github.com/Stebalien/tempfile ) 3.26.0
 - [unicase]( https://github.com/seanmonstar/unicase ) 2.9.0
 - [unicode-width]( https://github.com/unicode-rs/unicode-width ) 0.2.2
@@ -6836,6 +6839,37 @@ MIT License
 MIT License
 
 Copyright (c) 2022 Ibraheem Ahmed
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+```
+### MIT
+MIT License
+
+#### Used by
+- [libredox]( https://gitlab.redox-os.org/redox-os/libredox.git ) 0.1.14
+
+#### License
+```
+MIT License
+
+Copyright (c) 2023 4lDO2
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

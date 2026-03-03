@@ -41,6 +41,8 @@ pub struct UpdateSettingsForm {
     new_host_name: Option<String>,
     new_host_url: Option<String>,
     new_host_apikey: Option<String>,
+    new_host_username: Option<String>,
+    new_host_password: Option<String>,
     kibana_url: Option<String>,
 }
 
@@ -54,20 +56,52 @@ pub async fn update_settings(
     // 1. Process target selection
     if form.target == "new_host" {
         // Build new host
-        if let (Some(name), Some(url), Some(apikey)) = (&form.new_host_name, &form.new_host_url, &form.new_host_apikey) {
+        if let (Some(name), Some(url)) = (&form.new_host_name, &form.new_host_url) {
             if !name.is_empty() && !url.is_empty() {
                 match url.parse() {
                     Ok(parsed_url) => {
-                        let builder = KnownHostBuilder::new(parsed_url);
-                        if let Ok(host) = builder.apikey(Some(apikey.clone())).build() {
-                            let _ = host.save(name);
-                            settings.active_target = Some(name.clone());
+                        let mut builder = KnownHostBuilder::new(parsed_url);
+                        
+                        if let Some(apikey) = &form.new_host_apikey {
+                            if !apikey.is_empty() {
+                                builder = builder.apikey(Some(apikey.clone()));
+                            }
+                        } else if let (Some(user), Some(pass)) = (&form.new_host_username, &form.new_host_password) {
+                            if !user.is_empty() && !pass.is_empty() {
+                                builder = builder.username(Some(user.clone())).password(Some(pass.clone()));
+                            }
+                        }
+                        
+                        match builder.build() {
+                            Ok(host) => {
+                                match host.save(name) {
+                                    Ok(_) => {
+                                        settings.active_target = Some(name.clone());
+                                    }
+                                    Err(e) => {
+                                        let err_msg = format!("Failed to save host to hosts.yml: {}", e);
+                                        log::error!("{}", err_msg);
+                                        return Sse::new(stream! {
+                                            yield Ok::<_, std::convert::Infallible>(PatchElements::new(format!("<div id='settings-error' style='color: red; padding: 10px;'>{}</div>", err_msg)).mode(ElementPatchMode::Prepend).selector("#settings-form").write_as_axum_sse_event());
+                                        });
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                let err_msg = format!("Failed to configure host: {}", e);
+                                log::error!("{}", err_msg);
+                                return Sse::new(stream! {
+                                    yield Ok::<_, std::convert::Infallible>(PatchElements::new(format!("<div id='settings-error' style='color: red; padding: 10px;'>{}</div>", err_msg)).mode(ElementPatchMode::Prepend).selector("#settings-form").write_as_axum_sse_event());
+                                });
+                            }
                         }
                     }
                     Err(e) => {
-                        log::error!("Invalid URL provided for new host: {}", e);
-                        // Ideally we would return an SSE error patch here, 
-                        // but for now we just log it and don't save the invalid host
+                        let err_msg = format!("Invalid URL provided for new host: {}", e);
+                        log::error!("{}", err_msg);
+                        return Sse::new(stream! {
+                            yield Ok::<_, std::convert::Infallible>(PatchElements::new(format!("<div id='settings-error' style='color: red; padding: 10px;'>{}</div>", err_msg)).mode(ElementPatchMode::Prepend).selector("#settings-form").write_as_axum_sse_event());
+                        });
                     }
                 }
             }
@@ -83,15 +117,48 @@ pub async fn update_settings(
     }
 
     // 3. Save settings to disk
-    let _ = settings.save();
+    if let Err(e) = settings.save() {
+        let err_msg = format!("Failed to save settings: {}", e);
+        log::error!("{}", err_msg);
+        return Sse::new(stream! {
+            yield Ok::<_, std::convert::Infallible>(PatchElements::new(format!("<div id='settings-error' style='color: red; padding: 10px;'>{}</div>", err_msg)).mode(ElementPatchMode::Prepend).selector("#settings-form").write_as_axum_sse_event());
+        });
+    }
 
     // 4. Update the active Exporter in ServerState
     if let Some(target) = &settings.active_target {
-        if let Ok(host) = KnownHost::get_known(target).ok_or_else(|| eyre::eyre!("Host not found")) {
-            if let Ok(uri) = Uri::try_from(host) {
-                if let Ok(new_exporter) = Exporter::try_from(uri) {
-                    *state.exporter.write().await = new_exporter;
+        match KnownHost::get_known(target).ok_or_else(|| eyre::eyre!("Host not found")) {
+            Ok(host) => {
+                match Uri::try_from(host) {
+                    Ok(uri) => {
+                        match Exporter::try_from(uri) {
+                            Ok(new_exporter) => {
+                                *state.exporter.write().await = new_exporter;
+                            }
+                            Err(e) => {
+                                let err_msg = format!("Failed to construct exporter: {}", e);
+                                log::error!("{}", err_msg);
+                                return Sse::new(stream! {
+                                    yield Ok::<_, std::convert::Infallible>(PatchElements::new(format!("<div id='settings-error' style='color: red; padding: 10px;'>{}</div>", err_msg)).mode(ElementPatchMode::Prepend).selector("#settings-form").write_as_axum_sse_event());
+                                });
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        let err_msg = format!("Invalid Host URI: {}", e);
+                        log::error!("{}", err_msg);
+                        return Sse::new(stream! {
+                            yield Ok::<_, std::convert::Infallible>(PatchElements::new(format!("<div id='settings-error' style='color: red; padding: 10px;'>{}</div>", err_msg)).mode(ElementPatchMode::Prepend).selector("#settings-form").write_as_axum_sse_event());
+                        });
+                    }
                 }
+            }
+            Err(e) => {
+                let err_msg = format!("Could not find Target in hosts.yml: {}", e);
+                log::error!("{}", err_msg);
+                return Sse::new(stream! {
+                    yield Ok::<_, std::convert::Infallible>(PatchElements::new(format!("<div id='settings-error' style='color: red; padding: 10px;'>{}</div>", err_msg)).mode(ElementPatchMode::Prepend).selector("#settings-form").write_as_axum_sse_event());
+                });
             }
         }
     }

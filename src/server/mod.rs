@@ -9,6 +9,7 @@ mod docs;
 mod file_upload;
 mod index;
 mod service_link;
+#[cfg(feature = "desktop")]
 mod settings;
 mod stats;
 mod template;
@@ -128,9 +129,14 @@ impl Server {
                 .route("/docs", get(docs::handler_index))
                 .route("/upload/process", post(file_upload::process))
                 .route("/upload/submit", post(file_upload::submit))
-                .route("/stats", patch(stats::handler))
+                .route("/stats", patch(stats::handler));
+
+            #[cfg(feature = "desktop")]
+            let app = app
                 .route("/settings/modal", get(settings::get_modal))
-                .route("/api/settings/update", post(settings::update_settings))
+                .route("/api/settings/update", post(settings::update_settings));
+
+            let app = app
                 .layer(DefaultBodyLimit::max(FIVE_HUNDRED_TWELVE_MEBIBYTES))
                 .layer(middleware::map_response(add_client_hint_headers));
 
@@ -319,6 +325,7 @@ pub struct Signals {
     pub file_upload: FileUpload,
     pub service_link: ServiceLink,
     pub es_api: EsApiKey,
+    #[cfg(feature = "desktop")]
     pub settings: settings::UpdateSettingsForm,
     pub stats: Stats,
     pub tab: Tab,
@@ -342,6 +349,7 @@ impl Default for Signals {
                 key: String::new(),
                 url: Uri::default(),
             },
+            #[cfg(feature = "desktop")]
             settings: settings::UpdateSettingsForm::default(),
             stats: Stats::default(),
             tab: Tab::FileUpload,

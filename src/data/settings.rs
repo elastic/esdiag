@@ -10,9 +10,10 @@ pub struct Settings {
 
 impl Settings {
     fn get_path() -> Result<PathBuf> {
-        let esdiag_dir = super::KnownHost::get_hosts_path()
+        let hosts_path = super::KnownHost::get_hosts_path();
+        let esdiag_dir = hosts_path
             .parent()
-            .unwrap()
+            .unwrap_or(std::path::Path::new("."))
             .to_path_buf();
         if !esdiag_dir.exists() {
             fs::create_dir_all(&esdiag_dir)?;
