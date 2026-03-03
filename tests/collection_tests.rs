@@ -210,7 +210,12 @@ fn file_set(root: &Path) -> BTreeSet<String> {
             if entry.file_type().unwrap().is_dir() {
                 visit(&path, root, out);
             } else if entry.file_type().unwrap().is_file() {
-                out.insert(path.strip_prefix(root).unwrap().to_string_lossy().to_string());
+                out.insert(
+                    path.strip_prefix(root)
+                        .unwrap()
+                        .to_string_lossy()
+                        .to_string(),
+                );
             }
         }
     }
@@ -235,7 +240,7 @@ fn test_collect_zip_matches_directory_file_set_light_and_support() {
         let status_dir = Command::new(env!("CARGO_BIN_EXE_esdiag"))
             .args([
                 "collect",
-                "localhost",
+                "elasticsearch-local",
                 dir_out.to_str().unwrap(),
                 "--type",
                 variant,
@@ -247,7 +252,7 @@ fn test_collect_zip_matches_directory_file_set_light_and_support() {
         let status_zip = Command::new(env!("CARGO_BIN_EXE_esdiag"))
             .args([
                 "collect",
-                "localhost",
+                "elasticsearch-local",
                 zip_out.to_str().unwrap(),
                 "--zip",
                 "--type",
@@ -262,7 +267,9 @@ fn test_collect_zip_matches_directory_file_set_light_and_support() {
 
         let file = fs::File::open(zip_path).expect("zip exists");
         let mut archive = ZipArchive::new(file).expect("zip is valid");
-        archive.extract(&extract_out).expect("zip extraction succeeds");
+        archive
+            .extract(&extract_out)
+            .expect("zip extraction succeeds");
 
         let dir_set = file_set(&diag_dir);
         let zip_set = file_set(&extract_out);
@@ -277,7 +284,14 @@ fn test_collect_support_zip_repeated_has_no_duplicate_entry_errors() {
 
     for _ in 0..3 {
         let output = Command::new(env!("CARGO_BIN_EXE_esdiag"))
-            .args(["collect", "localhost", out_dir, "--zip", "--type", "support"])
+            .args([
+                "collect",
+                "elasticsearch-local",
+                out_dir,
+                "--zip",
+                "--type",
+                "support",
+            ])
             .output()
             .expect("Failed to execute support zip collect");
         assert!(output.status.success());

@@ -51,6 +51,10 @@ pub struct DirectoryExporter {
 }
 
 impl DirectoryExporter {
+    pub fn is_dir(&self) -> bool {
+        self.path.is_dir()
+    }
+
     pub async fn save(&self, path: PathBuf, content: String) -> Result<()> {
         let path = &self.path.join(path);
         log::debug!("Writing file: {}", &path.display());

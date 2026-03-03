@@ -45,7 +45,7 @@ impl ArchiveExporter {
 
     pub fn is_connected(&self) -> bool {
         match self {
-            Self::Directory(exporter) => std::path::PathBuf::from(exporter.to_string()).is_dir(),
+            Self::Directory(exporter) => exporter.is_dir(),
             Self::Zip(exporter) => exporter.is_connected(),
         }
     }
@@ -214,7 +214,7 @@ mod tests {
     #[test]
     fn normalize_archive_path_uses_forward_slashes() {
         let normalized =
-            normalize_archive_path(Path::new(r"\api\stats\nodes.json")).expect("normalize path");
+            normalize_archive_path(Path::new(r"api\stats\nodes.json")).expect("normalize path");
         assert_eq!(normalized, "api/stats/nodes.json");
     }
 

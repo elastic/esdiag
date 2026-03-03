@@ -56,7 +56,7 @@ enum Commands {
         host: String,
         /// The output directory to save the diagnostics to
         #[arg(
-            help = "An existing directory to create a diagnostic directory and files in",
+            help = "A directory in which to create diagnostic files (created if missing)",
             default_value = "."
         )]
         output: String,
@@ -304,9 +304,7 @@ async fn run(cli: Cli) -> Result<&'static str> {
                         let output_dir = match output_uri {
                             Uri::Directory(path) => path,
                             _ => {
-                                return Err(eyre!(
-                                    "Collect output must be a local directory path"
-                                ));
+                                return Err(eyre!("Collect output must be a local directory path"));
                             }
                         };
                         Exporter::for_collect_archive(output_dir)?
@@ -397,17 +395,17 @@ async fn run(cli: Cli) -> Result<&'static str> {
             let input_uri = Uri::try_from(input)?;
             let output_uri = Uri::try_from(output)?;
             let input_receiver = Receiver::try_from(input_uri.clone())?;
-            let identifiers = Identifiers::new(
-                account,
-                case,
-                input_receiver.filename(),
-                opportunity,
-                user,
-            );
+            let identifiers =
+                Identifiers::new(account, case, input_receiver.filename(), opportunity, user);
 
             let receiver = match zip {
                 Some(zip_path) => {
-                    let archive_exporter = Exporter::for_collect_archive(PathBuf::from(zip_path))?;
+                    let zip_uri = Uri::try_from(zip_path)?;
+                    let zip_dir = match zip_uri {
+                        Uri::Directory(path) => path,
+                        _ => return Err(eyre!("`--zip` must be a local directory path")),
+                    };
+                    let archive_exporter = Exporter::for_collect_archive(zip_dir)?;
                     let collect_identifiers = identifiers.clone().with_filename(None);
                     let collector = Collector::try_new(
                         input_receiver,
@@ -420,7 +418,9 @@ async fn run(cli: Cli) -> Result<&'static str> {
                     .await?;
                     let collected = collector.collect().await?;
                     log::info!("Collected API output archive {}", collected.path);
-                    Arc::new(Receiver::try_from(Uri::File(PathBuf::from(collected.path)))?)
+                    Arc::new(Receiver::try_from(Uri::File(PathBuf::from(
+                        collected.path,
+                    )))?)
                 }
                 None => Arc::new(input_receiver),
             };
