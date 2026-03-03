@@ -212,10 +212,6 @@ pub async fn process(
 
         match processor.start().await {
             Ok(processor) => {
-                yield patch_template(template::JobProcessing {
-                    job_id: job_id,
-                    source: &filename,
-                });
                 yield patch_signals(r#"{"loading":false,"processing":true}"#);
 
                 match processor.process().await {

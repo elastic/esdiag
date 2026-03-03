@@ -52,8 +52,7 @@ where
             Ok(file) => {
                 let reader = BufReader::new(file);
                 let mut deserializer = serde_json::Deserializer::from_reader(reader);
-                T::deserialize_stream(&mut deserializer, tx.clone())
-                    .map_err(|e| eyre::eyre!(e.to_string()))
+                T::deserialize_stream(&mut deserializer, tx.clone()).map_err(|e| eyre::eyre!(e.to_string()))
             }
             Err(e) => Err(eyre::eyre!(e)),
         };
