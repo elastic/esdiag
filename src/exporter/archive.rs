@@ -2,7 +2,7 @@ use super::DirectoryExporter;
 use eyre::{Result, eyre};
 use std::fs::File;
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use zip::ZipWriter;
 use zip::write::SimpleFileOptions;
@@ -103,17 +103,21 @@ impl ZipArchiveExporter {
     }
 
     pub async fn save(&self, path: PathBuf, content: String) -> Result<()> {
-        let entry = normalize_archive_path(path.as_path());
-        let mut writer_guard = self
-            .writer
-            .lock()
-            .map_err(|_| eyre!("Failed to acquire zip writer lock"))?;
-        let writer = writer_guard
-            .as_mut()
-            .ok_or_else(|| eyre!("Zip output is not initialized"))?;
-
-        writer.start_file(entry, SimpleFileOptions::default())?;
-        writer.write_all(content.as_bytes())?;
+        let entry = normalize_archive_path(path.as_path())?;
+        let writer = Arc::clone(&self.writer);
+        tokio::task::spawn_blocking(move || -> Result<()> {
+            let mut writer_guard = writer
+                .lock()
+                .map_err(|_| eyre!("Failed to acquire zip writer lock"))?;
+            let writer = writer_guard
+                .as_mut()
+                .ok_or_else(|| eyre!("Zip output is not initialized"))?;
+            writer.start_file(entry, SimpleFileOptions::default())?;
+            writer.write_all(content.as_bytes())?;
+            Ok(())
+        })
+        .await
+        .map_err(|e| eyre!("Failed to join zip write task: {}", e))??;
         Ok(())
     }
 
@@ -151,11 +155,53 @@ impl std::fmt::Display for ZipArchiveExporter {
     }
 }
 
-fn normalize_archive_path(path: &Path) -> String {
-    path.to_string_lossy()
-        .replace('\\', "/")
-        .trim_start_matches('/')
-        .to_string()
+fn normalize_archive_path(path: &Path) -> Result<String> {
+    let mut parts: Vec<String> = Vec::new();
+
+    for component in path.components() {
+        match component {
+            Component::Normal(segment) => {
+                let segment = segment.to_string_lossy().replace('\\', "/");
+                for part in segment.split('/') {
+                    if part.is_empty() || part == "." {
+                        continue;
+                    }
+                    if part == ".." {
+                        return Err(eyre!(
+                            "Archive path cannot contain parent directory components: {}",
+                            path.display()
+                        ));
+                    }
+                    if part.ends_with(':') {
+                        return Err(eyre!(
+                            "Archive path cannot contain drive prefixes: {}",
+                            path.display()
+                        ));
+                    }
+                    parts.push(part.to_string());
+                }
+            }
+            Component::CurDir => {}
+            Component::ParentDir => {
+                return Err(eyre!(
+                    "Archive path cannot contain parent directory components: {}",
+                    path.display()
+                ));
+            }
+            Component::RootDir | Component::Prefix(_) => {
+                return Err(eyre!(
+                    "Archive path must be relative and without root/prefix: {}",
+                    path.display()
+                ));
+            }
+        }
+    }
+
+    if parts.is_empty() {
+        return Err(eyre!("Archive path is empty: {}", path.display()));
+    }
+
+    Ok(parts.join("/"))
 }
 
 #[cfg(test)]
@@ -167,8 +213,15 @@ mod tests {
 
     #[test]
     fn normalize_archive_path_uses_forward_slashes() {
-        let normalized = normalize_archive_path(Path::new(r"\api\stats\nodes.json"));
+        let normalized =
+            normalize_archive_path(Path::new(r"\api\stats\nodes.json")).expect("normalize path");
         assert_eq!(normalized, "api/stats/nodes.json");
+    }
+
+    #[test]
+    fn normalize_archive_path_rejects_parent_components() {
+        let err = normalize_archive_path(Path::new("../api/stats.json")).expect_err("reject path");
+        assert!(err.to_string().contains("parent directory"));
     }
 
     #[tokio::test]

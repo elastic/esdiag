@@ -13,7 +13,7 @@ use super::{
     Tasks,
 };
 use crate::{data::Product, exporter::ArchiveExporter, receiver::Receiver};
-use eyre::Result;
+use eyre::{Result, WrapErr};
 use std::path::PathBuf;
 
 use crate::processor::api::{ApiResolver, ApiWeight, DiagnosticType, ElasticsearchApi};
@@ -50,54 +50,64 @@ impl ElasticsearchCollector {
     }
 
     pub async fn collect(&self) -> Result<CollectionResult> {
-        let diag_type = DiagnosticType::from_str(&self.options.r#type)?;
-        let apis = ApiResolver::resolve_es(
-            &diag_type,
-            self.options.include.as_ref(),
-            self.options.exclude.as_ref(),
-        )?;
+        let collect_result: Result<CollectionResult> = async {
+            let diag_type = DiagnosticType::from_str(&self.options.r#type)?;
+            let apis = ApiResolver::resolve_es(
+                &diag_type,
+                self.options.include.as_ref(),
+                self.options.exclude.as_ref(),
+            )?;
 
-        let api_names: Vec<&str> = apis.iter().map(|a| a.as_str()).collect();
-        log::debug!("Resolved APIs for collection: {:?}", api_names);
+            let api_names: Vec<&str> = apis.iter().map(|a| a.as_str()).collect();
+            log::debug!("Resolved APIs for collection: {:?}", api_names);
 
-        let mut result = CollectionResult {
-            path: self.exporter.to_string().clone(),
-            success: 0,
-            total: apis.len() + 1, // +1 for manifest
-        };
+            let mut result = CollectionResult {
+                path: self.exporter.to_string().clone(),
+                success: 0,
+                total: apis.len() + 1, // +1 for manifest
+            };
 
-        let mut collected_api_names = Vec::new();
+            let mut heavy_apis = Vec::new();
+            let mut light_apis = Vec::new();
 
-        result.success += self.save_diagnostic_manifest(&apis).await?;
+            result.success += self.save_diagnostic_manifest(&apis).await?;
 
-        let mut heavy_apis = Vec::new();
-        let mut light_apis = Vec::new();
+            for api in apis {
+                if api.weight() == ApiWeight::Heavy {
+                    heavy_apis.push(api);
+                } else {
+                    light_apis.push(api);
+                }
+            }
 
-        for api in apis {
-            collected_api_names.push(api.as_str().to_string());
-            if api.weight() == ApiWeight::Heavy {
-                heavy_apis.push(api);
-            } else {
-                light_apis.push(api);
+            // Concurrent fetch for Light APIs
+            let mut light_stream = stream::iter(light_apis)
+                .map(|api| async move { self.save_api_with_retry(&api).await })
+                .buffer_unordered(5);
+
+            while let Some(res) = light_stream.next().await {
+                result.success += res;
+            }
+
+            // Sequential fetch for Heavy APIs
+            for api in heavy_apis {
+                result.success += self.save_api_with_retry(&api).await;
+            }
+
+            Ok(result)
+        }
+        .await;
+
+        let finalize_result = self.exporter.finalize();
+
+        match (collect_result, finalize_result) {
+            (Ok(result), Ok(())) => Ok(result),
+            (Err(err), Ok(())) => Err(err),
+            (Ok(_), Err(finalize_err)) => Err(finalize_err),
+            (Err(err), Err(finalize_err)) => {
+                Err(err).wrap_err(format!("Failed to finalize archive: {}", finalize_err))
             }
         }
-
-        // Concurrent fetch for Light APIs
-        let mut light_stream = stream::iter(light_apis)
-            .map(|api| async move { self.save_api_with_retry(&api).await })
-            .buffer_unordered(5);
-
-        while let Some(res) = light_stream.next().await {
-            result.success += res;
-        }
-
-        // Sequential fetch for Heavy APIs
-        for api in heavy_apis {
-            result.success += self.save_api_with_retry(&api).await;
-        }
-
-        self.exporter.finalize()?;
-        Ok(result)
     }
 
     async fn save_api_with_retry(&self, api: &ElasticsearchApi) -> usize {

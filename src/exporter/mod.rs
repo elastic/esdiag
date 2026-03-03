@@ -226,7 +226,7 @@ impl Exporter {
 
     pub async fn save_report(&self, report: &DiagnosticReport) -> Result<()> {
         match self {
-            Exporter::Archive(_) => Ok(()),
+            Exporter::Archive(_) => Err(eyre!("save report not supported for archive exporter")),
             Exporter::Directory(exporter) => exporter.save_report(report).await,
             Exporter::Elasticsearch(exporter) => exporter.save_report(report).await,
             Exporter::File(exporter) => exporter.save_report(report).await,
