@@ -23,6 +23,13 @@ The `collect --zip` option SHALL be a boolean mode switch, and archive destinati
 - **WHEN** a user runs `esdiag collect <host> /tmp/out.file --zip` and `/tmp/out.file` already exists as a file
 - **THEN** the command fails with a destination validation error indicating a directory is required
 
+### Requirement: Collect directory destination safety
+The `collect` command without `--zip` SHALL reject output paths that already exist as regular files.
+
+#### Scenario: Collect non-zip rejects existing file destination
+- **WHEN** a user runs `esdiag collect <host> /tmp/out.file` and `/tmp/out.file` already exists as a file
+- **THEN** the command fails with a destination validation error indicating a directory is required
+
 ### Requirement: Collect zip filename parity
 When `collect --zip` is enabled, the output archive filename SHALL reuse the existing directory-output diagnostic naming format and append `.zip`.
 

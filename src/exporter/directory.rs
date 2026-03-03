@@ -90,7 +90,14 @@ impl TryFrom<PathBuf> for DirectoryExporter {
     type Error = eyre::Report;
 
     fn try_from(path: PathBuf) -> Result<Self> {
-        if !path.exists() {
+        if path.exists() {
+            if !path.is_dir() {
+                return Err(eyre!(
+                    "Directory output destination must be a directory: {}",
+                    path.display()
+                ));
+            }
+        } else {
             log::debug!("Creating directory: {}", path.display());
             std::fs::create_dir_all(&path)?;
         }
@@ -183,5 +190,24 @@ impl Export for DirectoryExporter {
             serde_json::to_string(report)?,
         )
         .map_err(|e| eyre::eyre!("Failed to save report: {}", e))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::DirectoryExporter;
+    use std::fs::File;
+    use tempfile::tempdir;
+
+    #[test]
+    fn directory_exporter_rejects_existing_file_path() {
+        let dir = tempdir().expect("temp dir");
+        let file_path = dir.path().join("not-a-dir");
+        File::create(&file_path).expect("create file");
+
+        let err = DirectoryExporter::try_from(file_path)
+            .err()
+            .expect("expected non-directory path to fail");
+        assert!(err.to_string().contains("must be a directory"));
     }
 }
