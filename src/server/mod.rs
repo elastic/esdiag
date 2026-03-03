@@ -148,7 +148,10 @@ impl Server {
         });
 
         // wait for the server to bind
-        let bound_addr = handle.listening().await.expect("Server failed to bind");
+        let bound_addr = handle
+            .listening()
+            .await
+            .ok_or_else(|| eyre::eyre!("Server failed to bind"))?;
         log::info!("Listening on port {}", bound_addr.port());
 
         Ok((Self {
@@ -313,6 +316,7 @@ pub struct Signals {
     pub service_link: ServiceLink,
     pub es_api: EsApiKey,
     #[cfg(feature = "desktop")]
+    #[serde(default)]
     pub settings: settings::UpdateSettingsForm,
     pub stats: Stats,
     pub tab: Tab,
@@ -464,4 +468,41 @@ async fn add_client_hint_headers(mut response: Response) -> Response {
     headers.append(VARY, "Cookie".parse().expect("valid Vary value"));
 
     response
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Server;
+    use crate::exporter::Exporter;
+    #[cfg(feature = "desktop")]
+    use super::Signals;
+
+    #[tokio::test]
+    async fn start_with_ephemeral_port_binds_and_reports_socket() {
+        let (mut server, bound_addr) = Server::start(
+            [127, 0, 0, 1],
+            0,
+            Exporter::default(),
+            String::new(),
+        )
+        .await
+        .expect("server should bind on ephemeral port");
+
+        assert!(bound_addr.ip().is_loopback());
+        assert!(bound_addr.port() > 0);
+
+        server.shutdown().await;
+    }
+
+    #[cfg(feature = "desktop")]
+    #[test]
+    fn signals_deserialize_without_settings_field_in_desktop_mode() {
+        let payload = r#"{"loading":false,"processing":false,"tab":"file-upload","message":"","stats":{"jobs":{"total":0,"success":0,"failed":0},"docs":{"total":0,"errors":0}},"es_api":{"url":"","key":""},"service_link":{"token":"","url":"","filename":""},"file_upload":{"job_id":22775},"metadata":{"user":"Anonymous","account":"","case_number":"","opportunity":""},"auth":{"header":false},"theme":{"dark":true}}"#;
+
+        let parsed = serde_json::from_str::<Signals>(payload);
+        assert!(
+            parsed.is_ok(),
+            "desktop signals payload without settings should deserialize"
+        );
+    }
 }

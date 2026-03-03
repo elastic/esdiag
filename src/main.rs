@@ -228,12 +228,9 @@ async fn main() -> Result<()> {
 }
 
 async fn run(cli: Cli) -> Result<&'static str> {
-    // Determine whether any CLI arguments (other than the binary name) were provided.
-    let has_non_binary_args = std::env::args_os().len() > 1;
-
     // If there are CLI arguments but no subcommand, avoid starting the desktop/Tauri
     // entrypoint. The desktop UI should only start when launched absolutely without arguments.
-    if has_non_binary_args && cli.command.is_none() {
+    if should_error_for_missing_subcommand(std::env::args_os().len(), cli.command.is_none()) {
         use clap::CommandFactory;
         let mut cmd = Cli::command();
         cmd.print_help()?;
@@ -534,6 +531,10 @@ async fn run(cli: Cli) -> Result<&'static str> {
     }
 }
 
+fn should_error_for_missing_subcommand(arg_count: usize, has_no_command: bool) -> bool {
+    arg_count > 1 && has_no_command
+}
+
 fn clear_last_run_files() -> Result<()> {
     let home_dir = match std::env::consts::OS {
         "windows" => std::env::var("USERPROFILE")?,
@@ -558,4 +559,53 @@ fn clear_last_run_files() -> Result<()> {
         let _ = std::fs::remove_file(file);
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::should_error_for_missing_subcommand;
+
+    #[test]
+    fn no_args_and_no_command_allows_desktop_path() {
+        assert!(!should_error_for_missing_subcommand(1, true));
+    }
+
+    #[test]
+    fn args_without_subcommand_errors() {
+        assert!(should_error_for_missing_subcommand(2, true));
+        assert!(should_error_for_missing_subcommand(3, true));
+    }
+
+    #[test]
+    fn args_with_subcommand_does_not_error() {
+        assert!(!should_error_for_missing_subcommand(2, false));
+    }
+}
+
+#[cfg(all(test, feature = "server", feature = "desktop"))]
+mod desktop_startup_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn embedded_server_starts_and_serves_local_url() {
+        let exporter = Exporter::default();
+        let kibana_url = String::new();
+        let (mut server, bound_addr) = Server::start([127, 0, 0, 1], 0, exporter, kibana_url)
+            .await
+            .expect("desktop embedded server should start");
+
+        let url = format!("http://localhost:{}", bound_addr.port());
+        let parsed = tauri::Url::parse(&url).expect("desktop URL should be valid");
+
+        let response = reqwest::get(parsed.as_str())
+            .await
+            .expect("embedded server should accept HTTP requests");
+        assert!(
+            response.status().is_success(),
+            "expected success status from embedded server, got {}",
+            response.status()
+        );
+
+        server.shutdown().await;
+    }
 }

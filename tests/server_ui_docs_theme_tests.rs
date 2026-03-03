@@ -2,17 +2,15 @@
 
 use esdiag::{exporter::Exporter, server::Server};
 use reqwest::Client;
-use std::net::TcpListener;
 use std::time::Duration;
 use tokio::time::sleep;
 
 async fn start_server() -> (Server, Client, String) {
-    let listener = TcpListener::bind("127.0.0.1:0").expect("bind local listener");
-    let port = listener.local_addr().expect("local address").port();
-    drop(listener);
-    let server = Server::new(port, Exporter::default(), String::new());
+    let (server, bound_addr) = Server::start([127, 0, 0, 1], 0, Exporter::default(), String::new())
+        .await
+        .expect("start local server");
     let client = Client::new();
-    let base = format!("http://127.0.0.1:{port}");
+    let base = format!("http://127.0.0.1:{}", bound_addr.port());
 
     for _ in 0..40 {
         if client.get(format!("{base}/")).send().await.is_ok() {

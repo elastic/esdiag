@@ -6,7 +6,7 @@ use askama::Template;
 use async_stream::stream;
 use axum::{
     extract::State,
-    response::{IntoResponse, Sse},
+    response::{IntoResponse, Response, Sse},
 };
 use datastar::prelude::{ElementPatchMode, PatchElements};
 use serde::Deserialize;
@@ -49,7 +49,7 @@ pub struct UpdateSettingsForm {
 pub async fn update_settings(
     State(state): State<Arc<ServerState>>,
     datastar::axum::ReadSignals(signals): datastar::axum::ReadSignals<super::Signals>,
-) -> impl IntoResponse {
+) -> Response {
     let mut settings = Settings::load().unwrap_or_default();
     let form = signals.settings;
 
@@ -84,27 +84,21 @@ pub async fn update_settings(
                                                     Err(e) => {
                                                         let err_msg = format!("Failed to connect to new host: {}", e);
                                                         log::error!("{}", err_msg);
-                                                        return Sse::new(stream! {
-                                                            yield Ok::<_, std::convert::Infallible>(PatchElements::new(format!("<div id='settings-error' style='color: red; padding: 10px;'>{}</div>", err_msg)).mode(ElementPatchMode::Prepend).selector("#settings-form").write_as_axum_sse_event());
-                                                        });
+                                                        return settings_error_response(err_msg);
                                                     }
                                                 }
                                             },
                                             Err(e) => {
                                                 let err_msg = format!("Failed to construct client: {}", e);
                                                 log::error!("{}", err_msg);
-                                                return Sse::new(stream! {
-                                                    yield Ok::<_, std::convert::Infallible>(PatchElements::new(format!("<div id='settings-error' style='color: red; padding: 10px;'>{}</div>", err_msg)).mode(ElementPatchMode::Prepend).selector("#settings-form").write_as_axum_sse_event());
-                                                });
+                                                return settings_error_response(err_msg);
                                             }
                                         }
                                     },
                                     Err(e) => {
                                         let err_msg = format!("Failed to parse host into URI: {}", e);
                                         log::error!("{}", err_msg);
-                                        return Sse::new(stream! {
-                                            yield Ok::<_, std::convert::Infallible>(PatchElements::new(format!("<div id='settings-error' style='color: red; padding: 10px;'>{}</div>", err_msg)).mode(ElementPatchMode::Prepend).selector("#settings-form").write_as_axum_sse_event());
-                                        });
+                                        return settings_error_response(err_msg);
                                     }
                                 };
                                 
@@ -116,9 +110,7 @@ pub async fn update_settings(
                                         Err(e) => {
                                             let err_msg = format!("Failed to save host to hosts.yml: {}", e);
                                             log::error!("{}", err_msg);
-                                            return Sse::new(stream! {
-                                                yield Ok::<_, std::convert::Infallible>(PatchElements::new(format!("<div id='settings-error' style='color: red; padding: 10px;'>{}</div>", err_msg)).mode(ElementPatchMode::Prepend).selector("#settings-form").write_as_axum_sse_event());
-                                            });
+                                            return settings_error_response(err_msg);
                                         }
                                     }
                                 }
@@ -126,18 +118,14 @@ pub async fn update_settings(
                             Err(e) => {
                                 let err_msg = format!("Failed to configure host: {}", e);
                                 log::error!("{}", err_msg);
-                                return Sse::new(stream! {
-                                    yield Ok::<_, std::convert::Infallible>(PatchElements::new(format!("<div id='settings-error' style='color: red; padding: 10px;'>{}</div>", err_msg)).mode(ElementPatchMode::Prepend).selector("#settings-form").write_as_axum_sse_event());
-                                });
+                                return settings_error_response(err_msg);
                             }
                         }
                     }
                     Err(e) => {
                         let err_msg = format!("Invalid URL provided for new host: {}", e);
                         log::error!("{}", err_msg);
-                        return Sse::new(stream! {
-                            yield Ok::<_, std::convert::Infallible>(PatchElements::new(format!("<div id='settings-error' style='color: red; padding: 10px;'>{}</div>", err_msg)).mode(ElementPatchMode::Prepend).selector("#settings-form").write_as_axum_sse_event());
-                        });
+                        return settings_error_response(err_msg);
                     }
                 }
             }
@@ -156,9 +144,7 @@ pub async fn update_settings(
     if let Err(e) = settings.save() {
         let err_msg = format!("Failed to save settings: {}", e);
         log::error!("{}", err_msg);
-        return Sse::new(stream! {
-            yield Ok::<_, std::convert::Infallible>(PatchElements::new(format!("<div id='settings-error' style='color: red; padding: 10px;'>{}</div>", err_msg)).mode(ElementPatchMode::Prepend).selector("#settings-form").write_as_axum_sse_event());
-        });
+        return settings_error_response(err_msg);
     }
 
     // 4. Update the active Exporter in ServerState
@@ -174,27 +160,21 @@ pub async fn update_settings(
                             Err(e) => {
                                 let err_msg = format!("Failed to construct exporter: {}", e);
                                 log::error!("{}", err_msg);
-                                return Sse::new(stream! {
-                                    yield Ok::<_, std::convert::Infallible>(PatchElements::new(format!("<div id='settings-error' style='color: red; padding: 10px;'>{}</div>", err_msg)).mode(ElementPatchMode::Prepend).selector("#settings-form").write_as_axum_sse_event());
-                                });
+                                return settings_error_response(err_msg);
                             }
                         }
                     }
                     Err(e) => {
                         let err_msg = format!("Invalid Host URI: {}", e);
                         log::error!("{}", err_msg);
-                        return Sse::new(stream! {
-                            yield Ok::<_, std::convert::Infallible>(PatchElements::new(format!("<div id='settings-error' style='color: red; padding: 10px;'>{}</div>", err_msg)).mode(ElementPatchMode::Prepend).selector("#settings-form").write_as_axum_sse_event());
-                        });
+                        return settings_error_response(err_msg);
                     }
                 }
             }
             Err(e) => {
                 let err_msg = format!("Could not find Target in hosts.yml: {}", e);
                 log::error!("{}", err_msg);
-                return Sse::new(stream! {
-                    yield Ok::<_, std::convert::Infallible>(PatchElements::new(format!("<div id='settings-error' style='color: red; padding: 10px;'>{}</div>", err_msg)).mode(ElementPatchMode::Prepend).selector("#settings-form").write_as_axum_sse_event());
-                });
+                return settings_error_response(err_msg);
             }
         }
     }
@@ -206,5 +186,20 @@ pub async fn update_settings(
             Reloading...
         </div>
         "#).write_as_axum_sse_event());
+    }).into_response()
+}
+
+fn settings_error_response(err_msg: String) -> Response {
+    Sse::new(stream! {
+        yield Ok::<_, std::convert::Infallible>(
+            PatchElements::new(format!(
+                "<div id='settings-error' style='color: red; padding: 10px;'>{}</div>",
+                err_msg
+            ))
+            .mode(ElementPatchMode::Prepend)
+            .selector("#settings-form")
+            .write_as_axum_sse_event(),
+        );
     })
+    .into_response()
 }

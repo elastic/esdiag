@@ -13,18 +13,18 @@ use std::sync::Arc;
 pub async fn handler(State(state): State<Arc<ServerState>>) -> impl IntoResponse {
     log::debug!("Started stats stream");
     Sse::new(stream! {
-        let mut last_count = 0;
+        let mut last_stats_json = String::new();
         loop {
             tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
             let stats = state.stats.read().await;
-            if stats.docs.total != last_count {
-                last_count = stats.docs.total;
-                match serde_json::to_string(&*stats) {
-                    Ok(json) => yield patch_signals(&format!(r#"{{"stats":{}}}"#, json)),
-                    Err(err) => log::error!("Failed to serialize stats: {}", err),
+            match serde_json::to_string(&*stats) {
+                Ok(json) => {
+                    if json != last_stats_json {
+                        last_stats_json = json.clone();
+                        yield patch_signals(&format!(r#"{{"stats":{}}}"#, json));
+                    }
                 }
-                let stats = format!(r#"{{"stats":{}}}"#, serde_json::to_string(&*stats).unwrap());
-                yield patch_signals(&stats)
+                Err(err) => log::error!("Failed to serialize stats: {}", err),
             }
         }
     })

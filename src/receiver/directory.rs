@@ -7,6 +7,7 @@ use super::{Receive, ReceiveMultiple, ReceiveRaw};
 use async_stream::stream;
 use eyre::{Result, eyre};
 use futures::stream::BoxStream;
+use crate::processor::diagnostic::data_source::get_source;
 use serde::de::DeserializeOwned;
 use std::{
     fs::File,
@@ -67,15 +68,30 @@ impl Receive for DirectoryReceiver {
     where
         T: DeserializeOwned + DataSource,
     {
-        let filename = &self
-            .path
-            .join(&self.work_dir)
-            .join(T::source(PathType::File, None)?);
-        log::debug!("Reading file: {}", &filename.display());
-        let file = File::open(&filename)?;
-        let reader = BufReader::new(file);
-        let data: T = serde_json::from_reader(reader)?;
-        Ok(data)
+        let source_paths = candidate_file_paths::<T>()?;
+        let mut last_open_error = None;
+
+        for source_path in source_paths {
+            let filename = self.path.join(&self.work_dir).join(source_path);
+            log::debug!("Reading file: {}", &filename.display());
+            match File::open(&filename) {
+                Ok(file) => {
+                    let reader = BufReader::new(file);
+                    let data: T = serde_json::from_reader(reader)?;
+                    return Ok(data);
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    last_open_error = Some(e);
+                    continue;
+                }
+                Err(e) => return Err(e.into()),
+            }
+        }
+
+        match last_open_error {
+            Some(e) => Err(e.into()),
+            None => Err(eyre!("No candidate source files available for {}", T::name())),
+        }
     }
 
     async fn get_stream<T>(&self) -> Result<BoxStream<'static, Result<T::Item>>>
@@ -126,16 +142,31 @@ impl ReceiveRaw for DirectoryReceiver {
     where
         T: DataSource,
     {
-        let filename = &self
-            .path
-            .join(&self.work_dir)
-            .join(T::source(PathType::File, None)?);
-        log::debug!("Reading file: {}", &filename.display());
-        let file = File::open(&filename)?;
-        let mut reader = BufReader::new(file);
-        let mut data = String::new();
-        reader.read_to_string(&mut data)?;
-        Ok(data)
+        let source_paths = candidate_file_paths::<T>()?;
+        let mut last_open_error = None;
+
+        for source_path in source_paths {
+            let filename = self.path.join(&self.work_dir).join(source_path);
+            log::debug!("Reading file: {}", &filename.display());
+            match File::open(&filename) {
+                Ok(file) => {
+                    let mut reader = BufReader::new(file);
+                    let mut data = String::new();
+                    reader.read_to_string(&mut data)?;
+                    return Ok(data);
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    last_open_error = Some(e);
+                    continue;
+                }
+                Err(e) => return Err(e.into()),
+            }
+        }
+
+        match last_open_error {
+            Some(e) => Err(e.into()),
+            None => Err(eyre!("No candidate source files available for {}", T::name())),
+        }
     }
 }
 
@@ -150,4 +181,20 @@ impl std::fmt::Display for DirectoryReceiver {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "Directory {}", self.path.display())
     }
+}
+
+fn candidate_file_paths<T: DataSource>() -> Result<Vec<String>> {
+    let mut paths = Vec::new();
+    paths.push(T::source(PathType::File, None)?);
+
+    for alias in T::aliases() {
+        if let Ok((matched_name, source_conf)) = get_source(T::product(), alias, &[]) {
+            let path = source_conf.get_file_path(matched_name);
+            if !paths.contains(&path) {
+                paths.push(path);
+            }
+        }
+    }
+
+    Ok(paths)
 }

@@ -33,7 +33,7 @@ pub async fn set_theme(ReadSignals(signals): ReadSignals<ThemeSignals>) -> impl 
         }
     })
     .to_string();
-    let body = datastar::prelude::PatchSignals::new(payload)
+    let mut body = datastar::prelude::PatchSignals::new(payload)
         .as_datastar_event()
         .to_string();
 
