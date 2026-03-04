@@ -9,7 +9,6 @@ mod docs;
 mod file_upload;
 mod index;
 mod service_link;
-#[cfg(feature = "desktop")]
 mod settings;
 mod stats;
 mod template;
@@ -34,7 +33,9 @@ use axum::{
     routing::{get, patch, post},
 };
 use bytes::Bytes;
+use clap::ValueEnum;
 use datastar::prelude::{ElementPatchMode, PatchElements, PatchSignals};
+use eyre::eyre;
 use eyre::Result;
 use futures::stream;
 use serde::{Deserialize, Serialize};
@@ -42,6 +43,65 @@ use std::{collections::HashMap, convert::Infallible, net::SocketAddr, sync::Arc}
 use tokio::sync::{RwLock, broadcast, mpsc, watch};
 
 type UploadReceiver = Arc<RwLock<mpsc::Receiver<(Identifiers, Bytes)>>>;
+const IAP_USER_EMAIL_HEADER: &str = "X-Goog-Authenticated-User-Email";
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq, ValueEnum)]
+#[serde(rename_all = "lowercase")]
+pub enum RuntimeMode {
+    Service,
+    #[default]
+    User,
+}
+
+impl RuntimeMode {
+    pub fn from_env(value: &str) -> Result<Self> {
+        match value.to_ascii_lowercase().as_str() {
+            "service" => Ok(Self::Service),
+            "user" => Ok(Self::User),
+            other => Err(eyre!("Invalid ESDIAG_MODE value '{other}', expected 'service' or 'user'")),
+        }
+    }
+}
+
+impl std::fmt::Display for RuntimeMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RuntimeMode::Service => write!(f, "service"),
+            RuntimeMode::User => write!(f, "user"),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct RuntimeModePolicy {
+    mode: RuntimeMode,
+}
+
+impl RuntimeModePolicy {
+    pub fn new(mode: RuntimeMode) -> Self {
+        Self { mode }
+    }
+
+    pub fn mode(&self) -> RuntimeMode {
+        self.mode
+    }
+
+    pub fn requires_iap_headers(&self) -> bool {
+        self.mode == RuntimeMode::Service
+    }
+
+    pub fn allows_local_artifacts(&self) -> bool {
+        self.mode == RuntimeMode::User
+    }
+
+    pub fn allows_exporter_updates(&self) -> bool {
+        self.mode == RuntimeMode::User
+    }
+
+    pub fn allows_host_management(&self) -> bool {
+        self.mode == RuntimeMode::User
+    }
+}
 
 #[derive(Deserialize, Serialize)]
 struct UploadServiceRequest {
@@ -82,6 +142,7 @@ impl Server {
         port: u16,
         mut exporter: Exporter,
         kibana_url: String,
+        runtime_mode: RuntimeMode,
     ) -> Result<(Self, std::net::SocketAddr)> {
         let (_, rx) = mpsc::channel::<(Identifiers, Bytes)>(1);
         let rx = Arc::new(RwLock::new(rx));
@@ -91,6 +152,7 @@ impl Server {
         let (stats_updates_tx, stats_updates_rx) = watch::channel(0u64);
 
         let (event_tx, _event_rx) = broadcast::channel::<ServerEvent>(256);
+        let runtime_mode_policy = RuntimeModePolicy::new(runtime_mode);
 
         // Create shared state
         let state = Arc::new(ServerState {
@@ -105,6 +167,8 @@ impl Server {
             event_tx,
             stats_updates_tx,
             stats_updates_rx,
+            runtime_mode,
+            runtime_mode_policy,
         });
 
         stats::spawn_stats_publisher(state.clone(), state.event_sender());
@@ -149,7 +213,6 @@ impl Server {
                 .route("/upload/submit", post(file_upload::submit))
                 .route("/events", patch(events));
 
-            #[cfg(feature = "desktop")]
             let app = app
                 .route("/settings/modal", get(settings::get_modal))
                 .route("/api/settings/update", post(settings::update_settings));
@@ -177,7 +240,20 @@ impl Server {
             .listening()
             .await
             .ok_or_else(|| eyre::eyre!("Server failed to bind"))?;
-        log::info!("Listening on port {}", bound_addr.port());
+        log::info!(
+            "Starting {}-mode server on port {}",
+            runtime_mode,
+            bound_addr.port()
+        );
+        if log::max_level() >= log::LevelFilter::Debug {
+            log::debug!(
+                "Runtime mode policy => requires_iap_headers={}, allows_local_artifacts={}, allows_exporter_updates={}, allows_host_management={}",
+                runtime_mode_policy.requires_iap_headers(),
+                runtime_mode_policy.allows_local_artifacts(),
+                runtime_mode_policy.allows_exporter_updates(),
+                runtime_mode_policy.allows_host_management()
+            );
+        }
 
         Ok((
             Self {
@@ -222,6 +298,8 @@ pub struct ServerState {
     pub uploads: Arc<RwLock<HashMap<u64, (String, Bytes)>>>,
     pub links: Arc<RwLock<HashMap<u64, (Identifiers, Uri)>>>,
     pub keys: Arc<RwLock<HashMap<u64, (Identifiers, KnownHost)>>>,
+    pub runtime_mode: RuntimeMode,
+    pub runtime_mode_policy: RuntimeModePolicy,
     stats: Arc<RwLock<Stats>>,
     shutdown: watch::Receiver<bool>,
     event_tx: broadcast::Sender<ServerEvent>,
@@ -235,6 +313,38 @@ impl ServerState {
         stats.jobs.active += 1;
         drop(stats);
         self.notify_stats_changed();
+    }
+
+    pub fn resolve_user_email(&self, headers: &HeaderMap) -> Result<(bool, String)> {
+        if self.runtime_mode_policy.requires_iap_headers() {
+            let raw = headers
+                .get(IAP_USER_EMAIL_HEADER)
+                .ok_or_else(|| eyre!("Missing required header: {}", IAP_USER_EMAIL_HEADER))?
+                .to_str()
+                .map_err(|_| eyre!("Invalid {} header", IAP_USER_EMAIL_HEADER))?;
+            let email = raw.split(':').last().unwrap_or(raw).trim().to_string();
+            if email.is_empty() {
+                return Err(eyre!("{} header is empty", IAP_USER_EMAIL_HEADER));
+            }
+            return Ok((true, email));
+        }
+
+        if let Ok(user) = std::env::var("ESDIAG_USER") {
+            let user = user.trim().to_string();
+            if !user.is_empty() {
+                return Ok((false, user));
+            }
+        }
+
+        let has_header = headers.contains_key(IAP_USER_EMAIL_HEADER);
+        let email = headers
+            .get(IAP_USER_EMAIL_HEADER)
+            .and_then(|value| value.to_str().ok())
+            .map(|raw| raw.split(':').last().unwrap_or(raw).trim().to_string())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| "Anonymous".to_string());
+
+        Ok((has_header, email))
     }
 
     pub async fn record_success(&self, _docs: u32, errors: u32) {
@@ -346,6 +456,7 @@ impl ServerState {
 #[cfg(test)]
 pub(crate) fn test_server_state() -> Arc<ServerState> {
     let (stats_updates_tx, stats_updates_rx) = watch::channel(0u64);
+    let runtime_mode = RuntimeMode::User;
     Arc::new(ServerState {
         exporter: Arc::new(RwLock::new(Exporter::default())),
         keys: Arc::new(RwLock::new(HashMap::new())),
@@ -354,6 +465,8 @@ pub(crate) fn test_server_state() -> Arc<ServerState> {
         signals: Arc::new(RwLock::new(Signals::default())),
         stats: Arc::new(RwLock::new(Stats::default())),
         uploads: Arc::new(RwLock::new(HashMap::new())),
+        runtime_mode,
+        runtime_mode_policy: RuntimeModePolicy::new(runtime_mode),
         shutdown: watch::channel(false).1,
         event_tx: broadcast::channel(16).0,
         stats_updates_tx,
@@ -419,7 +532,6 @@ pub struct Signals {
     pub file_upload: FileUpload,
     pub service_link: ServiceLink,
     pub es_api: EsApiKey,
-    #[cfg(feature = "desktop")]
     #[serde(default)]
     pub settings: settings::UpdateSettingsForm,
     pub stats: Stats,
@@ -444,7 +556,6 @@ impl Default for Signals {
                 key: String::new(),
                 url: Uri::default(),
             },
-            #[cfg(feature = "desktop")]
             settings: settings::UpdateSettingsForm::default(),
             stats: Stats::default(),
             tab: Tab::FileUpload,
@@ -641,7 +752,6 @@ pub(super) fn get_user_email(headers: &HeaderMap) -> (bool, Option<String>) {
         }
     }
 }
-
 fn parse_cookie(headers: &HeaderMap, key: &str) -> Option<String> {
     headers
         .get(axum::http::header::COOKIE)
@@ -698,19 +808,50 @@ async fn add_client_hint_headers(mut response: Response) -> Response {
 
 #[cfg(test)]
 mod tests {
-    use super::{Server, ServerEvent, receiver_stream, test_server_state};
-    #[cfg(feature = "desktop")]
-    use super::Signals;
-    use futures::StreamExt;
+    use super::{
+        RuntimeMode, RuntimeModePolicy, Server, ServerEvent, ServerState, Signals, Stats,
+        receiver_stream, test_server_state,
+    };
     use crate::exporter::Exporter;
-    use tokio::{sync::mpsc, time::{Duration, timeout}};
+    use axum::http::HeaderMap;
+    use bytes::Bytes;
+    use futures::StreamExt;
+    use std::{collections::HashMap, sync::Arc};
+    use tokio::{
+        sync::{RwLock, broadcast, mpsc, watch},
+        time::{Duration, timeout},
+    };
+
+    fn test_state(mode: RuntimeMode) -> ServerState {
+        let (stats_updates_tx, stats_updates_rx) = watch::channel(0u64);
+        ServerState {
+            exporter: Arc::new(RwLock::new(Exporter::default())),
+            kibana_url: Arc::new(RwLock::new(String::new())),
+            signals: Arc::new(RwLock::new(Signals::default())),
+            uploads: Arc::new(RwLock::new(HashMap::<u64, (String, Bytes)>::new())),
+            links: Arc::new(RwLock::new(HashMap::new())),
+            keys: Arc::new(RwLock::new(HashMap::new())),
+            runtime_mode: mode,
+            runtime_mode_policy: RuntimeModePolicy::new(mode),
+            stats: Arc::new(RwLock::new(Stats::default())),
+            shutdown: watch::channel(false).1,
+            event_tx: broadcast::channel(16).0,
+            stats_updates_tx,
+            stats_updates_rx,
+        }
+    }
 
     #[tokio::test]
     async fn start_with_ephemeral_port_binds_and_reports_socket() {
-        let (mut server, bound_addr) =
-            Server::start([127, 0, 0, 1], 0, Exporter::default(), String::new())
-                .await
-                .expect("server should bind on ephemeral port");
+        let (mut server, bound_addr) = Server::start(
+            [127, 0, 0, 1],
+            0,
+            Exporter::default(),
+            String::new(),
+            RuntimeMode::User,
+        )
+        .await
+        .expect("server should bind on ephemeral port");
 
         assert!(bound_addr.ip().is_loopback());
         assert!(bound_addr.port() > 0);
@@ -776,5 +917,41 @@ mod tests {
             matches!(next_after_shutdown, Ok(None) | Err(_)),
             "expected stream to end or error after shutdown"
         );
+    }
+
+    #[test]
+    fn service_mode_requires_iap_header() {
+        let state = test_state(RuntimeMode::Service);
+        let headers = HeaderMap::new();
+        assert!(
+            state.resolve_user_email(&headers).is_err(),
+            "service mode should reject missing IAP header"
+        );
+    }
+
+    #[test]
+    fn service_mode_extracts_iap_email() {
+        let state = test_state(RuntimeMode::Service);
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "X-Goog-Authenticated-User-Email",
+            "accounts.google.com:ops@example.com"
+                .parse()
+                .expect("valid header"),
+        );
+        let (_, user) = state
+            .resolve_user_email(&headers)
+            .expect("service mode should parse user");
+        assert_eq!(user, "ops@example.com");
+    }
+
+    #[test]
+    fn user_mode_allows_missing_header() {
+        let state = test_state(RuntimeMode::User);
+        let headers = HeaderMap::new();
+        let (_, user) = state
+            .resolve_user_email(&headers)
+            .expect("user mode should not require header");
+        assert_eq!(user, "Anonymous");
     }
 }

@@ -2,11 +2,11 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use super::{ServerState, get_theme_dark, get_user_email, template};
+use super::{ServerState, get_theme_dark, template};
 use askama::Template;
 use axum::{
     extract::{Query, State},
-    http::HeaderMap,
+    http::{HeaderMap, StatusCode},
     response::{Html, IntoResponse},
 };
 use serde::{Deserialize, Deserializer, Serialize, de};
@@ -61,22 +61,30 @@ pub async fn handler(
     Query(params): Query<Params>,
     headers: HeaderMap,
 ) -> impl IntoResponse {
-    let (auth_header, user_initial, user_email) = match get_user_email(&headers) {
-        (auth_header, Some(email)) => (
-            auth_header,
-            email.chars().next().unwrap_or('_').to_ascii_uppercase(),
-            email,
-        ),
-        _ => (false, '_', "Anonymous".to_string()),
+    let (auth_header, user_email) = match state.resolve_user_email(&headers) {
+        Ok(result) => result,
+        Err(err) => {
+            log::warn!("Authentication header validation failed: {err}");
+            return (
+                StatusCode::UNAUTHORIZED,
+                Html(format!(
+                    "<html><body><h1>Unauthorized</h1><p>{}</p></body></html>",
+                    err
+                )),
+            )
+                .into_response();
+        }
     };
+    let user_initial = user_email.chars().next().unwrap_or('_').to_ascii_uppercase();
 
     let exporter_target = { state.exporter.read().await.to_string() };
     let theme_dark = get_theme_dark(&headers);
     let kibana_url = { state.kibana_url.read().await.clone() };
     let index_html = template::Index {
         auth_header,
-        debug: log::max_level() == log::Level::Debug,
+        debug: log::max_level() >= log::LevelFilter::Debug,
         desktop: cfg!(feature = "desktop"),
+        can_configure_output: state.runtime_mode_policy.allows_exporter_updates(),
         exporter: exporter_target,
         kibana_url,
         key_id: params.key_id,
@@ -87,6 +95,7 @@ pub async fn handler(
         user_initial,
         version: env!("CARGO_PKG_VERSION").to_string(),
         theme_dark,
+        runtime_mode: state.runtime_mode.to_string(),
     };
 
     let index_html = match index_html.render() {
@@ -97,5 +106,5 @@ pub async fn handler(
         ),
     };
 
-    Html(index_html)
+    Html(index_html).into_response()
 }

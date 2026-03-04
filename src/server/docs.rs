@@ -22,6 +22,7 @@ pub struct DocsTemplate {
     pub auth_header: bool,
     pub debug: bool,
     pub desktop: bool,
+    pub can_configure_output: bool,
     pub user: String,
     pub user_initial: char,
     pub version: String,
@@ -29,6 +30,7 @@ pub struct DocsTemplate {
     pub exporter: String,
     pub stats: String,
     pub theme_dark: bool,
+    pub runtime_mode: String,
 }
 
 #[derive(Template)]
@@ -124,23 +126,26 @@ pub async fn handler(
                     }
                 }
             } else {
-                let (auth_header, user_initial, user_email) =
-                    match crate::server::get_user_email(&headers) {
-                        (auth_header, Some(email)) => (
-                            auth_header,
-                            email.chars().next().unwrap_or('_').to_ascii_uppercase(),
-                            email,
-                        ),
-                        _ => (false, '_', "Anonymous".to_string()),
-                    };
+                let (auth_header, user_email) = match state.resolve_user_email(&headers) {
+                    Ok(result) => result,
+                    Err(err) => {
+                        return (
+                            StatusCode::UNAUTHORIZED,
+                            format!("Unauthorized: {err}"),
+                        )
+                            .into_response();
+                    }
+                };
+                let user_initial = user_email.chars().next().unwrap_or('_').to_ascii_uppercase();
 
                 let template = DocsTemplate {
                     toc,
                     current_path,
                     html_content,
                     auth_header,
-                    debug: log::max_level() == log::Level::Debug,
+                    debug: log::max_level() >= log::LevelFilter::Debug,
                     desktop: cfg!(feature = "desktop"),
+                    can_configure_output: state.runtime_mode_policy.allows_exporter_updates(),
                     exporter: state.exporter.read().await.to_string(),
                     kibana_url: state.kibana_url.read().await.clone(),
                     stats: state.get_stats_as_signals().await,
@@ -148,6 +153,7 @@ pub async fn handler(
                     user_initial,
                     version: env!("CARGO_PKG_VERSION").to_string(),
                     theme_dark: crate::server::get_theme_dark(&headers),
+                    runtime_mode: state.runtime_mode.to_string(),
                 };
 
                 match template.render() {

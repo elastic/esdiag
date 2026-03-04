@@ -13,6 +13,7 @@ use crate::{
 };
 use axum::{
     extract::{Multipart, State},
+    http::HeaderMap,
     response::{Html, IntoResponse, Sse},
 };
 use bytes::Bytes;
@@ -139,15 +140,35 @@ pub async fn submit(
 
 pub async fn process(
     State(state): State<Arc<ServerState>>,
+    headers: HeaderMap,
     ReadSignals(signals): ReadSignals<Signals>,
 ) -> impl IntoResponse {
     // Use the signal job_id to override the job.id created in this function
     let job_id = signals.file_upload.job_id;
 
     let (tx, rx) = mpsc::channel(64);
-    tokio::spawn(async move {
-        run_upload_job(state, signals, job_id, tx).await;
-    });
+    match state.resolve_user_email(&headers) {
+        Ok((_, request_user)) => {
+            tokio::spawn(async move {
+                run_upload_job(state, signals, job_id, request_user, tx).await;
+            });
+        }
+        Err(err) => {
+            tokio::spawn(async move {
+                state.record_failure().await;
+                send_event(
+                    &tx,
+                    template_event(template::JobFailed {
+                        job_id,
+                        error: &format!("Unauthorized request: {}", err),
+                        source: "User upload",
+                    }),
+                )
+                .await;
+                send_terminal_signal(&tx, &state).await;
+            });
+        }
+    }
 
     Sse::new(receiver_stream(rx))
 }
@@ -172,6 +193,7 @@ async fn run_upload_job(
     state: Arc<ServerState>,
     signals: Signals,
     job_id: u64,
+    request_user: String,
     tx: mpsc::Sender<ServerEvent>,
 ) {
     send_event(&tx, signal_event(r#"{"processing":true}"#)).await;
@@ -234,7 +256,7 @@ async fn run_upload_job(
 
     let exporter = Arc::new(state.exporter.read().await.clone());
     let identifiers = Identifiers {
-        user: signals.metadata.user,
+        user: Some(request_user),
         filename: Some(filename.clone()),
         ..signals.metadata
     };

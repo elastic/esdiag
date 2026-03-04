@@ -13,6 +13,7 @@ use crate::{
 };
 use axum::{
     extract::{Path, State},
+    http::HeaderMap,
     response::{IntoResponse, Sse},
 };
 use datastar::axum::ReadSignals;
@@ -21,27 +22,66 @@ use tokio::sync::mpsc;
 
 pub async fn form(
     State(state): State<Arc<ServerState>>,
+    headers: HeaderMap,
     ReadSignals(signals): ReadSignals<Signals>,
 ) -> impl IntoResponse {
     // Extract authenticated user email from header
     let uri = signals.es_api.url.to_string();
-
     let (tx, rx) = mpsc::channel(64);
-    tokio::spawn(async move {
-        run_api_key_form(state, signals, uri, tx).await;
-    });
+    match state.resolve_user_email(&headers) {
+        Ok((_, request_user)) => {
+            tokio::spawn(async move {
+                run_api_key_form(state, signals, uri, request_user, tx).await;
+            });
+        }
+        Err(err) => {
+            tokio::spawn(async move {
+                state.record_failure().await;
+                send_event(
+                    &tx,
+                    job_feed_event(template::JobFailed {
+                        job_id: new_job_id(),
+                        error: &format!("Unauthorized request: {}", err),
+                        source: &uri,
+                    }),
+                )
+                .await;
+                send_event(&tx, signal_event(r#"{"loading":false}"#)).await;
+            });
+        }
+    }
     Sse::new(receiver_stream(rx))
 }
 
 pub async fn id(
     State(state): State<Arc<ServerState>>,
+    headers: HeaderMap,
     Path(job_id): Path<u64>,
     ReadSignals(signals): ReadSignals<Signals>,
 ) -> impl IntoResponse {
     let (tx, rx) = mpsc::channel(64);
-    tokio::spawn(async move {
-        run_api_key_id(state, job_id, signals, tx).await;
-    });
+    match state.resolve_user_email(&headers) {
+        Ok((_, request_user)) => {
+            tokio::spawn(async move {
+                run_api_key_id(state, job_id, signals, request_user, tx).await;
+            });
+        }
+        Err(err) => {
+            tokio::spawn(async move {
+                state.record_failure().await;
+                send_event(
+                    &tx,
+                    template_event(template::JobFailed {
+                        job_id,
+                        error: &format!("Unauthorized request: {}", err),
+                        source: "API key processing",
+                    }),
+                )
+                .await;
+                send_event(&tx, signal_event(r#"{"loading":false}"#)).await;
+            });
+        }
+    }
     Sse::new(receiver_stream(rx))
 }
 
@@ -53,6 +93,7 @@ async fn run_api_key_form(
     state: Arc<ServerState>,
     signals: Signals,
     uri: String,
+    request_user: String,
     tx: mpsc::Sender<ServerEvent>,
 ) {
     let host = match KnownHostBuilder::new(signals.es_api.url.into())
@@ -102,7 +143,7 @@ async fn run_api_key_form(
 
     let exporter = Arc::new(state.exporter.read().await.clone());
     let identifiers = Identifiers {
-        user: signals.metadata.user,
+        user: Some(request_user),
         ..signals.metadata
     };
 
@@ -215,11 +256,13 @@ async fn run_api_key_id(
     state: Arc<ServerState>,
     job_id: u64,
     signals: Signals,
+    request_user: String,
     tx: mpsc::Sender<ServerEvent>,
 ) {
     let (identifiers, host): (Identifiers, KnownHost) = match state.pop_key(job_id).await {
         Some((mut identifiers, host)) => {
-            identifiers.user = signals.metadata.user;
+            let _ = signals;
+            identifiers.user = Some(request_user);
             (identifiers, host)
         }
         None => {
