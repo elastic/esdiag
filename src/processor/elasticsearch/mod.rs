@@ -84,7 +84,7 @@ use {
     searchable_snapshots_cache_stats::{SearchableSnapshotsCacheStats, SharedCacheStats},
     searchable_snapshots_stats::SearchableSnapshotsStats,
     slm_policies::SlmPolicies,
-    snapshots::{SnapshotRepositories, Snapshots},
+    snapshots::{Repositories, Snapshots},
     tasks::Tasks,
 };
 
@@ -320,7 +320,7 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
                 .await?;
             diag.process_datasource::<SlmPolicies>(summary_tx.clone())
                 .await?;
-            diag.process_datasource::<SnapshotRepositories>(summary_tx.clone())
+            diag.process_datasource::<Repositories>(summary_tx.clone())
                 .await?;
             diag.process_streaming_datasource::<Snapshots>(summary_tx.clone())
                 .await?;

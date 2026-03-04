@@ -10,7 +10,7 @@ use serde_json::Value;
 use std::collections::HashMap;
 use tokio::sync::mpsc::Sender;
 
-pub type SnapshotRepositories = HashMap<String, RepositoryConfig>;
+pub type Repositories = HashMap<String, RepositoryConfig>;
 
 #[derive(Clone, Deserialize, Serialize)]
 pub struct RepositoryConfig {
@@ -172,7 +172,7 @@ impl StreamingDataSource for Snapshots {
     }
 }
 
-impl DataSource for SnapshotRepositories {
+impl DataSource for Repositories {
     fn name() -> String {
         "repositories".to_string()
     }

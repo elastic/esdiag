@@ -4,7 +4,7 @@
 
 use super::super::{DocumentExporter, ElasticsearchMetadata, Lookups, ProcessorSummary};
 use crate::processor::StreamingDocumentExporter;
-use super::{RepositoryConfig, Snapshot, SnapshotRepositories, Snapshots, extract_snapshot_date};
+use super::{Repositories, RepositoryConfig, Snapshot, Snapshots, extract_snapshot_date};
 use crate::exporter::Exporter;
 use eyre::Report;
 use futures::stream::{BoxStream, StreamExt};
@@ -13,7 +13,7 @@ use serde_json::Value;
 use serde_with::skip_serializing_none;
 use tokio::sync::mpsc;
 
-impl DocumentExporter<Lookups, ElasticsearchMetadata> for SnapshotRepositories {
+impl DocumentExporter<Lookups, ElasticsearchMetadata> for Repositories {
     async fn documents_export(
         self,
         exporter: &Exporter,
@@ -190,7 +190,7 @@ mod tests {
 
     #[test]
     fn repository_document_contains_core_fields() {
-        let mut repos = SnapshotRepositories::new();
+        let mut repos = Repositories::new();
         repos.insert(
             "repo-a".to_string(),
             RepositoryConfig {
