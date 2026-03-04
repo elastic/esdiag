@@ -6,7 +6,7 @@
         <form id="settings-form" data-on:submit="@post('/api/settings/update')">
             <input-group>
                 <label for="target-host" class="form-label">Output Target (Hosts.yml)</label>
-                <select id="target-host" name="target" class="form-input" data-bind:settings.target" {% if !can_update_exporter %}disabled{% endif %}>
+                <select id="target-host" name="target" class="form-input" data-bind:settings.target {% if !can_update_exporter %}disabled{% endif %}>
                     {% for host in hosts %}
                         <option value="{{ host }}" {% if host == &active_target %}selected{% endif %}>{{ host }}</option>
                     {% endfor %}
