@@ -245,15 +245,13 @@ impl Server {
             runtime_mode,
             bound_addr.port()
         );
-        if log::max_level() >= log::LevelFilter::Debug {
-            log::debug!(
-                "Runtime mode policy => requires_iap_headers={}, allows_local_artifacts={}, allows_exporter_updates={}, allows_host_management={}",
-                runtime_mode_policy.requires_iap_headers(),
-                runtime_mode_policy.allows_local_artifacts(),
-                runtime_mode_policy.allows_exporter_updates(),
-                runtime_mode_policy.allows_host_management()
-            );
-        }
+        log::debug!(
+            "Runtime mode policy => requires_iap_headers={}, allows_local_artifacts={}, allows_exporter_updates={}, allows_host_management={}",
+            runtime_mode_policy.requires_iap_headers(),
+            runtime_mode_policy.allows_local_artifacts(),
+            runtime_mode_policy.allows_exporter_updates(),
+            runtime_mode_policy.allows_host_management()
+        );
 
         Ok((
             Self {

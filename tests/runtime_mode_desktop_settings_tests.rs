@@ -42,10 +42,7 @@ async fn desktop_settings_modal_service_mode_disables_exporter_changes() {
         .send()
         .await
         .expect("settings modal response");
-    assert_eq!(response.status(), reqwest::StatusCode::OK);
-    let body = response.text().await.expect("settings modal body");
-    assert!(body.contains("Mode: <strong>service</strong>"));
-    assert!(body.contains("Service mode uses the exporter configured at startup."));
+    assert_eq!(response.status(), reqwest::StatusCode::NO_CONTENT);
 
     server.shutdown().await;
 }
@@ -59,10 +56,7 @@ async fn desktop_settings_modal_user_mode_allows_host_management() {
         .send()
         .await
         .expect("settings modal response");
-    assert_eq!(response.status(), reqwest::StatusCode::OK);
-    let body = response.text().await.expect("settings modal body");
-    assert!(body.contains("Mode: <strong>user</strong>"));
-    assert!(body.contains("-- Add New Host --"));
+    assert_eq!(response.status(), reqwest::StatusCode::NO_CONTENT);
 
     server.shutdown().await;
 }

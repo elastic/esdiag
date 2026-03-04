@@ -517,7 +517,7 @@ async fn run(cli: Cli) -> Result<&'static str> {
                         } else {
                             esdiag::data::Settings::default()
                         };
-                        
+
                         let exporter = if runtime_mode == RuntimeMode::Service {
                             Exporter::default()
                         } else if let Some(target) = &settings.active_target {
