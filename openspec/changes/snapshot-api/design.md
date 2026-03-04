@@ -1,12 +1,13 @@
 ## Context
-ESDiag currently lacks snapshot and repository information in its Elasticsearch diagnostics. This change introduces the necessary data structures and processing logic to collect and export this information using the project's existing trait-driven architecture.
+ESDiag needs snapshot repository and snapshot metadata for backup/restore diagnostics. The previous proposal treated the responses as fully materialized payloads, which is risky for large clusters where `_snapshot/_all/_all` can be very large.
 
 ## Goals / Non-Goals
 
 **Goals:**
-- Implement `DataSource` for Elasticsearch Snapshot Repository (`_snapshot`) and Snapshots (`_snapshot/_all/_all`) APIs.
-- Create structured Rust models for the responses from these APIs using `serde`.
-- Integrate the new data sources into the `ElasticsearchDiagnostic` processor to ensure they are collected during diagnostic runs.
+- Collect snapshot repositories from `_snapshot`.
+- Collect snapshot records from `_snapshot/_all/_all`.
+- Use streaming deserialization and streaming export patterns aligned with `indices_stats`.
+- Preserve structured document output suitable for stable indexing and analysis.
 
 **Non-Goals:**
 - Management of snapshots (creation, deletion, restore).
@@ -14,27 +15,32 @@ ESDiag currently lacks snapshot and repository information in its Elasticsearch 
 
 ## Decisions
 
-### Decision: Separate Modules for Repositories and Snapshots
-We will create a unified `snapshots` module that handles both repositories and snapshot details, rather than two separate top-level modules.
+### Decision: Use `indices_stats`-style streaming path for snapshots
+`Snapshots` MUST implement `StreamingDataSource` and support progressive item emission during JSON decode, rather than loading the full response into memory first.
 
-**Rationale:** These two APIs are logically grouped under the snapshotting functionality. Within the `snapshots` module, we will define separate `DataSource` implementations for each endpoint.
+**Rationale:** `indices_stats` already demonstrates the expected architecture in this codebase for large payloads:
+- stream parse items from the datasource;
+- process items incrementally;
+- ship output through document channels.
 
-### Decision: Module Structure
-The new code will be located in `src/processor/elasticsearch/snapshots/`, containing:
-- `mod.rs`: Module exports.
-- `data.rs`: Serde-compatible structs for API responses.
-- `processor.rs`: Implementation of the data collection and export logic.
+### Decision: Export snapshot documents through document channels
+Snapshot export MUST implement `StreamingDocumentExporter` and write documents using exporter document channels with bounded buffering and batched sends.
+Snapshots MUST target `logs-snapshot-esdiag`, and repository settings MUST target `settings-repository-esdiag`.
 
-**Rationale:** This maintains consistency with existing Elasticsearch processors like `nodes_stats` and `indices_settings`.
+**Rationale:** This makes backpressure explicit and avoids building a full in-memory document vector before export.
 
-### Decision: Index Templates for Snapshots
-We will add index templates for the new data streams to ensure they are correctly mapped in Elasticsearch.
+### Decision: Keep repositories and snapshots in one module, but with separate paths
+The module remains `src/processor/elasticsearch/snapshots/`, but repositories and snapshots are processed through separate data/export flows. Repository collection may remain non-streaming if payload sizes are typically small, while snapshot collection is required to stream.
 
-**Rationale:** Proper mappings (e.g., keyword vs text, date formats) are essential for efficient querying and visualization of snapshot data.
+**Rationale:** Maintains cohesion of snapshot-related APIs while applying stricter behavior only where size risk is highest.
 
 ## Risks / Trade-offs
 
-- **[Risk] Large Response Size** → Clusters with a very high number of snapshots (thousands) may return a large JSON payload from `_snapshot/_all/_all`.
-  - **Mitigation**: The system is designed to handle large diagnostic documents, but we should ensure the deserialization is efficient.
-- **[Trade-off] All repositories vs specific repositories** → We chose `_all/_all` to get everything in one call.
-  - **Mitigation**: This is standard for diagnostic collection to ensure no data is missed.
+- **[Risk] More implementation complexity**: Streaming deserialize and channelized export are more complex than `Vec<Value>` processing.
+  - **Mitigation**: Reuse `indices_stats` architecture and testing style.
+- **[Risk] Partial stream failures**: Bad entries could occur mid-stream.
+  - **Mitigation**: Log per-item failures, continue processing remaining entries, and reflect errors in processor summary.
+- **[Trade-off] Typed breadth vs maintainability**: Fully exhaustive typed models may be costly for evolving snapshot payloads.
+  - **Mitigation**: Define a required stable typed subset for critical fields and allow controlled passthrough for non-critical fields.
+- **[Trade-off] Date extraction from names**: Snapshot naming is convention-based, not guaranteed.
+  - **Mitigation**: Extract `snapshot.date` only when a `YYYY.MM.DD` token exists; otherwise leave it null/absent.

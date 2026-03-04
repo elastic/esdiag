@@ -1,8 +1,8 @@
 {
   "_meta": {
-    "description": "ESDiag Elasticsearch Snapshots"
+    "description": "ESDiag Elasticsearch snapshots"
   },
-  "index_patterns": ["metadata-snapshots-esdiag*"],
+  "index_patterns": ["logs-snapshot-esdiag*"],
   "composed_of": ["esdiag@mappings", "esdiag@metadata", "esdiag@settings"],
   "allow_auto_create": true,
   "data_stream": {
@@ -18,24 +18,28 @@
           "properties": {
             "dataset": {
               "type": "constant_keyword",
-              "value": "snapshots"
+              "value": "snapshot"
             },
             "type": {
               "type": "constant_keyword",
-              "value": "metadata"
+              "value": "logs"
             }
           }
         },
         "snapshot": {
           "properties": {
-            "snapshot": {
+            "name": {
               "type": "keyword"
             },
-            "uuid": {
+            "repository": {
               "type": "keyword"
             },
             "state": {
               "type": "keyword"
+            },
+            "date": {
+              "type": "date",
+              "format": "strict_date_optional_time||yyyy-MM-dd"
             },
             "start_time": {
               "type": "date"
@@ -52,12 +56,13 @@
               "index": false
             },
             "duration_in_millis": {
-              "type": "long"
+              "type": "long",
+              "index": false
             },
             "indices": {
               "type": "keyword"
             },
-            "repository": {
+            "data_streams": {
               "type": "keyword"
             }
           }

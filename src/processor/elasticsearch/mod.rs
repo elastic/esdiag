@@ -67,7 +67,6 @@ use crate::{
 };
 use eyre::{Result, eyre};
 use serde::{Serialize, de::DeserializeOwned};
-use serde_json::Value;
 use std::sync::Arc;
 use {
     alias::{Alias, AliasList},
@@ -251,7 +250,6 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
                     Lookup::from(receiver.get::<MappingStats>().await)
                 }
             },
-            snapshot_repository: Lookup::from(receiver.get::<SnapshotRepositories>().await),
         };
         let license = receiver
             .get::<Licenses>()
@@ -266,7 +264,6 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
         report.add_lookup("node", &lookups.node);
         report.add_lookup("ilm_explain", &lookups.ilm_explain);
         report.add_lookup("shared_cache", &lookups.shared_cache);
-        report.add_lookup("snapshot_repository", &lookups.snapshot_repository);
         report.add_lookup("mapping_stats", &lookups.mapping_stats);
 
         Ok((
@@ -325,7 +322,7 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
                 .await?;
             diag.process_datasource::<SnapshotRepositories>(summary_tx.clone())
                 .await?;
-            diag.process_datasource::<Snapshots>(summary_tx.clone())
+            diag.process_streaming_datasource::<Snapshots>(summary_tx.clone())
                 .await?;
             diag.process_datasource::<Tasks>(summary_tx.clone()).await?;
             Ok::<(), eyre::Error>(())
@@ -363,5 +360,4 @@ pub struct Lookups {
     pub mapping_stats: Lookup<MappingSummary>,
     pub node: Lookup<NodeDocument>,
     pub shared_cache: Lookup<SharedCacheStats>,
-    pub snapshot_repository: Lookup<Value>,
 }

@@ -3,7 +3,8 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 mod data;
-mod lookup;
 mod processor;
+#[cfg(test)]
+mod tests;
 
 pub use data::*;

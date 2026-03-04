@@ -1,8 +1,8 @@
 {
   "_meta": {
-    "description": "ESDiag Elasticsearch Snapshot Repositories"
+    "description": "ESDiag Elasticsearch snapshot repositories"
   },
-  "index_patterns": ["settings-snapshot_repositories-esdiag*"],
+  "index_patterns": ["settings-repository-esdiag*"],
   "composed_of": ["esdiag@mappings", "esdiag@metadata", "esdiag@settings"],
   "allow_auto_create": true,
   "data_stream": {
@@ -18,7 +18,7 @@
           "properties": {
             "dataset": {
               "type": "constant_keyword",
-              "value": "snapshot_repositories"
+              "value": "repository"
             },
             "type": {
               "type": "constant_keyword",
