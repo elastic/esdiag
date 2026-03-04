@@ -3,15 +3,22 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use axum::{
+    extract::State,
     http::{
         HeaderMap, HeaderValue,
-        header::{CONTENT_TYPE, SET_COOKIE},
+        header::SET_COOKIE,
     },
+    http::StatusCode,
     response::IntoResponse,
 };
 use datastar::axum::ReadSignals;
 use serde::Deserialize;
 use serde_json::json;
+use std::sync::Arc;
+
+use super::{ServerState, signal_event};
+#[cfg(feature = "desktop")]
+use super::execute_script_event;
 
 #[derive(Debug, Deserialize, Default)]
 pub struct ThemeSignals {
@@ -25,7 +32,10 @@ pub struct ClientTheme {
     pub dark: bool,
 }
 
-pub async fn set_theme(ReadSignals(signals): ReadSignals<ThemeSignals>) -> impl IntoResponse {
+pub async fn set_theme(
+    State(state): State<Arc<ServerState>>,
+    ReadSignals(signals): ReadSignals<ThemeSignals>,
+) -> impl IntoResponse {
     let dark = signals.theme.dark;
     let payload = json!({
         "theme": {
@@ -33,24 +43,15 @@ pub async fn set_theme(ReadSignals(signals): ReadSignals<ThemeSignals>) -> impl 
         }
     })
     .to_string();
-    let body = datastar::prelude::PatchSignals::new(payload)
-        .as_datastar_event()
-        .to_string();
+    state.publish_event(signal_event(payload));
 
     #[cfg(feature = "desktop")]
-    let body = {
-        let mut body = body;
+    {
         // In desktop mode, we need a hard reload so the Tauri window frame reads the new theme_dark cookie
-        body.push_str(
-            &datastar::prelude::ExecuteScript::new("window.location.reload();")
-                .as_datastar_event()
-                .to_string(),
-        );
-        body
-    };
+        state.publish_event(execute_script_event("window.location.reload();"));
+    }
 
     let mut headers = HeaderMap::new();
-    headers.insert(CONTENT_TYPE, HeaderValue::from_static("text/event-stream"));
     let dark_cookie = format!(
         "theme_dark={}; Path=/; Max-Age=31536000; SameSite=Lax",
         if dark { "1" } else { "0" }
@@ -60,5 +61,5 @@ pub async fn set_theme(ReadSignals(signals): ReadSignals<ThemeSignals>) -> impl 
         HeaderValue::from_str(&dark_cookie).expect("valid dark cookie"),
     );
 
-    (headers, body)
+    (StatusCode::NO_CONTENT, headers)
 }

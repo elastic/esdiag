@@ -29,16 +29,17 @@ use axum::{
         header::{HeaderName, VARY},
     },
     middleware,
-    response::Response,
+    response::{Response, Sse},
     response::sse::Event,
     routing::{get, patch, post},
 };
 use bytes::Bytes;
 use datastar::prelude::{ElementPatchMode, PatchElements, PatchSignals};
 use eyre::Result;
+use futures::stream;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, convert::Infallible, net::SocketAddr, sync::Arc};
-use tokio::sync::{RwLock, mpsc};
+use tokio::sync::{RwLock, broadcast, mpsc, watch};
 
 type UploadReceiver = Arc<RwLock<mpsc::Receiver<(Identifiers, Bytes)>>>;
 
@@ -72,6 +73,7 @@ impl From<ApiKeyRequest> for Identifiers {
 pub struct Server {
     server_handle: Option<Arc<tokio::task::JoinHandle<()>>>,
     pub rx: Option<UploadReceiver>,
+    shutdown_tx: Option<watch::Sender<bool>>,
 }
 
 impl Server {
@@ -85,6 +87,10 @@ impl Server {
         let rx = Arc::new(RwLock::new(rx));
         let rx_clone = rx.clone();
         let docs_rx = exporter.get_docs_rx();
+        let (shutdown_tx, shutdown_rx) = watch::channel(false);
+        let (stats_updates_tx, stats_updates_rx) = watch::channel(0u64);
+
+        let (event_tx, _event_rx) = broadcast::channel::<ServerEvent>(256);
 
         // Create shared state
         let state = Arc::new(ServerState {
@@ -95,9 +101,21 @@ impl Server {
             signals: Arc::new(RwLock::new(Signals::default())),
             stats: Arc::new(RwLock::new(Stats::default())),
             uploads: Arc::new(RwLock::new(HashMap::new())),
+            shutdown: shutdown_rx,
+            event_tx,
+            stats_updates_tx,
+            stats_updates_rx,
         });
 
-        let _ = docs_rx; // Deprecated by direct atomic increments
+        stats::spawn_stats_publisher(state.clone(), state.event_sender());
+
+        let docs_state = state.clone();
+        tokio::spawn(async move {
+            let mut docs_rx = docs_rx;
+            while let Some(doc_count) = docs_rx.recv().await {
+                docs_state.add_docs_count(doc_count).await;
+            }
+        });
 
         let handle = axum_server::Handle::new();
         let handle_clone = handle.clone();
@@ -129,7 +147,7 @@ impl Server {
                 .route("/docs", get(docs::handler_index))
                 .route("/upload/process", post(file_upload::process))
                 .route("/upload/submit", post(file_upload::submit))
-                .route("/stats", patch(stats::handler));
+                .route("/events", patch(events));
 
             #[cfg(feature = "desktop")]
             let app = app
@@ -165,12 +183,16 @@ impl Server {
             Self {
                 server_handle: Some(Arc::new(server_handle)),
                 rx: Some(rx_clone),
+                shutdown_tx: Some(shutdown_tx),
             },
             bound_addr,
         ))
     }
 
     pub async fn shutdown(&mut self) {
+        if let Some(shutdown_tx) = &self.shutdown_tx {
+            let _ = shutdown_tx.send(true);
+        }
         // Shutdown the main server
         if let Some(handle) = self.server_handle.take() {
             Arc::try_unwrap(handle).map(|handle| handle.abort()).ok();
@@ -181,6 +203,9 @@ impl Server {
 
 impl Drop for Server {
     fn drop(&mut self) {
+        if let Some(shutdown_tx) = &self.shutdown_tx {
+            let _ = shutdown_tx.send(true);
+        }
         // Abort the server thread if it exists
         if let Some(handle) = self.server_handle.take() {
             Arc::try_unwrap(handle).map(|handle| handle.abort()).ok();
@@ -198,21 +223,48 @@ pub struct ServerState {
     pub links: Arc<RwLock<HashMap<u64, (Identifiers, Uri)>>>,
     pub keys: Arc<RwLock<HashMap<u64, (Identifiers, KnownHost)>>>,
     stats: Arc<RwLock<Stats>>,
+    shutdown: watch::Receiver<bool>,
+    event_tx: broadcast::Sender<ServerEvent>,
+    stats_updates_tx: watch::Sender<u64>,
+    stats_updates_rx: watch::Receiver<u64>,
 }
 
 impl ServerState {
-    pub async fn record_success(&self, docs: u32, errors: u32) {
+    pub async fn record_job_started(&self) {
         let mut stats = self.stats.write().await;
-        stats.docs.total += docs as usize;
+        stats.jobs.active += 1;
+        drop(stats);
+        self.notify_stats_changed();
+    }
+
+    pub async fn record_success(&self, _docs: u32, errors: u32) {
+        let mut stats = self.stats.write().await;
         stats.docs.errors += errors as usize;
         stats.jobs.total += 1;
         stats.jobs.success += 1;
+        if stats.jobs.active > 0 {
+            stats.jobs.active -= 1;
+        }
+        drop(stats);
+        self.notify_stats_changed();
     }
 
     pub async fn record_failure(&self) {
         let mut stats = self.stats.write().await;
         stats.jobs.total += 1;
         stats.jobs.failed += 1;
+        if stats.jobs.active > 0 {
+            stats.jobs.active -= 1;
+        }
+        drop(stats);
+        self.notify_stats_changed();
+    }
+
+    pub async fn add_docs_count(&self, doc_count: usize) {
+        let mut stats = self.stats.write().await;
+        stats.docs.total += doc_count;
+        drop(stats);
+        self.notify_stats_changed();
     }
 
     pub async fn get_stats(&self) -> Stats {
@@ -268,6 +320,45 @@ impl ServerState {
         log::debug!("Popping file upload id: {id}");
         self.uploads.write().await.remove(&id)
     }
+
+    pub fn shutdown_receiver(&self) -> watch::Receiver<bool> {
+        self.shutdown.clone()
+    }
+
+    pub fn event_sender(&self) -> broadcast::Sender<ServerEvent> {
+        self.event_tx.clone()
+    }
+
+    pub fn publish_event(&self, event: ServerEvent) {
+        let _ = self.event_tx.send(event);
+    }
+
+    pub fn stats_updates_receiver(&self) -> watch::Receiver<u64> {
+        self.stats_updates_rx.clone()
+    }
+
+    fn notify_stats_changed(&self) {
+        let next = *self.stats_updates_tx.borrow() + 1;
+        let _ = self.stats_updates_tx.send(next);
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn test_server_state() -> Arc<ServerState> {
+    let (stats_updates_tx, stats_updates_rx) = watch::channel(0u64);
+    Arc::new(ServerState {
+        exporter: Arc::new(RwLock::new(Exporter::default())),
+        keys: Arc::new(RwLock::new(HashMap::new())),
+        kibana_url: Arc::new(RwLock::new(String::new())),
+        links: Arc::new(RwLock::new(HashMap::new())),
+        signals: Arc::new(RwLock::new(Signals::default())),
+        stats: Arc::new(RwLock::new(Stats::default())),
+        uploads: Arc::new(RwLock::new(HashMap::new())),
+        shutdown: watch::channel(false).1,
+        event_tx: broadcast::channel(16).0,
+        stats_updates_tx,
+        stats_updates_rx,
+    })
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -287,6 +378,7 @@ impl Default for Stats {
                 total: 0,
                 success: 0,
                 failed: 0,
+                active: 0,
             },
         }
     }
@@ -313,6 +405,8 @@ pub struct JobStats {
     pub total: u64,
     pub success: u64,
     pub failed: u64,
+    #[serde(default)]
+    pub active: u64,
 }
 
 #[derive(Deserialize)]
@@ -409,6 +503,128 @@ pub fn patch_job_feed(template: impl Template) -> Result<Event, Infallible> {
     Ok(sse_event)
 }
 
+#[derive(Debug, Clone)]
+pub enum ServerEvent {
+    Signals(String),
+    Template(String),
+    JobFeed(String),
+    AppendBody(String),
+    PrependSelector { selector: String, html: String },
+    ExecuteScript(String),
+}
+
+pub fn signal_event(signals: impl Into<String>) -> ServerEvent {
+    ServerEvent::Signals(signals.into())
+}
+
+pub fn template_event(template: impl Template) -> ServerEvent {
+    let html = template.render().expect("Failed to render template");
+    ServerEvent::Template(html)
+}
+
+pub fn job_feed_event(template: impl Template) -> ServerEvent {
+    let html = template.render().expect("Failed to render template");
+    ServerEvent::JobFeed(html)
+}
+
+pub fn html_event(html: impl Into<String>) -> ServerEvent {
+    ServerEvent::Template(html.into())
+}
+
+pub fn append_body_event(html: impl Into<String>) -> ServerEvent {
+    ServerEvent::AppendBody(html.into())
+}
+
+pub fn prepend_selector_event(selector: impl Into<String>, html: impl Into<String>) -> ServerEvent {
+    ServerEvent::PrependSelector {
+        selector: selector.into(),
+        html: html.into(),
+    }
+}
+
+pub fn execute_script_event(script: impl Into<String>) -> ServerEvent {
+    ServerEvent::ExecuteScript(script.into())
+}
+
+pub fn server_event_to_sse(event: ServerEvent) -> Result<Event, Infallible> {
+    let sse_event = match event {
+        ServerEvent::Signals(payload) => PatchSignals::new(payload).write_as_axum_sse_event(),
+        ServerEvent::Template(html) => PatchElements::new(html).write_as_axum_sse_event(),
+        ServerEvent::JobFeed(html) => PatchElements::new(html)
+            .selector("#job-feed")
+            .mode(ElementPatchMode::After)
+            .write_as_axum_sse_event(),
+        ServerEvent::AppendBody(html) => PatchElements::new(html)
+            .selector("body")
+            .mode(ElementPatchMode::Append)
+            .write_as_axum_sse_event(),
+        ServerEvent::PrependSelector { selector, html } => PatchElements::new(html)
+            .selector(&selector)
+            .mode(ElementPatchMode::Prepend)
+            .write_as_axum_sse_event(),
+        ServerEvent::ExecuteScript(script) => {
+            datastar::prelude::ExecuteScript::new(&script).write_as_axum_sse_event()
+        }
+    };
+
+    Ok(sse_event)
+}
+
+pub fn receiver_stream(
+    rx: mpsc::Receiver<ServerEvent>,
+) -> impl futures::Stream<Item = Result<Event, Infallible>> {
+    stream::unfold(rx, |mut rx| async move {
+        rx.recv()
+            .await
+            .map(|event| (server_event_to_sse(event), rx))
+    })
+}
+
+fn broadcast_receiver_stream(
+    rx: broadcast::Receiver<ServerEvent>,
+    initial: Option<ServerEvent>,
+    shutdown: watch::Receiver<bool>,
+) -> impl futures::Stream<Item = Result<Event, Infallible>> {
+    stream::unfold(
+        (rx, initial, shutdown),
+        |(mut rx, mut initial, mut shutdown)| async move {
+            if *shutdown.borrow() {
+                return None;
+            }
+        if let Some(event) = initial.take() {
+                return Some((server_event_to_sse(event), (rx, initial, shutdown)));
+        }
+        loop {
+                tokio::select! {
+                    changed = shutdown.changed() => {
+                        if changed.is_err() || *shutdown.borrow() {
+                            return None;
+                        }
+                    }
+                    recv = rx.recv() => {
+                        match recv {
+                            Ok(event) => return Some((server_event_to_sse(event), (rx, initial, shutdown))),
+                            Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                            Err(broadcast::error::RecvError::Closed) => return None,
+                        }
+                    }
+                }
+            }
+        },
+    )
+}
+
+async fn events(axum::extract::State(state): axum::extract::State<Arc<ServerState>>) -> impl axum::response::IntoResponse {
+    log::debug!("Started events stream");
+    let initial_stats = state.get_stats().await;
+    let initial = signal_event(format!(r#"{{"stats":{}}}"#, initial_stats));
+    Sse::new(broadcast_receiver_stream(
+        state.event_sender().subscribe(),
+        Some(initial),
+        state.shutdown_receiver(),
+    ))
+}
+
 pub(super) fn get_user_email(headers: &HeaderMap) -> (bool, Option<String>) {
     match std::env::var("ESDIAG_USER").ok() {
         Some(user) => (false, Some(user)),
@@ -482,10 +698,12 @@ async fn add_client_hint_headers(mut response: Response) -> Response {
 
 #[cfg(test)]
 mod tests {
-    use super::Server;
+    use super::{Server, ServerEvent, receiver_stream, test_server_state};
     #[cfg(feature = "desktop")]
     use super::Signals;
+    use futures::StreamExt;
     use crate::exporter::Exporter;
+    use tokio::{sync::mpsc, time::{Duration, timeout}};
 
     #[tokio::test]
     async fn start_with_ephemeral_port_binds_and_reports_socket() {
@@ -509,6 +727,54 @@ mod tests {
         assert!(
             parsed.is_ok(),
             "desktop signals payload without settings should deserialize"
+        );
+    }
+
+    #[tokio::test]
+    async fn receiver_stream_preserves_event_order() {
+        let _state = test_server_state();
+        let (tx, rx) = mpsc::channel(4);
+        tx.send(ServerEvent::Signals(r#"{"a":1}"#.to_string()))
+            .await
+            .expect("send first event");
+        tx.send(ServerEvent::Signals(r#"{"b":2}"#.to_string()))
+            .await
+            .expect("send second event");
+        drop(tx);
+
+        let events: Vec<_> = receiver_stream(rx).collect().await;
+        assert_eq!(events.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn events_stream_terminates_on_server_shutdown() {
+        let (mut server, bound_addr) =
+            Server::start([127, 0, 0, 1], 0, Exporter::default(), String::new())
+                .await
+                .expect("server should bind");
+        let url = format!("http://{}/events", bound_addr);
+
+        let client = reqwest::Client::new();
+        let mut response = client
+            .patch(url)
+            .send()
+            .await
+            .expect("events request should succeed");
+        assert!(response.status().is_success());
+
+        let first = timeout(Duration::from_secs(2), response.chunk())
+            .await
+            .expect("stream should produce initial event");
+        assert!(matches!(first, Ok(Some(_))));
+
+        server.shutdown().await;
+
+        let next_after_shutdown = timeout(Duration::from_secs(2), response.chunk())
+            .await
+            .expect("stream should terminate shortly after shutdown");
+        assert!(
+            matches!(next_after_shutdown, Ok(None) | Err(_)),
+            "expected stream to end or error after shutdown"
         );
     }
 }

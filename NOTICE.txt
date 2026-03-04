@@ -6,7 +6,7 @@ This document lists the licenses of the projects used in esdiag.
 
 ## Overview of licenses
 - [Apache License 2.0](#Apache-2.0) (215)
-- [MIT License](#MIT) (66)
+- [MIT License](#MIT) (64)
 - [Unicode License v3](#Unicode-3.0) (19)
 - [BSD 3-Clause "New" or "Revised" License](#BSD-3-Clause) (2)
 - [zlib License](#Zlib) (2)
@@ -6894,8 +6894,6 @@ SOFTWARE.
 MIT License
 
 #### Used by
-- [async-stream-impl]( https://github.com/tokio-rs/async-stream ) 0.3.6
-- [async-stream]( https://github.com/tokio-rs/async-stream ) 0.3.6
 - [void]( https://github.com/reem/rust-void.git ) 1.0.2
 
 #### License

@@ -3,9 +3,8 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use crate::processor::{PathType, StreamingDataSource};
-use async_stream::stream;
 use eyre::Result;
-use futures::stream::BoxStream;
+use futures::stream::{self, BoxStream};
 use serde::de::DeserializeOwned;
 use std::{
     io::{BufReader, Read, Seek},
@@ -30,7 +29,7 @@ where
     T: StreamingDataSource + DeserializeOwned,
     T::Item: DeserializeOwned + Send + 'static,
 {
-    let (tx, mut rx) = mpsc::channel(100);
+    let (tx, rx) = mpsc::channel(100);
 
     let tx_err = tx.clone();
     let handle = tokio::task::spawn_blocking(move || {
@@ -78,11 +77,9 @@ where
         }
     });
 
-    Ok(Box::pin(stream! {
-        while let Some(item) = rx.recv().await {
-            yield item;
-        }
-    }))
+    Ok(Box::pin(stream::unfold(rx, |mut rx| async move {
+        rx.recv().await.map(|item| (item, rx))
+    })))
 }
 
 pub fn trim_to_working_directory(path: &mut PathBuf) {

@@ -26,7 +26,7 @@
         {% endif %}
     </footer-center>
     <footer-right
-        data-init="@patch('/stats')"
+        data-init="@patch('/events')"
         data-signals="{ 'stats': {{ stats }} }"
     >
         <span id="status" data-text="$loading ? 'Loading' : $processing ? 'Processing' : 'Ready'">Ready </span>
