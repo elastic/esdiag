@@ -60,13 +60,12 @@ pub async fn id(
     State(state): State<Arc<ServerState>>,
     headers: HeaderMap,
     Path(job_id): Path<u64>,
-    ReadSignals(signals): ReadSignals<Signals>,
 ) -> impl IntoResponse {
     let (tx, rx) = mpsc::channel(64);
     match state.resolve_user_email(&headers) {
         Ok((_, request_user)) => {
             tokio::spawn(async move {
-                run_service_link_id(state, job_id, signals, request_user, tx).await;
+                run_service_link_id(state, job_id, request_user, tx).await;
             });
         }
         Err(err) => {
@@ -278,13 +277,11 @@ async fn run_service_link_form(
 async fn run_service_link_id(
     state: Arc<ServerState>,
     job_id: u64,
-    signals: Signals,
     request_user: String,
     tx: mpsc::Sender<ServerEvent>,
 ) {
     let (identifiers, uri): (Identifiers, Uri) = match state.pop_link(job_id).await {
         Some((mut identifiers, uri)) => {
-            let _ = signals;
             identifiers.user = Some(request_user);
             (identifiers, uri)
         }

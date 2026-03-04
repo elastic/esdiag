@@ -73,15 +73,14 @@ pub async fn update_settings(
         if let Some(kibana) = form.kibana_url {
             *state.kibana_url.write().await = kibana;
         }
-
-        return Sse::new(stream! {
-            yield Ok::<_, std::convert::Infallible>(PatchElements::new(r#"
+        state.publish_event(html_event(
+            r#"
             <div id="settings-modal" data-init="window.location.reload();">
                 Reloading...
             </div>
-            "#).write_as_axum_sse_event());
-        })
-        .into_response();
+            "#,
+        ));
+        return StatusCode::NO_CONTENT.into_response();
     }
 
     let mut settings = Settings::load().unwrap_or_default();

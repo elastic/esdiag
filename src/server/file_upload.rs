@@ -353,7 +353,7 @@ mod tests {
         let signals = Signals::default();
         let (tx, mut rx) = mpsc::channel(8);
 
-        run_upload_job(state, signals, 42, tx).await;
+        run_upload_job(state, signals, 42, "Anonymous".to_string(), tx).await;
 
         let mut saw_failure = false;
         let mut saw_terminal = false;
@@ -397,6 +397,6 @@ mod tests {
         let (tx, rx) = mpsc::channel(1);
         drop(rx);
 
-        run_upload_job(state, signals, 999, tx).await;
+        run_upload_job(state, signals, 999, "Anonymous".to_string(), tx).await;
     }
 }

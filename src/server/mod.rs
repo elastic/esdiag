@@ -736,22 +736,6 @@ async fn events(axum::extract::State(state): axum::extract::State<Arc<ServerStat
     ))
 }
 
-pub(super) fn get_user_email(headers: &HeaderMap) -> (bool, Option<String>) {
-    match std::env::var("ESDIAG_USER").ok() {
-        Some(user) => (false, Some(user)),
-        None => {
-            let has_header = headers.contains_key("X-Goog-Authenticated-User-Email");
-            let email = headers
-                .get("X-Goog-Authenticated-User-Email")
-                .and_then(|value| value.to_str().ok())
-                .map(|email| {
-                    // Google auth headers are typically in format "accounts.google.com:email"
-                    email.split(':').next_back().unwrap_or(email).to_string()
-                });
-            (has_header, email)
-        }
-    }
-}
 fn parse_cookie(headers: &HeaderMap, key: &str) -> Option<String> {
     headers
         .get(axum::http::header::COOKIE)
@@ -890,7 +874,13 @@ mod tests {
     #[tokio::test]
     async fn events_stream_terminates_on_server_shutdown() {
         let (mut server, bound_addr) =
-            Server::start([127, 0, 0, 1], 0, Exporter::default(), String::new())
+            Server::start(
+                [127, 0, 0, 1],
+                0,
+                Exporter::default(),
+                String::new(),
+                RuntimeMode::User,
+            )
                 .await
                 .expect("server should bind");
         let url = format!("http://{}/events", bound_addr);
