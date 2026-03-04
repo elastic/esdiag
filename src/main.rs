@@ -18,6 +18,7 @@ use esdiag::{
     receiver::Receiver,
 };
 use eyre::{Result, eyre};
+use std::path::PathBuf;
 use std::sync::Arc;
 #[cfg(feature = "server")]
 use tokio::signal::unix::{SignalKind, signal};
@@ -56,6 +57,9 @@ enum Commands {
         /// The output directory to save the diagnostics to
         #[arg(help = "An existing directory to create a diagnostic directory and files in")]
         output: String,
+        /// Write collected API output directly to a zip archive
+        #[arg(long)]
+        zip: bool,
         /// Diagnostic type
         #[arg(
             long,
@@ -173,6 +177,14 @@ enum Commands {
         /// Diagnostic report user
         #[arg(help = "Diagnostic report user", long, short)]
         user: Option<String>,
+        /// Save all fetched API call output to a diagnostic zip file in the optional destination directory
+        #[arg(
+            long,
+            num_args = 0..=1,
+            default_missing_value = ".",
+            value_name = "OUTPUT_DIR"
+        )]
+        zip: Option<String>,
     },
     #[cfg(feature = "setup")]
     /// Import assets (templates, ingest pipelines, etc.) to a known Elasticsearch host
@@ -282,6 +294,7 @@ async fn run(cli: Cli) -> Result<&'static str> {
             Commands::Collect {
                 host,
                 output,
+                zip,
                 r#type,
                 include,
                 exclude,
@@ -291,26 +304,29 @@ async fn run(cli: Cli) -> Result<&'static str> {
                 user,
             } => {
                 let known_host = Uri::try_from(host)?;
-                let output = Uri::try_from(output)?;
                 match known_host {
                     Uri::KnownHost(_)
                     | Uri::ElasticCloudAdmin(_)
                     | Uri::ElasticGovCloudAdmin(_) => {
                         log::info!("Collecting diagnostic from {known_host}");
-                        log::info!("Saving diagnostic to {output}");
                         let receiver = Receiver::try_from(known_host)?;
-                        let output_dir = match output {
-                            Uri::Directory(path) | Uri::File(path) => path,
-                            _ => {
-                                return Err(eyre!("Collect output must be a local directory path"));
-                            }
+                        let output_uri = Uri::try_from(output)?;
+                        let exporter = if zip {
+                            log::info!("Saving diagnostic as zip in {output_uri}");
+                            let output_dir = match output_uri {
+                                Uri::Directory(path) | Uri::File(path) => path,
+                                _ => {
+                                    return Err(eyre!("Collect output must be a local directory path"));
+                                }
+                            };
+                            Exporter::for_collect_archive(output_dir)?
+                        } else {
+                            let exporter = Exporter::for_collect(output_uri.clone())?;
+                            log::info!("Saving diagnostic to {output_uri}");
+                            exporter
                         };
-                        let exporter = Exporter::for_collect_archive(output_dir)?;
 
-                        let filename =
-                            format!("esdiag-{}.zip", chrono::Utc::now().format("%Y%m%d-%H%M%S"));
-                        let identifiers =
-                            Identifiers::new(account, case, Some(filename), opportunity, user);
+                        let identifiers = Identifiers::new(account, case, None, opportunity, user);
 
                         let collector = Collector::try_new(
                             receiver,
@@ -386,17 +402,43 @@ async fn run(cli: Cli) -> Result<&'static str> {
                 case,
                 opportunity,
                 user,
+                zip,
             } => {
                 let input_uri = Uri::try_from(input)?;
                 let output_uri = Uri::try_from(output)?;
-
-                log::info!("input: {}", input_uri);
-
-                let receiver = Arc::new(Receiver::try_from(input_uri)?);
-                let exporter = Arc::new(Exporter::try_from(output_uri)?);
-
+                let input_receiver = Receiver::try_from(input_uri.clone())?;
                 let identifiers =
-                    Identifiers::new(account, case, receiver.filename(), opportunity, user);
+                    Identifiers::new(account, case, input_receiver.filename(), opportunity, user);
+
+                let receiver = match zip {
+                    Some(zip_path) => {
+                        let zip_uri = Uri::try_from(zip_path)?;
+                        let zip_dir = match zip_uri {
+                            Uri::Directory(path) | Uri::File(path) => path,
+                            _ => return Err(eyre!("`--zip` must be a local directory path")),
+                        };
+                        let archive_exporter = Exporter::for_collect_archive(zip_dir)?;
+                        let collect_identifiers = identifiers.clone().with_filename(None);
+                        let collector = Collector::try_new(
+                            input_receiver,
+                            archive_exporter,
+                            "standard".to_string(),
+                            None,
+                            None,
+                            collect_identifiers,
+                        )
+                        .await?;
+                        let collected = collector.collect().await?;
+                        log::info!("Collected API output archive {}", collected.path);
+                        Arc::new(Receiver::try_from(Uri::File(PathBuf::from(
+                            collected.path,
+                        )))?)
+                    }
+                    None => Arc::new(input_receiver),
+                };
+
+                log::info!("input: {}", receiver);
+                let exporter = Arc::new(Exporter::try_from(output_uri)?);
                 let processor = Processor::try_new(receiver, exporter, identifiers).await?;
                 let processor = match processor.start().await {
                     Ok(processor) => processor,
