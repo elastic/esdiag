@@ -119,14 +119,14 @@ mod tests {
             .by_id(".ds-metrics-index-esdiag-2025.11.20-000004")
             .unwrap();
         assert_eq!(doc_base.name, "metrics-index-esdiag");
-        assert_eq!(doc_base.is_write_index, false);
+        assert!(!doc_base.is_write_index);
 
         // Check write backing index (last in the list)
         let doc_write = lookup
             .by_id(".ds-metrics-index-esdiag-2025.11.21-000005")
             .unwrap();
         assert_eq!(doc_write.name, "metrics-index-esdiag");
-        assert_eq!(doc_write.is_write_index, true);
+        assert!(doc_write.is_write_index);
 
         // Check failure store index
         let doc_fs = lookup
@@ -136,10 +136,10 @@ mod tests {
         assert_eq!(doc_fs.r#type, "metrics");
         assert_eq!(doc_fs.dataset, "index");
         assert_eq!(doc_fs.namespace, "esdiag");
-        assert_eq!(doc_fs.is_write_index, false);
+        assert!(!doc_fs.is_write_index);
 
         // Check by_name returns the write document (the last one mapped to the name)
         let doc_name = lookup.by_name("metrics-index-esdiag").unwrap();
-        assert_eq!(doc_name.is_write_index, true);
+        assert!(doc_name.is_write_index);
     }
 }

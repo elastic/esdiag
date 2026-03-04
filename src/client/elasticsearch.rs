@@ -61,7 +61,7 @@ impl ElasticsearchBuilder {
             headers::AUTHORIZATION,
             headers::HeaderValue::from_str(&format!(
                 "Basic {}",
-                STANDARD.encode(&format!("{}:{}", username, password))
+                STANDARD.encode(format!("{}:{}", username, password))
             ))
             .expect("Invalid basic auth"),
         );

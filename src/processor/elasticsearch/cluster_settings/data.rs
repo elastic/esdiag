@@ -46,9 +46,7 @@ impl ClusterSettingsDefaults {
         };
 
         let name = name.as_str()?.chars().take(8).collect::<String>();
-        let project_type = project_type
-            .as_str()?
-            .trim_start_matches("elasticsearch_");
+        let project_type = project_type.as_str()?.trim_start_matches("elasticsearch_");
         Some(format!("{project_type}-{name}"))
     }
 }
@@ -76,10 +74,7 @@ mod tests {
             "transient": {}
         }"#;
         let settings: ClusterSettings = serde_json::from_str(json).expect("cluster settings parse");
-        assert_eq!(
-            settings.get_display_name().as_deref(),
-            Some("prod-cluster")
-        );
+        assert_eq!(settings.get_display_name().as_deref(), Some("prod-cluster"));
     }
 
     #[test]

@@ -59,7 +59,7 @@ async fn process_node(
                 // Since actions_metadata is pre-serialized, we need a Value for merge in transport_actions::extract
                 // For now, transport_actions::extract still expects &Value.
                 // We'll convert it back if needed or update the helper.
-                let actions_meta_val = serde_json::to_value(&ctx.actions_metadata).unwrap();
+                let actions_meta_val = serde_json::to_value(ctx.actions_metadata).unwrap();
                 if let Err(e) = transport_actions::extract(
                     ctx.actions_tx,
                     actions,
@@ -93,7 +93,7 @@ async fn process_node(
     if let Ok(mut http_val) = serde_json::from_str::<Value>(node_stats.http.get()) {
         let clients = http_val["clients"].take();
         if !clients.is_null() {
-            let http_meta_val = serde_json::to_value(&ctx.http_clients_metadata).unwrap();
+            let http_meta_val = serde_json::to_value(ctx.http_clients_metadata).unwrap();
             if let Err(e) =
                 http_clients::extract(ctx.http_clients_tx, clients, &http_meta_val, node_metadata)
                     .await
@@ -110,20 +110,20 @@ async fn process_node(
     }
 
     // Extract adaptive replica selection stats
-    if let Some(adaptive_raw) = node_stats.adaptive_selection.take() {
-        if let Ok(adaptive_val) = serde_json::from_str::<Value>(adaptive_raw.get()) {
-            let adaptive_meta_val = serde_json::to_value(&ctx.adaptive_metadata).unwrap();
-            if let Err(e) = adaptive_selections::extract(
-                ctx.adaptive_tx,
-                Some(adaptive_val),
-                &adaptive_meta_val,
-                node_metadata,
-                lookup_node,
-            )
-            .await
-            {
-                log::error!("Error extracting adaptive selection stats: {}", e);
-            }
+    if let Some(adaptive_raw) = node_stats.adaptive_selection.take()
+        && let Ok(adaptive_val) = serde_json::from_str::<Value>(adaptive_raw.get())
+    {
+        let adaptive_meta_val = serde_json::to_value(ctx.adaptive_metadata).unwrap();
+        if let Err(e) = adaptive_selections::extract(
+            ctx.adaptive_tx,
+            Some(adaptive_val),
+            &adaptive_meta_val,
+            node_metadata,
+            lookup_node,
+        )
+        .await
+        {
+            log::error!("Error extracting adaptive selection stats: {}", e);
         }
     }
 
@@ -131,7 +131,7 @@ async fn process_node(
     if let Ok(mut discovery_val) = serde_json::from_str::<Value>(node_stats.discovery.get()) {
         let cluster_applier_stats = discovery_val["cluster_applier_stats"].take();
         if !cluster_applier_stats.is_null() {
-            let applier_meta_val = serde_json::to_value(&ctx.applier_metadata).unwrap();
+            let applier_meta_val = serde_json::to_value(ctx.applier_metadata).unwrap();
             if let Err(e) = cluster_applier_stats::extract(
                 ctx.applier_tx,
                 cluster_applier_stats,
@@ -152,8 +152,8 @@ async fn process_node(
     }
 
     // Extract ingest pipeline stats, but only on nodes with the `ingest` role
-    if node_stats.roles.contains(&*INGEST_ROLE) {
-        if let Err(e) = ingest_pipelines::extract(
+    if node_stats.roles.contains(&*INGEST_ROLE)
+        && let Err(e) = ingest_pipelines::extract(
             ctx.pipelines_tx,
             ctx.processors_tx,
             node_stats.ingest.pipelines.take(),
@@ -161,9 +161,8 @@ async fn process_node(
             node_metadata,
         )
         .await
-        {
-            log::error!("Error extracting ingest pipelines stats: {}", e);
-        }
+    {
+        log::error!("Error extracting ingest pipelines stats: {}", e);
     }
 
     // Final node_stats document
@@ -179,7 +178,7 @@ async fn process_node(
     });
 
     let node_summary_patch = json!({"node": node_metadata});
-    let node_stats_meta_val = serde_json::to_value(&ctx.node_stats_metadata).unwrap();
+    let node_stats_meta_val = serde_json::to_value(ctx.node_stats_metadata).unwrap();
 
     merge(&mut doc, &node_stats_meta_val);
     merge(&mut doc, &node_summary_patch);

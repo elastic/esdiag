@@ -74,7 +74,10 @@ impl Receive for ArchiveBytesReceiver {
 
         match last_resolve_error {
             Some(e) => Err(e),
-            None => Err(eyre!("No candidate source files available for {}", T::name())),
+            None => Err(eyre!(
+                "No candidate source files available for {}",
+                T::name()
+            )),
         }
     }
 

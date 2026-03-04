@@ -74,6 +74,11 @@ where
         self.entries.len()
     }
 
+    /// True when the lookup table has no entries.
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
     /// Push a new entry into the lookup table
     pub fn add(&mut self, value: T) -> &mut Self {
         self.entries.push(value);

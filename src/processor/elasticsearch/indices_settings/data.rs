@@ -106,7 +106,7 @@ impl IndexSettings {
 
     /// Sets the data stream for the index
     pub fn data_stream(self, data_stream: Option<DataStreamDocument>) -> Self {
-        let is_data_stream_write_index = data_stream.as_ref().map_or(false, |ds| ds.is_write_index);
+        let is_data_stream_write_index = data_stream.as_ref().is_some_and(|ds| ds.is_write_index);
         Self {
             data_stream,
             is_write_index: self.is_write_index || is_data_stream_write_index,

@@ -25,7 +25,7 @@ impl Auth {
         match (r#type, username, password, apikey) {
             (AuthType::Apikey, _, _, Some(apikey)) => Self::Apikey(apikey),
             (AuthType::Basic, Some(username), Some(password), _) => Self::Basic(username, password),
-            (AuthType::None, _, _, _) | _ => Self::None,
+            _ => Self::None,
         }
     }
 }

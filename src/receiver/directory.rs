@@ -4,10 +4,10 @@
 
 use super::super::processor::{DataSource, PathType, StreamingDataSource};
 use super::{Receive, ReceiveMultiple, ReceiveRaw};
+use crate::processor::diagnostic::data_source::get_source;
 use async_stream::stream;
 use eyre::{Result, eyre};
 use futures::stream::BoxStream;
-use crate::processor::diagnostic::data_source::get_source;
 use serde::de::DeserializeOwned;
 use std::{
     fs::File,
@@ -90,7 +90,10 @@ impl Receive for DirectoryReceiver {
 
         match last_open_error {
             Some(e) => Err(e.into()),
-            None => Err(eyre!("No candidate source files available for {}", T::name())),
+            None => Err(eyre!(
+                "No candidate source files available for {}",
+                T::name()
+            )),
         }
     }
 
@@ -165,7 +168,10 @@ impl ReceiveRaw for DirectoryReceiver {
 
         match last_open_error {
             Some(e) => Err(e.into()),
-            None => Err(eyre!("No candidate source files available for {}", T::name())),
+            None => Err(eyre!(
+                "No candidate source files available for {}",
+                T::name()
+            )),
         }
     }
 }

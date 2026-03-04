@@ -5,7 +5,7 @@
 use crate::data::Product;
 
 use super::{ElasticCloud, KnownHost, KnownHostBuilder};
-use eyre::{eyre, OptionExt, Report, Result};
+use eyre::{OptionExt, Report, Result, eyre};
 use serde::{Deserialize, Deserializer};
 use std::{
     path::{Path, PathBuf},
@@ -14,7 +14,7 @@ use std::{
 
 use url::Url;
 /// The different types of supported URIs
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub enum Uri {
     /// Known host saved in the ~/.esdiag/hosts.yml by default
     KnownHost(KnownHost),
@@ -35,6 +35,7 @@ pub enum Uri {
     /// File on the local filesystem
     File(PathBuf),
     /// An input/output stream (stdin/stdout)
+    #[default]
     Stream,
 }
 
@@ -98,12 +99,6 @@ impl<'de> Deserialize<'de> for Uri {
     }
 }
 
-impl Default for Uri {
-    fn default() -> Self {
-        Uri::Stream
-    }
-}
-
 impl From<Uri> for Url {
     fn from(uri: Uri) -> Self {
         match uri {
@@ -148,12 +143,12 @@ impl TryFrom<&str> for Uri {
             return Ok(Uri::Stream);
         }
 
-        if let Ok(host) = KnownHost::from_str(&uri) {
+        if let Ok(host) = KnownHost::from_str(uri) {
             return host.try_into();
         }
         log::debug!("No known host for {uri}");
 
-        if let Ok(url) = Url::parse(&uri) {
+        if let Ok(url) = Url::parse(uri) {
             let domain = url.domain().ok_or_eyre("URL is missing a domain")?;
             match (domain, url.username(), url.password()) {
                 ("upload.elastic.co", "token", Some(_)) => {
@@ -176,7 +171,7 @@ impl TryFrom<&str> for Uri {
             false => log::debug!("Not an existing directory {uri}"),
             true => {
                 log::debug!("Directory {uri}");
-                let path_buf = PathBuf::from_str(&uri)?;
+                let path_buf = PathBuf::from_str(uri)?;
                 return Ok(Uri::Directory(path_buf));
             }
         }
@@ -185,14 +180,14 @@ impl TryFrom<&str> for Uri {
             false => {
                 if path.extension().is_none() {
                     log::debug!("No extension, creating directory: {uri}");
-                    let path_buf = PathBuf::from_str(&uri)?;
-                    return Ok(Uri::Directory(path_buf));
+                    let path_buf = PathBuf::from_str(uri)?;
+                    Ok(Uri::Directory(path_buf))
                 } else {
                     log::debug!("File did not exist: {uri}");
-                    return Ok(Uri::File(PathBuf::from_str(&uri)?));
+                    Ok(Uri::File(PathBuf::from_str(uri)?))
                 }
             }
-            true => return Ok(Uri::File(PathBuf::from_str(&uri)?)),
+            true => Ok(Uri::File(PathBuf::from_str(uri)?)),
         }
     }
 }

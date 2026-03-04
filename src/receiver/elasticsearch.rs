@@ -207,7 +207,7 @@ impl Receive for ElasticsearchReceiver {
             .runner("esdiag")
             .collection_date(collection_date)
             .build();
-        Ok(manifest.try_into()?)
+        Ok(manifest.into())
     }
 }
 

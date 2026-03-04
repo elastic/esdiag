@@ -55,7 +55,7 @@ struct Count {
 impl LogstashNodeDoc {
     fn new(node: Node, metadata: Value, plugin_count: u32) -> Self {
         let pipeline_count = node.get_pipeline_count();
-        let mut node_with_metadata = json!(metadata.get("node").take());
+        let mut node_with_metadata = json!(metadata.get("node"));
         json_patch::merge(&mut node_with_metadata, &json!(node));
 
         Self {

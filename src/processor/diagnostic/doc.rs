@@ -43,7 +43,7 @@ impl TryFrom<DiagnosticManifest> for DiagnosticMetadata {
 
         Ok(DiagnosticMetadata::new(
             manifest.collection_date_in_millis(),
-            manifest.diagnostic_id(&uuid).clone(),
+            manifest.diagnostic_id(&uuid),
             runner,
             uuid,
         ))

@@ -55,7 +55,7 @@ impl KibanaClient {
         body: Option<&[u8]>,
     ) -> Result<reqwest::Response> {
         let mut headers: reqwest::header::HeaderMap = headers
-            .into_iter()
+            .iter()
             .map(|(k, v)| (k.parse().unwrap(), v.parse().unwrap()))
             .collect();
         let use_form_data = match headers.get("Content-Type") {
@@ -119,7 +119,7 @@ impl TryFrom<KnownHost> for KibanaClient {
     fn try_from(host: KnownHost) -> Result<Self> {
         let url = host.get_url();
         let auth = host.get_auth();
-        Ok(KibanaClient::try_new(url, auth)?)
+        KibanaClient::try_new(url, auth)
     }
 }
 

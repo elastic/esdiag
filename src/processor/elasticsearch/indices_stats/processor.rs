@@ -651,7 +651,7 @@ impl TryFrom<Stats> for EnrichedStats {
             bulk: EnrichedBulk::from(stats.bulk),
             completion: stats.completion,
             dense_vector: stats.dense_vector,
-            docs: stats.docs.map(|docs| EnrichedDocs::from(docs)),
+            docs: stats.docs.map(EnrichedDocs::from),
             fielddata: stats.fielddata,
             flush: stats.flush,
             get: stats.get,

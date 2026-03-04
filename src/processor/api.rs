@@ -102,7 +102,7 @@ impl ElasticsearchApi {
         }
     }
 
-    pub fn from_str(s: &str) -> Result<Self> {
+    pub fn parse(s: &str) -> Result<Self> {
         match s {
             "alias" => Ok(ElasticsearchApi::AliasList),
             "cluster" => Ok(ElasticsearchApi::Cluster),
@@ -148,6 +148,14 @@ impl ElasticsearchApi {
     }
 }
 
+impl std::str::FromStr for ElasticsearchApi {
+    type Err = eyre::Report;
+
+    fn from_str(s: &str) -> Result<Self> {
+        Self::parse(s)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum LogstashApi {
     Node,
@@ -169,12 +177,20 @@ impl LogstashApi {
         }
     }
 
-    pub fn from_str(s: &str) -> Result<Self> {
+    pub fn parse(s: &str) -> Result<Self> {
         match s {
             "node" => Ok(LogstashApi::Node),
             "node_stats" => Ok(LogstashApi::NodeStats),
             _ => Err(eyre!("Invalid Logstash API: {}", s)),
         }
+    }
+}
+
+impl std::str::FromStr for LogstashApi {
+    type Err = eyre::Report;
+
+    fn from_str(s: &str) -> Result<Self> {
+        Self::parse(s)
     }
 }
 
@@ -274,14 +290,14 @@ impl ApiResolver {
 
         if let Some(incs) = include {
             for api in incs {
-                ElasticsearchApi::from_str(api)?;
+                ElasticsearchApi::parse(api)?;
                 requested.insert(api.to_string());
             }
         }
 
         if let Some(excs) = exclude {
             for api in excs {
-                ElasticsearchApi::from_str(api)?;
+                ElasticsearchApi::parse(api)?;
                 requested.swap_remove(api);
             }
         }
@@ -318,7 +334,7 @@ impl ApiResolver {
 
         let mut api_set: IndexSet<ElasticsearchApi> = IndexSet::new();
         for api in final_set.iter() {
-            api_set.insert(ElasticsearchApi::from_str(api)?);
+            api_set.insert(ElasticsearchApi::parse(api)?);
         }
 
         let apis: Vec<ElasticsearchApi> = api_set.into_iter().collect();
@@ -343,14 +359,14 @@ impl ApiResolver {
 
         if let Some(incs) = include {
             for api in incs {
-                LogstashApi::from_str(api)?;
+                LogstashApi::parse(api)?;
                 requested.insert(api.to_string());
             }
         }
 
         if let Some(excs) = exclude {
             for api in excs {
-                LogstashApi::from_str(api)?;
+                LogstashApi::parse(api)?;
                 requested.swap_remove(api);
             }
         }
@@ -387,7 +403,7 @@ impl ApiResolver {
 
         let mut apis = Vec::new();
         for api in final_set.iter() {
-            apis.push(LogstashApi::from_str(api)?);
+            apis.push(LogstashApi::parse(api)?);
         }
 
         Ok(apis)

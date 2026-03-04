@@ -7,7 +7,11 @@ use async_stream::stream;
 use eyre::Result;
 use futures::stream::BoxStream;
 use serde::de::DeserializeOwned;
-use std::{io::{BufReader, Read, Seek}, path::PathBuf, sync::Arc};
+use std::{
+    io::{BufReader, Read, Seek},
+    path::PathBuf,
+    sync::Arc,
+};
 use tokio::sync::{RwLock, mpsc};
 use zip::ZipArchive;
 
@@ -52,7 +56,8 @@ where
             Ok(file) => {
                 let reader = BufReader::new(file);
                 let mut deserializer = serde_json::Deserializer::from_reader(reader);
-                T::deserialize_stream(&mut deserializer, tx.clone()).map_err(|e| eyre::eyre!(e.to_string()))
+                T::deserialize_stream(&mut deserializer, tx.clone())
+                    .map_err(|e| eyre::eyre!(e.to_string()))
             }
             Err(e) => Err(eyre::eyre!(e)),
         };
@@ -64,12 +69,12 @@ where
     });
 
     tokio::spawn(async move {
-        if let Err(e) = handle.await {
-            if e.is_panic() {
-                let _ = tx_err
-                    .send(Err(eyre::eyre!("Streaming task panicked")))
-                    .await;
-            }
+        if let Err(e) = handle.await
+            && e.is_panic()
+        {
+            let _ = tx_err
+                .send(Err(eyre::eyre!("Streaming task panicked")))
+                .await;
         }
     });
 
@@ -82,7 +87,7 @@ where
 
 pub fn trim_to_working_directory(path: &mut PathBuf) {
     // Drop any filename
-    if path.extension() != None {
+    if path.extension().is_some() {
         path.pop();
     }
     // Drop any known subdirectories

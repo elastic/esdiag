@@ -54,9 +54,9 @@ impl Client {
                     .collect();
                 use es::http::request::JsonBody;
                 let body: Option<JsonBody<serde_json::Value>> = body
-                    .map(|b| serde_json::from_slice(b))
+                    .map(serde_json::from_slice)
                     .transpose()?
-                    .map(|v| JsonBody::new(v));
+                    .map(JsonBody::new);
                 let response = client
                     .send(
                         method,

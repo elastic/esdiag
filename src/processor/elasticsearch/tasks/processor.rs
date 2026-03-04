@@ -118,18 +118,15 @@ pub struct TaskWithParent {
 
 impl TaskData {
     pub fn new((action, description): (String, Option<String>)) -> Option<Self> {
-        let description = match description {
-            Some(description) => description,
-            None => return None,
-        };
+        let description = description?;
 
         let action = match action.split_once(":") {
-            Some((target, action)) if target == "indices" => action,
+            Some(("indices", action)) => action,
             _ => return None,
         };
 
         let kind = match action.splitn(3, "/").collect::<Vec<&str>>()[1..] {
-            [operation, kind] if operation == "write" => kind,
+            ["write", kind] => kind,
             _ => return None,
         };
 
@@ -166,7 +163,7 @@ impl TaskData {
                         bulk: None,
                     }),
                     shard: Some(TaskShard {
-                        number: number,
+                        number,
                         primary: Some(is_primary),
                         bulk: Some(BulkDocs { docs }),
                     }),

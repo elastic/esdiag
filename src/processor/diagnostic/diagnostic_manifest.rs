@@ -71,6 +71,7 @@ impl Clone for DiagnosticManifest {
 }
 
 impl DiagnosticManifest {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         collection_date: String,
         diagnostic: Option<String>,
@@ -82,7 +83,7 @@ impl DiagnosticManifest {
         runner: Option<String>,
         version: Option<String>,
     ) -> Self {
-        let collection_date_millis = Some(0 as u64);
+        let collection_date_millis = Some(0_u64);
         let diagnostic_id = RwLock::new(None);
         let name = r#type.clone().unwrap_or("diagnostic".to_string());
 
@@ -117,7 +118,7 @@ impl DiagnosticManifest {
         }
     }
 
-    pub fn diagnostic_id(&self, uuid: &String) -> String {
+    pub fn diagnostic_id(&self, uuid: &str) -> String {
         let mut id = self
             .diagnostic_id
             .write()

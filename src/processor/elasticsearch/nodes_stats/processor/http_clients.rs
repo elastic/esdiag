@@ -23,7 +23,7 @@ pub async fn extract(
     let mut docs = Vec::<Value>::with_capacity(200);
     docs.par_extend(clients.par_drain(..).map(|client| {
         let mut doc = json!({ "node": node_metadata, "http": { "client": client }});
-        merge(&mut doc, &metadata);
+        merge(&mut doc, metadata);
         doc
     }));
 

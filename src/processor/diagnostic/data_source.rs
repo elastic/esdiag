@@ -53,7 +53,7 @@ pub trait DataSource {
             PathType::File => Ok(source_conf.get_file_path(matched_name)),
             PathType::Url => {
                 let v = version.ok_or_else(|| eyre!("Version required for URL"))?;
-                source_conf.get_url(v).map_err(Into::into)
+                source_conf.get_url(v)
             }
         }
     }
@@ -167,13 +167,11 @@ fn convert_npm_semver_to_cargo(req: &str) -> String {
         out.push_str(parts[i]);
         if i + 1 < parts.len() {
             // If current part starts with a digit and next starts with an operator, insert comma.
-            if parts[i]
-                .chars()
-                .next()
-                .map_or(false, |c| c.is_ascii_digit())
-                && parts[i + 1].chars().next().map_or(false, |c| {
-                    c == '<' || c == '>' || c == '=' || c == '~' || c == '^'
-                })
+            if parts[i].chars().next().is_some_and(|c| c.is_ascii_digit())
+                && parts[i + 1]
+                    .chars()
+                    .next()
+                    .is_some_and(|c| c == '<' || c == '>' || c == '=' || c == '~' || c == '^')
             {
                 out.push_str(", ");
             } else {

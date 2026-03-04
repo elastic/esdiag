@@ -26,7 +26,7 @@ pub async fn extract(
             "node": node_metadata,
         });
 
-        merge(&mut doc, &metadata);
+        merge(&mut doc, metadata);
         doc
     }));
 

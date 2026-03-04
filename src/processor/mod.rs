@@ -331,7 +331,7 @@ impl Processor<Processing> {
                 / (1000 * 60 * 60 * 24);
             let time_filter = match days_since_collection {
                 x if x < 90 => "from:now-90d,to:now",
-                x if x >= 90 && x < 365 => "from:now-1y,to:now",
+                x if (90..365).contains(&x) => "from:now-1y,to:now",
                 x => &format!("from:now-{}d,to:now", x + 1),
             };
             let kibana_link = format!(

@@ -22,8 +22,8 @@ impl From<&str> for DataStreamName {
     }
 }
 
-impl ToString for DataStreamName {
-    fn to_string(&self) -> String {
-        format!("{}-{}-{}", self.r#type, self.dataset, self.namespace)
+impl std::fmt::Display for DataStreamName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}-{}-{}", self.r#type, self.dataset, self.namespace)
     }
 }

@@ -3,7 +3,7 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use crate::data::{Auth, Product};
-use eyre::{eyre, Result};
+use eyre::{Result, eyre};
 use serde::{Deserialize, Serialize};
 use serde_yaml;
 use std::{
@@ -114,7 +114,7 @@ impl KnownHostBuilder {
         let new_segments: Vec<&str> = match self.product {
             Product::Elasticsearch => {
                 let product = match url.domain() {
-                    Some(domain) if domain == "admin.found.no" => "main-elasticsearch",
+                    Some("admin.found.no") => "main-elasticsearch",
                     _ => "elasticsearch",
                 };
                 vec![
@@ -219,7 +219,7 @@ impl KnownHost {
         }
     }
 
-    pub fn save(self, name: &String) -> Result<String> {
+    pub fn save(self, name: &str) -> Result<String> {
         // parse the ~/.esdiag/hosts.yml file into a HashMap<String, Host>
         let mut hosts = match KnownHost::parse_hosts_yml() {
             Ok(hosts) => hosts,
@@ -230,13 +230,13 @@ impl KnownHost {
         };
         match self {
             Self::ApiKey { .. } => {
-                hosts.insert(name.clone(), self);
+                hosts.insert(name.to_owned(), self);
             }
             Self::Basic { .. } => {
-                hosts.insert(name.clone(), self);
+                hosts.insert(name.to_owned(), self);
             }
             Self::NoAuth { .. } => {
-                hosts.insert(name.clone(), self);
+                hosts.insert(name.to_owned(), self);
             }
         }
         KnownHost::write_hosts_yml(&hosts)
@@ -255,8 +255,7 @@ impl KnownHost {
             "Known hosts: {}",
             hosts
                 .clone()
-                .into_iter()
-                .map(|(k, _)| k)
+                .into_keys()
                 .collect::<Vec<String>>()
                 .join(", ")
         );
@@ -292,8 +291,8 @@ impl KnownHost {
                 if !esdiag.exists() {
                     std::fs::create_dir(&esdiag).expect("Failed to create ~/.esdiag directory");
                 }
-                let path = home_dir.join(".esdiag").join("hosts.yml");
-                path
+
+                home_dir.join(".esdiag").join("hosts.yml")
             }
         }
     }
@@ -323,8 +322,7 @@ impl KnownHost {
             "Writing hosts: {} to {:?}",
             hosts
                 .clone()
-                .into_iter()
-                .map(|(k, _)| k)
+                .into_keys()
                 .collect::<Vec<String>>()
                 .join(", "),
             path

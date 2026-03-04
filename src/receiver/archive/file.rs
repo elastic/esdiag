@@ -103,7 +103,10 @@ impl Receive for ArchiveFileReceiver {
 
         match last_resolve_error {
             Some(e) => Err(e),
-            None => Err(eyre!("No candidate source files available for {}", T::name())),
+            None => Err(eyre!(
+                "No candidate source files available for {}",
+                T::name()
+            )),
         }
     }
 
@@ -144,7 +147,10 @@ impl ReceiveRaw for ArchiveFileReceiver {
 
         match last_resolve_error {
             Some(e) => Err(e),
-            None => Err(eyre!("No candidate source files available for {}", T::name())),
+            None => Err(eyre!(
+                "No candidate source files available for {}",
+                T::name()
+            )),
         }
     }
 }

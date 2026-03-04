@@ -18,13 +18,13 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for HealthReport {
     ) -> ProcessorSummary {
         log::debug!("processing pending tasks");
         let metadata_indicator = metadata
-            .for_data_stream(&"health-indicator-esdiag".to_string())
+            .for_data_stream("health-indicator-esdiag")
             .as_meta_doc();
         let metadata_impact = metadata
-            .for_data_stream(&"health-impact-esdiag".to_string())
+            .for_data_stream("health-impact-esdiag")
             .as_meta_doc();
         let metadata_diagnosis = metadata
-            .for_data_stream(&"health-diagnosis-esdiag".to_string())
+            .for_data_stream("health-diagnosis-esdiag")
             .as_meta_doc();
 
         let mut indicators: Vec<(String, HealthIndicator)> =
@@ -38,40 +38,37 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for HealthReport {
 
                 if let Some(mut impacts) = indicator.impacts.take() {
                     impacts.drain(..).for_each(|impact| {
-                        match serde_json::to_value(HealthImpactDoc {
+                        if let Ok(value) = serde_json::to_value(HealthImpactDoc {
                             health: Impact {
                                 indicator: named_health_indicator.clone(),
                                 impact,
                             },
                             metadata: metadata_impact.clone(),
                         }) {
-                            Ok(value) => docs.push(value),
-                            Err(_) => {}
+                            docs.push(value)
                         }
                     });
                 };
 
                 if let Some(mut diagnosis) = indicator.diagnosis.take() {
                     diagnosis.drain(..).for_each(|diagnosis| {
-                        match serde_json::to_value(HealthDiagnosisDoc {
+                        if let Ok(value) = serde_json::to_value(HealthDiagnosisDoc {
                             health: Diagnosis {
                                 diagnosis,
                                 indicator: named_health_indicator.clone(),
                             },
                             metadata: metadata_diagnosis.clone(),
                         }) {
-                            Ok(value) => docs.push(value),
-                            Err(_) => {}
+                            docs.push(value)
                         }
                     });
                 }
 
-                match serde_json::to_value(HealthIndicatorDoc {
+                if let Ok(value) = serde_json::to_value(HealthIndicatorDoc {
                     health: named_health_indicator,
                     metadata: metadata_indicator.clone(),
                 }) {
-                    Ok(value) => docs.push(value),
-                    Err(_) => {}
+                    docs.push(value)
                 };
                 docs
             })

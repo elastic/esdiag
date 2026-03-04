@@ -35,10 +35,12 @@ use axum::{
 };
 use bytes::Bytes;
 use datastar::prelude::{ElementPatchMode, PatchElements, PatchSignals};
-use serde::{Deserialize, Serialize};
 use eyre::Result;
+use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, convert::Infallible, net::SocketAddr, sync::Arc};
 use tokio::sync::{RwLock, mpsc};
+
+type UploadReceiver = Arc<RwLock<mpsc::Receiver<(Identifiers, Bytes)>>>;
 
 #[derive(Deserialize, Serialize)]
 struct UploadServiceRequest {
@@ -69,11 +71,16 @@ impl From<ApiKeyRequest> for Identifiers {
 #[derive(Clone)]
 pub struct Server {
     server_handle: Option<Arc<tokio::task::JoinHandle<()>>>,
-    pub rx: Option<Arc<RwLock<mpsc::Receiver<(Identifiers, Bytes)>>>>,
+    pub rx: Option<UploadReceiver>,
 }
 
 impl Server {
-    pub async fn start(bind_addr: [u8; 4], port: u16, mut exporter: Exporter, kibana_url: String) -> Result<(Self, std::net::SocketAddr)> {
+    pub async fn start(
+        bind_addr: [u8; 4],
+        port: u16,
+        mut exporter: Exporter,
+        kibana_url: String,
+    ) -> Result<(Self, std::net::SocketAddr)> {
         let (_, rx) = mpsc::channel::<(Identifiers, Bytes)>(1);
         let rx = Arc::new(RwLock::new(rx));
         let rx_clone = rx.clone();
@@ -154,10 +161,13 @@ impl Server {
             .ok_or_else(|| eyre::eyre!("Server failed to bind"))?;
         log::info!("Listening on port {}", bound_addr.port());
 
-        Ok((Self {
-            server_handle: Some(Arc::new(server_handle)),
-            rx: Some(rx_clone),
-        }, bound_addr))
+        Ok((
+            Self {
+                server_handle: Some(Arc::new(server_handle)),
+                rx: Some(rx_clone),
+            },
+            bound_addr,
+        ))
     }
 
     pub async fn shutdown(&mut self) {
@@ -409,7 +419,7 @@ pub(super) fn get_user_email(headers: &HeaderMap) -> (bool, Option<String>) {
                 .and_then(|value| value.to_str().ok())
                 .map(|email| {
                     // Google auth headers are typically in format "accounts.google.com:email"
-                    email.split(':').last().unwrap_or(email).to_string()
+                    email.split(':').next_back().unwrap_or(email).to_string()
                 });
             (has_header, email)
         }
@@ -473,20 +483,16 @@ async fn add_client_hint_headers(mut response: Response) -> Response {
 #[cfg(test)]
 mod tests {
     use super::Server;
-    use crate::exporter::Exporter;
     #[cfg(feature = "desktop")]
     use super::Signals;
+    use crate::exporter::Exporter;
 
     #[tokio::test]
     async fn start_with_ephemeral_port_binds_and_reports_socket() {
-        let (mut server, bound_addr) = Server::start(
-            [127, 0, 0, 1],
-            0,
-            Exporter::default(),
-            String::new(),
-        )
-        .await
-        .expect("server should bind on ephemeral port");
+        let (mut server, bound_addr) =
+            Server::start([127, 0, 0, 1], 0, Exporter::default(), String::new())
+                .await
+                .expect("server should bind on ephemeral port");
 
         assert!(bound_addr.ip().is_loopback());
         assert!(bound_addr.port() > 0);

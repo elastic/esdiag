@@ -12,13 +12,13 @@ use std::sync::Arc;
 use std::{
     fs::{File, OpenOptions},
     io::{BufWriter, Write},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 use tokio::sync::{RwLock, mpsc, oneshot};
 
 type Writers = HashMap<String, Arc<RwLock<BufWriter<File>>>>;
 
-fn create_writer(path: &PathBuf, index: &str) -> Result<Arc<RwLock<BufWriter<File>>>> {
+fn create_writer(path: &Path, index: &str) -> Result<Arc<RwLock<BufWriter<File>>>> {
     let filename = format!("{}.ndjson", index);
     let file = OpenOptions::new()
         .create(true)
@@ -30,7 +30,7 @@ fn create_writer(path: &PathBuf, index: &str) -> Result<Arc<RwLock<BufWriter<Fil
 
 async fn get_writer(
     writers: Arc<RwLock<Writers>>,
-    path: &PathBuf,
+    path: &Path,
     index: &str,
 ) -> Result<Arc<RwLock<BufWriter<File>>>> {
     let mut writers = writers.write().await;

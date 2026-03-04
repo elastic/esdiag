@@ -14,6 +14,12 @@ pub struct StreamExporter {
     docs_tx: Option<mpsc::Sender<usize>>,
 }
 
+impl Default for StreamExporter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl StreamExporter {
     pub fn new() -> Self {
         StreamExporter { docs_tx: None }

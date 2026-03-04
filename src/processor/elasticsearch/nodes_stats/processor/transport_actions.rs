@@ -9,7 +9,6 @@ use serde_json::{Value, json};
 use tokio::sync::mpsc::Sender;
 
 /// Extract transport.actions
-
 pub async fn extract(
     sender: &Sender<Value>,
     mut actions: Value,
@@ -43,7 +42,7 @@ pub async fn extract(
                 });
 
                 merge(&mut action, &action_patch);
-                merge(&mut action, &metadata);
+                merge(&mut action, metadata);
                 action
             }),
     );

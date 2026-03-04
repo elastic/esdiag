@@ -234,7 +234,9 @@ async fn run(cli: Cli) -> Result<&'static str> {
         use clap::CommandFactory;
         let mut cmd = Cli::command();
         cmd.print_help()?;
-        return Err(eyre!("No subcommand provided. Use --help for usage information."));
+        return Err(eyre!(
+            "No subcommand provided. Use --help for usage information."
+        ));
     }
 
     if let Some(command) = cli.command {
@@ -259,7 +261,8 @@ async fn run(cli: Cli) -> Result<&'static str> {
                     }
                 });
 
-                let (mut server, _bound_addr) = Server::start([0, 0, 0, 0], port, exporter, kibana_url).await?;
+                let (mut server, _bound_addr) =
+                    Server::start([0, 0, 0, 0], port, exporter, kibana_url).await?;
 
                 tokio::select! {
                     _ = tokio::signal::ctrl_c() => {
@@ -290,13 +293,17 @@ async fn run(cli: Cli) -> Result<&'static str> {
                 let known_host = Uri::try_from(host)?;
                 let output = Uri::try_from(output)?;
                 match known_host {
-                    Uri::KnownHost(_) | Uri::ElasticCloudAdmin(_) | Uri::ElasticGovCloudAdmin(_) => {
+                    Uri::KnownHost(_)
+                    | Uri::ElasticCloudAdmin(_)
+                    | Uri::ElasticGovCloudAdmin(_) => {
                         log::info!("Collecting diagnostic from {known_host}");
                         log::info!("Saving diagnostic to {output}");
                         let receiver = Receiver::try_from(known_host)?;
                         let output_dir = match output {
                             Uri::Directory(path) | Uri::File(path) => path,
-                            _ => return Err(eyre!("Collect output must be a local directory path")),
+                            _ => {
+                                return Err(eyre!("Collect output must be a local directory path"));
+                            }
                         };
                         let exporter = Exporter::for_collect_archive(output_dir)?;
 
@@ -448,14 +455,16 @@ async fn run(cli: Cli) -> Result<&'static str> {
                 .plugin(tauri_plugin_opener::init())
                 .setup(|app| {
                     use tauri::Manager;
-                    
+
                     let handle = app.handle().clone();
-                    
+
                     tauri::async_runtime::spawn(async move {
                         let settings = esdiag::data::Settings::load().unwrap_or_default();
-                        
+
                         let exporter = if let Some(target) = &settings.active_target {
-                            if let Ok(host) = esdiag::data::KnownHost::get_known(target).ok_or_else(|| eyre::eyre!("Host not found")) {
+                            if let Ok(host) = esdiag::data::KnownHost::get_known(target)
+                                .ok_or_else(|| eyre::eyre!("Host not found"))
+                            {
                                 if let Ok(uri) = Uri::try_from(host) {
                                     Exporter::try_from(uri).unwrap_or_default()
                                 } else {
@@ -467,7 +476,7 @@ async fn run(cli: Cli) -> Result<&'static str> {
                         } else {
                             Exporter::default()
                         };
-                        
+
                         let kibana_url = settings.kibana_url.unwrap_or_else(|| {
                             let url = esdiag::env::get_string("ESDIAG_KIBANA_URL")
                                 .unwrap_or_else(|_| "http://localhost:5601".to_string());
@@ -476,17 +485,18 @@ async fn run(cli: Cli) -> Result<&'static str> {
                                 None => url,
                             }
                         });
-                        
-                        let (mut server, bound_addr) = match Server::start([127, 0, 0, 1], 0, exporter, kibana_url).await {
-                            Ok(res) => res,
-                            Err(e) => {
-                                log::error!("Failed to start embedded server: {}", e);
-                                return;
-                            }
-                        };
-                        
+
+                        let (mut server, bound_addr) =
+                            match Server::start([127, 0, 0, 1], 0, exporter, kibana_url).await {
+                                Ok(res) => res,
+                                Err(e) => {
+                                    log::error!("Failed to start embedded server: {}", e);
+                                    return;
+                                }
+                            };
+
                         let url = format!("http://localhost:{}", bound_addr.port());
-                        
+
                         if let Ok(url) = tauri::Url::parse(&url) {
                             // Wait a tiny bit to ensure server is ready
                             tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
@@ -501,12 +511,12 @@ async fn run(cli: Cli) -> Result<&'static str> {
                                 let _ = window.set_focus();
                             }
                         }
-                        
+
                         // Wait for Tauri exit signal
                         let _ = shutdown_rx.recv().await;
                         server.shutdown().await;
                     });
-                    
+
                     Ok(())
                 })
                 .on_window_event(move |_window, event| {
@@ -518,7 +528,7 @@ async fn run(cli: Cli) -> Result<&'static str> {
                 })
                 .run(tauri::generate_context!())
                 .expect("error while running tauri application");
-            
+
             Ok("tauri")
         }
         #[cfg(not(all(feature = "server", feature = "desktop")))]
@@ -526,7 +536,9 @@ async fn run(cli: Cli) -> Result<&'static str> {
             use clap::CommandFactory;
             let mut cmd = Cli::command();
             cmd.print_help()?;
-            Err(eyre!("No command provided. If you want to use the Desktop UI, compile with the 'desktop' feature."))
+            Err(eyre!(
+                "No command provided. If you want to use the Desktop UI, compile with the 'desktop' feature."
+            ))
         }
     }
 }

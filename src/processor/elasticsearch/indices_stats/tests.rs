@@ -80,7 +80,6 @@ async fn test_streaming_deserialization() {
     handle.await.unwrap();
 }
 
-
 #[tokio::test]
 async fn test_streaming_deserialization_handles_receiver_closed_mid_stream() {
     use crate::processor::diagnostic::data_source::StreamingDataSource;

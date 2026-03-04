@@ -27,7 +27,7 @@ pub struct MetadataDoc {
 
 impl Metadata for MetadataDoc {
     fn as_meta_doc(&self) -> Value {
-        serde_json::to_value(&self).expect("Failed to serialize metadata")
+        serde_json::to_value(self).expect("Failed to serialize metadata")
     }
 }
 

@@ -35,6 +35,12 @@ pub struct ManifestBuilder {
     included_diagnostics: Option<Vec<DiagPath>>,
 }
 
+impl Default for ManifestBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ManifestBuilder {
     pub fn new() -> Self {
         Self {

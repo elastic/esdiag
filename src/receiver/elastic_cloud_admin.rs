@@ -135,7 +135,7 @@ impl Receive for ElasticCloudAdminReceiver {
             .runner("esdiag")
             .collection_date(collection_date)
             .build();
-        Ok(manifest.try_into()?)
+        Ok(manifest.into())
     }
 }
 

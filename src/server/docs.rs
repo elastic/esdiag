@@ -179,7 +179,7 @@ fn generate_toc() -> Vec<TocEntry> {
             .map(|c| c.as_os_str().to_string_lossy().into_owned())
             .unwrap_or_default();
 
-        if path.parent().map_or(true, |p| p.as_os_str().is_empty()) {
+        if path.parent().is_none_or(|p| p.as_os_str().is_empty()) {
             root_files.push(file.trim_end_matches(".md").to_string());
         } else {
             let display_path = file.trim_end_matches(".md").to_string();

@@ -25,10 +25,7 @@ impl Node {
     }
 
     pub fn take_pipelines(&mut self) -> HashMap<String, Pipeline> {
-        match self.pipelines.take() {
-            Some(pipelines) => pipelines,
-            None => HashMap::new(),
-        }
+        self.pipelines.take().unwrap_or_default()
     }
 }
 

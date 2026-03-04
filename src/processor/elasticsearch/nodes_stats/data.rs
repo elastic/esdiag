@@ -148,7 +148,7 @@ struct LoadAverage {
     fifteen: f64,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Default)]
 struct LoadPercent {
     #[serde(rename = "1m")]
     one: usize,
@@ -156,16 +156,6 @@ struct LoadPercent {
     five: usize,
     #[serde(rename = "15m")]
     fifteen: usize,
-}
-
-impl Default for LoadPercent {
-    fn default() -> Self {
-        LoadPercent {
-            one: 0,
-            five: 0,
-            fifteen: 0,
-        }
-    }
 }
 
 #[derive(Deserialize, Serialize)]

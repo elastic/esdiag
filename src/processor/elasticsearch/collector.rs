@@ -260,7 +260,7 @@ impl ElasticsearchCollector {
         }
     }
 
-    async fn save_diagnostic_manifest(&self, apis: &Vec<ElasticsearchApi>) -> Result<usize> {
+    async fn save_diagnostic_manifest(&self, apis: &[ElasticsearchApi]) -> Result<usize> {
         let cluster = self.receiver.get::<Cluster>().await?;
         let collected_api_names: Vec<String> =
             apis.iter().map(|a| a.as_str().to_string()).collect();

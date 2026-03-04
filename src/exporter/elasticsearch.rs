@@ -74,10 +74,7 @@ impl ElasticsearchExporter {
             "DELETE" => Method::Delete,
             _ => Method::Get,
         };
-        let body = match value {
-            Some(value) => Some(JsonBody::new(value)),
-            None => None,
-        };
+        let body = value.map(JsonBody::new);
         timeout(
             Self::request_timeout(),
             self.client.send(
@@ -161,7 +158,10 @@ impl Export for ElasticsearchExporter {
 
         let response = timeout(
             Self::request_timeout(),
-            self.client.bulk(BulkParts::Index(&index)).body(batch).send(),
+            self.client
+                .bulk(BulkParts::Index(&index))
+                .body(batch)
+                .send(),
         )
         .await
         .map_err(|_| {
@@ -221,10 +221,8 @@ impl Export for ElasticsearchExporter {
                 Ok(batch_response) => {
                     if tx.send(batch_response).is_err() {
                         log::error!("Failed to send batch response: receiver dropped");
-                    } else {
-                        if let Some(tx) = docs_tx {
-                            let _ = tx.send(doc_count).await;
-                        }
+                    } else if let Some(tx) = docs_tx {
+                        let _ = tx.send(doc_count).await;
                     }
                 }
                 Err(e) => {
@@ -256,27 +254,28 @@ impl Export for ElasticsearchExporter {
                 Self::request_timeout()
             )),
             Ok(res) => match res {
-            Ok(res) => {
-                let status_code = res.status_code().as_u16();
-                let body = res.json::<Value>().await?;
-                match status_code {
-                    200 | 201 => {
-                        log::info!(
-                            "metrics-diagnostic-esdiag, created diagnostic report {}",
-                            diagnostic_id
-                        );
-                        log::trace!("response body: {body}");
-                        Ok(())
+                Ok(res) => {
+                    let status_code = res.status_code().as_u16();
+                    let body = res.json::<Value>().await?;
+                    match status_code {
+                        200 | 201 => {
+                            log::info!(
+                                "metrics-diagnostic-esdiag, created diagnostic report {}",
+                                diagnostic_id
+                            );
+                            log::trace!("response body: {body}");
+                            Ok(())
+                        }
+                        400..600 => Err(eyre!("http {status_code}: {body}")),
+                        _ => Err(eyre!("unexpected response: http {status_code}: {body}")),
                     }
-                    400..600 => Err(eyre!("http {status_code}: {body}")),
-                    _ => Err(eyre!("unexpected response: http {status_code}: {body}")),
                 }
-            }
-            Err(e) => {
-                log::error!("{e}");
-                Err(e.into())
-            }
-        }}
+                Err(e) => {
+                    log::error!("{e}");
+                    Err(e.into())
+                }
+            },
+        }
     }
 }
 

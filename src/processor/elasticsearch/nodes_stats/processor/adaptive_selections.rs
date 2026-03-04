@@ -40,7 +40,7 @@ pub async fn extract(
                 });
 
                 merge(&mut doc, &peer_node_patch);
-                merge(&mut doc, &metadata);
+                merge(&mut doc, metadata);
                 doc
             }),
     );

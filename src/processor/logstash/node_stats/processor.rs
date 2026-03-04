@@ -17,10 +17,10 @@ impl DocumentExporter<Lookups, LogstashMetadata> for NodeStats {
         metadata: &LogstashMetadata,
     ) -> ProcessorSummary {
         let mut docs: Vec<Value> = Vec::new();
-        self.take_pipelines().map(|pipelines| {
+        if let Some(pipelines) = self.take_pipelines() {
             let mut pipeline_docs = generate_pipeline_docs(metadata, pipelines);
             docs.append(&mut pipeline_docs);
-        });
+        }
 
         let data_stream = "metrics-logstash.node-esdiag".to_string();
         let metadata_doc = metadata.for_data_stream(&data_stream).as_meta_doc();
@@ -45,7 +45,7 @@ struct NodeStatsDoc {
 
 impl NodeStatsDoc {
     fn new(node: NodeStats, metadata: Value) -> Self {
-        let mut node_with_metadata = json!(metadata.get("node").take());
+        let mut node_with_metadata = json!(metadata.get("node"));
         json_patch::merge(&mut node_with_metadata, &json!(node));
 
         Self {
@@ -67,10 +67,10 @@ fn generate_pipeline_docs(
     let mut pipeline_docs: Vec<Value> = pipelines
         .into_iter()
         .map(|(name, mut stats)| {
-            stats.take_plugins().map(|plugins| {
+            if let Some(plugins) = stats.take_plugins() {
                 let mut docs = generate_plugin_docs(metadata, plugins);
                 plugin_docs.append(&mut docs);
-            });
+            }
             json!(PipelineDoc::new(name, stats, pipeline_metadata_doc.clone()))
         })
         .collect();

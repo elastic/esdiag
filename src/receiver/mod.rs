@@ -55,7 +55,7 @@ pub trait Receive {
         match self.get::<Manifest>().await {
             Ok(manifest) => {
                 log::warn!("Falling back to manifest.json");
-                return Ok(manifest.try_into()?);
+                return Ok(manifest.into());
             }
             Err(e) => log::debug!("Error reading manifest.json: {e}"),
         }
@@ -65,7 +65,7 @@ pub trait Receive {
         Ok(ManifestBuilder::from(cluster)
             .collection_date(collection_date)
             .build()
-            .try_into()?)
+            .into())
     }
 }
 
