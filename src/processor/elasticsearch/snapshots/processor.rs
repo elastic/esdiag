@@ -10,6 +10,7 @@ use eyre::Report;
 use futures::stream::{BoxStream, StreamExt};
 use serde::Serialize;
 use serde_json::Value;
+use serde_with::skip_serializing_none;
 use tokio::sync::mpsc;
 
 impl DocumentExporter<Lookups, ElasticsearchMetadata> for SnapshotRepositories {
@@ -128,6 +129,7 @@ impl SnapshotLogDocument {
     }
 }
 
+#[skip_serializing_none]
 #[derive(Serialize)]
 struct SnapshotDocument {
     name: String,

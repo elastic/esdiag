@@ -31,4 +31,4 @@ The system SHALL provide Elasticsearch index templates for the snapshot reposito
 
 #### Scenario: Index Templates Exist
 - **WHEN** the project assets are inspected
-- **THEN** index templates for `settings-snapshot_repositories-esdiag` and `metadata-snapshots-esdiag` MUST exist in the `assets/` directory.
+- **THEN** index templates for `settings-repository-esdiag` and `logs-snapshot-esdiag` MUST exist in the `assets/` directory.

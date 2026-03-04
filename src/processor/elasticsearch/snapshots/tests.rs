@@ -15,6 +15,16 @@ fn extract_snapshot_date_absent() {
     assert_eq!(extract_snapshot_date("snapshot-prod"), None);
 }
 
+#[test]
+fn extract_snapshot_date_invalid_month_absent() {
+    assert_eq!(extract_snapshot_date("snapshot-2026.13.03-prod"), None);
+}
+
+#[test]
+fn extract_snapshot_date_invalid_day_absent() {
+    assert_eq!(extract_snapshot_date("snapshot-2026.03.45-prod"), None);
+}
+
 #[tokio::test]
 async fn test_streaming_deserialization() {
     let json = r#"{

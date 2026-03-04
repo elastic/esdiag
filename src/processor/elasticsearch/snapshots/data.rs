@@ -2,10 +2,9 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use super::super::super::diagnostic::data_source::{PathType, StreamingDataSource};
+use super::super::super::diagnostic::data_source::StreamingDataSource;
 use super::super::DataSource;
 use eyre::{Result, eyre};
-use semver::Version;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -63,6 +62,11 @@ pub fn extract_snapshot_date(snapshot_name: &str) -> Option<String> {
             let year = std::str::from_utf8(&window[0..4]).ok()?;
             let month = std::str::from_utf8(&window[5..7]).ok()?;
             let day = std::str::from_utf8(&window[8..10]).ok()?;
+            let month_num = month.parse::<u32>().ok()?;
+            let day_num = day.parse::<u32>().ok()?;
+            if !(1..=12).contains(&month_num) || !(1..=31).contains(&day_num) {
+                continue;
+            }
             return Some(format!("{year}-{month}-{day}"));
         }
     }
@@ -137,6 +141,8 @@ impl StreamingDataSource for Snapshots {
                     if sender_closed {
                         continue;
                     }
+                    // Parse each entry independently so one malformed snapshot can surface as
+                    // an item-level error without aborting the entire stream.
                     match serde_json::from_value::<Snapshot>(snapshot_value) {
                         Ok(snapshot) => {
                             if self.sender.blocking_send(Ok(snapshot)).is_err() {
@@ -169,13 +175,6 @@ impl DataSource for SnapshotRepositories {
 }
 
 impl DataSource for Snapshots {
-    fn source(path: PathType, _version: Option<&Version>) -> Result<String> {
-        match path {
-            PathType::File => Ok("snapshot.json".to_string()),
-            PathType::Url => Ok("_snapshot/_all/_all".to_string()),
-        }
-    }
-
     fn name() -> String {
         "snapshot".to_string()
     }
