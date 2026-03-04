@@ -104,24 +104,27 @@ pub fn resolve_archive_path<A: Read + Seek>(
     archive: &mut ZipArchive<A>,
     filename: &str,
 ) -> Result<String> {
+    fn normalize_archive_separators(path: &str) -> String {
+        path.replace('\\', "/")
+    }
+
     let path = if let Some(dir) = subdir {
         let mut workdir = PathBuf::from(archive.by_index(0)?.name().to_string());
         trim_to_working_directory(&mut workdir);
-        let path = workdir
-            .join(dir)
-            .join(filename)
-            .to_string_lossy()
-            .to_string();
+        let path = normalize_archive_separators(
+            workdir.join(dir).join(filename).to_string_lossy().as_ref(),
+        );
         if archive.by_name(&path).is_ok() {
             return Ok(path);
         } else {
             // Fall back to double slash for ECK bundles with faulty paths
-            format!("{}//{}", workdir.join(dir).display(), filename)
+            let base = normalize_archive_separators(workdir.join(dir).to_string_lossy().as_ref());
+            format!("{base}//{filename}")
         }
     } else {
         let mut path = PathBuf::from(archive.by_index(0)?.name().to_string());
         trim_to_working_directory(&mut path);
-        format!("{}", path.join(filename).display())
+        normalize_archive_separators(path.join(filename).to_string_lossy().as_ref())
     };
 
     if archive.by_name(&path).is_ok() {
@@ -196,6 +199,21 @@ mod tests {
         let mut archive = ZipArchive::new(Cursor::new(archive_data)).unwrap();
 
         let subdir = PathBuf::from("namespace/elasticsearch/cluster-two");
+        let result = resolve_archive_path(Some(&subdir), &mut archive, "version.json").unwrap();
+
+        assert_eq!(
+            result,
+            "eck-diagnostics/namespace/elasticsearch/cluster-two/version.json"
+        );
+    }
+
+    #[test]
+    fn resolve_archive_path_with_windows_style_subdir_returns_ok() {
+        let archive_data = create_test_archive_with_single_slash();
+        let mut archive = ZipArchive::new(Cursor::new(archive_data)).unwrap();
+
+        // Simulates subdir values built on Windows.
+        let subdir = PathBuf::from(r"namespace\elasticsearch\cluster-two");
         let result = resolve_archive_path(Some(&subdir), &mut archive, "version.json").unwrap();
 
         assert_eq!(
