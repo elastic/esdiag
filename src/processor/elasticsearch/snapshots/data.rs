@@ -4,7 +4,7 @@
 
 use super::super::super::diagnostic::data_source::{PathType, StreamingDataSource};
 use super::super::DataSource;
-use eyre::Result;
+use eyre::{Result, eyre};
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -133,12 +133,21 @@ impl StreamingDataSource for Snapshots {
                 A: serde::de::SeqAccess<'de>,
             {
                 let mut sender_closed = false;
-                while let Some(snapshot) = seq.next_element::<Snapshot>()? {
+                while let Some(snapshot_value) = seq.next_element::<Value>()? {
                     if sender_closed {
                         continue;
                     }
-                    if self.sender.blocking_send(Ok(snapshot)).is_err() {
-                        sender_closed = true;
+                    match serde_json::from_value::<Snapshot>(snapshot_value) {
+                        Ok(snapshot) => {
+                            if self.sender.blocking_send(Ok(snapshot)).is_err() {
+                                sender_closed = true;
+                            }
+                        }
+                        Err(err) => {
+                            if self.sender.blocking_send(Err(eyre!(err))).is_err() {
+                                sender_closed = true;
+                            }
+                        }
                     }
                 }
                 Ok(())

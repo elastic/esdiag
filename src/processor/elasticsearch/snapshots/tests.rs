@@ -71,6 +71,36 @@ async fn test_streaming_deserialization_handles_receiver_closed_mid_stream() {
 }
 
 #[tokio::test]
+async fn test_streaming_deserialization_continues_on_entry_parse_error() {
+    let json = r#"{
+        "snapshots": [
+            {"snapshot": "s-2026.03.01", "state": "SUCCESS"},
+            {"snapshot": 42, "state": "SUCCESS"},
+            {"snapshot": "s-2026.03.03", "state": "SUCCESS"}
+        ]
+    }"#;
+
+    let mut deserializer = serde_json::Deserializer::from_str(json);
+    let (tx, mut rx) = mpsc::channel(10);
+    let handle = tokio::task::spawn_blocking(move || {
+        Snapshots::deserialize_stream(&mut deserializer, tx).expect("stream deserialize")
+    });
+
+    let mut ok_count = 0;
+    let mut err_count = 0;
+    while let Some(res) = rx.recv().await {
+        match res {
+            Ok(_) => ok_count += 1,
+            Err(_) => err_count += 1,
+        }
+    }
+
+    assert_eq!(ok_count, 2);
+    assert_eq!(err_count, 1);
+    handle.await.expect("join");
+}
+
+#[tokio::test]
 async fn test_streaming_deserialization_large_payload() {
     let mut snapshot_items = String::new();
     for i in 0..5000 {
