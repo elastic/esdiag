@@ -1,14 +1,15 @@
-use super::ServerState;
+use super::{
+    ServerState, append_body_event, html_event, prepend_selector_event,
+};
 use crate::data::{KnownHost, KnownHostBuilder, Settings, Uri};
 use crate::exporter::Exporter;
 use crate::server::template::SettingsModal;
 use askama::Template;
-use async_stream::stream;
 use axum::{
     extract::State,
-    response::{IntoResponse, Response, Sse},
+    http::StatusCode,
+    response::{IntoResponse, Response},
 };
-use datastar::prelude::{ElementPatchMode, PatchElements};
 use serde::Deserialize;
 use std::sync::Arc;
 
@@ -27,12 +28,11 @@ pub async fn get_modal(State(state): State<Arc<ServerState>>) -> impl IntoRespon
         kibana_url,
     };
 
-    Sse::new(stream! {
-        match modal.render() {
-            Ok(html) => yield Ok::<_, std::convert::Infallible>(PatchElements::new(html).mode(ElementPatchMode::Append).selector("body").write_as_axum_sse_event()),
-            Err(err) => yield Ok::<_, std::convert::Infallible>(PatchElements::new(format!("<div>Error: {}</div>", err)).write_as_axum_sse_event()),
-        }
-    })
+    match modal.render() {
+        Ok(html) => state.publish_event(append_body_event(html)),
+        Err(err) => state.publish_event(html_event(format!("<div>Error: {}</div>", err))),
+    }
+    StatusCode::NO_CONTENT
 }
 
 #[derive(Deserialize, Default)]
@@ -89,19 +89,19 @@ pub async fn update_settings(
                                             let err_msg =
                                                 format!("Failed to connect to new host: {}", e);
                                             log::error!("{}", err_msg);
-                                            return settings_error_response(err_msg);
+                                            return settings_error_response(&state, err_msg);
                                         }
                                     },
                                     Err(e) => {
                                         let err_msg = format!("Failed to construct client: {}", e);
                                         log::error!("{}", err_msg);
-                                        return settings_error_response(err_msg);
+                                        return settings_error_response(&state, err_msg);
                                     }
                                 },
                                 Err(e) => {
                                     let err_msg = format!("Failed to parse host into URI: {}", e);
                                     log::error!("{}", err_msg);
-                                    return settings_error_response(err_msg);
+                                    return settings_error_response(&state, err_msg);
                                 }
                             };
 
@@ -114,7 +114,7 @@ pub async fn update_settings(
                                         let err_msg =
                                             format!("Failed to save host to hosts.yml: {}", e);
                                         log::error!("{}", err_msg);
-                                        return settings_error_response(err_msg);
+                                        return settings_error_response(&state, err_msg);
                                     }
                                 }
                             }
@@ -122,14 +122,14 @@ pub async fn update_settings(
                         Err(e) => {
                             let err_msg = format!("Failed to configure host: {}", e);
                             log::error!("{}", err_msg);
-                            return settings_error_response(err_msg);
+                            return settings_error_response(&state, err_msg);
                         }
                     }
                 }
                 Err(e) => {
                     let err_msg = format!("Invalid URL provided for new host: {}", e);
                     log::error!("{}", err_msg);
-                    return settings_error_response(err_msg);
+                    return settings_error_response(&state, err_msg);
                 }
             }
         }
@@ -147,7 +147,7 @@ pub async fn update_settings(
     if let Err(e) = settings.save() {
         let err_msg = format!("Failed to save settings: {}", e);
         log::error!("{}", err_msg);
-        return settings_error_response(err_msg);
+        return settings_error_response(&state, err_msg);
     }
 
     // 4. Update the active Exporter in ServerState
@@ -161,45 +161,41 @@ pub async fn update_settings(
                     Err(e) => {
                         let err_msg = format!("Failed to construct exporter: {}", e);
                         log::error!("{}", err_msg);
-                        return settings_error_response(err_msg);
+                        return settings_error_response(&state, err_msg);
                     }
                 },
                 Err(e) => {
                     let err_msg = format!("Invalid Host URI: {}", e);
                     log::error!("{}", err_msg);
-                    return settings_error_response(err_msg);
+                    return settings_error_response(&state, err_msg);
                 }
             },
             Err(e) => {
                 let err_msg = format!("Could not find Target in hosts.yml: {}", e);
                 log::error!("{}", err_msg);
-                return settings_error_response(err_msg);
+                return settings_error_response(&state, err_msg);
             }
         }
     }
 
     // 5. Build response to remove modal and update exporter text
-    Sse::new(stream! {
-        yield Ok::<_, std::convert::Infallible>(PatchElements::new(r#"
+    let html = r#"
         <div id="settings-modal" data-init="window.location.reload();">
             Reloading...
         </div>
-        "#).write_as_axum_sse_event());
-    })
-    .into_response()
+        "#;
+    state.publish_event(html_event(html));
+
+    StatusCode::NO_CONTENT.into_response()
 }
 
-fn settings_error_response(err_msg: String) -> Response {
-    Sse::new(stream! {
-        yield Ok::<_, std::convert::Infallible>(
-            PatchElements::new(format!(
-                "<div id='settings-error' style='color: red; padding: 10px;'>{}</div>",
-                err_msg
-            ))
-            .mode(ElementPatchMode::Prepend)
-            .selector("#settings-form")
-            .write_as_axum_sse_event(),
-        );
-    })
-    .into_response()
+fn settings_error_response(state: &Arc<ServerState>, err_msg: String) -> Response {
+    state.publish_event(prepend_selector_event(
+        "#settings-form",
+        format!(
+            "<div id='settings-error' style='color: red; padding: 10px;'>{}</div>",
+            err_msg
+        ),
+    ));
+    StatusCode::NO_CONTENT.into_response()
 }

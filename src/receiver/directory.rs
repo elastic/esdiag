@@ -5,9 +5,8 @@
 use super::super::processor::{DataSource, PathType, StreamingDataSource};
 use super::{Receive, ReceiveMultiple, ReceiveRaw};
 use crate::processor::diagnostic::data_source::get_source;
-use async_stream::stream;
 use eyre::{Result, eyre};
-use futures::stream::BoxStream;
+use futures::stream::{self, BoxStream};
 use serde::de::DeserializeOwned;
 use std::{
     fs::File,
@@ -109,7 +108,7 @@ impl Receive for DirectoryReceiver {
         log::debug!("Streaming file: {}", &filename.display());
 
         let filename_clone = filename.clone();
-        let (tx, mut rx) = mpsc::channel(100);
+        let (tx, rx) = mpsc::channel(100);
 
         let tx_err = tx.clone();
         let handle = tokio::task::spawn_blocking(move || match File::open(&filename_clone) {
@@ -132,11 +131,9 @@ impl Receive for DirectoryReceiver {
             }
         });
 
-        Ok(Box::pin(stream! {
-            while let Some(item) = rx.recv().await {
-                yield item;
-            }
-        }))
+        Ok(Box::pin(stream::unfold(rx, |mut rx| async move {
+            rx.recv().await.map(|item| (item, rx))
+        })))
     }
 }
 

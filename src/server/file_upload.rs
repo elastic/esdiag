@@ -2,13 +2,15 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use super::{Identifiers, ServerState, Signals, patch_signals, patch_template, template};
+use super::{
+    Identifiers, ServerEvent, ServerState, Signals, receiver_stream, signal_event, template,
+    template_event,
+};
 use crate::{
     data::Uri,
     processor::{Processor, new_job_id},
     receiver::Receiver,
 };
-use async_stream::stream;
 use axum::{
     extract::{Multipart, State},
     response::{Html, IntoResponse, Sse},
@@ -17,6 +19,7 @@ use bytes::Bytes;
 use datastar::axum::ReadSignals;
 use reqwest::StatusCode;
 use std::{path::PathBuf, sync::Arc};
+use tokio::sync::mpsc;
 use uuid::Uuid;
 
 struct TempFileCleanup {
@@ -141,114 +144,237 @@ pub async fn process(
     // Use the signal job_id to override the job.id created in this function
     let job_id = signals.file_upload.job_id;
 
-    Sse::new(stream! {
-        yield patch_signals(r#"{"processing":true}"#);
-        let (filename, data): (String, Bytes) = match state.pop_upload(job_id).await{
-            Some((filename, data)) => (filename, data),
-            None =>{
-                yield patch_signals(r#"{"processing":false}"#);
-                yield patch_template(template::JobFailed {
+    let (tx, rx) = mpsc::channel(64);
+    tokio::spawn(async move {
+        run_upload_job(state, signals, job_id, tx).await;
+    });
+
+    Sse::new(receiver_stream(rx))
+}
+
+async fn send_event(tx: &mpsc::Sender<ServerEvent>, event: ServerEvent) {
+    // Processing must continue even when client disconnects.
+    let _ = tx.send(event).await;
+}
+
+async fn send_terminal_signal(tx: &mpsc::Sender<ServerEvent>, state: &ServerState) {
+    send_event(
+        tx,
+        signal_event(format!(
+            r#"{{"processing":false,"file_upload":{{"job_id":0}},"stats":{}}}"#,
+            state.get_stats().await
+        )),
+    )
+    .await;
+}
+
+async fn run_upload_job(
+    state: Arc<ServerState>,
+    signals: Signals,
+    job_id: u64,
+    tx: mpsc::Sender<ServerEvent>,
+) {
+    send_event(&tx, signal_event(r#"{"processing":true}"#)).await;
+    let (filename, data): (String, Bytes) = match state.pop_upload(job_id).await {
+        Some((filename, data)) => (filename, data),
+        None => {
+            send_event(
+                &tx,
+                template_event(template::JobFailed {
                     job_id,
                     error: "Failed to upload file",
                     source: "User upload",
-                });
-                return
-            }
-        };
+                }),
+            )
+            .await;
+            send_terminal_signal(&tx, &state).await;
+            return;
+        }
+    };
 
-        let temp_upload_path =
-            std::env::temp_dir().join(format!("esdiag-upload-{job_id}-{}.zip", Uuid::new_v4()));
-        if let Err(e) = std::fs::write(&temp_upload_path, &data) {
-            let error = format!("Failed to write temp upload file: {}", e);
-            log::error!("{}", error);
-            yield patch_signals(r#"{"processing":false}"#);
-            yield patch_template(template::JobFailed {
+    let temp_upload_path = std::env::temp_dir().join(format!("esdiag-upload-{job_id}-{}.zip", Uuid::new_v4()));
+    if let Err(e) = std::fs::write(&temp_upload_path, &data) {
+        let error = format!("Failed to write temp upload file: {}", e);
+        log::error!("{}", error);
+        send_event(
+            &tx,
+            template_event(template::JobFailed {
                 job_id,
                 error: "Failed to stage uploaded file",
                 source: &filename,
-            });
-            return
-        }
-        drop(data);
-        let _temp_upload_cleanup = TempFileCleanup {
-            path: temp_upload_path.clone(),
-        };
+            }),
+        )
+        .await;
+        send_terminal_signal(&tx, &state).await;
+        return;
+    }
+    drop(data);
+    let _temp_upload_cleanup = TempFileCleanup {
+        path: temp_upload_path.clone(),
+    };
 
-        let receiver = match Receiver::try_from(Uri::File(temp_upload_path)) {
-            Ok(receiver) => Arc::new(receiver),
-            Err(e) => {
-                let error = format!("Failed to create receiver: {}", e);
-                log::error!("{}", error);
-                yield patch_signals(r#"{"processing":false}"#);
-                yield patch_template(template::JobFailed {
+    let receiver = match Receiver::try_from(Uri::File(temp_upload_path)) {
+        Ok(receiver) => Arc::new(receiver),
+        Err(e) => {
+            let error = format!("Failed to create receiver: {}", e);
+            log::error!("{}", error);
+            send_event(
+                &tx,
+                template_event(template::JobFailed {
                     job_id,
                     error: "Failed to create file receiver",
                     source: &filename,
-                });
-                return
-            }
-        };
+                }),
+            )
+            .await;
+            send_terminal_signal(&tx, &state).await;
+            return;
+        }
+    };
 
-        let exporter = Arc::new(state.exporter.read().await.clone());
+    let exporter = Arc::new(state.exporter.read().await.clone());
+    let identifiers = Identifiers {
+        user: signals.metadata.user,
+        filename: Some(filename.clone()),
+        ..signals.metadata
+    };
 
-        let identifiers = Identifiers {
-            user: signals.metadata.user,
-            filename: Some(filename.clone()),
-            ..signals.metadata
-        };
-
-        let processor = match Processor::try_new(receiver, exporter, identifiers).await {
-            Ok(ready) => ready,
-            Err(error) => {
-                state.record_failure().await;
-                yield patch_signals(r#"{"processing":false}"#);
-                yield patch_template(template::JobFailed {
+    let processor = match Processor::try_new(receiver, exporter, identifiers).await {
+        Ok(ready) => ready,
+        Err(error) => {
+            state.record_failure().await;
+            send_event(
+                &tx,
+                template_event(template::JobFailed {
                     job_id,
                     error: &error.to_string(),
                     source: &filename,
-                });
-                return
-            }
-        };
+                }),
+            )
+            .await;
+            send_terminal_signal(&tx, &state).await;
+            return;
+        }
+    };
 
-        match processor.start().await {
-            Ok(processor) => {
-                yield patch_signals(r#"{"loading":false,"processing":true}"#);
-
-                match processor.process().await {
-                    Ok(completed) => {
-                        let report = &completed.state.report;
-                        state.record_success(report.diagnostic.docs.total, report.diagnostic.docs.errors).await;
-                        yield patch_template(template::JobCompleted {
+    match processor.start().await {
+        Ok(processor) => {
+            state.record_job_started().await;
+            send_event(&tx, signal_event(r#"{"loading":false,"processing":true}"#)).await;
+            match processor.process().await {
+                Ok(completed) => {
+                    let report = &completed.state.report;
+                    state
+                        .record_success(report.diagnostic.docs.total, report.diagnostic.docs.errors)
+                        .await;
+                    send_event(
+                        &tx,
+                        template_event(template::JobCompleted {
                             job_id,
                             diagnostic_id: &report.diagnostic.metadata.id,
                             docs_created: &report.diagnostic.docs.created,
-                            duration: &format!("{:.3}", report.diagnostic.processing_duration as f64 / 1000.0),
+                            duration: &format!(
+                                "{:.3}",
+                                report.diagnostic.processing_duration as f64 / 1000.0
+                            ),
                             source: &filename,
-                            kibana_link: report.diagnostic.kibana_link.as_ref().unwrap_or(&"#".to_string()),
+                            kibana_link: report
+                                .diagnostic
+                                .kibana_link
+                                .as_ref()
+                                .unwrap_or(&"#".to_string()),
                             product: &report.diagnostic.product.to_string(),
-                        });
-                    },
-                    Err(failed) => {
-                        state.record_failure().await;
-                        yield patch_template(template::JobFailed {
+                        }),
+                    )
+                    .await;
+                }
+                Err(failed) => {
+                    state.record_failure().await;
+                    send_event(
+                        &tx,
+                        template_event(template::JobFailed {
                             job_id,
                             error: &failed.state.error,
                             source: &filename,
-                        });
-                    }
-                };
-            },
-            Err(failed) => {
-                state.record_failure().await;
-                yield patch_template(template::JobFailed {
+                        }),
+                    )
+                    .await;
+                }
+            };
+        }
+        Err(failed) => {
+            state.record_failure().await;
+            send_event(
+                &tx,
+                template_event(template::JobFailed {
                     job_id,
                     error: &failed.state.error,
                     source: &filename,
-                });
-            },
-        };
+                }),
+            )
+            .await;
+        }
+    };
 
-        yield patch_signals(&format!(r#"{{"processing":false,"file_upload":{{"job_id":0}},"stats":{}}}"#, state.get_stats().await));
-    })
+    send_terminal_signal(&tx, &state).await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{run_upload_job, send_terminal_signal};
+    use crate::server::{ServerEvent, Signals, test_server_state};
+    use tokio::sync::mpsc;
+
+    #[tokio::test]
+    async fn run_upload_job_missing_upload_emits_failure_and_terminal_signal() {
+        let state = test_server_state();
+        let signals = Signals::default();
+        let (tx, mut rx) = mpsc::channel(8);
+
+        run_upload_job(state, signals, 42, tx).await;
+
+        let mut saw_failure = false;
+        let mut saw_terminal = false;
+        while let Some(event) = rx.recv().await {
+            match event {
+                ServerEvent::Template(html) if html.contains("Failed to upload file") => {
+                    saw_failure = true;
+                }
+                ServerEvent::Signals(payload) if payload.contains(r#""processing":false"#) => {
+                    saw_terminal = true;
+                }
+                _ => {}
+            }
+        }
+
+        assert!(saw_failure, "expected job failure template event");
+        assert!(saw_terminal, "expected terminal processing=false signal");
+    }
+
+    #[tokio::test]
+    async fn terminal_signal_includes_file_upload_reset() {
+        let state = test_server_state();
+        let (tx, mut rx) = mpsc::channel(4);
+
+        send_terminal_signal(&tx, &state).await;
+        drop(tx);
+
+        let event = rx.recv().await.expect("expected one terminal signal");
+        match event {
+            ServerEvent::Signals(payload) => {
+                assert!(payload.contains(r#""file_upload":{"job_id":0}"#));
+            }
+            _ => panic!("expected terminal signal payload"),
+        }
+    }
+
+    #[tokio::test]
+    async fn run_upload_job_completes_when_client_disconnected() {
+        let state = test_server_state();
+        let signals = Signals::default();
+        let (tx, rx) = mpsc::channel(1);
+        drop(rx);
+
+        run_upload_job(state, signals, 999, tx).await;
+    }
 }

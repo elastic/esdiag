@@ -14,7 +14,6 @@ desktop = ["server", "dep:tauri", "dep:tauri-build", "dep:tauri-plugin-opener"]
 
 [dependencies]
 askama = { version = "0.15.4", default-features = false, features = ["derive", "std", "serde_json"] }
-async-stream = "0.3.6"
 axum = { version = "0.8.8", features = ["multipart", "macros"] }
 axum-server = "0.8.0"
 base64 = "0.22.1"

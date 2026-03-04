@@ -15,11 +15,15 @@ The system MUST persist a user light/dark preference so the selected mode surviv
 - **THEN** the previously selected mode remains active.
 
 ### Requirement: Datastar Theme Controls
-The shared header MUST expose a Datastar-driven control for toggling light/dark mode.
+The shared header MUST expose a Datastar-driven control for toggling light/dark mode, and theme mutations MUST be published as Datastar-compatible events on the shared `/events` stream regardless of the underlying stream implementation.
 
 #### Scenario: Toggling light and dark mode
 - **WHEN** a user toggles dark mode from the header control
 - **THEN** the UI switches between light and dark Borealis token sets.
+
+#### Scenario: Theme toggle response after stream refactor
+- **WHEN** the theme toggle endpoint is handled by channel/event-driven streaming internals
+- **THEN** the endpoint MAY return `204 No Content`, and the updated theme signal is delivered through `/events` without requiring client protocol changes.
 
 ### Requirement: Theme Asset Organization
 Theme implementation MUST separate shared structural styles from Borealis token definitions so light/dark mode can be maintained without duplicating layout/component CSS.
