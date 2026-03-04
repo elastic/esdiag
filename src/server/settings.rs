@@ -14,18 +14,36 @@ use serde::Deserialize;
 use std::sync::Arc;
 
 pub async fn get_modal(State(state): State<Arc<ServerState>>) -> impl IntoResponse {
-    let settings = Settings::load().unwrap_or_default();
+    let can_manage_hosts = state.runtime_mode_policy.allows_host_management();
+    let can_update_exporter = state.runtime_mode_policy.allows_exporter_updates();
 
-    // Get list of known hosts from file
-    let hosts = KnownHost::list_all().unwrap_or_default();
+    let settings = if state.runtime_mode_policy.allows_local_artifacts() {
+        Settings::load().unwrap_or_default()
+    } else {
+        Settings::default()
+    };
 
-    let active_target = settings.active_target.clone().unwrap_or_default();
+    // In service mode, avoid hosts.yml reads entirely.
+    let hosts = if can_manage_hosts {
+        KnownHost::list_all().unwrap_or_default()
+    } else {
+        vec![state.exporter.read().await.to_string()]
+    };
+
+    let active_target = if can_update_exporter {
+        settings.active_target.clone().unwrap_or_default()
+    } else {
+        state.exporter.read().await.to_string()
+    };
     let kibana_url = state.kibana_url.read().await.clone();
 
     let modal = SettingsModal {
         hosts,
         active_target,
         kibana_url,
+        mode: state.runtime_mode.to_string(),
+        can_manage_hosts,
+        can_update_exporter,
     };
 
     match modal.render() {
@@ -50,6 +68,21 @@ pub async fn update_settings(
     State(state): State<Arc<ServerState>>,
     datastar::axum::ReadSignals(signals): datastar::axum::ReadSignals<super::Signals>,
 ) -> Response {
+    if !state.runtime_mode_policy.allows_local_artifacts() {
+        let form = signals.settings;
+        if let Some(kibana) = form.kibana_url {
+            *state.kibana_url.write().await = kibana;
+        }
+        state.publish_event(html_event(
+            r#"
+            <div id="settings-modal" data-init="window.location.reload();">
+                Reloading...
+            </div>
+            "#,
+        ));
+        return StatusCode::NO_CONTENT.into_response();
+    }
+
     let mut settings = Settings::load().unwrap_or_default();
     let form = signals.settings;
 
@@ -150,8 +183,8 @@ pub async fn update_settings(
         return settings_error_response(&state, err_msg);
     }
 
-    // 4. Update the active Exporter in ServerState
-    if let Some(target) = &settings.active_target {
+    // 4. Update the active Exporter in ServerState (user mode only)
+    if state.runtime_mode_policy.allows_exporter_updates() && let Some(target) = &settings.active_target {
         match KnownHost::get_known(target).ok_or_else(|| eyre::eyre!("Host not found")) {
             Ok(host) => match Uri::try_from(host) {
                 Ok(uri) => match Exporter::try_from(uri) {

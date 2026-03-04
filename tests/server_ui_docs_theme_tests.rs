@@ -1,14 +1,23 @@
 #![cfg(feature = "server")]
 
-use esdiag::{exporter::Exporter, server::Server};
+use esdiag::{
+    exporter::Exporter,
+    server::{RuntimeMode, Server},
+};
 use reqwest::Client;
 use std::time::Duration;
 use tokio::time::sleep;
 
 async fn start_server() -> (Server, Client, String) {
-    let (server, bound_addr) = Server::start([127, 0, 0, 1], 0, Exporter::default(), String::new())
-        .await
-        .expect("start local server");
+    let (server, bound_addr) = Server::start(
+        [127, 0, 0, 1],
+        0,
+        Exporter::default(),
+        String::new(),
+        RuntimeMode::User,
+    )
+    .await
+    .expect("start local server");
     let client = Client::new();
     let base = format!("http://127.0.0.1:{}", bound_addr.port());
 

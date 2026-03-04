@@ -1,4 +1,4 @@
-## ADDED Requirements
+## MODIFIED Requirements
 
 ### Requirement: Persistent Desktop Settings
 The system SHALL support mode-aware settings persistence. In `user` mode, it SHALL read and write configuration settings (active exporter and Kibana URL) to a local settings file alongside `hosts.yml`. In `service` mode, it SHALL avoid local credential and host persistence and only retain limited, non-sensitive preferences.
@@ -13,14 +13,6 @@ The system SHALL support mode-aware settings persistence. In `user` mode, it SHA
 - **WHEN** a user updates available preferences from the UI
 - **THEN** the system does not write credentials or host target records to local `settings.yml` or `hosts.yml` artifacts
 
-### Requirement: Settings Modal Access
-The web UI SHALL provide an interactable element in the footer displaying the currently active target. Clicking this element SHALL open a configuration modal.
-
-#### Scenario: Opening the settings modal
-- **GIVEN** the web UI is loaded
-- **WHEN** the user clicks on the "Target: [CurrentTarget]" text in the footer
-- **THEN** a modal opens displaying inputs for Kibana URL and Output Target selection
-
 ### Requirement: Output Target Selection
 The settings UI SHALL provide mode-aware target behavior. In `user` mode, the modal SHALL allow selecting an existing `KnownHost` from `hosts.yml` or manually inputting a new host (URL, API Key, Username, Password). In `service` mode, host creation and persisted credential flows SHALL be unavailable, and export target selection SHALL be constrained to the startup-defined exporter.
 
@@ -28,11 +20,6 @@ The settings UI SHALL provide mode-aware target behavior. In `user` mode, the mo
 - **GIVEN** the settings modal is open in `user` mode
 - **WHEN** the user selects an existing host from a dropdown and submits
 - **THEN** the backend updates persisted settings to set the active target to that host name
-
-#### Scenario: Creating a new host
-- **GIVEN** the settings modal is open in `user` mode
-- **WHEN** the user provides details for a new host and clicks save
-- **THEN** the backend validates the connection, adds the host to `hosts.yml`, and sets it as the active target in `settings.yml`
 
 #### Scenario: Service mode enforces fixed exporter
 - **GIVEN** the settings modal is open in `service` mode
@@ -51,11 +38,3 @@ Updating configuration via the settings surface SHALL update `ServerState` dynam
 - **GIVEN** the server is running in `service` mode with a startup-defined exporter
 - **WHEN** a runtime settings update attempts to switch exporter target
 - **THEN** the request is rejected or ignored according to policy and the startup exporter remains active
-
-### Requirement: Secret Redaction in UI
-All credential input fields (API Key, Passwords) in the settings modal SHALL visually obscure their contents to prevent accidental shoulder-surfing leaks.
-
-#### Scenario: Viewing the credentials input
-- **GIVEN** the user is viewing the new host form
-- **WHEN** they type an API Key or Password
-- **THEN** the characters are visually hidden (e.g., using `type="password"`)

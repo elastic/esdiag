@@ -6,7 +6,7 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 use clap::{Parser, Subcommand, builder::styling};
 #[cfg(feature = "server")]
-use esdiag::server::Server;
+use esdiag::server::{RuntimeMode, Server};
 #[cfg(feature = "setup")]
 use esdiag::setup;
 use esdiag::{
@@ -116,6 +116,9 @@ enum Commands {
             long_help = "Kibana URL to display in the web interface. If not provided, will use the ESDIAG_KIBANA_URL environment variable."
         )]
         kibana: Option<String>,
+        /// Runtime mode for web interfaces (service or user)
+        #[arg(long, value_enum)]
+        mode: Option<RuntimeMode>,
     },
     /// Configure, test and save a remote host connection to `~/.esdiag/hosts.yml`
     Host {
@@ -258,8 +261,9 @@ async fn run(cli: Cli) -> Result<&'static str> {
                 port,
                 output,
                 kibana,
+                mode,
             } => {
-                log::info!("Starting ESDiag server");
+                let runtime_mode = resolve_runtime_mode(mode)?;
 
                 let output_uri = Uri::try_from(output)?;
                 let exporter = Exporter::try_from(output_uri)?;
@@ -274,7 +278,7 @@ async fn run(cli: Cli) -> Result<&'static str> {
                 });
 
                 let (mut server, _bound_addr) =
-                    Server::start([0, 0, 0, 0], port, exporter, kibana_url).await?;
+                    Server::start([0, 0, 0, 0], port, exporter, kibana_url, runtime_mode).await?;
 
                 tokio::select! {
                     _ = tokio::signal::ctrl_c() => {
@@ -501,9 +505,22 @@ async fn run(cli: Cli) -> Result<&'static str> {
                     let handle = app.handle().clone();
 
                     tauri::async_runtime::spawn(async move {
-                        let settings = esdiag::data::Settings::load().unwrap_or_default();
+                        let runtime_mode = match resolve_runtime_mode(None) {
+                            Ok(mode) => mode,
+                            Err(e) => {
+                                log::error!("Failed to resolve runtime mode: {}", e);
+                                return;
+                            }
+                        };
+                        let settings = if runtime_mode == RuntimeMode::User {
+                            esdiag::data::Settings::load().unwrap_or_default()
+                        } else {
+                            esdiag::data::Settings::default()
+                        };
 
-                        let exporter = if let Some(target) = &settings.active_target {
+                        let exporter = if runtime_mode == RuntimeMode::Service {
+                            Exporter::default()
+                        } else if let Some(target) = &settings.active_target {
                             if let Ok(host) = esdiag::data::KnownHost::get_known(target)
                                 .ok_or_else(|| eyre::eyre!("Host not found"))
                             {
@@ -528,14 +545,21 @@ async fn run(cli: Cli) -> Result<&'static str> {
                             }
                         });
 
-                        let (mut server, bound_addr) =
-                            match Server::start([127, 0, 0, 1], 0, exporter, kibana_url).await {
-                                Ok(res) => res,
-                                Err(e) => {
-                                    log::error!("Failed to start embedded server: {}", e);
-                                    return;
-                                }
-                            };
+                        let (mut server, bound_addr) = match Server::start(
+                            [127, 0, 0, 1],
+                            0,
+                            exporter,
+                            kibana_url,
+                            runtime_mode,
+                        )
+                        .await
+                        {
+                            Ok(res) => res,
+                            Err(e) => {
+                                log::error!("Failed to start embedded server: {}", e);
+                                return;
+                            }
+                        };
 
                         let url = format!("http://localhost:{}", bound_addr.port());
 
@@ -585,6 +609,19 @@ async fn run(cli: Cli) -> Result<&'static str> {
     }
 }
 
+#[cfg(feature = "server")]
+fn resolve_runtime_mode(cli_mode: Option<RuntimeMode>) -> Result<RuntimeMode> {
+    if let Some(mode) = cli_mode {
+        return Ok(mode);
+    }
+
+    if let Ok(env_mode) = std::env::var("ESDIAG_MODE") {
+        return RuntimeMode::from_env(&env_mode);
+    }
+
+    Ok(RuntimeMode::User)
+}
+
 fn should_error_for_missing_subcommand(arg_count: usize, has_no_command: bool) -> bool {
     arg_count > 1 && has_no_command
 }
@@ -618,6 +655,18 @@ fn clear_last_run_files() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::should_error_for_missing_subcommand;
+    #[cfg(feature = "server")]
+    use super::resolve_runtime_mode;
+    #[cfg(feature = "server")]
+    use esdiag::server::RuntimeMode;
+    #[cfg(feature = "server")]
+    use std::sync::{Mutex, OnceLock};
+
+    #[cfg(feature = "server")]
+    fn env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
 
     #[test]
     fn no_args_and_no_command_allows_desktop_path() {
@@ -634,6 +683,34 @@ mod tests {
     fn args_with_subcommand_does_not_error() {
         assert!(!should_error_for_missing_subcommand(2, false));
     }
+
+    #[cfg(feature = "server")]
+    #[test]
+    fn runtime_mode_prefers_cli_over_env() {
+        let _guard = env_lock().lock().expect("env lock");
+        unsafe {
+            std::env::set_var("ESDIAG_MODE", "service");
+        }
+        let mode = resolve_runtime_mode(Some(RuntimeMode::User)).expect("mode should resolve");
+        assert_eq!(mode, RuntimeMode::User);
+        unsafe {
+            std::env::remove_var("ESDIAG_MODE");
+        }
+    }
+
+    #[cfg(feature = "server")]
+    #[test]
+    fn runtime_mode_uses_env_without_cli() {
+        let _guard = env_lock().lock().expect("env lock");
+        unsafe {
+            std::env::set_var("ESDIAG_MODE", "service");
+        }
+        let mode = resolve_runtime_mode(None).expect("mode should resolve from env");
+        assert_eq!(mode, RuntimeMode::Service);
+        unsafe {
+            std::env::remove_var("ESDIAG_MODE");
+        }
+    }
 }
 
 #[cfg(all(test, feature = "server", feature = "desktop"))]
@@ -645,9 +722,10 @@ mod desktop_startup_tests {
     async fn embedded_server_starts_and_serves_local_url() {
         let exporter = Exporter::default();
         let kibana_url = String::new();
-        let (mut server, bound_addr) = Server::start([127, 0, 0, 1], 0, exporter, kibana_url)
-            .await
-            .expect("desktop embedded server should start");
+        let (mut server, bound_addr) =
+            Server::start([127, 0, 0, 1], 0, exporter, kibana_url, RuntimeMode::User)
+                .await
+                .expect("desktop embedded server should start");
 
         let url = format!("http://localhost:{}", bound_addr.port());
         let parsed = tauri::Url::parse(&url).expect("desktop URL should be valid");
@@ -675,9 +753,15 @@ mod desktop_startup_tests {
 
         let exporter = Exporter::default();
         let kibana_url = String::new();
-        let (mut server, bound_addr) = Server::start([127, 0, 0, 1], 0, exporter, kibana_url)
+        let (mut server, bound_addr) = Server::start(
+            [127, 0, 0, 1],
+            0,
+            exporter,
+            kibana_url,
+            RuntimeMode::User,
+        )
             .await
-            .expect("desktop embedded server should start while another port is occupied");
+            .expect("desktop embedded server should start");
 
         assert_ne!(
             bound_addr.port(),

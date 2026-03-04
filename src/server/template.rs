@@ -18,6 +18,7 @@ pub struct Index {
     pub auth_header: bool,
     pub debug: bool,
     pub desktop: bool,
+    pub can_configure_output: bool,
     pub exporter: String,
     pub kibana_url: String,
     pub key_id: Option<u64>,
@@ -28,6 +29,7 @@ pub struct Index {
     pub user_initial: char,
     pub version: String,
     pub theme_dark: bool,
+    pub runtime_mode: String,
 }
 
 #[derive(Template)]
@@ -36,6 +38,9 @@ pub struct SettingsModal {
     pub hosts: Vec<String>,
     pub active_target: String,
     pub kibana_url: String,
+    pub mode: String,
+    pub can_manage_hosts: bool,
+    pub can_update_exporter: bool,
 }
 #[derive(Template)]
 #[template(path = "job/completed.html")]

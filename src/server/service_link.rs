@@ -13,6 +13,7 @@ use crate::{
 };
 use axum::{
     extract::{Path, State},
+    http::HeaderMap,
     response::{IntoResponse, Sse},
 };
 use datastar::axum::ReadSignals;
@@ -21,6 +22,7 @@ use tokio::sync::mpsc;
 
 pub async fn form(
     State(state): State<Arc<ServerState>>,
+    headers: HeaderMap,
     ReadSignals(signals): ReadSignals<Signals>,
 ) -> impl IntoResponse {
     log::info!(
@@ -29,21 +31,59 @@ pub async fn form(
     );
 
     let (tx, rx) = mpsc::channel(64);
-    tokio::spawn(async move {
-        run_service_link_form(state, signals, tx).await;
-    });
+    match state.resolve_user_email(&headers) {
+        Ok((_, request_user)) => {
+            tokio::spawn(async move {
+                run_service_link_form(state, signals, request_user, tx).await;
+            });
+        }
+        Err(err) => {
+            tokio::spawn(async move {
+                state.record_failure().await;
+                send_event(
+                    &tx,
+                    job_feed_event(template::JobFailed {
+                        job_id: new_job_id(),
+                        error: &format!("Unauthorized request: {}", err),
+                        source: &signals.service_link.filename,
+                    }),
+                )
+                .await;
+                send_event(&tx, signal_event(r#"{"loading":false}"#)).await;
+            });
+        }
+    }
     Sse::new(receiver_stream(rx))
 }
 
 pub async fn id(
     State(state): State<Arc<ServerState>>,
+    headers: HeaderMap,
     Path(job_id): Path<u64>,
-    ReadSignals(signals): ReadSignals<Signals>,
 ) -> impl IntoResponse {
     let (tx, rx) = mpsc::channel(64);
-    tokio::spawn(async move {
-        run_service_link_id(state, job_id, signals, tx).await;
-    });
+    match state.resolve_user_email(&headers) {
+        Ok((_, request_user)) => {
+            tokio::spawn(async move {
+                run_service_link_id(state, job_id, request_user, tx).await;
+            });
+        }
+        Err(err) => {
+            tokio::spawn(async move {
+                state.record_failure().await;
+                send_event(
+                    &tx,
+                    template_event(template::JobFailed {
+                        job_id,
+                        error: &format!("Unauthorized request: {}", err),
+                        source: "Forwarded service link job",
+                    }),
+                )
+                .await;
+                send_event(&tx, signal_event(r#"{"loading":false}"#)).await;
+            });
+        }
+    }
     Sse::new(receiver_stream(rx))
 }
 
@@ -51,7 +91,12 @@ async fn send_event(tx: &mpsc::Sender<ServerEvent>, event: ServerEvent) {
     let _ = tx.send(event).await;
 }
 
-async fn run_service_link_form(state: Arc<ServerState>, signals: Signals, tx: mpsc::Sender<ServerEvent>) {
+async fn run_service_link_form(
+    state: Arc<ServerState>,
+    signals: Signals,
+    request_user: String,
+    tx: mpsc::Sender<ServerEvent>,
+) {
     let service_link = &signals.service_link;
     send_event(&tx, signal_event(r#"{"loading":true}"#)).await;
 
@@ -119,7 +164,7 @@ async fn run_service_link_form(state: Arc<ServerState>, signals: Signals, tx: mp
 
     let exporter = Arc::new(state.exporter.read().await.clone());
     let identifiers = Identifiers {
-        user: signals.metadata.user,
+        user: Some(request_user),
         ..signals.metadata
     };
     let processor = match Processor::try_new(receiver, exporter, identifiers).await {
@@ -232,12 +277,12 @@ async fn run_service_link_form(state: Arc<ServerState>, signals: Signals, tx: mp
 async fn run_service_link_id(
     state: Arc<ServerState>,
     job_id: u64,
-    signals: Signals,
+    request_user: String,
     tx: mpsc::Sender<ServerEvent>,
 ) {
     let (identifiers, uri): (Identifiers, Uri) = match state.pop_link(job_id).await {
         Some((mut identifiers, uri)) => {
-            identifiers.user = signals.metadata.user;
+            identifiers.user = Some(request_user);
             (identifiers, uri)
         }
         None => {

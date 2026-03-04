@@ -11,7 +11,7 @@ use crate::{
 use axum::{
     Json,
     extract::{Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::IntoResponse,
 };
 use serde::Deserialize;
@@ -21,6 +21,7 @@ use url::Url;
 
 pub async fn service_link(
     State(state): State<Arc<ServerState>>,
+    headers: HeaderMap,
     Json(payload): Json<UploadServiceRequest>,
 ) -> impl IntoResponse {
     log::info!(
@@ -94,8 +95,24 @@ pub async fn service_link(
         );
     }
 
-    // Stash the username and (filename, URI) into the server state for later use
-    state.push_link(job_id, payload.metadata, uri).await;
+    let request_user = match state.resolve_user_email(&headers) {
+        Ok((_, user)) => user,
+        Err(err) => {
+            log::warn!("Rejecting service_link request due to auth policy: {err}");
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(json!({
+                    "error": err.to_string()
+                })),
+            );
+        }
+    };
+
+    let mut metadata = payload.metadata;
+    metadata.user = Some(request_user);
+
+    // Stash the user-scoped metadata and (filename, URI) into the server state for later use
+    state.push_link(job_id, metadata, uri).await;
 
     // Respond with a JSON success
     (StatusCode::CREATED, Json(json!({"link_id": job_id})))
@@ -127,6 +144,7 @@ where
 #[axum::debug_handler]
 pub async fn api_key(
     State(state): State<Arc<ServerState>>,
+    headers: HeaderMap,
     Query(params): Query<ApiKeyQueryParams>,
     Json(payload): Json<ApiKeyRequest>,
 ) -> impl IntoResponse {
@@ -138,6 +156,19 @@ pub async fn api_key(
         job_id,
         params.wait_for_completion
     );
+
+    let request_user = match state.resolve_user_email(&headers) {
+        Ok((_, user)) => user,
+        Err(err) => {
+            log::warn!("Rejecting api_key request due to auth policy: {err}");
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(json!({
+                    "error": err.to_string()
+                })),
+            );
+        }
+    };
 
     // Build the known host from the URL
     let url = match Url::parse(&payload.url) {
@@ -204,7 +235,8 @@ pub async fn api_key(
         };
 
         let exporter = Arc::new(state.exporter.read().await.clone());
-        let identifiers = payload.metadata;
+        let mut identifiers = payload.metadata;
+        identifiers.user = Some(request_user.clone());
         log::debug!("[fsm][api.api_key] ready->try_new: job_id={job_id}");
 
         // Create and start the processor
@@ -298,7 +330,9 @@ pub async fn api_key(
     } else {
         // Stash the username and (filename, URI) into the server state for later use
         log::debug!("[fsm][api.api_key] queued(in state): job_id={job_id}");
-        state.push_key(job_id, payload.metadata, host).await;
+        let mut metadata = payload.metadata;
+        metadata.user = Some(request_user);
+        state.push_key(job_id, metadata, host).await;
 
         // Respond with a JSON success
         (StatusCode::CREATED, Json(json!({"key_id": job_id})))

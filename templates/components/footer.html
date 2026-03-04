@@ -19,7 +19,7 @@
         >
     </footer-left>
     <footer-center id="exporter">
-        {% if desktop %}
+        {% if can_configure_output %}
         <a href="#" data-on:click="@get('/settings/modal')">Output: {{ exporter }}</a>
         {% else %}
         Output: {{ exporter }}
@@ -29,6 +29,9 @@
         data-init="@patch('/events')"
         data-signals="{ 'stats': {{ stats }} }"
     >
+        {% if debug %}
+        <span>mode: {{ runtime_mode }}</span> |
+        {% endif %}
         <span id="status" data-text="$loading ? 'Loading' : $processing ? 'Processing' : 'Ready'">Ready </span>
         | <span data-text="Intl.NumberFormat().format($stats.jobs.total)">0</span> diags |
         <span data-text="Intl.NumberFormat().format($stats.docs.total)">0</span> docs
