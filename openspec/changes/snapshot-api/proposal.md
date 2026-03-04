@@ -3,7 +3,7 @@ Currently, ESDiag does not collect information about Elasticsearch snapshot repo
 
 ## What Changes
 - Add support for collecting Snapshot Repository information via the `_snapshot` API.
-- Add support for collecting Snapshot details via the `_snapshot/_all/_all` API.
+- Add support for collecting Snapshot details via the `/_snapshot/*/*?verbose=false` API endpoint.
 - Integrate these new data sources into the `ElasticsearchDiagnostic` processor to ensure they are included in diagnostic reports.
 
 ## Capabilities

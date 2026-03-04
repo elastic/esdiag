@@ -137,10 +137,18 @@ impl StreamingDataSource for Snapshots {
                 A: serde::de::SeqAccess<'de>,
             {
                 let mut sender_closed = false;
-                while let Some(snapshot_value) = seq.next_element::<Value>()? {
+                loop {
                     if sender_closed {
-                        continue;
+                        if seq.next_element::<serde::de::IgnoredAny>()?.is_some() {
+                            continue;
+                        }
+                        break;
                     }
+
+                    let Some(snapshot_value) = seq.next_element::<Value>()? else {
+                        break;
+                    };
+
                     // Parse each entry independently so one malformed snapshot can surface as
                     // an item-level error without aborting the entire stream.
                     match serde_json::from_value::<Snapshot>(snapshot_value) {

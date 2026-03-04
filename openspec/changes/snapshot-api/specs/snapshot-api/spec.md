@@ -12,13 +12,13 @@ The system SHALL collect details for snapshots across repositories from Elastics
 
 #### Scenario: Successful Snapshot Collection
 - **WHEN** the Elasticsearch diagnostic collector executes
-- **THEN** it MUST perform a GET request to the `_snapshot/_all/_all` endpoint and process snapshot entries for diagnostic output.
+- **THEN** it MUST perform a GET request to the `/_snapshot/*/*?verbose=false` endpoint and process snapshot entries for diagnostic output.
 
 ### Requirement: Streaming Snapshot Deserialization
 Snapshot detail collection SHALL use streaming deserialization semantics equivalent to the `indices_stats` processor pattern.
 
 #### Scenario: Snapshot Items Are Emitted Incrementally
-- **GIVEN** a large `_snapshot/_all/_all` payload
+- **GIVEN** a large `/_snapshot/*/*?verbose=false` payload
 - **WHEN** the payload is deserialized
 - **THEN** snapshot entries MUST be emitted incrementally via a streaming datasource interface, rather than requiring full payload materialization before processing.
 

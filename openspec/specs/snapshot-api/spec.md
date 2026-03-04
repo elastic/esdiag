@@ -17,7 +17,7 @@ The system SHALL collect comprehensive details for all snapshots across all repo
 
 #### Scenario: Successful Snapshot Collection
 - **WHEN** the Elasticsearch diagnostic collector executes
-- **THEN** it MUST perform a GET request to the `_snapshot/_all/_all` endpoint and capture the response.
+- **THEN** it MUST perform a GET request to the `/_snapshot/*/*?verbose=false` endpoint and capture the response.
 
 ### Requirement: Snapshot Processor Integration
 The system SHALL integrate the snapshot and repository data into the `ElasticsearchDiagnostic` processing pipeline.

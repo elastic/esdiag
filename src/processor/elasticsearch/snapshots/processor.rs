@@ -87,7 +87,7 @@ impl StreamingDocumentExporter<Lookups, ElasticsearchMetadata> for Snapshots {
                     }
                 }
                 Err(err) => {
-                    log::warn!("Error reading from snapshot stream: {}", err);
+                    log::error!("Error reading from snapshot stream: {}", err);
                 }
             }
         }
