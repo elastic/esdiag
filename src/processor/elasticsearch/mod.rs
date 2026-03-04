@@ -36,6 +36,8 @@ mod pending_tasks;
 mod searchable_snapshots_cache_stats;
 /// The `_searchable_snapshots/stats` API
 mod searchable_snapshots_stats;
+/// The `_snapshot` API
+mod snapshots;
 /// The `_slm/policy` API
 mod slm_policies;
 /// The `_tasks` API
@@ -82,6 +84,7 @@ use {
     searchable_snapshots_cache_stats::{SearchableSnapshotsCacheStats, SharedCacheStats},
     searchable_snapshots_stats::SearchableSnapshotsStats,
     slm_policies::SlmPolicies,
+    snapshots::{Repositories, Snapshots},
     tasks::Tasks,
 };
 
@@ -316,6 +319,10 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
             diag.process_datasource::<PendingTasks>(summary_tx.clone())
                 .await?;
             diag.process_datasource::<SlmPolicies>(summary_tx.clone())
+                .await?;
+            diag.process_datasource::<Repositories>(summary_tx.clone())
+                .await?;
+            diag.process_streaming_datasource::<Snapshots>(summary_tx.clone())
                 .await?;
             diag.process_datasource::<Tasks>(summary_tx.clone()).await?;
             Ok::<(), eyre::Error>(())

@@ -9,8 +9,8 @@ use super::super::{
 use super::{
     AliasList, Cluster, ClusterSettings, DataSource, DataStreams, DiagnosticManifest, HealthReport,
     IlmExplain, IlmPolicies, IndicesSettings, IndicesStats, Licenses, MappingStats, Nodes,
-    NodesStats, PendingTasks, SearchableSnapshotsCacheStats, SearchableSnapshotsStats, SlmPolicies,
-    Tasks,
+    NodesStats, PendingTasks, Repositories, SearchableSnapshotsCacheStats,
+    SearchableSnapshotsStats, SlmPolicies, Snapshots, Tasks,
 };
 use crate::{data::Product, exporter::ArchiveExporter, receiver::Receiver};
 use eyre::{Result, WrapErr};
@@ -160,12 +160,14 @@ impl ElasticsearchCollector {
             ElasticsearchApi::Nodes => self.save::<Nodes>().await,
             ElasticsearchApi::NodesStats => self.save::<NodesStats>().await,
             ElasticsearchApi::PendingTasks => self.save::<PendingTasks>().await,
+            ElasticsearchApi::Repositories => self.save::<Repositories>().await,
             ElasticsearchApi::SearchableSnapshotsCacheStats => {
                 self.save::<SearchableSnapshotsCacheStats>().await
             }
             ElasticsearchApi::SearchableSnapshotsStats => {
                 self.save::<SearchableSnapshotsStats>().await
             }
+            ElasticsearchApi::Snapshots => self.save::<Snapshots>().await,
             ElasticsearchApi::SlmPolicies => self.save::<SlmPolicies>().await,
             ElasticsearchApi::Tasks => self.save::<Tasks>().await,
             ElasticsearchApi::Raw(name, _) => self.save_raw(name).await,

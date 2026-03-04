@@ -1,0 +1,74 @@
+{
+  "_meta": {
+    "description": "ESDiag Elasticsearch snapshots"
+  },
+  "index_patterns": ["logs-snapshot-esdiag*"],
+  "composed_of": ["esdiag@mappings", "esdiag@metadata", "esdiag@settings"],
+  "allow_auto_create": true,
+  "data_stream": {
+    "hidden": false,
+    "allow_custom_routing": false
+  },
+  "priority": 300,
+  "template": {
+    "mappings": {
+      "properties": {
+        "data_stream": {
+          "type": "object",
+          "properties": {
+            "dataset": {
+              "type": "constant_keyword",
+              "value": "snapshot"
+            },
+            "type": {
+              "type": "constant_keyword",
+              "value": "logs"
+            }
+          }
+        },
+        "snapshot": {
+          "properties": {
+            "name": {
+              "type": "keyword"
+            },
+            "repository": {
+              "type": "keyword"
+            },
+            "state": {
+              "type": "keyword"
+            },
+            "date": {
+              "type": "date",
+              "format": "strict_date_optional_time||yyyy-MM-dd"
+            },
+            "start_time": {
+              "type": "date"
+            },
+            "start_time_in_millis": {
+              "type": "long",
+              "index": false
+            },
+            "end_time": {
+              "type": "date"
+            },
+            "end_time_in_millis": {
+              "type": "long",
+              "index": false
+            },
+            "duration_in_millis": {
+              "type": "long",
+              "index": false
+            },
+            "indices": {
+              "type": "keyword"
+            },
+            "data_streams": {
+              "type": "keyword"
+            }
+          }
+        }
+      }
+    }
+  },
+  "version": 1
+}
