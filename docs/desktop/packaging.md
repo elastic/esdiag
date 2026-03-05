@@ -10,6 +10,7 @@ This project supports desktop packaging for:
 
 - Windows installer format is `.msi` only.
 - Flatpak base app version is pinned to `0.15.0`.
+- Flatpak runtime/sdk target is `org.gnome.*//49` (moved from GNOME 47 because GNOME 47 reached end-of-life on October 15, 2025).
 - Flatpak work in this change is local artifact generation and validation only.
 - Publishing/release distribution (GitHub Releases, FlatHub, other remotes) is intentionally out of scope.
 
@@ -22,6 +23,17 @@ This project supports desktop packaging for:
   - Flatpak base app version (`0.15.0`)
   - Flatpak local-only mode
 - `packaging/flatpak/com.elastic.esdiag.json` defines the Flatpak manifest.
+
+## Linux Flatpak Notes
+
+- Build runs inside Flatpak SDK and needs Rust plus cargo subcommands used by `build.rs`:
+  - `cargo-about`
+  - `cargo-sbom`
+- Local workflow requires runtime availability from Flathub:
+  - `org.gnome.Platform//49`
+  - `org.gnome.Sdk//49`
+  - `org.freedesktop.Sdk.Extension.rust-stable//25.08`
+- Manifest grants both `x11` and `wayland` sockets and sets `WEBKIT_DISABLE_DMABUF_RENDERER=1` to avoid known compositor/protocol issues observed during local testing.
 
 ## Local Build Commands
 
