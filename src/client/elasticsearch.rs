@@ -93,28 +93,13 @@ impl TryFrom<KnownHost> for ElasticsearchClient {
     type Error = eyre::Report;
 
     fn try_from(host: KnownHost) -> Result<ElasticsearchClient> {
-        let client = match host {
-            KnownHost::ApiKey {
-                apikey,
-                url,
-                accept_invalid_certs,
-                ..
-            } => ElasticsearchBuilder::new(url)
-                .apikey(apikey)
-                .insecure(accept_invalid_certs)
-                .build()?,
-            KnownHost::Basic {
-                accept_invalid_certs,
-                username,
-                password,
-                url,
-                ..
-            } => ElasticsearchBuilder::new(url)
-                .basic_auth(username, password)
-                .insecure(accept_invalid_certs)
-                .build()?,
-            KnownHost::NoAuth { url, .. } => ElasticsearchBuilder::new(url).build()?,
-        };
+        let url = host.get_url();
+        let ignore_certs = host.accept_invalid_certs();
+        let auth = host.get_auth()?;
+        let client = ElasticsearchBuilder::new(url)
+            .auth(auth)
+            .insecure(ignore_certs)
+            .build()?;
         Ok(client)
     }
 }

@@ -156,6 +156,7 @@ Usage: esdiag <COMMAND>
 Commands:
   collect  Collect a diagnostic bundle from a known host's API endpoints, writes output to a directory
   host     Configure and test a remote host connection
+  keystore Manage encrypted secrets in the local keystore
   process  Receives a diagnostic from the input, processes it, and sends processed docs to the output
   serve    Start a web server to receive diagnostic bundle uploads
   setup    Import assets (templates, ingest pipelines, etc.) to a known Elasticsearch host
@@ -167,7 +168,7 @@ Options:
 
 #### Host
 
-The `esdiag host` command allows you configure and test authentication information. On a succesful connection test, it writes the configuration to your `~/esdiag/hosts.yml` file for easy re-use.
+The `esdiag host` command allows you configure and test authentication information. On a succesful connection test, it writes the configuration to your `~/.esdiag/hosts.yml` file for easy re-use.
 
 Alternatively you can use a `.env` file and set `ESDIAG_OUTPUT_*` values; see `example.env`.
 
@@ -184,12 +185,56 @@ Arguments:
 Options:
       --accept-invalid-certs  Accept invalid certificates
   -a, --apikey <APIKEY>       ApiKey, passed as http header
-  -c, --cloud-id <CLOUD_ID>   Elastic Cloud ID (optional)
-  -u, --username <USERNAME>   Username for authentication
+  -u, --user <USERNAME>       Username for authentication (alias: --username)
   -p, --password <PASSWORD>   Password for authentication
+      --secret <SECRET>       Secret identifier in the encrypted keystore
+      --roles <ROLES>         Comma-separated host roles (collect,send,view)
   -n, --nosave                Don't save the host configuration on succesful connection
   -h, --help                  Print help
 ```
+
+Examples:
+
+```sh
+# Host backed by a keystore secret reference
+esdiag host prod-es elasticsearch http://localhost:9200 --secret prod-es-apikey
+
+# Host with explicit roles for workflow filtering
+esdiag host prod-es elasticsearch http://localhost:9200 --roles collect,send
+```
+
+#### Keystore
+
+The `esdiag keystore` command manages encrypted local secrets used by `--secret` references in `hosts.yml`.
+
+```
+Manage encrypted secrets in the local keystore
+
+Usage: esdiag keystore <COMMAND>
+
+Commands:
+  add <SECRET_ID>       Add or update a secret in the encrypted keystore
+  remove <SECRET_ID>    Remove a secret from the encrypted keystore
+  migrate               Migrate legacy host credentials in hosts.yml into the keystore
+```
+
+Examples:
+
+```sh
+# Add a basic auth secret
+esdiag keystore add prod-es-basic --user elastic --password changeme
+
+# Add an API key secret
+esdiag keystore add prod-es-apikey --apikey BASE64_ENCODED_KEY
+
+# Remove just the API key auth from a secret
+esdiag keystore remove prod-es-apikey --apikey BASE64_ENCODED_KEY
+
+# Move plaintext hosts.yml credentials into keystore entries
+esdiag keystore migrate
+```
+
+Use `ESDIAG_KEYSTORE_PASSWORD` to provide the keystore password non-interactively. In interactive shells, `keystore add/remove` will prompt when it is unset.
 
 #### Setup
 

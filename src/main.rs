@@ -11,14 +11,16 @@ use esdiag::server::{RuntimeMode, Server};
 use esdiag::setup;
 use esdiag::{
     client::Client,
-    data::{KnownHost, KnownHostBuilder, Product, Uri},
+    data::{
+        HostRole, KnownHost, KnownHostBuilder, Product, SecretAuth, Uri, add_secret,
+        get_password_for_secret_commands, remove_secret,
+    },
     env::LOG_LEVEL,
     exporter::Exporter,
     processor::{Collector, Identifiers, Processor},
     receiver::Receiver,
 };
 use eyre::{Result, eyre};
-use std::path::PathBuf;
 use std::sync::Arc;
 #[cfg(feature = "server")]
 use tokio::signal::unix::{SignalKind, signal};
@@ -57,9 +59,6 @@ enum Commands {
         /// The output directory to save the diagnostics to
         #[arg(help = "An existing directory to create a diagnostic directory and files in")]
         output: String,
-        /// Write collected API output directly to a zip archive
-        #[arg(long)]
-        zip: bool,
         /// Diagnostic type
         #[arg(
             long,
@@ -116,9 +115,6 @@ enum Commands {
             long_help = "Kibana URL to display in the web interface. If not provided, will use the ESDIAG_KIBANA_URL environment variable."
         )]
         kibana: Option<String>,
-        /// Runtime mode for web interfaces (service or user)
-        #[arg(long, value_enum)]
-        mode: Option<RuntimeMode>,
     },
     /// Configure, test and save a remote host connection to `~/.esdiag/hosts.yml`
     Host {
@@ -138,11 +134,26 @@ enum Commands {
         #[arg(help = "ApiKey, passed as http header ", long, short, conflicts_with_all = &["username", "password"])]
         apikey: Option<String>,
         /// Username for authentication
-        #[arg(help = "Username for authentication", long, short)]
+        #[arg(
+            help = "Username for authentication",
+            long = "user",
+            visible_alias = "username",
+            short
+        )]
         username: Option<String>,
         /// Password for authentication
         #[arg(help = "Password for authentication", long, short)]
         password: Option<String>,
+        /// Secret identifier in the encrypted keystore
+        #[arg(
+            help = "Secret identifier in the encrypted keystore",
+            long,
+            conflicts_with_all = &["apikey", "username", "password"]
+        )]
+        secret: Option<String>,
+        /// Comma-separated host roles (collect,send,view)
+        #[arg(help = "Comma-separated host roles", long, value_delimiter = ',')]
+        roles: Option<Vec<HostRole>>,
         /// Save the host configuration
         #[arg(
             help = "Don't save the host configuration on succesful connection",
@@ -150,6 +161,12 @@ enum Commands {
             short
         )]
         nosave: bool,
+    },
+    /// Manage encrypted secrets in the local keystore
+    #[command(alias = "secret")]
+    Keystore {
+        #[command(subcommand)]
+        command: KeystoreCommands,
     },
     /// Receives a diagnostic from the input, processes it, and sends processed docs to the output
     Process {
@@ -180,14 +197,6 @@ enum Commands {
         /// Diagnostic report user
         #[arg(help = "Diagnostic report user", long, short)]
         user: Option<String>,
-        /// Save all fetched API call output to a diagnostic zip file in the optional destination directory
-        #[arg(
-            long,
-            num_args = 0..=1,
-            default_missing_value = ".",
-            value_name = "OUTPUT_DIR"
-        )]
-        zip: Option<String>,
     },
     #[cfg(feature = "setup")]
     /// Import assets (templates, ingest pipelines, etc.) to a known Elasticsearch host
@@ -198,6 +207,60 @@ enum Commands {
         )]
         host: Option<String>,
     },
+}
+
+#[derive(Debug, Subcommand)]
+enum KeystoreCommands {
+    /// Add or update a secret in the encrypted keystore
+    Add {
+        /// Secret identifier
+        secret_id: String,
+        /// Username for authentication
+        #[arg(
+            help = "Username for authentication",
+            long = "user",
+            visible_alias = "username",
+            short
+        )]
+        username: Option<String>,
+        /// Password for authentication
+        #[arg(help = "Password for authentication", long, short)]
+        password: Option<String>,
+        /// ApiKey for authentication
+        #[arg(
+            help = "ApiKey, passed as http header ",
+            long,
+            short,
+            conflicts_with_all = &["username", "password"]
+        )]
+        apikey: Option<String>,
+    },
+    /// Remove a secret from the encrypted keystore
+    Remove {
+        /// Secret identifier
+        secret_id: String,
+        /// Username for authentication
+        #[arg(
+            help = "Username for authentication",
+            long = "user",
+            visible_alias = "username",
+            short
+        )]
+        username: Option<String>,
+        /// Password for authentication
+        #[arg(help = "Password for authentication", long, short)]
+        password: Option<String>,
+        /// ApiKey for authentication
+        #[arg(
+            help = "ApiKey, passed as http header ",
+            long,
+            short,
+            conflicts_with_all = &["username", "password"]
+        )]
+        apikey: Option<String>,
+    },
+    /// Migrate legacy host credentials in hosts.yml into the keystore
+    Migrate,
 }
 
 #[tokio::main(flavor = "multi_thread")]
@@ -261,9 +324,8 @@ async fn run(cli: Cli) -> Result<&'static str> {
                 port,
                 output,
                 kibana,
-                mode,
             } => {
-                let runtime_mode = resolve_runtime_mode(mode)?;
+                log::info!("Starting ESDiag server");
 
                 let output_uri = Uri::try_from(output)?;
                 let exporter = Exporter::try_from(output_uri)?;
@@ -277,8 +339,14 @@ async fn run(cli: Cli) -> Result<&'static str> {
                     }
                 });
 
-                let (mut server, _bound_addr) =
-                    Server::start([0, 0, 0, 0], port, exporter, kibana_url, runtime_mode).await?;
+                let (mut server, _bound_addr) = Server::start(
+                    [0, 0, 0, 0],
+                    port,
+                    exporter,
+                    kibana_url,
+                    RuntimeMode::User,
+                )
+                .await?;
 
                 tokio::select! {
                     _ = tokio::signal::ctrl_c() => {
@@ -298,7 +366,6 @@ async fn run(cli: Cli) -> Result<&'static str> {
             Commands::Collect {
                 host,
                 output,
-                zip,
                 r#type,
                 include,
                 exclude,
@@ -308,29 +375,28 @@ async fn run(cli: Cli) -> Result<&'static str> {
                 user,
             } => {
                 let known_host = Uri::try_from(host)?;
+                let output = Uri::try_from(output)?;
                 match known_host {
-                    Uri::KnownHost(_)
-                    | Uri::ElasticCloudAdmin(_)
-                    | Uri::ElasticGovCloudAdmin(_) => {
+                    Uri::KnownHost(host)
+                    | Uri::ElasticCloudAdmin(host)
+                    | Uri::ElasticGovCloudAdmin(host) => {
+                        ensure_host_role(&host, HostRole::Collect, "collect")?;
+                        let known_host = Uri::try_from(host)?;
                         log::info!("Collecting diagnostic from {known_host}");
+                        log::info!("Saving diagnostic to {output}");
                         let receiver = Receiver::try_from(known_host)?;
-                        let output_uri = Uri::try_from(output)?;
-                        let exporter = if zip {
-                            log::info!("Saving diagnostic as zip in {output_uri}");
-                            let output_dir = match output_uri {
-                                Uri::Directory(path) | Uri::File(path) => path,
-                                _ => {
-                                    return Err(eyre!("Collect output must be a local directory path"));
-                                }
-                            };
-                            Exporter::for_collect_archive(output_dir)?
-                        } else {
-                            let exporter = Exporter::for_collect(output_uri.clone())?;
-                            log::info!("Saving diagnostic to {output_uri}");
-                            exporter
+                        let output_dir = match output {
+                            Uri::Directory(path) | Uri::File(path) => path,
+                            _ => {
+                                return Err(eyre!("Collect output must be a local directory path"));
+                            }
                         };
+                        let exporter = Exporter::for_collect_archive(output_dir)?;
 
-                        let identifiers = Identifiers::new(account, case, None, opportunity, user);
+                        let filename =
+                            format!("esdiag-{}.zip", chrono::Utc::now().format("%Y%m%d-%H%M%S"));
+                        let identifiers =
+                            Identifiers::new(account, case, Some(filename), opportunity, user);
 
                         let collector = Collector::try_new(
                             receiver,
@@ -358,17 +424,23 @@ async fn run(cli: Cli) -> Result<&'static str> {
                 apikey,
                 username,
                 password,
+                secret,
+                roles,
                 nosave,
             } => {
                 log::info!("Configuring host {name}");
                 let host = if let (Some(app), Some(url)) = (app, url) {
-                    KnownHostBuilder::new(url)
+                    let mut builder = KnownHostBuilder::new(url)
                         .product(app)
                         .accept_invalid_certs(accept_invalid_certs)
                         .apikey(apikey)
                         .username(username)
                         .password(password)
-                        .build()?
+                        .secret(secret);
+                    if let Some(roles) = roles {
+                        builder = builder.roles(roles);
+                    }
+                    builder.build()?
                 } else {
                     KnownHost::get_known(&name).ok_or(eyre!(
                         "Host {name} not found, must include `url` and `app` to setup a new host."
@@ -399,6 +471,41 @@ async fn run(cli: Cli) -> Result<&'static str> {
                     Err(eyre!("Host connection failed"))
                 }
             }
+            Commands::Keystore { command } => {
+                let keystore_password = get_password_for_secret_commands()?;
+                match command {
+                    KeystoreCommands::Add {
+                        secret_id,
+                        username,
+                        password,
+                        apikey,
+                    } => {
+                        let path =
+                            add_secret(&secret_id, username, password, apikey, &keystore_password)?;
+                        log::info!("Secret '{secret_id}' saved to {path}");
+                        Ok("keystore")
+                    }
+                    KeystoreCommands::Remove {
+                        secret_id,
+                        username,
+                        password,
+                        apikey,
+                    } => {
+                        let expected = expected_secret_auth(username, password, apikey)?;
+                        let path = remove_secret(&secret_id, expected, &keystore_password)?;
+                        log::info!("Secret '{secret_id}' deleted from {path}");
+                        Ok("keystore")
+                    }
+                    KeystoreCommands::Migrate => {
+                        let (migrated, unchanged) =
+                            KnownHost::migrate_hosts_to_keystore(&keystore_password)?;
+                        log::info!(
+                            "Keystore migration complete: migrated {migrated} host(s), unchanged {unchanged} host(s)."
+                        );
+                        Ok("keystore")
+                    }
+                }
+            }
             Commands::Process {
                 input,
                 output,
@@ -406,43 +513,22 @@ async fn run(cli: Cli) -> Result<&'static str> {
                 case,
                 opportunity,
                 user,
-                zip,
             } => {
+                let has_explicit_output = output.is_some();
                 let input_uri = Uri::try_from(input)?;
                 let output_uri = Uri::try_from(output)?;
-                let input_receiver = Receiver::try_from(input_uri.clone())?;
-                let identifiers =
-                    Identifiers::new(account, case, input_receiver.filename(), opportunity, user);
+                ensure_uri_role(&input_uri, HostRole::Collect, "process input")?;
+                if has_explicit_output {
+                    ensure_uri_role(&output_uri, HostRole::Send, "process output")?;
+                }
 
-                let receiver = match zip {
-                    Some(zip_path) => {
-                        let zip_uri = Uri::try_from(zip_path)?;
-                        let zip_dir = match zip_uri {
-                            Uri::Directory(path) | Uri::File(path) => path,
-                            _ => return Err(eyre!("`--zip` must be a local directory path")),
-                        };
-                        let archive_exporter = Exporter::for_collect_archive(zip_dir)?;
-                        let collect_identifiers = identifiers.clone().with_filename(None);
-                        let collector = Collector::try_new(
-                            input_receiver,
-                            archive_exporter,
-                            "standard".to_string(),
-                            None,
-                            None,
-                            collect_identifiers,
-                        )
-                        .await?;
-                        let collected = collector.collect().await?;
-                        log::info!("Collected API output archive {}", collected.path);
-                        Arc::new(Receiver::try_from(Uri::File(PathBuf::from(
-                            collected.path,
-                        )))?)
-                    }
-                    None => Arc::new(input_receiver),
-                };
+                log::info!("input: {}", input_uri);
 
-                log::info!("input: {}", receiver);
+                let receiver = Arc::new(Receiver::try_from(input_uri)?);
                 let exporter = Arc::new(Exporter::try_from(output_uri)?);
+
+                let identifiers =
+                    Identifiers::new(account, case, receiver.filename(), opportunity, user);
                 let processor = Processor::try_new(receiver, exporter, identifiers).await?;
                 let processor = match processor.start().await {
                     Ok(processor) => processor,
@@ -505,22 +591,9 @@ async fn run(cli: Cli) -> Result<&'static str> {
                     let handle = app.handle().clone();
 
                     tauri::async_runtime::spawn(async move {
-                        let runtime_mode = match resolve_runtime_mode(None) {
-                            Ok(mode) => mode,
-                            Err(e) => {
-                                log::error!("Failed to resolve runtime mode: {}", e);
-                                return;
-                            }
-                        };
-                        let settings = if runtime_mode == RuntimeMode::User {
-                            esdiag::data::Settings::load().unwrap_or_default()
-                        } else {
-                            esdiag::data::Settings::default()
-                        };
+                        let settings = esdiag::data::Settings::load().unwrap_or_default();
 
-                        let exporter = if runtime_mode == RuntimeMode::Service {
-                            Exporter::default()
-                        } else if let Some(target) = &settings.active_target {
+                        let exporter = if let Some(target) = &settings.active_target {
                             if let Ok(host) = esdiag::data::KnownHost::get_known(target)
                                 .ok_or_else(|| eyre::eyre!("Host not found"))
                             {
@@ -550,16 +623,16 @@ async fn run(cli: Cli) -> Result<&'static str> {
                             0,
                             exporter,
                             kibana_url,
-                            runtime_mode,
+                            RuntimeMode::User,
                         )
                         .await
                         {
-                            Ok(res) => res,
-                            Err(e) => {
-                                log::error!("Failed to start embedded server: {}", e);
-                                return;
-                            }
-                        };
+                                Ok(res) => res,
+                                Err(e) => {
+                                    log::error!("Failed to start embedded server: {}", e);
+                                    return;
+                                }
+                            };
 
                         let url = format!("http://localhost:{}", bound_addr.port());
 
@@ -609,17 +682,41 @@ async fn run(cli: Cli) -> Result<&'static str> {
     }
 }
 
-#[cfg(feature = "server")]
-fn resolve_runtime_mode(cli_mode: Option<RuntimeMode>) -> Result<RuntimeMode> {
-    if let Some(mode) = cli_mode {
-        return Ok(mode);
+fn expected_secret_auth(
+    username: Option<String>,
+    password: Option<String>,
+    apikey: Option<String>,
+) -> Result<Option<SecretAuth>> {
+    match (apikey, username, password) {
+        (None, None, None) => Ok(None),
+        (Some(apikey), None, None) => Ok(Some(SecretAuth::ApiKey { apikey })),
+        (None, Some(username), Some(password)) => {
+            Ok(Some(SecretAuth::Basic { username, password }))
+        }
+        _ => Err(eyre!(
+            "Invalid auth options: use either --apikey or --user with --password"
+        )),
     }
+}
 
-    if let Ok(env_mode) = std::env::var("ESDIAG_MODE") {
-        return RuntimeMode::from_env(&env_mode);
+fn ensure_host_role(host: &KnownHost, role: HostRole, context: &str) -> Result<()> {
+    if host.has_role(role.clone()) {
+        Ok(())
+    } else {
+        Err(eyre!(
+            "Host role validation failed for {context}: required role '{}' not present",
+            role
+        ))
     }
+}
 
-    Ok(RuntimeMode::User)
+fn ensure_uri_role(uri: &Uri, role: HostRole, context: &str) -> Result<()> {
+    match uri {
+        Uri::KnownHost(host) | Uri::ElasticCloudAdmin(host) | Uri::ElasticGovCloudAdmin(host) => {
+            ensure_host_role(host, role, context)
+        }
+        _ => Ok(()),
+    }
 }
 
 fn should_error_for_missing_subcommand(arg_count: usize, has_no_command: bool) -> bool {
@@ -654,19 +751,9 @@ fn clear_last_run_files() -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::should_error_for_missing_subcommand;
-    #[cfg(feature = "server")]
-    use super::resolve_runtime_mode;
-    #[cfg(feature = "server")]
-    use esdiag::server::RuntimeMode;
-    #[cfg(feature = "server")]
-    use std::sync::{Mutex, OnceLock};
-
-    #[cfg(feature = "server")]
-    fn env_lock() -> &'static Mutex<()> {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(()))
-    }
+    use super::{Cli, Commands, should_error_for_missing_subcommand};
+    use clap::Parser;
+    use esdiag::data::HostRole;
 
     #[test]
     fn no_args_and_no_command_allows_desktop_path() {
@@ -684,31 +771,22 @@ mod tests {
         assert!(!should_error_for_missing_subcommand(2, false));
     }
 
-    #[cfg(feature = "server")]
     #[test]
-    fn runtime_mode_prefers_cli_over_env() {
-        let _guard = env_lock().lock().expect("env lock");
-        unsafe {
-            std::env::set_var("ESDIAG_MODE", "service");
-        }
-        let mode = resolve_runtime_mode(Some(RuntimeMode::User)).expect("mode should resolve");
-        assert_eq!(mode, RuntimeMode::User);
-        unsafe {
-            std::env::remove_var("ESDIAG_MODE");
-        }
-    }
-
-    #[cfg(feature = "server")]
-    #[test]
-    fn runtime_mode_uses_env_without_cli() {
-        let _guard = env_lock().lock().expect("env lock");
-        unsafe {
-            std::env::set_var("ESDIAG_MODE", "service");
-        }
-        let mode = resolve_runtime_mode(None).expect("mode should resolve from env");
-        assert_eq!(mode, RuntimeMode::Service);
-        unsafe {
-            std::env::remove_var("ESDIAG_MODE");
+    fn host_roles_cli_parses_comma_delimited_values() {
+        let cli = Cli::parse_from([
+            "esdiag",
+            "host",
+            "prod-es",
+            "elasticsearch",
+            "http://localhost:9200",
+            "--roles",
+            "collect,send",
+        ]);
+        match cli.command.expect("command") {
+            Commands::Host { roles, .. } => {
+                assert_eq!(roles, Some(vec![HostRole::Collect, HostRole::Send]));
+            }
+            _ => panic!("expected host command"),
         }
     }
 }
@@ -722,10 +800,15 @@ mod desktop_startup_tests {
     async fn embedded_server_starts_and_serves_local_url() {
         let exporter = Exporter::default();
         let kibana_url = String::new();
-        let (mut server, bound_addr) =
-            Server::start([127, 0, 0, 1], 0, exporter, kibana_url, RuntimeMode::User)
-                .await
-                .expect("desktop embedded server should start");
+        let (mut server, bound_addr) = Server::start(
+            [127, 0, 0, 1],
+            0,
+            exporter,
+            kibana_url,
+            RuntimeMode::User,
+        )
+        .await
+        .expect("desktop embedded server should start");
 
         let url = format!("http://localhost:{}", bound_addr.port());
         let parsed = tauri::Url::parse(&url).expect("desktop URL should be valid");
@@ -760,8 +843,8 @@ mod desktop_startup_tests {
             kibana_url,
             RuntimeMode::User,
         )
-            .await
-            .expect("desktop embedded server should start");
+        .await
+        .expect("desktop embedded server should start while another port is occupied");
 
         assert_ne!(
             bound_addr.port(),

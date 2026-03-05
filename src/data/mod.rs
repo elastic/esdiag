@@ -4,6 +4,8 @@
 
 /// Authentication methods
 mod auth;
+/// Encrypted secret storage
+mod keystore;
 /// Manage saving and loading hosts from a YAML file
 mod known_host;
 /// Elastic stack products
@@ -14,7 +16,11 @@ pub mod settings;
 mod uri;
 
 pub use auth::{Auth, AuthType};
-pub use known_host::{ElasticCloud, KnownHost, KnownHostBuilder};
+pub use keystore::{
+    BasicSecret, SecretAuth, SecretEntry, add_secret, get_password_for_secret_commands,
+    get_password_from_env, get_secret, remove_secret, resolve_secret_auth, upsert_secret_auth,
+};
+pub use known_host::{ElasticCloud, HostRole, KnownHost, KnownHostBuilder};
 pub use product::Product;
 pub use settings::Settings;
 pub use uri::Uri;
