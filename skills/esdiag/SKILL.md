@@ -1,6 +1,6 @@
 ---
 name: esdiag
-description: Operate Elastic Stack Diagnostics (`esdiag`) end-to-end for host configuration, asset setup, diagnostic collection, processing, and upload-service workflows. Use when a user asks to run or troubleshoot `esdiag` commands (`host`, `setup`, `collect`, `process`, `serve`), wire output targets via known hosts or `ESDIAG_OUTPUT_*` environment variables, process support-diagnostics archives/directories/upload links, or expose the local web/API service.
+description: Operate Elastic Stack Diagnostics (`esdiag`) end-to-end for host configuration, secret management, asset setup, diagnostic collection, processing, and upload-service workflows. Use when a user asks to run or troubleshoot `esdiag` commands (`host`, `keystore`, `setup`, `collect`, `process`, `serve`), wire output targets via known hosts or `ESDIAG_OUTPUT_*` environment variables, process support-diagnostics archives/directories/upload links, or expose the local web/API service.
 ---
 
 # ESDiag
@@ -13,6 +13,7 @@ Use `--sources <path/to/sources.yml>` when diagnostics API selection must follow
 ## Workflow Decision Tree
 
 - If the task is "save/test a connection", run `esdiag host`.
+- If the task is "add/remove/migrate encrypted credentials", run `esdiag keystore`.
 - If the task is "install templates/pipelines/assets", run `esdiag setup`.
 - If the task is "transform diagnostics into documents and send somewhere", run `esdiag process`.
 - If the task is "collect API diagnostics from a host into local files", run `esdiag collect`.
@@ -28,10 +29,23 @@ Use `--sources <path/to/sources.yml>` when diagnostics API selection must follow
 ## Step 1: Configure Hosts and Auth
 
 - Use `esdiag host [OPTIONS] <NAME> [APP] [URL]` to test and save host configuration to `~/.esdiag/hosts.yml`.
-- Use `--apikey` for API key auth or `--username`/`--password` for basic auth.
+- Use `--apikey` for API key auth or `--user`/`--password` for basic auth.
+- `--user` is the primary basic-auth flag (with `--username` available as an alias).
+- Use `--secret <secret_id>` to reference credentials stored in the encrypted keystore.
+- Use `--roles collect,send,view` to assign host workflow roles.
 - Use `--accept-invalid-certs` for lab/self-signed environments.
 - Use `--nosave` for connectivity tests that should not persist.
 - Use environment variables (optionally by sourcing a `.env` file in the shell) when the user does not want a saved host.
+
+## Step 1b: Manage Encrypted Secrets (Optional)
+
+- Use `esdiag keystore add <secret_id>` to add/update encrypted credentials.
+  - Basic auth: `--user <name> --password <value>`
+  - API key auth: `--apikey <value>`
+- Use `esdiag keystore remove <secret_id>` to remove encrypted credentials (optionally scoped by auth type flags).
+- Use `esdiag keystore migrate` to move legacy plaintext host credentials from `hosts.yml` into keystore entries keyed by host name.
+- Set `ESDIAG_KEYSTORE_PASSWORD` for non-interactive keystore operations.
+- In interactive shells, `keystore add/remove` can prompt for keystore password when `ESDIAG_KEYSTORE_PASSWORD` is unset.
 
 ## Step 2: Setup Output Cluster
 

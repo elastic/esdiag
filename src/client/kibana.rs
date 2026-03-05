@@ -118,7 +118,7 @@ impl TryFrom<KnownHost> for KibanaClient {
 
     fn try_from(host: KnownHost) -> Result<Self> {
         let url = host.get_url();
-        let auth = host.get_auth();
+        let auth = host.get_auth()?;
         KibanaClient::try_new(url, auth)
     }
 }

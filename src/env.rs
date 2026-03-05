@@ -7,6 +7,7 @@ pub const ESDIAG_ES_WORKERS: usize = 4;
 pub static ESDIAG_HOME: &str = ".esdiag";
 pub static LOG_LEVEL: &str = "info";
 pub static ESDIAG_KIBANA_URL: &str = "http://localhost:5601";
+pub static ESDIAG_KEYSTORE_PASSWORD: &str = "ESDIAG_KEYSTORE_PASSWORD";
 
 fn default_int(name: &str) -> Option<usize> {
     match name {
