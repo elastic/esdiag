@@ -5,7 +5,7 @@ Copyright 2012-2025 Elasticsearch B.V.
 This document lists the licenses of the projects used in esdiag.
 
 ## Overview of licenses
-- [Apache License 2.0](#Apache-2.0) (216)
+- [Apache License 2.0](#Apache-2.0) (215)
 - [MIT License](#MIT) (64)
 - [Unicode License v3](#Unicode-3.0) (19)
 - [BSD 3-Clause "New" or "Revised" License](#BSD-3-Clause) (2)
@@ -485,7 +485,7 @@ Apache License 2.0
 Apache License 2.0
 
 #### Used by
-- [zerocopy]( https://github.com/google/zerocopy ) 0.8.40
+- [zerocopy]( https://github.com/google/zerocopy ) 0.8.39
 
 #### License
 ```
@@ -697,7 +697,7 @@ Apache License 2.0
 Apache License 2.0
 
 #### Used by
-- [ipnet]( https://github.com/krisprice/ipnet ) 2.12.0
+- [ipnet]( https://github.com/krisprice/ipnet ) 2.11.0
 
 #### License
 ```
@@ -3717,7 +3717,7 @@ Apache License 2.0
 - [idna_adapter]( https://github.com/hsivonen/idna_adapter ) 1.2.1
 - [indexmap]( https://github.com/indexmap-rs/indexmap ) 2.13.0
 - [jobserver]( https://github.com/rust-lang/jobserver-rs ) 0.1.34
-- [js-sys]( https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/js-sys ) 0.3.91
+- [js-sys]( https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/js-sys ) 0.3.89
 - [lazy_static]( https://github.com/rust-lang-nursery/lazy-static.rs ) 1.5.0
 - [linux-raw-sys]( https://github.com/sunfishcode/linux-raw-sys ) 0.12.1
 - [lock_api]( https://github.com/Amanieu/parking_lot ) 0.4.14
@@ -3741,8 +3741,8 @@ Apache License 2.0
 - [scopeguard]( https://github.com/bluss/scopeguard ) 1.2.0
 - [security-framework-sys]( https://github.com/kornelski/rust-security-framework ) 2.17.0
 - [security-framework]( https://github.com/kornelski/rust-security-framework ) 3.7.0
-- [serde_with]( https://github.com/jonasbb/serde_with/ ) 3.17.0
-- [serde_with_macros]( https://github.com/jonasbb/serde_with/ ) 3.17.0
+- [serde_with]( https://github.com/jonasbb/serde_with/ ) 3.16.1
+- [serde_with_macros]( https://github.com/jonasbb/serde_with/ ) 3.16.1
 - [signal-hook-registry]( https://github.com/vorner/signal-hook ) 1.4.8
 - [smallvec]( https://github.com/servo/rust-smallvec ) 1.15.1
 - [socket2]( https://github.com/rust-lang/socket2 ) 0.6.2
@@ -3758,12 +3758,12 @@ Apache License 2.0
 - [uuid]( https://github.com/uuid-rs/uuid ) 1.21.0
 - [version_check]( https://github.com/SergioBenitez/version_check ) 0.9.5
 - [wasi]( https://github.com/bytecodealliance/wasi ) 0.11.1+wasi-snapshot-preview1
-- [wasm-bindgen-futures]( https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/futures ) 0.4.64
-- [wasm-bindgen-macro-support]( https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/macro-support ) 0.2.114
-- [wasm-bindgen-macro]( https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/macro ) 0.2.114
-- [wasm-bindgen-shared]( https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/shared ) 0.2.114
-- [wasm-bindgen]( https://github.com/wasm-bindgen/wasm-bindgen ) 0.2.114
-- [web-sys]( https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/web-sys ) 0.3.91
+- [wasm-bindgen-futures]( https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/futures ) 0.4.62
+- [wasm-bindgen-macro-support]( https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/macro-support ) 0.2.112
+- [wasm-bindgen-macro]( https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/macro ) 0.2.112
+- [wasm-bindgen-shared]( https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/shared ) 0.2.112
+- [wasm-bindgen]( https://github.com/wasm-bindgen/wasm-bindgen ) 0.2.112
+- [web-sys]( https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/web-sys ) 0.3.89
 - [wit-bindgen]( https://github.com/bytecodealliance/wit-bindgen ) 0.51.0
 
 #### License
@@ -4390,7 +4390,7 @@ Apache License 2.0
 #### Used by
 - [getrandom]( https://github.com/rust-random/getrandom ) 0.2.17
 - [getrandom]( https://github.com/rust-random/getrandom ) 0.3.4
-- [getrandom]( https://github.com/rust-random/getrandom ) 0.4.2
+- [getrandom]( https://github.com/rust-random/getrandom ) 0.4.1
 - [rand_chacha]( https://github.com/rust-random/rand ) 0.3.1
 
 #### License
@@ -5450,7 +5450,7 @@ Apache License 2.0
 - [elasticsearch]( https://github.com/elastic/elasticsearch-rs ) 9.1.0-alpha.1
 - [allocator-api2]( https://github.com/zakarumych/allocator-api2 ) 0.2.21
 - [android_system_properties]( https://github.com/nical/android_system_properties ) 0.1.5
-- [async-compression]( https://github.com/Nullus157/async-compression ) 0.4.41
+- [async-compression]( https://github.com/Nullus157/async-compression ) 0.4.40
 - [compression-codecs]( https://github.com/Nullus157/async-compression ) 0.4.37
 - [compression-core]( https://github.com/Nullus157/async-compression ) 0.4.31
 - [dary_heap]( https://github.com/hanmertens/dary_heap ) 0.3.8
@@ -5462,13 +5462,12 @@ Apache License 2.0
 - [itoa]( https://github.com/dtolnay/itoa ) 1.0.17
 - [libc]( https://github.com/rust-lang/libc ) 0.2.182
 - [miniz_oxide]( https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide ) 0.8.9
-- [pin-project-lite]( https://github.com/taiki-e/pin-project-lite ) 0.2.17
+- [pin-project-lite]( https://github.com/taiki-e/pin-project-lite ) 0.2.16
 - [portable-atomic-util]( https://github.com/taiki-e/portable-atomic ) 0.2.5
 - [portable-atomic]( https://github.com/taiki-e/portable-atomic ) 1.13.1
 - [proc-macro2]( https://github.com/dtolnay/proc-macro2 ) 1.0.106
-- [quote]( https://github.com/dtolnay/quote ) 1.0.45
+- [quote]( https://github.com/dtolnay/quote ) 1.0.44
 - [r-efi]( https://github.com/r-efi/r-efi ) 5.3.0
-- [r-efi]( https://github.com/r-efi/r-efi ) 6.0.0
 - [rand]( https://github.com/rust-random/rand ) 0.8.5
 - [rand]( https://github.com/rust-random/rand ) 0.9.2
 - [rand_chacha]( https://github.com/rust-random/rand ) 0.9.0
@@ -6573,7 +6572,6 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 MIT License
 
 #### Used by
-- [libmimalloc-sys]( https://github.com/purpleprotocol/mimalloc_rust/tree/master/libmimalloc-sys ) 0.1.44
 - [mimalloc]( https://github.com/purpleprotocol/mimalloc_rust ) 0.1.48
 
 #### License
@@ -6704,7 +6702,38 @@ SOFTWARE.
 MIT License
 
 #### Used by
-- [tokio-macros]( https://github.com/tokio-rs/tokio ) 2.6.1
+- [libmimalloc-sys]( https://github.com/purpleprotocol/mimalloc_rust/tree/master/libmimalloc-sys ) 0.1.44
+
+#### License
+```
+MIT License
+
+Copyright (c) 2018-2025 Microsoft Corporation, Daan Leijen
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+```
+### MIT
+MIT License
+
+#### Used by
+- [tokio-macros]( https://github.com/tokio-rs/tokio ) 2.6.0
 
 #### License
 ```
@@ -6896,7 +6925,7 @@ MIT License
 - [tokio-stream]( https://github.com/tokio-rs/tokio ) 0.1.18
 - [tokio-test]( https://github.com/tokio-rs/tokio ) 0.4.5
 - [tokio-util]( https://github.com/tokio-rs/tokio ) 0.7.18
-- [tokio]( https://github.com/tokio-rs/tokio ) 1.50.0
+- [tokio]( https://github.com/tokio-rs/tokio ) 1.49.0
 
 #### License
 ```
@@ -7114,7 +7143,7 @@ SOFTWARE.
 MIT License
 
 #### Used by
-- [zip]( https://github.com/zip-rs/zip2.git ) 8.2.0
+- [zip]( https://github.com/zip-rs/zip2.git ) 8.1.0
 
 #### License
 ```
@@ -7148,7 +7177,7 @@ MIT License
 
 #### Used by
 - [aho-corasick]( https://github.com/BurntSushi/aho-corasick ) 1.1.4
-- [jiff]( https://github.com/BurntSushi/jiff ) 0.2.23
+- [jiff]( https://github.com/BurntSushi/jiff ) 0.2.21
 - [memchr]( https://github.com/BurntSushi/memchr ) 2.8.0
 - [walkdir]( https://github.com/BurntSushi/walkdir ) 2.5.0
 
