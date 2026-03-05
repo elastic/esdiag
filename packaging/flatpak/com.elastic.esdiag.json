@@ -1,0 +1,32 @@
+{
+  "app-id": "com.elastic.esdiag",
+  "runtime": "org.freedesktop.Platform",
+  "runtime-version": "24.08",
+  "sdk": "org.freedesktop.Sdk",
+  "command": "esdiag",
+  "branch": "stable",
+  "x-esdiag-base-app-version": "0.15.0",
+  "finish-args": [
+    "--share=network",
+    "--socket=fallback-x11",
+    "--socket=wayland",
+    "--device=dri",
+    "--filesystem=home"
+  ],
+  "modules": [
+    {
+      "name": "esdiag",
+      "buildsystem": "simple",
+      "build-commands": [
+        "cargo build --release --features desktop --locked",
+        "install -Dm755 target/release/esdiag /app/bin/esdiag"
+      ],
+      "sources": [
+        {
+          "type": "dir",
+          "path": "."
+        }
+      ]
+    }
+  ]
+}

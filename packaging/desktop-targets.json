@@ -1,0 +1,11 @@
+{
+  "windows": {
+    "minimumVersion": "10",
+    "bundleFormat": "msi"
+  },
+  "flatpak": {
+    "baseAppVersion": "0.15.0",
+    "artifactName": "com.elastic.esdiag-0.15.0.flatpak",
+    "localOnly": true
+  }
+}

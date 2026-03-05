@@ -3,6 +3,8 @@ Elastic Stack Diagnostics
 
 Elastic Stack Diagnostics (`esdiag`) simplifies processing and importing diagnostic bundles into Elasticsearch. It pre-processes, splits and enriches the raw API outputs into Elasticsearch-friendly JSON documents. This makes using diagnostic data for Kibana dashboards, ES|QL queries, and more, easy.
 
+Desktop packaging guidance (macOS, Windows `.msi`, Linux Flatpak local builds) is documented in `docs/desktop/packaging.md`.
+
 Running locally within containers
 ----------------------------------
 
