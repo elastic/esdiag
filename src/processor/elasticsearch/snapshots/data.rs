@@ -6,7 +6,7 @@ use super::super::super::diagnostic::data_source::StreamingDataSource;
 use super::super::DataSource;
 use eyre::{Result, eyre};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Value, value::RawValue};
 use std::collections::HashMap;
 use tokio::sync::mpsc::Sender;
 
@@ -32,8 +32,8 @@ pub struct Snapshot {
     pub snapshot: String,
     pub repository: Option<String>,
     pub state: Option<String>,
-    pub indices: Option<Vec<String>>,
-    pub data_streams: Option<Vec<String>>,
+    pub indices: Option<Box<RawValue>>,
+    pub data_streams: Option<Box<RawValue>>,
     pub start_time: Option<String>,
     pub start_time_in_millis: Option<u64>,
     pub end_time: Option<String>,

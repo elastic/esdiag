@@ -9,7 +9,7 @@ use crate::exporter::Exporter;
 use eyre::Report;
 use futures::stream::{BoxStream, StreamExt};
 use serde::Serialize;
-use serde_json::Value;
+use serde_json::{Value, value::RawValue};
 use serde_with::skip_serializing_none;
 use tokio::sync::mpsc;
 
@@ -135,8 +135,8 @@ struct SnapshotDocument {
     name: String,
     repository: Option<String>,
     state: Option<String>,
-    indices: Option<Vec<String>>,
-    data_streams: Option<Vec<String>>,
+    indices: Option<Box<RawValue>>,
+    data_streams: Option<Box<RawValue>>,
     date: Option<String>,
     start_time: Option<String>,
     start_time_in_millis: Option<u64>,
@@ -166,6 +166,7 @@ impl From<Snapshot> for SnapshotDocument {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::value::RawValue;
     use serde_json::json;
 
     #[test]
@@ -174,8 +175,13 @@ mod tests {
             snapshot: "daily-2026.03.01".to_string(),
             repository: Some("repo-a".to_string()),
             state: Some("SUCCESS".to_string()),
-            indices: Some(vec!["logs-1".to_string()]),
-            data_streams: Some(vec!["logs-app".to_string()]),
+            indices: Some(
+                RawValue::from_string("[\"logs-1\"]".to_string()).expect("raw indices array"),
+            ),
+            data_streams: Some(
+                RawValue::from_string("[\"logs-app\"]".to_string())
+                    .expect("raw data_streams array"),
+            ),
             start_time: Some("2026-03-01T01:00:00.000Z".to_string()),
             start_time_in_millis: Some(1709254800000),
             end_time: Some("2026-03-01T01:10:00.000Z".to_string()),
