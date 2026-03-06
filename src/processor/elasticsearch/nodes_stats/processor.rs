@@ -60,6 +60,7 @@ async fn process_node(
                 .as_object_mut()
                 .and_then(|obj| obj.remove("actions"))
                 .unwrap_or(Value::Null);
+            let mut extracted_actions = true;
             if !actions.is_null() {
                 if let Err(e) = transport_actions::extract(
                     ctx.actions_tx,
@@ -69,6 +70,7 @@ async fn process_node(
                 )
                 .await
                 {
+                    extracted_actions = false;
                     log::error!(
                         "Error extracting transport stats for node {}: {}",
                         node_id,
@@ -76,14 +78,18 @@ async fn process_node(
                     );
                 }
             }
-            match serde_json::value::RawValue::from_string(transport_val.to_string()) {
-                Ok(raw) => node_stats.transport = Some(raw),
-                Err(e) => {
-                    log::error!("Failed to re-serialize transport stats: {}", e);
-                    // Trade-off: mutating RawValue requires serialization cycle. If it fails, fallback to un-mutated.
-                    // This means transport.actions remain in the doc, leading to potentially larger payload.
-                    node_stats.transport = Some(transport_raw);
+            if extracted_actions {
+                match serde_json::value::RawValue::from_string(transport_val.to_string()) {
+                    Ok(raw) => node_stats.transport = Some(raw),
+                    Err(e) => {
+                        log::error!("Failed to re-serialize transport stats: {}", e);
+                        // Trade-off: mutating RawValue requires serialization cycle. If it fails, fallback to un-mutated.
+                        // This means transport.actions remain in the doc, leading to potentially larger payload.
+                        node_stats.transport = Some(transport_raw);
+                    }
                 }
+            } else {
+                node_stats.transport = Some(transport_raw);
             }
         } else {
             node_stats.transport = Some(transport_raw);
@@ -99,6 +105,7 @@ async fn process_node(
         if let Some(obj) = http_val.as_object_mut() {
             obj.remove("routes");
         }
+        let mut extracted_clients = true;
         if !clients.is_null() {
             if let Err(e) =
                 http_clients::extract(
@@ -109,13 +116,16 @@ async fn process_node(
                 )
                     .await
             {
+                extracted_clients = false;
                 log::error!("Error extracting HTTP clients stats: {}", e);
             }
         }
-        match serde_json::value::RawValue::from_string(http_val.to_string()) {
-            Ok(raw) => node_stats.http = raw,
-            Err(e) => {
-                log::error!("Failed to re-serialize HTTP clients stats: {}", e);
+        if extracted_clients {
+            match serde_json::value::RawValue::from_string(http_val.to_string()) {
+                Ok(raw) => node_stats.http = raw,
+                Err(e) => {
+                    log::error!("Failed to re-serialize HTTP clients stats: {}", e);
+                }
             }
         }
     }
