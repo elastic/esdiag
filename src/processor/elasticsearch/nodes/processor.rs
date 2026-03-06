@@ -8,7 +8,7 @@ use super::{Node, Nodes};
 use crate::exporter::Exporter;
 use rayon::prelude::*;
 use serde::Serialize;
-use serde_json::{Map, Value};
+use serde_json::Value;
 
 impl DocumentExporter<Lookups, ElasticsearchMetadata> for Nodes {
     async fn documents_export(
@@ -30,12 +30,17 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for Nodes {
 
         let node_docs: Vec<Value> = nodes
             .par_drain()
-            .map(|(node_id, node)| {
-                let mut node_doc = serde_json::to_value(node_doc.clone().with_node(node))
-                    .unwrap_or(Value::Null);
+            .filter_map(|(node_id, node)| {
+                let mut node_doc = match serde_json::to_value(node_doc.clone().with_node(node)) {
+                    Ok(doc) => doc,
+                    Err(err) => {
+                        log::error!("Failed to serialize node document for {}: {}", node_id, err);
+                        return None;
+                    }
+                };
                 if let Some(node_val) = node_doc.get_mut("node") {
-                    set_nested_null(node_val, &["settings", "http", "type.default"]);
-                    set_nested_null(node_val, &["settings", "transport", "type.default"]);
+                    remove_nested_key(node_val, &["settings", "http", "type.default"]);
+                    remove_nested_key(node_val, &["settings", "transport", "type.default"]);
 
                     if let Some(summary) = lookup_node.by_id(&node_id)
                         && let Ok(summary_val) = serde_json::to_value(summary)
@@ -43,7 +48,7 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for Nodes {
                         merge_values(node_val, &summary_val);
                     }
                 }
-                node_doc
+                Some(node_doc)
             })
             .collect();
 
@@ -90,23 +95,25 @@ fn merge_values(target: &mut Value, patch: &Value) {
     }
 }
 
-fn set_nested_null(root: &mut Value, path: &[&str]) {
+fn remove_nested_key(root: &mut Value, path: &[&str]) {
     if path.is_empty() {
         return;
     }
 
-    if !root.is_object() {
-        *root = Value::Object(Map::new());
-    }
+    let Value::Object(object) = root else {
+        return;
+    };
 
-    let object = root.as_object_mut().expect("initialized object");
     if path.len() == 1 {
-        object.insert(path[0].to_string(), Value::Null);
+        object.remove(path[0]);
         return;
     }
 
-    let child = object
-        .entry(path[0].to_string())
-        .or_insert_with(|| Value::Object(Map::new()));
-    set_nested_null(child, &path[1..]);
+    if let Some(child) = object.get_mut(path[0]) {
+        remove_nested_key(child, &path[1..]);
+        let prune_child = child.as_object().is_some_and(|map| map.is_empty());
+        if prune_child {
+            object.remove(path[0]);
+        }
+    }
 }

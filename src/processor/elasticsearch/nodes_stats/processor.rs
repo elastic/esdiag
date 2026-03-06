@@ -57,7 +57,10 @@ async fn process_node(
     // Extract transport actions
     if let Some(transport_raw) = node_stats.transport.take() {
         if let Ok(mut transport_val) = serde_json::from_str::<Value>(transport_raw.get()) {
-            let actions = transport_val["actions"].take();
+            let actions = transport_val
+                .as_object_mut()
+                .and_then(|obj| obj.remove("actions"))
+                .unwrap_or(Value::Null);
             if !actions.is_null() {
                 if let Err(e) = transport_actions::extract(
                     ctx.actions_tx,
@@ -90,8 +93,13 @@ async fn process_node(
 
     // Extract HTTP clients
     if let Ok(mut http_val) = serde_json::from_str::<Value>(node_stats.http.get()) {
-        let clients = http_val["clients"].take();
-        let _ = http_val["routes"].take();
+        let clients = http_val
+            .as_object_mut()
+            .and_then(|obj| obj.remove("clients"))
+            .unwrap_or(Value::Null);
+        if let Some(obj) = http_val.as_object_mut() {
+            obj.remove("routes");
+        }
         if !clients.is_null() {
             if let Err(e) =
                 http_clients::extract(
@@ -104,11 +112,11 @@ async fn process_node(
             {
                 log::error!("Error extracting HTTP clients stats: {}", e);
             }
-            match serde_json::value::RawValue::from_string(http_val.to_string()) {
-                Ok(raw) => node_stats.http = raw,
-                Err(e) => {
-                    log::error!("Failed to re-serialize HTTP clients stats: {}", e);
-                }
+        }
+        match serde_json::value::RawValue::from_string(http_val.to_string()) {
+            Ok(raw) => node_stats.http = raw,
+            Err(e) => {
+                log::error!("Failed to re-serialize HTTP clients stats: {}", e);
             }
         }
     }

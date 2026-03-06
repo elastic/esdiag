@@ -4,8 +4,8 @@
 
 use super::super::super::{Lookup, metadata::MetadataRawValue, nodes::NodeDocument};
 use eyre::Result;
-use serde::{Serialize, Serializer};
-use serde_json::{Value, value::RawValue};
+use serde::Serialize;
+use serde_json::Value;
 use tokio::sync::mpsc::Sender;
 
 /// Extract adaptive_selection
@@ -32,10 +32,7 @@ pub async fn extract(
                     node: node_metadata.cloned(),
                     adaptive_selection: AdaptiveSelectionEntry {
                         node: lookup_node.by_id(&peer_node_id).cloned(),
-                        data: FlattenRawValue(
-                            serde_json::value::to_raw_value(&adaptive_selection)
-                                .expect("serialize adaptive selection to raw"),
-                        ),
+                        data: adaptive_selection,
                     },
                     metadata: metadata.clone(),
                 }
@@ -60,18 +57,5 @@ pub struct AdaptiveSelectionDoc {
 struct AdaptiveSelectionEntry {
     node: Option<NodeDocument>,
     #[serde(flatten)]
-    data: FlattenRawValue,
-}
-
-struct FlattenRawValue(Box<RawValue>);
-
-impl Serialize for FlattenRawValue {
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let value: Value =
-            serde_json::from_str(self.0.get()).map_err(serde::ser::Error::custom)?;
-        value.serialize(serializer)
-    }
+    data: Value,
 }
