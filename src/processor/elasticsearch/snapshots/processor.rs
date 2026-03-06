@@ -191,6 +191,8 @@ mod tests {
         let value = serde_json::to_value(SnapshotLogDocument::from_snapshot(snapshot, json!({})))
             .expect("serialize snapshot doc");
         assert_eq!(value["snapshot"]["date"], "2026-03-01");
+        assert_eq!(value["snapshot"]["indices"][0], "logs-1");
+        assert_eq!(value["snapshot"]["data_streams"][0], "logs-app");
     }
 
     #[test]

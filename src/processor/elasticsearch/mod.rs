@@ -6,6 +6,8 @@
 mod alias;
 /// The `_cluster/settings` API
 mod cluster_settings;
+/// Shared JSON helpers for Elasticsearch processors
+mod json_utils;
 /// Collector definition for Elasticsearch diagnostics
 mod collector;
 /// The `_data_stream` API

@@ -11,12 +11,11 @@ mod transport_actions;
 use super::super::super::{Exporter, ProcessorSummary};
 use super::super::{
     DocumentExporter, ElasticsearchMetadata, Lookups, SharedCacheStats, metadata::MetadataRawValue,
-    nodes::NodeDocument,
 };
 use super::NodesStats;
 use crate::processor::StreamingDocumentExporter;
 use futures::stream::{BoxStream, StreamExt};
-use serde::{Serialize, Serializer};
+use serde::Serialize;
 use serde_json::Value;
 use std::sync::LazyLock;
 use tokio::sync::mpsc;
@@ -140,22 +139,30 @@ async fn process_node(
 
     // Extract cluster applier state
     if let Ok(mut discovery_val) = serde_json::from_str::<Value>(node_stats.discovery.get()) {
-        let cluster_applier_stats = discovery_val["cluster_applier_stats"].take();
+        let cluster_applier_stats = discovery_val
+            .as_object()
+            .and_then(|obj| obj.get("cluster_applier_stats"))
+            .cloned()
+            .unwrap_or(Value::Null);
         if !cluster_applier_stats.is_null() {
-            if let Err(e) = cluster_applier_stats::extract(
+            let extract_result = cluster_applier_stats::extract(
                 ctx.applier_tx,
                 cluster_applier_stats,
                 ctx.applier_metadata,
                 node_metadata,
             )
-            .await
-            {
+            .await;
+            if let Err(e) = extract_result {
                 log::error!("Error extracting cluster applier stats: {}", e);
-            }
-            match serde_json::value::RawValue::from_string(discovery_val.to_string()) {
-                Ok(raw) => node_stats.discovery = raw,
-                Err(e) => {
-                    log::error!("Failed to re-serialize cluster applier stats: {}", e);
+            } else {
+                if let Some(obj) = discovery_val.as_object_mut() {
+                    obj.remove("cluster_applier_stats");
+                }
+                match serde_json::value::RawValue::from_string(discovery_val.to_string()) {
+                    Ok(raw) => node_stats.discovery = raw,
+                    Err(e) => {
+                        log::error!("Failed to re-serialize cluster applier stats: {}", e);
+                    }
                 }
             }
         }
@@ -179,7 +186,10 @@ async fn process_node(
     let doc = NodeStatsDoc {
         node: NodeStatsEnvelope {
             stats: node_stats,
-            summary: node_metadata.cloned(),
+            id: node_metadata.as_ref().and_then(|node| node.id.clone()),
+            role: node_metadata.as_ref().map(|node| node.role.clone()),
+            tier: node_metadata.as_ref().map(|node| node.tier.clone()),
+            tier_order: node_metadata.as_ref().map(|node| node.tier_order),
         },
         shared_cache: lookup_shared_cache.by_id(node_id.as_str()).cloned(),
         metadata: ctx.node_stats_metadata.clone(),
@@ -375,38 +385,16 @@ struct NodeStatsDoc {
     metadata: MetadataRawValue,
 }
 
+#[derive(Serialize)]
 struct NodeStatsEnvelope {
+    #[serde(flatten)]
     stats: super::data::NodeStats,
-    summary: Option<NodeDocument>,
-}
-
-impl Serialize for NodeStatsEnvelope {
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let mut merged = serde_json::to_value(&self.stats).map_err(serde::ser::Error::custom)?;
-        if let Some(summary) = &self.summary {
-            let summary_value = serde_json::to_value(summary).map_err(serde::ser::Error::custom)?;
-            merge_values(&mut merged, &summary_value);
-        }
-        merged.serialize(serializer)
-    }
-}
-
-fn merge_values(target: &mut Value, patch: &Value) {
-    match (target, patch) {
-        (Value::Object(target_obj), Value::Object(patch_obj)) => {
-            for (key, value) in patch_obj {
-                if let Some(existing) = target_obj.get_mut(key) {
-                    merge_values(existing, value);
-                } else {
-                    target_obj.insert(key.clone(), value.clone());
-                }
-            }
-        }
-        (target, patch) => {
-            *target = patch.clone();
-        }
-    }
+    #[serde(skip_serializing_if = "Option::is_none")]
+    id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    role: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tier: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tier_order: Option<usize>,
 }
