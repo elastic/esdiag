@@ -39,9 +39,9 @@ struct Phases {
 #[skip_serializing_none]
 #[derive(Serialize, Deserialize)]
 struct InUseBy {
-    indices: Vec<String>,
-    data_streams: Option<Vec<String>>,
-    composable_templates: Option<Vec<String>>,
+    indices: Option<Box<RawValue>>,
+    data_streams: Option<Box<RawValue>>,
+    composable_templates: Option<Box<RawValue>>,
 }
 
 impl DataSource for IlmPolicies {

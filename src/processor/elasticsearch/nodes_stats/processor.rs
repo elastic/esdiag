@@ -9,12 +9,15 @@ mod ingest_pipelines;
 mod transport_actions;
 
 use super::super::super::{Exporter, ProcessorSummary};
-use super::super::{DocumentExporter, ElasticsearchMetadata, Lookups, metadata::MetadataRawValue};
+use super::super::{
+    DocumentExporter, ElasticsearchMetadata, Lookups, SharedCacheStats, metadata::MetadataRawValue,
+    nodes::NodeDocument,
+};
 use super::NodesStats;
 use crate::processor::StreamingDocumentExporter;
 use futures::stream::{BoxStream, StreamExt};
-use json_patch::merge;
-use serde_json::{Value, json};
+use serde::Serialize;
+use serde_json::Value;
 use std::sync::LazyLock;
 use tokio::sync::mpsc;
 
@@ -28,13 +31,13 @@ struct NodeProcessingContext<'a> {
     http_clients_metadata: &'a MetadataRawValue,
     applier_metadata: &'a MetadataRawValue,
     adaptive_metadata: &'a MetadataRawValue,
-    nodes_stats_tx: &'a mpsc::Sender<Value>,
-    actions_tx: &'a mpsc::Sender<Value>,
-    http_clients_tx: &'a mpsc::Sender<Value>,
-    applier_tx: &'a mpsc::Sender<Value>,
-    adaptive_tx: &'a mpsc::Sender<Value>,
-    pipelines_tx: &'a mpsc::Sender<Value>,
-    processors_tx: &'a mpsc::Sender<Value>,
+    nodes_stats_tx: &'a mpsc::Sender<NodeStatsDoc>,
+    actions_tx: &'a mpsc::Sender<transport_actions::TransportActionDoc>,
+    http_clients_tx: &'a mpsc::Sender<http_clients::HttpClientDoc>,
+    applier_tx: &'a mpsc::Sender<cluster_applier_stats::ClusterApplierDoc>,
+    adaptive_tx: &'a mpsc::Sender<adaptive_selections::AdaptiveSelectionDoc>,
+    pipelines_tx: &'a mpsc::Sender<ingest_pipelines::IngestPipelineDoc>,
+    processors_tx: &'a mpsc::Sender<ingest_pipelines::IngestDoc>,
 }
 
 async fn process_node(
@@ -56,14 +59,10 @@ async fn process_node(
         if let Ok(mut transport_val) = serde_json::from_str::<Value>(transport_raw.get()) {
             let actions = transport_val["actions"].take();
             if !actions.is_null() {
-                // Since actions_metadata is pre-serialized, we need a Value for merge in transport_actions::extract
-                // For now, transport_actions::extract still expects &Value.
-                // We'll convert it back if needed or update the helper.
-                let actions_meta_val = serde_json::to_value(ctx.actions_metadata).unwrap();
                 if let Err(e) = transport_actions::extract(
                     ctx.actions_tx,
                     actions,
-                    &actions_meta_val,
+                    ctx.actions_metadata,
                     node_metadata,
                 )
                 .await
@@ -92,10 +91,15 @@ async fn process_node(
     // Extract HTTP clients
     if let Ok(mut http_val) = serde_json::from_str::<Value>(node_stats.http.get()) {
         let clients = http_val["clients"].take();
+        let _ = http_val["routes"].take();
         if !clients.is_null() {
-            let http_meta_val = serde_json::to_value(ctx.http_clients_metadata).unwrap();
             if let Err(e) =
-                http_clients::extract(ctx.http_clients_tx, clients, &http_meta_val, node_metadata)
+                http_clients::extract(
+                    ctx.http_clients_tx,
+                    clients,
+                    ctx.http_clients_metadata,
+                    node_metadata,
+                )
                     .await
             {
                 log::error!("Error extracting HTTP clients stats: {}", e);
@@ -113,11 +117,10 @@ async fn process_node(
     if let Some(adaptive_raw) = node_stats.adaptive_selection.take()
         && let Ok(adaptive_val) = serde_json::from_str::<Value>(adaptive_raw.get())
     {
-        let adaptive_meta_val = serde_json::to_value(ctx.adaptive_metadata).unwrap();
         if let Err(e) = adaptive_selections::extract(
             ctx.adaptive_tx,
             Some(adaptive_val),
-            &adaptive_meta_val,
+            ctx.adaptive_metadata,
             node_metadata,
             lookup_node,
         )
@@ -131,11 +134,10 @@ async fn process_node(
     if let Ok(mut discovery_val) = serde_json::from_str::<Value>(node_stats.discovery.get()) {
         let cluster_applier_stats = discovery_val["cluster_applier_stats"].take();
         if !cluster_applier_stats.is_null() {
-            let applier_meta_val = serde_json::to_value(ctx.applier_metadata).unwrap();
             if let Err(e) = cluster_applier_stats::extract(
                 ctx.applier_tx,
                 cluster_applier_stats,
-                &applier_meta_val,
+                ctx.applier_metadata,
                 node_metadata,
             )
             .await
@@ -166,23 +168,14 @@ async fn process_node(
     }
 
     // Final node_stats document
-    let mut doc = json!({
-        "node": &node_stats,
-        "shared_cache": lookup_shared_cache.by_id(node_id.as_str()),
-    });
-
-    let omit_patch = json!({
-        "node" : {
-            "http": { "routes": null },
-        }
-    });
-
-    let node_summary_patch = json!({"node": node_metadata});
-    let node_stats_meta_val = serde_json::to_value(ctx.node_stats_metadata).unwrap();
-
-    merge(&mut doc, &node_stats_meta_val);
-    merge(&mut doc, &node_summary_patch);
-    merge(&mut doc, &omit_patch);
+    let doc = NodeStatsDoc {
+        node: NodeStatsEnvelope {
+            stats: node_stats,
+            summary: node_metadata.cloned(),
+        },
+        shared_cache: lookup_shared_cache.by_id(node_id.as_str()).cloned(),
+        metadata: ctx.node_stats_metadata.clone(),
+    };
 
     if (ctx.nodes_stats_tx.send(doc).await).is_err() {
         log::warn!("Nodes stats channel closed unexpectedly");
@@ -216,61 +209,85 @@ impl StreamingDocumentExporter<Lookups, ElasticsearchMetadata> for NodesStats {
         let batch_size = 5000;
         const BUFFER_SIZE: usize = 5000;
 
-        let (nodes_stats_tx, nodes_stats_rx) = mpsc::channel::<Value>(BUFFER_SIZE);
+        let (nodes_stats_tx, nodes_stats_rx) = mpsc::channel::<NodeStatsDoc>(BUFFER_SIZE);
         let node_stats_metadata = metadata.for_data_stream(&data_stream);
-        let nodes_stats_processor = tokio::spawn(exporter.clone().document_channel::<Value>(
-            nodes_stats_rx,
-            "metrics-node-esdiag".to_string(),
-            batch_size,
-        ));
+        let nodes_stats_processor =
+            tokio::spawn(exporter.clone().document_channel::<NodeStatsDoc>(
+                nodes_stats_rx,
+                "metrics-node-esdiag".to_string(),
+                batch_size,
+            ));
 
-        let (actions_tx, actions_rx) = mpsc::channel::<Value>(BUFFER_SIZE);
+        let (actions_tx, actions_rx) = mpsc::channel::<transport_actions::TransportActionDoc>(BUFFER_SIZE);
         let actions_data_stream = "metrics-node.transport.actions-esdiag".to_string();
         let actions_metadata = metadata.for_data_stream(&actions_data_stream);
-        let actions_processor = tokio::spawn(exporter.clone().document_channel::<Value>(
+        let actions_processor = tokio::spawn(
+            exporter
+                .clone()
+                .document_channel::<transport_actions::TransportActionDoc>(
             actions_rx,
             actions_data_stream,
             batch_size,
         ));
 
-        let (http_clients_tx, http_clients_rx) = mpsc::channel::<Value>(BUFFER_SIZE);
+        let (http_clients_tx, http_clients_rx) =
+            mpsc::channel::<http_clients::HttpClientDoc>(BUFFER_SIZE);
         let http_clients_data_stream = "metrics-node.http.clients-esdiag".to_string();
         let http_clients_metadata = metadata.for_data_stream(&http_clients_data_stream);
-        let http_clients_processor = tokio::spawn(exporter.clone().document_channel::<Value>(
+        let http_clients_processor = tokio::spawn(
+            exporter
+                .clone()
+                .document_channel::<http_clients::HttpClientDoc>(
             http_clients_rx,
             http_clients_data_stream,
             batch_size,
         ));
 
-        let (applier_tx, applier_rx) = mpsc::channel::<Value>(BUFFER_SIZE);
+        let (applier_tx, applier_rx) =
+            mpsc::channel::<cluster_applier_stats::ClusterApplierDoc>(BUFFER_SIZE);
         let applier_data_stream = "metrics-node.discovery.cluster_applier-esdiag".to_string();
         let applier_metadata = metadata.for_data_stream(&applier_data_stream);
-        let applier_processor = tokio::spawn(exporter.clone().document_channel::<Value>(
+        let applier_processor = tokio::spawn(
+            exporter
+                .clone()
+                .document_channel::<cluster_applier_stats::ClusterApplierDoc>(
             applier_rx,
             applier_data_stream,
             batch_size,
         ));
 
-        let (adaptive_tx, adaptive_rx) = mpsc::channel::<Value>(BUFFER_SIZE);
+        let (adaptive_tx, adaptive_rx) =
+            mpsc::channel::<adaptive_selections::AdaptiveSelectionDoc>(BUFFER_SIZE);
         let adaptive_data_stream = "metrics-node.discovery.cluster_adaptive-esdiag".to_string();
         let adaptive_metadata = metadata.for_data_stream(&adaptive_data_stream);
-        let adaptive_processor = tokio::spawn(exporter.clone().document_channel::<Value>(
+        let adaptive_processor = tokio::spawn(
+            exporter
+                .clone()
+                .document_channel::<adaptive_selections::AdaptiveSelectionDoc>(
             adaptive_rx,
             adaptive_data_stream,
             batch_size,
         ));
 
-        let (pipelines_tx, pipelines_rx) = mpsc::channel::<Value>(BUFFER_SIZE);
+        let (pipelines_tx, pipelines_rx) =
+            mpsc::channel::<ingest_pipelines::IngestPipelineDoc>(BUFFER_SIZE);
         let pipelines_data_stream = "metrics-ingest.pipeline-esdiag".to_string();
-        let pipelines_processor = tokio::spawn(exporter.clone().document_channel::<Value>(
+        let pipelines_processor = tokio::spawn(
+            exporter
+                .clone()
+                .document_channel::<ingest_pipelines::IngestPipelineDoc>(
             pipelines_rx,
             pipelines_data_stream,
             batch_size,
         ));
 
-        let (processors_tx, processors_rx) = mpsc::channel::<Value>(BUFFER_SIZE);
+        let (processors_tx, processors_rx) =
+            mpsc::channel::<ingest_pipelines::IngestDoc>(BUFFER_SIZE);
         let processors_data_stream = "metrics-ingest.processors-esdiag".to_string();
-        let processors_processor = tokio::spawn(exporter.clone().document_channel::<Value>(
+        let processors_processor = tokio::spawn(
+            exporter
+                .clone()
+                .document_channel::<ingest_pipelines::IngestDoc>(
             processors_rx,
             processors_data_stream,
             batch_size,
@@ -340,4 +357,20 @@ impl StreamingDocumentExporter<Lookups, ElasticsearchMetadata> for NodesStats {
 
         summary
     }
+}
+
+#[derive(Serialize)]
+struct NodeStatsDoc {
+    node: NodeStatsEnvelope,
+    shared_cache: Option<SharedCacheStats>,
+    #[serde(flatten)]
+    metadata: MetadataRawValue,
+}
+
+#[derive(Serialize)]
+struct NodeStatsEnvelope {
+    #[serde(flatten)]
+    stats: super::data::NodeStats,
+    #[serde(flatten)]
+    summary: Option<NodeDocument>,
 }

@@ -9,16 +9,15 @@ use super::super::super::{
     nodes_stats::{IngestPipelines, IngestProcessor, IngestProcessorStats, IngestProcessors},
 };
 use eyre::Result;
-use json_patch::merge;
 use rayon::prelude::*;
 use serde::Serialize;
-use serde_json::{Value, json};
+use serde_json::Value;
 use tokio::sync::mpsc::Sender;
 
 /// Extract ingest.pipelines
 pub async fn extract(
-    sender_pipelines: &Sender<Value>,
-    sender_processors: &Sender<Value>,
+    sender_pipelines: &Sender<IngestPipelineDoc>,
+    sender_processors: &Sender<IngestDoc>,
     mut pipelines: Option<IngestPipelines>,
     metadata: &ElasticsearchMetadata,
     node_metadata: Option<&NodeDocument>,
@@ -43,25 +42,15 @@ pub async fn extract(
                 log::error!("Error extracting ingest pipelines stats: {}", e);
             };
 
-            let mut doc = json!({
-                "node": node_metadata,
-                "ingest": {
-                    "pipeline": pipeline,
-                },
-            });
-
-            let pipeline = json!({
-                "ingest": {
-                    "pipeline": {
-                        "processors": null,
-                        "name": name,
-                    }
-                }
-            });
-
-            merge(&mut doc, &pipeline);
-            merge(&mut doc, &ingest_pipeline_metadata);
-            sender_pipelines.send(doc).await?;
+            sender_pipelines
+                .send(IngestPipelineDoc {
+                    node: node_metadata.cloned(),
+                    metadata: ingest_pipeline_metadata.clone(),
+                    ingest: IngestPipelineContainer {
+                        pipeline: NamedIngestPipeline { name, pipeline },
+                    },
+                })
+                .await?;
         }
     }
 
@@ -70,37 +59,34 @@ pub async fn extract(
 
 /// Extract ingest.processors
 async fn extract_ingest_processors(
-    sender: &Sender<Value>,
+    sender: &Sender<IngestDoc>,
     processors: Option<IngestProcessors>,
     pipeline_name: &str,
     metadata: MetadataRawValue,
     node_summary: Option<NodeDocument>,
 ) -> Result<()> {
-    let docs: Vec<Value> = match processors {
+    let docs: Vec<IngestDoc> = match processors {
         Some(mut processors) => processors
             .par_drain(..)
             .enumerate()
             .filter_map(|(index, mut processor)| {
-                let processor = processor
+                processor
                     .drain()
                     .next()
                     .map(|(name, processor)| {
-                        IngestProcessorStatsDoc::from(processor)
-                            .with_name(name)
-                            .with_order(index)
+                        IngestDoc {
+                            metadata: metadata.clone(),
+                            node: node_summary.clone(),
+                            ingest: IngestProcessorDoc {
+                                pipeline: IngestPipelineName {
+                                    name: pipeline_name.to_string(),
+                                },
+                                processor: IngestProcessorStatsDoc::from(processor)
+                                    .with_name(name)
+                                    .with_order(index),
+                            },
+                        }
                     })
-                    .unwrap();
-                serde_json::to_value(IngestDoc {
-                    metadata: metadata.clone(),
-                    node: node_summary.clone(),
-                    ingest: IngestProcessorDoc {
-                        pipeline: IngestPipelineName {
-                            name: pipeline_name.to_string(),
-                        },
-                        processor,
-                    },
-                })
-                .ok()
             })
             .collect(),
         None => Vec::new(),
@@ -113,7 +99,7 @@ async fn extract_ingest_processors(
 }
 
 #[derive(Serialize)]
-struct IngestDoc {
+pub struct IngestDoc {
     #[serde(flatten)]
     metadata: MetadataRawValue,
     node: Option<NodeDocument>,
@@ -165,4 +151,24 @@ impl From<IngestProcessor> for IngestProcessorStatsDoc {
 #[derive(Serialize)]
 struct IngestPipelineName {
     name: String,
+}
+
+#[derive(Serialize)]
+pub struct IngestPipelineDoc {
+    #[serde(flatten)]
+    metadata: Value,
+    node: Option<NodeDocument>,
+    ingest: IngestPipelineContainer,
+}
+
+#[derive(Serialize)]
+struct IngestPipelineContainer {
+    pipeline: NamedIngestPipeline,
+}
+
+#[derive(Serialize)]
+struct NamedIngestPipeline {
+    name: String,
+    #[serde(flatten)]
+    pipeline: super::super::super::nodes_stats::IngestPipeline,
 }
