@@ -25,8 +25,6 @@ pub async fn extract(
     docs.extend(
         adaptive_selection
             .into_iter()
-            .collect::<Vec<(String, Value)>>()
-            .drain(..)
             .map(|(peer_node_id, adaptive_selection)| {
                 AdaptiveSelectionDoc {
                     node: node_metadata.cloned(),

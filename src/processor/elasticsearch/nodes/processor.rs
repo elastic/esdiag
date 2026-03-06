@@ -4,6 +4,7 @@
 
 use super::super::{DocumentExporter, ElasticsearchMetadata, Lookups, ProcessorSummary};
 use super::super::metadata::MetadataRawValue;
+use super::super::json_utils::merge_values;
 use super::{Node, Nodes};
 use crate::exporter::Exporter;
 use rayon::prelude::*;
@@ -74,23 +75,6 @@ impl NodeDoc {
         Self {
             node: Some(node),
             ..self
-        }
-    }
-}
-
-fn merge_values(target: &mut Value, patch: &Value) {
-    match (target, patch) {
-        (Value::Object(target_obj), Value::Object(patch_obj)) => {
-            for (key, value) in patch_obj {
-                if let Some(existing) = target_obj.get_mut(key) {
-                    merge_values(existing, value);
-                } else {
-                    target_obj.insert(key.clone(), value.clone());
-                }
-            }
-        }
-        (target, patch) => {
-            *target = patch.clone();
         }
     }
 }
