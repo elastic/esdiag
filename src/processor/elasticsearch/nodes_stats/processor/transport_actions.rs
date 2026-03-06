@@ -2,48 +2,38 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use super::super::super::nodes::NodeDocument;
+use super::super::super::{metadata::MetadataRawValue, nodes::NodeDocument};
 use eyre::{OptionExt, Result};
-use json_patch::merge;
-use serde_json::{Value, json};
+use serde::Serialize;
+use serde_json::Value;
 use tokio::sync::mpsc::Sender;
 
 /// Extract transport.actions
 pub async fn extract(
-    sender: &Sender<Value>,
+    sender: &Sender<TransportActionDoc>,
     mut actions: Value,
-    metadata: &Value,
+    metadata: &MetadataRawValue,
     node_metadata: Option<&NodeDocument>,
 ) -> Result<()> {
     let actions = actions
         .as_object_mut()
         .ok_or_eyre("Error extracting node transport.actions data")?;
 
-    let mut docs = Vec::<Value>::with_capacity(100);
+    let mut docs = Vec::<TransportActionDoc>::with_capacity(100);
     docs.extend(
-        actions
+        std::mem::take(actions)
             .into_iter()
-            .collect::<Vec<_>>()
-            .drain(..)
             .map(|(name, action)| {
-                let mut action = json!({
-                    "node": node_metadata,
-                    "transport": {
-                        "action": action,
-                    },
-                });
-
-                let action_patch = json!({
-                    "transport": {
-                        "action": {
-                            "name": name,
+                TransportActionDoc {
+                    node: node_metadata.cloned(),
+                    metadata: metadata.clone(),
+                    transport: TransportActionContainer {
+                        action: NamedAction {
+                            name,
+                            data: action,
                         },
                     },
-                });
-
-                merge(&mut action, &action_patch);
-                merge(&mut action, metadata);
-                action
+                }
             }),
     );
 
@@ -51,4 +41,24 @@ pub async fn extract(
         sender.send(doc).await?;
     }
     Ok(())
+}
+
+#[derive(Serialize)]
+pub struct TransportActionDoc {
+    node: Option<NodeDocument>,
+    transport: TransportActionContainer,
+    #[serde(flatten)]
+    metadata: MetadataRawValue,
+}
+
+#[derive(Serialize)]
+struct TransportActionContainer {
+    action: NamedAction,
+}
+
+#[derive(Serialize)]
+struct NamedAction {
+    name: String,
+    #[serde(flatten)]
+    data: Value,
 }

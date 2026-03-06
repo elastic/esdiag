@@ -2,17 +2,17 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use super::super::super::{Lookup, nodes::NodeDocument};
+use super::super::super::{Lookup, metadata::MetadataRawValue, nodes::NodeDocument};
 use eyre::Result;
-use json_patch::merge;
-use serde_json::{Value, json};
+use serde::Serialize;
+use serde_json::Value;
 use tokio::sync::mpsc::Sender;
 
 /// Extract adaptive_selection
 pub async fn extract(
-    sender: &Sender<Value>,
+    sender: &Sender<AdaptiveSelectionDoc>,
     adaptive_selection: Option<Value>,
-    metadata: &Value,
+    metadata: &MetadataRawValue,
     node_metadata: Option<&NodeDocument>,
     lookup_node: &Lookup<NodeDocument>,
 ) -> Result<()> {
@@ -21,27 +21,21 @@ pub async fn extract(
         _ => return Err(eyre::eyre!("Error extracting node.adaptive_selection data")),
     };
 
-    let mut docs = Vec::<Value>::with_capacity(200);
+    let mut docs = Vec::<AdaptiveSelectionDoc>::with_capacity(200);
     docs.extend(
         adaptive_selection
             .into_iter()
             .collect::<Vec<(String, Value)>>()
             .drain(..)
             .map(|(peer_node_id, adaptive_selection)| {
-                let mut doc = json!({
-                    "adaptive_selection": adaptive_selection,
-                    "node": node_metadata,
-                });
-
-                let peer_node_patch = json!({
-                    "adaptive_selection": {
-                        "node": lookup_node.by_id(&peer_node_id),
+                AdaptiveSelectionDoc {
+                    node: node_metadata.cloned(),
+                    adaptive_selection: AdaptiveSelectionEntry {
+                        node: lookup_node.by_id(&peer_node_id).cloned(),
+                        data: adaptive_selection,
                     },
-                });
-
-                merge(&mut doc, &peer_node_patch);
-                merge(&mut doc, metadata);
-                doc
+                    metadata: metadata.clone(),
+                }
             }),
     );
 
@@ -49,4 +43,19 @@ pub async fn extract(
         sender.send(doc).await?;
     }
     Ok(())
+}
+
+#[derive(Serialize)]
+pub struct AdaptiveSelectionDoc {
+    node: Option<NodeDocument>,
+    adaptive_selection: AdaptiveSelectionEntry,
+    #[serde(flatten)]
+    metadata: MetadataRawValue,
+}
+
+#[derive(Serialize)]
+struct AdaptiveSelectionEntry {
+    node: Option<NodeDocument>,
+    #[serde(flatten)]
+    data: Value,
 }
