@@ -140,9 +140,8 @@ async fn process_node(
     // Extract cluster applier state
     if let Ok(mut discovery_val) = serde_json::from_str::<Value>(node_stats.discovery.get()) {
         let cluster_applier_stats = discovery_val
-            .as_object()
-            .and_then(|obj| obj.get("cluster_applier_stats"))
-            .cloned()
+            .as_object_mut()
+            .and_then(|obj| obj.remove("cluster_applier_stats"))
             .unwrap_or(Value::Null);
         if !cluster_applier_stats.is_null() {
             let extract_result = cluster_applier_stats::extract(
@@ -155,9 +154,6 @@ async fn process_node(
             if let Err(e) = extract_result {
                 log::error!("Error extracting cluster applier stats: {}", e);
             } else {
-                if let Some(obj) = discovery_val.as_object_mut() {
-                    obj.remove("cluster_applier_stats");
-                }
                 match serde_json::value::RawValue::from_string(discovery_val.to_string()) {
                     Ok(raw) => node_stats.discovery = raw,
                     Err(e) => {
