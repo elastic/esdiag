@@ -166,7 +166,6 @@ impl From<Snapshot> for SnapshotDocument {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::value::RawValue;
     use serde_json::json;
 
     #[test]
