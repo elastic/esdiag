@@ -6,7 +6,7 @@ use super::super::super::{metadata::MetadataRawValue, nodes::NodeDocument};
 use eyre::{OptionExt, Result};
 use rayon::prelude::*;
 use serde::Serialize;
-use serde_json::Value;
+use serde_json::{Value, value::RawValue};
 use tokio::sync::mpsc::Sender;
 
 /// Extract http.clients
@@ -24,7 +24,10 @@ pub async fn extract(
     docs.par_extend(clients.par_drain(..).map(|client| {
         HttpClientDoc {
             node: node_metadata.cloned(),
-            http: HttpClientContainer { client },
+            http: HttpClientContainer {
+                client: serde_json::value::to_raw_value(&client)
+                    .expect("serialize http client to raw"),
+            },
             metadata: metadata.clone(),
         }
     }));
@@ -45,5 +48,5 @@ pub struct HttpClientDoc {
 
 #[derive(Serialize)]
 struct HttpClientContainer {
-    client: Value,
+    client: Box<RawValue>,
 }

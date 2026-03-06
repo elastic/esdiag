@@ -5,7 +5,7 @@
 use super::super::super::{metadata::MetadataRawValue, nodes::NodeDocument};
 use eyre::{OptionExt, Result};
 use serde::Serialize;
-use serde_json::Value;
+use serde_json::{Value, value::RawValue};
 use tokio::sync::mpsc::Sender;
 
 /// Extract discovery.cluster_applier_stats.recordings dataset
@@ -22,7 +22,8 @@ pub async fn extract(
     let mut docs = Vec::<ClusterApplierDoc>::with_capacity(200);
     docs.extend(recordings.drain(..).map(|recording| {
         ClusterApplierDoc {
-            cluster_applier_stats: recording,
+            cluster_applier_stats: serde_json::value::to_raw_value(&recording)
+                .expect("serialize cluster applier recording to raw"),
             node: node_metadata.cloned(),
             metadata: metadata.clone(),
         }
@@ -36,7 +37,7 @@ pub async fn extract(
 
 #[derive(Serialize)]
 pub struct ClusterApplierDoc {
-    cluster_applier_stats: Value,
+    cluster_applier_stats: Box<RawValue>,
     node: Option<NodeDocument>,
     #[serde(flatten)]
     metadata: MetadataRawValue,
