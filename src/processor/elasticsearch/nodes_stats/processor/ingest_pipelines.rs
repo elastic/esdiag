@@ -11,7 +11,6 @@ use super::super::super::{
 use eyre::Result;
 use rayon::prelude::*;
 use serde::Serialize;
-use serde_json::Value;
 use tokio::sync::mpsc::Sender;
 
 /// Extract ingest.pipelines
@@ -23,8 +22,7 @@ pub async fn extract(
     node_metadata: Option<&NodeDocument>,
 ) -> Result<()> {
     let ingest_pipeline_metadata = metadata
-        .for_data_stream("metrics-ingest.pipeline-esdiag")
-        .as_meta_doc();
+        .for_data_stream("metrics-ingest.pipeline-esdiag");
 
     let ingest_processor_metadata = metadata.for_data_stream("metrics-ingest.processor-esdiag");
 
@@ -156,7 +154,7 @@ struct IngestPipelineName {
 #[derive(Serialize)]
 pub struct IngestPipelineDoc {
     #[serde(flatten)]
-    metadata: Value,
+    metadata: MetadataRawValue,
     node: Option<NodeDocument>,
     ingest: IngestPipelineContainer,
 }

@@ -4,8 +4,8 @@
 
 use super::super::super::{metadata::MetadataRawValue, nodes::NodeDocument};
 use eyre::{OptionExt, Result};
-use serde::Serialize;
-use serde_json::Value;
+use serde::{Serialize, Serializer};
+use serde_json::{Value, value::RawValue};
 use tokio::sync::mpsc::Sender;
 
 /// Extract transport.actions
@@ -30,7 +30,10 @@ pub async fn extract(
                     transport: TransportActionContainer {
                         action: NamedAction {
                             name,
-                            data: action,
+                            data: FlattenRawValue(
+                                serde_json::value::to_raw_value(&action)
+                                    .expect("serialize transport action to raw"),
+                            ),
                         },
                     },
                 }
@@ -60,5 +63,18 @@ struct TransportActionContainer {
 struct NamedAction {
     name: String,
     #[serde(flatten)]
-    data: Value,
+    data: FlattenRawValue,
+}
+
+struct FlattenRawValue(Box<RawValue>);
+
+impl Serialize for FlattenRawValue {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let value: Value =
+            serde_json::from_str(self.0.get()).map_err(serde::ser::Error::custom)?;
+        value.serialize(serializer)
+    }
 }
