@@ -20,13 +20,19 @@ pub async fn extract(
         .ok_or_eyre("Error extracting node.discovery.cluster_applier data")?;
 
     let mut docs = Vec::<ClusterApplierDoc>::with_capacity(200);
-    docs.extend(recordings.drain(..).map(|recording| {
-        ClusterApplierDoc {
-            cluster_applier_stats: serde_json::value::to_raw_value(&recording)
-                .expect("serialize cluster applier recording to raw"),
+    docs.extend(recordings.drain(..).filter_map(|recording| {
+        let recording_raw = match serde_json::value::to_raw_value(&recording) {
+            Ok(raw) => raw,
+            Err(err) => {
+                log::warn!("Skipping malformed cluster applier recording: {}", err);
+                return None;
+            }
+        };
+        Some(ClusterApplierDoc {
+            cluster_applier_stats: recording_raw,
             node: node_metadata.cloned(),
             metadata: metadata.clone(),
-        }
+        })
     }));
 
     for doc in docs {

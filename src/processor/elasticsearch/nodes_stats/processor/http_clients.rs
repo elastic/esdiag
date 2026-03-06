@@ -21,15 +21,19 @@ pub async fn extract(
         .ok_or_eyre("Error extracting node.http.clients data")?;
 
     let mut docs = Vec::<HttpClientDoc>::with_capacity(200);
-    docs.par_extend(clients.par_drain(..).map(|client| {
-        HttpClientDoc {
+    docs.par_extend(clients.par_drain(..).filter_map(|client| {
+        let client_raw = match serde_json::value::to_raw_value(&client) {
+            Ok(raw) => raw,
+            Err(err) => {
+                log::warn!("Skipping malformed http client stats record: {}", err);
+                return None;
+            }
+        };
+        Some(HttpClientDoc {
             node: node_metadata.cloned(),
-            http: HttpClientContainer {
-                client: serde_json::value::to_raw_value(&client)
-                    .expect("serialize http client to raw"),
-            },
+            http: HttpClientContainer { client: client_raw },
             metadata: metadata.clone(),
-        }
+        })
     }));
 
     for doc in docs {

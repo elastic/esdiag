@@ -16,7 +16,7 @@ use super::super::{
 use super::NodesStats;
 use crate::processor::StreamingDocumentExporter;
 use futures::stream::{BoxStream, StreamExt};
-use serde::Serialize;
+use serde::{Serialize, Serializer};
 use serde_json::Value;
 use std::sync::LazyLock;
 use tokio::sync::mpsc;
@@ -375,10 +375,38 @@ struct NodeStatsDoc {
     metadata: MetadataRawValue,
 }
 
-#[derive(Serialize)]
 struct NodeStatsEnvelope {
-    #[serde(flatten)]
     stats: super::data::NodeStats,
-    #[serde(flatten)]
     summary: Option<NodeDocument>,
+}
+
+impl Serialize for NodeStatsEnvelope {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut merged = serde_json::to_value(&self.stats).map_err(serde::ser::Error::custom)?;
+        if let Some(summary) = &self.summary {
+            let summary_value = serde_json::to_value(summary).map_err(serde::ser::Error::custom)?;
+            merge_values(&mut merged, &summary_value);
+        }
+        merged.serialize(serializer)
+    }
+}
+
+fn merge_values(target: &mut Value, patch: &Value) {
+    match (target, patch) {
+        (Value::Object(target_obj), Value::Object(patch_obj)) => {
+            for (key, value) in patch_obj {
+                if let Some(existing) = target_obj.get_mut(key) {
+                    merge_values(existing, value);
+                } else {
+                    target_obj.insert(key.clone(), value.clone());
+                }
+            }
+        }
+        (target, patch) => {
+            *target = patch.clone();
+        }
+    }
 }
