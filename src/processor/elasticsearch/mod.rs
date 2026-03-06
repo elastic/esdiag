@@ -42,6 +42,8 @@ mod snapshots;
 mod slm_policies;
 /// The `_tasks` API
 mod tasks;
+/// Syscall collection helpers used by collect workflow
+mod syscalls;
 /// The cluster `/` API -- "You know, for search!"
 mod version;
 

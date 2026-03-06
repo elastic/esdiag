@@ -1,0 +1,70 @@
+---
+linuxOS:
+  sys:
+    top: "top -b -n1"
+    netstat: "netstat -an"
+    ss: "ss -an"
+    process-list: "ps -ef"
+    top_threads: "top -b -n1 -H"
+    uname: "uname -a -r"
+    cpu: "cat /proc/cpuinfo"
+    iostat: "iostat -c -d -x -t -m 1 5"
+    sar: "sar -A"
+    sysctl: "sysctl -a"
+    dmesg: "dmesg"
+    dmesg_t: "dmesg -T"
+    huge_pages: "cat /sys/kernel/mm/transparent_hugepage/enabled"
+    cpu_governor: "cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor"
+    limits: "cat /etc/security/limits.conf"
+    proc-limit: "cat /proc/{{PID}}/limits"
+    readahead: "lsblk -o NAME,RA,MOUNTPOINT,TYPE,SIZE"
+
+  java:
+    elastic-java: "ps -fp {{PID}} | awk '{ if (NR!=1) print $8}'"
+    jps: "{{JAVA_HOME}}/bin/jps -l -m -v"
+    jstack: "{{JAVA_HOME}}/bin/jstack {{PID}}"
+    javac: "{{JAVA_HOME}}/bin/javac -version"
+
+  logs:
+    elastic: "ls -alt {{LOGPATH}} | grep -e '{{CLUSTERNAME}}.log' -e '{{CLUSTERNAME}}_server.json' | awk '{print $9}'"
+    elastic-arc: "ls -alt {{LOGPATH}} | grep '{{CLUSTERNAME}}-.*-1.log.gz' | awk '{print $9}'"
+    gc: "ls -alt {{LOGPATH}} |  awk '/gc/ {print $9}'"
+    kibana: "ls -alt /var/log/kibana/ |  awk '/.json|.log/ {print $9}'"
+    kibana-default-path: "/var/log/kibana/"
+
+macOS:
+  sys:
+    top: "top -l 1"
+    netstat: "netstat -an"
+    process-list: "ps -ef"
+    ulimit: "ulimit -a"
+
+  java:
+    elastic-java: "ps -fp {{PID}} | awk '{ if (NR!=1) print $8}'"
+    jps: "{{JAVA_HOME}}/bin/jps -l -m -v"
+    jstack: "{{JAVA_HOME}}/bin/jstack {{PID}}"
+    javac: "{{JAVA_HOME}}/bin/javac -version"
+
+  logs:
+    elastic: "ls -alt {{LOGPATH}} | grep -e '{{CLUSTERNAME}}.log' -e '{{CLUSTERNAME}}_server.json' | awk '{print $9}'"
+    elastic-arc: "ls -alt {{LOGPATH}} | grep '{{CLUSTERNAME}}-.*-1.log.gz' | awk '{print $9}'"
+    gc: "ls -alt {{LOGPATH}} |  awk '/gc/ {print $9}'"
+    kibana: "ls -alt /var/log/kibana/ |  awk '/.json|.log/ {print $9}'"
+    kibana-default-path: "/var/log/kibana/"
+
+winOS:
+  sys:
+    process-list: "tasklist /v"
+    netstat: "netstat -ano"
+    cpu: "wmic CPU"
+
+  java:
+    elastic-java: "wmic process where processId={{PID}} GET CommandLine"
+    jps: "{{JAVA_HOME}}\\bin\\jps -l -m -v"
+    jstack: "{{JAVA_HOME}}\\bin\\jstack {{PID}}"
+    javac: "{{JAVA_HOME}}\\bin\\javac -version"
+
+  logs:
+    elastic: "dir /b  /l /o:-d /a:-d {{LOGPATH}}\\{{CLUSTERNAME}}.log"
+    elastic-arc: "dir /b  /l /o:-d /a:-d {{LOGPATH}}\\{{CLUSTERNAME}}-*.log.gz"
+    gc: "dir /l /b /o:-d /a:-d {{LOGPATH}}\\gc.log.*"

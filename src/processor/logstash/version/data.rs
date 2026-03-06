@@ -31,6 +31,9 @@ impl DataSource for Version {
         match path {
             PathType::File => Ok("logstash_version.json".to_string()),
             PathType::Url => Ok("/".to_string()),
+            PathType::SystemCall => Err(eyre::eyre!(
+                "SystemCall path type is not supported for logstash version"
+            )),
         }
     }
 

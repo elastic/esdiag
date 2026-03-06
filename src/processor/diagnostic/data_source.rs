@@ -12,6 +12,7 @@ use tokio::sync::mpsc::Sender;
 pub enum PathType {
     Url,
     File,
+    SystemCall,
 }
 
 #[derive(Debug)]
@@ -55,6 +56,9 @@ pub trait DataSource {
                 let v = version.ok_or_else(|| eyre!("Version required for URL"))?;
                 source_conf.get_url(v)
             }
+            PathType::SystemCall => Err(eyre!(
+                "SystemCall path type is not supported by typed data sources"
+            )),
         }
     }
 }

@@ -3,6 +3,7 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::super::DataSource;
+use crate::processor::elasticsearch::syscalls::NodeRuntimeVars;
 use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 use serde_with::skip_serializing_none;
@@ -27,10 +28,10 @@ pub struct Node {
     pub name: String,
     pub os: OsDetails,
     plugins: Option<Box<RawValue>>,
-    process: Box<RawValue>,
+    pub process: Box<RawValue>,
     pub role: Option<String>,
     pub roles: HashSet<String>,
-    settings: Option<Box<RawValue>>,
+    pub settings: Option<Box<RawValue>>,
     thread_pool: Box<RawValue>,
     total_indexing_buffer: Option<Box<RawValue>>,
     total_indexing_buffer_in_bytes: Option<Box<RawValue>>,
@@ -69,4 +70,44 @@ impl DataSource for Nodes {
     fn name() -> String {
         "nodes".to_string()
     }
+}
+
+impl Node {
+    pub fn runtime_vars(&self) -> NodeRuntimeVars {
+        let mut vars = NodeRuntimeVars::default();
+
+        if let Ok(process) = serde_json::from_str::<NodeProcess>(self.process.get()) {
+            vars.pid = process.id.map(|id| id.to_string());
+        }
+
+        if let Some(settings) = &self.settings
+            && let Ok(settings) = serde_json::from_str::<NodeSettings>(settings.get())
+        {
+            vars.log_path = settings.path.and_then(|path| path.logs);
+            vars.cluster_name = settings.cluster.and_then(|cluster| cluster.name);
+        }
+
+        vars
+    }
+}
+
+#[derive(Deserialize)]
+struct NodeProcess {
+    id: Option<i64>,
+}
+
+#[derive(Deserialize)]
+struct NodeSettings {
+    path: Option<NodePathSettings>,
+    cluster: Option<NodeClusterSettings>,
+}
+
+#[derive(Deserialize)]
+struct NodePathSettings {
+    logs: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct NodeClusterSettings {
+    name: Option<String>,
 }

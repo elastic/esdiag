@@ -292,6 +292,9 @@ impl DataSource for NodeStats {
         match path {
             PathType::File => Ok("logstash_node_stats.json".to_string()),
             PathType::Url => Ok("_node/stats".to_string()),
+            PathType::SystemCall => Err(eyre::eyre!(
+                "SystemCall path type is not supported for logstash node_stats"
+            )),
         }
     }
 

@@ -24,6 +24,9 @@ impl DataSource for Plugins {
         match path {
             PathType::File => Ok("logstash_plugins.json".to_string()),
             PathType::Url => Ok("_node/plugins".to_string()),
+            PathType::SystemCall => Err(eyre::eyre!(
+                "SystemCall path type is not supported for logstash plugins"
+            )),
         }
     }
 

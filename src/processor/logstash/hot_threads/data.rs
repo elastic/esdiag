@@ -36,6 +36,9 @@ impl DataSource for NodeHotThreads {
         match path {
             PathType::File => Ok("logstash_nodes_hot_threads.json".to_string()),
             PathType::Url => Ok("_node/hot_threads?threads=10000".to_string()),
+            PathType::SystemCall => Err(eyre::eyre!(
+                "SystemCall path type is not supported for logstash hot_threads"
+            )),
         }
     }
 

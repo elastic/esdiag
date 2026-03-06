@@ -5,13 +5,14 @@
 use serde::{Deserialize, Deserializer, Serialize};
 use std::str::FromStr;
 
-#[derive(Debug, PartialEq, Hash, Clone, Eq, Serialize)]
+#[derive(Debug, Default, PartialEq, Hash, Clone, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Product {
     Agent,
     ECE,
     ECK,
     ElasticCloudHosted,
+    #[default]
     Elasticsearch,
     Kibana,
     KubernetesPlatform,
@@ -67,8 +68,3 @@ impl<'de> Deserialize<'de> for Product {
     }
 }
 
-impl Default for Product {
-    fn default() -> Self {
-        Self::Elasticsearch
-    }
-}

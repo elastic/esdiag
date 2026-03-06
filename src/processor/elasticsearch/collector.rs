@@ -12,8 +12,14 @@ use super::{
     NodesStats, PendingTasks, Repositories, SearchableSnapshotsCacheStats,
     SearchableSnapshotsStats, SlmPolicies, Snapshots, Tasks,
 };
+use super::syscalls::{
+    NodeMatchOutcome, extract_node_runtime_vars, gather_local_identity,
+    infer_java_home_from_process_listing, load_inventory, match_node,
+    process_listing_command_for_os, render_command, sanitize_for_filename, select_commands_for_os,
+};
 use crate::{data::Product, exporter::ArchiveExporter, receiver::Receiver};
 use eyre::{Result, WrapErr};
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use crate::processor::api::{ApiResolver, ApiWeight, DiagnosticType, ElasticsearchApi};
@@ -93,6 +99,10 @@ impl ElasticsearchCollector {
             for api in heavy_apis {
                 result.success += self.save_api_with_retry(&api).await;
             }
+
+            let (syscall_success, syscall_total) = self.collect_syscalls().await;
+            result.success += syscall_success;
+            result.total += syscall_total;
 
             Ok(result)
         }
@@ -209,7 +219,11 @@ impl ElasticsearchCollector {
         };
 
         let extension = source_conf.extension.as_deref().unwrap_or(".json");
-        let content = match self.receiver.get_raw_by_path(&path, extension).await {
+        let content = match self
+            .receiver
+            .get_raw_by_path(&path, extension, PathType::Url)
+            .await
+        {
             Ok(c) => c,
             Err(e) => {
                 log::warn!("Failed to get raw API {}: {}", name, e);
@@ -287,5 +301,181 @@ impl ElasticsearchCollector {
         self.exporter.save(path, content).await?;
         log::info!("Saved {filename}");
         Ok(1)
+    }
+
+    async fn collect_syscalls(&self) -> (usize, usize) {
+        let nodes = match self.receiver.get::<Nodes>().await {
+            Ok(nodes) => nodes,
+            Err(err) => {
+                log::warn!("Skipping syscall phase: failed to fetch nodes context: {}", err);
+                return (0, 0);
+            }
+        };
+
+        let identity = gather_local_identity();
+        let matched = match match_node(&nodes, &identity) {
+            NodeMatchOutcome::NoMatch => {
+                log::warn!(
+                    "Skipping syscall phase: no local _nodes host/ip match was found for this machine"
+                );
+                return (0, 0);
+            }
+            NodeMatchOutcome::Matched(matched) => matched,
+            NodeMatchOutcome::Multiple(selected, count) => {
+                log::warn!(
+                    "Multiple _nodes matches found ({}). Selecting first deterministic match: {}",
+                    count,
+                    selected.node_id
+                );
+                selected
+            }
+        };
+
+        let runtime = extract_node_runtime_vars(&nodes, &matched.node_id);
+        let pid = match runtime.pid {
+            Some(pid) => pid,
+            None => {
+                log::warn!(
+                    "Skipping syscall phase: matched node {} has no process.id",
+                    matched.node_id
+                );
+                return (0, 0);
+            }
+        };
+
+        let log_path = match runtime.log_path {
+            Some(path) => path,
+            None => {
+                log::warn!(
+                    "Skipping syscall phase: matched node {} has no settings.path.logs",
+                    matched.node_id
+                );
+                return (0, 0);
+            }
+        };
+
+        let inventory = match load_inventory() {
+            Ok(inventory) => inventory,
+            Err(err) => {
+                log::warn!("Skipping syscall phase: {}", err);
+                return (0, 0);
+            }
+        };
+
+        let os = std::env::consts::OS;
+        let Some(commands) = select_commands_for_os(inventory, os) else {
+            log::warn!(
+                "Skipping syscall phase: no syscall command set configured for host OS '{}'",
+                os
+            );
+            return (0, 0);
+        };
+
+        let listing_command = process_listing_command_for_os(os, &pid);
+        let java_home = match self
+            .receiver
+            .get_raw_by_path(&listing_command, ".txt", PathType::SystemCall)
+            .await
+        {
+            Ok(output) => infer_java_home_from_process_listing(&pid, &output),
+            Err(err) => {
+                log::warn!("Failed to infer JAVA_HOME for pid {}: {}", pid, err);
+                None
+            }
+        };
+
+        let mut variables: HashMap<String, String> = HashMap::new();
+        variables.insert("PID".to_string(), pid.clone());
+        variables.insert("LOGPATH".to_string(), log_path.clone());
+        if let Some(cluster_name) = runtime.cluster_name {
+            variables.insert("CLUSTERNAME".to_string(), cluster_name);
+        }
+        if let Some(java_home) = java_home {
+            variables.insert("JAVA_HOME".to_string(), java_home);
+        }
+
+        let mut success = 0usize;
+        let mut total = 0usize;
+
+        for command in commands {
+            total += 1;
+
+            if command.name.trim().is_empty() || command.template.trim().is_empty() {
+                log::warn!(
+                    "Skipping invalid syscall command entry in group '{}': name='{}' template='{}'",
+                    command.group,
+                    command.name,
+                    command.template
+                );
+                continue;
+            }
+
+            let rendered = render_command(&command.template, &variables);
+            if !rendered.unresolved.is_empty() {
+                log::warn!(
+                    "Skipping syscall command '{}.{}' due to unresolved placeholders: {:?}",
+                    command.group,
+                    command.name,
+                    rendered.unresolved
+                );
+                continue;
+            }
+
+            let content = match tokio::time::timeout(
+                Duration::from_secs(30),
+                self.receiver
+                    .get_raw_by_path(&rendered.command, ".txt", PathType::SystemCall),
+            )
+            .await
+            {
+                Err(_) => {
+                    log::warn!(
+                        "Syscall command timeout for '{}.{}'",
+                        command.group,
+                        command.name
+                    );
+                    continue;
+                }
+                Ok(Err(err)) => {
+                    log::warn!(
+                        "Syscall command failed for '{}.{}': {}",
+                        command.group,
+                        command.name,
+                        err
+                    );
+                    continue;
+                }
+                Ok(Ok(output)) => output,
+            };
+
+            let file_path = PathBuf::from(format!(
+                "syscalls/{}/{}.txt",
+                sanitize_for_filename(&command.group),
+                sanitize_for_filename(&command.name)
+            ));
+
+            if let Err(err) = self.exporter.save(file_path.clone(), content).await {
+                log::warn!(
+                    "Failed to persist syscall output '{}' at {}: {}",
+                    command.name,
+                    file_path.display(),
+                    err
+                );
+                continue;
+            }
+
+            success += 1;
+        }
+
+        log::info!(
+            "Syscall phase complete for matched node {} (host={:?}, ip={:?}): {} of {} commands saved",
+            matched.node_id,
+            matched.host,
+            matched.ip,
+            success,
+            total
+        );
+
+        (success, total)
     }
 }

@@ -13,6 +13,7 @@ use eyre::{Result, eyre};
 use futures::stream::BoxStream;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
+use std::process::Command;
 use url::Url;
 
 use std::sync::Arc;
@@ -63,32 +64,72 @@ impl ElasticsearchReceiver {
             .await
     }
 
-    pub async fn get_raw_by_path(&self, path: &str, extension: &str) -> Result<String> {
-        log::debug!("Getting raw API path: {}", path);
+    pub async fn get_raw_by_path(
+        &self,
+        path: &str,
+        extension: &str,
+        path_type: PathType,
+    ) -> Result<String> {
+        match path_type {
+            PathType::Url => {
+                log::debug!("Getting raw API path: {}", path);
 
-        let mut headers = http::headers::HeaderMap::new();
-        // By default, the Elasticsearch client enforces Accept: application/json
-        // We use the configured file extension to request the appropriate content type
-        if extension == ".txt" {
-            headers.append(http::headers::ACCEPT, "text/plain".parse().unwrap());
-        } else {
-            headers.append(http::headers::ACCEPT, "application/json".parse().unwrap());
+                let mut headers = http::headers::HeaderMap::new();
+                // By default, the Elasticsearch client enforces Accept: application/json
+                // We use the configured file extension to request the appropriate content type
+                if extension == ".txt" {
+                    headers.append(http::headers::ACCEPT, "text/plain".parse().unwrap());
+                } else {
+                    headers.append(http::headers::ACCEPT, "application/json".parse().unwrap());
+                }
+
+                let response = self
+                    .client
+                    .send(
+                        http::Method::Get,
+                        path,
+                        headers,
+                        Option::<&String>::None,
+                        Option::<&String>::None,
+                        None,
+                    )
+                    .await?;
+
+                response.text().await.map_err(Into::into)
+            }
+            PathType::SystemCall => run_system_command(path).await,
+            PathType::File => Err(eyre!("PathType::File is not supported for raw-by-path")),
         }
-
-        let response = self
-            .client
-            .send(
-                http::Method::Get,
-                path,
-                headers,
-                Option::<&String>::None,
-                Option::<&String>::None,
-                None,
-            )
-            .await?;
-
-        response.text().await.map_err(Into::into)
     }
+}
+
+async fn run_system_command(command: &str) -> Result<String> {
+    let command = command.to_string();
+    tokio::task::spawn_blocking(move || {
+        let output = if cfg!(windows) {
+            Command::new("cmd").args(["/C", &command]).output()
+        } else {
+            Command::new("sh").args(["-c", &command]).output()
+        }
+        .map_err(|e| eyre!("failed to execute command '{}': {}", command, e))?;
+
+        if output.status.success() {
+            Ok(String::from_utf8_lossy(&output.stdout).to_string())
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            let msg = if stderr.is_empty() {
+                format!("command '{}' exited with status {}", command, output.status)
+            } else {
+                format!(
+                    "command '{}' exited with status {}: {}",
+                    command, output.status, stderr
+                )
+            };
+            Err(eyre!(msg))
+        }
+    })
+    .await
+    .map_err(|e| eyre!("command execution task failed: {}", e))?
 }
 
 impl TryFrom<KnownHost> for ElasticsearchReceiver {
@@ -226,12 +267,73 @@ impl ReceiveRaw for ElasticsearchReceiver {
             crate::processor::diagnostic::data_source::get_source(T::product(), &name, &aliases)?;
         let extension = source_conf.1.extension.as_deref().unwrap_or(".json");
 
-        self.get_raw_by_path(&path, extension).await
+        self.get_raw_by_path(&path, extension, PathType::Url).await
     }
 }
 
 impl std::fmt::Display for ElasticsearchReceiver {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "Elasticsearch {}", self.url)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn raw_by_path_executes_system_call() {
+        let receiver =
+            ElasticsearchReceiver::new(Url::parse("http://localhost:9200").expect("valid URL"))
+                .expect("receiver");
+
+        let command = if cfg!(windows) {
+            "echo hello"
+        } else {
+            "printf hello"
+        };
+
+        let output = receiver
+            .get_raw_by_path(command, ".txt", PathType::SystemCall)
+            .await
+            .expect("system call should succeed");
+
+        assert!(output.contains("hello"));
+    }
+
+    #[tokio::test]
+    async fn raw_by_path_system_call_propagates_command_errors() {
+        let receiver =
+            ElasticsearchReceiver::new(Url::parse("http://localhost:9200").expect("valid URL"))
+                .expect("receiver");
+
+        let err = receiver
+            .get_raw_by_path(
+                "definitely_not_a_real_command_987654",
+                ".txt",
+                PathType::SystemCall,
+            )
+            .await
+            .expect_err("invalid command should fail");
+
+        let msg = err.to_string();
+        assert!(
+            msg.contains("command") || msg.contains("failed to execute"),
+            "unexpected error message: {msg}"
+        );
+    }
+
+    #[tokio::test]
+    async fn raw_by_path_rejects_file_path_type() {
+        let receiver =
+            ElasticsearchReceiver::new(Url::parse("http://localhost:9200").expect("valid URL"))
+                .expect("receiver");
+
+        let err = receiver
+            .get_raw_by_path("ignored", ".txt", PathType::File)
+            .await
+            .expect_err("file path type should be rejected");
+
+        assert!(err.to_string().contains("PathType::File"));
     }
 }

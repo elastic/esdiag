@@ -18,7 +18,7 @@ pub use elasticsearch::ElasticsearchReceiver;
 use super::{
     data::{KnownHost, Uri},
     processor::{
-        DataSource, DiagnosticManifest, ElasticsearchCluster, Manifest, ManifestBuilder,
+        DataSource, DiagnosticManifest, ElasticsearchCluster, Manifest, ManifestBuilder, PathType,
         StreamingDataSource,
     },
 };
@@ -144,9 +144,16 @@ impl Receiver {
         }
     }
 
-    pub async fn get_raw_by_path(&self, path: &str, extension: &str) -> Result<String> {
+    pub async fn get_raw_by_path(
+        &self,
+        path: &str,
+        extension: &str,
+        path_type: PathType,
+    ) -> Result<String> {
         match self {
-            Receiver::Elasticsearch(receiver) => receiver.get_raw_by_path(path, extension).await,
+            Receiver::Elasticsearch(receiver) => {
+                receiver.get_raw_by_path(path, extension, path_type).await
+            }
             _ => Err(eyre!(
                 "Raw data by path is only supported for Elasticsearch receiver"
             )),

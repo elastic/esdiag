@@ -1,0 +1,2468 @@
+{
+  "nodes": {
+    "26-Z26eQTeS8djeneKYVRw": {
+      "name": "instance-0000000014",
+      "transport_address": "10.43.3.169:19558",
+      "host": "10.43.3.169",
+      "ip": "10.43.3.169",
+      "version": "9.3.0",
+      "transport_version": 9250003,
+      "index_version": 9060000,
+      "component_versions": {
+        "api_key_version": 8150099,
+        "transform_config_version": 10000099,
+        "ml_config_version": 12000099
+      },
+      "build_flavor": "default",
+      "build_type": "docker",
+      "build_hash": "17b451d8979a29e31935fe1eb901310350b30e62",
+      "total_indexing_buffer": 405169766,
+      "roles": [
+        "data_content",
+        "data_hot",
+        "ingest",
+        "master",
+        "remote_cluster_client",
+        "transform"
+      ],
+      "attributes": {
+        "server_name": "instance-0000000014.6a4cd138c97f4f15aea6f1e85349da97",
+        "region": "unknown-region",
+        "availability_zone": "europe-west1-c",
+        "xpack.installed": "true",
+        "transform.config_version": "10.0.0",
+        "instance_configuration": "gcp.es.datahot.n2.68x16x45",
+        "logical_availability_zone": "zone-0",
+        "ml.config_version": "12.0.0"
+      },
+      "settings": {
+        "cluster": {
+          "name": "6a4cd138c97f4f15aea6f1e85349da97",
+          "follower_lag": {
+            "timeout": "1h"
+          },
+          "routing": {
+            "allocation": {
+              "awareness": {
+                "attributes": "region,logical_availability_zone"
+              }
+            }
+          },
+          "indices": {
+            "close": {
+              "enable": "true"
+            }
+          },
+          "metadata": {
+            "managed_index_templates": ".cloud-",
+            "managed_repository": "found-snapshots",
+            "managed_policies": [
+              "cloud-snapshot-policy"
+            ]
+          },
+          "election": {
+            "strategy": "supports_voting_only"
+          }
+        },
+        "reindex": {
+          "remote": {
+            "whitelist": [
+              "*.io:*",
+              "*.com:*"
+            ]
+          }
+        },
+        "transport": {
+          "type": "security4",
+          "compress": "indexing_data",
+          "port": "19558",
+          "compression_scheme": "lz4",
+          "type.default": "netty4"
+        },
+        "remote_cluster_server": {
+          "enabled": "true"
+        },
+        "script": {
+          "allowed_types": "stored,inline"
+        },
+        "network": {
+          "bind_host": "_site:ipv4_",
+          "publish_host": "10.43.3.169"
+        },
+        "node": {
+          "name": "instance-0000000014",
+          "processors": "2.0",
+          "attr": {
+            "logical_availability_zone": "zone-0",
+            "availability_zone": "europe-west1-c",
+            "server_name": "instance-0000000014.6a4cd138c97f4f15aea6f1e85349da97",
+            "transform": {
+              "config_version": "10.0.0"
+            },
+            "instance_configuration": "gcp.es.datahot.n2.68x16x45",
+            "region": "unknown-region",
+            "xpack": {
+              "installed": "true"
+            },
+            "ml": {
+              "config_version": "12.0.0"
+            }
+          },
+          "bandwidth": {
+            "recovery": {
+              "disk": {
+                "write": "193280Kb",
+                "read": "352000Kb"
+              },
+              "network": "447080Kb"
+            }
+          },
+          "roles": [
+            "ingest",
+            "transform",
+            "data_hot",
+            "data_content",
+            "master",
+            "remote_cluster_client"
+          ]
+        },
+        "path": {
+          "data": "/app/data",
+          "logs": "/app/logs",
+          "home": "/usr/share/elasticsearch"
+        },
+        "remote_cluster": {
+          "port": "23325",
+          "publish_host": "10.43.3.169"
+        },
+        "discovery": {
+          "seed_hosts": [],
+          "seed_providers": "file"
+        },
+        "action": {
+          "auto_create_index": "true",
+          "destructive_requires_name": "false"
+        },
+        "http": {
+          "port": "18014",
+          "publish_port": "18014",
+          "max_warning_header_count": "64",
+          "compression": "true",
+          "type": "security4",
+          "max_warning_header_size": "7168b",
+          "type.default": "netty4"
+        },
+        "telemetry": {
+          "agent": {
+            "environment": "production",
+            "server_url": "https://ade34e15ce8041d483d0a571d4543a15.apm.europe-west1.gcp.cloud.es.io:443",
+            "global_labels": {
+              "organizationId": "1220625610",
+              "deploymentName": "srsbusiness_2",
+              "subscriptionLevel": "enterprise",
+              "isElasticUser": "true",
+              "deploymentId": "fef85dab88354da3a32545f653c922c1"
+            },
+            "service_node_name": "fef85dab88354da3a32545f653c922c1-elasticsearch-instance-0000000014"
+          },
+          "tracing": {
+            "enabled": "true"
+          }
+        },
+        "xpack": {
+          "license": {
+            "self_generated": {
+              "type": "trial"
+            }
+          },
+          "notification": {
+            "email": {
+              "account": {
+                "work": {
+                  "email_defaults": {
+                    "from": "noreply@alerts.elastic.co"
+                  },
+                  "smtp": {
+                    "host": "dockerhost",
+                    "port": "10025"
+                  }
+                }
+              },
+              "default_account": "work"
+            }
+          },
+          "security": {
+            "operator_privileges": {
+              "enabled": "true"
+            },
+            "audit": {
+              "logfile": {
+                "events": {
+                  "ignore_filters": {
+                    "ignore_cloud_internal_users": {
+                      "users": [
+                        "found-local-allocator",
+                        "found-internal-kibana4-server",
+                        "found-internal-monitor",
+                        "found-internal-constructor",
+                        "cloud-internal-apm-server",
+                        "cloud-internal-agent-server",
+                        "kibana-metricbeat",
+                        "ec-local-beats-monitor",
+                        "elastic-observability-agent",
+                        "autoops-agent"
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            "authc": {
+              "domains": {
+                "cloud-default": {
+                  "realms": [
+                    "cloud-saml-kibana"
+                  ],
+                  "uid_generation": {
+                    "literal_username": "true",
+                    "suffix": "cloud"
+                  }
+                },
+                "cloud-file": {
+                  "realms": [
+                    "found"
+                  ],
+                  "uid_generation": {
+                    "literal_username": "true",
+                    "suffix": "found"
+                  }
+                }
+              },
+              "realms": {
+                "saml": {
+                  "cloud-saml-kibana": {
+                    "attributes": {
+                      "name": "http://saml.elastic-cloud.com/attributes/name",
+                      "principal": "http://saml.elastic-cloud.com/attributes/principal",
+                      "groups": "http://saml.elastic-cloud.com/attributes/roles",
+                      "mail": "http://saml.elastic-cloud.com/attributes/email"
+                    },
+                    "idp": {
+                      "entity_id": "urn:idp-cloud-elastic-co",
+                      "metadata": {
+                        "path": "/app/config/cloud-saml-metadata-89f318789ba941c28454feb801c10e46.xml"
+                      }
+                    },
+                    "nameid_format": "urn:oasis:names:tc:SAML:2.0:nameid-format:transient",
+                    "sp": {
+                      "acs": "https://srsbusiness-2.kb.europe-west1.gcp.cloud.es.io/api/security/saml/callback",
+                      "entity_id": "ec:1220625610:kibana-srsbusiness-2",
+                      "logout": "https://srsbusiness-2.kb.europe-west1.gcp.cloud.es.io/logout"
+                    },
+                    "order": "101"
+                  }
+                },
+                "native": {
+                  "native": {
+                    "order": "1"
+                  }
+                },
+                "file": {
+                  "found": {
+                    "order": "0"
+                  }
+                }
+              },
+              "reserved_realm": {
+                "enabled": "false"
+              },
+              "token": {
+                "enabled": "true"
+              }
+            },
+            "autoconfiguration": {
+              "enabled": "false"
+            },
+            "http": {
+              "ssl": {
+                "enabled": "true"
+              }
+            },
+            "transport": {
+              "ssl": {
+                "enabled": "true"
+              }
+            },
+            "remote_cluster_server": {
+              "ssl": {
+                "enabled": "true"
+              }
+            },
+            "enabled": "true"
+          },
+          "ccr": {
+            "enabled": "true"
+          },
+          "inference": {
+            "elastic": {
+              "http": {
+                "ssl": {
+                  "enabled": "true"
+                }
+              },
+              "ccm_supported_environment": "false",
+              "url": "https://inference.europe-west1.gcp.svc.elastic.cloud"
+            }
+          },
+          "monitoring": {
+            "history": {
+              "duration": "3d"
+            }
+          },
+          "ml": {
+            "enabled": "true"
+          }
+        }
+      },
+      "os": {
+        "refresh_interval_in_millis": 1000,
+        "name": "Linux",
+        "pretty_name": "Chainguard",
+        "arch": "amd64",
+        "version": "5.15.0-1060-gcp",
+        "available_processors": 2,
+        "allocated_processors": 2
+      },
+      "process": {
+        "refresh_interval_in_millis": 1000,
+        "id": 464,
+        "mlockall": false
+      },
+      "jvm": {
+        "pid": 464,
+        "version": "25.0.1",
+        "vm_name": "OpenJDK 64-Bit Server VM",
+        "vm_version": "25.0.1+8-27",
+        "vm_vendor": "Oracle Corporation",
+        "using_bundled_jdk": true,
+        "start_time_in_millis": 1771324593994,
+        "mem": {
+          "heap_init_in_bytes": 4051697664,
+          "heap_max_in_bytes": 4051697664,
+          "non_heap_init_in_bytes": 7667712,
+          "non_heap_max_in_bytes": 0,
+          "direct_max_in_bytes": 2025848832
+        },
+        "gc_collectors": [
+          "G1 Young Generation",
+          "G1 Concurrent GC",
+          "G1 Old Generation"
+        ],
+        "memory_pools": [
+          "CodeHeap 'non-nmethods'",
+          "Metaspace",
+          "CodeHeap 'profiled nmethods'",
+          "Compressed Class Space",
+          "G1 Eden Space",
+          "G1 Old Gen",
+          "G1 Survivor Space",
+          "CodeHeap 'non-profiled nmethods'"
+        ],
+        "using_compressed_ordinary_object_pointers": "true",
+        "input_arguments": [
+          "-Des.networkaddress.cache.ttl=60",
+          "-Des.networkaddress.cache.negative.ttl=10",
+          "-XX:+AlwaysPreTouch",
+          "-Xss1m",
+          "-Djava.awt.headless=true",
+          "-Dfile.encoding=UTF-8",
+          "-Djna.nosys=true",
+          "-XX:-OmitStackTraceInFastThrow",
+          "-Dio.netty.noUnsafe=true",
+          "-Dio.netty.noKeySetOptimization=true",
+          "-Dio.netty.recycler.maxCapacityPerThread=0",
+          "--add-opens=org.apache.lucene.core/org.apache.lucene.codecs.lucene99=org.elasticsearch.server",
+          "--add-opens=org.apache.lucene.core/org.apache.lucene.codecs.hnsw=org.elasticsearch.server",
+          "--add-opens=org.apache.lucene.core/org.apache.lucene.internal.vectorization=org.elasticsearch.server",
+          "-Dlog4j.shutdownHookEnabled=false",
+          "-Dlog4j2.disable.jmx=true",
+          "-Dlog4j2.formatMsgNoLookups=true",
+          "-Djava.locale.providers=CLDR",
+          "-Dorg.apache.lucene.vectorization.upperJavaFeatureVersion=25",
+          "-Des.path.home=/usr/share/elasticsearch",
+          "-Des.distribution.type=docker",
+          "-Des.java.type=bundled JDK",
+          "--enable-native-access=org.elasticsearch.nativeaccess,org.apache.lucene.core",
+          "--enable-native-access=ALL-UNNAMED",
+          "--illegal-native-access=deny",
+          "-Des.cgroups.hierarchy.override=/",
+          "-XX:ActiveProcessorCount=2",
+          "-XX:ReplayDataFile=logs/replay_pid%p.log",
+          "-XX:+EnableDynamicAgentLoading",
+          "-Djdk.attach.allowAttachSelf=true",
+          "--patch-module=java.base=/usr/share/elasticsearch/lib/entitlement-bridge/elasticsearch-entitlement-bridge-9.3.0.jar",
+          "--add-exports=java.base/org.elasticsearch.entitlement.bridge=org.elasticsearch.entitlement,java.logging,java.net.http,java.naming,jdk.net",
+          "-XX:+UseG1GC",
+          "-Djava.io.tmpdir=/app/tmp",
+          "--add-modules=jdk.incubator.vector",
+          "-Dorg.apache.lucene.store.defaultReadAdvice=normal",
+          "-Dorg.apache.lucene.store.MMapDirectory.sharedArenaMaxPermits=1",
+          "-XX:+HeapDumpOnOutOfMemoryError",
+          "-XX:+ExitOnOutOfMemoryError",
+          "-XX:ErrorFile=hs_err_pid%p.log",
+          "-Xlog:gc*,gc+age=trace,safepoint:file=gc.log:utctime,level,pid,tags:filecount=2,filesize=8m",
+          "-XX:ActiveProcessorCount=2",
+          "-Des.total_memory_bytes=8208252928",
+          "-Des.search.ignore_awareness_attributes=true",
+          "-XX:+HeapDumpOnOutOfMemoryError",
+          "-XX:HeapDumpPath=/app/heap_dumps",
+          "-XX:HeapDumpGzipLevel=6",
+          "-Dcurator-log-only-first-connection-issue-as-error-level=true",
+          "-Dio.netty.recycler.maxCapacityPerThread=0",
+          "-Des.cgroups.hierarchy.override=/",
+          "-Dlog4j2.formatMsgNoLookups=true",
+          "-XX:ErrorFile=/app/logs/hs_err%p.log",
+          "-Xms3864m",
+          "-Xmx3864m",
+          "-XX:MaxDirectMemorySize=2025848832",
+          "-XX:G1HeapRegionSize=4m",
+          "-XX:InitiatingHeapOccupancyPercent=30",
+          "-XX:G1ReservePercent=15",
+          "-javaagent:/usr/share/elasticsearch/modules/apm/elastic-apm-agent-java8-1.55.0.jar=c=/app/tmp/.elstcapm.7432201517968146437.tmp",
+          "-Delastic.apm.transaction_max_spans=0",
+          "-Delastic.apm.central_config=false",
+          "-Delastic.apm.stack_trace_limit=0",
+          "-Delastic.apm.application_packages=org.elasticsearch,org.apache.lucene",
+          "-Delastic.apm.transaction_sample_rate=0.001",
+          "-Delastic.apm.log_level=error",
+          "-Delastic.apm.enable_experimental_instrumentations=true",
+          "-Delastic.apm.instrument=false",
+          "-Delastic.apm.server_url=https://ade34e15ce8041d483d0a571d4543a15.apm.europe-west1.gcp.cloud.es.io:443",
+          "--module-path=/usr/share/elasticsearch/lib",
+          "--add-modules=jdk.net",
+          "--add-modules=jdk.management.agent",
+          "--add-modules=ALL-MODULE-PATH",
+          "-Djdk.module.main=org.elasticsearch.server"
+        ]
+      },
+      "thread_pool": {
+        "force_merge": {
+          "type": "fixed",
+          "size": 1,
+          "queue_size": -1
+        },
+        "search_coordination": {
+          "type": "fixed",
+          "size": 1,
+          "queue_size": 1000
+        },
+        "ml_datafeed": {
+          "type": "scaling",
+          "core": 1,
+          "max": 512,
+          "keep_alive": "1m",
+          "queue_size": -1
+        },
+        "searchable_snapshots_cache_fetch_async": {
+          "type": "scaling",
+          "core": 0,
+          "max": 6,
+          "keep_alive": "30s",
+          "queue_size": -1
+        },
+        "snapshot_meta": {
+          "type": "scaling",
+          "core": 1,
+          "max": 6,
+          "keep_alive": "30s",
+          "queue_size": -1
+        },
+        "fetch_shard_started": {
+          "type": "scaling",
+          "core": 1,
+          "max": 4,
+          "keep_alive": "5m",
+          "queue_size": -1
+        },
+        "model_download": {
+          "type": "fixed",
+          "size": 5,
+          "queue_size": -1
+        },
+        "esql_worker": {
+          "type": "fixed",
+          "size": 4,
+          "queue_size": 1000
+        },
+        "rollup_indexing": {
+          "type": "fixed",
+          "size": 1,
+          "queue_size": -1
+        },
+        "write_coordination": {
+          "type": "fixed",
+          "size": 2,
+          "queue_size": 10000
+        },
+        "search": {
+          "type": "fixed",
+          "size": 4,
+          "queue_size": 4000
+        },
+        "cluster_coordination": {
+          "type": "fixed",
+          "size": 1,
+          "queue_size": -1
+        },
+        "security-crypto": {
+          "type": "fixed",
+          "size": 1,
+          "queue_size": 1000
+        },
+        "ccr": {
+          "type": "fixed",
+          "size": 32,
+          "queue_size": 100
+        },
+        "inference_utility": {
+          "type": "scaling",
+          "core": 0,
+          "max": 10,
+          "keep_alive": "10m",
+          "queue_size": -1
+        },
+        "flush": {
+          "type": "scaling",
+          "core": 1,
+          "max": 1,
+          "keep_alive": "5m",
+          "queue_size": -1
+        },
+        "fetch_shard_store": {
+          "type": "scaling",
+          "core": 1,
+          "max": 4,
+          "keep_alive": "5m",
+          "queue_size": -1
+        },
+        "ml_utility": {
+          "type": "scaling",
+          "core": 1,
+          "max": 2048,
+          "keep_alive": "10m",
+          "queue_size": -1
+        },
+        "get": {
+          "type": "fixed",
+          "size": 4,
+          "queue_size": 1000
+        },
+        "merge": {
+          "type": "scaling",
+          "core": 1,
+          "max": 2,
+          "keep_alive": "5m",
+          "queue_size": -1
+        },
+        "system_read": {
+          "type": "fixed",
+          "size": 1,
+          "queue_size": 2000
+        },
+        "system_critical_read": {
+          "type": "fixed",
+          "size": 1,
+          "queue_size": 2000
+        },
+        "ml_native_inference_comms": {
+          "type": "scaling",
+          "core": 3,
+          "max": 306,
+          "keep_alive": "1m",
+          "queue_size": -1
+        },
+        "write": {
+          "type": "fixed",
+          "size": 2,
+          "queue_size": 10000
+        },
+        "watcher": {
+          "type": "fixed",
+          "size": 10,
+          "queue_size": 1000
+        },
+        "security-token-key": {
+          "type": "fixed",
+          "size": 1,
+          "queue_size": 1000
+        },
+        "system_critical_write": {
+          "type": "fixed",
+          "size": 1,
+          "queue_size": 1500
+        },
+        "refresh": {
+          "type": "scaling",
+          "core": 1,
+          "max": 1,
+          "keep_alive": "5m",
+          "queue_size": -1
+        },
+        "repository_azure": {
+          "type": "scaling",
+          "core": 0,
+          "max": 5,
+          "keep_alive": "30s",
+          "queue_size": -1
+        },
+        "system_write": {
+          "type": "fixed",
+          "size": 1,
+          "queue_size": 1000
+        },
+        "generic": {
+          "type": "scaling",
+          "core": 4,
+          "max": 128,
+          "keep_alive": "30s",
+          "queue_size": -1
+        },
+        "warmer": {
+          "type": "scaling",
+          "core": 1,
+          "max": 1,
+          "keep_alive": "5m",
+          "queue_size": -1
+        },
+        "auto_complete": {
+          "type": "fixed",
+          "size": 1,
+          "queue_size": 100
+        },
+        "azure_event_loop": {
+          "type": "scaling",
+          "core": 0,
+          "max": 1,
+          "keep_alive": "30s",
+          "queue_size": -1
+        },
+        "inference_response": {
+          "type": "scaling",
+          "core": 0,
+          "max": 10,
+          "keep_alive": "10m",
+          "queue_size": -1
+        },
+        "profiling": {
+          "type": "scaling",
+          "core": 0,
+          "max": 1,
+          "keep_alive": "30m",
+          "queue_size": -1
+        },
+        "management": {
+          "type": "scaling",
+          "core": 1,
+          "max": 2,
+          "keep_alive": "5m",
+          "queue_size": -1
+        },
+        "analyze": {
+          "type": "fixed",
+          "size": 1,
+          "queue_size": 16
+        },
+        "searchable_snapshots_cache_prewarming": {
+          "type": "scaling",
+          "core": 0,
+          "max": 16,
+          "keep_alive": "30s",
+          "queue_size": -1
+        },
+        "ml_job_comms": {
+          "type": "scaling",
+          "core": 4,
+          "max": 2048,
+          "keep_alive": "1m",
+          "queue_size": -1
+        },
+        "downsample_indexing": {
+          "type": "fixed",
+          "size": 1,
+          "queue_size": 256
+        },
+        "snapshot": {
+          "type": "scaling",
+          "core": 1,
+          "max": 10,
+          "keep_alive": "5m",
+          "queue_size": -1
+        },
+        "system_write_coordination": {
+          "type": "fixed",
+          "size": 1,
+          "queue_size": 1000
+        }
+      },
+      "transport": {
+        "bound_address": [
+          "172.17.0.6:19558"
+        ],
+        "publish_address": "10.43.3.169:19558",
+        "profiles": {}
+      },
+      "http": {
+        "bound_address": [
+          "172.17.0.6:18014"
+        ],
+        "publish_address": "10.43.3.169:18014",
+        "max_content_length_in_bytes": 104857600
+      },
+      "remote_cluster_server": {
+        "bound_address": [
+          "172.17.0.6:23325"
+        ],
+        "publish_address": "10.43.3.169:23325"
+      },
+      "plugins": [],
+      "modules": [
+        {
+          "name": "aggregations",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": """Adds "built in" aggregations to Elasticsearch.""",
+          "classname": "org.elasticsearch.aggregations.AggregationsPlugin",
+          "extended_plugins": [
+            "lang-painless"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "analysis-common",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": """Adds "built in" analyzers to Elasticsearch.""",
+          "classname": "org.elasticsearch.analysis.common.CommonAnalysisPlugin",
+          "extended_plugins": [
+            "lang-painless"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "apm",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Provides APM integration for Elasticsearch",
+          "classname": "org.elasticsearch.telemetry.apm.APM",
+          "extended_plugins": [],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "blob-cache",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Provides a blob store cache",
+          "classname": "org.elasticsearch.blobcache.BlobCachePlugin",
+          "extended_plugins": [],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "constant-keyword",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Module for the constant-keyword field type, which is a specialization of keyword for the case when all documents have the same value.",
+          "classname": "org.elasticsearch.xpack.constantkeyword.ConstantKeywordMapperPlugin",
+          "extended_plugins": [
+            "x-pack-core",
+            "lang-painless"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "counted-keyword",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Module for the counted-keyword field type, which allows to consider duplicates in an array of values of that type.",
+          "classname": "org.elasticsearch.xpack.countedkeyword.CountedKeywordMapperPlugin",
+          "extended_plugins": [
+            "x-pack-core"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "data-streams",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Elasticsearch Expanded Pack Plugin - Data Streams",
+          "classname": "org.elasticsearch.datastreams.DataStreamsPlugin",
+          "extended_plugins": [],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "diskbbq",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "A plugin for doing vector search with DiskBBQ",
+          "classname": "org.elasticsearch.xpack.diskbbq.DiskBBQPlugin",
+          "extended_plugins": [
+            "x-pack-core"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "dot-prefix-validation",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Validation for dot-prefixed indices for non-operator users",
+          "classname": "org.elasticsearch.validation.DotPrefixValidationPlugin",
+          "extended_plugins": [],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "exponential-histogram",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Module for the exponential_histogram field type",
+          "classname": "org.elasticsearch.xpack.exponentialhistogram.ExponentialHistogramMapperPlugin",
+          "extended_plugins": [
+            "x-pack-core"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "frozen-indices",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "A plugin for the frozen indices functionality",
+          "classname": "org.elasticsearch.xpack.frozen.FrozenIndices",
+          "extended_plugins": [
+            "x-pack-core"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "gpu",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "A plugin for doing vector search in GPU",
+          "classname": "org.elasticsearch.xpack.gpu.GPUPlugin",
+          "extended_plugins": [
+            "x-pack-core"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "health-shards-availability",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Health report API extension providing the shards_availability output",
+          "classname": "org.elasticsearch.health.plugin.ShardsAvailabilityPlugin",
+          "extended_plugins": [],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "ingest-attachment",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Ingest processor that uses Apache Tika to extract contents",
+          "classname": "org.elasticsearch.ingest.attachment.IngestAttachmentPlugin",
+          "extended_plugins": [],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "ingest-common",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Module for ingest processors that do not require additional security permissions or have large dependencies and resources",
+          "classname": "org.elasticsearch.ingest.common.IngestCommonPlugin",
+          "extended_plugins": [
+            "lang-painless"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "ingest-geoip",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Ingest processor that uses lookup geo data based on IP addresses using the MaxMind geo database",
+          "classname": "org.elasticsearch.ingest.geoip.IngestGeoIpPlugin",
+          "extended_plugins": [],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "ingest-otel",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Ingest processor that normalizes ECS documents to OpenTelemetry-compatible namespaces",
+          "classname": "org.elasticsearch.ingest.otel.NormalizeForStreamPlugin",
+          "extended_plugins": [
+            "ingest-common"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "ingest-user-agent",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Ingest processor that extracts information from a user agent",
+          "classname": "org.elasticsearch.ingest.useragent.IngestUserAgentPlugin",
+          "extended_plugins": [],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "kibana",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Plugin exposing APIs for Kibana system indices",
+          "classname": "org.elasticsearch.kibana.KibanaPlugin",
+          "extended_plugins": [],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "lang-expression",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Lucene expressions integration for Elasticsearch",
+          "classname": "org.elasticsearch.script.expression.ExpressionPlugin",
+          "extended_plugins": [],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "lang-mustache",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Mustache scripting integration for Elasticsearch",
+          "classname": "org.elasticsearch.script.mustache.MustachePlugin",
+          "extended_plugins": [],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "lang-painless",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "An easy, safe and fast scripting language for Elasticsearch",
+          "classname": "org.elasticsearch.painless.PainlessPlugin",
+          "extended_plugins": [],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "legacy-geo",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Placeholder plugin for geospatial features in ES",
+          "classname": "org.elasticsearch.legacygeo.LegacyGeoPlugin",
+          "extended_plugins": [],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "logsdb",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "A plugin for logsdb related functionality",
+          "classname": "org.elasticsearch.xpack.logsdb.LogsDBPlugin",
+          "extended_plugins": [
+            "x-pack-core"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "mapper-extras",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Adds advanced field mappers",
+          "classname": "org.elasticsearch.index.mapper.extras.MapperExtrasPlugin",
+          "extended_plugins": [],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "mapper-version",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "A plugin for a field type to store software versions",
+          "classname": "org.elasticsearch.xpack.versionfield.VersionFieldPlugin",
+          "extended_plugins": [
+            "x-pack-core",
+            "lang-painless"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "ml-package-loader",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Loader for prepackaged Machine Learning Models from Elastic",
+          "classname": "org.elasticsearch.xpack.ml.packageloader.MachineLearningPackageLoader",
+          "extended_plugins": [
+            "x-pack-core"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "old-lucene-versions",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "A plugin for accessing older Lucene indices",
+          "classname": "org.elasticsearch.xpack.lucene.bwc.OldLuceneVersions",
+          "extended_plugins": [
+            "x-pack-core"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "parent-join",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "This module adds the support parent-child queries and aggregations",
+          "classname": "org.elasticsearch.join.ParentJoinPlugin",
+          "extended_plugins": [],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "percolator",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Percolator module adds capability to index queries and query these queries by specifying documents",
+          "classname": "org.elasticsearch.percolator.PercolatorPlugin",
+          "extended_plugins": [],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "rank-eval",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "The Rank Eval module adds APIs to evaluate ranking quality.",
+          "classname": "org.elasticsearch.index.rankeval.RankEvalPlugin",
+          "extended_plugins": [],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "rank-rrf",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Reciprocal rank fusion in search.",
+          "classname": "org.elasticsearch.xpack.rank.rrf.RRFRankPlugin",
+          "extended_plugins": [
+            "x-pack-core"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "rank-vectors",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Rank vectors in search.",
+          "classname": "org.elasticsearch.xpack.rank.vectors.RankVectorsPlugin",
+          "extended_plugins": [
+            "x-pack-core",
+            "lang-painless"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "reindex",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "The Reindex module adds APIs to reindex from one index to another or update documents in place.",
+          "classname": "org.elasticsearch.reindex.ReindexPlugin",
+          "extended_plugins": [],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "reindex-management",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Reindex management features and endpoints",
+          "classname": "org.elasticsearch.reindex.management.ReindexManagementPlugin",
+          "extended_plugins": [
+            "reindex"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "repositories-metering-api",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Repositories metering API",
+          "classname": "org.elasticsearch.xpack.repositories.metering.RepositoriesMeteringPlugin",
+          "extended_plugins": [
+            "x-pack-core"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "repository-azure",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "The Azure Repository plugin adds support for Azure storage repositories.",
+          "classname": "org.elasticsearch.repositories.azure.AzureRepositoryPlugin",
+          "extended_plugins": [],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "repository-gcs",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "The GCS repository plugin adds Google Cloud Storage support for repositories.",
+          "classname": "org.elasticsearch.repositories.gcs.GoogleCloudStoragePlugin",
+          "extended_plugins": [],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "repository-s3",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "The S3 repository plugin adds S3 repositories",
+          "classname": "org.elasticsearch.repositories.s3.S3RepositoryPlugin",
+          "extended_plugins": [],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "repository-url",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Module for URL repository",
+          "classname": "org.elasticsearch.plugin.repository.url.URLRepositoryPlugin",
+          "extended_plugins": [],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "rest-root",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Adds HEAD and GET / endpoint to Elasticsearch",
+          "classname": "org.elasticsearch.rest.root.MainRestPlugin",
+          "extended_plugins": [],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "runtime-fields-common",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Module for runtime fields features and extensions that have large dependencies",
+          "classname": "org.elasticsearch.runtimefields.RuntimeFieldsCommonPlugin",
+          "extended_plugins": [
+            "lang-painless"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "search-business-rules",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "A plugin for applying business rules to search result rankings",
+          "classname": "org.elasticsearch.xpack.searchbusinessrules.SearchBusinessRules",
+          "extended_plugins": [
+            "x-pack-core"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "searchable-snapshots",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "A plugin for the searchable snapshots functionality",
+          "classname": "org.elasticsearch.xpack.searchablesnapshots.SearchableSnapshots",
+          "extended_plugins": [
+            "x-pack-core",
+            "blob-cache"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "snapshot-based-recoveries",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "A plugin that enables snapshot based recoveries",
+          "classname": "org.elasticsearch.xpack.snapshotbasedrecoveries.SnapshotBasedRecoveriesPlugin",
+          "extended_plugins": [
+            "x-pack-core"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "snapshot-repo-test-kit",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "A plugin for a test kit for snapshot repositories",
+          "classname": "org.elasticsearch.repositories.blobstore.testkit.SnapshotRepositoryTestKit",
+          "extended_plugins": [
+            "x-pack-core"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "spatial",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "A plugin for Basic Spatial features",
+          "classname": "org.elasticsearch.xpack.spatial.SpatialPlugin",
+          "extended_plugins": [
+            "x-pack-core",
+            "legacy-geo",
+            "lang-painless"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "stateless",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Elasticsearch Expanded Pack Plugin - Stateless self managed",
+          "classname": "org.elasticsearch.xpack.stateless.StatelessPlugin",
+          "extended_plugins": [
+            "x-pack-core",
+            "blob-cache"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "streams",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "The module adds support for the wired streams functionality including logs ingest",
+          "classname": "org.elasticsearch.rest.streams.StreamsPlugin",
+          "extended_plugins": [],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "transform",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "A plugin to transform data",
+          "classname": "org.elasticsearch.xpack.transform.Transform",
+          "extended_plugins": [
+            "x-pack-core"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "transport-netty4",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Netty 4 based transport implementation",
+          "classname": "org.elasticsearch.transport.netty4.Netty4Plugin",
+          "extended_plugins": [],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "unsigned-long",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Module for the unsigned long field type",
+          "classname": "org.elasticsearch.xpack.unsignedlong.UnsignedLongMapperPlugin",
+          "extended_plugins": [
+            "x-pack-core",
+            "lang-painless"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "vector-tile",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "A plugin for mapbox vector tile features",
+          "classname": "org.elasticsearch.xpack.vectortile.VectorTilePlugin",
+          "extended_plugins": [
+            "spatial"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "wildcard",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "A plugin for a keyword field type with efficient wildcard search",
+          "classname": "org.elasticsearch.xpack.wildcard.Wildcard",
+          "extended_plugins": [
+            "x-pack-core",
+            "lang-painless"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "x-pack-aggregate-metric",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Module for the aggregate_metric_double field type, which allows pre-aggregated fields to be stored as a single field",
+          "classname": "org.elasticsearch.xpack.aggregatemetric.AggregateMetricMapperPlugin",
+          "extended_plugins": [
+            "x-pack-core"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "x-pack-analytics",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Elasticsearch Expanded Pack Plugin - Analytics",
+          "classname": "org.elasticsearch.xpack.analytics.AnalyticsPlugin",
+          "extended_plugins": [
+            "x-pack-core"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "x-pack-apm-data",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "The APM plugin defines APM data streams and ingest pipelines.",
+          "classname": "org.elasticsearch.xpack.apmdata.APMPlugin",
+          "extended_plugins": [
+            "x-pack-core"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "x-pack-async",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "A module which handles common async operations",
+          "classname": "org.elasticsearch.xpack.async.AsyncResultsIndexPlugin",
+          "extended_plugins": [
+            "x-pack-core"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "x-pack-async-search",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "A module which allows to track the progress of a search asynchronously.",
+          "classname": "org.elasticsearch.xpack.search.AsyncSearch",
+          "extended_plugins": [
+            "x-pack-core"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "x-pack-autoscaling",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Elasticsearch Expanded Pack Plugin - Autoscaling",
+          "classname": "org.elasticsearch.xpack.autoscaling.Autoscaling",
+          "extended_plugins": [
+            "x-pack-core"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "x-pack-ccr",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Elasticsearch Expanded Pack Plugin - CCR",
+          "classname": "org.elasticsearch.xpack.ccr.Ccr",
+          "extended_plugins": [
+            "x-pack-core"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "x-pack-core",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Elasticsearch Expanded Pack Plugin - Core",
+          "classname": "org.elasticsearch.xpack.core.XPackPlugin",
+          "extended_plugins": [],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "x-pack-deprecation",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Elasticsearch Expanded Pack Plugin - Deprecation",
+          "classname": "org.elasticsearch.xpack.deprecation.Deprecation",
+          "extended_plugins": [
+            "x-pack-core"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "x-pack-downsample",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Elasticsearch Expanded Pack Plugin - Downsample",
+          "classname": "org.elasticsearch.xpack.downsample.Downsample",
+          "extended_plugins": [
+            "x-pack-aggregate-metric"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "x-pack-enrich",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Elasticsearch Expanded Pack Plugin - Enrich",
+          "classname": "org.elasticsearch.xpack.enrich.EnrichPlugin",
+          "extended_plugins": [
+            "x-pack-core"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "x-pack-ent-search",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Elasticsearch Expanded Pack Plugin - Enterprise Search",
+          "classname": "org.elasticsearch.xpack.application.EnterpriseSearch",
+          "extended_plugins": [
+            "x-pack-core",
+            "search-business-rules"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "x-pack-eql",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "The Elasticsearch plugin that powers EQL for Elasticsearch",
+          "classname": "org.elasticsearch.xpack.eql.plugin.EqlPlugin",
+          "extended_plugins": [
+            "x-pack-ql",
+            "lang-painless"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "x-pack-esql",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "The plugin that powers ESQL for Elasticsearch",
+          "classname": "org.elasticsearch.xpack.esql.plugin.EsqlPlugin",
+          "extended_plugins": [
+            "x-pack-esql-core",
+            "lang-painless",
+            "x-pack-ml"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "x-pack-esql-core",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Elasticsearch infrastructure plugin for ESQL",
+          "classname": "org.elasticsearch.xpack.esql.core.plugin.EsqlCorePlugin",
+          "extended_plugins": [
+            "x-pack-core"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "x-pack-fleet",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Elasticsearch Expanded Pack Plugin - Plugin exposing APIs for Fleet system indices",
+          "classname": "org.elasticsearch.xpack.fleet.Fleet",
+          "extended_plugins": [
+            "x-pack-core"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "x-pack-geoip-enterprise-downloader",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Elasticsearch Expanded Pack Plugin - Geoip Enterprise Downloader",
+          "classname": "org.elasticsearch.xpack.geoip.EnterpriseDownloaderPlugin",
+          "extended_plugins": [
+            "x-pack-core"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "x-pack-graph",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Elasticsearch Expanded Pack Plugin - Graph",
+          "classname": "org.elasticsearch.xpack.graph.Graph",
+          "extended_plugins": [
+            "x-pack-core"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "x-pack-identity-provider",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Elasticsearch Expanded Pack Plugin - Identity Provider",
+          "classname": "org.elasticsearch.xpack.idp.IdentityProviderPlugin",
+          "extended_plugins": [
+            "x-pack-core"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "x-pack-ilm",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Elasticsearch Expanded Pack Plugin - Index Lifecycle Management",
+          "classname": "org.elasticsearch.xpack.ilm.IndexLifecycle",
+          "extended_plugins": [
+            "x-pack-core"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "x-pack-inference",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Configuration and evaluation of inference models",
+          "classname": "org.elasticsearch.xpack.inference.InferencePlugin",
+          "extended_plugins": [
+            "x-pack-core"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "x-pack-kql",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Elasticsearch Expanded Pack Plugin - KQL query",
+          "classname": "org.elasticsearch.xpack.kql.KqlPlugin",
+          "extended_plugins": [
+            "x-pack-core"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "x-pack-logstash",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Elasticsearch Expanded Pack Plugin - Logstash",
+          "classname": "org.elasticsearch.xpack.logstash.Logstash",
+          "extended_plugins": [
+            "x-pack-core"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "x-pack-migrate",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Elasticsearch Expanded Pack Plugin - Index and Data Stream Migration",
+          "classname": "org.elasticsearch.xpack.migrate.MigratePlugin",
+          "extended_plugins": [
+            "x-pack-core"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "x-pack-ml",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Elasticsearch Expanded Pack Plugin - Machine Learning",
+          "classname": "org.elasticsearch.xpack.ml.MachineLearning",
+          "extended_plugins": [
+            "x-pack-autoscaling",
+            "lang-painless"
+          ],
+          "has_native_controller": true,
+          "licensed": false
+        },
+        {
+          "name": "x-pack-monitoring",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Elasticsearch Expanded Pack Plugin - Monitoring",
+          "classname": "org.elasticsearch.xpack.monitoring.Monitoring",
+          "extended_plugins": [
+            "x-pack-core"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "x-pack-otel-data",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "The OTEL plugin defines OTEL data streams and ingest pipelines.",
+          "classname": "org.elasticsearch.xpack.oteldata.OTelPlugin",
+          "extended_plugins": [
+            "x-pack-core"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "x-pack-profiling",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "The profiling plugin adds support for retrieving data from Universal Profiling.",
+          "classname": "org.elasticsearch.xpack.profiling.ProfilingPlugin",
+          "extended_plugins": [
+            "x-pack-core"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "x-pack-ql",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Elasticsearch infrastructure plugin for EQL and SQL for Elasticsearch",
+          "classname": "org.elasticsearch.xpack.ql.plugin.QlPlugin",
+          "extended_plugins": [
+            "x-pack-core"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "x-pack-redact",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Elasticsearch Expanded Pack Plugin - Redact",
+          "classname": "org.elasticsearch.xpack.redact.RedactPlugin",
+          "extended_plugins": [
+            "x-pack-core"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "x-pack-rollup",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Elasticsearch Expanded Pack Plugin - Rollup",
+          "classname": "org.elasticsearch.xpack.rollup.Rollup",
+          "extended_plugins": [
+            "x-pack-core"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "x-pack-security",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Elasticsearch Expanded Pack Plugin - Security",
+          "classname": "org.elasticsearch.xpack.security.Security",
+          "extended_plugins": [
+            "x-pack-core"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "x-pack-shutdown",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Elasticsearch Expanded Pack Plugin - Shutdown",
+          "classname": "org.elasticsearch.xpack.shutdown.ShutdownPlugin",
+          "extended_plugins": [
+            "x-pack-core"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "x-pack-slm",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Elasticsearch Expanded Pack Plugin - Snapshot Lifecycle Management",
+          "classname": "org.elasticsearch.xpack.slm.SnapshotLifecycle",
+          "extended_plugins": [
+            "x-pack-core"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "x-pack-sql",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "The Elasticsearch plugin that powers SQL for Elasticsearch",
+          "classname": "org.elasticsearch.xpack.sql.plugin.SqlPlugin",
+          "extended_plugins": [
+            "x-pack-ql",
+            "lang-painless"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "x-pack-stack",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Elasticsearch Expanded Pack Plugin - Stack",
+          "classname": "org.elasticsearch.xpack.stack.StackPlugin",
+          "extended_plugins": [
+            "x-pack-core"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "x-pack-text-structure",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Elasticsearch Expanded Pack Plugin - Text Structure",
+          "classname": "org.elasticsearch.xpack.textstructure.TextStructurePlugin",
+          "extended_plugins": [
+            "x-pack-core"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "x-pack-voting-only-node",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Elasticsearch Expanded Pack Plugin - Voting-only node",
+          "classname": "org.elasticsearch.cluster.coordination.votingonly.VotingOnlyNodePlugin",
+          "extended_plugins": [
+            "x-pack-core"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "x-pack-watcher",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "Elasticsearch Expanded Pack Plugin - Watcher",
+          "classname": "org.elasticsearch.xpack.watcher.Watcher",
+          "extended_plugins": [
+            "x-pack-core",
+            "lang-painless"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        },
+        {
+          "name": "x-pack-write-load-forecaster",
+          "version": "9.3.0",
+          "elasticsearch_version": "9.3.0",
+          "java_version": "21",
+          "description": "x",
+          "classname": "org.elasticsearch.xpack.writeloadforecaster.WriteLoadForecasterPlugin",
+          "extended_plugins": [
+            "x-pack-core"
+          ],
+          "has_native_controller": false,
+          "licensed": false
+        }
+      ],
+      "ingest": {
+        "processors": [
+          {
+            "type": "append"
+          },
+          {
+            "type": "attachment"
+          },
+          {
+            "type": "bytes"
+          },
+          {
+            "type": "cef"
+          },
+          {
+            "type": "circle"
+          },
+          {
+            "type": "community_id"
+          },
+          {
+            "type": "convert"
+          },
+          {
+            "type": "csv"
+          },
+          {
+            "type": "date"
+          },
+          {
+            "type": "date_index_name"
+          },
+          {
+            "type": "dissect"
+          },
+          {
+            "type": "dot_expander"
+          },
+          {
+            "type": "drop"
+          },
+          {
+            "type": "enrich"
+          },
+          {
+            "type": "fail"
+          },
+          {
+            "type": "fingerprint"
+          },
+          {
+            "type": "foreach"
+          },
+          {
+            "type": "geo_grid"
+          },
+          {
+            "type": "geoip"
+          },
+          {
+            "type": "grok"
+          },
+          {
+            "type": "gsub"
+          },
+          {
+            "type": "html_strip"
+          },
+          {
+            "type": "inference"
+          },
+          {
+            "type": "ip_location"
+          },
+          {
+            "type": "join"
+          },
+          {
+            "type": "json"
+          },
+          {
+            "type": "kv"
+          },
+          {
+            "type": "lowercase"
+          },
+          {
+            "type": "network_direction"
+          },
+          {
+            "type": "normalize_for_stream"
+          },
+          {
+            "type": "pipeline"
+          },
+          {
+            "type": "recover_failure_document"
+          },
+          {
+            "type": "redact"
+          },
+          {
+            "type": "registered_domain"
+          },
+          {
+            "type": "remove"
+          },
+          {
+            "type": "rename"
+          },
+          {
+            "type": "reroute"
+          },
+          {
+            "type": "script"
+          },
+          {
+            "type": "set"
+          },
+          {
+            "type": "set_security_user"
+          },
+          {
+            "type": "sort"
+          },
+          {
+            "type": "split"
+          },
+          {
+            "type": "terminate"
+          },
+          {
+            "type": "trim"
+          },
+          {
+            "type": "uppercase"
+          },
+          {
+            "type": "uri_parts"
+          },
+          {
+            "type": "urldecode"
+          },
+          {
+            "type": "user_agent"
+          }
+        ]
+      },
+      "aggregations": {
+        "adjacency_matrix": {
+          "types": [
+            "other"
+          ]
+        },
+        "auto_date_histogram": {
+          "types": [
+            "boolean",
+            "date",
+            "numeric"
+          ]
+        },
+        "avg": {
+          "types": [
+            "aggregate_metric",
+            "boolean",
+            "counter",
+            "date",
+            "exponential_histogram",
+            "histogram",
+            "numeric"
+          ]
+        },
+        "boxplot": {
+          "types": [
+            "counter",
+            "histogram",
+            "numeric"
+          ]
+        },
+        "cardinality": {
+          "types": [
+            "boolean",
+            "counter",
+            "date",
+            "geopoint",
+            "ip",
+            "keyword",
+            "numeric",
+            "range"
+          ]
+        },
+        "cartesian_bounds": {
+          "types": [
+            "point",
+            "shape"
+          ]
+        },
+        "cartesian_centroid": {
+          "types": [
+            "point",
+            "shape"
+          ]
+        },
+        "categorize_text": {
+          "types": [
+            "other"
+          ]
+        },
+        "children": {
+          "types": [
+            "other"
+          ]
+        },
+        "composite": {
+          "types": [
+            "other"
+          ]
+        },
+        "counted_terms": {
+          "types": [
+            "keyword"
+          ]
+        },
+        "date_histogram": {
+          "types": [
+            "date",
+            "numeric",
+            "range"
+          ]
+        },
+        "date_range": {
+          "types": [
+            "boolean",
+            "date",
+            "numeric"
+          ]
+        },
+        "diversified_sampler": {
+          "types": [
+            "boolean",
+            "date",
+            "keyword",
+            "numeric"
+          ]
+        },
+        "extended_stats": {
+          "types": [
+            "boolean",
+            "counter",
+            "date",
+            "numeric"
+          ]
+        },
+        "filter": {
+          "types": [
+            "other"
+          ]
+        },
+        "filters": {
+          "types": [
+            "other"
+          ]
+        },
+        "frequent_item_sets": {
+          "types": [
+            "other"
+          ]
+        },
+        "geo_bounds": {
+          "types": [
+            "geopoint",
+            "geoshape",
+            "position"
+          ]
+        },
+        "geo_centroid": {
+          "types": [
+            "geopoint",
+            "geoshape",
+            "position"
+          ]
+        },
+        "geo_distance": {
+          "types": [
+            "geopoint"
+          ]
+        },
+        "geo_line": {
+          "types": [
+            "geopoint"
+          ]
+        },
+        "geohash_grid": {
+          "types": [
+            "geopoint",
+            "geoshape"
+          ]
+        },
+        "geohex_grid": {
+          "types": [
+            "geopoint",
+            "geoshape"
+          ]
+        },
+        "geotile_grid": {
+          "types": [
+            "geopoint",
+            "geoshape"
+          ]
+        },
+        "global": {
+          "types": [
+            "other"
+          ]
+        },
+        "histogram": {
+          "types": [
+            "boolean",
+            "counter",
+            "date",
+            "exponential_histogram",
+            "histogram",
+            "numeric",
+            "range"
+          ]
+        },
+        "ip_prefix": {
+          "types": [
+            "ip"
+          ]
+        },
+        "ip_range": {
+          "types": [
+            "ip"
+          ]
+        },
+        "matrix_stats": {
+          "types": [
+            "other"
+          ]
+        },
+        "max": {
+          "types": [
+            "aggregate_metric",
+            "boolean",
+            "counter",
+            "date",
+            "histogram",
+            "numeric"
+          ]
+        },
+        "median_absolute_deviation": {
+          "types": [
+            "counter",
+            "numeric"
+          ]
+        },
+        "min": {
+          "types": [
+            "aggregate_metric",
+            "boolean",
+            "counter",
+            "date",
+            "histogram",
+            "numeric"
+          ]
+        },
+        "missing": {
+          "types": [
+            "boolean",
+            "date",
+            "geopoint",
+            "ip",
+            "keyword",
+            "numeric",
+            "range"
+          ]
+        },
+        "multi_terms": {
+          "types": [
+            "other"
+          ]
+        },
+        "nested": {
+          "types": [
+            "other"
+          ]
+        },
+        "parent": {
+          "types": [
+            "other"
+          ]
+        },
+        "percentile_ranks": {
+          "types": [
+            "boolean",
+            "counter",
+            "date",
+            "histogram",
+            "numeric"
+          ]
+        },
+        "percentiles": {
+          "types": [
+            "boolean",
+            "counter",
+            "date",
+            "histogram",
+            "numeric"
+          ]
+        },
+        "random_sampler": {
+          "types": [
+            "other"
+          ]
+        },
+        "range": {
+          "types": [
+            "boolean",
+            "counter",
+            "date",
+            "histogram",
+            "numeric"
+          ]
+        },
+        "rare_terms": {
+          "types": [
+            "boolean",
+            "date",
+            "ip",
+            "keyword",
+            "numeric"
+          ]
+        },
+        "rate": {
+          "types": [
+            "counter",
+            "histogram",
+            "numeric"
+          ]
+        },
+        "reverse_nested": {
+          "types": [
+            "other"
+          ]
+        },
+        "sampler": {
+          "types": [
+            "other"
+          ]
+        },
+        "scripted_metric": {
+          "types": [
+            "other"
+          ]
+        },
+        "significant_terms": {
+          "types": [
+            "boolean",
+            "date",
+            "ip",
+            "keyword",
+            "numeric"
+          ]
+        },
+        "significant_text": {
+          "types": [
+            "other"
+          ]
+        },
+        "stats": {
+          "types": [
+            "boolean",
+            "counter",
+            "date",
+            "numeric"
+          ]
+        },
+        "string_stats": {
+          "types": [
+            "keyword"
+          ]
+        },
+        "sum": {
+          "types": [
+            "aggregate_metric",
+            "boolean",
+            "counter",
+            "date",
+            "exponential_histogram",
+            "histogram",
+            "numeric"
+          ]
+        },
+        "t_test": {
+          "types": [
+            "numeric"
+          ]
+        },
+        "terms": {
+          "types": [
+            "boolean",
+            "date",
+            "ip",
+            "keyword",
+            "numeric"
+          ]
+        },
+        "time_series": {
+          "types": [
+            "other"
+          ]
+        },
+        "top_hits": {
+          "types": [
+            "other"
+          ]
+        },
+        "top_metrics": {
+          "types": [
+            "other"
+          ]
+        },
+        "value_count": {
+          "types": [
+            "aggregate_metric",
+            "boolean",
+            "counter",
+            "date",
+            "exponential_histogram",
+            "geopoint",
+            "histogram",
+            "ip",
+            "keyword",
+            "numeric",
+            "range"
+          ]
+        },
+        "variable_width_histogram": {
+          "types": [
+            "counter",
+            "numeric"
+          ]
+        },
+        "weighted_avg": {
+          "types": [
+            "numeric"
+          ]
+        }
+      }
+    }
+  }
+}

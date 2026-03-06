@@ -7,3 +7,5 @@
 esdiag.spdx.json
 /tauri-dist
 /frontend-dist/
+.github/prompts
+.github/skills
