@@ -1,0 +1,23 @@
+<div id="keystore-unlock-modal" class="modal">
+    <div class="modal-content">
+        <button type="button" class="close-button" aria-label="Close keystore unlock" data-on:click="document.getElementById('keystore-unlock-modal')?.remove()">&times;</button>
+        <h2>Unlock Keystore</h2>
+        <form id="keystore-unlock-form" data-on:submit="@post('/keystore/unlock')">
+            <input-group>
+                <label for="keystore-password" class="form-label">Keystore Password</label>
+                <input
+                    type="password"
+                    id="keystore-password"
+                    name="keystore.password"
+                    data-bind:keystore.password
+                    data-class:error="$keystore.invalid"
+                    data-on:input="$keystore.invalid = false"
+                    class="form-input"
+                    autocomplete="current-password"
+                    required
+                />
+            </input-group>
+            <input class="button" type="submit" value="Unlock" />
+        </form>
+    </div>
+</div>

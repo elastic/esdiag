@@ -7,9 +7,10 @@ license = "Elastic-2.0"
 
 [features]
 default = ["full"]
-full = ["server", "setup"]
+full = ["server", "setup", "keystore"]
 setup = []
 server = []
+keystore = []
 desktop = ["server", "dep:tauri", "dep:tauri-build", "dep:tauri-plugin-opener"]
 
 [dependencies]

@@ -104,8 +104,22 @@
                     id="username-display"
                     data-signals:auth.header="{{ auth_header }}"
                     data-signals:metadata.user="'{{ user }}'"
+                    data-signals:keystore.locked="{{ keystore_locked }}"
+                    data-signals:keystore.lock_time="{{ keystore_lock_time }}"
                     data-text="$metadata.user"
                 ></popup-menu-item>
+                {% if can_use_keystore %}
+                <popup-menu-item>
+                    <a href="/hosts" style="color: inherit; text-decoration: none">Manage Hosts</a>
+                </popup-menu-item>
+                <popup-menu-item
+                    data-text="$keystore.locked ? 'Keystore (Locked)' : 'Keystore (Unlocked)'"
+                    data-on:click="
+                        if ($keystore.locked) { @get('/keystore/modal'); }
+                        else if (confirm('Lock keystore and disable secret usage?')) { @post('/keystore/lock'); }
+                    "
+                ></popup-menu-item>
+                {% endif %}
             </popup-menu>
         </header-icon>
     </header-links>

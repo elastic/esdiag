@@ -12,13 +12,13 @@
 
     <body data-signals="{theme: {dark: {% if theme_dark %}true{% else %}false{% endif %}}}">
         <input id="dark-mode" type="checkbox" data-bind:theme.dark {% if theme_dark %}checked{% endif %} />
-        
+
         <!-- Fix Tauri external links -->
         <script>
             document.addEventListener('click', function(e) {
                 var target = e.target instanceof Element ? e.target : e.target.parentElement;
                 if (!target) return;
-                
+
                 var a = target.closest('a');
                 if (a && a.target === '_blank') {
                     if (window.__TAURI_INTERNALS__) {
@@ -28,10 +28,19 @@
                 }
             });
         </script>
-        
+
         {% include "components/header.html" %} {% block content %}{% endblock %} {% include "components/footer.html" %}
         {% if debug %}
-        <pre class="debug-signals" data-json-signals="{exclude: /files/}"></pre>
+        <signals-panel>
+          <signals-toggle>
+            <button type="button" title="Toggle signals panel" aria-label="Toggle signals panel" data-on:click="$signalsPanel = !$signalsPanel">
+              <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                <path d="M9 1.5L4.5 8h3L7 14.5 11.5 8h-3L9 1.5z"></path>
+              </svg>
+            </button>
+          </signals-toggle>
+          <signals-view data-show="$signalsPanel" data-json-signals></signals-view>
+        </signals-panel>
         {% endif %}
     </body>
 </html>

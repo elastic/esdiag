@@ -10,12 +10,14 @@ use axum::{
     response::{Html, IntoResponse},
 };
 use pulldown_cmark::{Event, Options, Parser, html};
-use std::{collections::BTreeMap, path::PathBuf};
+use regex::Regex;
+use std::{collections::BTreeMap, collections::HashSet, path::PathBuf, sync::OnceLock};
 
 #[derive(Template)]
 #[template(path = "docs.html")]
 pub struct DocsTemplate {
-    pub toc: Vec<TocEntry>,
+    pub nav_root_items: Vec<DocsNavLink>,
+    pub nav_sections: Vec<DocsNavSection>,
     pub current_path: String,
     pub html_content: String,
     // Add layout vars
@@ -23,6 +25,7 @@ pub struct DocsTemplate {
     pub debug: bool,
     pub desktop: bool,
     pub can_configure_output: bool,
+    pub send_hosts: Vec<String>,
     pub user: String,
     pub user_initial: char,
     pub version: String,
@@ -31,14 +34,31 @@ pub struct DocsTemplate {
     pub stats: String,
     pub theme_dark: bool,
     pub runtime_mode: String,
+    pub can_use_keystore: bool,
+    pub keystore_locked: bool,
+    pub keystore_lock_time: i64,
 }
 
 #[derive(Template)]
 #[template(path = "components/docs.html")]
 pub struct DocsComponentTemplate {
-    pub toc: Vec<TocEntry>,
+    pub nav_root_items: Vec<DocsNavLink>,
+    pub nav_sections: Vec<DocsNavSection>,
     pub current_path: String,
     pub html_content: String,
+}
+
+pub struct DocsNavLink {
+    pub title: String,
+    pub path: String,
+    pub is_active: bool,
+}
+
+pub struct DocsNavSection {
+    pub id: String,
+    pub title: String,
+    pub open: bool,
+    pub items: Vec<DocsNavLink>,
 }
 
 pub struct TocEntry {
@@ -95,6 +115,7 @@ pub async fn handler(
             // Write to a new String buffer.
             let mut html_content = String::new();
             html::push_html(&mut html_content, parser);
+            html_content = inject_heading_ids(&html_content);
 
             let toc = generate_toc();
 
@@ -104,10 +125,12 @@ pub async fn handler(
             } else {
                 path
             };
+            let (nav_root_items, nav_sections) = build_nav(&toc, &current_path);
 
             if is_datastar {
                 let template = DocsComponentTemplate {
-                    toc,
+                    nav_root_items,
+                    nav_sections,
                     current_path,
                     html_content,
                 };
@@ -137,15 +160,21 @@ pub async fn handler(
                     }
                 };
                 let user_initial = user_email.chars().next().unwrap_or('_').to_ascii_uppercase();
+                let (keystore_locked, keystore_lock_time) = state.keystore_status().await;
+                let can_use_keystore =
+                    cfg!(feature = "keystore") && state.runtime_mode_policy.allows_local_artifacts();
 
                 let template = DocsTemplate {
-                    toc,
+                    nav_root_items,
+                    nav_sections,
                     current_path,
                     html_content,
                     auth_header,
                     debug: log::max_level() >= log::LevelFilter::Debug,
                     desktop: cfg!(feature = "desktop"),
                     can_configure_output: state.runtime_mode_policy.allows_exporter_updates(),
+                    send_hosts: crate::data::KnownHost::list_by_role(crate::data::HostRole::Send)
+                        .unwrap_or_default(),
                     exporter: state.exporter.read().await.to_string(),
                     kibana_url: state.kibana_url.read().await.clone(),
                     stats: state.get_stats_as_signals().await,
@@ -154,6 +183,9 @@ pub async fn handler(
                     version: env!("CARGO_PKG_VERSION").to_string(),
                     theme_dark: crate::server::get_theme_dark(&headers),
                     runtime_mode: state.runtime_mode.to_string(),
+                    can_use_keystore,
+                    keystore_locked,
+                    keystore_lock_time,
                 };
 
                 match template.render() {
@@ -167,6 +199,53 @@ pub async fn handler(
         }
         None => (StatusCode::NOT_FOUND, "Document not found").into_response(),
     }
+}
+
+fn build_nav(entries: &[TocEntry], current_path: &str) -> (Vec<DocsNavLink>, Vec<DocsNavSection>) {
+    let mut root_items = Vec::new();
+    let mut sections = Vec::new();
+    let mut current_section: Option<DocsNavSection> = None;
+
+    for entry in entries {
+        if entry.is_dir {
+            if let Some(section) = current_section.take() {
+                sections.push(section);
+            }
+            current_section = Some(DocsNavSection {
+                id: slugify(&entry.title),
+                title: entry.title.clone(),
+                open: false,
+                items: Vec::new(),
+            });
+            continue;
+        }
+
+        let link = DocsNavLink {
+            title: entry.title.clone(),
+            path: entry.path.clone(),
+            is_active: current_path == entry.path,
+        };
+
+        if entry.level == 0 {
+            if let Some(section) = current_section.take() {
+                sections.push(section);
+            }
+            root_items.push(link);
+        } else if let Some(section) = current_section.as_mut() {
+            if link.is_active {
+                section.open = true;
+            }
+            section.items.push(link);
+        } else {
+            root_items.push(link);
+        }
+    }
+
+    if let Some(section) = current_section.take() {
+        sections.push(section);
+    }
+
+    (root_items, sections)
 }
 
 fn generate_toc() -> Vec<TocEntry> {
@@ -251,4 +330,87 @@ fn format_title(s: &str) -> String {
         })
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+fn slugify(s: &str) -> String {
+    s.to_ascii_lowercase()
+        .chars()
+        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '-' })
+        .collect::<String>()
+        .split('-')
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("-")
+}
+
+fn extract_existing_ids(html: &str) -> HashSet<String> {
+    static ID_ATTR_RE: OnceLock<Regex> = OnceLock::new();
+    let re = ID_ATTR_RE.get_or_init(|| {
+        Regex::new(r#"(?i)\bid\s*=\s*"([^"]+)""#).expect("id attribute regex should compile")
+    });
+    re.captures_iter(html)
+        .filter_map(|caps| caps.get(1).map(|m| m.as_str().to_string()))
+        .collect()
+}
+
+fn strip_html_tags(input: &str) -> String {
+    static TAG_RE: OnceLock<Regex> = OnceLock::new();
+    let re = TAG_RE.get_or_init(|| Regex::new(r"(?s)<[^>]*>").expect("tag regex should compile"));
+    re.replace_all(input, " ").into_owned()
+}
+
+fn next_unique_id(base: &str, used_ids: &mut HashSet<String>) -> String {
+    let root = if base.is_empty() { "section" } else { base };
+    if used_ids.insert(root.to_string()) {
+        return root.to_string();
+    }
+
+    let mut suffix = 2usize;
+    loop {
+        let candidate = format!("{root}-{suffix}");
+        if used_ids.insert(candidate.clone()) {
+            return candidate;
+        }
+        suffix += 1;
+    }
+}
+
+fn inject_heading_ids(html: &str) -> String {
+    static HEADING_RE: OnceLock<Regex> = OnceLock::new();
+    static HAS_ID_RE: OnceLock<Regex> = OnceLock::new();
+    let heading_re = HEADING_RE.get_or_init(|| {
+        Regex::new(r#"(?is)<h([1-3])([^>]*)>(.*?)</h([1-3])>"#)
+            .expect("heading regex should compile")
+    });
+    let has_id_re = HAS_ID_RE.get_or_init(|| {
+        Regex::new(r#"(?i)\bid\s*="#).expect("heading id presence regex should compile")
+    });
+
+    let mut used_ids = extract_existing_ids(html);
+    heading_re
+        .replace_all(html, |caps: &regex::Captures<'_>| {
+            let level = caps.get(1).map_or("1", |m| m.as_str());
+            let attrs = caps.get(2).map_or("", |m| m.as_str());
+            let content = caps.get(3).map_or("", |m| m.as_str());
+            let closing_level = caps.get(4).map_or(level, |m| m.as_str());
+
+            if closing_level != level {
+                return caps
+                    .get(0)
+                    .map_or_else(String::new, |m| m.as_str().to_string());
+            }
+
+            if has_id_re.is_match(attrs) {
+                return caps
+                    .get(0)
+                    .map_or_else(String::new, |m| m.as_str().to_string());
+            }
+
+            let label_text = strip_html_tags(content);
+            let base = slugify(label_text.trim());
+            let id = next_unique_id(&base, &mut used_ids);
+
+            format!(r#"<h{level}{attrs} id="{id}">{content}</h{level}>"#)
+        })
+        .into_owned()
 }

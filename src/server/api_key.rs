@@ -95,6 +95,22 @@ async fn run_api_key_form(
     request_user: String,
     tx: mpsc::Sender<ServerEvent>,
 ) {
+    #[cfg(feature = "keystore")]
+    {
+        if let Err(err) = super::keystore::ensure_unlocked_for_active_output(&state).await {
+            send_event(
+                &tx,
+                job_feed_event(template::JobFailed {
+                    job_id: new_job_id(),
+                    error: &err,
+                    source: &uri,
+                }),
+            )
+            .await;
+            return;
+        }
+    }
+
     let host = match KnownHostBuilder::new(signals.es_api.url.into())
         .apikey(Some(signals.es_api.key))
         .build()
@@ -257,6 +273,22 @@ async fn run_api_key_id(
     request_user: String,
     tx: mpsc::Sender<ServerEvent>,
 ) {
+    #[cfg(feature = "keystore")]
+    {
+        if let Err(err) = super::keystore::ensure_unlocked_for_active_output(&state).await {
+            send_event(
+                &tx,
+                template_event(template::JobFailed {
+                    job_id,
+                    error: &err,
+                    source: "output target",
+                }),
+            )
+            .await;
+            return;
+        }
+    }
+
     let (identifiers, host): (Identifiers, KnownHost) = match state.pop_key(job_id).await {
         Some((mut identifiers, host)) => {
             identifiers.user = Some(request_user);
