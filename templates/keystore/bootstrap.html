@@ -1,0 +1,44 @@
+<div id="keystore-bootstrap-modal" class="modal">
+    <div class="modal-content">
+        <h2>{% if migrate %}Migrate to Keystore{% else %}Create Keystore{% endif %}</h2>
+        <p>
+            {% if migrate %}
+            A local <code>hosts.yml</code> was found without a keystore. Confirm migration and set a keystore password.
+            {% else %}
+            No keystore was found. Confirm creation and set a keystore password.
+            {% endif %}
+        </p>
+        <form id="keystore-bootstrap-form" data-on:submit="@post('/keystore/bootstrap')">
+            <input-group>
+                <label for="keystore-bootstrap-password" class="form-label">Keystore Password</label>
+                <input
+                    type="password"
+                    id="keystore-bootstrap-password"
+                    name="keystore.password"
+                    data-bind:keystore.password
+                    data-class:error="$keystore.invalid"
+                    data-on:input="$keystore.invalid = false"
+                    class="form-input"
+                    autocomplete="new-password"
+                    minlength="6"
+                    required
+                />
+                <info-text><i>Minimum 6 characters.</i></info-text>
+            </input-group>
+            <input-group>
+                <label class="form-label" for="keystore-bootstrap-confirm">Confirmation</label>
+                <label>
+                    <input
+                        id="keystore-bootstrap-confirm"
+                        type="checkbox"
+                        name="keystore.confirm"
+                        data-bind:keystore.confirm
+                        required
+                    />
+                    {% if migrate %}I confirm migrating hosts to a new keystore{% else %}I confirm creating a new keystore{% endif %}
+                </label>
+            </input-group>
+            <input class="button" type="submit" value="{% if migrate %}Migrate and Create{% else %}Create Keystore{% endif %}" />
+        </form>
+    </div>
+</div>

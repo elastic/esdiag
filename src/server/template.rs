@@ -3,6 +3,7 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use askama::Template;
+use serde::Serialize;
 
 #[derive(Template)]
 #[template(path = "error.html")]
@@ -19,6 +20,7 @@ pub struct Index {
     pub debug: bool,
     pub desktop: bool,
     pub can_configure_output: bool,
+    pub send_hosts: Vec<String>,
     pub exporter: String,
     pub kibana_url: String,
     pub key_id: Option<u64>,
@@ -30,6 +32,10 @@ pub struct Index {
     pub version: String,
     pub theme_dark: bool,
     pub runtime_mode: String,
+    pub can_use_keystore: bool,
+    pub keystore_locked: bool,
+    pub keystore_lock_time: i64,
+    pub show_keystore_bootstrap: bool,
 }
 
 #[derive(Template)]
@@ -39,8 +45,73 @@ pub struct SettingsModal {
     pub active_target: String,
     pub kibana_url: String,
     pub mode: String,
-    pub can_manage_hosts: bool,
     pub can_update_exporter: bool,
+}
+
+#[derive(Template)]
+#[template(path = "keystore/unlock.html")]
+pub struct KeystoreUnlockModal {}
+
+#[derive(Template)]
+#[template(path = "keystore/bootstrap.html")]
+pub struct KeystoreBootstrapModal {
+    pub migrate: bool,
+}
+
+#[derive(Template)]
+#[template(path = "keystore/hosts_manager.html")]
+pub struct HostsManagerModal {
+    pub hosts: Vec<String>,
+    pub secret_names: Vec<String>,
+    pub keystore_locked: bool,
+}
+
+#[derive(Clone, Serialize)]
+pub struct HostsTableRow {
+    pub name: String,
+    pub auth: String,
+    pub app: String,
+    pub url: String,
+    pub roles: String,
+    pub viewer: String,
+    pub accept_invalid_certs: bool,
+    pub cloud_id: String,
+    pub secret: String,
+    pub apikey: String,
+    pub username: String,
+    pub password: String,
+}
+
+#[derive(Clone, Serialize)]
+pub struct SecretTableRow {
+    pub secret_id: String,
+    pub auth_type: String,
+}
+
+#[derive(Template)]
+#[template(path = "hosts.html")]
+pub struct HostsPage {
+    pub auth_header: bool,
+    pub debug: bool,
+    pub desktop: bool,
+    pub can_configure_output: bool,
+    pub send_hosts: Vec<String>,
+    pub exporter: String,
+    pub kibana_url: String,
+    pub stats: String,
+    pub user: String,
+    pub user_initial: char,
+    pub version: String,
+    pub theme_dark: bool,
+    pub runtime_mode: String,
+    pub can_use_keystore: bool,
+    pub keystore_locked: bool,
+    pub keystore_lock_time: i64,
+    pub hosts: Vec<HostsTableRow>,
+    pub secrets: Vec<SecretTableRow>,
+    pub secret_ids: Vec<String>,
+    pub hosts_records_json: String,
+    pub secrets_records_json: String,
 }
 #[derive(Template)]
 #[template(path = "job/completed.html")]

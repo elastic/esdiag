@@ -3,6 +3,7 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::{ServerState, get_theme_dark, template};
+use crate::data::{HostRole, KnownHost, keystore_exists};
 use askama::Template;
 use axum::{
     extract::{Query, State},
@@ -78,13 +79,19 @@ pub async fn handler(
     let user_initial = user_email.chars().next().unwrap_or('_').to_ascii_uppercase();
 
     let exporter_target = { state.exporter.read().await.to_string() };
+    let send_hosts = KnownHost::list_by_role(HostRole::Send).unwrap_or_default();
     let theme_dark = get_theme_dark(&headers);
     let kibana_url = { state.kibana_url.read().await.clone() };
+    let (keystore_locked, keystore_lock_time) = state.keystore_status().await;
+    let can_use_keystore =
+        cfg!(feature = "keystore") && state.runtime_mode_policy.allows_local_artifacts();
+    let show_keystore_bootstrap = can_use_keystore && !keystore_exists().unwrap_or(false);
     let index_html = template::Index {
         auth_header,
         debug: log::max_level() >= log::LevelFilter::Debug,
         desktop: cfg!(feature = "desktop"),
         can_configure_output: state.runtime_mode_policy.allows_exporter_updates(),
+        send_hosts,
         exporter: exporter_target,
         kibana_url,
         key_id: params.key_id,
@@ -96,6 +103,10 @@ pub async fn handler(
         version: env!("CARGO_PKG_VERSION").to_string(),
         theme_dark,
         runtime_mode: state.runtime_mode.to_string(),
+        can_use_keystore,
+        keystore_locked,
+        keystore_lock_time,
+        show_keystore_bootstrap,
     };
 
     let index_html = match index_html.render() {

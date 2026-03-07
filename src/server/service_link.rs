@@ -97,6 +97,22 @@ async fn run_service_link_form(
     request_user: String,
     tx: mpsc::Sender<ServerEvent>,
 ) {
+    #[cfg(feature = "keystore")]
+    {
+        if let Err(err) = super::keystore::ensure_unlocked_for_active_output(&state).await {
+            send_event(
+                &tx,
+                template_event(template::JobFailed {
+                    job_id: new_job_id(),
+                    error: &err,
+                    source: "output target",
+                }),
+            )
+            .await;
+            return;
+        }
+    }
+
     let service_link = &signals.service_link;
     send_event(&tx, signal_event(r#"{"loading":true}"#)).await;
 
@@ -280,6 +296,22 @@ async fn run_service_link_id(
     request_user: String,
     tx: mpsc::Sender<ServerEvent>,
 ) {
+    #[cfg(feature = "keystore")]
+    {
+        if let Err(err) = super::keystore::ensure_unlocked_for_active_output(&state).await {
+            send_event(
+                &tx,
+                template_event(template::JobFailed {
+                    job_id,
+                    error: &err,
+                    source: "output target",
+                }),
+            )
+            .await;
+            return;
+        }
+    }
+
     let (identifiers, uri): (Identifiers, Uri) = match state.pop_link(job_id).await {
         Some((mut identifiers, uri)) => {
             identifiers.user = Some(request_user);

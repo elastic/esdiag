@@ -42,7 +42,6 @@ pub async fn get_modal(State(state): State<Arc<ServerState>>) -> impl IntoRespon
         active_target,
         kibana_url,
         mode: state.runtime_mode.to_string(),
-        can_manage_hosts,
         can_update_exporter,
     };
 

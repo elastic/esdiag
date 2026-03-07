@@ -1,27 +1,67 @@
-<docs-content
+<content-layout
     id="main-content"
     data-init="window.location.hash && @get('/docs/'+window.location.hash.substring(1), { filterSignals: {exclude: /.*/} })"
     data-on:hashchange__window="@get('/docs/'+(window.location.hash.substring(1) || '{{ current_path }}'), {
     filterSignals: {exclude: /.*/}
     })"
 >
-    <docs-nav>
+    <page-navigation
+        aria-label="Documentation navigation"
+        data-signals='{
+            navigation: {
+                {% for section in nav_sections %}
+                {{ section.id }}: {% if section.open %}true{% else %}false{% endif %}{% if !loop.last %},{% endif %}
+                {% endfor %}
+            }
+        }'
+    >
         <ul>
-            {% for entry in toc %} {% if entry.is_dir %}
-            <li class="dir">{{ entry.title }}</li>
-            {% else %}
-            <li class="{% if entry.level > 0 %}nested{% else %}top{% endif %}">
-                <a href="#{{ entry.path }}" class="{% if current_path == entry.path %}active{% endif %}">
+            {% for entry in nav_root_items %}
+            <li>
+                <a href="#{{ entry.path }}" {% if entry.is_active %}aria-current="page"{% endif %}>
                     {{ entry.title }}
                 </a>
             </li>
-            {% endif %} {% endfor %}
+            {% endfor %}
+            {% for section in nav_sections %}
+            <li>
+                <button
+                    type="button"
+                    aria-label="Toggle {{ section.title }} section"
+                    aria-expanded="{% if section.open %}true{% else %}false{% endif %}"
+                    data-attr:aria-expanded="$navigation.{{ section.id }} ? 'true' : 'false'"
+                    data-on:click="$navigation.{{ section.id }} = !$navigation.{{ section.id }}"
+                >
+                    <span>{{ section.title }}</span>
+                    <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                        <path d="M5.5 3.5 10.5 8l-5 4.5"></path>
+                    </svg>
+                </button>
+                <ul
+                    class="{% if !section.open %}collapsed clip{% endif %}"
+                    aria-hidden="{% if section.open %}false{% else %}true{% endif %}"
+                    data-class:collapsed="!$navigation.{{ section.id }}"
+                    data-class:clip="!$navigation.{{ section.id }}"
+                    data-attr:aria-hidden="$navigation.{{ section.id }} ? 'false' : 'true'"
+                >
+                    {% for entry in section.items %}
+                    <li class="nested">
+                        <a href="#{{ entry.path }}" {% if entry.is_active %}aria-current="page"{% endif %}>
+                            {{ entry.title }}
+                        </a>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </li>
+            {% endfor %}
         </ul>
-    </docs-nav>
+    </page-navigation>
 
-    <doc-viewer
+    <documentation-viewer
         data-init__delay.50ms="Prism.highlightAllUnder(el)"
         data-on:popstate__window__delay.50ms="Prism.highlightAllUnder(el)"
-        >{{ html_content|safe }}</doc-viewer
     >
-</docs-content>
+        <documentation-body>{{ html_content|safe }}</documentation-body>
+        <documentation-outline aria-label="Content outline map"></documentation-outline>
+    </documentation-viewer>
+</content-layout>

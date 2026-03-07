@@ -228,6 +228,29 @@ pub fn resolve_secret_auth(secret_id: &str, keystore_password: &str) -> Result<O
         .and_then(SecretEntry::resolve_auth))
 }
 
+pub fn authenticate(keystore_password: &str) -> Result<()> {
+    let path = get_keystore_path()?;
+    if !path.is_file() {
+        let store = KeystoreData::default();
+        write_store(&store, keystore_password)?;
+        log::info!("Created empty keystore at {}", path.display());
+        return Ok(());
+    }
+
+    read_store(keystore_password).map(|_| ())
+}
+
+pub fn list_secret_names(keystore_password: &str) -> Result<Vec<String>> {
+    let store = read_store(keystore_password)?;
+    let mut names: Vec<String> = store.secrets.keys().cloned().collect();
+    names.sort();
+    Ok(names)
+}
+
+pub fn keystore_exists() -> Result<bool> {
+    Ok(get_keystore_path()?.is_file())
+}
+
 fn read_store(keystore_password: &str) -> Result<KeystoreData> {
     let path = get_keystore_path()?;
     if !path.is_file() {

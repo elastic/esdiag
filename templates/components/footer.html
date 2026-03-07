@@ -18,9 +18,20 @@
             >{{ version }}</a
         >
     </footer-left>
-    <footer-center id="exporter">
-        {% if can_configure_output %}
-        <a href="#" data-on:click="@get('/settings/modal')">Output: {{ exporter }}</a>
+    <footer-center id="exporter" data-signals:settings.target="'{{ exporter }}'">
+        {% if can_configure_output && send_hosts.len() > 0 %}
+        Output:
+        <select
+            class="form-input"
+            style="display: inline-block; width: auto; min-width: 14rem; margin-left: .5rem;"
+            name="target"
+            data-bind:settings.target
+            data-on:change="@post('/api/settings/update')"
+        >
+            {% for host in send_hosts %}
+            <option value="{{ host }}" {% if host.as_str() == exporter.as_str() %}selected{% endif %}>{{ host }}</option>
+            {% endfor %}
+        </select>
         {% else %}
         Output: {{ exporter }}
         {% endif %}

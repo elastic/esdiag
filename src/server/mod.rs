@@ -7,7 +7,11 @@ mod api_key;
 mod assets;
 mod docs;
 mod file_upload;
+#[cfg(feature = "keystore")]
+mod hosts;
 mod index;
+#[cfg(feature = "keystore")]
+mod keystore;
 mod service_link;
 mod settings;
 mod stats;
@@ -17,6 +21,7 @@ mod theme;
 use super::processor::Identifiers;
 use crate::{
     data::{KnownHost, Uri},
+    env::ESDIAG_KEYSTORE_PASSWORD,
     exporter::Exporter,
 };
 use askama::Template;
@@ -30,7 +35,7 @@ use axum::{
     middleware,
     response::{Response, Sse},
     response::sse::Event,
-    routing::{get, patch, post},
+    routing::{get, patch, post, put},
 };
 use bytes::Bytes;
 use clap::ValueEnum;
@@ -41,6 +46,7 @@ use futures::stream;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, convert::Infallible, net::SocketAddr, sync::Arc};
 use tokio::sync::{RwLock, broadcast, mpsc, watch};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 type UploadReceiver = Arc<RwLock<mpsc::Receiver<(Identifiers, Bytes)>>>;
 const IAP_USER_EMAIL_HEADER: &str = "X-Goog-Authenticated-User-Email";
@@ -169,6 +175,7 @@ impl Server {
             stats_updates_rx,
             runtime_mode,
             runtime_mode_policy,
+            keystore_state: Arc::new(RwLock::new(KeystoreSessionState::default())),
         });
 
         stats::spawn_stats_publisher(state.clone(), state.event_sender());
@@ -205,6 +212,8 @@ impl Server {
                 .route("/prism-json.js", get(assets::prism_json))
                 .route("/prism-json5.js", get(assets::prism_json5))
                 .route("/prism.css", get(assets::prism_css))
+                .route("/documentation-outline.js", get(assets::documentation_outline))
+                .route("/document-outline.js", get(assets::document_outline))
                 .route("/theme-borealis.css", get(assets::theme_borealis))
                 .route("/theme", post(theme::set_theme))
                 .route("/docs/{*path}", get(docs::handler))
@@ -216,6 +225,24 @@ impl Server {
             let app = app
                 .route("/settings/modal", get(settings::get_modal))
                 .route("/api/settings/update", post(settings::update_settings));
+
+            #[cfg(feature = "keystore")]
+            let app = if runtime_mode_policy.allows_local_artifacts() {
+                app.route("/hosts", get(hosts::page))
+                    .route("/hosts/create", post(hosts::create_host))
+                    .route("/hosts/update", put(hosts::update_host))
+                    .route("/hosts/host/upsert", post(hosts::upsert_host))
+                    .route("/hosts/host/delete", post(hosts::delete_host))
+                    .route("/hosts/secret/upsert", post(hosts::upsert_secret))
+                    .route("/hosts/secret/delete", post(hosts::delete_secret))
+                    .route("/keystore/bootstrap-modal", get(keystore::get_bootstrap_modal))
+                    .route("/keystore/bootstrap", post(keystore::bootstrap))
+                    .route("/keystore/modal", get(keystore::get_unlock_modal))
+                    .route("/keystore/unlock", post(keystore::unlock))
+                    .route("/keystore/lock", post(keystore::lock))
+            } else {
+                app
+            };
 
             let app = app
                 .layer(DefaultBodyLimit::max(FIVE_HUNDRED_TWELVE_MEBIBYTES))
@@ -298,11 +325,77 @@ pub struct ServerState {
     pub keys: Arc<RwLock<HashMap<u64, (Identifiers, KnownHost)>>>,
     pub runtime_mode: RuntimeMode,
     pub runtime_mode_policy: RuntimeModePolicy,
+    pub keystore_state: Arc<RwLock<KeystoreSessionState>>,
     stats: Arc<RwLock<Stats>>,
     shutdown: watch::Receiver<bool>,
     event_tx: broadcast::Sender<ServerEvent>,
     stats_updates_tx: watch::Sender<u64>,
     stats_updates_rx: watch::Receiver<u64>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct KeystoreSessionState {
+    pub locked: bool,
+    pub lock_time: i64,
+    pub failed_attempts: u32,
+    pub blocked_until_epoch: Option<i64>,
+    #[serde(skip)]
+    pub unlocked_password: Option<String>,
+    #[serde(skip)]
+    pub expires_at_epoch: Option<i64>,
+}
+
+impl Default for KeystoreSessionState {
+    fn default() -> Self {
+        Self {
+            locked: true,
+            lock_time: now_epoch_seconds(),
+            failed_attempts: 0,
+            blocked_until_epoch: None,
+            unlocked_password: None,
+            expires_at_epoch: None,
+        }
+    }
+}
+
+impl KeystoreSessionState {
+    fn current_backoff_seconds(&self) -> u64 {
+        if self.failed_attempts <= 3 {
+            return 0;
+        }
+        let over = self.failed_attempts - 3;
+        let minutes = (over as u64).saturating_mul(5).min(60);
+        minutes * 60
+    }
+
+    fn apply_timeout(&mut self) {
+        let now = now_epoch_seconds();
+        if let Some(blocked_until) = self.blocked_until_epoch
+            && blocked_until <= now
+        {
+            self.blocked_until_epoch = None;
+        }
+        if let Some(expires_at) = self.expires_at_epoch
+            && expires_at <= now
+            && !self.locked
+        {
+            self.locked = true;
+            self.lock_time = now;
+            self.expires_at_epoch = None;
+            self.unlocked_password = None;
+            unsafe {
+                std::env::remove_var(ESDIAG_KEYSTORE_PASSWORD);
+            }
+            log::info!("Keystore session timed out and was locked");
+        }
+    }
+}
+
+fn now_epoch_seconds() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or(Duration::from_secs(0))
+        .as_secs() as i64
 }
 
 impl ServerState {
@@ -354,6 +447,80 @@ impl ServerState {
             .unwrap_or_else(|| "Anonymous".to_string());
 
         Ok((has_header, email))
+    }
+
+    pub async fn keystore_status(&self) -> (bool, i64) {
+        let state = self.keystore_state.read().await;
+        (state.locked, state.lock_time)
+    }
+
+    pub async fn is_keystore_unlocked(&self) -> bool {
+        let mut state = self.keystore_state.write().await;
+        state.apply_timeout();
+        !state.locked
+    }
+
+    pub async fn touch_keystore_session(&self) {
+        let mut state = self.keystore_state.write().await;
+        if !state.locked {
+            state.expires_at_epoch = Some(now_epoch_seconds() + (12 * 60 * 60));
+            state.lock_time = now_epoch_seconds();
+        }
+    }
+
+    pub async fn set_keystore_unlocked(&self, password: String) {
+        let mut state = self.keystore_state.write().await;
+        state.locked = false;
+        state.lock_time = now_epoch_seconds();
+        state.failed_attempts = 0;
+        state.blocked_until_epoch = None;
+        state.expires_at_epoch = Some(now_epoch_seconds() + (12 * 60 * 60));
+        state.unlocked_password = Some(password.clone());
+        unsafe {
+            std::env::set_var(ESDIAG_KEYSTORE_PASSWORD, password);
+        }
+        drop(state);
+        self.publish_event(signal_event(self.keystore_signal_payload().await));
+        log::info!("Keystore authentication succeeded");
+    }
+
+    pub async fn set_keystore_locked(&self, reason: &str) {
+        let mut state = self.keystore_state.write().await;
+        state.locked = true;
+        state.lock_time = now_epoch_seconds();
+        state.expires_at_epoch = None;
+        state.unlocked_password = None;
+        unsafe {
+            std::env::remove_var(ESDIAG_KEYSTORE_PASSWORD);
+        }
+        drop(state);
+        self.publish_event(signal_event(self.keystore_signal_payload().await));
+        log::info!("Keystore locked: {reason}");
+    }
+
+    pub async fn record_keystore_failed_attempt(&self) -> Option<i64> {
+        let mut state = self.keystore_state.write().await;
+        state.failed_attempts = state.failed_attempts.saturating_add(1);
+        let block_seconds = state.current_backoff_seconds();
+        if block_seconds > 0 {
+            state.blocked_until_epoch = Some(now_epoch_seconds() + block_seconds as i64);
+        }
+        let blocked_until = state.blocked_until_epoch;
+        drop(state);
+        log::warn!("Keystore authentication failed");
+        self.publish_event(signal_event(self.keystore_signal_payload().await));
+        blocked_until
+    }
+
+    pub async fn keystore_signal_payload(&self) -> String {
+        let (locked, lock_time) = self.keystore_status().await;
+        format!(r#"{{"keystore":{{"locked":{},"lock_time":{}}}}}"#, locked, lock_time)
+    }
+
+    pub async fn keystore_blocked_until(&self) -> Option<i64> {
+        let mut state = self.keystore_state.write().await;
+        state.apply_timeout();
+        state.blocked_until_epoch
     }
 
     pub async fn record_success(&self, _docs: u32, errors: u32) {
@@ -476,6 +643,7 @@ pub(crate) fn test_server_state() -> Arc<ServerState> {
         uploads: Arc::new(RwLock::new(HashMap::new())),
         runtime_mode,
         runtime_mode_policy: RuntimeModePolicy::new(runtime_mode),
+        keystore_state: Arc::new(RwLock::new(KeystoreSessionState::default())),
         shutdown: watch::channel(false).1,
         event_tx: broadcast::channel(16).0,
         stats_updates_tx,
@@ -543,6 +711,8 @@ pub struct Signals {
     pub es_api: EsApiKey,
     #[serde(default)]
     pub settings: settings::UpdateSettingsForm,
+    #[serde(default)]
+    pub keystore: KeystoreSignals,
     pub stats: Stats,
     pub tab: Tab,
 }
@@ -566,10 +736,29 @@ impl Default for Signals {
                 url: Uri::default(),
             },
             settings: settings::UpdateSettingsForm::default(),
+            keystore: KeystoreSignals::default(),
             stats: Stats::default(),
             tab: Tab::FileUpload,
         }
     }
+}
+
+#[derive(Clone, Debug, Deserialize, Default)]
+pub struct KeystoreSignals {
+    #[serde(default)]
+    pub password: String,
+    #[serde(default)]
+    pub invalid: bool,
+    #[serde(default)]
+    pub confirm: bool,
+    #[serde(default = "default_keystore_locked")]
+    pub locked: bool,
+    #[serde(default)]
+    pub lock_time: i64,
+}
+
+fn default_keystore_locked() -> bool {
+    true
 }
 
 #[derive(Deserialize, Serialize)]
@@ -826,6 +1015,7 @@ mod tests {
             keys: Arc::new(RwLock::new(HashMap::new())),
             runtime_mode: mode,
             runtime_mode_policy: RuntimeModePolicy::new(mode),
+            keystore_state: Arc::new(RwLock::new(KeystoreSessionState::default())),
             stats: Arc::new(RwLock::new(Stats::default())),
             shutdown: watch::channel(false).1,
             event_tx: broadcast::channel(16).0,
