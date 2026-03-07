@@ -184,7 +184,7 @@ content {
 content.full-page {
     max-width: 100%;
     display: block;
-    margin: 0 var(--size-m);
+    padding: var(--size-m) var(--size-m) var(--size-footer) var(--size-m);
     overflow: scroll;
 }
 
@@ -205,13 +205,11 @@ diagnostic-form {
 
 panel {
     display: flex;
-    flex-direction: row;
+    flex-direction: column;
     margin: var(--size-xl) 0;
     padding: var(--size-l);
-    background-color: var(--background-color);
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius);
-    overflow: hidden;
     box-shadow: var(--shadow-small);
 }
 
@@ -223,7 +221,7 @@ panel > footer {
     display: flex;
     justify-content: flex-start;
     gap: var(--size-s);
-    margin: var(--size-l) var(--size-neg-l) var(--size-neg-l);
+    margin: var(--size-l) calc(var(--size-l) * -1) calc(var(--size-l) * -1);
     padding: var(--size-s);
     background: var(--background-color-dimmed);
     border-top: 1px solid var(--border-color);
@@ -241,10 +239,27 @@ panel > footer > button {
     line-height: var(--font-size-l);
     padding: var(--size-xs) var(--size);
     cursor: pointer;
+    transition:
+        background-color 120ms ease,
+        border-color 120ms ease,
+        color 120ms ease;
 }
 
 panel > footer > button:hover {
     background: var(--color-overlay);
+}
+
+panel > footer > button:disabled {
+    border-color: var(--border-color);
+    background: var(--form-control-disabled-color);
+    color: var(--text-subdued-color);
+    cursor: not-allowed;
+    box-shadow: none;
+}
+
+panel > footer > button:disabled:hover {
+    background: var(--form-control-disabled-color);
+    color: var(--text-subdued-color);
 }
 
 panel > footer > button:focus-visible {
@@ -699,7 +714,7 @@ user-icon {
     display: block;
 }
 
-footer {
+body > footer {
     position: fixed;
     bottom: 0;
     left: 0;
@@ -1329,29 +1344,62 @@ signals-toggle > button > svg {
     stroke-linejoin: round;
 }
 
-/* Default table */
-
-table {
+/* <table-records> - A table with editable record rows */
+table-records {
     overflow: scroll;
     padding: 0px;
 }
 
-table th {
-    text-align: left;
-    padding-right: var(--size-m);
+table-records table {
+    width: 100%;
+    border-collapse: collapse;
 }
 
-table td {
-    padding: var(--size-xxs) var(--size-xs);
+table-records th {
+    text-align: left;
+    padding: 0 0 var(--size-s);
+    padding-right: var(--size-m);
+    border-bottom: 1px solid var(--border-color);
+}
+
+table-records td {
+    padding: var(--size-s) var(--size-xs);
     text-wrap-mode: nowrap;
 }
 
-tr form {
-    display: flex;
-    justify-content: space-between;
+table-records tbody tr + tr td {
+    border-top: 1px solid
+        color-mix(in srgb, var(--border-color) 55%, var(--color-transparent));
 }
 
-td button {
+table-records form-input {
+    margin-bottom: 0;
+}
+
+table-records td form-input {
+    min-width: 11rem;
+}
+
+table-records td:nth-child(6) form-input {
+    min-width: 15rem;
+}
+
+table-records td form-input > textarea {
+    min-height: 0;
+    height: auto;
+}
+
+table-records choice-row {
+    margin-top: 0;
+}
+
+table-records tr form {
+    display: flex;
+    justify-content: flex-start;
+    gap: var(--size-xs);
+}
+
+table-records td button {
     background: transparent;
     border-radius: var(--border-radius-small);
     min-width: var(--size);
@@ -1362,93 +1410,21 @@ td button {
     padding: var(--size-xs);
 }
 
-td button:hover {
+table-records td button:hover {
     color: var(--color-primary-shade);
 }
 
-td button:disabled {
+table-records td button:disabled {
     color: var(--text-subdued-color);
     cursor: not-allowed;
 }
 
-/* EUI-like table presentation for /hosts */
-.eui-like-table {
-    width: 100%;
-    border-collapse: separate;
-    border-spacing: 0;
-    border: 1px solid var(--theme-separator-color);
-    border-radius: var(--border-radius-medium);
-    overflow: hidden;
-    margin-bottom: var(--size-l);
-    background: var(--background-color);
-}
-
-.eui-like-table thead th {
-    font-size: var(--font-size-s);
-    font-weight: 600;
-    color: var(--text-subdued-color);
-    background: var(--theme-overlay-subtle);
-    border-bottom: 1px solid var(--theme-separator-color);
-    padding: var(--size-s) var(--size);
-    white-space: nowrap;
-}
-
-.eui-like-table tbody td {
-    border-bottom: 1px solid var(--theme-separator-color);
-    padding: var(--size-xs) var(--size);
-    vertical-align: middle;
-    white-space: nowrap;
-}
-
-.eui-like-table tbody tr:last-child td {
-    border-bottom: 0;
-}
-
-.eui-like-table tbody tr:hover td {
-    background: var(--theme-overlay-subtle);
-}
-
-table-records tbody tr {
-    border-top: 1px solid var(--boder-color, var(--theme-separator-color));
-}
-
-.eui-like-table .form-input {
-    min-width: 0;
-    width: 100%;
-    height: 2rem;
-    font-size: var(--font-size-s);
-    padding: 0 var(--size-xs);
-}
-
-.eui-cell-actions {
-    display: flex;
-    align-items: center;
-    gap: var(--size-xs);
-}
-
-.table-action-btn {
-    border: 1px solid var(--theme-separator-color);
-    background: var(--background-color);
-    color: var(--text-subdued-color);
-    border-radius: var(--border-radius-small);
-    font-size: var(--font-size-s);
-    line-height: 1;
-    width: 1.75rem;
-    height: 1.75rem;
-    padding: 0;
-    opacity: 0.8;
-}
-
-.table-action-btn:hover {
-    opacity: 1;
-    color: var(--text-color);
-    background: var(--theme-overlay-subtle);
-}
-
-.table-action-btn.primary {
-    color: var(--color-primary);
-}
-
-.table-action-btn.danger {
-    color: var(--color-danger);
+table-records td button > svg {
+    width: 16px;
+    height: 16px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
 }

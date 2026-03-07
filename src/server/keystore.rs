@@ -1,6 +1,4 @@
-use super::{
-    ServerState, append_body_event, html_event, signal_event,
-};
+use super::{ServerState, append_body_event, execute_script_event, html_event, signal_event};
 use crate::data::{KnownHost, Settings, authenticate, keystore_exists};
 use crate::server::template::{KeystoreBootstrapModal, KeystoreUnlockModal};
 use askama::Template;
@@ -109,6 +107,9 @@ pub async fn bootstrap(
     state.publish_event(signal_event(
         r#"{"keystore":{"password":"","invalid":false,"confirm":false}}"#,
     ));
+    state.publish_event(execute_script_event(
+        "if (window.location.pathname === '/hosts') { window.location.reload(); }",
+    ));
     state.publish_event(html_event(
         r#"<div id="keystore-bootstrap-modal" data-init="document.getElementById('keystore-bootstrap-modal')?.remove();"></div>"#,
     ));
@@ -151,6 +152,9 @@ pub async fn unlock(
         Ok(_) => {
             state.set_keystore_unlocked(password).await;
             state.publish_event(signal_event(r#"{"keystore":{"password":"","invalid":false}}"#));
+            state.publish_event(execute_script_event(
+                "if (window.location.pathname === '/hosts') { window.location.reload(); }",
+            ));
             state.publish_event(html_event(
                 r#"<div id="keystore-unlock-modal" data-init="document.getElementById('keystore-unlock-modal')?.remove();"></div>"#,
             ));
