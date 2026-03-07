@@ -6,9 +6,10 @@
 <content id="main-content" class="full-page">
     <section-title>Manage Hosts</section-title>
 
+    <panel data-signals:_addHost="false" data-signals:_editingHost="''" data-signals:hosts='{{ hosts_records_json|safe }}'>
     <h3 style="margin-top: 0">Hosts</h3>
-    <table-records data-signals:_addHost="false" data-signals:_editingHost="''" data-signals:hosts='{{ hosts_records_json|safe }}'>
-    <table class="eui-like-table">
+    <table-records>
+    <table>
         <thead>
             <tr>
                 <th>Name</th>
@@ -19,6 +20,7 @@
                 <th>Secret</th>
                 <th>Insecure</th>
                 <th>URL</th>
+                <th></th>
             </tr>
         </thead>
         <tbody>
@@ -33,26 +35,8 @@
                     <input type="hidden" form="host-edit-form-{{ loop.index }}" name="apikey" value="" />
                     <input type="hidden" form="host-edit-form-{{ loop.index }}" name="username" value="" />
                     <input type="hidden" form="host-edit-form-{{ loop.index }}" name="password" value="" />
-
-                    <div class="eui-cell-actions">
-                        <span data-show="$_editingHost !== '{{ host.name }}'">{{ host.name }}</span>
-                        <input data-show="$_editingHost === '{{ host.name }}'" form="host-edit-form-{{ loop.index }}" name="name" class="form-input" style="display:none" value="{{ host.name }}" />
-                        <span data-show="$_editingHost !== '{{ host.name }}'">
-                            <button
-                                class="table-action-btn"
-                                type="button"
-                                data-on:click="$_editingHost = '{{ host.name }}'"
-                                title="Edit"
-                            >
-                                ✏
-                            </button>
-                            <button class="table-action-btn danger" type="submit" title="Delete" form="host-delete-form-{{ loop.index }}">✕</button>
-                        </span>
-                        <span data-show="$_editingHost === '{{ host.name }}'" style="display:none">
-                            <button class="table-action-btn primary" type="submit" title="Save" form="host-edit-form-{{ loop.index }}">✓</button>
-                            <button class="table-action-btn" type="button" title="Cancel" data-on:click="$_editingHost = ''">↺</button>
-                        </span>
-                    </div>
+                    <span data-show="$_editingHost !== '{{ host.name }}'">{{ host.name }}</span>
+                    <input data-show="$_editingHost === '{{ host.name }}'" form="host-edit-form-{{ loop.index }}" name="name" class="form-input" style="display:none" value="{{ host.name }}" />
                 </td>
                 <td>
                     <span data-show="$_editingHost !== '{{ host.name }}'">{{ host.app }}</span>
@@ -100,25 +84,48 @@
                     <span data-show="$_editingHost !== '{{ host.name }}'">{{ host.url }}</span>
                     <input data-show="$_editingHost === '{{ host.name }}'" form="host-edit-form-{{ loop.index }}" name="url" type="url" class="form-input" style="display:none" value="{{ host.url }}" />
                 </td>
+                <td>
+                    <span data-show="$_editingHost !== '{{ host.name }}'">
+                        <button
+                            type="button"
+                            data-on:click="$_editingHost = '{{ host.name }}'"
+                            title="Edit"
+                        >
+                            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                                <path d="M2.5 11.5v2h2l7-7-2-2-7 7z"></path>
+                                <path d="M8.8 3.2 10.8 5.2"></path>
+                            </svg>
+                        </button>
+                        <button type="submit" title="Delete" form="host-delete-form-{{ loop.index }}">
+                            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                                <path d="M3.5 3.5 12.5 12.5"></path>
+                                <path d="M12.5 3.5 3.5 12.5"></path>
+                            </svg>
+                        </button>
+                    </span>
+                    <span data-show="$_editingHost === '{{ host.name }}'" style="display:none">
+                        <button type="submit" title="Save" form="host-edit-form-{{ loop.index }}">
+                            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                                <path d="M3.5 8.5 6.5 11.5 12.5 4.5"></path>
+                            </svg>
+                        </button>
+                        <button type="button" title="Cancel" data-on:click="$_editingHost = ''">
+                            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                                <path d="M13 8A5 5 0 1 1 8 3"></path>
+                                <path d="M8 1.8 8 5.2 11.2 5.2"></path>
+                            </svg>
+                        </button>
+                    </span>
+                </td>
             </tr>
             {% endfor %}
-            <tr data-show="!$_addHost">
-                <td><button class="table-action-btn primary" type="button" data-on:click="$_addHost = true">+</button></td>
-                <td></td><td></td><td></td><td></td><td></td><td></td><td></td>
-            </tr>
             <tr data-show="$_addHost" data-signals:_name="''" data-signals:_app="'Elasticsearch'" data-signals:_roles="'collect'" data-signals:_viewer="''" data-signals:_auth="'none'" data-signals:_secret="''" data-signals:_insecure="false" data-signals:_url="''" style="display:none">
                 <td>
                     <form id="host-add-form" method="post" action="/hosts/host/upsert"></form>
                     <input type="hidden" form="host-add-form" name="apikey" value="" />
                     <input type="hidden" form="host-add-form" name="username" value="" />
                     <input type="hidden" form="host-add-form" name="password" value="" />
-                    <div class="eui-cell-actions">
-                        <input data-bind:_name form="host-add-form" name="name" class="form-input" placeholder="name" required />
-                        <span>
-                            <button class="table-action-btn primary" type="submit" form="host-add-form" title="Add">✓</button>
-                            <button class="table-action-btn" type="button" title="Cancel" data-on:click="$_addHost = false">↺</button>
-                        </span>
-                    </div>
+                    <input data-bind:_name form="host-add-form" name="name" class="form-input" placeholder="name" required />
                 </td>
                 <td>
                     <select data-bind:_app form="host-add-form" name="app" class="form-input">
@@ -151,22 +158,41 @@
                 </td>
                 <td><input data-bind:_insecure form="host-add-form" name="accept_invalid_certs" type="checkbox" /></td>
                 <td><input data-bind:_url form="host-add-form" name="url" type="url" class="form-input" required /></td>
+                <td>
+                    <button type="submit" form="host-add-form" title="Add">
+                        <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                            <path d="M3.5 8.5 6.5 11.5 12.5 4.5"></path>
+                        </svg>
+                    </button>
+                    <button type="button" title="Cancel" data-on:click="$_addHost = false">
+                        <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                            <path d="M13 8A5 5 0 1 1 8 3"></path>
+                            <path d="M8 1.8 8 5.2 11.2 5.2"></path>
+                        </svg>
+                    </button>
+                </td>
             </tr>
         </tbody>
     </table>
     </table-records>
+    <footer>
+        <button type="button" data-show="!$_addHost" data-on:click="$_addHost = true">Add Host</button>
+        <button type="button" data-show="$_addHost" data-on:click="$_addHost = false" style="display:none">Cancel</button>
+    </footer>
+    </panel>
 
+    <panel data-signals:_addSecret="false" data-signals:_editingSecret="''" data-signals:secrets='{{ secrets_records_json|safe }}'>
     <h3 style="margin-top: 0">Secrets</h3>
     {% if keystore_locked %}
     <info-text>Unlock the keystore from the user menu to view and edit secrets.</info-text>
     {% endif %}
-    <table-records data-signals:_addSecret="false" data-signals:_editingSecret="''" data-signals:secrets='{{ secrets_records_json|safe }}'>
-    <table class="eui-like-table">
+    <table-records>
+    <table>
         <thead>
             <tr>
                 <th>secret_id</th>
                 <th>type</th>
-                <th>actions</th>
+                <th></th>
             </tr>
         </thead>
         <tbody>
@@ -194,33 +220,41 @@
                 <td>
                     <span data-show="$_editingSecret !== '{{ secret.secret_id }}'">
                         <button
-                            class="table-action-btn"
                             type="button"
                             {% if keystore_locked %}disabled{% endif %}
                             data-on:click="$_editingSecret = '{{ secret.secret_id }}'"
                         >
-                            ✏
+                            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                                <path d="M2.5 11.5v2h2l7-7-2-2-7 7z"></path>
+                                <path d="M8.8 3.2 10.8 5.2"></path>
+                            </svg>
                         </button>
-                        <button class="table-action-btn danger" type="submit" form="secret-delete-form-{{ loop.index }}" {% if keystore_locked %}disabled{% endif %}>✕</button>
+                        <button type="submit" form="secret-delete-form-{{ loop.index }}" {% if keystore_locked %}disabled{% endif %}>
+                            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                                <path d="M3.5 3.5 12.5 12.5"></path>
+                                <path d="M12.5 3.5 3.5 12.5"></path>
+                            </svg>
+                        </button>
                     </span>
                     <span data-show="$_editingSecret === '{{ secret.secret_id }}'" style="display:none">
-                        <button class="table-action-btn primary" type="submit" form="secret-edit-form-{{ loop.index }}" {% if keystore_locked %}disabled{% endif %}>✓</button>
+                        <button type="submit" form="secret-edit-form-{{ loop.index }}" {% if keystore_locked %}disabled{% endif %}>
+                            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                                <path d="M3.5 8.5 6.5 11.5 12.5 4.5"></path>
+                            </svg>
+                        </button>
                         <button
-                            class="table-action-btn"
                             type="button"
                             data-on:click="$_editingSecret = ''"
                         >
-                            ↺
+                            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                                <path d="M13 8A5 5 0 1 1 8 3"></path>
+                                <path d="M8 1.8 8 5.2 11.2 5.2"></path>
+                            </svg>
                         </button>
                     </span>
                 </td>
             </tr>
             {% endfor %}
-            <tr data-show="!$_addSecret">
-                <td><button class="table-action-btn primary" type="button" {% if keystore_locked %}disabled{% endif %} data-on:click="$_addSecret = true">+</button></td>
-                <td></td>
-                <td></td>
-            </tr>
             <tr data-show="$_addSecret" data-signals:_secret_id="''" data-signals:_auth_type="'ApiKey'" style="display:none">
                 <td>
                     <form id="secret-add-form" method="post" action="/hosts/secret/upsert"></form>
@@ -236,12 +270,29 @@
                     </select>
                 </td>
                 <td>
-                    <button class="table-action-btn primary" type="submit" form="secret-add-form" {% if keystore_locked %}disabled{% endif %}>✓</button>
-                    <button class="table-action-btn" type="button" data-on:click="$_addSecret = false">↺</button>
+                    <button type="submit" form="secret-add-form" {% if keystore_locked %}disabled{% endif %}>
+                        <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                            <path d="M3.5 8.5 6.5 11.5 12.5 4.5"></path>
+                        </svg>
+                    </button>
+                    <button type="button" data-on:click="$_addSecret = false">
+                        <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                            <path d="M13 8A5 5 0 1 1 8 3"></path>
+                            <path d="M8 1.8 8 5.2 11.2 5.2"></path>
+                        </svg>
+                    </button>
                 </td>
             </tr>
         </tbody>
     </table>
     </table-records>
+    <footer>
+        {% if keystore_locked %}
+        <button type="button" data-on:click="@get('/keystore/modal')">Unlock</button>
+        {% endif %}
+        <button type="button" data-show="!$_addSecret" {% if keystore_locked %}disabled{% endif %} data-on:click="$_addSecret = true">Add Secret</button>
+        <button type="button" data-show="$_addSecret" data-on:click="$_addSecret = false" style="display:none">Cancel</button>
+    </footer>
+    </panel>
 </content>
 {% endblock %}

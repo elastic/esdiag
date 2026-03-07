@@ -29,7 +29,9 @@
             });
         </script>
 
-        {% include "components/header.html" %} {% block content %}{% endblock %} {% include "components/footer.html" %}
+        {% include "components/header.html" %}
+        {% block content %}{% endblock %}
+        {% include "components/footer.html" %}
         {% if debug %}
         <signals-panel>
           <signals-toggle>
