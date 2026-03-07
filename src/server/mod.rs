@@ -211,6 +211,7 @@ impl Server {
                 .route("/prism-bash.js", get(assets::prism_bash))
                 .route("/prism-json.js", get(assets::prism_json))
                 .route("/prism-json5.js", get(assets::prism_json5))
+                .route("/prism-rust.js", get(assets::prism_rust))
                 .route("/prism.css", get(assets::prism_css))
                 .route("/documentation-outline.js", get(assets::documentation_outline))
                 .route("/document-outline.js", get(assets::document_outline))
