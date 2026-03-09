@@ -17,8 +17,8 @@ mod plugins;
 /// Logstash version
 mod version;
 
-pub use metadata::LogstashMetadata;
 pub use collector::LogstashCollector;
+pub use metadata::LogstashMetadata;
 
 use super::{
     DiagnosticProcessor, DocumentExporter, Metadata, ProcessorSummary,

@@ -41,7 +41,8 @@ struct Cli {
     /// Enable debug logging
     #[arg(global = true, long)]
     debug: bool,
-    /// Override the path to sources.yml
+    /// Override the embedded Elasticsearch sources.yml path.
+    /// Logstash sources continue to use the embedded assets/logstash/sources.yml.
     #[arg(global = true, long)]
     sources: Option<String>,
     /// Commands

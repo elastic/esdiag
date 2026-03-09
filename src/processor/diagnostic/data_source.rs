@@ -100,10 +100,12 @@ impl std::fmt::Display for Source {
 
 static SOURCES: OnceLock<HashMap<&'static str, HashMap<String, Source>>> = OnceLock::new();
 
-fn load_embedded_sources(override_path: Option<String>) -> Result<HashMap<&'static str, HashMap<String, Source>>> {
+fn load_embedded_sources(
+    es_override_path: Option<String>,
+) -> Result<HashMap<&'static str, HashMap<String, Source>>> {
     let mut products = HashMap::new();
 
-    let es_content = if let Some(path) = override_path {
+    let es_content = if let Some(path) = es_override_path {
         std::fs::read_to_string(&path)
             .map_err(|e| eyre!("Failed to read override sources file at {}: {}", path, e))?
     } else {
@@ -126,8 +128,8 @@ pub fn get_sources() -> &'static HashMap<&'static str, HashMap<String, Source>> 
     SOURCES.get_or_init(|| load_embedded_sources(None).expect("Valid embedded sources.yml files"))
 }
 
-pub fn init_sources(override_path: Option<String>) -> Result<()> {
-    let products = load_embedded_sources(override_path)?;
+pub fn init_sources(es_override_path: Option<String>) -> Result<()> {
+    let products = load_embedded_sources(es_override_path)?;
     SOURCES
         .set(products)
         .map_err(|_| eyre!("Sources already initialized"))?;
