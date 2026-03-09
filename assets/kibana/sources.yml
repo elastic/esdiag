@@ -1,9 +1,9 @@
 # The new settings format:
-# At the top level the label descring the query that will also be used as the
+# At the top level the label describing the query that will also be used as the
 #   file name for its output.
 #   Below the query label are the following attributes:
 #     * extension - the file extension to be used for output. Optional, defaults to .json.
-#     * subdir - some api's are now grouped in a subdirectory of the output directory to lessen clutter. Optional, defaults to root dir.
+#     * subdir - some APIs are now grouped in a subdirectory of the output directory to lessen clutter. Optional, defaults to root dir.
 #     * retry - whether if a query fails it will be retried for the configured number of attempts. Optional, defaults to false.
 #     * versions - it can be:
 #       * A map constituted of "semver rules" and its associated "url/api" to run (`">= 7.0.0" : "/api/someendpoint/"`)
@@ -16,7 +16,7 @@
 #   NPM mode is the only one used: https://github.com/vdurmont/semver4j
 #   NPM Versioning rules are documented here: https://github.com/npm/node-semver
 #
-#   Note to those adding entries: within each group, cat API's, json API's, and commercial, they are in alphabetical order.
+#   Note to those adding entries: within each group, cat APIs, JSON APIs, and commercial endpoints are in alphabetical order.
 #   Please adhere to this convention when submitting pull requests.
 
 kibana_actions:

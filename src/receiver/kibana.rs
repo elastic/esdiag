@@ -101,7 +101,12 @@ impl KibanaReceiver {
         }
 
         let response = self.client.request(Method::GET, &headers, path, None).await?;
-        response.text().await.map_err(Into::into)
+        let status = response.status();
+        let body = response.text().await?;
+        if !status.is_success() {
+            return Err(eyre!("http {} - {}", status, body));
+        }
+        Ok(body)
     }
 }
 
@@ -132,8 +137,8 @@ impl Receive for KibanaReceiver {
     where
         T: DataSource + DeserializeOwned,
     {
-        let version = self.get_version().await.ok();
-        let path = T::source(PathType::Url, version)?;
+        let version = self.get_version().await?;
+        let path = T::source(PathType::Url, Some(version))?;
         let response = self
             .client
             .request(Method::GET, &HashMap::new(), &path, None)
@@ -178,8 +183,8 @@ impl ReceiveRaw for KibanaReceiver {
     where
         T: DataSource,
     {
-        let version = self.get_version().await.ok();
-        let path = T::source(PathType::Url, version)?;
+        let version = self.get_version().await?;
+        let path = T::source(PathType::Url, Some(version))?;
 
         let name = T::name();
         let aliases = T::aliases();

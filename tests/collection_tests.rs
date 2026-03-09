@@ -792,7 +792,8 @@ async fn test_collect_kibana_mock_workflow() {
         let page = params
             .get("page")
             .and_then(|value| value.parse::<usize>().ok())
-            .unwrap_or(1);
+            .unwrap_or(1)
+            .max(1);
         let per_page = params
             .get("per_page")
             .and_then(|value| value.parse::<usize>().ok())
