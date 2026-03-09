@@ -11,6 +11,8 @@ pub mod diagnostic;
 mod elastic_cloud_kubernetes;
 /// Processors for Elasticsearch diagnostics
 mod elasticsearch;
+/// Processors for Kibana diagnostics
+mod kibana;
 /// Processors for Managed Kubernetes Infrastructure (MKI) platform diagnostics
 mod kubernetes_platform;
 /// Processors for Logstash diagnostics

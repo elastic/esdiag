@@ -55,7 +55,7 @@ enum Commands {
     /// Collect a diagnostic bundle from a known host's API endpoints, writes output to a directory
     Collect {
         /// The host to collect diagnostics from
-        #[arg(help = "The Elasticsearch host to collect diagnostics from")]
+        #[arg(help = "The Elastic Stack host to collect diagnostics from")]
         host: String,
         /// The output directory to save the diagnostics to
         #[arg(help = "An existing directory to create a diagnostic directory and files in")]

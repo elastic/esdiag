@@ -142,7 +142,7 @@ impl ElasticsearchApi {
                     &[],
                 ) {
                     Ok((_, source)) => {
-                        if source.tags.as_deref() == Some("light") {
+                        if source.has_tag("light") {
                             ApiWeight::Light
                         } else {
                             ApiWeight::Heavy
@@ -157,6 +157,41 @@ impl ElasticsearchApi {
 }
 
 impl std::str::FromStr for ElasticsearchApi {
+    type Err = eyre::Report;
+
+    fn from_str(s: &str) -> Result<Self> {
+        Self::parse(s)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum KibanaApi {
+    Status,
+    Spaces,
+    Raw(String),
+}
+
+impl KibanaApi {
+    pub fn as_str(&self) -> &str {
+        match self {
+            KibanaApi::Status => "kibana_status",
+            KibanaApi::Spaces => "kibana_spaces",
+            KibanaApi::Raw(name) => name.as_str(),
+        }
+    }
+
+    pub fn parse(s: &str) -> Result<Self> {
+        crate::processor::diagnostic::data_source::get_source("kibana", s, &[])
+            .map_err(|_| eyre!("Invalid Kibana API: {}", s))?;
+        match s {
+            "kibana_status" => Ok(KibanaApi::Status),
+            "kibana_spaces" => Ok(KibanaApi::Spaces),
+            _ => Ok(KibanaApi::Raw(s.to_string())),
+        }
+    }
+}
+
+impl std::str::FromStr for KibanaApi {
     type Err = eyre::Report;
 
     fn from_str(s: &str) -> Result<Self> {
@@ -244,25 +279,84 @@ impl std::str::FromStr for LogstashApi {
 pub struct ApiResolver;
 
 impl ApiResolver {
+    fn resolve_requested(
+        mut requested: IndexSet<String>,
+        minimum_required: &[&str],
+        dependencies: &HashMap<String, Vec<String>>,
+    ) -> IndexSet<String> {
+        for req in minimum_required {
+            requested.insert((*req).to_string());
+        }
+
+        let mut final_set: IndexSet<String> = IndexSet::new();
+
+        fn resolve_deps(
+            api: &str,
+            deps_map: &HashMap<String, Vec<String>>,
+            final_set: &mut IndexSet<String>,
+            visited: &mut IndexSet<String>,
+        ) {
+            if visited.contains(api) {
+                return;
+            }
+            visited.insert(api.to_string());
+            if let Some(api_deps) = deps_map.get(api) {
+                for dep in api_deps {
+                    resolve_deps(dep, deps_map, final_set, visited);
+                }
+            }
+            final_set.insert(api.to_string());
+        }
+
+        let mut visited = IndexSet::new();
+        for api in requested.iter() {
+            resolve_deps(api, dependencies, &mut final_set, &mut visited);
+        }
+
+        final_set
+    }
+
     pub fn es_minimum_required() -> Vec<&'static str> {
         vec!["cluster"]
+    }
+
+    pub fn kb_minimum_required() -> Vec<&'static str> {
+        vec!["kibana_status", "kibana_spaces"]
     }
 
     pub fn ls_minimum_required() -> Vec<&'static str> {
         vec!["logstash_node"]
     }
 
-    pub fn es_dependencies() -> HashMap<&'static str, Vec<&'static str>> {
+    pub fn es_dependencies() -> HashMap<String, Vec<String>> {
         let mut deps = HashMap::new();
-        deps.insert("nodes_stats", vec!["nodes"]);
-        deps.insert("nodes", vec!["cluster_settings"]);
+        deps.insert("nodes_stats".to_string(), vec!["nodes".to_string()]);
+        deps.insert("nodes".to_string(), vec!["cluster_settings".to_string()]);
         deps
     }
 
-    pub fn ls_dependencies() -> HashMap<&'static str, Vec<&'static str>> {
+    pub fn kb_dependencies(requested: &IndexSet<String>) -> HashMap<String, Vec<String>> {
         let mut deps = HashMap::new();
-        deps.insert("logstash_node", vec!["logstash_version", "logstash_plugins"]);
-        deps.insert("logstash_node_stats", vec!["logstash_node"]);
+        for api in requested {
+            if let Ok((_, source)) =
+                crate::processor::diagnostic::data_source::get_source("kibana", api, &[])
+                && source.is_spaceaware()
+            {
+                deps.entry(api.clone())
+                    .or_insert_with(Vec::new)
+                    .push("kibana_spaces".to_string());
+            }
+        }
+        deps
+    }
+
+    pub fn ls_dependencies() -> HashMap<String, Vec<String>> {
+        let mut deps = HashMap::new();
+        deps.insert(
+            "logstash_node".to_string(),
+            vec!["logstash_version".to_string(), "logstash_plugins".to_string()],
+        );
+        deps.insert("logstash_node_stats".to_string(), vec!["logstash_node".to_string()]);
         deps
     }
 
@@ -292,37 +386,33 @@ impl ApiResolver {
                 "tasks".to_string(),
             ],
             DiagnosticType::Support => {
-                let sources = crate::processor::diagnostic::data_source::get_sources();
-                if let Some(es_sources) = sources.get("elasticsearch") {
-                    es_sources.keys().cloned().collect()
-                } else {
-                    vec![]
-                }
+                crate::processor::diagnostic::data_source::get_source_keys("elasticsearch")
             }
             DiagnosticType::Light => {
-                let sources = crate::processor::diagnostic::data_source::get_sources();
-                if let Some(es_sources) = sources.get("elasticsearch") {
-                    let mut light_apis: Vec<String> = es_sources
-                        .iter()
-                        .filter_map(|(k, v)| {
-                            if v.tags.as_deref() == Some("light") {
-                                Some(k.clone())
-                            } else {
-                                None
-                            }
-                        })
-                        .collect();
-                    // Ensure minimums are included
-                    if !light_apis.contains(&"cluster".to_string()) {
-                        light_apis.push("cluster".to_string());
-                    }
-                    if !light_apis.contains(&"nodes".to_string()) {
-                        light_apis.push("nodes".to_string());
-                    }
-                    light_apis
-                } else {
-                    vec![]
+                let mut light_apis =
+                    crate::processor::diagnostic::data_source::get_source_keys_with_tag(
+                        "elasticsearch",
+                        "light",
+                    );
+                if !light_apis.iter().any(|api| api == "cluster") {
+                    light_apis.push("cluster".to_string());
                 }
+                if !light_apis.iter().any(|api| api == "nodes") {
+                    light_apis.push("nodes".to_string());
+                }
+                light_apis
+            }
+        }
+    }
+
+    pub fn kb_base_apis(diag_type: &DiagnosticType) -> Vec<String> {
+        match diag_type {
+            DiagnosticType::Minimal => Self::kb_minimum_required()
+                .into_iter()
+                .map(str::to_string)
+                .collect(),
+            DiagnosticType::Standard | DiagnosticType::Support | DiagnosticType::Light => {
+                crate::processor::diagnostic::data_source::get_source_keys("kibana")
             }
         }
     }
@@ -352,35 +442,8 @@ impl ApiResolver {
             }
         }
 
-        for req in Self::es_minimum_required() {
-            requested.insert(req.to_string());
-        }
-
-        let deps = Self::es_dependencies();
-        let mut final_set: IndexSet<String> = IndexSet::new();
-
-        fn resolve_deps(
-            api: &str,
-            deps_map: &HashMap<&'static str, Vec<&'static str>>,
-            final_set: &mut IndexSet<String>,
-            visited: &mut IndexSet<String>,
-        ) {
-            if visited.contains(api) {
-                return;
-            }
-            visited.insert(api.to_string());
-            if let Some(api_deps) = deps_map.get(api) {
-                for dep in api_deps {
-                    resolve_deps(dep, deps_map, final_set, visited);
-                }
-            }
-            final_set.insert(api.to_string());
-        }
-
-        let mut visited = IndexSet::new();
-        for api in requested.iter() {
-            resolve_deps(api, &deps, &mut final_set, &mut visited);
-        }
+        let final_set =
+            Self::resolve_requested(requested, &Self::es_minimum_required(), &Self::es_dependencies());
 
         let mut api_set: IndexSet<ElasticsearchApi> = IndexSet::new();
         for api in final_set.iter() {
@@ -389,6 +452,42 @@ impl ApiResolver {
 
         let apis: Vec<ElasticsearchApi> = api_set.into_iter().collect();
         Ok(apis)
+    }
+
+    pub fn resolve_kb(
+        diag_type: &DiagnosticType,
+        include: Option<&Vec<String>>,
+        exclude: Option<&Vec<String>>,
+    ) -> Result<Vec<KibanaApi>> {
+        let mut requested: IndexSet<String> = IndexSet::new();
+
+        for api in Self::kb_base_apis(diag_type) {
+            requested.insert(api);
+        }
+
+        if let Some(incs) = include {
+            for api in incs {
+                KibanaApi::parse(api)?;
+                requested.insert(api.to_string());
+            }
+        }
+
+        if let Some(excs) = exclude {
+            for api in excs {
+                KibanaApi::parse(api)?;
+                requested.swap_remove(api);
+            }
+        }
+
+        let deps = Self::kb_dependencies(&requested);
+        let final_set = Self::resolve_requested(requested, &Self::kb_minimum_required(), &deps);
+
+        let mut api_set: IndexSet<KibanaApi> = IndexSet::new();
+        for api in final_set.iter() {
+            api_set.insert(KibanaApi::parse(api)?);
+        }
+
+        Ok(api_set.into_iter().collect())
     }
 
     pub fn resolve_ls(
@@ -432,35 +531,8 @@ impl ApiResolver {
             }
         }
 
-        for req in Self::ls_minimum_required() {
-            requested.insert(req.to_string());
-        }
-
-        let deps = Self::ls_dependencies();
-        let mut final_set: IndexSet<String> = IndexSet::new();
-
-        fn resolve_deps(
-            api: &str,
-            deps_map: &HashMap<&'static str, Vec<&'static str>>,
-            final_set: &mut IndexSet<String>,
-            visited: &mut IndexSet<String>,
-        ) {
-            if visited.contains(api) {
-                return;
-            }
-            visited.insert(api.to_string());
-            if let Some(api_deps) = deps_map.get(api) {
-                for dep in api_deps {
-                    resolve_deps(dep, deps_map, final_set, visited);
-                }
-            }
-            final_set.insert(api.to_string());
-        }
-
-        let mut visited = IndexSet::new();
-        for api in requested.iter() {
-            resolve_deps(api, &deps, &mut final_set, &mut visited);
-        }
+        let final_set =
+            Self::resolve_requested(requested, &Self::ls_minimum_required(), &Self::ls_dependencies());
 
         let mut apis = Vec::new();
         for api in final_set.iter() {
@@ -591,5 +663,36 @@ mod tests {
         assert!(apis
             .iter()
             .any(|api| api.as_str() == "logstash_nodes_hot_threads_human"));
+    }
+
+    #[test]
+    fn test_kb_invalid_include() {
+        let res = ApiResolver::resolve_kb(
+            &DiagnosticType::Standard,
+            Some(&vec!["not_a_real_kibana_api".to_string()]),
+            None,
+        );
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn test_kb_minimal_includes_bootstrap_apis() {
+        let apis = ApiResolver::resolve_kb(&DiagnosticType::Minimal, None, None).unwrap();
+        let api_strs: Vec<&str> = apis.iter().map(|a| a.as_str()).collect();
+
+        assert!(api_strs.contains(&"kibana_status"));
+        assert!(api_strs.contains(&"kibana_spaces"));
+    }
+
+    #[test]
+    fn test_kb_excluding_required_api_keeps_it() {
+        let apis = ApiResolver::resolve_kb(
+            &DiagnosticType::Minimal,
+            None,
+            Some(&vec!["kibana_spaces".to_string()]),
+        )
+        .unwrap();
+        let api_strs: Vec<&str> = apis.iter().map(|a| a.as_str()).collect();
+        assert!(api_strs.contains(&"kibana_spaces"));
     }
 }

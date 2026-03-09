@@ -100,6 +100,7 @@ pub trait DataSource {
 pub fn source_product_key(product: &Product) -> Result<&'static str> {
     match product {
         Product::Elasticsearch => Ok("elasticsearch"),
+        Product::Kibana => Ok("kibana"),
         Product::Logstash => Ok("logstash"),
         _ => Err(eyre!(
             "sources.yml overrides are not supported for product {}",
@@ -118,12 +119,35 @@ pub trait StreamingDataSource: DataSource {
         D: Deserializer<'de>;
 }
 
-#[derive(Clone, PartialEq, Serialize, Deserialize, Eq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Eq)]
+#[serde(untagged)]
+pub enum VersionSource {
+    Url(String),
+    Structured(VersionSourceDetails),
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, Eq)]
+pub struct VersionSourceDetails {
+    pub url: String,
+    #[serde(default)]
+    pub spaceaware: bool,
+    pub paginate: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ResolvedVersionSource {
+    pub url: String,
+    pub spaceaware: bool,
+    pub paginate: Option<String>,
+}
+
+#[allow(dead_code)] // For future use deserialzing the sources.yml
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Eq)]
 pub struct Source {
     pub extension: Option<String>,
     pub subdir: Option<String>,
     pub tags: Option<String>,
-    pub versions: BTreeMap<String, String>,
+    pub versions: BTreeMap<String, VersionSource>,
 }
 
 impl Default for Source {
@@ -151,6 +175,7 @@ static SOURCES: OnceLock<HashMap<&'static str, HashMap<String, Source>>> = OnceL
 fn embedded_sources_str(product: &str) -> Result<&'static str> {
     match product {
         "elasticsearch" => Ok(include_str!("../../../assets/elasticsearch/sources.yml")),
+        "kibana" => Ok(include_str!("../../../assets/kibana/sources.yml")),
         "logstash" => Ok(include_str!("../../../assets/logstash/sources.yml")),
         other => Err(eyre!("Unsupported sources product: {}", other)),
     }
@@ -159,6 +184,7 @@ fn embedded_sources_str(product: &str) -> Result<&'static str> {
 fn required_source_keys(product: &str) -> &'static [&'static str] {
     match product {
         "elasticsearch" => &["version"],
+        "kibana" => &["kibana_status", "kibana_spaces"],
         "logstash" => &["logstash_node", "logstash_version"],
         _ => &[],
     }
@@ -197,7 +223,7 @@ fn load_embedded_sources(
 ) -> Result<HashMap<&'static str, HashMap<String, Source>>> {
     let mut products = HashMap::new();
 
-    for product in ["elasticsearch", "logstash"] {
+    for product in ["elasticsearch", "kibana", "logstash"] {
         let (label, content) = if override_product == Some(product) {
             let path =
                 override_path.ok_or_else(|| eyre!("Override path missing for {}", product))?;
@@ -259,6 +285,27 @@ pub fn get_source<'a>(
     ))
 }
 
+pub fn get_product_sources(product: &str) -> Option<&'static HashMap<String, Source>> {
+    get_sources().get(product)
+}
+
+pub fn get_source_keys(product: &str) -> Vec<String> {
+    get_product_sources(product)
+        .map(|sources| sources.keys().cloned().collect())
+        .unwrap_or_default()
+}
+
+pub fn get_source_keys_with_tag(product: &str, tag: &str) -> Vec<String> {
+    get_product_sources(product)
+        .map(|sources| {
+            sources
+                .iter()
+                .filter_map(|(name, source)| source.has_tag(tag).then_some(name.clone()))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 fn convert_npm_semver_to_cargo(req: &str) -> String {
     let parts: Vec<&str> = req.split_whitespace().collect();
     let mut out = String::new();
@@ -290,22 +337,51 @@ impl Source {
         }
     }
 
-    pub fn get_url(&self, version: &Version) -> Result<String> {
+    pub fn has_tag(&self, tag: &str) -> bool {
+        self.tags
+            .as_deref()
+            .map(|tags| tags.split(',').any(|value| value.trim() == tag))
+            .unwrap_or(false)
+    }
+
+    pub fn is_spaceaware(&self) -> bool {
+        self.versions.values().any(|version| match version {
+            VersionSource::Url(_) => false,
+            VersionSource::Structured(details) => details.spaceaware,
+        })
+    }
+
+    pub fn resolve_version(&self, version: &Version) -> Result<ResolvedVersionSource> {
         // Strip pre-release tags (like -SNAPSHOT) to ensure our broad semver matching logic
         // in sources.yml (e.g. ">= 7.0.0") matches properly. Standard semver treats ">= 7.0.0"
         // as NOT matching "8.0.0-SNAPSHOT" by default unless specifically asked to.
         let mut clean_version = version.clone();
         clean_version.pre = semver::Prerelease::EMPTY;
 
-        for (req_str, url) in &self.versions {
+        for (req_str, source) in &self.versions {
             let cargo_req_str = convert_npm_semver_to_cargo(req_str);
             let req = VersionReq::parse(&cargo_req_str)
                 .map_err(|e| eyre!("Failed to parse version req '{}': {}", req_str, e))?;
             if req.matches(&clean_version) {
-                return Ok(url.clone());
+                return Ok(match source {
+                    VersionSource::Url(url) => ResolvedVersionSource {
+                        url: url.clone(),
+                        spaceaware: false,
+                        paginate: None,
+                    },
+                    VersionSource::Structured(details) => ResolvedVersionSource {
+                        url: details.url.clone(),
+                        spaceaware: details.spaceaware,
+                        paginate: details.paginate.clone(),
+                    },
+                });
             }
         }
         Err(DataSourceError::UnsupportedVersion(version.clone()).into())
+    }
+
+    pub fn get_url(&self, version: &Version) -> Result<String> {
+        Ok(self.resolve_version(version)?.url)
     }
 }
 
@@ -452,5 +528,29 @@ version:
             Err(err) => err,
         };
         assert!(err.to_string().contains("valid logstash sources.yml"));
+    }
+
+    #[test]
+    fn test_kibana_structured_version_resolution() {
+        let sources = get_sources();
+        let kibana_sources = sources.get("kibana").unwrap();
+        let alerts = kibana_sources.get("kibana_alerts").unwrap();
+
+        let resolved = alerts
+            .resolve_version(&Version::parse("8.19.0").unwrap())
+            .unwrap();
+
+        assert_eq!(resolved.url, "/api/alerts/_find");
+        assert!(resolved.spaceaware);
+        assert_eq!(resolved.paginate.as_deref(), Some("per_page"));
+    }
+
+    #[test]
+    fn test_kibana_source_file_path_generation() {
+        let sources = get_sources();
+        let kibana_sources = sources.get("kibana").unwrap();
+        let status = kibana_sources.get("kibana_status").unwrap();
+
+        assert_eq!(status.get_file_path("kibana_status"), "kibana_status.json");
     }
 }
