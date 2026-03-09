@@ -168,28 +168,67 @@ impl std::str::FromStr for ElasticsearchApi {
 pub enum LogstashApi {
     Node,
     NodeStats,
+    Raw(String, ApiWeight),
 }
 
 impl LogstashApi {
+    fn normalize_name(s: &str) -> Result<String> {
+        let canonical = match s {
+            "node" | "logstash_node" => "logstash_node",
+            "node_stats" | "logstash_node_stats" => "logstash_node_stats",
+            "plugins" | "logstash_plugins" => "logstash_plugins",
+            "version" | "logstash_version" => "logstash_version",
+            "health_report" | "logstash_health_report" => "logstash_health_report",
+            "hot_threads" | "logstash_nodes_hot_threads" => "logstash_nodes_hot_threads",
+            "hot_threads_human" | "logstash_nodes_hot_threads_human" => {
+                "logstash_nodes_hot_threads_human"
+            }
+            other => other,
+        };
+
+        crate::processor::diagnostic::data_source::get_source("logstash", canonical, &[])
+            .map_err(|_| eyre!("Invalid Logstash API: {}", s))?;
+        Ok(canonical.to_string())
+    }
+
     pub fn weight(&self) -> ApiWeight {
         match self {
             LogstashApi::Node => ApiWeight::Light,
             LogstashApi::NodeStats => ApiWeight::Heavy,
+            LogstashApi::Raw(_, weight) => weight.clone(),
         }
     }
 
-    pub fn as_str(&self) -> &'static str {
+    pub fn as_str(&self) -> &str {
         match self {
-            LogstashApi::Node => "node",
-            LogstashApi::NodeStats => "node_stats",
+            LogstashApi::Node => "logstash_node",
+            LogstashApi::NodeStats => "logstash_node_stats",
+            LogstashApi::Raw(name, _) => name.as_str(),
         }
     }
 
     pub fn parse(s: &str) -> Result<Self> {
-        match s {
-            "node" => Ok(LogstashApi::Node),
-            "node_stats" => Ok(LogstashApi::NodeStats),
-            _ => Err(eyre!("Invalid Logstash API: {}", s)),
+        let canonical = Self::normalize_name(s)?;
+        match canonical.as_str() {
+            "logstash_node" => Ok(LogstashApi::Node),
+            "logstash_node_stats" => Ok(LogstashApi::NodeStats),
+            _ => {
+                let weight = match crate::processor::diagnostic::data_source::get_source(
+                    "logstash",
+                    canonical.as_str(),
+                    &[],
+                ) {
+                    Ok((_, source)) => {
+                        if source.tags.as_deref() == Some("light") {
+                            ApiWeight::Light
+                        } else {
+                            ApiWeight::Heavy
+                        }
+                    }
+                    Err(_) => return Err(eyre!("Invalid Logstash API: {}", s)),
+                };
+                Ok(LogstashApi::Raw(canonical, weight))
+            }
         }
     }
 }
@@ -210,7 +249,7 @@ impl ApiResolver {
     }
 
     pub fn ls_minimum_required() -> Vec<&'static str> {
-        vec!["node"]
+        vec!["logstash_node"]
     }
 
     pub fn es_dependencies() -> HashMap<&'static str, Vec<&'static str>> {
@@ -222,7 +261,8 @@ impl ApiResolver {
 
     pub fn ls_dependencies() -> HashMap<&'static str, Vec<&'static str>> {
         let mut deps = HashMap::new();
-        deps.insert("node_stats", vec!["node"]);
+        deps.insert("logstash_node", vec!["logstash_version", "logstash_plugins"]);
+        deps.insert("logstash_node_stats", vec!["logstash_node"]);
         deps
     }
 
@@ -358,26 +398,37 @@ impl ApiResolver {
     ) -> Result<Vec<LogstashApi>> {
         let mut requested: IndexSet<String> = IndexSet::new();
 
-        for api in match diag_type {
-            DiagnosticType::Minimal => vec!["node"],
-            DiagnosticType::Standard | DiagnosticType::Support | DiagnosticType::Light => {
-                vec!["node", "node_stats"]
+        let base_apis: Vec<String> = match diag_type {
+            DiagnosticType::Minimal => vec!["logstash_node".to_string()],
+            DiagnosticType::Standard | DiagnosticType::Light => vec![
+                "logstash_node".to_string(),
+                "logstash_node_stats".to_string(),
+            ],
+            DiagnosticType::Support => {
+                let sources = crate::processor::diagnostic::data_source::get_sources();
+                if let Some(logstash_sources) = sources.get("logstash") {
+                    logstash_sources.keys().cloned().collect()
+                } else {
+                    vec![]
+                }
             }
-        } {
-            requested.insert(api.to_string());
+        };
+
+        for api in base_apis {
+            requested.insert(api);
         }
 
         if let Some(incs) = include {
             for api in incs {
-                LogstashApi::parse(api)?;
-                requested.insert(api.to_string());
+                let normalized = LogstashApi::normalize_name(api)?;
+                requested.insert(normalized);
             }
         }
 
         if let Some(excs) = exclude {
             for api in excs {
-                LogstashApi::parse(api)?;
-                requested.swap_remove(api);
+                let normalized = LogstashApi::normalize_name(api)?;
+                requested.swap_remove(&normalized);
             }
         }
 
@@ -490,5 +541,55 @@ mod tests {
             .filter(|api| matches!(api, ElasticsearchApi::Cluster))
             .count();
         assert_eq!(cluster_count, 1);
+    }
+
+    #[test]
+    fn test_ls_support_resolves_all_sources() {
+        let apis = ApiResolver::resolve_ls(&DiagnosticType::Support, None, None).unwrap();
+        let api_strs: Vec<&str> = apis.iter().map(|a| a.as_str()).collect();
+
+        assert!(api_strs.contains(&"logstash_health_report"));
+        assert!(api_strs.contains(&"logstash_node"));
+        assert!(api_strs.contains(&"logstash_nodes_hot_threads_human"));
+        assert!(api_strs.contains(&"logstash_node_stats"));
+        assert!(api_strs.contains(&"logstash_plugins"));
+        assert!(api_strs.contains(&"logstash_version"));
+    }
+
+    #[test]
+    fn test_ls_normalizes_aliases_and_dependencies() {
+        let apis = ApiResolver::resolve_ls(
+            &DiagnosticType::Minimal,
+            Some(&vec!["node_stats".to_string(), "version".to_string()]),
+            None,
+        )
+        .unwrap();
+
+        let api_strs: Vec<&str> = apis.iter().map(|a| a.as_str()).collect();
+        assert!(api_strs.contains(&"logstash_node_stats"));
+        assert!(api_strs.contains(&"logstash_node"));
+        assert!(api_strs.contains(&"logstash_version"));
+        assert!(api_strs.contains(&"logstash_plugins"));
+        assert_eq!(
+            api_strs
+                .iter()
+                .filter(|&&name| name == "logstash_version")
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn test_ls_human_hot_threads_is_valid_raw_api() {
+        let apis = ApiResolver::resolve_ls(
+            &DiagnosticType::Minimal,
+            Some(&vec!["logstash_nodes_hot_threads_human".to_string()]),
+            None,
+        )
+        .unwrap();
+
+        assert!(apis
+            .iter()
+            .any(|api| api.as_str() == "logstash_nodes_hot_threads_human"));
     }
 }

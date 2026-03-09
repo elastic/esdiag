@@ -96,12 +96,19 @@ impl Client {
                     .map_err(|e| format!("Failed to read test body: {e}"))?;
                 log::debug!("Test response {} ", json);
 
-                match json.get("tagline") {
-                    Some(_) => Ok(format!("{} ✅ Elasticsearch", status)),
-                    None => Err(format!(
-                        "{} ❌ No tagline? Host is not an Elasticsearch cluster!",
+                if json.get("tagline").is_some() {
+                    Ok(format!("{} ✅ Elasticsearch", status))
+                } else if let Some(version) = json.get("version").and_then(|v| v.as_str()) {
+                    let name = json
+                        .get("name")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown");
+                    Ok(format!("{status} ✅ Logstash: {name} ({version})"))
+                } else {
+                    Err(format!(
+                        "{} ❌ Root response did not match Elasticsearch or Logstash",
                         status
-                    )),
+                    ))
                 }
             }
             Client::Kibana(client) => {
@@ -210,7 +217,7 @@ impl TryFrom<Uri> for Client {
         match uri {
             Uri::KnownHost(host) => match host.app() {
                 Product::Kibana => Ok(Client::Kibana(KibanaClient::try_from(host)?)),
-                Product::Elasticsearch => {
+                Product::Elasticsearch | Product::Logstash => {
                     Ok(Client::Elasticsearch(ElasticsearchClient::try_from(host)?))
                 }
                 _ => Err(eyre!("Unsupported product: {}", host.app())),

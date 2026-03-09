@@ -320,7 +320,12 @@ impl ServerState {
                 .ok_or_else(|| eyre!("Missing required header: {}", IAP_USER_EMAIL_HEADER))?
                 .to_str()
                 .map_err(|_| eyre!("Invalid {} header", IAP_USER_EMAIL_HEADER))?;
-            let email = raw.split(':').last().unwrap_or(raw).trim().to_string();
+            let email = raw
+                .split(':')
+                .next_back()
+                .unwrap_or(raw)
+                .trim()
+                .to_string();
             if email.is_empty() {
                 return Err(eyre!("{} header is empty", IAP_USER_EMAIL_HEADER));
             }
@@ -338,7 +343,13 @@ impl ServerState {
         let email = headers
             .get(IAP_USER_EMAIL_HEADER)
             .and_then(|value| value.to_str().ok())
-            .map(|raw| raw.split(':').last().unwrap_or(raw).trim().to_string())
+            .map(|raw| {
+                raw.split(':')
+                    .next_back()
+                    .unwrap_or(raw)
+                    .trim()
+                    .to_string()
+            })
             .filter(|value| !value.is_empty())
             .unwrap_or_else(|| "Anonymous".to_string());
 

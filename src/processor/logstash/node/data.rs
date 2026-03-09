@@ -2,8 +2,7 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use super::super::super::diagnostic::{DataSource, data_source::PathType};
-use eyre::Result;
+use super::super::super::diagnostic::DataSource;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -72,14 +71,15 @@ struct Memory {
 }
 
 impl DataSource for Node {
-    fn source(path: PathType, _version: Option<&semver::Version>) -> Result<String> {
-        match path {
-            PathType::File => Ok("logstash_node.json".to_string()),
-            PathType::Url => Ok("_node".to_string()),
-        }
-    }
-
     fn name() -> String {
         "node".to_string()
+    }
+
+    fn aliases() -> Vec<&'static str> {
+        vec!["logstash_node"]
+    }
+
+    fn product() -> &'static str {
+        "logstash"
     }
 }

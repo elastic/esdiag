@@ -381,6 +381,7 @@ async fn run(cli: Cli) -> Result<&'static str> {
                     | Uri::ElasticCloudAdmin(host)
                     | Uri::ElasticGovCloudAdmin(host) => {
                         ensure_host_role(&host, HostRole::Collect, "collect")?;
+                        let product = host.app().clone();
                         let known_host = Uri::try_from(host)?;
                         log::info!("Collecting diagnostic from {known_host}");
                         log::info!("Saving diagnostic to {output}");
@@ -401,6 +402,7 @@ async fn run(cli: Cli) -> Result<&'static str> {
                         let collector = Collector::try_new(
                             receiver,
                             exporter,
+                            product,
                             r#type,
                             include,
                             exclude,

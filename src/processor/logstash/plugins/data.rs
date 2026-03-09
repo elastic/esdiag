@@ -2,8 +2,7 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use super::super::super::diagnostic::{DataSource, data_source::PathType};
-use eyre::Result;
+use super::super::super::diagnostic::DataSource;
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Serialize)]
@@ -20,14 +19,15 @@ pub struct Plugin {
 }
 
 impl DataSource for Plugins {
-    fn source(path: PathType, _version: Option<&semver::Version>) -> Result<String> {
-        match path {
-            PathType::File => Ok("logstash_plugins.json".to_string()),
-            PathType::Url => Ok("_node/plugins".to_string()),
-        }
-    }
-
     fn name() -> String {
         "plugins".to_string()
+    }
+
+    fn aliases() -> Vec<&'static str> {
+        vec!["logstash_plugins"]
+    }
+
+    fn product() -> &'static str {
+        "logstash"
     }
 }

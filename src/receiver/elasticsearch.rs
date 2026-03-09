@@ -54,8 +54,11 @@ impl ElasticsearchReceiver {
                 let cluster: Value = serde_json::from_slice(&bytes)?;
                 let version_str = cluster
                     .get("version")
-                    .and_then(|v| v.get("number"))
-                    .and_then(|v| v.as_str())
+                    .and_then(|version| {
+                        version
+                            .as_str()
+                            .or_else(|| version.get("number").and_then(|number| number.as_str()))
+                    })
                     .ok_or_else(|| eyre!("No version found in root response"))?;
                 semver::Version::parse(version_str)
                     .map_err(|e| eyre!("Failed to parse version: {}", e))

@@ -2,8 +2,7 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use super::super::super::diagnostic::{DataSource, data_source::PathType};
-use eyre::Result;
+use super::super::super::diagnostic::DataSource;
 use serde::{Deserialize, Serialize};
 
 #[allow(dead_code)] // Future use for processing hot threads data
@@ -32,14 +31,15 @@ struct Thread {
 }
 
 impl DataSource for NodeHotThreads {
-    fn source(path: PathType, _version: Option<&semver::Version>) -> Result<String> {
-        match path {
-            PathType::File => Ok("logstash_nodes_hot_threads.json".to_string()),
-            PathType::Url => Ok("_node/hot_threads?threads=10000".to_string()),
-        }
-    }
-
     fn name() -> String {
         "hot_threads".to_string()
+    }
+
+    fn aliases() -> Vec<&'static str> {
+        vec!["logstash_nodes_hot_threads"]
+    }
+
+    fn product() -> &'static str {
+        "logstash"
     }
 }
