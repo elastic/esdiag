@@ -39,6 +39,20 @@ struct KibanaSpace {
     id: String,
 }
 
+#[derive(Debug)]
+pub struct KibanaRequestError {
+    pub status: reqwest::StatusCode,
+    pub body: String,
+}
+
+impl std::fmt::Display for KibanaRequestError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "http {} - {}", self.status, self.body)
+    }
+}
+
+impl std::error::Error for KibanaRequestError {}
+
 impl KibanaReceiver {
     pub fn new(url: Url, client: KibanaClient) -> Self {
         Self {
@@ -57,7 +71,7 @@ impl KibanaReceiver {
         let status = response.status();
         let body = response.text().await?;
         if !status.is_success() {
-            return Err(eyre!("http {} - {}", status, body));
+            return Err(KibanaRequestError { status, body }.into());
         }
         serde_json::from_str(&body).map_err(Into::into)
     }
@@ -82,7 +96,7 @@ impl KibanaReceiver {
                 let status = response.status();
                 let body = response.text().await?;
                 if !status.is_success() {
-                    return Err(eyre!("http {} - {}", status, body));
+                    return Err(KibanaRequestError { status, body }.into());
                 }
                 let spaces: Vec<KibanaSpace> = serde_json::from_str(&body)?;
                 Ok(spaces.into_iter().map(|space| space.id).collect())
@@ -104,7 +118,7 @@ impl KibanaReceiver {
         let status = response.status();
         let body = response.text().await?;
         if !status.is_success() {
-            return Err(eyre!("http {} - {}", status, body));
+            return Err(KibanaRequestError { status, body }.into());
         }
         Ok(body)
     }
@@ -150,7 +164,11 @@ impl Receive for KibanaReceiver {
             serde_json::from_str(&body).map_err(Into::into)
         } else {
             let body_json = serde_json::from_str::<Value>(&body).unwrap_or(Value::String(body));
-            Err(eyre!("http {} - {}", status, body_json))
+            Err(KibanaRequestError {
+                status,
+                body: body_json.to_string(),
+            }
+            .into())
         }
     }
 

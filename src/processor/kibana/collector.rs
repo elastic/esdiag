@@ -11,7 +11,7 @@ use crate::{
         DiagnosticManifest,
         api::{ApiResolver, DiagnosticType, KibanaApi},
     },
-    receiver::{KibanaReceiver, Receiver},
+    receiver::{KibanaReceiver, KibanaRequestError, Receiver},
 };
 use eyre::{Result, WrapErr, eyre};
 use futures::stream::{self, StreamExt};
@@ -97,6 +97,14 @@ impl KibanaCollector {
             match self.save_api(api).await {
                 Ok(success) => return success,
                 Err(e) => {
+                    if !should_retry_kibana_error(&e) {
+                        log::warn!(
+                            "Skipping non-retriable failure for {}: {}",
+                            api.as_str(),
+                            e
+                        );
+                        return 0;
+                    }
                     if start_time.elapsed() > max_duration {
                         log::error!(
                             "Failed to save {} after {} attempts (5 min timeout): {}",
@@ -361,9 +369,17 @@ fn sanitize_segment(segment: &str) -> String {
     segment.replace(['/', '\\', ':'], "_")
 }
 
+fn should_retry_kibana_error(error: &eyre::Report) -> bool {
+    if let Some(request_error) = error.downcast_ref::<KibanaRequestError>() {
+        return request_error.status.as_u16() == 429 || request_error.status.is_server_error();
+    }
+    true
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use reqwest::StatusCode;
 
     #[test]
     fn scoped_output_path_preserves_plain_file_layout() {
@@ -402,5 +418,29 @@ mod tests {
     fn parse_total_pages_supports_camel_case_page_size() {
         let body = r#"{"page":1,"perPage":100,"total":150,"items":[]}"#;
         assert_eq!(parse_total_pages(body, "perPage", 1), Some(2));
+    }
+
+    #[test]
+    fn retry_policy_skips_non_retriable_client_errors() {
+        let error = eyre::Report::from(KibanaRequestError {
+            status: StatusCode::FORBIDDEN,
+            body: "forbidden".to_string(),
+        });
+        assert!(!should_retry_kibana_error(&error));
+    }
+
+    #[test]
+    fn retry_policy_retries_server_errors_and_rate_limits() {
+        let rate_limit = eyre::Report::from(KibanaRequestError {
+            status: StatusCode::TOO_MANY_REQUESTS,
+            body: "slow down".to_string(),
+        });
+        let server_error = eyre::Report::from(KibanaRequestError {
+            status: StatusCode::BAD_GATEWAY,
+            body: "gateway".to_string(),
+        });
+
+        assert!(should_retry_kibana_error(&rate_limit));
+        assert!(should_retry_kibana_error(&server_error));
     }
 }
