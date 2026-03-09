@@ -208,7 +208,7 @@ impl Receiver {
         }
     }
 
-    pub async fn try_get_manifest_without_fallback(&self) -> Result<DiagnosticManifest> {
+    pub async fn try_get_manifest_from_files(&self) -> Result<DiagnosticManifest> {
         match self.get::<DiagnosticManifest>().await {
             Ok(manifest) => {
                 log::debug!("Using diagnostic_manifest.json");

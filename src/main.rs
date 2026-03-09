@@ -41,8 +41,8 @@ struct Cli {
     /// Enable debug logging
     #[arg(global = true, long)]
     debug: bool,
-    /// Override the embedded Elasticsearch sources.yml path.
-    /// Logstash sources continue to use the embedded assets/logstash/sources.yml.
+    /// Override the embedded sources.yml for the detected Elasticsearch or Logstash workflow.
+    /// The file must match the active product or the command fails before collection/processing.
     #[arg(global = true, long)]
     sources: Option<String>,
     /// Commands
@@ -709,7 +709,7 @@ async fn detect_sources_product_for_process(input_uri: &Uri, receiver: &Receiver
         Uri::KnownHost(host) | Uri::ElasticCloudAdmin(host) | Uri::ElasticGovCloudAdmin(host) => {
             Ok(host.app().clone())
         }
-        _ => Ok(receiver.try_get_manifest_without_fallback().await?.product),
+        _ => Ok(receiver.try_get_manifest_from_files().await?.product),
     }
 }
 
