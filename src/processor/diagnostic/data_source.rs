@@ -100,36 +100,83 @@ impl std::fmt::Display for Source {
 
 static SOURCES: OnceLock<HashMap<&'static str, HashMap<String, Source>>> = OnceLock::new();
 
+fn embedded_sources_str(product: &str) -> Result<&'static str> {
+    match product {
+        "elasticsearch" => Ok(include_str!("../../../assets/elasticsearch/sources.yml")),
+        "logstash" => Ok(include_str!("../../../assets/logstash/sources.yml")),
+        other => Err(eyre!("Unsupported sources product: {}", other)),
+    }
+}
+
+fn required_source_keys(product: &str) -> &'static [&'static str] {
+    match product {
+        "elasticsearch" => &["version"],
+        "logstash" => &["logstash_node", "logstash_version"],
+        _ => &[],
+    }
+}
+
+fn parse_sources_content(label: &str, content: &str) -> Result<HashMap<String, Source>> {
+    serde_yaml::from_str(content).map_err(|e| eyre!("Failed to parse {}: {}", label, e))
+}
+
+fn validate_sources_product(product: &str, sources: &HashMap<String, Source>, label: &str) -> Result<()> {
+    let required = required_source_keys(product);
+    let missing: Vec<&str> = required
+        .iter()
+        .copied()
+        .filter(|key| !sources.contains_key(*key))
+        .collect();
+    if missing.is_empty() {
+        Ok(())
+    } else {
+        Err(eyre!(
+            "{} does not look like a valid {} sources.yml; missing required keys: {}",
+            label,
+            product,
+            missing.join(", ")
+        ))
+    }
+}
+
 fn load_embedded_sources(
-    es_override_path: Option<String>,
+    override_product: Option<&str>,
+    override_path: Option<&str>,
 ) -> Result<HashMap<&'static str, HashMap<String, Source>>> {
     let mut products = HashMap::new();
 
-    let es_content = if let Some(path) = es_override_path {
-        std::fs::read_to_string(&path)
-            .map_err(|e| eyre!("Failed to read override sources file at {}: {}", path, e))?
-    } else {
-        include_str!("../../../assets/elasticsearch/sources.yml").to_string()
-    };
+    for product in ["elasticsearch", "logstash"] {
+        let (label, content) = if override_product == Some(product) {
+            let path =
+                override_path.ok_or_else(|| eyre!("Override path missing for {}", product))?;
+            (
+                format!("override sources file at {}", path),
+                std::fs::read_to_string(path)
+                    .map_err(|e| eyre!("Failed to read override sources file at {}: {}", path, e))?,
+            )
+        } else {
+            (
+                format!("embedded {} sources.yml", product),
+                embedded_sources_str(product)?.to_string(),
+            )
+        };
 
-    let es_sources: HashMap<String, Source> = serde_yaml::from_str(&es_content)
-        .map_err(|e| eyre!("Failed to parse Elasticsearch sources.yml: {}", e))?;
-    products.insert("elasticsearch", es_sources);
-
-    let logstash_sources: HashMap<String, Source> =
-        serde_yaml::from_str(include_str!("../../../assets/logstash/sources.yml"))
-            .map_err(|e| eyre!("Failed to parse Logstash sources.yml: {}", e))?;
-    products.insert("logstash", logstash_sources);
+        let sources = parse_sources_content(&label, &content)?;
+        validate_sources_product(product, &sources, &label)?;
+        products.insert(product, sources);
+    }
 
     Ok(products)
 }
 
 pub fn get_sources() -> &'static HashMap<&'static str, HashMap<String, Source>> {
-    SOURCES.get_or_init(|| load_embedded_sources(None).expect("Valid embedded sources.yml files"))
+    SOURCES.get_or_init(|| {
+        load_embedded_sources(None, None).expect("Valid embedded sources.yml files")
+    })
 }
 
-pub fn init_sources(es_override_path: Option<String>) -> Result<()> {
-    let products = load_embedded_sources(es_override_path)?;
+pub fn init_sources(product: &str, override_path: String) -> Result<()> {
+    let products = load_embedded_sources(Some(product), Some(&override_path))?;
     SOURCES
         .set(products)
         .map_err(|_| eyre!("Sources already initialized"))?;
@@ -292,5 +339,65 @@ mod tests {
             hot_threads_human.get_file_path("logstash_nodes_hot_threads_human"),
             "logstash_nodes_hot_threads_human.txt"
         );
+    }
+
+    #[test]
+    fn test_product_specific_override_only_replaces_target_product() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let override_path = dir.path().join("sources.yml");
+        std::fs::write(
+            &override_path,
+            r#"
+logstash_node:
+  versions:
+    "> 5.0.0": "/custom_node"
+logstash_version:
+  versions:
+    "> 5.0.0": "/custom_version"
+"#,
+        )
+        .expect("write override");
+
+        let products = super::load_embedded_sources(
+            Some("logstash"),
+            Some(override_path.to_str().expect("override path")),
+        )
+        .expect("load sources");
+
+        let es_sources = products.get("elasticsearch").unwrap();
+        let logstash_sources = products.get("logstash").unwrap();
+        assert!(es_sources.contains_key("version"));
+        assert_eq!(
+            logstash_sources
+                .get("logstash_node")
+                .unwrap()
+                .get_url(&Version::parse("8.19.0").unwrap())
+                .unwrap(),
+            "/custom_node"
+        );
+    }
+
+    #[test]
+    fn test_product_specific_override_rejects_wrong_product_shape() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let override_path = dir.path().join("sources.yml");
+        std::fs::write(
+            &override_path,
+            r#"
+version:
+  versions:
+    "> 5.0.0": "/"
+"#,
+        )
+        .expect("write override");
+
+        let err = match super::load_embedded_sources(
+            Some("logstash"),
+            Some(override_path.to_str().expect("override path")),
+        ) {
+            Ok(_) => panic!("override should fail"),
+            Err(err) => err,
+        };
+        assert!(err.to_string().contains("valid logstash sources.yml"));
     }
 }

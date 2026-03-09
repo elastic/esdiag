@@ -290,10 +290,6 @@ async fn main() -> Result<()> {
 
     clear_last_run_files()?;
 
-    if let Some(sources) = cli.sources.clone() {
-        esdiag::processor::init_sources(Some(sources))?;
-    }
-
     match run(cli).await {
         Ok(cmd) => {
             log::debug!("{cmd} complete");
@@ -307,6 +303,7 @@ async fn main() -> Result<()> {
 }
 
 async fn run(cli: Cli) -> Result<&'static str> {
+    let sources_override = cli.sources.clone();
     // If there are CLI arguments but no subcommand, avoid starting the desktop/Tauri
     // entrypoint. The desktop UI should only start when launched absolutely without arguments.
     if should_error_for_missing_subcommand(std::env::args_os().len(), cli.command.is_none()) {
@@ -383,6 +380,12 @@ async fn run(cli: Cli) -> Result<&'static str> {
                     | Uri::ElasticGovCloudAdmin(host) => {
                         ensure_host_role(&host, HostRole::Collect, "collect")?;
                         let product = host.app().clone();
+                        if let Some(sources) = sources_override.clone() {
+                            esdiag::processor::init_sources(
+                                sources_product_key(&product)?,
+                                sources,
+                            )?;
+                        }
                         let known_host = Uri::try_from(host)?;
                         log::info!("Collecting diagnostic from {known_host}");
                         log::info!("Saving diagnostic to {output}");
@@ -527,7 +530,12 @@ async fn run(cli: Cli) -> Result<&'static str> {
 
                 log::info!("input: {}", input_uri);
 
-                let receiver = Arc::new(Receiver::try_from(input_uri)?);
+                let receiver = Receiver::try_from(input_uri.clone())?;
+                if let Some(sources) = sources_override.clone() {
+                    let product = detect_sources_product_for_process(&input_uri, &receiver).await?;
+                    esdiag::processor::init_sources(sources_product_key(&product)?, sources)?;
+                }
+                let receiver = Arc::new(receiver);
                 let exporter = Arc::new(Exporter::try_from(output_uri)?);
 
                 let identifiers =
@@ -682,6 +690,26 @@ async fn run(cli: Cli) -> Result<&'static str> {
                 "No command provided. If you want to use the Desktop UI, compile with the 'desktop' feature."
             ))
         }
+    }
+}
+
+fn sources_product_key(product: &Product) -> Result<&'static str> {
+    match product {
+        Product::Elasticsearch => Ok("elasticsearch"),
+        Product::Logstash => Ok("logstash"),
+        _ => Err(eyre!(
+            "--sources is only supported for Elasticsearch and Logstash, got {}",
+            product
+        )),
+    }
+}
+
+async fn detect_sources_product_for_process(input_uri: &Uri, receiver: &Receiver) -> Result<Product> {
+    match input_uri {
+        Uri::KnownHost(host) | Uri::ElasticCloudAdmin(host) | Uri::ElasticGovCloudAdmin(host) => {
+            Ok(host.app().clone())
+        }
+        _ => Ok(receiver.try_get_manifest_without_fallback().await?.product),
     }
 }
 

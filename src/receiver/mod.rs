@@ -207,6 +207,27 @@ impl Receiver {
             Receiver::ElasticCloudAdmin(receiver) => receiver.try_get_manifest().await,
         }
     }
+
+    pub async fn try_get_manifest_without_fallback(&self) -> Result<DiagnosticManifest> {
+        match self.get::<DiagnosticManifest>().await {
+            Ok(manifest) => {
+                log::debug!("Using diagnostic_manifest.json");
+                return Ok(manifest);
+            }
+            Err(e) => log::debug!("Error reading diagnostic_manifest.json: {e}"),
+        }
+
+        match self.get::<Manifest>().await {
+            Ok(manifest) => {
+                log::warn!("Falling back to manifest.json");
+                Ok(manifest.into())
+            }
+            Err(e) => Err(eyre!(
+                "Failed to identify product from diagnostic manifest: {}",
+                e
+            )),
+        }
+    }
 }
 
 impl TryFrom<Uri> for Receiver {
