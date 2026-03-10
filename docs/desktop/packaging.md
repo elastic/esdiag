@@ -16,9 +16,10 @@ This project supports desktop packaging for:
 
 ## Configuration
 
-- `tauri.conf.json` controls desktop bundles, including macOS `.dmg`.
+- `tauri.conf.json` controls desktop bundles, including macOS `.dmg`, and intentionally excludes Windows installer targets.
 - `packaging/desktop-targets.json` is the source of truth for:
   - Windows minimum version (`10`)
+  - Windows artifact format (`exe`)
   - Flatpak base app version (`0.15.0`)
   - Flatpak local-only mode
 - `packaging/flatpak/com.elastic.esdiag.json` defines the Flatpak manifest.
@@ -42,10 +43,16 @@ Validate packaging configuration:
 bash bin/verify-desktop-config.sh
 ```
 
-Build desktop macOS/Windows bundles with Tauri:
+Build the desktop macOS bundle with Tauri:
 
 ```sh
 cargo tauri build --features desktop
+```
+
+Build the Windows desktop executable:
+
+```sh
+cargo build --release --features desktop
 ```
 
 Build local Flatpak artifact:

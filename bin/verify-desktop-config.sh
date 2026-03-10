@@ -30,13 +30,13 @@ if [[ ! -f "${FLATPAK_MANIFEST}" ]]; then
   exit 1
 fi
 
-WINDOWS_BUNDLE_FORMAT="$(jq -r '.windows.bundleFormat' "${TARGETS_CONF}")"
+WINDOWS_ARTIFACT_FORMAT="$(jq -r '.windows.artifactFormat' "${TARGETS_CONF}")"
 WINDOWS_MIN_VERSION="$(jq -r '.windows.minimumVersion' "${TARGETS_CONF}")"
 FLATPAK_BASE_VERSION="$(jq -r '.flatpak.baseAppVersion' "${TARGETS_CONF}")"
 FLATPAK_LOCAL_ONLY="$(jq -r '.flatpak.localOnly' "${TARGETS_CONF}")"
 
-if [[ "${WINDOWS_BUNDLE_FORMAT}" != "msi" ]]; then
-  echo "desktop-targets.json must set windows.bundleFormat to msi" >&2
+if [[ "${WINDOWS_ARTIFACT_FORMAT}" != "exe" ]]; then
+  echo "desktop-targets.json must set windows.artifactFormat to exe" >&2
   exit 1
 fi
 
@@ -56,13 +56,14 @@ if [[ "${FLATPAK_LOCAL_ONLY}" != "true" ]]; then
 fi
 
 jq -e '.bundle.targets | type == "array"' "${TAURI_CONF}" >/dev/null
-jq -e '.bundle.targets | index("msi") != null' "${TAURI_CONF}" >/dev/null
+jq -e '.bundle.targets | index("msi") == null' "${TAURI_CONF}" >/dev/null
 jq -e '.bundle.targets | index("nsis") == null' "${TAURI_CONF}" >/dev/null
+jq -e '.bundle.targets | index("dmg") != null' "${TAURI_CONF}" >/dev/null
 
 jq -e --arg v "${FLATPAK_BASE_VERSION}" '."x-esdiag-base-app-version" == $v' "${FLATPAK_MANIFEST}" >/dev/null
 
 echo "Desktop packaging config validated:"
 echo "- Windows minimum version: ${WINDOWS_MIN_VERSION}"
-echo "- Windows bundle format: ${WINDOWS_BUNDLE_FORMAT}"
+echo "- Windows artifact format: ${WINDOWS_ARTIFACT_FORMAT}"
 echo "- Flatpak base app version: ${FLATPAK_BASE_VERSION}"
 echo "- Flatpak local-only scope: ${FLATPAK_LOCAL_ONLY}"
