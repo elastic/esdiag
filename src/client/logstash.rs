@@ -62,7 +62,7 @@ impl LogstashClient {
 
         let request = match path.split_once('?') {
             Some((p, query)) => {
-                let query: Vec<_> = query.split('&').filter_map(|s| s.split_once('=')).collect();
+                let query = Self::query_pairs(query);
                 self.client
                     .request(method, self.url.join(p)?)
                     .query(&query)
@@ -80,6 +80,14 @@ impl LogstashClient {
         };
 
         response.map_err(|e| eyre!("Failed to send request: {}", e))
+    }
+
+    fn query_pairs(query: &str) -> Vec<(&str, &str)> {
+        query
+            .split('&')
+            .filter(|s| !s.is_empty())
+            .map(|s| s.split_once('=').unwrap_or((s, "")))
+            .collect()
     }
 
     /// Verify the connection and authentication to Logstash
@@ -102,5 +110,18 @@ impl TryFrom<KnownHost> for LogstashClient {
 impl std::fmt::Display for LogstashClient {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.url)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::LogstashClient;
+
+    #[test]
+    fn query_pairs_preserve_valueless_parameters() {
+        assert_eq!(
+            LogstashClient::query_pairs("human&threads=10000"),
+            vec![("human", ""), ("threads", "10000")]
+        );
     }
 }

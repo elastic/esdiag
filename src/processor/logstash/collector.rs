@@ -189,7 +189,7 @@ impl LogstashCollector {
             Ok(c) => c,
             Err(e) => {
                 log::warn!("Failed to get raw API {}: {}", name, e);
-                return Err(eyre::eyre!(e));
+                return Err(e);
             }
         };
 
