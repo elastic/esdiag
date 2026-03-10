@@ -34,6 +34,26 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Normalize Cargo version for MSI
+        shell: pwsh
+        run: |
+          $content = Get-Content Cargo.toml -Raw
+          $match = [regex]::Match($content, '(?m)^version = "([^"]+)"$')
+          if (-not $match.Success) {
+            throw "Could not find package version in Cargo.toml"
+          }
+
+          $version = $match.Groups[1].Value
+          if ($version -match '-') {
+            $baseVersion = $version.Split('-', 2)[0]
+            $normalizedVersion = "$baseVersion-0"
+            $updated = [regex]::Replace($content, '(?m)^version = "[^"]+"$', "version = `"$normalizedVersion`"", 1)
+            Set-Content Cargo.toml $updated
+            Write-Host "Normalized Cargo version from $version to $normalizedVersion for MSI packaging."
+          } else {
+            Write-Host "Cargo version $version is already MSI-safe."
+          }
+
       - name: Install Tauri CLI
         run: cargo install tauri-cli --locked
 
