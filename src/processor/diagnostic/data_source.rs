@@ -45,11 +45,7 @@ pub trait DataSource {
 
 pub fn source_product_key(product: &Product) -> Result<&'static str> {
     match product {
-        Product::Elasticsearch
-        | Product::ECE
-        | Product::ECK
-        | Product::ElasticCloudHosted
-        | Product::KubernetesPlatform => Ok("elasticsearch"),
+        Product::Elasticsearch => Ok("elasticsearch"),
         Product::Logstash => Ok("logstash"),
         _ => Err(eyre!(
             "sources.yml overrides are not supported for product {}",

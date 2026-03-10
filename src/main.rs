@@ -695,7 +695,7 @@ async fn run(cli: Cli) -> Result<&'static str> {
 
 fn sources_product_key(product: &Product) -> Result<&'static str> {
     esdiag::processor::diagnostic::data_source::source_product_key(product)
-        .map_err(|_| eyre!("--sources is only supported for Elasticsearch-family and Logstash inputs, got {}", product))
+        .map_err(|_| eyre!("--sources is only supported for Elasticsearch and Logstash inputs, got {}", product))
 }
 
 async fn detect_sources_product_for_process(input_uri: &Uri, receiver: &Receiver) -> Result<Product> {
