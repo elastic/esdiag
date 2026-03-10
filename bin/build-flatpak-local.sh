@@ -36,6 +36,7 @@ fi
 mkdir -p "${OUTPUT_DIR}"
 
 flatpak-builder \
+  --user \
   --force-clean \
   --repo="${REPO_DIR}" \
   "${BUILD_DIR}" \
