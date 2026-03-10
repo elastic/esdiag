@@ -38,7 +38,7 @@ jobs:
         run: cargo install tauri-cli --locked
 
       - name: Build macOS desktop bundle
-        run: cargo tauri build --features desktop --bundles dmg
+        run: ESDIAG_GENERATE_NOTICE=0 cargo tauri build --features desktop --bundles dmg
 
       - name: Stage macOS artifact
         run: |
@@ -65,7 +65,7 @@ jobs:
         run: cargo install tauri-cli --locked
 
       - name: Build Windows desktop bundle
-        run: cargo tauri build --features desktop --bundles msi
+        run: $env:ESDIAG_GENERATE_NOTICE = "0"; cargo tauri build --features desktop --bundles msi
 
       - name: Stage Windows artifact
         shell: pwsh
@@ -94,10 +94,10 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y flatpak flatpak-builder jq
           flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
-          flatpak install -y flathub org.freedesktop.Platform//24.08 org.freedesktop.Sdk//24.08
+          flatpak install -y flathub org.gnome.Platform//49 org.gnome.Sdk//49 org.freedesktop.Sdk.Extension.rust-stable//25.08
 
       - name: Build local Flatpak artifact
-        run: bash bin/build-flatpak-local.sh
+        run: ESDIAG_GENERATE_NOTICE=0 bash bin/build-flatpak-local.sh
 
       - name: Stage Flatpak artifact
         run: |

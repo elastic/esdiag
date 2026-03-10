@@ -24,8 +24,7 @@
       "name": "esdiag",
       "buildsystem": "simple",
       "build-commands": [
-        "cargo install --locked --root /app cargo-about",
-        "cargo build --release --features desktop --locked",
+        "ESDIAG_GENERATE_NOTICE=0 cargo build --release --features desktop --locked",
         "install -Dm755 target/release/esdiag /app/bin/esdiag"
       ],
       "sources": [
