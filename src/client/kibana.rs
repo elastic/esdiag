@@ -4,7 +4,7 @@
 
 use crate::data::{Auth, KnownHost};
 use base64::Engine;
-use eyre::Result;
+use eyre::{Context, Result};
 use reqwest::{Client, Method, multipart};
 use std::collections::HashMap;
 use url::Url;
@@ -103,7 +103,7 @@ impl KibanaClient {
             }
             None => request.send().await,
         }
-        .map_err(Into::into)
+        .wrap_err("Failed to send request")
     }
 
     /// Verify the connection and authentication to Kibana

@@ -73,7 +73,11 @@ pub trait DataSource {
         let name = Self::name();
         let aliases = Self::aliases();
         let (_, source_conf) = get_source(ctx.product, &name, &aliases)?;
-        Ok(source_conf.extension.as_deref().unwrap_or(".json").to_string())
+        Ok(source_conf
+            .extension
+            .as_deref()
+            .unwrap_or(".json")
+            .to_string())
     }
 
     fn candidate_source_file_paths(ctx: &SourceContext) -> Result<Vec<String>> {
@@ -141,7 +145,6 @@ pub struct ResolvedVersionSource {
     pub paginate: Option<String>,
 }
 
-#[allow(dead_code)] // For future use deserialzing the sources.yml
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Eq)]
 pub struct Source {
     pub extension: Option<String>,
