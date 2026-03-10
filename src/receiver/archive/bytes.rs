@@ -4,8 +4,8 @@
 
 use super::resolve_archive_path;
 use crate::{
-    processor::diagnostic::data_source::get_source,
-    processor::{DataSource, PathType, StreamingDataSource},
+    processor::diagnostic::data_source::candidate_file_paths_for,
+    processor::{DataSource, StreamingDataSource},
     receiver::{Receive, ReceiveMultiple},
 };
 use bytes::Bytes;
@@ -16,6 +16,7 @@ use std::{
     io::{BufReader, Cursor},
     path::PathBuf,
     sync::Arc,
+    sync::OnceLock,
 };
 use tokio::sync::RwLock;
 use zip::ZipArchive;
@@ -27,6 +28,7 @@ type ArchivePointer = Arc<RwLock<ArchiveCursor>>;
 pub struct ArchiveBytesReceiver {
     archive: ArchivePointer,
     subdir: Option<PathBuf>,
+    source_product: Arc<OnceLock<&'static str>>,
 }
 
 /// A receiver for the Elastic Uploader service (https://upload.elastic.co).
@@ -50,7 +52,12 @@ impl Receive for ArchiveBytesReceiver {
         T: DataSource + DeserializeOwned,
     {
         let mut archive = self.archive.write().await;
-        let source_paths = candidate_file_paths::<T>()?;
+        let product = if T::filename().is_some() {
+            "elasticsearch"
+        } else {
+            self.source_product()?
+        };
+        let source_paths = candidate_file_paths_for::<T>(product)?;
         let mut last_resolve_error = None;
 
         for source_path in source_paths {
@@ -86,9 +93,15 @@ impl Receive for ArchiveBytesReceiver {
         T: StreamingDataSource + DeserializeOwned,
         T::Item: DeserializeOwned + Send + 'static,
     {
+        let product = if T::filename().is_some() {
+            "elasticsearch"
+        } else {
+            self.source_product()?
+        };
         super::get_stream_from_archive::<BufReader<Cursor<Bytes>>, T>(
             self.archive.clone(),
             self.subdir.clone(),
+            product,
         )
         .await
     }
@@ -111,6 +124,7 @@ impl TryFrom<Bytes> for ArchiveBytesReceiver {
         Ok(Self {
             archive: Arc::new(RwLock::new(archive)),
             subdir: None,
+            source_product: Arc::new(OnceLock::new()),
         })
     }
 }
@@ -121,18 +135,26 @@ impl std::fmt::Display for ArchiveBytesReceiver {
     }
 }
 
-fn candidate_file_paths<T: DataSource>() -> Result<Vec<String>> {
-    let mut paths = Vec::new();
-    paths.push(T::source(PathType::File, None)?);
-
-    for alias in T::aliases() {
-        if let Ok((matched_name, source_conf)) = get_source(T::product(), alias, &[]) {
-            let path = source_conf.get_file_path(matched_name);
-            if !paths.contains(&path) {
-                paths.push(path);
-            }
+impl ArchiveBytesReceiver {
+    pub fn set_source_product(&self, product: &'static str) -> Result<()> {
+        match self.source_product.get() {
+            Some(existing) if *existing != product => Err(eyre!(
+                "Archive receiver source product already set to {}, cannot change to {}",
+                existing,
+                product
+            )),
+            Some(_) => Ok(()),
+            None => self
+                .source_product
+                .set(product)
+                .map_err(|_| eyre!("Failed to initialize archive receiver source product")),
         }
     }
 
-    Ok(paths)
+    pub fn source_product(&self) -> Result<&'static str> {
+        self.source_product
+            .get()
+            .copied()
+            .ok_or_else(|| eyre!("Archive receiver source product is not initialized"))
+    }
 }

@@ -3,11 +3,13 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::super::processor::{
-    DataSource, DiagnosticManifest, ElasticsearchCluster, ManifestBuilder, PathType,
-    StreamingDataSource,
+    DataSource, DiagnosticManifest, ElasticsearchCluster, ManifestBuilder, StreamingDataSource,
 };
 use super::{Receive, ReceiveRaw};
 use crate::data::KnownHost;
+use crate::processor::diagnostic::data_source::{
+    resolve_extension_for, resolve_url_for,
+};
 use elasticsearch::{Elasticsearch, http};
 use eyre::{Result, eyre};
 use futures::stream::BoxStream;
@@ -151,9 +153,8 @@ impl Receive for ElasticsearchReceiver {
     where
         T: DataSource + DeserializeOwned,
     {
-        // Get the API URL path for the provided type
         let version = self.get_version().await.ok();
-        let path = T::source(PathType::Url, version)?;
+        let path = resolve_url_for::<T>("elasticsearch", version)?;
         log::debug!("Getting API: {}", &path);
 
         // Send a simple GET request to the API path
@@ -219,17 +220,11 @@ impl ReceiveRaw for ElasticsearchReceiver {
     where
         T: DataSource,
     {
-        // Get the API URL path for the provided type
         let version = self.get_version().await.ok();
-        let path = T::source(PathType::Url, version)?;
+        let path = resolve_url_for::<T>("elasticsearch", version)?;
+        let extension = resolve_extension_for::<T>("elasticsearch")?;
 
-        let name = T::name();
-        let aliases = T::aliases();
-        let source_conf =
-            crate::processor::diagnostic::data_source::get_source(T::product(), &name, &aliases)?;
-        let extension = source_conf.1.extension.as_deref().unwrap_or(".json");
-
-        self.get_raw_by_path(&path, extension).await
+        self.get_raw_by_path(&path, &extension).await
     }
 }
 

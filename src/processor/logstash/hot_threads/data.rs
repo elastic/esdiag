@@ -38,8 +38,4 @@ impl DataSource for NodeHotThreads {
     fn aliases() -> Vec<&'static str> {
         vec!["logstash_nodes_hot_threads"]
     }
-
-    fn product() -> &'static str {
-        "logstash"
-    }
 }

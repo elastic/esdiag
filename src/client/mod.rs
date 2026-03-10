@@ -6,9 +6,12 @@
 mod elasticsearch;
 /// Client for Kibana APIs
 mod kibana;
+/// Client for Logstash APIs
+mod logstash;
 
 pub use elasticsearch::{ElasticsearchBuilder, ElasticsearchClient};
 pub use kibana::KibanaClient;
+pub use logstash::LogstashClient;
 
 extern crate elasticsearch as es;
 use crate::data::{Product, Uri};
@@ -20,6 +23,7 @@ use std::collections::HashMap;
 pub enum Client {
     Elasticsearch(ElasticsearchClient),
     Kibana(KibanaClient),
+    Logstash(LogstashClient),
 }
 
 impl Client {
@@ -70,6 +74,7 @@ impl Client {
                 Ok(response.into())
             }
             Client::Kibana(client) => client.request(method, headers, path, body).await,
+            Client::Logstash(client) => client.request(method, headers, path, body).await,
         }
     }
 
@@ -98,15 +103,9 @@ impl Client {
 
                 if json.get("tagline").is_some() {
                     Ok(format!("{} ✅ Elasticsearch", status))
-                } else if let Some(version) = json.get("version").and_then(|v| v.as_str()) {
-                    let name = json
-                        .get("name")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("unknown");
-                    Ok(format!("{status} ✅ Logstash: {name} ({version})"))
                 } else {
                     Err(format!(
-                        "{} ❌ Root response did not match Elasticsearch or Logstash",
+                        "{} ❌ Root response did not match Elasticsearch",
                         status
                     ))
                 }
@@ -124,13 +123,35 @@ impl Client {
                     None => Err(format!("{status} ❌ Host is not an Kibana node!")),
                 }
             }
+            Client::Logstash(client) => {
+                let response = client.test_connection().await.map_err(|e| format!("{e}"))?;
+                let status = response.status();
+                let json: serde_json::Value = response
+                    .json::<serde_json::Value>()
+                    .await
+                    .map_err(|e| format!("Failed to read test body: {e}"))?;
+                log::debug!("Test response {} ", json);
+
+                if let Some(version) = json.get("version").and_then(|v| v.as_str()) {
+                    let name = json
+                        .get("name")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown");
+                    Ok(format!("{status} ✅ Logstash: {name} ({version})"))
+                } else {
+                    Err(format!(
+                        "{} ❌ Root response did not match Logstash",
+                        status
+                    ))
+                }
+            }
         }
     }
 
     /// Check if security is enabled on the cluster.
     ///
     /// For Elasticsearch, this checks the `security.enabled` flag in `/_xpack/usage`.
-    /// For Kibana, this currently always returns `true`.
+    /// For Kibana and Logstash, this currently always returns `true`.
     pub async fn has_security_enabled(&self) -> Result<bool> {
         match self {
             Client::Elasticsearch(client) => {
@@ -179,6 +200,10 @@ impl Client {
                 // For Kibana we assume true for now as requested
                 Ok(true)
             }
+            Client::Logstash(_) => {
+                // Logstash does not expose the Elasticsearch security usage endpoint
+                Ok(true)
+            }
         }
     }
 }
@@ -188,6 +213,7 @@ impl From<Client> for Product {
         match client {
             Client::Elasticsearch(_) => Product::Elasticsearch,
             Client::Kibana(_) => Product::Kibana,
+            Client::Logstash(_) => Product::Logstash,
         }
     }
 }
@@ -197,6 +223,7 @@ impl From<&Client> for Product {
         match client {
             Client::Elasticsearch(_) => Product::Elasticsearch,
             Client::Kibana(_) => Product::Kibana,
+            Client::Logstash(_) => Product::Logstash,
         }
     }
 }
@@ -206,6 +233,7 @@ impl std::fmt::Display for Client {
         match self {
             Client::Elasticsearch(_) => write!(f, "elasticsearch"),
             Client::Kibana(_) => write!(f, "kibana"),
+            Client::Logstash(_) => write!(f, "logstash"),
         }
     }
 }
@@ -217,9 +245,10 @@ impl TryFrom<Uri> for Client {
         match uri {
             Uri::KnownHost(host) => match host.app() {
                 Product::Kibana => Ok(Client::Kibana(KibanaClient::try_from(host)?)),
-                Product::Elasticsearch | Product::Logstash => {
+                Product::Elasticsearch => {
                     Ok(Client::Elasticsearch(ElasticsearchClient::try_from(host)?))
                 }
+                Product::Logstash => Ok(Client::Logstash(LogstashClient::try_from(host)?)),
                 _ => Err(eyre!("Unsupported product: {}", host.app())),
             },
             _ => Err(eyre!("Unsupported URI")),

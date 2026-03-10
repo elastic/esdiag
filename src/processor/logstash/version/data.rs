@@ -33,8 +33,4 @@ impl DataSource for Version {
     fn aliases() -> Vec<&'static str> {
         vec!["logstash_version"]
     }
-
-    fn product() -> &'static str {
-        "logstash"
-    }
 }

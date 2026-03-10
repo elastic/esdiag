@@ -26,8 +26,4 @@ impl DataSource for Plugins {
     fn aliases() -> Vec<&'static str> {
         vec!["logstash_plugins"]
     }
-
-    fn product() -> &'static str {
-        "logstash"
-    }
 }

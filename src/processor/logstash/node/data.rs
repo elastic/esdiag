@@ -78,8 +78,4 @@ impl DataSource for Node {
     fn aliases() -> Vec<&'static str> {
         vec!["logstash_node"]
     }
-
-    fn product() -> &'static str {
-        "logstash"
-    }
 }

@@ -294,10 +294,6 @@ impl DataSource for NodeStats {
     fn aliases() -> Vec<&'static str> {
         vec!["logstash_node_stats"]
     }
-
-    fn product() -> &'static str {
-        "logstash"
-    }
 }
 
 #[derive(Serialize)]

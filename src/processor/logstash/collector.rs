@@ -13,7 +13,10 @@ use crate::{
     processor::{
         api::{ApiResolver, ApiWeight, DiagnosticType, LogstashApi},
         collector::{CollectOptions, CollectionResult},
-        diagnostic::{DataSource, DiagnosticManifest, data_source::PathType},
+        diagnostic::{
+            DataSource, DiagnosticManifest,
+            data_source::resolve_file_path_for,
+        },
     },
     receiver::Receiver,
 };
@@ -225,7 +228,7 @@ impl LogstashCollector {
             }
         };
 
-        let path = PathBuf::from(T::source(PathType::File, None)?);
+        let path = PathBuf::from(resolve_file_path_for::<T>("logstash")?);
         let filename = format!("{}", path.display());
         match self.exporter.save(path, content).await {
             Ok(()) => {
@@ -257,7 +260,9 @@ impl LogstashCollector {
         .with_identifiers(self.options.identifiers.clone())
         .with_collected_apis(collected_api_names);
 
-        let path = PathBuf::from(DiagnosticManifest::source(PathType::File, None)?);
+        let path = PathBuf::from(
+            DiagnosticManifest::filename().expect("diagnostic manifest filename is fixed"),
+        );
         let filename = format!("{}", path.display());
         let content = serde_json::to_string_pretty(&manifest)?;
         self.exporter.save(path, content).await?;

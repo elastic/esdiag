@@ -4,8 +4,8 @@
 
 use super::resolve_archive_path;
 use crate::{
-    processor::diagnostic::data_source::get_source,
-    processor::{DataSource, PathType, StreamingDataSource},
+    processor::diagnostic::data_source::candidate_file_paths_for,
+    processor::{DataSource, StreamingDataSource},
     receiver::{Receive, ReceiveMultiple, ReceiveRaw},
 };
 use eyre::{Result, eyre};
@@ -16,6 +16,7 @@ use std::{
     io::{BufReader, Read},
     path::PathBuf,
     sync::Arc,
+    sync::OnceLock,
     time::SystemTime,
 };
 use tokio::sync::RwLock;
@@ -27,6 +28,7 @@ pub struct ArchiveFileReceiver {
     filename: String,
     subdir: Option<PathBuf>,
     modified_date: SystemTime,
+    source_product: Arc<OnceLock<&'static str>>,
 }
 
 impl TryFrom<PathBuf> for ArchiveFileReceiver {
@@ -45,6 +47,7 @@ impl TryFrom<PathBuf> for ArchiveFileReceiver {
                     modified_date,
                     filename,
                     subdir: None,
+                    source_product: Arc::new(OnceLock::new()),
                 })
             }
             false => {
@@ -82,7 +85,12 @@ impl Receive for ArchiveFileReceiver {
         T: DeserializeOwned + DataSource,
     {
         let mut archive = self.archive.write().await;
-        let source_paths = candidate_file_paths::<T>()?;
+        let product = if T::filename().is_some() {
+            "elasticsearch"
+        } else {
+            self.source_product()?
+        };
+        let source_paths = candidate_file_paths_for::<T>(product)?;
         let mut last_resolve_error = None;
 
         for source_path in source_paths {
@@ -115,7 +123,17 @@ impl Receive for ArchiveFileReceiver {
         T: StreamingDataSource + DeserializeOwned,
         T::Item: DeserializeOwned + Send + 'static,
     {
-        super::get_stream_from_archive::<File, T>(self.archive.clone(), self.subdir.clone()).await
+        let product = if T::filename().is_some() {
+            "elasticsearch"
+        } else {
+            self.source_product()?
+        };
+        super::get_stream_from_archive::<File, T>(
+            self.archive.clone(),
+            self.subdir.clone(),
+            product,
+        )
+        .await
     }
 }
 
@@ -125,7 +143,12 @@ impl ReceiveRaw for ArchiveFileReceiver {
         T: DataSource,
     {
         let mut archive = self.archive.write().await;
-        let source_paths = candidate_file_paths::<T>()?;
+        let product = if T::filename().is_some() {
+            "elasticsearch"
+        } else {
+            self.source_product()?
+        };
+        let source_paths = candidate_file_paths_for::<T>(product)?;
         let mut last_resolve_error = None;
 
         for source_path in source_paths {
@@ -169,18 +192,26 @@ impl std::fmt::Display for ArchiveFileReceiver {
     }
 }
 
-fn candidate_file_paths<T: DataSource>() -> Result<Vec<String>> {
-    let mut paths = Vec::new();
-    paths.push(T::source(PathType::File, None)?);
-
-    for alias in T::aliases() {
-        if let Ok((matched_name, source_conf)) = get_source(T::product(), alias, &[]) {
-            let path = source_conf.get_file_path(matched_name);
-            if !paths.contains(&path) {
-                paths.push(path);
-            }
+impl ArchiveFileReceiver {
+    pub fn set_source_product(&self, product: &'static str) -> Result<()> {
+        match self.source_product.get() {
+            Some(existing) if *existing != product => Err(eyre!(
+                "Archive receiver source product already set to {}, cannot change to {}",
+                existing,
+                product
+            )),
+            Some(_) => Ok(()),
+            None => self
+                .source_product
+                .set(product)
+                .map_err(|_| eyre!("Failed to initialize archive receiver source product")),
         }
     }
 
-    Ok(paths)
+    pub fn source_product(&self) -> Result<&'static str> {
+        self.source_product
+            .get()
+            .copied()
+            .ok_or_else(|| eyre!("Archive receiver source product is not initialized"))
+    }
 }

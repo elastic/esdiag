@@ -10,13 +10,16 @@ mod directory;
 mod elastic_cloud_admin;
 /// Request API calls from Elasticsearch
 mod elasticsearch;
+/// Request API calls from Logstash
+mod logstash;
 /// Get file from https://upload.elastic.co/
 mod upload_service;
 
 pub use elasticsearch::ElasticsearchReceiver;
+pub use logstash::LogstashReceiver;
 
 use super::{
-    data::{KnownHost, Uri},
+    data::{KnownHost, Product, Uri},
     processor::{
         DataSource, DiagnosticManifest, ElasticsearchCluster, Manifest, ManifestBuilder,
         StreamingDataSource,
@@ -101,6 +104,8 @@ pub enum Receiver {
     Directory(DirectoryReceiver),
     /// Request API calls from Elasticsearch
     Elasticsearch(ElasticsearchReceiver),
+    /// Request API calls from Logstash
+    Logstash(LogstashReceiver),
     /// Request API calls from Elastic Cloud admin
     ElasticCloudAdmin(ElasticCloudAdminReceiver),
 }
@@ -115,6 +120,7 @@ impl Receiver {
             Receiver::ArchiveFile(receiver) => receiver.get::<T>().await,
             Receiver::Directory(receiver) => receiver.get::<T>().await,
             Receiver::Elasticsearch(receiver) => receiver.get::<T>().await,
+            Receiver::Logstash(receiver) => receiver.get::<T>().await,
             Receiver::ElasticCloudAdmin(receiver) => receiver.get::<T>().await,
         }
     }
@@ -129,6 +135,7 @@ impl Receiver {
             Receiver::ArchiveFile(receiver) => receiver.get_stream::<T>().await,
             Receiver::Directory(receiver) => receiver.get_stream::<T>().await,
             Receiver::Elasticsearch(receiver) => receiver.get_stream::<T>().await,
+            Receiver::Logstash(receiver) => receiver.get_stream::<T>().await,
             Receiver::ElasticCloudAdmin(receiver) => receiver.get_stream::<T>().await,
         }
     }
@@ -139,6 +146,7 @@ impl Receiver {
     {
         match self {
             Receiver::Elasticsearch(receiver) => receiver.get_raw::<T>().await,
+            Receiver::Logstash(receiver) => receiver.get_raw::<T>().await,
             Receiver::ElasticCloudAdmin(receiver) => receiver.get_raw::<T>().await,
             _ => Err(eyre!("Raw data is not supported for this receiver")),
         }
@@ -147,8 +155,9 @@ impl Receiver {
     pub async fn get_raw_by_path(&self, path: &str, extension: &str) -> Result<String> {
         match self {
             Receiver::Elasticsearch(receiver) => receiver.get_raw_by_path(path, extension).await,
+            Receiver::Logstash(receiver) => receiver.get_raw_by_path(path, extension).await,
             _ => Err(eyre!(
-                "Raw data by path is only supported for Elasticsearch receiver"
+                "Raw data by path is only supported for API receivers"
             )),
         }
     }
@@ -159,6 +168,7 @@ impl Receiver {
             Receiver::ArchiveFile(receiver) => receiver.is_connected().await,
             Receiver::Directory(receiver) => receiver.is_connected().await,
             Receiver::Elasticsearch(receiver) => receiver.is_connected().await,
+            Receiver::Logstash(receiver) => receiver.is_connected().await,
             Receiver::ElasticCloudAdmin(receiver) => receiver.is_connected().await,
         }
     }
@@ -184,6 +194,7 @@ impl Receiver {
             Receiver::ArchiveFile(receiver) => receiver.collection_date().await,
             Receiver::Directory(receiver) => receiver.collection_date().await,
             Receiver::Elasticsearch(receiver) => receiver.collection_date().await,
+            Receiver::Logstash(receiver) => receiver.collection_date().await,
             Receiver::ElasticCloudAdmin(receiver) => receiver.collection_date().await,
         }
     }
@@ -194,24 +205,29 @@ impl Receiver {
             Receiver::ArchiveFile(receiver) => receiver.filename(),
             Receiver::Directory(receiver) => receiver.filename(),
             Receiver::Elasticsearch(receiver) => receiver.filename(),
+            Receiver::Logstash(receiver) => receiver.filename(),
             Receiver::ElasticCloudAdmin(receiver) => receiver.filename(),
         }
     }
 
     pub async fn try_get_manifest(&self) -> Result<DiagnosticManifest> {
-        match self {
+        let manifest = match self {
             Receiver::ArchiveBytes(receiver) => receiver.try_get_manifest().await,
             Receiver::ArchiveFile(receiver) => receiver.try_get_manifest().await,
             Receiver::Directory(receiver) => receiver.try_get_manifest().await,
             Receiver::Elasticsearch(receiver) => receiver.try_get_manifest().await,
+            Receiver::Logstash(receiver) => receiver.try_get_manifest().await,
             Receiver::ElasticCloudAdmin(receiver) => receiver.try_get_manifest().await,
-        }
+        }?;
+        self.set_source_product_from_manifest(&manifest.product)?;
+        Ok(manifest)
     }
 
     pub async fn try_get_manifest_from_files(&self) -> Result<DiagnosticManifest> {
         match self.get::<DiagnosticManifest>().await {
             Ok(manifest) => {
                 log::debug!("Using diagnostic_manifest.json");
+                self.set_source_product_from_manifest(&manifest.product)?;
                 return Ok(manifest);
             }
             Err(e) => log::debug!("Error reading diagnostic_manifest.json: {e}"),
@@ -220,12 +236,28 @@ impl Receiver {
         match self.get::<Manifest>().await {
             Ok(manifest) => {
                 log::warn!("Falling back to manifest.json");
-                Ok(manifest.into())
+                let manifest: DiagnosticManifest = manifest.into();
+                self.set_source_product_from_manifest(&manifest.product)?;
+                Ok(manifest)
             }
             Err(e) => Err(eyre!(
                 "Failed to identify product from diagnostic manifest: {}",
                 e
             )),
+        }
+    }
+
+    fn set_source_product_from_manifest(&self, product: &Product) -> Result<()> {
+        let Ok(product) = crate::processor::diagnostic::data_source::source_product_key(product)
+        else {
+            return Ok(());
+        };
+
+        match self {
+            Receiver::ArchiveBytes(receiver) => receiver.set_source_product(product),
+            Receiver::ArchiveFile(receiver) => receiver.set_source_product(product),
+            Receiver::Directory(receiver) => receiver.set_source_product(product),
+            _ => Ok(()),
         }
     }
 }
@@ -242,7 +274,13 @@ impl TryFrom<Uri> for Receiver {
                 Receiver::ElasticCloudAdmin(ElasticCloudAdminReceiver::try_from(host)?)
             }
             Uri::File(file) => Receiver::ArchiveFile(ArchiveFileReceiver::try_from(file)?),
-            Uri::KnownHost(host) => Receiver::Elasticsearch(ElasticsearchReceiver::try_from(host)?),
+            Uri::KnownHost(host) => match host.app() {
+                Product::Elasticsearch => {
+                    Receiver::Elasticsearch(ElasticsearchReceiver::try_from(host)?)
+                }
+                Product::Logstash => Receiver::Logstash(LogstashReceiver::try_from(host)?),
+                _ => return Err(eyre!("Unsupported known-host receiver product: {}", host.app())),
+            },
             Uri::ServiceLink(url) => {
                 Receiver::ArchiveBytes(UploadServiceDownloader::try_from(url)?.download()?)
             }
@@ -276,6 +314,7 @@ impl std::fmt::Display for Receiver {
             Receiver::ArchiveFile(receiver) => write!(f, "Archive File {receiver}"),
             Receiver::Directory(receiver) => write!(f, "Directory {receiver}"),
             Receiver::Elasticsearch(receiver) => write!(f, "Elasticsearch {receiver}"),
+            Receiver::Logstash(receiver) => write!(f, "Logstash {receiver}"),
             Receiver::ElasticCloudAdmin(receiver) => {
                 write!(f, "ElasticCloudAdmin {receiver}")
             }

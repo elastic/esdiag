@@ -2,17 +2,13 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
+use crate::data::Product;
 use eyre::{Result, eyre};
 use semver::{Version, VersionReq};
 use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use std::sync::OnceLock;
 use tokio::sync::mpsc::Sender;
-
-pub enum PathType {
-    Url,
-    File,
-}
 
 #[derive(Debug)]
 pub enum DataSourceError {
@@ -42,21 +38,85 @@ pub trait DataSource {
     fn aliases() -> Vec<&'static str> {
         Vec::new()
     }
-    fn product() -> &'static str {
-        "elasticsearch"
+    fn filename() -> Option<&'static str> {
+        None
     }
-    fn source(path: PathType, version: Option<&Version>) -> Result<String> {
-        let name = Self::name();
-        let aliases = Self::aliases();
-        let (matched_name, source_conf) = get_source(Self::product(), &name, &aliases)?;
-        match path {
-            PathType::File => Ok(source_conf.get_file_path(matched_name)),
-            PathType::Url => {
-                let v = version.ok_or_else(|| eyre!("Version required for URL"))?;
-                source_conf.get_url(v)
+}
+
+pub fn source_product_key(product: &Product) -> Result<&'static str> {
+    match product {
+        Product::Elasticsearch
+        | Product::ECE
+        | Product::ECK
+        | Product::ElasticCloudHosted
+        | Product::KubernetesPlatform => Ok("elasticsearch"),
+        Product::Logstash => Ok("logstash"),
+        _ => Err(eyre!(
+            "sources.yml overrides are not supported for product {}",
+            product
+        )),
+    }
+}
+
+pub fn resolve_file_path_for<T: DataSource>(product: &str) -> Result<String> {
+    if let Some(filename) = T::filename() {
+        return Ok(filename.to_string());
+    }
+
+    let name = T::name();
+    let aliases = T::aliases();
+    let (matched_name, source_conf) = get_source(product, &name, &aliases)?;
+    Ok(source_conf.get_file_path(matched_name))
+}
+
+pub fn resolve_url_for<T: DataSource>(product: &str, version: Option<&Version>) -> Result<String> {
+    if T::filename().is_some() {
+        return Err(eyre!("{} is file-only and has no live API URL", T::name()));
+    }
+
+    let v = version.ok_or_else(|| eyre!("Version required for URL"))?;
+    let name = T::name();
+    let aliases = T::aliases();
+    let (_, source_conf) = get_source(product, &name, &aliases)?;
+    source_conf.get_url(v)
+}
+
+pub fn resolve_extension_for<T: DataSource>(product: &str) -> Result<String> {
+    if let Some(filename) = T::filename() {
+        return Ok(match filename.rsplit_once('.') {
+            Some((_, extension)) => format!(".{extension}"),
+            None => ".json".to_string(),
+        });
+    }
+
+    let name = T::name();
+    let aliases = T::aliases();
+    let (_, source_conf) = get_source(product, &name, &aliases)?;
+    Ok(source_conf.extension.as_deref().unwrap_or(".json").to_string())
+}
+
+pub fn candidate_file_paths_for<T: DataSource>(product: &str) -> Result<Vec<String>> {
+    if let Some(filename) = T::filename() {
+        return Ok(vec![filename.to_string()]);
+    }
+
+    let name = T::name();
+    let aliases = T::aliases();
+    let mut paths = Vec::new();
+
+    let (matched_name, source_conf) = get_source(product, &name, &aliases)?;
+    paths.push(source_conf.get_file_path(matched_name));
+
+    for alias in aliases {
+        if let Ok((matched_name, source_conf)) = get_source(product, alias, &[]) {
+            let path = source_conf.get_file_path(matched_name);
+            if !paths.contains(&path) {
+                paths.push(path);
             }
         }
     }
+
+    Ok(paths)
 }
 
 pub trait StreamingDataSource: DataSource {
@@ -69,7 +129,6 @@ pub trait StreamingDataSource: DataSource {
         D: Deserializer<'de>;
 }
 
-#[allow(dead_code)] // For future use deserialzing the sources.yml
 #[derive(Clone, PartialEq, Serialize, Deserialize, Eq)]
 pub struct Source {
     pub extension: Option<String>,
@@ -120,7 +179,11 @@ fn parse_sources_content(label: &str, content: &str) -> Result<HashMap<String, S
     serde_yaml::from_str(content).map_err(|e| eyre!("Failed to parse {}: {}", label, e))
 }
 
-fn validate_sources_product(product: &str, sources: &HashMap<String, Source>, label: &str) -> Result<()> {
+fn validate_sources_product(
+    product: &str,
+    sources: &HashMap<String, Source>,
+    label: &str,
+) -> Result<()> {
     let required = required_source_keys(product);
     let missing: Vec<&str> = required
         .iter()
@@ -151,8 +214,9 @@ fn load_embedded_sources(
                 override_path.ok_or_else(|| eyre!("Override path missing for {}", product))?;
             (
                 format!("override sources file at {}", path),
-                std::fs::read_to_string(path)
-                    .map_err(|e| eyre!("Failed to read override sources file at {}: {}", path, e))?,
+                std::fs::read_to_string(path).map_err(|e| {
+                    eyre!("Failed to read override sources file at {}: {}", path, e)
+                })?,
             )
         } else {
             (

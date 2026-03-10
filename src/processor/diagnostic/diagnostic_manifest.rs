@@ -3,10 +3,9 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::super::Identifiers;
-use super::{DataSource, DiagPath, Manifest, data_source::PathType};
+use super::{DataSource, DiagPath, Manifest};
 use crate::data::Product;
 use chrono::{DateTime, SecondsFormat, TimeZone, Utc};
-use eyre::{Result, eyre};
 use serde::{Deserialize, Serialize};
 use std::sync::RwLock;
 
@@ -164,15 +163,12 @@ impl DiagnosticManifest {
 }
 
 impl DataSource for DiagnosticManifest {
-    fn source(path: PathType, _version: Option<&semver::Version>) -> Result<String> {
-        match path {
-            PathType::File => Ok("diagnostic_manifest.json".to_string()),
-            _ => Err(eyre!("Unsupported source for manifest")),
-        }
-    }
-
     fn name() -> String {
         "diagnostic_manifest".to_string()
+    }
+
+    fn filename() -> Option<&'static str> {
+        Some("diagnostic_manifest.json")
     }
 }
 

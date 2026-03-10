@@ -2,7 +2,8 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use crate::processor::{PathType, StreamingDataSource};
+use crate::processor::{DataSource, StreamingDataSource};
+use crate::processor::diagnostic::data_source::resolve_file_path_for;
 use eyre::Result;
 use futures::stream::{self, BoxStream};
 use serde::de::DeserializeOwned;
@@ -23,10 +24,11 @@ pub use file::*;
 pub async fn get_stream_from_archive<R, T>(
     archive: Arc<RwLock<ZipArchive<R>>>,
     subdir: Option<PathBuf>,
+    product: &'static str,
 ) -> Result<BoxStream<'static, Result<T::Item>>>
 where
     R: Read + Seek + Send + Sync + 'static,
-    T: StreamingDataSource + DeserializeOwned,
+    T: StreamingDataSource + DeserializeOwned + DataSource,
     T::Item: DeserializeOwned + Send + 'static,
 {
     let (tx, rx) = mpsc::channel(100);
@@ -34,7 +36,7 @@ where
     let tx_err = tx.clone();
     let handle = tokio::task::spawn_blocking(move || {
         let mut archive_guard = archive.blocking_write();
-        let source_path = match T::source(PathType::File, None) {
+        let source_path = match resolve_file_path_for::<T>(product) {
             Ok(s) => s,
             Err(e) => {
                 let _ = tx.blocking_send(Err(eyre::eyre!(e)));
