@@ -26,9 +26,9 @@ This project supports desktop packaging for:
 
 ## Linux Flatpak Notes
 
-- Build runs inside Flatpak SDK and needs Rust plus cargo subcommands used by `build.rs`:
-  - `cargo-about`
-  - `cargo-sbom`
+- Build runs inside Flatpak SDK and needs Rust plus `cargo-about` for `build.rs`.
+- Notice generation is enabled by default and can be disabled with `ESDIAG_GENERATE_NOTICE=0` for read-only build contexts such as the Docker image build.
+- SBOM generation is opt-in via `ESDIAG_GENERATE_SBOM=1` and additionally requires `cargo-sbom`.
 - Local workflow requires runtime availability from Flathub:
   - `org.gnome.Platform//49`
   - `org.gnome.Sdk//49`
@@ -53,6 +53,18 @@ Build local Flatpak artifact:
 
 ```sh
 bash bin/build-flatpak-local.sh
+```
+
+Generate an SBOM during a build:
+
+```sh
+ESDIAG_GENERATE_SBOM=1 cargo build
+```
+
+Skip NOTICE generation in read-only build contexts:
+
+```sh
+ESDIAG_GENERATE_NOTICE=0 cargo build
 ```
 
 ## Artifact Validation

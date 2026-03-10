@@ -3,14 +3,10 @@
   "runtime": "org.gnome.Platform",
   "runtime-version": "49",
   "sdk": "org.gnome.Sdk",
-  "sdk-extensions": [
-    "org.freedesktop.Sdk.Extension.rust-stable"
-  ],
+  "sdk-extensions": ["org.freedesktop.Sdk.Extension.rust-stable"],
   "build-options": {
     "append-path": "/usr/lib/sdk/rust-stable/bin:/app/bin",
-    "build-args": [
-      "--share=network"
-    ]
+    "build-args": ["--share=network"]
   },
   "command": "esdiag",
   "branch": "stable",
@@ -28,7 +24,7 @@
       "name": "esdiag",
       "buildsystem": "simple",
       "build-commands": [
-        "cargo install --locked --root /app cargo-about cargo-sbom",
+        "cargo install --locked --root /app cargo-about",
         "cargo build --release --features desktop --locked",
         "install -Dm755 target/release/esdiag /app/bin/esdiag"
       ],

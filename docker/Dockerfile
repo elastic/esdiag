@@ -7,7 +7,7 @@ USER nonroot
 
 # Build Rust binary
 COPY . .
-RUN cargo build --release
+RUN ESDIAG_GENERATE_NOTICE=0 cargo build --release
 
 # Wrap it in the wolfi-base container
 FROM cgr.dev/chainguard/wolfi-base:latest
