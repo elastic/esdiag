@@ -33,13 +33,67 @@ impl std::fmt::Display for DataSourceError {
 
 impl std::error::Error for DataSourceError {}
 
+#[derive(Clone, Debug, Default)]
+pub struct SourceContext {
+    pub product: &'static str,
+    pub version: Option<Version>,
+}
+
+impl SourceContext {
+    pub fn new(product: &'static str, version: Option<Version>) -> Self {
+        Self { product, version }
+    }
+}
+
 pub trait DataSource {
     fn name() -> String;
     fn aliases() -> Vec<&'static str> {
         Vec::new()
     }
-    fn filename() -> Option<&'static str> {
-        None
+
+    fn resolve_source_request_path(ctx: &SourceContext) -> Result<String> {
+        let version = ctx
+            .version
+            .as_ref()
+            .ok_or_else(|| eyre!("Version required for request path"))?;
+        let name = Self::name();
+        let aliases = Self::aliases();
+        let (_, source_conf) = get_source(ctx.product, &name, &aliases)?;
+        source_conf.get_url(version)
+    }
+
+    fn resolve_source_file_path(ctx: &SourceContext) -> Result<String> {
+        let name = Self::name();
+        let aliases = Self::aliases();
+        let (matched_name, source_conf) = get_source(ctx.product, &name, &aliases)?;
+        Ok(source_conf.get_file_path(matched_name))
+    }
+
+    fn resolve_source_extension(ctx: &SourceContext) -> Result<String> {
+        let name = Self::name();
+        let aliases = Self::aliases();
+        let (_, source_conf) = get_source(ctx.product, &name, &aliases)?;
+        Ok(source_conf.extension.as_deref().unwrap_or(".json").to_string())
+    }
+
+    fn candidate_source_file_paths(ctx: &SourceContext) -> Result<Vec<String>> {
+        let name = Self::name();
+        let aliases = Self::aliases();
+        let mut paths = Vec::new();
+
+        let (matched_name, source_conf) = get_source(ctx.product, &name, &aliases)?;
+        paths.push(source_conf.get_file_path(matched_name));
+
+        for alias in aliases {
+            if let Ok((matched_name, source_conf)) = get_source(ctx.product, alias, &[]) {
+                let path = source_conf.get_file_path(matched_name);
+                if !paths.contains(&path) {
+                    paths.push(path);
+                }
+            }
+        }
+
+        Ok(paths)
     }
 }
 
@@ -52,67 +106,6 @@ pub fn source_product_key(product: &Product) -> Result<&'static str> {
             product
         )),
     }
-}
-
-pub fn resolve_file_path_for<T: DataSource>(product: &str) -> Result<String> {
-    if let Some(filename) = T::filename() {
-        return Ok(filename.to_string());
-    }
-
-    let name = T::name();
-    let aliases = T::aliases();
-    let (matched_name, source_conf) = get_source(product, &name, &aliases)?;
-    Ok(source_conf.get_file_path(matched_name))
-}
-
-pub fn resolve_url_for<T: DataSource>(product: &str, version: Option<&Version>) -> Result<String> {
-    if T::filename().is_some() {
-        return Err(eyre!("{} is file-only and has no live API URL", T::name()));
-    }
-
-    let v = version.ok_or_else(|| eyre!("Version required for URL"))?;
-    let name = T::name();
-    let aliases = T::aliases();
-    let (_, source_conf) = get_source(product, &name, &aliases)?;
-    source_conf.get_url(v)
-}
-
-pub fn resolve_extension_for<T: DataSource>(product: &str) -> Result<String> {
-    if let Some(filename) = T::filename() {
-        return Ok(match filename.rsplit_once('.') {
-            Some((_, extension)) => format!(".{extension}"),
-            None => ".json".to_string(),
-        });
-    }
-
-    let name = T::name();
-    let aliases = T::aliases();
-    let (_, source_conf) = get_source(product, &name, &aliases)?;
-    Ok(source_conf.extension.as_deref().unwrap_or(".json").to_string())
-}
-
-pub fn candidate_file_paths_for<T: DataSource>(product: &str) -> Result<Vec<String>> {
-    if let Some(filename) = T::filename() {
-        return Ok(vec![filename.to_string()]);
-    }
-
-    let name = T::name();
-    let aliases = T::aliases();
-    let mut paths = Vec::new();
-
-    let (matched_name, source_conf) = get_source(product, &name, &aliases)?;
-    paths.push(source_conf.get_file_path(matched_name));
-
-    for alias in aliases {
-        if let Ok((matched_name, source_conf)) = get_source(product, alias, &[]) {
-            let path = source_conf.get_file_path(matched_name);
-            if !paths.contains(&path) {
-                paths.push(path);
-            }
-        }
-    }
-
-    Ok(paths)
 }
 
 pub trait StreamingDataSource: DataSource {

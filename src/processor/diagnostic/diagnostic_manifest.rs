@@ -3,7 +3,7 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::super::Identifiers;
-use super::{DataSource, DiagPath, Manifest};
+use super::{DiagPath, Manifest};
 use crate::data::Product;
 use chrono::{DateTime, SecondsFormat, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
@@ -162,14 +162,8 @@ impl DiagnosticManifest {
     }
 }
 
-impl DataSource for DiagnosticManifest {
-    fn name() -> String {
-        "diagnostic_manifest".to_string()
-    }
-
-    fn filename() -> Option<&'static str> {
-        Some("diagnostic_manifest.json")
-    }
+impl DiagnosticManifest {
+    pub const FILENAME: &'static str = "diagnostic_manifest.json";
 }
 
 impl From<Manifest> for DiagnosticManifest {

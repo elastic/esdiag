@@ -2,11 +2,10 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use super::super::processor::{DataSource, DiagnosticManifest};
+use super::super::processor::{DataSource, DiagnosticManifest, SourceContext};
 use super::{Receive, ReceiveRaw};
 use crate::client::LogstashClient;
 use crate::data::{KnownHost, Product};
-use crate::processor::diagnostic::data_source::{resolve_extension_for, resolve_url_for};
 use eyre::{Result, eyre};
 use futures::stream::BoxStream;
 use reqwest::Method;
@@ -91,8 +90,8 @@ impl Receive for LogstashReceiver {
     where
         T: DataSource + DeserializeOwned,
     {
-        let version = self.get_version().await.ok();
-        let path = resolve_url_for::<T>("logstash", version)?;
+        let ctx = SourceContext::new("logstash", self.get_version().await.ok().cloned());
+        let path = T::resolve_source_request_path(&ctx)?;
         log::debug!("Getting Logstash API: {}", &path);
 
         let response = self
@@ -139,9 +138,9 @@ impl ReceiveRaw for LogstashReceiver {
     where
         T: DataSource,
     {
-        let version = self.get_version().await.ok();
-        let path = resolve_url_for::<T>("logstash", version)?;
-        let extension = resolve_extension_for::<T>("logstash")?;
+        let ctx = SourceContext::new("logstash", self.get_version().await.ok().cloned());
+        let path = T::resolve_source_request_path(&ctx)?;
+        let extension = T::resolve_source_extension(&ctx)?;
         self.get_raw_by_path(&path, &extension).await
     }
 }

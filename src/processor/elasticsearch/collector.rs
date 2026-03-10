@@ -4,7 +4,7 @@
 
 use super::super::{
     collector::{CollectOptions, CollectionResult},
-    diagnostic::data_source::resolve_file_path_for,
+    SourceContext,
 };
 use super::{
     AliasList, Cluster, ClusterSettings, DataSource, DataStreams, DiagnosticManifest, HealthReport,
@@ -248,7 +248,8 @@ impl ElasticsearchCollector {
                 return Err(e);
             }
         };
-        let path = PathBuf::from(resolve_file_path_for::<T>("elasticsearch")?);
+        let ctx = SourceContext::new("elasticsearch", None);
+        let path = PathBuf::from(T::resolve_source_file_path(&ctx)?);
         let filename = format!("{}", path.display());
         match self.exporter.save(path, content).await {
             Ok(()) => {
@@ -281,9 +282,7 @@ impl ElasticsearchCollector {
         .with_identifiers(self.options.identifiers.clone())
         .with_collected_apis(collected_api_names);
 
-        let path = PathBuf::from(
-            DiagnosticManifest::filename().expect("diagnostic manifest filename is fixed"),
-        );
+        let path = PathBuf::from(DiagnosticManifest::FILENAME);
         let filename = format!("{}", path.display());
         let content = serde_json::to_string_pretty(&manifest)?;
         self.exporter.save(path, content).await?;

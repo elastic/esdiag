@@ -17,7 +17,7 @@ pub mod manifest;
 /// Diagnostic job report
 pub mod report;
 
-pub use data_source::DataSource;
+pub use data_source::{DataSource, SourceContext};
 pub use data_stream_name::DataStreamName;
 pub use diagnostic_manifest::DiagnosticManifest;
 pub use doc::DiagnosticMetadata;

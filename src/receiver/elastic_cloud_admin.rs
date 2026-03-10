@@ -3,11 +3,10 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::super::processor::{
-    DataSource, DiagnosticManifest, ElasticsearchCluster, ManifestBuilder,
+    DataSource, DiagnosticManifest, ElasticsearchCluster, ManifestBuilder, SourceContext,
 };
 use super::{Receive, ReceiveRaw};
 use crate::data::{Auth, KnownHost};
-use crate::processor::diagnostic::data_source::resolve_url_for;
 use eyre::Result;
 use reqwest::header::{ACCEPT, ACCEPT_ENCODING, AUTHORIZATION};
 use reqwest::{Client, ClientBuilder, header::HeaderMap};
@@ -44,7 +43,7 @@ impl ElasticCloudAdminReceiver {
         })
     }
 
-    async fn get_version(&self) -> Result<&semver::Version> {
+    pub async fn get_version(&self) -> Result<&semver::Version> {
         self.version
             .get_or_try_init(|| async {
                 log::debug!("Fetching version from {}", self.url);
@@ -109,8 +108,8 @@ impl Receive for ElasticCloudAdminReceiver {
     where
         T: DataSource + DeserializeOwned,
     {
-        let version = self.get_version().await.ok();
-        let source_path = resolve_url_for::<T>("elasticsearch", version)?;
+        let ctx = SourceContext::new("elasticsearch", self.get_version().await.ok().cloned());
+        let source_path = T::resolve_source_request_path(&ctx)?;
         // Prepend the API proxy base path
         let path = match source_path.as_str() {
             "/" => format!("{}/", self.url.path()),
@@ -143,8 +142,8 @@ impl ReceiveRaw for ElasticCloudAdminReceiver {
     where
         T: DataSource,
     {
-        let version = self.get_version().await.ok();
-        let source_path = resolve_url_for::<T>("elasticsearch", version)?;
+        let ctx = SourceContext::new("elasticsearch", self.get_version().await.ok().cloned());
+        let source_path = T::resolve_source_request_path(&ctx)?;
         // Prepend the API proxy base path
         let path = match source_path.as_str() {
             "/" => format!("{}/", self.url.path()),

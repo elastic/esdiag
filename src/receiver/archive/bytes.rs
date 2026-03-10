@@ -4,8 +4,7 @@
 
 use super::resolve_archive_path;
 use crate::{
-    processor::diagnostic::data_source::candidate_file_paths_for,
-    processor::{DataSource, StreamingDataSource},
+    processor::{DataSource, SourceContext, StreamingDataSource},
     receiver::{Receive, ReceiveMultiple},
 };
 use bytes::Bytes;
@@ -52,12 +51,8 @@ impl Receive for ArchiveBytesReceiver {
         T: DataSource + DeserializeOwned,
     {
         let mut archive = self.archive.write().await;
-        let product = if T::filename().is_some() {
-            "elasticsearch"
-        } else {
-            self.source_product()?
-        };
-        let source_paths = candidate_file_paths_for::<T>(product)?;
+        let ctx = self.source_context()?;
+        let source_paths = T::candidate_source_file_paths(&ctx)?;
         let mut last_resolve_error = None;
 
         for source_path in source_paths {
@@ -93,15 +88,11 @@ impl Receive for ArchiveBytesReceiver {
         T: StreamingDataSource + DeserializeOwned,
         T::Item: DeserializeOwned + Send + 'static,
     {
-        let product = if T::filename().is_some() {
-            "elasticsearch"
-        } else {
-            self.source_product()?
-        };
+        let ctx = self.source_context()?;
         super::get_stream_from_archive::<BufReader<Cursor<Bytes>>, T>(
             self.archive.clone(),
             self.subdir.clone(),
-            product,
+            ctx,
         )
         .await
     }
@@ -136,6 +127,21 @@ impl std::fmt::Display for ArchiveBytesReceiver {
 }
 
 impl ArchiveBytesReceiver {
+    pub async fn read_bundle_json<T>(&self, filename: &str) -> Result<T>
+    where
+        T: DeserializeOwned,
+    {
+        let mut archive = self.archive.write().await;
+        let filename = resolve_archive_path(self.subdir.as_ref(), &mut *archive, filename)?;
+        log::debug!("Reading bundle file {}", filename);
+        let file = match archive.by_name(&filename) {
+            Ok(file) => file,
+            Err(_) => return Err(eyre!("Failed to read file {filename} from archive")),
+        };
+        let reader = BufReader::new(file);
+        serde_json::from_reader(reader).map_err(Into::into)
+    }
+
     pub fn set_source_product(&self, product: &'static str) -> Result<()> {
         match self.source_product.get() {
             Some(existing) if *existing != product => Err(eyre!(
@@ -156,5 +162,9 @@ impl ArchiveBytesReceiver {
             .get()
             .copied()
             .ok_or_else(|| eyre!("Archive receiver source product is not initialized"))
+    }
+
+    pub fn source_context(&self) -> Result<SourceContext> {
+        Ok(SourceContext::new(self.source_product()?, None))
     }
 }

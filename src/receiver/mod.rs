@@ -21,8 +21,7 @@ pub use logstash::LogstashReceiver;
 use super::{
     data::{KnownHost, Product, Uri},
     processor::{
-        DataSource, DiagnosticManifest, ElasticsearchCluster, Manifest, ManifestBuilder,
-        StreamingDataSource,
+        DataSource, DiagnosticManifest, Manifest, SourceContext, StreamingDataSource,
     },
 };
 use archive::{ArchiveBytesReceiver, ArchiveFileReceiver};
@@ -47,28 +46,7 @@ pub trait Receive {
         Err(eyre!("Streaming is not supported for this receiver"))
     }
     async fn try_get_manifest(&self) -> Result<DiagnosticManifest> {
-        match self.get::<DiagnosticManifest>().await {
-            Ok(manifest) => {
-                log::debug!("Using diagnostic_manifest.json");
-                return Ok(manifest);
-            }
-            Err(e) => log::debug!("Error reading diagnostic_manifest.json: {e}"),
-        }
-
-        match self.get::<Manifest>().await {
-            Ok(manifest) => {
-                log::warn!("Falling back to manifest.json");
-                return Ok(manifest.into());
-            }
-            Err(e) => log::debug!("Error reading manifest.json: {e}"),
-        }
-
-        let cluster = self.get::<ElasticsearchCluster>().await?;
-        let collection_date = self.collection_date().await;
-        Ok(ManifestBuilder::from(cluster)
-            .collection_date(collection_date)
-            .build()
-            .into())
+        Err(eyre!("Manifest synthesis is not supported for this receiver"))
     }
 }
 
@@ -111,6 +89,25 @@ pub enum Receiver {
 }
 
 impl Receiver {
+    pub async fn source_context(&self) -> Result<SourceContext> {
+        match self {
+            Receiver::ArchiveBytes(receiver) => receiver.source_context(),
+            Receiver::ArchiveFile(receiver) => receiver.source_context(),
+            Receiver::Directory(receiver) => receiver.source_context(),
+            Receiver::Elasticsearch(receiver) => Ok(SourceContext::new(
+                "elasticsearch",
+                Some(receiver.get_version().await?.clone()),
+            )),
+            Receiver::Logstash(receiver) => {
+                Ok(SourceContext::new("logstash", Some(receiver.get_version().await?.clone())))
+            }
+            Receiver::ElasticCloudAdmin(receiver) => Ok(SourceContext::new(
+                "elasticsearch",
+                Some(receiver.get_version().await?.clone()),
+            )),
+        }
+    }
+
     pub async fn get<T>(&self) -> Result<T>
     where
         T: DataSource + DeserializeOwned,
@@ -212,9 +209,9 @@ impl Receiver {
 
     pub async fn try_get_manifest(&self) -> Result<DiagnosticManifest> {
         let manifest = match self {
-            Receiver::ArchiveBytes(receiver) => receiver.try_get_manifest().await,
-            Receiver::ArchiveFile(receiver) => receiver.try_get_manifest().await,
-            Receiver::Directory(receiver) => receiver.try_get_manifest().await,
+            Receiver::ArchiveBytes(_)
+            | Receiver::ArchiveFile(_)
+            | Receiver::Directory(_) => self.try_get_manifest_from_files().await,
             Receiver::Elasticsearch(receiver) => receiver.try_get_manifest().await,
             Receiver::Logstash(receiver) => receiver.try_get_manifest().await,
             Receiver::ElasticCloudAdmin(receiver) => receiver.try_get_manifest().await,
@@ -224,7 +221,10 @@ impl Receiver {
     }
 
     pub async fn try_get_manifest_from_files(&self) -> Result<DiagnosticManifest> {
-        match self.get::<DiagnosticManifest>().await {
+        match self
+            .read_bundle_json::<DiagnosticManifest>(DiagnosticManifest::FILENAME)
+            .await
+        {
             Ok(manifest) => {
                 log::debug!("Using diagnostic_manifest.json");
                 self.set_source_product_from_manifest(&manifest.product)?;
@@ -233,7 +233,7 @@ impl Receiver {
             Err(e) => log::debug!("Error reading diagnostic_manifest.json: {e}"),
         }
 
-        match self.get::<Manifest>().await {
+        match self.read_bundle_json::<Manifest>(Manifest::FILENAME).await {
             Ok(manifest) => {
                 log::warn!("Falling back to manifest.json");
                 let manifest: DiagnosticManifest = manifest.into();
@@ -244,6 +244,18 @@ impl Receiver {
                 "Failed to identify product from diagnostic manifest: {}",
                 e
             )),
+        }
+    }
+
+    pub async fn read_bundle_json<T>(&self, filename: &str) -> Result<T>
+    where
+        T: DeserializeOwned,
+    {
+        match self {
+            Receiver::ArchiveBytes(receiver) => receiver.read_bundle_json(filename).await,
+            Receiver::ArchiveFile(receiver) => receiver.read_bundle_json(filename).await,
+            Receiver::Directory(receiver) => receiver.read_bundle_json(filename).await,
+            _ => Err(eyre!("Bundle file reads are only supported for archive and directory receivers")),
         }
     }
 

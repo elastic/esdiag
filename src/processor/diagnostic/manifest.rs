@@ -3,7 +3,7 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::super::elasticsearch;
-use super::{DataSource, DiagPath};
+use super::DiagPath;
 use crate::data::Product;
 use eyre::Result;
 use serde::{Deserialize, Serialize};
@@ -143,12 +143,6 @@ impl TryFrom<elasticsearch::Cluster> for Manifest {
     }
 }
 
-impl DataSource for Manifest {
-    fn name() -> String {
-        "manifest".to_string()
-    }
-
-    fn filename() -> Option<&'static str> {
-        Some("manifest.json")
-    }
+impl Manifest {
+    pub const FILENAME: &'static str = "manifest.json";
 }
