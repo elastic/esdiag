@@ -132,7 +132,7 @@ impl KibanaCollector {
     async fn save_api(&self, api: &KibanaApi) -> Result<usize> {
         let receiver = match &self.receiver {
             Receiver::Kibana(receiver) => receiver,
-            _ => return Ok(0),
+            _ => return Err(eyre!("KibanaCollector requires a Kibana receiver")),
         };
         let source_conf =
             match crate::processor::diagnostic::data_source::get_source("kibana", api.as_str(), &[])
@@ -373,7 +373,10 @@ fn should_retry_kibana_error(error: &eyre::Report) -> bool {
     if let Some(request_error) = error.downcast_ref::<KibanaRequestError>() {
         return request_error.status.as_u16() == 429 || request_error.status.is_server_error();
     }
-    true
+    if let Some(request_error) = error.downcast_ref::<reqwest::Error>() {
+        return request_error.is_connect() || request_error.is_timeout();
+    }
+    false
 }
 
 #[cfg(test)]

@@ -834,30 +834,40 @@ async fn test_collect_kibana_mock_workflow() {
     });
 
     let home = tempdir().expect("temp home");
+    let home_path = home.path().to_path_buf();
     let host_url = format!("http://{addr}");
 
-    let host_output = run_esdiag(
-        &["host", "mock-kibana", "kibana", &host_url],
-        &home,
-        &[],
-    );
+    let host_args = vec![
+        "host".to_string(),
+        "mock-kibana".to_string(),
+        "kibana".to_string(),
+        host_url.clone(),
+    ];
+    let host_output = tokio::task::spawn_blocking({
+        let home_path = home_path.clone();
+        move || run_esdiag_with_home(host_args, home_path, vec![])
+    })
+    .await
+    .expect("join host command");
     assert_success(&host_output, "configure mock kibana host");
 
     let out_dir = home.path().join("collect-out");
     fs::create_dir_all(&out_dir).expect("create output dir");
-    let collect_output = run_esdiag(
-        &[
-            "collect",
-            "mock-kibana",
-            out_dir.to_str().expect("out dir"),
-            "--type",
-            "minimal",
-            "--include",
-            "kibana_stats,kibana_alerts",
-        ],
-        &home,
-        &[],
-    );
+    let collect_args = vec![
+        "collect".to_string(),
+        "mock-kibana".to_string(),
+        out_dir.to_str().expect("out dir").to_string(),
+        "--type".to_string(),
+        "minimal".to_string(),
+        "--include".to_string(),
+        "kibana_stats,kibana_alerts".to_string(),
+    ];
+    let collect_output = tokio::task::spawn_blocking({
+        let home_path = home_path.clone();
+        move || run_esdiag_with_home(collect_args, home_path, vec![])
+    })
+    .await
+    .expect("join collect command");
     assert_success(&collect_output, "collect mock kibana workflow");
 
     let extracted = extract_diag_zip_to_temp(&out_dir).expect("extract collected archive");
@@ -895,7 +905,22 @@ async fn test_collect_kibana_mock_workflow() {
 }
 
 fn run_esdiag(args: &[&str], home: &tempfile::TempDir, extra_env: &[(&str, &str)]) -> Output {
-    let home_path = home.path().to_str().expect("home path");
+    run_esdiag_with_home(
+        args.iter().map(|arg| (*arg).to_string()).collect(),
+        home.path().to_path_buf(),
+        extra_env
+            .iter()
+            .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
+            .collect(),
+    )
+}
+
+fn run_esdiag_with_home(
+    args: Vec<String>,
+    home_path: PathBuf,
+    extra_env: Vec<(String, String)>,
+) -> Output {
+    let home_path = home_path.to_str().expect("home path");
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_esdiag"));
     cmd.args(args)
         .env("HOME", home_path)

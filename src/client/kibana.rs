@@ -4,7 +4,7 @@
 
 use crate::data::{Auth, KnownHost};
 use base64::Engine;
-use eyre::{Result, eyre};
+use eyre::Result;
 use reqwest::{Client, Method, multipart};
 use std::collections::HashMap;
 use url::Url;
@@ -86,7 +86,7 @@ impl KibanaClient {
                 .headers(headers),
         };
 
-        let response = match body {
+        match body {
             Some(body) if use_form_data => {
                 // As of October 2025 we're using a static filename, as the only
                 // use of form data is dashboards.ndjson for the saved objects API
@@ -102,8 +102,8 @@ impl KibanaClient {
                 request.body(body.to_vec()).send().await
             }
             None => request.send().await,
-        };
-        response.map_err(|e| eyre!("Failed to send request: {}", e))
+        }
+        .map_err(Into::into)
     }
 
     /// Verify the connection and authentication to Kibana
