@@ -2,13 +2,10 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use super::{elasticsearch::ElasticsearchCollector, logstash::LogstashCollector};
-use crate::{
-    data::Product,
-    exporter::Exporter,
-    processor::Identifiers,
-    receiver::Receiver,
+use super::{
+    elasticsearch::ElasticsearchCollector, kibana::KibanaCollector, logstash::LogstashCollector,
 };
+use crate::{data::Product, exporter::Exporter, processor::Identifiers, receiver::Receiver};
 use eyre::{Result, eyre};
 
 #[derive(Debug, Clone)]
@@ -23,6 +20,7 @@ pub struct CollectOptions {
 pub enum Collector {
     Elasticsearch(ElasticsearchCollector),
     Logstash(LogstashCollector),
+    Kibana(KibanaCollector),
 }
 
 impl Collector {
@@ -58,10 +56,20 @@ impl Collector {
                 let collector = LogstashCollector::new(receiver, collect_exporter, options).await?;
                 Ok(Self::Logstash(collector))
             }
+            (Product::Kibana, receiver @ Receiver::Kibana(_)) => {
+                let collect_exporter = exporter.into_collect_exporter()?;
+                let collector = KibanaCollector::new(receiver, collect_exporter, options).await?;
+                Ok(Self::Kibana(collector))
+            }
             (Product::Logstash, _) => Err(eyre!(
                 "Collect for Logstash requires a standard known-host endpoint"
             )),
-            _ => Err(eyre!("Collect is only implemented for Elasticsearch and Logstash hosts")),
+            (Product::Kibana, _) => Err(eyre!(
+                "Collect for Kibana requires a standard known-host endpoint"
+            )),
+            _ => Err(eyre!(
+                "Collect is only implemented for Elasticsearch, Kibana, and Logstash hosts"
+            )),
         }
     }
 
@@ -69,6 +77,7 @@ impl Collector {
         let result = match self {
             Self::Elasticsearch(collector) => collector.collect().await?,
             Self::Logstash(collector) => collector.collect().await?,
+            Self::Kibana(collector) => collector.collect().await?,
         };
 
         log::info!(

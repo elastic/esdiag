@@ -1,5 +1,11 @@
+use axum::{
+    Json, Router,
+    extract::{Path as AxumPath, Query},
+    routing::get,
+};
 use serde_json::Value;
 use std::collections::BTreeSet;
+use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -756,8 +762,165 @@ fn assert_has_diagnostic_manifest(
     );
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_collect_kibana_mock_workflow() {
+    async fn status_handler() -> Json<serde_json::Value> {
+        Json(serde_json::json!({
+            "name": "mock-kibana",
+            "version": { "number": "8.19.0" }
+        }))
+    }
+
+    async fn spaces_handler() -> Json<serde_json::Value> {
+        Json(serde_json::json!([
+            { "id": "default" },
+            { "id": "security" }
+        ]))
+    }
+
+    async fn stats_handler() -> Json<serde_json::Value> {
+        Json(serde_json::json!({
+            "name": "mock-kibana",
+            "status": "green"
+        }))
+    }
+
+    async fn alerts_handler(
+        AxumPath(space): AxumPath<String>,
+        Query(params): Query<HashMap<String, String>>,
+    ) -> Json<serde_json::Value> {
+        let page = params
+            .get("page")
+            .and_then(|value| value.parse::<usize>().ok())
+            .unwrap_or(1)
+            .max(1);
+        let per_page = params
+            .get("per_page")
+            .and_then(|value| value.parse::<usize>().ok())
+            .unwrap_or(100);
+        let total = 125;
+        let start = (page - 1) * per_page;
+        let end = total.min(start + per_page);
+        let data: Vec<_> = (start..end)
+            .map(|idx| serde_json::json!({ "id": format!("{space}-{idx}") }))
+            .collect();
+
+        Json(serde_json::json!({
+            "page": page,
+            "per_page": per_page,
+            "total": total,
+            "data": data
+        }))
+    }
+
+    let app = Router::new()
+        .route("/api/status", get(status_handler))
+        .route("/api/spaces/space", get(spaces_handler))
+        .route("/api/stats", get(stats_handler))
+        .route("/s/{space}/api/alerts/_find", get(alerts_handler));
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind mock kibana");
+    let addr = listener.local_addr().expect("listener addr");
+    let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+    let server = tokio::spawn(async move {
+        axum::serve(listener, app)
+            .with_graceful_shutdown(async {
+                let _ = shutdown_rx.await;
+            })
+            .await
+            .expect("serve mock kibana");
+    });
+
+    let home = tempdir().expect("temp home");
+    let home_path = home.path().to_path_buf();
+    let host_url = format!("http://{addr}");
+
+    let host_args = vec![
+        "host".to_string(),
+        "mock-kibana".to_string(),
+        "kibana".to_string(),
+        host_url.clone(),
+    ];
+    let host_output = tokio::task::spawn_blocking({
+        let home_path = home_path.clone();
+        move || run_esdiag_with_home(host_args, home_path, vec![])
+    })
+    .await
+    .expect("join host command");
+    assert_success(&host_output, "configure mock kibana host");
+
+    let out_dir = home.path().join("collect-out");
+    fs::create_dir_all(&out_dir).expect("create output dir");
+    let collect_args = vec![
+        "collect".to_string(),
+        "mock-kibana".to_string(),
+        out_dir.to_str().expect("out dir").to_string(),
+        "--type".to_string(),
+        "minimal".to_string(),
+        "--include".to_string(),
+        "kibana_stats,kibana_alerts".to_string(),
+    ];
+    let collect_output = tokio::task::spawn_blocking({
+        let home_path = home_path.clone();
+        move || run_esdiag_with_home(collect_args, home_path, vec![])
+    })
+    .await
+    .expect("join collect command");
+    assert_success(&collect_output, "collect mock kibana workflow");
+
+    let extracted = extract_diag_zip_to_temp(&out_dir).expect("extract collected archive");
+    assert!(extracted.path.join("diagnostic_manifest.json").exists());
+    assert!(extracted.path.join("kibana_status.json").exists());
+    assert!(extracted.path.join("kibana_spaces.json").exists());
+    assert!(extracted.path.join("kibana_stats.json").exists());
+    assert!(
+        extracted
+            .path
+            .join("spaces/default/pages/page-0001/kibana_alerts.json")
+            .exists()
+    );
+    assert!(
+        extracted
+            .path
+            .join("spaces/default/pages/page-0002/kibana_alerts.json")
+            .exists()
+    );
+    assert!(
+        extracted
+            .path
+            .join("spaces/security/pages/page-0001/kibana_alerts.json")
+            .exists()
+    );
+    assert!(
+        extracted
+            .path
+            .join("spaces/security/pages/page-0002/kibana_alerts.json")
+            .exists()
+    );
+
+    let _ = shutdown_tx.send(());
+    let _ = server.await;
+}
+
 fn run_esdiag(args: &[&str], home: &tempfile::TempDir, extra_env: &[(&str, &str)]) -> Output {
-    let home_path = home.path().to_str().expect("home path");
+    run_esdiag_with_home(
+        args.iter().map(|arg| (*arg).to_string()).collect(),
+        home.path().to_path_buf(),
+        extra_env
+            .iter()
+            .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
+            .collect(),
+    )
+}
+
+fn run_esdiag_with_home(
+    args: Vec<String>,
+    home_path: PathBuf,
+    extra_env: Vec<(String, String)>,
+) -> Output {
+    let home_path = home_path.to_str().expect("home path");
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_esdiag"));
     cmd.args(args)
         .env("HOME", home_path)
@@ -767,6 +930,135 @@ fn run_esdiag(args: &[&str], home: &tempfile::TempDir, extra_env: &[(&str, &str)
         cmd.env(k, v);
     }
     cmd.output().expect("run esdiag")
+}
+
+fn run_kibana_collect_matrix_case(host_env: &str) {
+    let host = env::var(host_env).unwrap_or_else(|_| {
+        panic!(
+            "Set {} to a known Kibana host before running this ignored test",
+            host_env
+        )
+    });
+    let dir = tempdir().expect("temp dir");
+    let out_dir = dir.path().to_str().expect("output dir");
+
+    let status = Command::new(env!("CARGO_BIN_EXE_esdiag"))
+        .args([
+            "collect",
+            host.as_str(),
+            out_dir,
+            "--type",
+            "minimal",
+            "--include",
+            "kibana_stats",
+        ])
+        .status()
+        .expect("Failed to execute Kibana collect process");
+
+    assert!(status.success());
+
+    let extracted = extract_diag_zip_to_temp(dir.path()).expect("Should have generated a zip");
+    assert!(extracted.path.join("diagnostic_manifest.json").exists());
+    assert!(extracted.path.join("kibana_status.json").exists());
+    assert!(extracted.path.join("kibana_spaces.json").exists());
+    assert!(extracted.path.join("kibana_stats.json").exists());
+}
+
+#[test]
+#[ignore = "requires external localhost Kibana service"]
+fn test_collect_kibana_localhost_no_auth() {
+    let home = tempdir().expect("temp home");
+    let host_output = run_esdiag(
+        &["host", "localhost-kibana", "kibana", "http://localhost:5601"],
+        &home,
+        &[],
+    );
+    assert_success(&host_output, "configure localhost kibana host");
+
+    let out_dir = home.path().join("collect-out");
+    fs::create_dir_all(&out_dir).expect("create output dir");
+    let collect_output = run_esdiag(
+        &[
+            "collect",
+            "localhost-kibana",
+            out_dir.to_str().expect("out dir"),
+            "--type",
+            "minimal",
+            "--include",
+            "kibana_stats",
+        ],
+        &home,
+        &[],
+    );
+    assert_success(&collect_output, "collect localhost kibana");
+
+    let extracted = extract_diag_zip_to_temp(&out_dir).expect("extract collected archive");
+    assert!(extracted.path.join("diagnostic_manifest.json").exists());
+    assert!(extracted.path.join("kibana_status.json").exists());
+    assert!(extracted.path.join("kibana_spaces.json").exists());
+    assert!(extracted.path.join("kibana_stats.json").exists());
+}
+
+#[test]
+#[ignore = "requires external localhost Kibana service"]
+fn test_kibana_localhost_accepts_kibana_pagination_query_shapes() {
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()
+        .expect("http client");
+
+    let cases = [
+        (
+            "pageSize style",
+            "http://localhost:5601/api/endpoint/metadata?page=1&pageSize=2",
+        ),
+        (
+            "per_page style",
+            "http://localhost:5601/api/detection_engine/rules/_find?sort_field=enabled&sort_order=asc&page=1&per_page=2",
+        ),
+    ];
+
+    for (label, url) in cases {
+        let response = client
+            .get(url)
+            .header("kbn-xsrf", "true")
+            .send()
+            .unwrap_or_else(|err| panic!("{label}: request failed: {err}"));
+        let status = response.status();
+        let body = response.text().expect("response body");
+
+        assert!(
+            !(status.as_u16() == 400
+                && (body.contains("query.pageIndex")
+                    || body.contains("query.page")
+                    || body.contains("definition for this key is missing"))),
+            "{label}: pagination query shape was rejected\nstatus={status}\nbody={body}"
+        );
+    }
+}
+
+#[test]
+#[ignore = "requires external Kibana 6.8.x service"]
+fn test_collect_kibana_6_8_x_compatibility() {
+    run_kibana_collect_matrix_case("ESDIAG_TEST_KIBANA_6_8_HOST");
+}
+
+#[test]
+#[ignore = "requires external Kibana 7.17.x service"]
+fn test_collect_kibana_7_17_x_compatibility() {
+    run_kibana_collect_matrix_case("ESDIAG_TEST_KIBANA_7_17_HOST");
+}
+
+#[test]
+#[ignore = "requires external Kibana 8.19.x service"]
+fn test_collect_kibana_8_19_x_compatibility() {
+    run_kibana_collect_matrix_case("ESDIAG_TEST_KIBANA_8_19_HOST");
+}
+
+#[test]
+#[ignore = "requires external Kibana 9.x service"]
+fn test_collect_kibana_9_x_compatibility() {
+    run_kibana_collect_matrix_case("ESDIAG_TEST_KIBANA_9_HOST");
 }
 
 fn assert_success(output: &Output, label: &str) {

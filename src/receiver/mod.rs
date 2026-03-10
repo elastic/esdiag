@@ -12,10 +12,13 @@ mod elastic_cloud_admin;
 mod elasticsearch;
 /// Request API calls from Logstash
 mod logstash;
+/// Request API calls from Kibana
+mod kibana;
 /// Get file from https://upload.elastic.co/
 mod upload_service;
 
 pub use elasticsearch::ElasticsearchReceiver;
+pub use kibana::{KibanaReceiver, KibanaRequestError};
 pub use logstash::LogstashReceiver;
 
 use super::{
@@ -84,6 +87,8 @@ pub enum Receiver {
     Elasticsearch(ElasticsearchReceiver),
     /// Request API calls from Logstash
     Logstash(LogstashReceiver),
+    /// Request API calls from Kibana
+    Kibana(KibanaReceiver),
     /// Request API calls from Elastic Cloud admin
     ElasticCloudAdmin(ElasticCloudAdminReceiver),
 }
@@ -101,6 +106,9 @@ impl Receiver {
             Receiver::Logstash(receiver) => {
                 Ok(SourceContext::new("logstash", Some(receiver.get_version().await?.clone())))
             }
+            Receiver::Kibana(receiver) => {
+                Ok(SourceContext::new("kibana", Some(receiver.get_version().await?.clone())))
+            }
             Receiver::ElasticCloudAdmin(receiver) => Ok(SourceContext::new(
                 "elasticsearch",
                 Some(receiver.get_version().await?.clone()),
@@ -117,6 +125,7 @@ impl Receiver {
             Receiver::ArchiveFile(receiver) => receiver.get::<T>().await,
             Receiver::Directory(receiver) => receiver.get::<T>().await,
             Receiver::Elasticsearch(receiver) => receiver.get::<T>().await,
+            Receiver::Kibana(receiver) => receiver.get::<T>().await,
             Receiver::Logstash(receiver) => receiver.get::<T>().await,
             Receiver::ElasticCloudAdmin(receiver) => receiver.get::<T>().await,
         }
@@ -132,6 +141,7 @@ impl Receiver {
             Receiver::ArchiveFile(receiver) => receiver.get_stream::<T>().await,
             Receiver::Directory(receiver) => receiver.get_stream::<T>().await,
             Receiver::Elasticsearch(receiver) => receiver.get_stream::<T>().await,
+            Receiver::Kibana(receiver) => receiver.get_stream::<T>().await,
             Receiver::Logstash(receiver) => receiver.get_stream::<T>().await,
             Receiver::ElasticCloudAdmin(receiver) => receiver.get_stream::<T>().await,
         }
@@ -143,6 +153,7 @@ impl Receiver {
     {
         match self {
             Receiver::Elasticsearch(receiver) => receiver.get_raw::<T>().await,
+            Receiver::Kibana(receiver) => receiver.get_raw::<T>().await,
             Receiver::Logstash(receiver) => receiver.get_raw::<T>().await,
             Receiver::ElasticCloudAdmin(receiver) => receiver.get_raw::<T>().await,
             _ => Err(eyre!("Raw data is not supported for this receiver")),
@@ -152,9 +163,10 @@ impl Receiver {
     pub async fn get_raw_by_path(&self, path: &str, extension: &str) -> Result<String> {
         match self {
             Receiver::Elasticsearch(receiver) => receiver.get_raw_by_path(path, extension).await,
+            Receiver::Kibana(receiver) => receiver.get_raw_by_path(path, extension).await,
             Receiver::Logstash(receiver) => receiver.get_raw_by_path(path, extension).await,
             _ => Err(eyre!(
-                "Raw data by path is only supported for API receivers"
+                "Raw data by path is only supported for Elasticsearch, Kibana, or Logstash receivers"
             )),
         }
     }
@@ -165,6 +177,7 @@ impl Receiver {
             Receiver::ArchiveFile(receiver) => receiver.is_connected().await,
             Receiver::Directory(receiver) => receiver.is_connected().await,
             Receiver::Elasticsearch(receiver) => receiver.is_connected().await,
+            Receiver::Kibana(receiver) => receiver.is_connected().await,
             Receiver::Logstash(receiver) => receiver.is_connected().await,
             Receiver::ElasticCloudAdmin(receiver) => receiver.is_connected().await,
         }
@@ -191,6 +204,7 @@ impl Receiver {
             Receiver::ArchiveFile(receiver) => receiver.collection_date().await,
             Receiver::Directory(receiver) => receiver.collection_date().await,
             Receiver::Elasticsearch(receiver) => receiver.collection_date().await,
+            Receiver::Kibana(receiver) => receiver.collection_date().await,
             Receiver::Logstash(receiver) => receiver.collection_date().await,
             Receiver::ElasticCloudAdmin(receiver) => receiver.collection_date().await,
         }
@@ -202,6 +216,7 @@ impl Receiver {
             Receiver::ArchiveFile(receiver) => receiver.filename(),
             Receiver::Directory(receiver) => receiver.filename(),
             Receiver::Elasticsearch(receiver) => receiver.filename(),
+            Receiver::Kibana(receiver) => receiver.filename(),
             Receiver::Logstash(receiver) => receiver.filename(),
             Receiver::ElasticCloudAdmin(receiver) => receiver.filename(),
         }
@@ -213,6 +228,7 @@ impl Receiver {
             | Receiver::ArchiveFile(_)
             | Receiver::Directory(_) => self.try_get_manifest_from_files().await,
             Receiver::Elasticsearch(receiver) => receiver.try_get_manifest().await,
+            Receiver::Kibana(receiver) => receiver.try_get_manifest().await,
             Receiver::Logstash(receiver) => receiver.try_get_manifest().await,
             Receiver::ElasticCloudAdmin(receiver) => receiver.try_get_manifest().await,
         }?;
@@ -291,6 +307,7 @@ impl TryFrom<Uri> for Receiver {
                     Receiver::Elasticsearch(ElasticsearchReceiver::try_from(host)?)
                 }
                 Product::Logstash => Receiver::Logstash(LogstashReceiver::try_from(host)?),
+                Product::Kibana => Receiver::Kibana(KibanaReceiver::try_from(host)?),
                 _ => return Err(eyre!("Unsupported known-host receiver product: {}", host.app())),
             },
             Uri::ServiceLink(url) => {
@@ -326,6 +343,7 @@ impl std::fmt::Display for Receiver {
             Receiver::ArchiveFile(receiver) => write!(f, "Archive File {receiver}"),
             Receiver::Directory(receiver) => write!(f, "Directory {receiver}"),
             Receiver::Elasticsearch(receiver) => write!(f, "Elasticsearch {receiver}"),
+            Receiver::Kibana(receiver) => write!(f, "Kibana {receiver}"),
             Receiver::Logstash(receiver) => write!(f, "Logstash {receiver}"),
             Receiver::ElasticCloudAdmin(receiver) => {
                 write!(f, "ElasticCloudAdmin {receiver}")
