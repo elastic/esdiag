@@ -5,6 +5,8 @@
 - [x] 1.3 Update `src/processor/api.rs` so Logstash include/exclude validation accepts canonical source keys and legacy short identifiers, then normalizes the execution plan to canonical keys
 - [x] 1.4 Add unit tests covering Logstash source loading, version/path resolution, and canonical alias normalization
 - [x] 1.5 Move source file and URL resolution into the active receiver or command product context so each execution uses a single product registry
+- [x] 1.6 Add a shared source context and explicit `DataSource` source-path resolution methods for API-backed entries
+- [x] 1.7 Split bundle metadata files out of `DataSource` and load them through explicit receiver bundle-file reads
 
 ## 2. Logstash Collection Pipeline
 

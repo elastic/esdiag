@@ -17,6 +17,23 @@ The system SHALL choose the active `sources.yml` product from the current collec
 - **THEN** the receiver selects the Logstash source registry for subsequent file-path and URL resolution
 - **AND** Logstash `DataSource` implementations do not need to declare the product statically
 
+### Requirement: SourceContext-Backed API Resolution
+The system SHALL resolve `sources.yml`-backed API request paths, file paths, and output extensions through `DataSource` methods that consume a receiver-provided source context.
+
+#### Scenario: API source path resolution uses receiver metadata
+- **GIVEN** a receiver has identified the active sources product and target version for the current execution
+- **WHEN** an API-backed `DataSource` resolves its request path or file path
+- **THEN** it uses the receiver-provided source context rather than ad hoc product or version lookup at the call site
+
+### Requirement: Bundle Metadata Files Are Not API Data Sources
+The system SHALL treat bundle metadata files like `manifest.json` and `diagnostic_manifest.json` as explicit bundle-file reads rather than as `sources.yml`-defined `DataSource` entries.
+
+#### Scenario: Processing reads bundle manifests without source lookup
+- **GIVEN** a directory or archive receiver is identifying a diagnostic bundle
+- **WHEN** it loads `diagnostic_manifest.json` or falls back to `manifest.json`
+- **THEN** it reads those files directly by filename
+- **AND** no `sources.yml` lookup is required for bundle manifest loading
+
 ### Requirement: Logstash Source URL Resolution
 The system SHALL resolve Logstash API request paths dynamically from `assets/logstash/sources.yml` using the target Logstash version.
 
