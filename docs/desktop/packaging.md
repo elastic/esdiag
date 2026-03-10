@@ -3,12 +3,12 @@
 This project supports desktop packaging for:
 
 - macOS (`.dmg`)
-- Windows (`.msi`, minimum Windows version: 10)
+- Windows (`esdiag.exe`, minimum Windows version: 10 in CI artifacts)
 - Linux (Flatpak)
 
 ## Scope
 
-- Windows installer format is `.msi` only.
+- Windows CI publishes the built `esdiag.exe` directly instead of bundling an installer.
 - Flatpak base app version is pinned to `0.15.0`.
 - Flatpak runtime/sdk target is `org.gnome.*//49` (moved from GNOME 47 because GNOME 47 reached end-of-life on October 15, 2025).
 - Flatpak work in this change is local artifact generation and validation only.
@@ -16,10 +16,9 @@ This project supports desktop packaging for:
 
 ## Configuration
 
-- `tauri.conf.json` controls desktop bundles, including Windows `.msi`.
+- `tauri.conf.json` controls desktop bundles, including macOS `.dmg`.
 - `packaging/desktop-targets.json` is the source of truth for:
   - Windows minimum version (`10`)
-  - Windows bundle format (`msi`)
   - Flatpak base app version (`0.15.0`)
   - Flatpak local-only mode
 - `packaging/flatpak/com.elastic.esdiag.json` defines the Flatpak manifest.
@@ -75,8 +74,8 @@ Validate required artifacts in a staging directory:
 bash bin/validate-desktop-artifacts.sh target/artifacts
 ```
 
-Expected artifacts:
+Expected CI artifacts:
 
 - `target/artifacts/macos/ESDiag*.dmg`
-- `target/artifacts/windows/ESDiag*.msi`
+- `target/artifacts/windows/esdiag.exe`
 - `target/artifacts/flatpak/com.elastic.esdiag-0.15.0.flatpak`

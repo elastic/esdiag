@@ -21,10 +21,10 @@ require_file() {
 }
 
 require_file "${ARTIFACT_ROOT}/macos"'/ESDiag*.dmg' "macOS dmg"
-require_file "${ARTIFACT_ROOT}/windows"'/ESDiag*.msi' "Windows msi"
+require_file "${ARTIFACT_ROOT}/windows"'/esdiag.exe' "Windows executable"
 require_file "${ARTIFACT_ROOT}/flatpak"'/com.elastic.esdiag-0.15.0.flatpak' "Flatpak bundle"
 
 echo "Desktop artifacts validated:"
 echo "- macOS dmg"
-echo "- Windows msi"
+echo "- Windows executable"
 echo "- Linux flatpak (0.15.0)"
