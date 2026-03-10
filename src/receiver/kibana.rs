@@ -2,7 +2,7 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use super::super::processor::{DataSource, DiagnosticManifest, PathType, StreamingDataSource};
+use super::super::processor::{DataSource, DiagnosticManifest, SourceContext, StreamingDataSource};
 use super::{Receive, ReceiveRaw};
 use crate::{client::KibanaClient, data::{KnownHost, Product}};
 use eyre::{Result, eyre};
@@ -151,8 +151,8 @@ impl Receive for KibanaReceiver {
     where
         T: DataSource + DeserializeOwned,
     {
-        let version = self.get_version().await?;
-        let path = T::source(PathType::Url, Some(version))?;
+        let ctx = SourceContext::new("kibana", Some(self.get_version().await?.clone()));
+        let path = T::resolve_source_request_path(&ctx)?;
         let response = self
             .client
             .request(Method::GET, &HashMap::new(), &path, None)
@@ -201,16 +201,10 @@ impl ReceiveRaw for KibanaReceiver {
     where
         T: DataSource,
     {
-        let version = self.get_version().await?;
-        let path = T::source(PathType::Url, Some(version))?;
-
-        let name = T::name();
-        let aliases = T::aliases();
-        let source_conf =
-            crate::processor::diagnostic::data_source::get_source(T::product(), &name, &aliases)?;
-        let extension = source_conf.1.extension.as_deref().unwrap_or(".json");
-
-        self.get_raw_by_path(&path, extension).await
+        let ctx = SourceContext::new("kibana", Some(self.get_version().await?.clone()));
+        let path = T::resolve_source_request_path(&ctx)?;
+        let extension = T::resolve_source_extension(&ctx)?;
+        self.get_raw_by_path(&path, &extension).await
     }
 }
 

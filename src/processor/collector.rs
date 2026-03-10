@@ -52,7 +52,6 @@ impl Collector {
                 Ok(Self::Elasticsearch(collector))
             }
             (Product::Logstash, receiver @ Receiver::Logstash(_)) => {
-            (Product::Logstash, receiver @ Receiver::Logstash(_)) => {
                 let collect_exporter = exporter.into_collect_exporter()?;
                 let collector = LogstashCollector::new(receiver, collect_exporter, options).await?;
                 Ok(Self::Logstash(collector))

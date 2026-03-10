@@ -7,7 +7,6 @@ use crate::{
     data::Product,
     exporter::ArchiveExporter,
     processor::{
-        DataSource,
         DiagnosticManifest,
         api::{ApiResolver, DiagnosticType, KibanaApi},
     },
@@ -295,10 +294,7 @@ impl KibanaCollector {
         .with_identifiers(self.options.identifiers.clone())
         .with_collected_apis(collected_api_names);
 
-        let path = PathBuf::from(DiagnosticManifest::source(
-            crate::processor::PathType::File,
-            None,
-        )?);
+        let path = PathBuf::from(DiagnosticManifest::FILENAME);
         let filename = format!("{}", path.display());
         let content = serde_json::to_string_pretty(&manifest)?;
         self.exporter.save(path, content).await?;
