@@ -127,7 +127,7 @@ pub struct PipelineStats {
     reloads: PipelineReloadStats,
     queue: PipelineQueueStats,
     hash: String,
-    ephemeral_id: String,
+    ephemeral_id: Option<String>,
 }
 
 impl PipelineStats {

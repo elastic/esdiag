@@ -242,7 +242,30 @@ impl LogstashCollector {
 
     async fn save_diagnostic_manifest(&self, apis: &[LogstashApi]) -> Result<usize> {
         let version = self.receiver.get::<Version>().await?;
-        let collected_api_names: Vec<String> = apis.iter().map(|a| a.as_str().to_string()).collect();
+        let parsed_version = semver::Version::parse(&version.version)?;
+        let collected_api_names: Vec<String> = apis
+            .iter()
+            .filter_map(|api| match api {
+                LogstashApi::Node => Some(api.as_str().to_string()),
+                LogstashApi::NodeStats => Some(api.as_str().to_string()),
+                LogstashApi::Raw(name, _) => {
+                    match crate::processor::diagnostic::data_source::get_source(
+                        "logstash",
+                        name,
+                        &[],
+                    ) {
+                        Ok((_, source_conf)) => {
+                            if source_conf.get_url(&parsed_version).is_ok() {
+                                Some(api.as_str().to_string())
+                            } else {
+                                None
+                            }
+                        }
+                        Err(_) => None,
+                    }
+                }
+            })
+            .collect();
 
         let manifest = DiagnosticManifest::new(
             chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),

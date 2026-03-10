@@ -30,7 +30,7 @@ impl Node {
 
 #[derive(Deserialize, Serialize)]
 pub struct Pipeline {
-    ephemeral_id: String,
+    ephemeral_id: Option<String>,
     hash: String,
     workers: u32,
     batch_size: u32,

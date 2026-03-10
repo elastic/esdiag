@@ -12,10 +12,11 @@ pub struct Version {
     http_address: String,
     pub id: String,
     pub name: String,
-    ephemeral_id: String,
-    status: String,
-    snapshot: bool,
-    pipeline: Pipeline,
+    ephemeral_id: Option<String>,
+    status: Option<String>,
+    snapshot: Option<bool>,
+    build_snapshot: Option<bool>,
+    pipeline: Option<Pipeline>,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
