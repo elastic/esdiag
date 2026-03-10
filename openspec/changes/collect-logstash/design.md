@@ -27,12 +27,12 @@ There is also a naming mismatch between existing typed Logstash data sources and
 - **Alternative considered**: Refactor immediately to a single generic collector for all products.
 - **Why not now**: That would enlarge the change substantially and couple Logstash parity to a broader collector architecture rewrite.
 
-### 2. Make the source registry product-scoped
+### 2. Make the source registry product-scoped and receiver-owned at runtime
 
-- **Decision**: Extend the global source registry to embed and expose both Elasticsearch and Logstash `sources.yml` files under separate product keys.
-- **Rationale**: `get_source(product, name, aliases)` already has the right lookup shape; the missing piece is loading Logstash definitions and allowing Logstash `DataSource` implementations to declare `product() -> "logstash"`.
-- **Alternative considered**: Keep a separate Logstash-only registry.
-- **Why not now**: A second registry would duplicate the configuration-loading and semver/path-resolution logic that already exists.
+- **Decision**: Extend the global source registry to embed and expose both Elasticsearch and Logstash `sources.yml` files under separate product keys, but resolve those product keys from the active receiver or collect command context rather than from `DataSource` types.
+- **Rationale**: Each `collect` or `process` execution operates on exactly one product, so the receiver already has the right boundary for selecting the correct source registry. Keeping `DataSource` product-agnostic avoids leaking transport or manifest context into every data model type.
+- **Alternative considered**: Keep product selection on `DataSource` implementations via a static method such as `product()`.
+- **Why not now**: That makes source lookup an intrinsic property of the data type even though the real runtime boundary is the receiver/command execution context, and it becomes awkward for fixed bundle files like `manifest.json`.
 
 ### 3. Normalize Logstash APIs to canonical source keys
 
@@ -48,14 +48,21 @@ There is also a naming mismatch between existing typed Logstash data sources and
 - **Alternative considered**: Add typed collection handlers for every Logstash source already represented by a `DataSource`.
 - **Why not now**: It provides little value over raw collection, and it increases duplicate-fetch risk for sources that only need to be stored.
 
-### 5. Preserve current lighter profiles until Logstash tags exist
+### 5. Use dedicated Logstash transport types
+
+- **Decision**: Add dedicated `LogstashClient` and `LogstashReceiver` implementations for Logstash known hosts instead of routing Logstash traffic through the Elasticsearch client and receiver.
+- **Rationale**: Logstash only needs a light reqwest-based HTTP wrapper like Kibana, and using dedicated transport types keeps product detection, root-response validation, and request semantics explicit at the client/receiver boundary.
+- **Alternative considered**: Continue treating Logstash as compatible with the Elasticsearch client and receiver stack.
+- **Why not now**: The Elasticsearch transport has product-specific assumptions that are not part of the Logstash contract, and sharing that path obscures bugs in future Logstash-specific behavior.
+
+### 6. Preserve current lighter profiles until Logstash tags exist
 
 - **Decision**: Keep `minimal` mapped to the node baseline, and keep `standard`/`light` mapped to the current bounded Logstash subset until `assets/logstash/sources.yml` grows tags or other metadata for lighter profiles.
 - **Rationale**: The user request is specifically about full support collection from `sources.yml`. The file currently defines full coverage, not differentiated light-profile metadata.
 - **Alternative considered**: Make `light` or `standard` dynamically include all Logstash sources immediately.
 - **Why not now**: That would silently change the performance profile of non-support runs without any source metadata justifying the change.
 
-### 6. Add ignored external-service compatibility coverage
+### 7. Add ignored external-service compatibility coverage
 
 - **Decision**: Add ignored integration tests that target externally managed Logstash `6.8.x`, `7.17.x`, `8.19.x`, and `9.x` instances.
 - **Rationale**: The main behavioral risk in this change is version-sensitive endpoint resolution from `assets/logstash/sources.yml`. Ignored tests let the repository encode the supported compatibility matrix without making CI depend on always-available external services.

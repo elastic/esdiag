@@ -27,6 +27,15 @@ The system SHALL fetch and store selected Logstash endpoints without typed handl
 - **THEN** it fetches the configured request path for the target version
 - **AND** it stores the response as `logstash_nodes_hot_threads_human.txt`
 
+### Requirement: Dedicated Logstash Transport Path
+The system SHALL use Logstash-specific client and receiver implementations for Logstash known-host collection instead of routing Logstash traffic through the Elasticsearch transport stack.
+
+#### Scenario: Logstash known host creates Logstash transport types
+- **GIVEN** a configured known host whose product is `logstash`
+- **WHEN** the user runs `esdiag collect` or validates that host connection
+- **THEN** the system constructs Logstash-specific client and receiver implementations
+- **AND** Logstash root-response validation is performed against the Logstash response shape rather than the Elasticsearch response shape
+
 ### Requirement: Cross-Version Logstash Compatibility Validation
 The system SHALL include ignored integration tests that exercise Logstash collection against externally managed Logstash instances for the supported compatibility matrix.
 

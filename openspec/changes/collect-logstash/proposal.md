@@ -5,9 +5,11 @@ PR260 brought full support-diagnostic API collection to Elasticsearch by treatin
 ## What Changes
 
 - Load `assets/logstash/sources.yml` into the shared source configuration so Logstash endpoints can be resolved dynamically by version, file path, and output extension.
+- Move `sources.yml` product selection into the active receiver or collect command context so each execution resolves files and URLs from exactly one product registry.
 - Expand Logstash API selection so `support` includes every top-level Logstash source, while `light` and `standard` continue to resolve a bounded subset appropriate for lighter-weight runs.
 - Add generic raw Logstash collection for endpoints that do not have typed processors, including `logstash_health_report`, `logstash_nodes_hot_threads`, `logstash_nodes_hot_threads_human`, `logstash_plugins`, and `logstash_version`.
 - Preserve existing typed Logstash processing for `logstash_node` and `logstash_node_stats`, avoiding duplicate fetches when a typed processor already covers a selected source.
+- Add dedicated Logstash client and receiver implementations instead of routing Logstash traffic through the Elasticsearch transport.
 - Record the resolved Logstash API list in the diagnostic manifest and keep include/exclude validation aligned with the keys defined in `assets/logstash/sources.yml`.
 
 ## Capabilities
@@ -22,6 +24,6 @@ PR260 brought full support-diagnostic API collection to Elasticsearch by treatin
 
 ## Impact
 
-- **Core processing logic**: Affects `src/processor/api.rs`, Logstash diagnostic orchestration, and generic receiver/export flow for raw endpoints.
+- **Core processing logic**: Affects `src/processor/api.rs`, Logstash diagnostic orchestration, client/receiver dispatch, and generic receiver/export flow for raw endpoints.
 - **Assets/configuration**: Introduces first-class use of `assets/logstash/sources.yml` at runtime.
 - **Diagnostic output**: Support collections will contain additional Logstash `.json` and `.txt` outputs, increasing parity with legacy support diagnostics.

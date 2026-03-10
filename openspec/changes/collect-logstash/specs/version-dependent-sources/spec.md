@@ -8,6 +8,15 @@ The system SHALL load and expose source definitions separately for each supporte
 - **WHEN** a Logstash data source lookup is requested
 - **THEN** the system resolves the lookup against the Logstash source registry rather than the Elasticsearch source registry
 
+### Requirement: Receiver-Owned Source Product Resolution
+The system SHALL choose the active `sources.yml` product from the current collect/process execution context rather than from a static property on each `DataSource`.
+
+#### Scenario: Processing a Logstash bundle initializes Logstash file resolution once
+- **GIVEN** a diagnostic bundle contains a manifest whose product is `logstash`
+- **WHEN** `esdiag process` initializes the receiver for that bundle
+- **THEN** the receiver selects the Logstash source registry for subsequent file-path and URL resolution
+- **AND** Logstash `DataSource` implementations do not need to declare the product statically
+
 ### Requirement: Logstash Source URL Resolution
 The system SHALL resolve Logstash API request paths dynamically from `assets/logstash/sources.yml` using the target Logstash version.
 
