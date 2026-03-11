@@ -33,20 +33,20 @@ use axum::{
         header::{HeaderName, VARY},
     },
     middleware,
-    response::{Response, Sse},
     response::sse::Event,
+    response::{Response, Sse},
     routing::{get, patch, post, put},
 };
 use bytes::Bytes;
 use clap::ValueEnum;
 use datastar::prelude::{ElementPatchMode, PatchElements, PatchSignals};
-use eyre::eyre;
 use eyre::Result;
+use eyre::eyre;
 use futures::stream;
 use serde::{Deserialize, Serialize};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::{collections::HashMap, convert::Infallible, net::SocketAddr, sync::Arc};
 use tokio::sync::{RwLock, broadcast, mpsc, watch};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 type UploadReceiver = Arc<RwLock<mpsc::Receiver<(Identifiers, Bytes)>>>;
 const IAP_USER_EMAIL_HEADER: &str = "X-Goog-Authenticated-User-Email";
@@ -64,7 +64,9 @@ impl RuntimeMode {
         match value.to_ascii_lowercase().as_str() {
             "service" => Ok(Self::Service),
             "user" => Ok(Self::User),
-            other => Err(eyre!("Invalid ESDIAG_MODE value '{other}', expected 'service' or 'user'")),
+            other => Err(eyre!(
+                "Invalid ESDIAG_MODE value '{other}', expected 'service' or 'user'"
+            )),
         }
     }
 }
@@ -213,7 +215,10 @@ impl Server {
                 .route("/prism-json5.js", get(assets::prism_json5))
                 .route("/prism-rust.js", get(assets::prism_rust))
                 .route("/prism.css", get(assets::prism_css))
-                .route("/documentation-outline.js", get(assets::documentation_outline))
+                .route(
+                    "/documentation-outline.js",
+                    get(assets::documentation_outline),
+                )
                 .route("/document-outline.js", get(assets::document_outline))
                 .route("/theme-borealis.css", get(assets::theme_borealis))
                 .route("/theme", post(theme::set_theme))
@@ -236,7 +241,10 @@ impl Server {
                     .route("/hosts/host/delete", post(hosts::delete_host))
                     .route("/hosts/secret/upsert", post(hosts::upsert_secret))
                     .route("/hosts/secret/delete", post(hosts::delete_secret))
-                    .route("/keystore/bootstrap-modal", get(keystore::get_bootstrap_modal))
+                    .route(
+                        "/keystore/bootstrap-modal",
+                        get(keystore::get_bootstrap_modal),
+                    )
                     .route("/keystore/bootstrap", post(keystore::bootstrap))
                     .route("/keystore/modal", get(keystore::get_unlock_modal))
                     .route("/keystore/unlock", post(keystore::unlock))
@@ -414,12 +422,7 @@ impl ServerState {
                 .ok_or_else(|| eyre!("Missing required header: {}", IAP_USER_EMAIL_HEADER))?
                 .to_str()
                 .map_err(|_| eyre!("Invalid {} header", IAP_USER_EMAIL_HEADER))?;
-            let email = raw
-                .split(':')
-                .next_back()
-                .unwrap_or(raw)
-                .trim()
-                .to_string();
+            let email = raw.split(':').next_back().unwrap_or(raw).trim().to_string();
             if email.is_empty() {
                 return Err(eyre!("{} header is empty", IAP_USER_EMAIL_HEADER));
             }
@@ -437,13 +440,7 @@ impl ServerState {
         let email = headers
             .get(IAP_USER_EMAIL_HEADER)
             .and_then(|value| value.to_str().ok())
-            .map(|raw| {
-                raw.split(':')
-                    .next_back()
-                    .unwrap_or(raw)
-                    .trim()
-                    .to_string()
-            })
+            .map(|raw| raw.split(':').next_back().unwrap_or(raw).trim().to_string())
             .filter(|value| !value.is_empty())
             .unwrap_or_else(|| "Anonymous".to_string());
 
@@ -515,7 +512,10 @@ impl ServerState {
 
     pub async fn keystore_signal_payload(&self) -> String {
         let (locked, lock_time) = self.keystore_status().await;
-        format!(r#"{{"keystore":{{"locked":{},"lock_time":{}}}}}"#, locked, lock_time)
+        format!(
+            r#"{{"keystore":{{"locked":{},"lock_time":{}}}}}"#,
+            locked, lock_time
+        )
     }
 
     pub async fn keystore_blocked_until(&self) -> Option<i64> {
@@ -901,10 +901,10 @@ fn broadcast_receiver_stream(
             if *shutdown.borrow() {
                 return None;
             }
-        if let Some(event) = initial.take() {
+            if let Some(event) = initial.take() {
                 return Some((server_event_to_sse(event), (rx, initial, shutdown)));
-        }
-        loop {
+            }
+            loop {
                 tokio::select! {
                     changed = shutdown.changed() => {
                         if changed.is_err() || *shutdown.borrow() {
@@ -924,7 +924,9 @@ fn broadcast_receiver_stream(
     )
 }
 
-async fn events(axum::extract::State(state): axum::extract::State<Arc<ServerState>>) -> impl axum::response::IntoResponse {
+async fn events(
+    axum::extract::State(state): axum::extract::State<Arc<ServerState>>,
+) -> impl axum::response::IntoResponse {
     log::debug!("Started events stream");
     let initial_stats = state.get_stats().await;
     let initial = signal_event(format!(r#"{{"stats":{}}}"#, initial_stats));
@@ -992,8 +994,8 @@ async fn add_client_hint_headers(mut response: Response) -> Response {
 #[cfg(test)]
 mod tests {
     use super::{
-        RuntimeMode, RuntimeModePolicy, Server, ServerEvent, ServerState, Signals, Stats,
-        receiver_stream, test_server_state,
+        KeystoreSessionState, RuntimeMode, RuntimeModePolicy, Server, ServerEvent, ServerState,
+        Signals, Stats, receiver_stream, test_server_state,
     };
     use crate::exporter::Exporter;
     use axum::http::HeaderMap;
@@ -1073,16 +1075,15 @@ mod tests {
 
     #[tokio::test]
     async fn events_stream_terminates_on_server_shutdown() {
-        let (mut server, bound_addr) =
-            Server::start(
-                [127, 0, 0, 1],
-                0,
-                Exporter::default(),
-                String::new(),
-                RuntimeMode::User,
-            )
-                .await
-                .expect("server should bind");
+        let (mut server, bound_addr) = Server::start(
+            [127, 0, 0, 1],
+            0,
+            Exporter::default(),
+            String::new(),
+            RuntimeMode::User,
+        )
+        .await
+        .expect("server should bind");
         let url = format!("http://{}/events", bound_addr);
 
         let client = reqwest::Client::new();
