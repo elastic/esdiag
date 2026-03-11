@@ -247,7 +247,10 @@ async fn run_service_link_form(
                     .await;
                     send_event(
                         &tx,
-                        signal_event(format!(r#"{{"processing":false,"stats":{}}}"#, state.get_stats().await)),
+                        signal_event(format!(
+                            r#"{{"processing":false,"stats":{}}}"#,
+                            state.get_stats().await
+                        )),
                     )
                     .await;
                 }
@@ -264,7 +267,10 @@ async fn run_service_link_form(
                     .await;
                     send_event(
                         &tx,
-                        signal_event(format!(r#"{{"processing":false,"stats":{}}}"#, state.get_stats().await)),
+                        signal_event(format!(
+                            r#"{{"processing":false,"stats":{}}}"#,
+                            state.get_stats().await
+                        )),
                     )
                     .await;
                 }
@@ -283,7 +289,10 @@ async fn run_service_link_form(
             .await;
             send_event(
                 &tx,
-                signal_event(format!(r#"{{"processing":false,"stats":{}}}"#, state.get_stats().await)),
+                signal_event(format!(
+                    r#"{{"processing":false,"stats":{}}}"#,
+                    state.get_stats().await
+                )),
             )
             .await;
         }
@@ -447,7 +456,10 @@ async fn run_service_link_id(
             .await;
             send_event(
                 &tx,
-                signal_event(format!(r#"{{"processing":false,"stats":{}}}"#, state.get_stats().await)),
+                signal_event(format!(
+                    r#"{{"processing":false,"stats":{}}}"#,
+                    state.get_stats().await
+                )),
             )
             .await;
         }

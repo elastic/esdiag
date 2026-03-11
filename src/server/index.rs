@@ -76,7 +76,11 @@ pub async fn handler(
                 .into_response();
         }
     };
-    let user_initial = user_email.chars().next().unwrap_or('_').to_ascii_uppercase();
+    let user_initial = user_email
+        .chars()
+        .next()
+        .unwrap_or('_')
+        .to_ascii_uppercase();
 
     let exporter_target = { state.exporter.read().await.to_string() };
     let send_hosts = KnownHost::list_by_role(HostRole::Send).unwrap_or_default();

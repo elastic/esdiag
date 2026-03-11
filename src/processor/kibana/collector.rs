@@ -97,11 +97,7 @@ impl KibanaCollector {
                 Ok(success) => return success,
                 Err(e) => {
                     if !should_retry_kibana_error(&e) {
-                        log::warn!(
-                            "Skipping non-retriable failure for {}: {}",
-                            api.as_str(),
-                            e
-                        );
+                        log::warn!("Skipping non-retriable failure for {}: {}", api.as_str(), e);
                         return 0;
                     }
                     if start_time.elapsed() > max_duration {
@@ -133,15 +129,17 @@ impl KibanaCollector {
             Receiver::Kibana(receiver) => receiver,
             _ => return Err(eyre!("KibanaCollector requires a Kibana receiver")),
         };
-        let source_conf =
-            match crate::processor::diagnostic::data_source::get_source("kibana", api.as_str(), &[])
-            {
-                Ok((_, conf)) => conf,
-                Err(e) => {
-                    log::debug!("Skipping {} collection: {}", api.as_str(), e);
-                    return Ok(0);
-                }
-            };
+        let source_conf = match crate::processor::diagnostic::data_source::get_source(
+            "kibana",
+            api.as_str(),
+            &[],
+        ) {
+            Ok((_, conf)) => conf,
+            Err(e) => {
+                log::debug!("Skipping {} collection: {}", api.as_str(), e);
+                return Ok(0);
+            }
+        };
 
         let version = receiver.get_version().await?;
         let resolved = match source_conf.resolve_version(version) {
@@ -178,7 +176,14 @@ impl KibanaCollector {
         for scope in scopes {
             let space = resolved.spaceaware.then_some(scope.as_str());
             saved += self
-                .save_endpoint(receiver, api.as_str(), source_conf, &resolved.url, space, resolved.paginate.as_deref())
+                .save_endpoint(
+                    receiver,
+                    api.as_str(),
+                    source_conf,
+                    &resolved.url,
+                    space,
+                    resolved.paginate.as_deref(),
+                )
                 .await?;
         }
 
@@ -212,7 +217,8 @@ impl KibanaCollector {
 
         let request_path = with_space_prefix(base_url, space);
         let content = receiver.get_raw_by_path(&request_path, extension).await?;
-        self.save_content(&base_file_path, content, space, None).await
+        self.save_content(&base_file_path, content, space, None)
+            .await
     }
 
     async fn save_paginated_endpoint(
@@ -231,10 +237,15 @@ impl KibanaCollector {
         let mut saved = 0;
 
         loop {
-            let request_path =
-                with_pagination_query(&with_space_prefix(base_url, space), paginate_field, page, PAGE_SIZE);
+            let request_path = with_pagination_query(
+                &with_space_prefix(base_url, space),
+                paginate_field,
+                page,
+                PAGE_SIZE,
+            );
             let content = receiver.get_raw_by_path(&request_path, extension).await?;
-            total_pages = total_pages.max(parse_total_pages(&content, paginate_field, page).unwrap_or(page));
+            total_pages =
+                total_pages.max(parse_total_pages(&content, paginate_field, page).unwrap_or(page));
 
             let page_scope = (total_pages > 1).then_some(page);
             saved += self
@@ -310,7 +321,12 @@ fn with_space_prefix(path: &str, space: Option<&str>) -> String {
     }
 }
 
-fn with_pagination_query(path: &str, paginate_field: &str, page: usize, page_size: usize) -> String {
+fn with_pagination_query(
+    path: &str,
+    paginate_field: &str,
+    page: usize,
+    page_size: usize,
+) -> String {
     let mut request_path = path.to_string();
     let separator = if request_path.contains('?') { '&' } else { '?' };
     request_path.push(separator);

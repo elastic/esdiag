@@ -73,10 +73,7 @@ pub struct SecretDeleteForm {
     pub secret_id: String,
 }
 
-pub async fn page(
-    State(state): State<Arc<ServerState>>,
-    headers: HeaderMap,
-) -> impl IntoResponse {
+pub async fn page(State(state): State<Arc<ServerState>>, headers: HeaderMap) -> impl IntoResponse {
     let (auth_header, user_email) = match state.resolve_user_email(&headers) {
         Ok(result) => result,
         Err(err) => {
@@ -91,7 +88,11 @@ pub async fn page(
         }
     };
 
-    let user_initial = user_email.chars().next().unwrap_or('_').to_ascii_uppercase();
+    let user_initial = user_email
+        .chars()
+        .next()
+        .unwrap_or('_')
+        .to_ascii_uppercase();
     let (keystore_locked, keystore_lock_time) = state.keystore_status().await;
     let can_use_keystore =
         cfg!(feature = "keystore") && state.runtime_mode_policy.allows_local_artifacts();
@@ -243,7 +244,10 @@ pub async fn delete_secret(
     Form(form): Form<SecretDeleteForm>,
 ) -> Response {
     if !state.is_keystore_unlocked().await {
-        return (StatusCode::PRECONDITION_FAILED, "Unlock keystore before deleting secrets.")
+        return (
+            StatusCode::PRECONDITION_FAILED,
+            "Unlock keystore before deleting secrets.",
+        )
             .into_response();
     }
 
@@ -420,7 +424,8 @@ async fn apply_upsert_host(state: &Arc<ServerState>, form: HostUpsertForm) -> Re
         _ => return Err("Auth type must be one of: none, apikey, basic.".to_string()),
     };
 
-    let mut hosts: BTreeMap<String, KnownHost> = KnownHost::parse_hosts_yml().map_err(to_message)?;
+    let mut hosts: BTreeMap<String, KnownHost> =
+        KnownHost::parse_hosts_yml().map_err(to_message)?;
     if let Some(original_name) = form.original_name {
         let original_name = original_name.trim();
         if !original_name.is_empty() && original_name != name {
@@ -463,7 +468,8 @@ async fn apply_upsert_secret(
         }
         "basic" => {
             let username = to_opt(form.username).ok_or("username is required for Basic type.")?;
-            let password_value = to_opt(form.password).ok_or("password is required for Basic type.")?;
+            let password_value =
+                to_opt(form.password).ok_or("password is required for Basic type.")?;
             SecretAuth::Basic {
                 username,
                 password: password_value,

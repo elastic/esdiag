@@ -3,8 +3,8 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::super::{
-    collector::{CollectOptions, CollectionResult},
     SourceContext,
+    collector::{CollectOptions, CollectionResult},
 };
 use super::{
     AliasList, Cluster, ClusterSettings, DataSource, DataStreams, DiagnosticManifest, HealthReport,

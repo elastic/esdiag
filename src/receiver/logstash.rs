@@ -52,7 +52,10 @@ impl LogstashReceiver {
             "application/json"
         };
         let headers = HashMap::from([("Accept".to_string(), accept.to_string())]);
-        let response = self.client.request(Method::GET, &headers, path, None).await?;
+        let response = self
+            .client
+            .request(Method::GET, &headers, path, None)
+            .await?;
 
         response.text().await.map_err(Into::into)
     }
@@ -114,7 +117,9 @@ impl Receive for LogstashReceiver {
         T: super::super::processor::StreamingDataSource + DeserializeOwned,
         T::Item: DeserializeOwned + Send + 'static,
     {
-        Err(eyre!("Streaming is not yet implemented for Logstash receiver"))
+        Err(eyre!(
+            "Streaming is not yet implemented for Logstash receiver"
+        ))
     }
 
     async fn try_get_manifest(&self) -> Result<DiagnosticManifest> {

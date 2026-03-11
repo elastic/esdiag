@@ -2,18 +2,14 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use super::{
-    node::Node,
-    node_stats::NodeStats,
-    version::Version,
-};
+use super::{node::Node, node_stats::NodeStats, version::Version};
 use crate::{
     data::Product,
     exporter::ArchiveExporter,
     processor::{
+        DataSource, DiagnosticManifest, SourceContext,
         api::{ApiResolver, ApiWeight, DiagnosticType, LogstashApi},
         collector::{CollectOptions, CollectionResult},
-        DataSource, DiagnosticManifest, SourceContext,
     },
     receiver::Receiver,
 };
@@ -153,17 +149,14 @@ impl LogstashCollector {
     }
 
     async fn save_raw(&self, name: &str) -> Result<usize> {
-        let source_conf = match crate::processor::diagnostic::data_source::get_source(
-            "logstash",
-            name,
-            &[],
-        ) {
-            Ok((_, conf)) => conf,
-            Err(e) => {
-                log::debug!("Skipping {} collection: {}", name, e);
-                return Ok(0);
-            }
-        };
+        let source_conf =
+            match crate::processor::diagnostic::data_source::get_source("logstash", name, &[]) {
+                Ok((_, conf)) => conf,
+                Err(e) => {
+                    log::debug!("Skipping {} collection: {}", name, e);
+                    return Ok(0);
+                }
+            };
 
         let version = match &self.receiver {
             Receiver::Logstash(r) => match r.get_version().await {

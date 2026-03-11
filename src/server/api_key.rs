@@ -254,7 +254,10 @@ async fn run_api_key_form(
             .await;
             send_event(
                 &tx,
-                signal_event(format!(r#"{{"processing":false,"stats":{}}}"#, state.get_stats().await)),
+                signal_event(format!(
+                    r#"{{"processing":false,"stats":{}}}"#,
+                    state.get_stats().await
+                )),
             )
             .await;
         }
@@ -262,7 +265,10 @@ async fn run_api_key_form(
 
     send_event(
         &tx,
-        signal_event(format!(r#"{{"processing":false,"stats":{}}}"#, state.get_stats().await)),
+        signal_event(format!(
+            r#"{{"processing":false,"stats":{}}}"#,
+            state.get_stats().await
+        )),
     )
     .await;
 }
@@ -448,7 +454,10 @@ async fn run_api_key_id(
 
     send_event(
         &tx,
-        signal_event(format!(r#"{{"processing":false,"stats":{}}}"#, state.get_stats().await)),
+        signal_event(format!(
+            r#"{{"processing":false,"stats":{}}}"#,
+            state.get_stats().await
+        )),
     )
     .await;
 }

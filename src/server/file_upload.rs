@@ -231,7 +231,8 @@ async fn run_upload_job(
         }
     };
 
-    let temp_upload_path = std::env::temp_dir().join(format!("esdiag-upload-{job_id}-{}.zip", Uuid::new_v4()));
+    let temp_upload_path =
+        std::env::temp_dir().join(format!("esdiag-upload-{job_id}-{}.zip", Uuid::new_v4()));
     if let Err(e) = std::fs::write(&temp_upload_path, &data) {
         let error = format!("Failed to write temp upload file: {}", e);
         log::error!("{}", error);

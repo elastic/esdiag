@@ -4,7 +4,10 @@
 
 use super::super::processor::{DataSource, DiagnosticManifest, SourceContext, StreamingDataSource};
 use super::{Receive, ReceiveRaw};
-use crate::{client::KibanaClient, data::{KnownHost, Product}};
+use crate::{
+    client::KibanaClient,
+    data::{KnownHost, Product},
+};
 use eyre::{Result, eyre};
 use futures::stream::BoxStream;
 use reqwest::Method;
@@ -114,7 +117,10 @@ impl KibanaReceiver {
             headers.insert("Accept".to_string(), "application/json".to_string());
         }
 
-        let response = self.client.request(Method::GET, &headers, path, None).await?;
+        let response = self
+            .client
+            .request(Method::GET, &headers, path, None)
+            .await?;
         let status = response.status();
         let body = response.text().await?;
         if !status.is_success() {
@@ -177,7 +183,9 @@ impl Receive for KibanaReceiver {
         T: StreamingDataSource + DeserializeOwned,
         T::Item: DeserializeOwned + Send + 'static,
     {
-        Err(eyre!("Streaming is not yet implemented for Kibana receiver"))
+        Err(eyre!(
+            "Streaming is not yet implemented for Kibana receiver"
+        ))
     }
 
     async fn try_get_manifest(&self) -> Result<DiagnosticManifest> {
