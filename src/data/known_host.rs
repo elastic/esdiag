@@ -2,9 +2,9 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
+use super::keystore::upsert_secret_auth_batch;
 use crate::data::{
     Auth, Product, SecretAuth, get_password_from_env, resolve_secret_auth as resolve_secret_by_id,
-    upsert_secret_auth,
 };
 use eyre::{Result, eyre};
 use serde::{Deserialize, Serialize};
@@ -257,7 +257,10 @@ pub enum KnownHost {
         app: Product,
         #[serde(skip_serializing_if = "Option::is_none")]
         cloud_id: Option<ElasticCloud>,
-        #[serde(default = "default_collect_roles", skip_serializing_if = "roles_is_default_collect")]
+        #[serde(
+            default = "default_collect_roles",
+            skip_serializing_if = "roles_is_default_collect"
+        )]
         roles: Vec<HostRole>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         secret: Option<String>,
@@ -271,7 +274,10 @@ pub enum KnownHost {
         app: Product,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         password: Option<String>,
-        #[serde(default = "default_collect_roles", skip_serializing_if = "roles_is_default_collect")]
+        #[serde(
+            default = "default_collect_roles",
+            skip_serializing_if = "roles_is_default_collect"
+        )]
         roles: Vec<HostRole>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         secret: Option<String>,
@@ -285,7 +291,10 @@ pub enum KnownHost {
     #[serde(alias = "None")]
     NoAuth {
         app: Product,
-        #[serde(default = "default_collect_roles", skip_serializing_if = "roles_is_default_collect")]
+        #[serde(
+            default = "default_collect_roles",
+            skip_serializing_if = "roles_is_default_collect"
+        )]
         roles: Vec<HostRole>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         viewer: Option<String>,
@@ -418,7 +427,8 @@ impl KnownHost {
         log::debug!(
             "Known hosts: {}",
             hosts
-                .clone().into_keys()
+                .clone()
+                .into_keys()
                 .collect::<Vec<String>>()
                 .join(", ")
         );
@@ -459,18 +469,45 @@ impl KnownHost {
         let mut hosts = Self::parse_hosts_yml()?;
         let mut migrated = 0_usize;
         let mut unchanged = 0_usize;
+        let total = hosts.len();
+        let mut pending = Vec::new();
 
-        for (name, host) in hosts.iter_mut() {
+        log::info!("Starting keystore migration for {total} host(s).");
+
+        for (index, (name, host)) in hosts.iter_mut().enumerate() {
             match host.legacy_auth() {
                 Some(auth) => {
-                    upsert_secret_auth(name, auth, keystore_password)?;
+                    log::debug!(
+                        "Preparing host {}/{} for keystore migration: {}",
+                        index + 1,
+                        total,
+                        name
+                    );
+                    pending.push((name.clone(), auth));
                     host.set_secret_reference(name.clone());
                     migrated += 1;
                 }
-                None => unchanged += 1,
+                None => {
+                    log::debug!(
+                        "Skipping host {}/{} without legacy credentials: {}",
+                        index + 1,
+                        total,
+                        name
+                    );
+                    unchanged += 1;
+                }
             }
         }
 
+        if !pending.is_empty() {
+            log::info!(
+                "Writing {} migrated secret(s) to keystore in a single batch.",
+                pending.len()
+            );
+            upsert_secret_auth_batch(pending, keystore_password)?;
+        }
+
+        log::info!("Writing migrated host references back to hosts.yml.");
         Self::write_hosts_yml(&hosts)?;
         Ok((migrated, unchanged))
     }
@@ -536,7 +573,7 @@ impl KnownHost {
                 if !esdiag.exists() {
                     std::fs::create_dir(&esdiag).expect("Failed to create ~/.esdiag directory");
                 }
-                
+
                 home_dir.join(".esdiag").join("hosts.yml")
             }
         }
@@ -575,7 +612,8 @@ impl KnownHost {
         log::debug!(
             "Writing hosts: {} to {:?}",
             hosts
-                .clone().into_keys()
+                .clone()
+                .into_keys()
                 .collect::<Vec<String>>()
                 .join(", "),
             path
@@ -838,7 +876,10 @@ mod tests {
         let send = KnownHost::list_by_role(HostRole::Send).expect("send list");
         let view = KnownHost::list_by_role(HostRole::View).expect("view list");
 
-        assert_eq!(collect, vec!["collect-only".to_string(), "collect-send".to_string()]);
+        assert_eq!(
+            collect,
+            vec!["collect-only".to_string(), "collect-send".to_string()]
+        );
         assert_eq!(send, vec!["collect-send".to_string()]);
         assert_eq!(view, vec!["view-host".to_string()]);
     }
@@ -1087,7 +1128,7 @@ mod tests {
     #[test]
     fn migrate_hosts_moves_legacy_credentials_to_keystore() {
         let _guard = env_lock().lock().expect("env lock");
-        let (_tmp, _hosts, _keystore) = setup_env();
+        let (_tmp, hosts_path, _keystore) = setup_env();
         unsafe {
             std::env::set_var("ESDIAG_KEYSTORE_PASSWORD", "pw");
         }
@@ -1126,6 +1167,33 @@ mod tests {
         assert_eq!(migrated, 2);
         assert_eq!(unchanged, 0);
 
+        let migrated_hosts = KnownHost::parse_hosts_yml().expect("re-read migrated hosts");
+        let raw_hosts = std::fs::read_to_string(&hosts_path).expect("read hosts file");
+
+        match migrated_hosts.get("es-prod").expect("migrated es host") {
+            KnownHost::ApiKey { apikey, secret, .. } => {
+                assert!(apikey.is_none(), "plaintext api key should be removed");
+                assert_eq!(secret.as_deref(), Some("es-prod"));
+            }
+            other => panic!("expected ApiKey host after migration, got {other}"),
+        }
+        match migrated_hosts.get("kb-prod").expect("migrated kb host") {
+            KnownHost::Basic {
+                username,
+                password,
+                secret,
+                ..
+            } => {
+                assert!(username.is_none(), "plaintext username should be removed");
+                assert!(password.is_none(), "plaintext password should be removed");
+                assert_eq!(secret.as_deref(), Some("kb-prod"));
+            }
+            other => panic!("expected Basic host after migration, got {other}"),
+        }
+        assert!(!raw_hosts.contains("apikey: apikey-1"));
+        assert!(!raw_hosts.contains("username: elastic"));
+        assert!(!raw_hosts.contains("password: pass-1"));
+
         let es_secret = get_secret("es-prod", "pw")
             .expect("get secret")
             .expect("es secret exists");
@@ -1142,6 +1210,22 @@ mod tests {
         assert_eq!(
             kb_secret.basic.as_ref().map(|b| b.password.as_str()),
             Some("pass-1")
+        );
+
+        let migrated_es_auth = migrated_hosts
+            .get("es-prod")
+            .expect("migrated es host")
+            .get_auth()
+            .expect("read migrated es auth");
+        assert!(matches!(migrated_es_auth, Auth::Apikey(key) if key == "apikey-1"));
+
+        let migrated_kb_auth = migrated_hosts
+            .get("kb-prod")
+            .expect("migrated kb host")
+            .get_auth()
+            .expect("read migrated kb auth");
+        assert!(
+            matches!(migrated_kb_auth, Auth::Basic(user, pass) if user == "elastic" && pass == "pass-1")
         );
     }
 }

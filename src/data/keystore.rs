@@ -220,6 +220,28 @@ pub fn upsert_secret_auth(
     Ok(())
 }
 
+pub(crate) fn upsert_secret_auth_batch<I>(entries: I, keystore_password: &str) -> Result<usize>
+where
+    I: IntoIterator<Item = (String, SecretAuth)>,
+{
+    let mut store = read_store(keystore_password)?;
+    let mut updated = 0_usize;
+
+    for (secret_id, auth) in entries {
+        let entry = store
+            .secrets
+            .entry(secret_id)
+            .or_insert_with(SecretEntry::default);
+        entry.upsert_auth(auth);
+        updated += 1;
+    }
+
+    if updated > 0 {
+        write_store(&store, keystore_password)?;
+    }
+    Ok(updated)
+}
+
 pub fn resolve_secret_auth(secret_id: &str, keystore_password: &str) -> Result<Option<SecretAuth>> {
     let store = read_store(keystore_password)?;
     Ok(store
@@ -261,10 +283,7 @@ fn read_store(keystore_password: &str) -> Result<KeystoreData> {
     let reader = BufReader::new(file);
     let encrypted: EncryptedKeystore = serde_yaml::from_reader(reader)?;
     if encrypted.version != 1 {
-        return Err(eyre!(
-            "Unsupported keystore version {}",
-            encrypted.version
-        ));
+        return Err(eyre!("Unsupported keystore version {}", encrypted.version));
     }
 
     let salt = base64::engine::general_purpose::STANDARD.decode(encrypted.salt)?;
