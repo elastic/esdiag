@@ -3,15 +3,20 @@ use crate::data::{KnownHost, Settings, authenticate, keystore_exists};
 use crate::server::template::{KeystoreBootstrapModal, KeystoreUnlockModal};
 use askama::Template;
 use axum::{
-    extract::State,
-    http::{
-        HeaderMap, HeaderValue,
-        header::SET_COOKIE,
-    },
+    extract::{Form, State},
+    http::{HeaderMap, HeaderValue, header::SET_COOKIE},
     response::{IntoResponse, Response},
 };
-use datastar::axum::ReadSignals;
+use serde::Deserialize;
 use std::sync::Arc;
+
+#[derive(Deserialize, Default)]
+pub(crate) struct KeystoreForm {
+    #[serde(default)]
+    password: String,
+    #[serde(default)]
+    confirm: Option<String>,
+}
 
 pub async fn get_unlock_modal(State(state): State<Arc<ServerState>>) -> Response {
     if !keystore_exists().unwrap_or(false) {
@@ -60,13 +65,13 @@ pub async fn get_bootstrap_modal(State(state): State<Arc<ServerState>>) -> Respo
 
 pub async fn bootstrap(
     State(state): State<Arc<ServerState>>,
-    ReadSignals(signals): ReadSignals<super::Signals>,
+    Form(form): Form<KeystoreForm>,
 ) -> Response {
     if keystore_exists().unwrap_or(false) {
         return axum::http::StatusCode::NO_CONTENT.into_response();
     }
 
-    if !signals.keystore.confirm {
+    if form.confirm.is_none() {
         state.publish_event(signal_event(
             r#"{"message":"Please confirm keystore creation to continue."}"#,
         ));
@@ -74,12 +79,14 @@ pub async fn bootstrap(
         return axum::http::StatusCode::BAD_REQUEST.into_response();
     }
 
-    let password = signals.keystore.password.trim().to_string();
+    let password = form.password.trim().to_string();
     if password.len() < 6 {
         state.publish_event(signal_event(
             r#"{"message":"Keystore password must be at least 6 characters."}"#,
         ));
-        state.publish_event(signal_event(r#"{"keystore":{"password":"","invalid":true}}"#));
+        state.publish_event(signal_event(
+            r#"{"keystore":{"password":"","invalid":true}}"#,
+        ));
         return axum::http::StatusCode::BAD_REQUEST.into_response();
     }
 
@@ -113,12 +120,16 @@ pub async fn bootstrap(
     state.publish_event(html_event(
         r#"<div id="keystore-bootstrap-modal" data-init="document.getElementById('keystore-bootstrap-modal')?.remove();"></div>"#,
     ));
-    (axum::http::StatusCode::NO_CONTENT, keystore_session_header()).into_response()
+    (
+        axum::http::StatusCode::NO_CONTENT,
+        keystore_session_header(),
+    )
+        .into_response()
 }
 
 pub async fn unlock(
     State(state): State<Arc<ServerState>>,
-    ReadSignals(signals): ReadSignals<super::Signals>,
+    Form(form): Form<KeystoreForm>,
 ) -> Response {
     if !keystore_exists().unwrap_or(false) {
         state.publish_event(signal_event(
@@ -140,7 +151,7 @@ pub async fn unlock(
         }
     }
 
-    let password = signals.keystore.password.trim().to_string();
+    let password = form.password.trim().to_string();
     if password.is_empty() {
         state.publish_event(signal_event(
             r#"{"message":"Keystore password is required."}"#,
@@ -151,21 +162,29 @@ pub async fn unlock(
     match authenticate(&password) {
         Ok(_) => {
             state.set_keystore_unlocked(password).await;
-            state.publish_event(signal_event(r#"{"keystore":{"password":"","invalid":false}}"#));
+            state.publish_event(signal_event(
+                r#"{"keystore":{"password":"","invalid":false}}"#,
+            ));
             state.publish_event(execute_script_event(
                 "if (window.location.pathname === '/hosts') { window.location.reload(); }",
             ));
             state.publish_event(html_event(
                 r#"<div id="keystore-unlock-modal" data-init="document.getElementById('keystore-unlock-modal')?.remove();"></div>"#,
             ));
-            (axum::http::StatusCode::NO_CONTENT, keystore_session_header()).into_response()
+            (
+                axum::http::StatusCode::NO_CONTENT,
+                keystore_session_header(),
+            )
+                .into_response()
         }
         Err(err) => {
             state.record_keystore_failed_attempt().await;
             state.publish_event(signal_event(
                 r#"{"message":"Invalid keystore password. Try again."}"#,
             ));
-            state.publish_event(signal_event(r#"{"keystore":{"password":"","invalid":true}}"#));
+            state.publish_event(signal_event(
+                r#"{"keystore":{"password":"","invalid":true}}"#,
+            ));
             log::warn!("Keystore unlock failed: {}", err);
             axum::http::StatusCode::UNAUTHORIZED.into_response()
         }
