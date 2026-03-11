@@ -1,7 +1,7 @@
 {
   "windows": {
     "minimumVersion": "10",
-    "artifactFormat": "exe"
+    "bundleFormat": "msi"
   },
   "flatpak": {
     "baseAppVersion": "0.15.0",

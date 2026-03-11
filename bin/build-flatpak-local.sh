@@ -35,7 +35,13 @@ fi
 
 mkdir -p "${OUTPUT_DIR}"
 
+FLATPAK_BUILDER_ARGS=()
+if [[ "${ESDIAG_FLATPAK_DISABLE_ROFILES_FUSE:-0}" == "1" ]]; then
+  FLATPAK_BUILDER_ARGS+=(--disable-rofiles-fuse)
+fi
+
 flatpak-builder \
+  "${FLATPAK_BUILDER_ARGS[@]}" \
   --user \
   --force-clean \
   --repo="${REPO_DIR}" \

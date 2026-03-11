@@ -61,14 +61,37 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Build Windows desktop binary
-        run: $env:ESDIAG_GENERATE_NOTICE = "0"; cargo build --release --features desktop
+      - name: Normalize Cargo version for MSI
+        shell: pwsh
+        run: |
+          $content = Get-Content Cargo.toml -Raw
+          $match = [regex]::Match($content, '(?m)^version = "([^"]+)"$')
+          if (-not $match.Success) {
+            throw "Could not find package version in Cargo.toml"
+          }
+
+          $version = $match.Groups[1].Value
+          if ($version -match '-') {
+            $baseVersion = $version.Split('-', 2)[0]
+            $normalizedVersion = "$baseVersion-0"
+            $updated = [regex]::Replace($content, '(?m)^version = "[^"]+"$', "version = `"$normalizedVersion`"", 1)
+            Set-Content Cargo.toml $updated
+            Write-Host "Normalized Cargo version from $version to $normalizedVersion for MSI packaging."
+          } else {
+            Write-Host "Cargo version $version is already MSI-safe."
+          }
+
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --locked
+
+      - name: Build Windows desktop bundle
+        run: $env:ESDIAG_GENERATE_NOTICE = "0"; cargo tauri build --features desktop --bundles msi
 
       - name: Stage Windows artifact
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Path target/artifacts/windows -Force | Out-Null
-          Copy-Item target/release/esdiag.exe target/artifacts/windows/
+          Copy-Item target/release/bundle/msi/*.msi target/artifacts/windows/
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
