@@ -337,14 +337,9 @@ async fn run(cli: Cli) -> Result<&'static str> {
                     }
                 });
 
-                let (mut server, _bound_addr) = Server::start(
-                    [0, 0, 0, 0],
-                    port,
-                    exporter,
-                    kibana_url,
-                    RuntimeMode::User,
-                )
-                .await?;
+                let (mut server, _bound_addr) =
+                    Server::start([0, 0, 0, 0], port, exporter, kibana_url, RuntimeMode::User)
+                        .await?;
 
                 tokio::select! {
                     _ = tokio::signal::ctrl_c() => {
@@ -638,12 +633,12 @@ async fn run(cli: Cli) -> Result<&'static str> {
                         )
                         .await
                         {
-                                Ok(res) => res,
-                                Err(e) => {
-                                    log::error!("Failed to start embedded server: {}", e);
-                                    return;
-                                }
-                            };
+                            Ok(res) => res,
+                            Err(e) => {
+                                log::error!("Failed to start embedded server: {}", e);
+                                return;
+                            }
+                        };
 
                         let url = format!("http://localhost:{}", bound_addr.port());
 
@@ -694,11 +689,18 @@ async fn run(cli: Cli) -> Result<&'static str> {
 }
 
 fn sources_product_key(product: &Product) -> Result<&'static str> {
-    esdiag::processor::diagnostic::data_source::source_product_key(product)
-        .map_err(|_| eyre!("--sources is only supported for Elasticsearch and Logstash inputs, got {}", product))
+    esdiag::processor::diagnostic::data_source::source_product_key(product).map_err(|_| {
+        eyre!(
+            "--sources is only supported for Elasticsearch and Logstash inputs, got {}",
+            product
+        )
+    })
 }
 
-async fn detect_sources_product_for_process(input_uri: &Uri, receiver: &Receiver) -> Result<Product> {
+async fn detect_sources_product_for_process(
+    input_uri: &Uri,
+    receiver: &Receiver,
+) -> Result<Product> {
     match input_uri {
         Uri::KnownHost(host) | Uri::ElasticCloudAdmin(host) | Uri::ElasticGovCloudAdmin(host) => {
             Ok(host.app().clone())
@@ -825,15 +827,10 @@ mod desktop_startup_tests {
     async fn embedded_server_starts_and_serves_local_url() {
         let exporter = Exporter::default();
         let kibana_url = String::new();
-        let (mut server, bound_addr) = Server::start(
-            [127, 0, 0, 1],
-            0,
-            exporter,
-            kibana_url,
-            RuntimeMode::User,
-        )
-        .await
-        .expect("desktop embedded server should start");
+        let (mut server, bound_addr) =
+            Server::start([127, 0, 0, 1], 0, exporter, kibana_url, RuntimeMode::User)
+                .await
+                .expect("desktop embedded server should start");
 
         let url = format!("http://localhost:{}", bound_addr.port());
         let parsed = tauri::Url::parse(&url).expect("desktop URL should be valid");
@@ -861,15 +858,10 @@ mod desktop_startup_tests {
 
         let exporter = Exporter::default();
         let kibana_url = String::new();
-        let (mut server, bound_addr) = Server::start(
-            [127, 0, 0, 1],
-            0,
-            exporter,
-            kibana_url,
-            RuntimeMode::User,
-        )
-        .await
-        .expect("desktop embedded server should start while another port is occupied");
+        let (mut server, bound_addr) =
+            Server::start([127, 0, 0, 1], 0, exporter, kibana_url, RuntimeMode::User)
+                .await
+                .expect("desktop embedded server should start while another port is occupied");
 
         assert_ne!(
             bound_addr.port(),

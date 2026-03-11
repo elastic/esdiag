@@ -354,9 +354,15 @@ impl ApiResolver {
         let mut deps = HashMap::new();
         deps.insert(
             "logstash_node".to_string(),
-            vec!["logstash_version".to_string(), "logstash_plugins".to_string()],
+            vec![
+                "logstash_version".to_string(),
+                "logstash_plugins".to_string(),
+            ],
         );
-        deps.insert("logstash_node_stats".to_string(), vec!["logstash_node".to_string()]);
+        deps.insert(
+            "logstash_node_stats".to_string(),
+            vec!["logstash_node".to_string()],
+        );
         deps
     }
 
@@ -442,8 +448,11 @@ impl ApiResolver {
             }
         }
 
-        let final_set =
-            Self::resolve_requested(requested, &Self::es_minimum_required(), &Self::es_dependencies());
+        let final_set = Self::resolve_requested(
+            requested,
+            &Self::es_minimum_required(),
+            &Self::es_dependencies(),
+        );
 
         let mut api_set: IndexSet<ElasticsearchApi> = IndexSet::new();
         for api in final_set.iter() {
@@ -531,8 +540,11 @@ impl ApiResolver {
             }
         }
 
-        let final_set =
-            Self::resolve_requested(requested, &Self::ls_minimum_required(), &Self::ls_dependencies());
+        let final_set = Self::resolve_requested(
+            requested,
+            &Self::ls_minimum_required(),
+            &Self::ls_dependencies(),
+        );
 
         let mut apis = Vec::new();
         for api in final_set.iter() {
@@ -660,9 +672,10 @@ mod tests {
         )
         .unwrap();
 
-        assert!(apis
-            .iter()
-            .any(|api| api.as_str() == "logstash_nodes_hot_threads_human"));
+        assert!(
+            apis.iter()
+                .any(|api| api.as_str() == "logstash_nodes_hot_threads_human")
+        );
     }
 
     #[test]

@@ -3,9 +3,9 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::super::{DocumentExporter, ElasticsearchMetadata, Lookups, ProcessorSummary};
-use crate::processor::StreamingDocumentExporter;
 use super::{Repositories, RepositoryConfig, Snapshot, Snapshots, extract_snapshot_date};
 use crate::exporter::Exporter;
+use crate::processor::StreamingDocumentExporter;
 use eyre::Report;
 use futures::stream::{BoxStream, StreamExt};
 use serde::Serialize;
@@ -65,11 +65,11 @@ impl StreamingDocumentExporter<Lookups, ElasticsearchMetadata> for Snapshots {
         const BUFFER_SIZE: usize = 5000;
 
         let (tx, rx) = mpsc::channel::<SnapshotLogDocument>(BUFFER_SIZE);
-        let processor = tokio::spawn(
-            exporter
-                .clone()
-                .document_channel::<SnapshotLogDocument>(rx, data_stream.clone(), batch_size),
-        );
+        let processor = tokio::spawn(exporter.clone().document_channel::<SnapshotLogDocument>(
+            rx,
+            data_stream.clone(),
+            batch_size,
+        ));
 
         while let Some(result) = stream.next().await {
             match result {
@@ -166,8 +166,8 @@ impl From<Snapshot> for SnapshotDocument {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::value::RawValue;
     use serde_json::json;
+    use serde_json::value::RawValue;
 
     #[test]
     fn snapshot_document_contains_date_when_name_has_token() {

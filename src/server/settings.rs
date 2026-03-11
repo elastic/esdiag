@@ -1,6 +1,4 @@
-use super::{
-    ServerState, append_body_event, html_event, prepend_selector_event,
-};
+use super::{ServerState, append_body_event, html_event, prepend_selector_event};
 use crate::data::{KnownHost, KnownHostBuilder, Settings, Uri};
 use crate::exporter::Exporter;
 use crate::server::template::SettingsModal;
@@ -183,7 +181,9 @@ pub async fn update_settings(
     }
 
     // 4. Update the active Exporter in ServerState (user mode only)
-    if state.runtime_mode_policy.allows_exporter_updates() && let Some(target) = &settings.active_target {
+    if state.runtime_mode_policy.allows_exporter_updates()
+        && let Some(target) = &settings.active_target
+    {
         match KnownHost::get_known(target).ok_or_else(|| eyre::eyre!("Host not found")) {
             Ok(host) => match Uri::try_from(host) {
                 Ok(uri) => match Exporter::try_from(uri) {

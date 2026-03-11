@@ -152,17 +152,18 @@ pub async fn handler(
                 let (auth_header, user_email) = match state.resolve_user_email(&headers) {
                     Ok(result) => result,
                     Err(err) => {
-                        return (
-                            StatusCode::UNAUTHORIZED,
-                            format!("Unauthorized: {err}"),
-                        )
+                        return (StatusCode::UNAUTHORIZED, format!("Unauthorized: {err}"))
                             .into_response();
                     }
                 };
-                let user_initial = user_email.chars().next().unwrap_or('_').to_ascii_uppercase();
+                let user_initial = user_email
+                    .chars()
+                    .next()
+                    .unwrap_or('_')
+                    .to_ascii_uppercase();
                 let (keystore_locked, keystore_lock_time) = state.keystore_status().await;
-                let can_use_keystore =
-                    cfg!(feature = "keystore") && state.runtime_mode_policy.allows_local_artifacts();
+                let can_use_keystore = cfg!(feature = "keystore")
+                    && state.runtime_mode_policy.allows_local_artifacts();
 
                 let template = DocsTemplate {
                     nav_root_items,

@@ -4,11 +4,8 @@
 
 use axum::{
     extract::State,
-    http::{
-        HeaderMap, HeaderValue,
-        header::SET_COOKIE,
-    },
     http::StatusCode,
+    http::{HeaderMap, HeaderValue, header::SET_COOKIE},
     response::IntoResponse,
 };
 use datastar::axum::ReadSignals;
@@ -16,9 +13,9 @@ use serde::Deserialize;
 use serde_json::json;
 use std::sync::Arc;
 
-use super::{ServerState, signal_event};
 #[cfg(feature = "desktop")]
 use super::execute_script_event;
+use super::{ServerState, signal_event};
 
 #[derive(Debug, Deserialize, Default)]
 pub struct ThemeSignals {

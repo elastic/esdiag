@@ -9,15 +9,10 @@ use std::time::Duration;
 use tokio::time::sleep;
 
 async fn start_server(mode: RuntimeMode) -> (Server, Client, String) {
-    let (server, bound_addr) = Server::start(
-        [127, 0, 0, 1],
-        0,
-        Exporter::default(),
-        String::new(),
-        mode,
-    )
-    .await
-    .expect("start local server");
+    let (server, bound_addr) =
+        Server::start([127, 0, 0, 1], 0, Exporter::default(), String::new(), mode)
+            .await
+            .expect("start local server");
 
     let client = Client::new();
     let base = format!("http://127.0.0.1:{}", bound_addr.port());
@@ -45,7 +40,10 @@ async fn service_mode_requires_iap_header_for_web_access() {
 
     let authorized = client
         .get(format!("{base}/"))
-        .header("X-Goog-Authenticated-User-Email", "accounts.google.com:ops@example.com")
+        .header(
+            "X-Goog-Authenticated-User-Email",
+            "accounts.google.com:ops@example.com",
+        )
         .send()
         .await
         .expect("service mode authorized request");

@@ -17,9 +17,9 @@ mod uri;
 
 pub use auth::{Auth, AuthType};
 pub use keystore::{
-    BasicSecret, SecretAuth, SecretEntry, add_secret, authenticate, get_password_for_secret_commands,
-    get_password_from_env, get_secret, keystore_exists, list_secret_names, remove_secret, resolve_secret_auth,
-    upsert_secret_auth,
+    BasicSecret, SecretAuth, SecretEntry, add_secret, authenticate,
+    get_password_for_secret_commands, get_password_from_env, get_secret, keystore_exists,
+    list_secret_names, remove_secret, resolve_secret_auth, upsert_secret_auth,
 };
 pub use known_host::{ElasticCloud, HostRole, KnownHost, KnownHostBuilder};
 pub use product::Product;
