@@ -8,13 +8,13 @@
             No keystore was found. Confirm creation and set a keystore password.
             {% endif %}
         </p>
-        <form id="keystore-bootstrap-form" data-on:submit="@post('/keystore/bootstrap')">
+        <form id="keystore-bootstrap-form" data-on:submit__prevent="@post('/keystore/bootstrap', {contentType: 'form'})">
             <input-group>
                 <label for="keystore-bootstrap-password" class="form-label">Keystore Password</label>
                 <input
                     type="password"
                     id="keystore-bootstrap-password"
-                    name="keystore.password"
+                    name="password"
                     data-bind:keystore.password
                     data-class:error="$keystore.invalid"
                     data-on:input="$keystore.invalid = false"
@@ -31,7 +31,7 @@
                     <input
                         id="keystore-bootstrap-confirm"
                         type="checkbox"
-                        name="keystore.confirm"
+                        name="confirm"
                         data-bind:keystore.confirm
                         required
                     />
