@@ -1,0 +1,93 @@
+<tr id="hosts-table-row-{{ row_id }}">
+    {% if editing %}
+    <td><form-input><input data-bind:hosts.rows.{{ row_id }}.draft.name placeholder="name" /></form-input></td>
+    <td class="host-product-column">
+        <form-input>
+            <select data-bind:hosts.rows.{{ row_id }}.draft.app>
+                <option value="Elasticsearch" {% if host.app == "Elasticsearch" %}selected{% endif %}>Elasticsearch</option>
+                <option value="Kibana" {% if host.app == "Kibana" %}selected{% endif %}>Kibana</option>
+                <option value="Logstash" {% if host.app == "Logstash" %}selected{% endif %}>Logstash</option>
+                <option value="Agent" {% if host.app == "Agent" %}selected{% endif %}>Agent</option>
+                <option value="ECE" {% if host.app == "ECE" %}selected{% endif %}>ECE</option>
+                <option value="ECK" {% if host.app == "ECK" %}selected{% endif %}>ECK</option>
+                <option value="ElasticCloudHosted" {% if host.app == "ElasticCloudHosted" %}selected{% endif %}>ElasticCloudHosted</option>
+                <option value="KubernetesPlatform" {% if host.app == "KubernetesPlatform" %}selected{% endif %}>KubernetesPlatform</option>
+            </select>
+        </form-input>
+    </td>
+    <td class="host-roles-column">
+        <form-input>
+            <select
+                multiple
+                size="3"
+                data-on:change="$hosts.rows.{{ row_id }}.draft.roles = [...evt.target.selectedOptions].map(option => option.value).join(',')"
+            >
+                {% for role in role_options %}
+                <option value="{{ role }}" {% if host.has_role(role) %}selected{% endif %}>{{ role }}</option>
+                {% endfor %}
+            </select>
+        </form-input>
+    </td>
+    <td class="host-viewer-column">
+        <form-input>
+            <select data-bind:hosts.rows.{{ row_id }}.draft.viewer>
+                <option value="">(none)</option>
+                {% for viewer_host in viewer_hosts %}
+                <option value="{{ viewer_host }}" {% if host.viewer.as_str() == viewer_host.as_str() %}selected{% endif %}>{{ viewer_host }}</option>
+                {% endfor %}
+            </select>
+        </form-input>
+    </td>
+    <td class="host-auth-column">
+        <form-input>
+            <select data-bind:hosts.rows.{{ row_id }}.draft.auth>
+                <option value="none" {% if host.auth == "none" %}selected{% endif %}>none</option>
+                <option value="apikey" {% if host.auth == "apikey" %}selected{% endif %}>apikey</option>
+                <option value="basic" {% if host.auth == "basic" %}selected{% endif %}>basic</option>
+            </select>
+        </form-input>
+    </td>
+    <td>
+        <form-input>
+            <select data-bind:hosts.rows.{{ row_id }}.draft.secret>
+                <option value="">(none)</option>
+                {% for secret_id in secret_ids %}
+                <option value="{{ secret_id }}" {% if host.secret.as_str() == secret_id.as_str() %}selected{% endif %}>{{ secret_id }}</option>
+                {% endfor %}
+            </select>
+        </form-input>
+    </td>
+    <td><choice-row><input type="checkbox" data-bind:hosts.rows.{{ row_id }}.draft.accept_invalid_certs {% if host.accept_invalid_certs %}checked{% endif %} /></choice-row></td>
+    <td><form-input><input type="url" data-bind:hosts.rows.{{ row_id }}.draft.url required /></form-input></td>
+    <td>
+        <button type="button" {% if keystore_locked %}disabled{% endif %} title="Save host" aria-label="Save host {{ host.name }}" data-on:click="@post('/hosts/host/update/{{ row_id }}', {filterSignals: {include: /^hosts\.rows\.{{ row_id }}(\.|$)/}})">
+            <icon-check></icon-check>
+        </button>
+        <button type="button" title="Cancel host edit" aria-label="Cancel host edit" data-on:click="@post('/hosts/host/{% if persisted %}cancel{% else %}delete{% endif %}/{{ row_id }}')">
+            <icon-undo></icon-undo>
+        </button>
+        {% if persisted %}
+        <button type="button" title="Delete host" aria-label="Delete host {{ host.name }}" data-on:click="@post('/hosts/host/delete/{{ row_id }}')">
+            <icon-trash></icon-trash>
+        </button>
+        {% endif %}
+    </td>
+    {% else %}
+    <td>{{ host.name }}</td>
+    <td class="host-product-column">{{ host.app }}</td>
+    <td class="host-roles-column">{{ host.roles }}</td>
+    <td class="host-viewer-column">{{ host.viewer }}</td>
+    <td class="host-auth-column">{{ host.auth }}</td>
+    <td>{{ host.secret }}</td>
+    <td>{% if host.accept_invalid_certs %}yes{% else %}no{% endif %}</td>
+    <td>{{ host.url }}</td>
+    <td>
+        <button type="button" {% if keystore_locked %}disabled{% endif %} title="Edit host" aria-label="Edit host {{ host.name }}" data-on:click="@post('/hosts/host/read/{{ row_id }}')">
+            <icon-pencil></icon-pencil>
+        </button>
+        <button type="button" title="Delete host" aria-label="Delete host {{ host.name }}" data-on:click="@post('/hosts/host/delete/{{ row_id }}')">
+            <icon-trash></icon-trash>
+        </button>
+    </td>
+    {% endif %}
+</tr>

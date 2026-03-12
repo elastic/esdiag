@@ -1,32 +1,27 @@
 ## MODIFIED Requirements
 
 ### Requirement: Settings Modal Access
-The web UI SHALL provide footer controls where the output target selector remains available for switching active targets, and host record management is launched through a dedicated `Edit Hosts` action rather than by clicking the target text.
+The web UI SHALL provide footer controls where the output target selector remains available for switching active targets, while host and secret management live in the dedicated `/hosts` interface.
 
-#### Scenario: Opening host manager from footer
+#### Scenario: Opening host manager from navigation
 - **GIVEN** the web UI is loaded
-- **WHEN** the user clicks the `Edit Hosts` button in the footer controls
-- **THEN** a host/keychain manager modal opens
+- **WHEN** the user selects `Manage Hosts`
+- **THEN** the application opens the dedicated host/keychain management interface
 
 ### Requirement: Output Target Selection
-The footer output selector SHALL only allow selecting an existing `KnownHost` and saving that selection as the active target; it SHALL NOT allow inline creation of a new host entry.
+The footer output selector SHALL allow selecting an existing saved `KnownHost`, and it SHALL also surface the live CLI-defined output target when it is not one of the saved hosts. It SHALL NOT allow inline creation of a new host entry.
 
 #### Scenario: Selecting an existing host as output target
 - **GIVEN** the footer output selector is visible
-- **WHEN** the user chooses an existing host name and clicks save
+- **WHEN** the user chooses an existing host name
 - **THEN** the backend updates `settings.yml` to set the active target to that host's name
+
+#### Scenario: CLI-defined output is preserved as selected target
+- **GIVEN** the application started with a CLI-defined output target that is not a saved host
+- **WHEN** the footer output selector is rendered
+- **THEN** the live output target appears as an option with an exporter-type label and remains selected by default
 
 #### Scenario: Inline host creation is unavailable in output selector
 - **GIVEN** the footer output selector is open
 - **WHEN** the user inspects available controls
 - **THEN** no add-new-host form fields are present in that selector flow
-
-## ADDED Requirements
-
-### Requirement: Footer Edit Hosts Action Placement
-The footer SHALL place an `Edit Hosts` action adjacent to the save control used for output target persistence so users can discover host/keychain management without leaving the current screen.
-
-#### Scenario: Edit action appears next to save
-- **GIVEN** the footer configuration controls are rendered
-- **WHEN** the user views the output target save area
-- **THEN** an `Edit Hosts` action is displayed next to the save control

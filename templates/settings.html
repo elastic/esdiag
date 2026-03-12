@@ -1,6 +1,6 @@
 <div id="settings-modal" class="modal" data-signals:settings.target="{{ active_target|json }}">
     <div class="modal-content">
-        <button type="button" class="close-button" aria-label="Close settings" data-on:click="document.getElementById('settings-modal').remove()">&times;</button>
+        <button type="button" class="close-button" aria-label="Close settings" data-on:click="document.getElementById('settings-modal').remove()"><icon-x></icon-x></button>
         <h2>Settings</h2>
         <p><small>Mode: <strong>{{ mode }}</strong></small></p>
         <form id="settings-form" data-on:submit="@post('/api/settings/update')">

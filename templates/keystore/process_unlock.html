@@ -1,0 +1,34 @@
+<div id="keystore-process-unlock-modal" class="modal">
+    <div class="modal-content">
+        <button
+            type="button"
+            class="close-button"
+            aria-label="Close keystore unlock"
+            data-on:click="document.getElementById('keystore-process-unlock-modal')?.remove()"
+        >
+            <icon-x></icon-x>
+        </button>
+        <h2>Unlock Keystore</h2>
+        <p>Unlock the keystore to continue with the selected secure output target.</p>
+        <form
+            id="keystore-process-unlock-form"
+            data-on:submit__prevent="@post('/keystore/unlock-and-run', {filterSignals: {include: /^(metadata(\.|$)|file_upload(\.|$)|service_link(\.|$)|es_api(\.|$)|keystore(\.|$)|tab$)/}})"
+        >
+            <input-group>
+                <label for="keystore-process-password" class="form-label">Keystore Password</label>
+                <input
+                    type="password"
+                    id="keystore-process-password"
+                    name="password"
+                    data-bind:keystore.password
+                    data-class:error="$keystore.invalid"
+                    data-on:input="$keystore.invalid = false"
+                    class="form-input"
+                    autocomplete="current-password"
+                    required
+                />
+            </input-group>
+            <input class="button" type="submit" value="Unlock and Continue" />
+        </form>
+    </div>
+</div>

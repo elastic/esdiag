@@ -226,6 +226,26 @@ impl Exporter {
         self.clone()
     }
 
+    pub fn target_value(&self) -> String {
+        match self {
+            Exporter::Archive(exporter) => exporter.to_string(),
+            Exporter::Directory(exporter) => exporter.to_string(),
+            Exporter::Elasticsearch(exporter) => exporter.to_string(),
+            Exporter::File(exporter) => exporter.to_string(),
+            Exporter::Stream(_) => "-".to_string(),
+        }
+    }
+
+    pub fn target_label(&self) -> String {
+        match self {
+            Exporter::Archive(exporter) => format!("archive: {}", exporter),
+            Exporter::Directory(exporter) => format!("dir: {}", format_directory_label(&exporter.to_string())),
+            Exporter::Elasticsearch(exporter) => format!("elasticsearch: {}", exporter),
+            Exporter::File(exporter) => format!("file: {}", exporter),
+            Exporter::Stream(_) => "stdout: -".to_string(),
+        }
+    }
+
     pub async fn save_report(&self, report: &DiagnosticReport) -> Result<()> {
         match self {
             Exporter::Archive(_) => Err(eyre!("save report not supported for archive exporter")),
@@ -277,6 +297,14 @@ impl std::fmt::Display for Exporter {
             Exporter::File(exporter) => write!(f, "File {}", exporter),
             Exporter::Stream(exporter) => write!(f, "Stream {}", exporter),
         }
+    }
+}
+
+fn format_directory_label(value: &str) -> String {
+    if value.ends_with('/') {
+        value.to_string()
+    } else {
+        format!("{value}/")
     }
 }
 

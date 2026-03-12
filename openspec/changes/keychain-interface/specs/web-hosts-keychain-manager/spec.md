@@ -1,10 +1,10 @@
 ## ADDED Requirements
 
-### Requirement: KnownHost Record Editing Modal
-The system SHALL provide a Datastar-powered modal that allows users to create, update, and delete `KnownHost` records stored in `hosts.yml`, including all persisted fields required by the `KnownHost` model.
+### Requirement: KnownHost Record Editing UI
+The system SHALL provide a Datastar-powered management UI that allows users to create, update, and delete `KnownHost` records stored in `hosts.yml`, including all persisted fields required by the `KnownHost` model.
 
 #### Scenario: Updating a host record
-- **WHEN** the user edits a host record in the manager modal and submits valid changes
+- **WHEN** the user edits a host record in the management UI and submits valid changes
 - **THEN** the backend persists the updated record to `hosts.yml` and returns refreshed host metadata to the UI
 
 ### Requirement: Keychain-Referenced Authentication Selection
@@ -15,14 +15,18 @@ The host manager SHALL allow selecting authentication from keychain entry names,
 - **THEN** the host record stores the keychain reference and does not embed secret values in `hosts.yml`
 
 ### Requirement: Backend-Only Secret Material Exposure
-The system MUST ensure frontend responses and Datastar state updates include keychain entry metadata only (for example, entry names) and MUST NOT include decrypted secret values.
+The system MUST ensure frontend responses and Datastar state updates include keychain entry metadata only (for example, entry names) and MUST NOT include decrypted secret values from persisted keychain storage. Transient plaintext values that the user is actively editing MAY exist in draft state only for submission back to the backend.
 
-#### Scenario: Loading keychain list in manager modal
-- **WHEN** the user opens the keychain section of the manager modal
+#### Scenario: Loading keychain list in management UI
+- **WHEN** the user opens the keychain section of the management UI
 - **THEN** the frontend receives a list of keychain entry names and metadata without any secret payload values
 
+#### Scenario: Editing a draft secret
+- **WHEN** the user enters a plaintext secret while editing an active draft
+- **THEN** that plaintext value may exist in transient draft state until the save action is submitted or canceled
+
 ### Requirement: Host Validation Before Persistence
-The backend SHALL validate host fields and keychain reference existence before persisting changes from the manager modal.
+The backend SHALL validate host fields and keychain reference existence before persisting changes from the management UI.
 
 #### Scenario: Save rejected for invalid keychain reference
 - **WHEN** the user submits a host referencing a non-existent keychain entry

@@ -18,8 +18,12 @@
             >{{ version }}</a
         >
     </footer-left>
-    <footer-center id="exporter" data-signals:settings.target="'{{ exporter }}'">
-        {% if can_configure_output && send_hosts.len() > 0 %}
+    <footer-center
+        id="exporter"
+        data-signals:settings.target="{{ selected_output|json }}"
+        data-signals:output.secure="{{ active_output_secure }}"
+    >
+        {% if can_configure_output && output_options.len() > 0 %}
         Output:
         <select
             class="form-input"
@@ -28,12 +32,12 @@
             data-bind:settings.target
             data-on:change="@post('/api/settings/update')"
         >
-            {% for host in send_hosts %}
-            <option value="{{ host }}" {% if host.as_str() == exporter.as_str() %}selected{% endif %}>{{ host }}</option>
+            {% for option in output_options %}
+            <option value="{{ option.value }}" {% if option.value.as_str() == selected_output.as_str() %}selected{% endif %}>{{ option.label }}</option>
             {% endfor %}
         </select>
         {% else %}
-        Output: {{ exporter }}
+        Output: {{ exporter_label }}
         {% endif %}
     </footer-center>
     <footer-right

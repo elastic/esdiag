@@ -1,6 +1,6 @@
 <div id="keystore-unlock-modal" class="modal">
     <div class="modal-content">
-        <button type="button" class="close-button" aria-label="Close keystore unlock" data-on:click="document.getElementById('keystore-unlock-modal')?.remove()">&times;</button>
+        <button type="button" class="close-button" aria-label="Close keystore unlock" data-on:click="document.getElementById('keystore-unlock-modal')?.remove()"><icon-x></icon-x></button>
         <h2>Unlock Keystore</h2>
         <form id="keystore-unlock-form" data-on:submit__prevent="@post('/keystore/unlock', {contentType: 'form'})">
             <input-group>

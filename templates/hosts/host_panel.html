@@ -1,0 +1,34 @@
+<panel
+    id="hosts-table-panel"
+    data-signals='{
+        hosts: {
+            rows: {}
+        }
+    }'
+>
+    <h3 style="margin-top: 0">Hosts</h3>
+    <div id="hosts-table-error"></div>
+    <table-records id="hosts-table">
+        <table>
+            <thead>
+                <tr>
+                    <th scope="col">Name</th>
+                    <th scope="col" class="host-product-column">Product</th>
+                    <th scope="col" class="host-roles-column">Roles</th>
+                    <th scope="col" class="host-viewer-column">Viewer</th>
+                    <th scope="col" class="host-auth-column">Auth</th>
+                    <th scope="col">Secret</th>
+                    <th scope="col">Ignore Certs</th>
+                    <th scope="col">URL</th>
+                    <th scope="col">Actions</th>
+                </tr>
+            </thead>
+            <tbody id="hosts-table-body">
+                {{ rows_html|safe }}
+            </tbody>
+        </table>
+    </table-records>
+    <footer>
+        <button type="button" {% if keystore_locked %}disabled{% endif %} data-on:click="@post('/hosts/host/create/new')">Add Host</button>
+    </footer>
+</panel>

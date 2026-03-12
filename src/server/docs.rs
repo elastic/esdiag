@@ -3,6 +3,7 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use crate::embeds::DocsAssets;
+use crate::server::template::FooterOutputOption;
 use askama::Template;
 use axum::{
     extract::Path,
@@ -25,12 +26,14 @@ pub struct DocsTemplate {
     pub debug: bool,
     pub desktop: bool,
     pub can_configure_output: bool,
-    pub send_hosts: Vec<String>,
+    pub output_options: Vec<FooterOutputOption>,
+    pub active_output_secure: bool,
     pub user: String,
     pub user_initial: char,
     pub version: String,
     pub kibana_url: String,
-    pub exporter: String,
+    pub selected_output: String,
+    pub exporter_label: String,
     pub stats: String,
     pub theme_dark: bool,
     pub runtime_mode: String,
@@ -164,6 +167,28 @@ pub async fn handler(
                 let (keystore_locked, keystore_lock_time) = state.keystore_status().await;
                 let can_use_keystore = cfg!(feature = "keystore")
                     && state.runtime_mode_policy.allows_local_artifacts();
+                let send_hosts =
+                    crate::data::KnownHost::list_by_role(crate::data::HostRole::Send)
+                        .unwrap_or_default();
+                let exporter = state.exporter.read().await.clone();
+                let preferred_target = if state.runtime_mode_policy.allows_local_artifacts() {
+                    crate::data::Settings::load()
+                        .ok()
+                        .and_then(|settings| settings.active_target)
+                } else {
+                    None
+                };
+                let (output_options, selected_output, exporter_label) =
+                    crate::server::template::build_footer_output_context(
+                        &send_hosts,
+                        &exporter,
+                        preferred_target.as_deref(),
+                    );
+                let active_output_secure = crate::server::template::active_output_requires_keystore(
+                    &send_hosts,
+                    &selected_output,
+                    &exporter,
+                );
 
                 let template = DocsTemplate {
                     nav_root_items,
@@ -174,9 +199,10 @@ pub async fn handler(
                     debug: log::max_level() >= log::LevelFilter::Debug,
                     desktop: cfg!(feature = "desktop"),
                     can_configure_output: state.runtime_mode_policy.allows_exporter_updates(),
-                    send_hosts: crate::data::KnownHost::list_by_role(crate::data::HostRole::Send)
-                        .unwrap_or_default(),
-                    exporter: state.exporter.read().await.to_string(),
+                    output_options,
+                    active_output_secure,
+                    selected_output,
+                    exporter_label,
                     kibana_url: state.kibana_url.read().await.clone(),
                     stats: state.get_stats_as_signals().await,
                     user: user_email,
