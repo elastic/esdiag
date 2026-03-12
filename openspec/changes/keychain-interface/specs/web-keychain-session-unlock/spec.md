@@ -8,10 +8,10 @@ The system SHALL require the user to provide the secrets password before any enc
 - **THEN** the system prompts for the secrets password and does not perform the keychain operation until unlock succeeds
 
 ### Requirement: Session-Scoped Unlock Retention
-The system SHALL support retaining keychain unlock state in server memory for the current user session when the user opts to remember unlock for the session duration.
+The system SHALL retain keychain unlock state in server memory for the current user session after a successful unlock until the session is relocked, expired, or terminated.
 
-#### Scenario: Session remember option enabled
-- **WHEN** the user submits a valid secrets password with session retention enabled
+#### Scenario: Successful unlock retains session state
+- **WHEN** the user submits a valid secrets password
 - **THEN** subsequent keychain-backed actions in that session execute without prompting again until the session is relocked, expired, or terminated
 
 ### Requirement: User Mode Session Lease
@@ -126,20 +126,13 @@ The system SHALL log successful keystore authentications and timeout-based closu
 - **WHEN** an unlocked keystore session is closed due to lease timeout
 - **THEN** an INFO log event is emitted for timeout closure
 
-### Requirement: Keystore Startup Initialization
-On startup, if keystore storage does not exist, the system SHALL create an empty keystore and emit an INFO log event.
+### Requirement: Missing Keystore Bootstrap Flow
+When keystore storage does not exist, the web UI SHALL prompt the user to create a keystore through the explicit bootstrap modal instead of auto-creating one at process startup.
 
-#### Scenario: Missing keystore is created
-- **WHEN** the process starts and no keystore file exists
-- **THEN** the system creates an empty keystore and logs an INFO event
+#### Scenario: Missing keystore opens bootstrap flow
+- **WHEN** the application starts in user mode and no keystore file exists
+- **THEN** the UI initializes the bootstrap modal flow for explicit keystore creation
 
-### Requirement: Unreadable Keystore Startup Failure Handling
-If a keystore file exists but is unreadable due to permissions or I/O errors, the system SHALL log ERROR and fail startup in CLI modes, and SHALL surface startup error state to the UI in serve mode.
-
-#### Scenario: Unreadable keystore in CLI mode
-- **WHEN** CLI mode starts and keystore file exists but cannot be read
-- **THEN** startup fails and an ERROR log event is emitted
-
-#### Scenario: Unreadable keystore in serve mode
-- **WHEN** serve mode starts and keystore file exists but cannot be read
-- **THEN** the UI receives startup error state and an ERROR log event is emitted
+#### Scenario: Unlock request falls back to bootstrap flow
+- **WHEN** the user requests keystore unlock while no keystore file exists
+- **THEN** the system responds with the bootstrap modal rather than auto-creating a keystore

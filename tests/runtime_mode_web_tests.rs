@@ -55,6 +55,74 @@ async fn service_mode_requires_iap_header_for_web_access() {
 }
 
 #[tokio::test]
+async fn service_mode_does_not_mount_keystore_routes() {
+    let (mut server, client, base) = start_server(RuntimeMode::Service).await;
+
+    let response = client
+        .post(format!("{base}/keystore/unlock"))
+        .header(
+            "X-Goog-Authenticated-User-Email",
+            "accounts.google.com:ops@example.com",
+        )
+        .form(&[("password", "pw")])
+        .send()
+        .await
+        .expect("service mode keystore request");
+    assert_eq!(response.status(), reqwest::StatusCode::NOT_FOUND);
+
+    let response = client
+        .get(format!("{base}/keystore/modal"))
+        .header(
+            "X-Goog-Authenticated-User-Email",
+            "accounts.google.com:ops@example.com",
+        )
+        .send()
+        .await
+        .expect("service mode keystore modal request");
+    assert_eq!(response.status(), reqwest::StatusCode::NOT_FOUND);
+
+    server.shutdown().await;
+}
+
+#[cfg(feature = "keystore")]
+#[tokio::test]
+async fn user_mode_mounts_keystore_routes_when_feature_enabled() {
+    let (mut server, client, base) = start_server(RuntimeMode::User).await;
+
+    let response = client
+        .get(format!("{base}/keystore/modal"))
+        .send()
+        .await
+        .expect("user mode keystore modal request");
+    assert_eq!(response.status(), reqwest::StatusCode::NO_CONTENT);
+
+    server.shutdown().await;
+}
+
+#[cfg(not(feature = "keystore"))]
+#[tokio::test]
+async fn user_mode_does_not_mount_keystore_routes_when_feature_disabled() {
+    let (mut server, client, base) = start_server(RuntimeMode::User).await;
+
+    let response = client
+        .post(format!("{base}/keystore/unlock"))
+        .form(&[("password", "pw")])
+        .send()
+        .await
+        .expect("user mode keystore unlock request");
+    assert_eq!(response.status(), reqwest::StatusCode::NOT_FOUND);
+
+    let response = client
+        .get(format!("{base}/keystore/modal"))
+        .send()
+        .await
+        .expect("user mode keystore modal request");
+    assert_eq!(response.status(), reqwest::StatusCode::NOT_FOUND);
+
+    server.shutdown().await;
+}
+
+#[tokio::test]
 async fn user_mode_allows_anonymous_web_access() {
     let (mut server, client, base) = start_server(RuntimeMode::User).await;
 

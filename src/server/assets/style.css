@@ -745,6 +745,7 @@ icon-pencil,
 icon-file-added,
 icon-undo,
 icon-trash {
+    display: flex;
     background-color: currentColor;
     -webkit-mask-repeat: no-repeat;
     -webkit-mask-position: center;
@@ -2650,7 +2651,7 @@ icon-lock,
 icon-key,
 icon-file,
 icon-upload {
-    display: inline-flex;
+    display: flex;
     flex: 0 0 auto;
 }
 
@@ -2759,7 +2760,8 @@ footer-right {
 }
 
 .theme-toggle-button:focus-visible {
-    outline: 2px solid color-mix(in srgb, var(--focus-ring-color) 60%, transparent);
+    outline: 2px solid
+        color-mix(in srgb, var(--focus-ring-color) 60%, transparent);
     outline-offset: 2px;
     border-radius: var(--border-radius-small);
 }
@@ -2861,26 +2863,32 @@ footer-right {
     margin-top: var(--size-s);
 }
 
-#hosts-table .host-product-column,
-#hosts-table .host-viewer-column {
+#hosts-table .host-product-column {
     min-width: 12rem;
 }
 
-#hosts-table .host-roles-column,
-#hosts-table .host-auth-column {
-    min-width: 9rem;
-}
-
 #hosts-table .host-product-column form-input,
-#hosts-table .host-roles-column form-input,
-#hosts-table .host-viewer-column form-input,
-#hosts-table .host-auth-column form-input {
+#hosts-table td form-input {
     display: block;
     min-width: inherit;
 }
 
-#hosts-table .host-roles-column select[multiple] {
-    min-height: 7.5rem;
+#clusters-table .cluster-secret-column {
+    min-width: 10rem;
+}
+
+#clusters-table .cluster-url-column {
+    min-width: 20rem;
+}
+
+#clusters-table .cluster-secret-column form-input,
+#clusters-table .cluster-url-column form-input {
+    display: block;
+    min-width: inherit;
+}
+
+.certificate-status-insecure {
+    color: var(--color-danger);
 }
 
 .secret-confirm-actions {

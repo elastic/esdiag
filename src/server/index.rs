@@ -85,7 +85,9 @@ pub async fn handler(
     let exporter = { state.exporter.read().await.clone() };
     let send_hosts = KnownHost::list_by_role(HostRole::Send).unwrap_or_default();
     let preferred_target = if state.runtime_mode_policy.allows_local_artifacts() {
-        crate::data::Settings::load().ok().and_then(|settings| settings.active_target)
+        crate::data::Settings::load()
+            .ok()
+            .and_then(|settings| settings.active_target)
     } else {
         None
     };

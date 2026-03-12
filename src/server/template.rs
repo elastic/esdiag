@@ -2,7 +2,10 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use crate::{data::{KnownHost, Uri}, exporter::Exporter};
+use crate::{
+    data::{KnownHost, Uri},
+    exporter::Exporter,
+};
 use askama::Template;
 use serde::Serialize;
 
@@ -88,13 +91,18 @@ pub struct SecretsTablePanelTemplate {
 }
 
 #[derive(Template)]
+#[template(path = "hosts/cluster_panel.html")]
+pub struct DiagnosticClustersTablePanelTemplate {
+    pub rows_html: String,
+    pub keystore_locked: bool,
+}
+
+#[derive(Template)]
 #[template(path = "hosts/host_row.html")]
 pub struct HostsTableRowTemplate {
     pub row_id: usize,
     pub host: HostsTableRow,
     pub secret_ids: Vec<String>,
-    pub viewer_hosts: Vec<String>,
-    pub role_options: Vec<String>,
     pub keystore_locked: bool,
     pub editing: bool,
     pub persisted: bool,
@@ -108,6 +116,17 @@ pub struct SecretsTableRowTemplate {
     pub editing: bool,
     pub persisted: bool,
     pub keystore_locked: bool,
+}
+
+#[derive(Template)]
+#[template(path = "hosts/cluster_row.html")]
+pub struct DiagnosticClusterTableRowTemplate {
+    pub row_id: usize,
+    pub cluster: DiagnosticClusterTableRow,
+    pub secret_ids: Vec<String>,
+    pub keystore_locked: bool,
+    pub editing: bool,
+    pub persisted: bool,
 }
 
 #[derive(Clone, Serialize)]
@@ -126,20 +145,21 @@ pub struct HostsTableRow {
     pub password: String,
 }
 
-impl HostsTableRow {
-    pub fn has_role(&self, role: &String) -> bool {
-        self.roles
-            .split(',')
-            .map(str::trim)
-            .any(|value| value.eq_ignore_ascii_case(role))
-    }
-}
-
 #[derive(Clone, Serialize)]
 pub struct SecretTableRow {
     pub secret_id: String,
     pub auth_type: String,
     pub username: String,
+}
+
+#[derive(Clone, Serialize)]
+pub struct DiagnosticClusterTableRow {
+    pub name: String,
+    pub auth: String,
+    pub secret: String,
+    pub accept_invalid_certs: bool,
+    pub elasticsearch_url: String,
+    pub kibana_url: String,
 }
 
 #[derive(Template)]
@@ -163,8 +183,10 @@ pub struct HostsPage {
     pub can_use_keystore: bool,
     pub keystore_locked: bool,
     pub keystore_lock_time: i64,
+    pub show_keystore_bootstrap: bool,
     pub hosts_panel_html: String,
     pub secrets_panel_html: String,
+    pub clusters_panel_html: String,
 }
 #[derive(Template)]
 #[template(path = "job/completed.html")]
@@ -219,7 +241,10 @@ pub fn build_footer_output_context(
         })
         .collect::<Vec<_>>();
 
-    if !output_options.iter().any(|option| option.value == selected_output) {
+    if !output_options
+        .iter()
+        .any(|option| option.value == selected_output)
+    {
         let label = if selected_output == exporter_value {
             exporter.target_label()
         } else {
@@ -301,11 +326,7 @@ mod tests {
         data::{HostRole, KnownHost, Product, Uri},
         exporter::Exporter,
     };
-    use std::{
-        collections::BTreeMap,
-        path::PathBuf,
-        sync::Mutex,
-    };
+    use std::{collections::BTreeMap, path::PathBuf, sync::Mutex};
     use tempfile::TempDir;
     use url::Url;
 
@@ -364,7 +385,10 @@ mod tests {
 
         assert_eq!(selected_output, "/tmp/output");
         assert_eq!(label, "dir: /tmp/output/");
-        assert_eq!(options.first().map(|option| option.label.as_str()), Some("dir: /tmp/output/"));
+        assert_eq!(
+            options.first().map(|option| option.label.as_str()),
+            Some("dir: /tmp/output/")
+        );
     }
 
     #[test]
