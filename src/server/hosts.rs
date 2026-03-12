@@ -1,7 +1,7 @@
 use super::{ServerState, get_theme_dark, template};
 use crate::data::{
-    ElasticCloud, HostRole, KnownHost, Product, SecretAuth, Settings, get_password_from_env,
-    keystore_exists, list_secret_names, remove_secret, resolve_secret_auth, upsert_secret_auth,
+    ElasticCloud, HostRole, KnownHost, Product, SecretAuth, Settings, keystore_exists,
+    list_secret_names, remove_secret, resolve_secret_auth, upsert_secret_auth,
 };
 use askama::Template;
 use axum::{
@@ -203,7 +203,10 @@ pub async fn page(State(state): State<Arc<ServerState>>, headers: HeaderMap) -> 
     let (secrets, secret_ids) = if keystore_locked {
         (Vec::new(), Vec::new())
     } else {
-        match read_secret_rows() {
+        match current_keystore_password(&state)
+            .await
+            .and_then(|password| read_secret_rows(&password))
+        {
             Ok((rows, ids)) => {
                 state.touch_keystore_session().await;
                 (rows, ids)
@@ -554,7 +557,11 @@ pub async fn secret_action(
                 .into_response();
         }
 
-        let secrets = read_secret_rows().map(|(rows, _)| rows).unwrap_or_default();
+        let secrets = current_keystore_password(&state)
+            .await
+            .and_then(|password| read_secret_rows(&password))
+            .map(|(rows, _)| rows)
+            .unwrap_or_default();
         let row_id = next_row_id(signal_state.map(|s| &s.secrets), secrets.len());
         let row = blank_secret_row();
 
@@ -574,7 +581,10 @@ pub async fn secret_action(
         Ok(value) => value,
         Err(_) => return (StatusCode::BAD_REQUEST, "id must be numeric or 'new'").into_response(),
     };
-    let (secrets, _) = match read_secret_rows() {
+    let (secrets, _) = match current_keystore_password(&state)
+        .await
+        .and_then(|password| read_secret_rows(&password))
+    {
         Ok(result) => result,
         Err(err) => return (StatusCode::BAD_REQUEST, err).into_response(),
     };
@@ -732,9 +742,9 @@ pub async fn delete_secret(
             .into_response();
     }
 
-    let password = match get_password_from_env() {
+    let password = match current_keystore_password(&state).await {
         Ok(password) => password,
-        Err(err) => return (StatusCode::BAD_REQUEST, to_message(err)).into_response(),
+        Err(err) => return (StatusCode::BAD_REQUEST, err).into_response(),
     };
 
     match remove_secret(form.secret_id.trim(), None, &password) {
@@ -889,13 +899,14 @@ fn host_has_plaintext_auth(host: &KnownHost) -> bool {
     }
 }
 
-fn read_secret_rows() -> Result<(Vec<template::SecretTableRow>, Vec<String>), String> {
-    let password = get_password_from_env().map_err(to_message)?;
-    let secret_ids = list_secret_names(&password).map_err(to_message)?;
+fn read_secret_rows(
+    keystore_password: &str,
+) -> Result<(Vec<template::SecretTableRow>, Vec<String>), String> {
+    let secret_ids = list_secret_names(keystore_password).map_err(to_message)?;
     let mut rows = Vec::new();
 
     for secret_id in &secret_ids {
-        let auth = resolve_secret_auth(secret_id, &password).map_err(to_message)?;
+        let auth = resolve_secret_auth(secret_id, keystore_password).map_err(to_message)?;
         let (auth_type, username) = match auth {
             Some(SecretAuth::ApiKey { .. }) => ("ApiKey", String::new()),
             Some(SecretAuth::Basic { username, .. }) => ("Basic", username),
@@ -1040,7 +1051,10 @@ async fn load_table_panel_data(
     let (secrets, secret_ids) = if keystore_locked {
         (Vec::new(), Vec::new())
     } else {
-        match read_secret_rows() {
+        match current_keystore_password(state)
+            .await
+            .and_then(|password| read_secret_rows(&password))
+        {
             Ok((rows, ids)) => {
                 state.touch_keystore_session().await;
                 (rows, ids)
@@ -1405,7 +1419,7 @@ async fn apply_upsert_secret(
     if secret_id.is_empty() {
         return Err("secret_id is required.".to_string());
     }
-    let password = get_password_from_env().map_err(to_message)?;
+    let password = current_keystore_password(state).await?;
 
     let auth = match form.auth_type.trim().to_ascii_lowercase().as_str() {
         "apikey" => {
@@ -1657,7 +1671,10 @@ async fn load_secret_ids(state: &Arc<ServerState>) -> Vec<String> {
     if !state.is_keystore_unlocked().await {
         return Vec::new();
     }
-    match read_secret_rows() {
+    match current_keystore_password(state)
+        .await
+        .and_then(|password| read_secret_rows(&password))
+    {
         Ok((_, ids)) => {
             state.touch_keystore_session().await;
             ids
@@ -1773,9 +1790,9 @@ async fn delete_secret_row(
             .into_response();
     }
 
-    let password = match get_password_from_env() {
+    let password = match current_keystore_password(state).await {
         Ok(password) => password,
-        Err(err) => return (StatusCode::BAD_REQUEST, to_message(err)).into_response(),
+        Err(err) => return (StatusCode::BAD_REQUEST, err).into_response(),
     };
 
     match remove_secret(secret.secret_id.trim(), None, &password) {
@@ -1859,7 +1876,7 @@ async fn infer_auth_from_secret_selection(
         if !state.is_keystore_unlocked().await {
             return Err("Unlock keystore before selecting a secret.".to_string());
         }
-        let password = get_password_from_env().map_err(to_message)?;
+        let password = current_keystore_password(state).await?;
         let resolved = resolve_secret_auth(secret_id, &password).map_err(to_message)?;
         state.touch_keystore_session().await;
         return match resolved {
@@ -1886,6 +1903,13 @@ fn to_opt(value: Option<String>) -> Option<String> {
 
 fn to_message(err: impl std::fmt::Display) -> String {
     err.to_string()
+}
+
+async fn current_keystore_password(state: &Arc<ServerState>) -> Result<String, String> {
+    state
+        .keystore_password()
+        .await
+        .ok_or_else(|| "Keystore password is not available for the current session.".to_string())
 }
 
 #[cfg(test)]
@@ -2163,7 +2187,7 @@ mod tests {
         )
         .expect("save basic secret");
 
-        let (rows, _) = read_secret_rows().expect("read secret rows");
+        let (rows, _) = read_secret_rows("pw").expect("read secret rows");
         let html = rows
             .iter()
             .enumerate()

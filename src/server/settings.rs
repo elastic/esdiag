@@ -1,5 +1,5 @@
 use super::{ServerState, append_body_event, html_event, prepend_selector_event};
-use crate::data::{KnownHost, KnownHostBuilder, Settings, Uri};
+use crate::data::{KnownHost, Settings, Uri, with_scoped_keystore_password};
 use crate::exporter::Exporter;
 use crate::server::template::SettingsModal;
 use askama::Template;
@@ -53,11 +53,6 @@ pub async fn get_modal(State(state): State<Arc<ServerState>>) -> impl IntoRespon
 #[derive(Deserialize, Default)]
 pub struct UpdateSettingsForm {
     target: String,
-    new_host_name: Option<String>,
-    new_host_url: Option<String>,
-    new_host_apikey: Option<String>,
-    new_host_username: Option<String>,
-    new_host_password: Option<String>,
     kibana_url: Option<String>,
 }
 
@@ -85,84 +80,9 @@ pub async fn update_settings(
 
     // 1. Process target selection
     if form.target == "new_host" {
-        // Build new host
-        if let (Some(name), Some(url)) = (&form.new_host_name, &form.new_host_url)
-            && !name.is_empty()
-            && !url.is_empty()
-        {
-            match url.parse() {
-                Ok(parsed_url) => {
-                    let mut builder = KnownHostBuilder::new(parsed_url);
-
-                    if let Some(apikey) = &form.new_host_apikey {
-                        if !apikey.is_empty() {
-                            builder = builder.apikey(Some(apikey.clone()));
-                        }
-                    } else if let (Some(user), Some(pass)) =
-                        (&form.new_host_username, &form.new_host_password)
-                        && !user.is_empty()
-                        && !pass.is_empty()
-                    {
-                        builder = builder
-                            .username(Some(user.clone()))
-                            .password(Some(pass.clone()));
-                    }
-
-                    match builder.build() {
-                        Ok(host) => {
-                            // Validate connection before saving
-                            let is_valid = match Uri::try_from(host.clone()) {
-                                Ok(uri) => match crate::client::Client::try_from(uri) {
-                                    Ok(client) => match client.test_connection().await {
-                                        Ok(_) => true,
-                                        Err(e) => {
-                                            let err_msg =
-                                                format!("Failed to connect to new host: {}", e);
-                                            log::error!("{}", err_msg);
-                                            return settings_error_response(&state, err_msg);
-                                        }
-                                    },
-                                    Err(e) => {
-                                        let err_msg = format!("Failed to construct client: {}", e);
-                                        log::error!("{}", err_msg);
-                                        return settings_error_response(&state, err_msg);
-                                    }
-                                },
-                                Err(e) => {
-                                    let err_msg = format!("Failed to parse host into URI: {}", e);
-                                    log::error!("{}", err_msg);
-                                    return settings_error_response(&state, err_msg);
-                                }
-                            };
-
-                            if is_valid {
-                                match host.save(name) {
-                                    Ok(_) => {
-                                        settings.active_target = Some(name.clone());
-                                    }
-                                    Err(e) => {
-                                        let err_msg =
-                                            format!("Failed to save host to hosts.yml: {}", e);
-                                        log::error!("{}", err_msg);
-                                        return settings_error_response(&state, err_msg);
-                                    }
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            let err_msg = format!("Failed to configure host: {}", e);
-                            log::error!("{}", err_msg);
-                            return settings_error_response(&state, err_msg);
-                        }
-                    }
-                }
-                Err(e) => {
-                    let err_msg = format!("Invalid URL provided for new host: {}", e);
-                    log::error!("{}", err_msg);
-                    return settings_error_response(&state, err_msg);
-                }
-            }
-        }
+        let err_msg = "Inline host creation from output settings is no longer supported. Use /settings instead.".to_string();
+        log::warn!("{}", err_msg);
+        return settings_error_response(&state, err_msg);
     } else {
         settings.active_target = KnownHost::get_known(&form.target).map(|_| form.target.clone());
     }
@@ -184,9 +104,18 @@ pub async fn update_settings(
     if state.runtime_mode_policy.allows_exporter_updates() {
         let target = form.target.clone();
         let current_exporter = state.exporter.read().await.clone();
+        let keystore_password = state.keystore_password().await;
 
         let next_exporter = if let Some(host) = KnownHost::get_known(&target) {
-            Exporter::try_from(host).map_err(|e| format!("Failed to construct exporter: {}", e))
+            if let Some(password) = keystore_password {
+                with_scoped_keystore_password(password, async move {
+                    Exporter::try_from(host)
+                        .map_err(|e| format!("Failed to construct exporter: {}", e))
+                })
+                .await
+            } else {
+                Exporter::try_from(host).map_err(|e| format!("Failed to construct exporter: {}", e))
+            }
         } else if target == current_exporter.target_value() {
             Ok(current_exporter)
         } else {
