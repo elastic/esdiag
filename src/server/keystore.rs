@@ -97,6 +97,25 @@ async fn missing_keystore_response(state: &Arc<ServerState>, headers: HeaderMap)
     axum::http::StatusCode::PRECONDITION_FAILED.into_response()
 }
 
+async fn blocked_unlock_response(state: &Arc<ServerState>, user: &str) -> Option<Response> {
+    let blocked_until = state.keystore_blocked_until_for(user).await?;
+    let now = chrono::Utc::now().timestamp();
+    if blocked_until <= now {
+        return None;
+    }
+
+    let retry_after = blocked_until - now;
+    state.publish_event(signal_event(format!(
+        r#"{{"message":"Keystore temporarily locked. Retry in {} seconds."}}"#,
+        retry_after
+    )));
+    let mut response = axum::http::StatusCode::TOO_MANY_REQUESTS.into_response();
+    if let Ok(value) = HeaderValue::from_str(&retry_after.to_string()) {
+        response.headers_mut().insert(RETRY_AFTER, value);
+    }
+    Some(response)
+}
+
 pub async fn get_bootstrap_modal(
     State(state): State<Arc<ServerState>>,
     _headers: HeaderMap,
@@ -185,20 +204,8 @@ pub async fn unlock(
         return missing_keystore_response(&state, headers).await;
     }
 
-    if let Some(blocked_until) = state.keystore_blocked_until_for(&user).await {
-        let now = chrono::Utc::now().timestamp();
-        if blocked_until > now {
-            let retry_after = blocked_until - now;
-            state.publish_event(signal_event(format!(
-                r#"{{"message":"Keystore temporarily locked. Retry in {} seconds."}}"#,
-                retry_after
-            )));
-            let mut response = axum::http::StatusCode::TOO_MANY_REQUESTS.into_response();
-            if let Ok(value) = HeaderValue::from_str(&retry_after.to_string()) {
-                response.headers_mut().insert(RETRY_AFTER, value);
-            }
-            return response;
-        }
+    if let Some(response) = blocked_unlock_response(&state, &user).await {
+        return response;
     }
 
     let password = form.password.trim().to_string();
@@ -248,6 +255,10 @@ pub async fn unlock_and_run(
     let user = resolve_request_user(&state, &headers);
     if !keystore_exists().unwrap_or(false) {
         return missing_keystore_response(&state, headers.clone()).await;
+    }
+
+    if let Some(response) = blocked_unlock_response(&state, &user).await {
+        return response;
     }
 
     let password = signals.keystore.password.trim().to_string();
@@ -951,5 +962,33 @@ mod tests {
             }
             other => panic!("expected bootstrap modal append event, got {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn unlock_and_run_respects_backoff_and_retry_after() {
+        let _guard = env_lock().lock().expect("env lock");
+        let (_tmp, _hosts_path, _keystore_path) = setup_env();
+        authenticate("pw").expect("create keystore");
+
+        let state = test_server_state();
+        for _ in 0..4 {
+            state.record_keystore_failed_attempt().await;
+        }
+
+        let mut signals = Signals {
+            tab: Tab::FileUpload,
+            ..Signals::default()
+        };
+        signals.keystore.password = "pw".to_string();
+
+        let response = unlock_and_run(State(state), HeaderMap::new(), ReadSignals(signals)).await;
+
+        assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+        assert!(
+            response
+                .headers()
+                .contains_key(axum::http::header::RETRY_AFTER),
+            "blocked unlock-and-run should include Retry-After"
+        );
     }
 }
