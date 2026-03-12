@@ -97,7 +97,7 @@ pub async fn handler(
         template::active_output_requires_keystore(&send_hosts, &selected_output, &exporter);
     let theme_dark = get_theme_dark(&headers);
     let kibana_url = { state.kibana_url.read().await.clone() };
-    let (keystore_locked, keystore_lock_time) = state.keystore_status().await;
+    let (keystore_locked, keystore_lock_time) = state.keystore_status_for(&user_email).await;
     let can_use_keystore =
         cfg!(feature = "keystore") && state.runtime_mode_policy.allows_local_artifacts();
     let show_keystore_bootstrap = can_use_keystore && !keystore_exists().unwrap_or(false);
