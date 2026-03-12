@@ -31,7 +31,7 @@
             name="target"
             aria-label="Output target"
             data-bind:settings.target
-            data-on:change="@post('/api/settings/update')"
+            data-on:change="@post('/api/settings/update', {filterSignals: {include: /^settings(\.|$)/}})"
         >
             {% for option in output_options %}
             <option value="{{ option.value }}" {% if option.value.as_str() == selected_output.as_str() %}selected{% endif %}>{{ option.label }}</option>

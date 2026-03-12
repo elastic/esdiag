@@ -24,6 +24,8 @@ use crate::{
     exporter::Exporter,
 };
 use askama::Template;
+#[cfg(feature = "keystore")]
+use axum::routing::put;
 use axum::{
     Router,
     extract::DefaultBodyLimit,
@@ -34,7 +36,7 @@ use axum::{
     middleware,
     response::sse::Event,
     response::{Response, Sse},
-    routing::{get, patch, post, put},
+    routing::{get, patch, post},
 };
 use bytes::Bytes;
 use clap::ValueEnum;
