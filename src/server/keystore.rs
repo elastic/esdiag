@@ -25,9 +25,19 @@ pub(crate) struct KeystoreForm {
     confirm: Option<String>,
 }
 
-pub async fn get_unlock_modal(State(state): State<Arc<ServerState>>) -> Response {
+fn resolve_request_user(state: &Arc<ServerState>, headers: &HeaderMap) -> String {
+    state
+        .resolve_user_email(headers)
+        .map(|(_, user)| user)
+        .unwrap_or_else(|_| "Anonymous".to_string())
+}
+
+pub async fn get_unlock_modal(
+    State(state): State<Arc<ServerState>>,
+    headers: HeaderMap,
+) -> Response {
     if !keystore_exists().unwrap_or(false) {
-        return get_bootstrap_modal(State(state)).await;
+        return get_bootstrap_modal(State(state), headers).await;
     }
     let modal = KeystoreUnlockModal {};
     match modal.render() {
@@ -37,9 +47,12 @@ pub async fn get_unlock_modal(State(state): State<Arc<ServerState>>) -> Response
     axum::http::StatusCode::NO_CONTENT.into_response()
 }
 
-pub async fn get_process_unlock_modal(State(state): State<Arc<ServerState>>) -> Response {
+pub async fn get_process_unlock_modal(
+    State(state): State<Arc<ServerState>>,
+    headers: HeaderMap,
+) -> Response {
     if !keystore_exists().unwrap_or(false) {
-        return get_bootstrap_modal(State(state)).await;
+        return get_bootstrap_modal(State(state), headers).await;
     }
 
     let modal = KeystoreProcessUnlockModal {};
@@ -75,16 +88,19 @@ fn missing_keystore_unlock_message() -> &'static str {
     }
 }
 
-async fn missing_keystore_response(state: &Arc<ServerState>) -> Response {
+async fn missing_keystore_response(state: &Arc<ServerState>, headers: HeaderMap) -> Response {
     state.publish_event(signal_event(format!(
         r#"{{"message":"{}"}}"#,
         missing_keystore_unlock_message()
     )));
-    let _ = get_bootstrap_modal(State(state.clone())).await;
+    let _ = get_bootstrap_modal(State(state.clone()), headers).await;
     axum::http::StatusCode::PRECONDITION_FAILED.into_response()
 }
 
-pub async fn get_bootstrap_modal(State(state): State<Arc<ServerState>>) -> Response {
+pub async fn get_bootstrap_modal(
+    State(state): State<Arc<ServerState>>,
+    _headers: HeaderMap,
+) -> Response {
     if keystore_exists().unwrap_or(false) {
         return axum::http::StatusCode::NO_CONTENT.into_response();
     }
@@ -101,6 +117,7 @@ pub async fn get_bootstrap_modal(State(state): State<Arc<ServerState>>) -> Respo
 
 pub async fn bootstrap(
     State(state): State<Arc<ServerState>>,
+    headers: HeaderMap,
     Form(form): Form<KeystoreForm>,
 ) -> Response {
     if keystore_exists().unwrap_or(false) {
@@ -144,7 +161,8 @@ pub async fn bootstrap(
         return axum::http::StatusCode::INTERNAL_SERVER_ERROR.into_response();
     }
 
-    state.set_keystore_unlocked(password).await;
+    let user = resolve_request_user(&state, &headers);
+    state.set_keystore_unlocked_for(&user, password).await;
     state.publish_event(signal_event(
         r#"{"keystore":{"password":"","invalid":false,"confirm":false}}"#,
     ));
@@ -159,13 +177,15 @@ pub async fn bootstrap(
 
 pub async fn unlock(
     State(state): State<Arc<ServerState>>,
+    headers: HeaderMap,
     Form(form): Form<KeystoreForm>,
 ) -> Response {
+    let user = resolve_request_user(&state, &headers);
     if !keystore_exists().unwrap_or(false) {
-        return missing_keystore_response(&state).await;
+        return missing_keystore_response(&state, headers).await;
     }
 
-    if let Some(blocked_until) = state.keystore_blocked_until().await {
+    if let Some(blocked_until) = state.keystore_blocked_until_for(&user).await {
         let now = chrono::Utc::now().timestamp();
         if blocked_until > now {
             let retry_after = blocked_until - now;
@@ -194,7 +214,7 @@ pub async fn unlock(
 
     match authenticate(&password) {
         Ok(_) => {
-            state.set_keystore_unlocked(password).await;
+            state.set_keystore_unlocked_for(&user, password).await;
             state.publish_event(signal_event(
                 r#"{"keystore":{"password":"","invalid":false}}"#,
             ));
@@ -207,7 +227,7 @@ pub async fn unlock(
             axum::http::StatusCode::NO_CONTENT.into_response()
         }
         Err(err) => {
-            state.record_keystore_failed_attempt().await;
+            state.record_keystore_failed_attempt_for(&user).await;
             state.publish_event(signal_event(
                 r#"{"message":"Invalid keystore password. Try again."}"#,
             ));
@@ -225,8 +245,9 @@ pub async fn unlock_and_run(
     headers: HeaderMap,
     ReadSignals(signals): ReadSignals<Signals>,
 ) -> Response {
+    let user = resolve_request_user(&state, &headers);
     if !keystore_exists().unwrap_or(false) {
-        return missing_keystore_response(&state).await;
+        return missing_keystore_response(&state, headers.clone()).await;
     }
 
     let password = signals.keystore.password.trim().to_string();
@@ -242,7 +263,7 @@ pub async fn unlock_and_run(
 
     match authenticate(&password) {
         Ok(_) => {
-            state.set_keystore_unlocked(password).await;
+            state.set_keystore_unlocked_for(&user, password).await;
             state.publish_event(signal_event(
                 r#"{"keystore":{"password":"","invalid":false}}"#,
             ));
@@ -265,7 +286,7 @@ pub async fn unlock_and_run(
             }
         }
         Err(err) => {
-            state.record_keystore_failed_attempt().await;
+            state.record_keystore_failed_attempt_for(&user).await;
             state.publish_event(signal_event(
                 r#"{"message":"Invalid keystore password. Try again."}"#,
             ));
@@ -278,15 +299,19 @@ pub async fn unlock_and_run(
     }
 }
 
-pub async fn lock(State(state): State<Arc<ServerState>>) -> impl IntoResponse {
-    state.set_keystore_locked("manual").await;
+pub async fn lock(State(state): State<Arc<ServerState>>, headers: HeaderMap) -> impl IntoResponse {
+    let user = resolve_request_user(&state, &headers);
+    state.set_keystore_locked_for(&user, "manual").await;
     state.publish_event(execute_script_event(
         "if (window.location.pathname === '/settings') { window.location.reload(); }",
     ));
     axum::http::StatusCode::NO_CONTENT
 }
 
-pub async fn ensure_unlocked_for_active_output(state: &Arc<ServerState>) -> Result<(), String> {
+pub async fn ensure_unlocked_for_active_output(
+    state: &Arc<ServerState>,
+    user: &str,
+) -> Result<(), String> {
     if !state.runtime_mode_policy.allows_local_artifacts() {
         return Err("Keystore unavailable in service mode.".to_string());
     }
@@ -303,11 +328,11 @@ pub async fn ensure_unlocked_for_active_output(state: &Arc<ServerState>) -> Resu
         return Ok(());
     }
 
-    if !state.is_keystore_unlocked().await {
+    if !state.is_keystore_unlocked_for(user).await {
         return Err("Keystore is locked. Unlock it before processing secure outputs.".to_string());
     }
 
-    state.touch_keystore_session().await;
+    state.touch_keystore_session_for(user).await;
     Ok(())
 }
 
@@ -367,6 +392,7 @@ mod tests {
 
         let response = unlock(
             State(state.clone()),
+            HeaderMap::new(),
             Form(KeystoreForm {
                 password: "pw".to_string(),
                 confirm: None,
@@ -389,6 +415,7 @@ mod tests {
 
         let response = unlock(
             State(state.clone()),
+            HeaderMap::new(),
             Form(KeystoreForm {
                 password: "pw".to_string(),
                 confirm: None,
@@ -411,6 +438,7 @@ mod tests {
         let state = test_server_state();
         let response = unlock(
             State(state.clone()),
+            HeaderMap::new(),
             Form(KeystoreForm {
                 password: "wrong".to_string(),
                 confirm: None,
@@ -434,6 +462,7 @@ mod tests {
         let state = test_server_state();
         let response = unlock(
             State(state),
+            HeaderMap::new(),
             Form(KeystoreForm {
                 password: "pw".to_string(),
                 confirm: None,
@@ -470,6 +499,7 @@ mod tests {
         let mut events = state.subscribe_events();
         let response = unlock(
             State(state),
+            HeaderMap::new(),
             Form(KeystoreForm {
                 password: "pw".to_string(),
                 confirm: None,
@@ -505,7 +535,7 @@ mod tests {
 
         let state = test_server_state();
         let mut events = state.subscribe_events();
-        let response = get_unlock_modal(State(state)).await;
+        let response = get_unlock_modal(State(state), HeaderMap::new()).await;
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
 
         let event = events.recv().await.expect("bootstrap modal event");
@@ -526,7 +556,7 @@ mod tests {
 
         let state = test_server_state();
         let mut events = state.subscribe_events();
-        let response = get_process_unlock_modal(State(state)).await;
+        let response = get_process_unlock_modal(State(state), HeaderMap::new()).await;
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
 
         let event = events.recv().await.expect("bootstrap modal event");
@@ -548,7 +578,7 @@ mod tests {
 
         let state = test_server_state();
         let mut events = state.subscribe_events();
-        let response = get_unlock_modal(State(state)).await;
+        let response = get_unlock_modal(State(state), HeaderMap::new()).await;
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
         assert!(
             hosts_path.is_file(),
@@ -590,7 +620,7 @@ mod tests {
 
         let state = test_server_state();
         let mut events = state.subscribe_events();
-        let response = get_unlock_modal(State(state)).await;
+        let response = get_unlock_modal(State(state), HeaderMap::new()).await;
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
 
         let event = events.recv().await.expect("bootstrap modal event");
@@ -628,6 +658,7 @@ mod tests {
         let state = test_server_state();
         let response = bootstrap(
             State(state),
+            HeaderMap::new(),
             Form(KeystoreForm {
                 password: "secretpw".to_string(),
                 confirm: Some("on".to_string()),
@@ -654,11 +685,15 @@ mod tests {
         let state = test_server_state();
         state.set_keystore_unlocked("pw".to_string()).await;
 
-        let response = lock(State(state.clone())).await.into_response();
+        let response = lock(State(state.clone()), HeaderMap::new())
+            .await
+            .into_response();
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
         assert!(state.keystore_status().await.0, "lock should relock state");
 
-        let response = lock(State(state.clone())).await.into_response();
+        let response = lock(State(state.clone()), HeaderMap::new())
+            .await
+            .into_response();
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
         assert!(state.keystore_status().await.0, "repeat lock stays locked");
     }
@@ -672,6 +707,7 @@ mod tests {
         let state = test_server_state();
         unlock(
             State(state.clone()),
+            HeaderMap::new(),
             Form(KeystoreForm {
                 password: "pw".to_string(),
                 confirm: None,
@@ -734,7 +770,9 @@ mod tests {
         *state.exporter.write().await =
             crate::exporter::Exporter::try_from(noauth_host).expect("noauth exporter");
         assert!(
-            ensure_unlocked_for_active_output(&state).await.is_ok(),
+            ensure_unlocked_for_active_output(&state, "Anonymous")
+                .await
+                .is_ok(),
             "NoAuth output should bypass keystore preflight"
         );
 
@@ -748,14 +786,16 @@ mod tests {
         })
         .expect("secure exporter");
         assert!(
-            ensure_unlocked_for_active_output(&state).await.is_err(),
+            ensure_unlocked_for_active_output(&state, "Anonymous")
+                .await
+                .is_err(),
             "secure output should require unlock"
         );
 
         state.set_keystore_unlocked("pw".to_string()).await;
         let first_lock_time = state.keystore_status().await.1;
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-        ensure_unlocked_for_active_output(&state)
+        ensure_unlocked_for_active_output(&state, "Anonymous")
             .await
             .expect("secure output should pass once unlocked");
         let refreshed_lock_time = state.keystore_status().await.1;
@@ -856,6 +896,7 @@ mod tests {
         let mut events = state.subscribe_events();
         let response = unlock(
             State(state),
+            HeaderMap::new(),
             Form(KeystoreForm {
                 password: "   ".to_string(),
                 confirm: None,

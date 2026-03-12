@@ -198,7 +198,9 @@ async fn run_upload_job(
 ) {
     #[cfg(feature = "keystore")]
     {
-        if let Err(err) = super::keystore::ensure_unlocked_for_active_output(&state).await {
+        if let Err(err) =
+            super::keystore::ensure_unlocked_for_active_output(&state, &request_user).await
+        {
             send_event(
                 &tx,
                 template_event(template::JobFailed {

@@ -97,7 +97,9 @@ async fn run_api_key_form(
 ) {
     #[cfg(feature = "keystore")]
     {
-        if let Err(err) = super::keystore::ensure_unlocked_for_active_output(&state).await {
+        if let Err(err) =
+            super::keystore::ensure_unlocked_for_active_output(&state, &request_user).await
+        {
             send_event(
                 &tx,
                 job_feed_event(template::JobFailed {
@@ -281,7 +283,9 @@ async fn run_api_key_id(
 ) {
     #[cfg(feature = "keystore")]
     {
-        if let Err(err) = super::keystore::ensure_unlocked_for_active_output(&state).await {
+        if let Err(err) =
+            super::keystore::ensure_unlocked_for_active_output(&state, &request_user).await
+        {
             send_event(
                 &tx,
                 template_event(template::JobFailed {

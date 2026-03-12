@@ -5,7 +5,7 @@ use crate::server::template::SettingsModal;
 use askama::Template;
 use axum::{
     extract::State,
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
 };
 use serde::Deserialize;
@@ -58,6 +58,7 @@ pub struct UpdateSettingsForm {
 
 pub async fn update_settings(
     State(state): State<Arc<ServerState>>,
+    headers: HeaderMap,
     datastar::axum::ReadSignals(signals): datastar::axum::ReadSignals<super::Signals>,
 ) -> Response {
     if !state.runtime_mode_policy.allows_local_artifacts() {
@@ -104,7 +105,11 @@ pub async fn update_settings(
     if state.runtime_mode_policy.allows_exporter_updates() {
         let target = form.target.clone();
         let current_exporter = state.exporter.read().await.clone();
-        let keystore_password = state.keystore_password().await;
+        let request_user = state
+            .resolve_user_email(&headers)
+            .map(|(_, user)| user)
+            .unwrap_or_else(|_| "Anonymous".to_string());
+        let keystore_password = state.keystore_password_for(&request_user).await;
 
         let next_exporter = if let Some(host) = KnownHost::get_known(&target) {
             if let Some(password) = keystore_password {
