@@ -1,11 +1,11 @@
 ## MODIFIED Requirements
 
 ### Requirement: Settings Modal Access
-The web UI SHALL provide footer controls where the output target selector remains available for switching active targets, while host and secret management live in the dedicated `/hosts` interface.
+The web UI SHALL provide footer controls where the output target selector remains available for switching active targets, while host and secret management live in the dedicated `/settings` interface.
 
 #### Scenario: Opening host manager from navigation
 - **GIVEN** the web UI is loaded
-- **WHEN** the user selects `Manage Hosts`
+- **WHEN** the user selects `Settings`
 - **THEN** the application opens the dedicated host/keychain management interface
 
 ### Requirement: Output Target Selection

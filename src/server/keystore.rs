@@ -45,13 +45,29 @@ pub async fn get_process_unlock_modal(State(state): State<Arc<ServerState>>) -> 
     axum::http::StatusCode::NO_CONTENT.into_response()
 }
 
-fn hosts_file_exists() -> bool {
-    let hosts_path = KnownHost::get_hosts_path();
-    hosts_path.is_file()
+fn migration_needed() -> bool {
+    if keystore_exists().unwrap_or(false) {
+        return false;
+    }
+
+    match KnownHost::parse_hosts_yml() {
+        Ok(hosts) => hosts.values().any(KnownHost::has_legacy_secret),
+        Err(err) => {
+            log::warn!(
+                "Unable to inspect hosts.yml for plaintext secret migration: {}",
+                err
+            );
+            false
+        }
+    }
 }
 
-fn migration_needed() -> bool {
-    hosts_file_exists() && !keystore_exists().unwrap_or(false)
+fn missing_keystore_unlock_message() -> &'static str {
+    if migration_needed() {
+        "Migrate hosts to a new keystore before unlocking."
+    } else {
+        "Create a keystore before unlocking."
+    }
 }
 
 fn keystore_session_header() -> HeaderMap {
@@ -105,6 +121,8 @@ pub async fn bootstrap(
         return axum::http::StatusCode::BAD_REQUEST.into_response();
     }
 
+    let should_migrate = migration_needed();
+
     if let Err(err) = authenticate(&password) {
         state.publish_event(signal_event(format!(
             r#"{{"message":"Failed to initialize keystore: {}"}}"#,
@@ -114,15 +132,13 @@ pub async fn bootstrap(
         return axum::http::StatusCode::INTERNAL_SERVER_ERROR.into_response();
     }
 
-    if migration_needed() {
-        if let Err(err) = KnownHost::migrate_hosts_to_keystore(&password) {
-            state.publish_event(signal_event(format!(
-                r#"{{"message":"Failed to migrate hosts to keystore: {}"}}"#,
-                err
-            )));
-            log::error!("Keystore migration failed: {}", err);
-            return axum::http::StatusCode::INTERNAL_SERVER_ERROR.into_response();
-        }
+    if should_migrate && let Err(err) = KnownHost::migrate_hosts_to_keystore(&password) {
+        state.publish_event(signal_event(format!(
+            r#"{{"message":"Failed to migrate hosts to keystore: {}"}}"#,
+            err
+        )));
+        log::error!("Keystore migration failed: {}", err);
+        return axum::http::StatusCode::INTERNAL_SERVER_ERROR.into_response();
     }
 
     state.set_keystore_unlocked(password).await;
@@ -130,7 +146,7 @@ pub async fn bootstrap(
         r#"{"keystore":{"password":"","invalid":false,"confirm":false}}"#,
     ));
     state.publish_event(execute_script_event(
-        "if (window.location.pathname === '/hosts') { window.location.reload(); }",
+        "if (window.location.pathname === '/settings') { window.location.reload(); }",
     ));
     state.publish_event(html_event(
         r#"<div id="keystore-bootstrap-modal" data-init="document.getElementById('keystore-bootstrap-modal')?.remove();"></div>"#,
@@ -147,9 +163,10 @@ pub async fn unlock(
     Form(form): Form<KeystoreForm>,
 ) -> Response {
     if !keystore_exists().unwrap_or(false) {
-        state.publish_event(signal_event(
-            r#"{"message":"Create a keystore before unlocking."}"#,
-        ));
+        state.publish_event(signal_event(format!(
+            r#"{{"message":"{}"}}"#,
+            missing_keystore_unlock_message()
+        )));
         let _ = get_bootstrap_modal(State(state.clone())).await;
         return axum::http::StatusCode::PRECONDITION_FAILED.into_response();
     }
@@ -181,7 +198,7 @@ pub async fn unlock(
                 r#"{"keystore":{"password":"","invalid":false}}"#,
             ));
             state.publish_event(execute_script_event(
-                "if (window.location.pathname === '/hosts') { window.location.reload(); }",
+                "if (window.location.pathname === '/settings') { window.location.reload(); }",
             ));
             state.publish_event(html_event(
                 r#"<div id="keystore-unlock-modal" data-init="document.getElementById('keystore-unlock-modal')?.remove();"></div>"#,
@@ -236,16 +253,12 @@ pub async fn unlock_and_run(
                         .await
                         .into_response()
                 }
-                Tab::ServiceLink => {
-                    service_link::form(State(state), headers, ReadSignals(signals))
-                        .await
-                        .into_response()
-                }
-                Tab::ApiKey => {
-                    api_key::form(State(state), headers, ReadSignals(signals))
-                        .await
-                        .into_response()
-                }
+                Tab::ServiceLink => service_link::form(State(state), headers, ReadSignals(signals))
+                    .await
+                    .into_response(),
+                Tab::ApiKey => api_key::form(State(state), headers, ReadSignals(signals))
+                    .await
+                    .into_response(),
             }
         }
         Err(err) => {
@@ -265,7 +278,7 @@ pub async fn unlock_and_run(
 pub async fn lock(State(state): State<Arc<ServerState>>) -> impl IntoResponse {
     state.set_keystore_locked("manual").await;
     state.publish_event(execute_script_event(
-        "if (window.location.pathname === '/hosts') { window.location.reload(); }",
+        "if (window.location.pathname === '/settings') { window.location.reload(); }",
     ));
     axum::http::StatusCode::NO_CONTENT
 }
@@ -297,42 +310,53 @@ pub async fn ensure_unlocked_for_active_output(state: &Arc<ServerState>) -> Resu
 }
 
 #[cfg(test)]
+#[allow(clippy::await_holding_lock)]
 mod tests {
-    use super::{KeystoreForm, lock, unlock};
-    use crate::data::authenticate;
-    use crate::server::{ServerEvent, test_server_state};
+    use super::{
+        KeystoreForm, bootstrap, ensure_unlocked_for_active_output, get_unlock_modal, lock, unlock,
+        unlock_and_run,
+    };
+    use crate::{
+        data::{KnownHost, Settings, authenticate},
+        server::{ServerEvent, Signals, Tab, test_server_state},
+    };
     use axum::{
         extract::{Form, State},
-        http::{HeaderValue, StatusCode, header::SET_COOKIE},
+        http::{HeaderMap, HeaderValue, StatusCode, header::SET_COOKIE},
         response::IntoResponse,
     };
-    use std::{
-        path::PathBuf,
-        sync::Mutex,
-    };
+    use datastar::axum::ReadSignals;
+    use std::{collections::BTreeMap, path::PathBuf, sync::Mutex};
     use tempfile::TempDir;
+    use url::Url;
 
     fn env_lock() -> &'static Mutex<()> {
         crate::test_env_lock()
     }
 
-    fn setup_env() -> (TempDir, PathBuf) {
+    fn setup_env() -> (TempDir, PathBuf, PathBuf) {
         let tmp = TempDir::new().expect("temp dir");
         let config_dir = tmp.path().join(".esdiag");
         std::fs::create_dir_all(&config_dir).expect("create config dir");
+        let hosts_path = config_dir.join("hosts.yml");
         let keystore_path = config_dir.join("secrets.yml");
         unsafe {
             std::env::set_var("HOME", tmp.path());
             std::env::set_var("USERPROFILE", tmp.path());
+            std::env::set_var("ESDIAG_HOSTS", &hosts_path);
             std::env::set_var("ESDIAG_KEYSTORE", &keystore_path);
         }
-        (tmp, keystore_path)
+        (tmp, hosts_path, keystore_path)
+    }
+
+    fn write_hosts(hosts: BTreeMap<String, KnownHost>) {
+        KnownHost::write_hosts_yml(&hosts).expect("write hosts");
     }
 
     #[tokio::test]
     async fn unlock_is_idempotent_and_emits_cookie_and_signal_updates() {
         let _guard = env_lock().lock().expect("env lock");
-        let (_tmp, keystore_path) = setup_env();
+        let (_tmp, _hosts_path, keystore_path) = setup_env();
         authenticate("pw").expect("create keystore");
         assert!(keystore_path.is_file(), "keystore should exist");
 
@@ -385,7 +409,7 @@ mod tests {
     #[tokio::test]
     async fn unlock_rejects_invalid_password_with_401_and_stays_locked() {
         let _guard = env_lock().lock().expect("env lock");
-        let (_tmp, _keystore_path) = setup_env();
+        let (_tmp, _hosts_path, _keystore_path) = setup_env();
         authenticate("pw").expect("create keystore");
 
         let state = test_server_state();
@@ -399,13 +423,16 @@ mod tests {
         .await;
 
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
-        assert!(state.keystore_status().await.0, "state should remain locked");
+        assert!(
+            state.keystore_status().await.0,
+            "state should remain locked"
+        );
     }
 
     #[tokio::test]
     async fn unlock_requires_existing_keystore() {
         let _guard = env_lock().lock().expect("env lock");
-        let (_tmp, keystore_path) = setup_env();
+        let (_tmp, _hosts_path, keystore_path) = setup_env();
         assert!(!keystore_path.exists(), "keystore should start missing");
 
         let state = test_server_state();
@@ -422,9 +449,191 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn unlock_missing_keystore_with_plaintext_hosts_prompts_migration() {
+        let _guard = env_lock().lock().expect("env lock");
+        let (_tmp, _hosts_path, keystore_path) = setup_env();
+        assert!(!keystore_path.exists(), "keystore should start missing");
+
+        let mut hosts = BTreeMap::new();
+        hosts.insert(
+            "legacy".to_string(),
+            KnownHost::ApiKey {
+                accept_invalid_certs: false,
+                apikey: Some("plaintext-api-key".to_string()),
+                app: crate::data::Product::Elasticsearch,
+                cloud_id: None,
+                roles: vec![crate::data::HostRole::Send],
+                secret: None,
+                viewer: None,
+                url: Url::parse("http://localhost:9200").expect("url"),
+            },
+        );
+        write_hosts(hosts);
+
+        let state = test_server_state();
+        let mut events = state.subscribe_events();
+        let response = unlock(
+            State(state),
+            Form(KeystoreForm {
+                password: "pw".to_string(),
+                confirm: None,
+            }),
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::PRECONDITION_FAILED);
+
+        let first = events.recv().await.expect("migration message event");
+        match first {
+            ServerEvent::Signals(payload) => {
+                assert!(payload.contains("Migrate hosts to a new keystore before unlocking."));
+            }
+            other => panic!("expected migration message signal, got {other:?}"),
+        }
+
+        let second = events.recv().await.expect("bootstrap modal event");
+        match second {
+            ServerEvent::AppendBody(html) => {
+                assert!(html.contains("keystore-bootstrap-modal"));
+                assert!(html.contains("Migrate to Keystore"));
+            }
+            other => panic!("expected bootstrap modal append event, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn missing_keystore_unlock_modal_falls_back_to_bootstrap_modal() {
+        let _guard = env_lock().lock().expect("env lock");
+        let (_tmp, _hosts_path, keystore_path) = setup_env();
+        assert!(!keystore_path.exists(), "keystore should start missing");
+
+        let state = test_server_state();
+        let mut events = state.subscribe_events();
+        let response = get_unlock_modal(State(state)).await;
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+
+        let event = events.recv().await.expect("bootstrap modal event");
+        match event {
+            ServerEvent::AppendBody(html) => {
+                assert!(html.contains("keystore-bootstrap-modal"));
+                assert!(html.contains("Create Keystore"));
+            }
+            other => panic!("expected bootstrap modal append event, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn bootstrap_modal_uses_create_prompt_when_hosts_have_no_plaintext_secrets() {
+        let _guard = env_lock().lock().expect("env lock");
+        let (_tmp, hosts_path, keystore_path) = setup_env();
+        assert!(!keystore_path.exists(), "keystore should start missing");
+        assert!(!hosts_path.exists(), "hosts file should start missing");
+
+        let state = test_server_state();
+        let mut events = state.subscribe_events();
+        let response = get_unlock_modal(State(state)).await;
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+        assert!(
+            hosts_path.is_file(),
+            "hosts file should be created when inspected"
+        );
+
+        let event = events.recv().await.expect("bootstrap modal event");
+        match event {
+            ServerEvent::AppendBody(html) => {
+                assert!(html.contains("keystore-bootstrap-modal"));
+                assert!(html.contains("Create Keystore"));
+                assert!(!html.contains("Migrate to Keystore"));
+            }
+            other => panic!("expected bootstrap modal append event, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn bootstrap_modal_uses_migrate_prompt_only_when_plaintext_secrets_exist() {
+        let _guard = env_lock().lock().expect("env lock");
+        let (_tmp, _hosts_path, keystore_path) = setup_env();
+        assert!(!keystore_path.exists(), "keystore should start missing");
+
+        let mut hosts = BTreeMap::new();
+        hosts.insert(
+            "legacy".to_string(),
+            KnownHost::ApiKey {
+                accept_invalid_certs: false,
+                apikey: Some("plaintext-api-key".to_string()),
+                app: crate::data::Product::Elasticsearch,
+                cloud_id: None,
+                roles: vec![crate::data::HostRole::Send],
+                secret: None,
+                viewer: None,
+                url: Url::parse("http://localhost:9200").expect("url"),
+            },
+        );
+        write_hosts(hosts);
+
+        let state = test_server_state();
+        let mut events = state.subscribe_events();
+        let response = get_unlock_modal(State(state)).await;
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+
+        let event = events.recv().await.expect("bootstrap modal event");
+        match event {
+            ServerEvent::AppendBody(html) => {
+                assert!(html.contains("keystore-bootstrap-modal"));
+                assert!(html.contains("Migrate to Keystore"));
+            }
+            other => panic!("expected bootstrap modal append event, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn bootstrap_migrates_plaintext_hosts_into_new_keystore() {
+        let _guard = env_lock().lock().expect("env lock");
+        let (_tmp, _hosts_path, keystore_path) = setup_env();
+        assert!(!keystore_path.exists(), "keystore should start missing");
+
+        let mut hosts = BTreeMap::new();
+        hosts.insert(
+            "legacy-es".to_string(),
+            KnownHost::ApiKey {
+                accept_invalid_certs: false,
+                apikey: Some("plaintext-api-key".to_string()),
+                app: crate::data::Product::Elasticsearch,
+                cloud_id: None,
+                roles: vec![crate::data::HostRole::Send],
+                secret: None,
+                viewer: None,
+                url: Url::parse("http://localhost:9200").expect("url"),
+            },
+        );
+        write_hosts(hosts);
+
+        let state = test_server_state();
+        let response = bootstrap(
+            State(state),
+            Form(KeystoreForm {
+                password: "secretpw".to_string(),
+                confirm: Some("on".to_string()),
+            }),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+        assert!(keystore_path.is_file(), "keystore should be created");
+
+        let migrated_hosts = KnownHost::parse_hosts_yml().expect("reload migrated hosts");
+        match migrated_hosts.get("legacy-es").expect("migrated host") {
+            KnownHost::ApiKey { apikey, secret, .. } => {
+                assert!(apikey.is_none(), "plaintext apikey should be scrubbed");
+                assert_eq!(secret.as_deref(), Some("legacy-es"));
+            }
+            _ => panic!("expected migrated api key host"),
+        }
+    }
+
+    #[tokio::test]
     async fn lock_is_idempotent_and_preserves_locked_state() {
         let _guard = env_lock().lock().expect("env lock");
-        let (_tmp, _keystore_path) = setup_env();
+        let (_tmp, _hosts_path, _keystore_path) = setup_env();
         let state = test_server_state();
         state.set_keystore_unlocked("pw".to_string()).await;
 
@@ -435,5 +644,182 @@ mod tests {
         let response = lock(State(state.clone())).await.into_response();
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
         assert!(state.keystore_status().await.0, "repeat lock stays locked");
+    }
+
+    #[tokio::test]
+    async fn unlock_initializes_and_refreshes_session_lease() {
+        let _guard = env_lock().lock().expect("env lock");
+        let (_tmp, _hosts_path, _keystore_path) = setup_env();
+        authenticate("pw").expect("create keystore");
+
+        let state = test_server_state();
+        unlock(
+            State(state.clone()),
+            Form(KeystoreForm {
+                password: "pw".to_string(),
+                confirm: None,
+            }),
+        )
+        .await;
+
+        let first_expiry = state
+            .keystore_expires_at_epoch()
+            .await
+            .expect("expiry initialized");
+        let first_lock_time = state.keystore_status().await.1;
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+
+        state.touch_keystore_session().await;
+
+        let refreshed_expiry = state
+            .keystore_expires_at_epoch()
+            .await
+            .expect("expiry refreshed");
+        let refreshed_lock_time = state.keystore_status().await.1;
+        assert!(refreshed_expiry >= first_expiry);
+        assert!(refreshed_lock_time >= first_lock_time);
+    }
+
+    #[tokio::test]
+    async fn secure_output_requests_refresh_session_and_noauth_bypasses_unlock() {
+        let _guard = env_lock().lock().expect("env lock");
+        let (_tmp, _hosts_path, _keystore_path) = setup_env();
+
+        let mut hosts = BTreeMap::new();
+        hosts.insert(
+            "noauth".to_string(),
+            KnownHost::NoAuth {
+                app: crate::data::Product::Elasticsearch,
+                roles: vec![crate::data::HostRole::Send],
+                viewer: None,
+                url: Url::parse("http://localhost:9200").expect("url"),
+            },
+        );
+        hosts.insert(
+            "secure".to_string(),
+            KnownHost::Basic {
+                accept_invalid_certs: false,
+                app: crate::data::Product::Elasticsearch,
+                password: None,
+                roles: vec![crate::data::HostRole::Send],
+                secret: Some("secure".to_string()),
+                viewer: None,
+                url: Url::parse("https://secure.example.com:9200").expect("url"),
+                username: None,
+            },
+        );
+        write_hosts(hosts);
+
+        let mut settings = Settings {
+            active_target: Some("noauth".to_string()),
+            ..Settings::default()
+        };
+        settings.save().expect("save settings");
+
+        let state = test_server_state();
+        assert!(
+            ensure_unlocked_for_active_output(&state).await.is_ok(),
+            "NoAuth output should bypass keystore preflight"
+        );
+
+        settings.active_target = Some("secure".to_string());
+        settings.save().expect("save secure settings");
+        assert!(
+            ensure_unlocked_for_active_output(&state).await.is_err(),
+            "secure output should require unlock"
+        );
+
+        state.set_keystore_unlocked("pw".to_string()).await;
+        let first_lock_time = state.keystore_status().await.1;
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        ensure_unlocked_for_active_output(&state)
+            .await
+            .expect("secure output should pass once unlocked");
+        let refreshed_lock_time = state.keystore_status().await.1;
+        assert!(refreshed_lock_time > first_lock_time);
+    }
+
+    #[tokio::test]
+    async fn failed_unlock_backoff_starts_on_fourth_failure_and_caps_at_sixty_minutes() {
+        let state = test_server_state();
+
+        for _ in 0..3 {
+            assert_eq!(state.record_keystore_failed_attempt().await, None);
+        }
+
+        let fourth = state
+            .record_keystore_failed_attempt()
+            .await
+            .expect("fourth failure should set backoff");
+        let now = chrono::Utc::now().timestamp();
+        assert!((fourth - now) >= 299 && (fourth - now) <= 300);
+
+        for _ in 0..11 {
+            state.record_keystore_failed_attempt().await;
+        }
+        let capped = state
+            .record_keystore_failed_attempt()
+            .await
+            .expect("backoff should remain capped");
+        let now = chrono::Utc::now().timestamp();
+        assert!((capped - now) >= 3599 && (capped - now) <= 3600);
+        assert!(state.keystore_failed_attempts().await >= 12);
+    }
+
+    #[tokio::test]
+    async fn unlock_and_run_success_unlocks_and_resumes_processing() {
+        let _guard = env_lock().lock().expect("env lock");
+        let (_tmp, _hosts_path, _keystore_path) = setup_env();
+        authenticate("pw").expect("create keystore");
+
+        let state = test_server_state();
+        let mut signals = Signals {
+            tab: Tab::FileUpload,
+            ..Signals::default()
+        };
+        signals.keystore.password = "pw".to_string();
+
+        let response =
+            unlock_and_run(State(state.clone()), HeaderMap::new(), ReadSignals(signals)).await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert!(
+            !state.keystore_status().await.0,
+            "successful preflight should unlock the keystore"
+        );
+    }
+
+    #[tokio::test]
+    async fn unlock_and_run_failure_keeps_processing_blocked_and_marks_invalid() {
+        let _guard = env_lock().lock().expect("env lock");
+        let (_tmp, _hosts_path, _keystore_path) = setup_env();
+        authenticate("pw").expect("create keystore");
+
+        let state = test_server_state();
+        let mut events = state.subscribe_events();
+        let mut signals = Signals {
+            tab: Tab::ApiKey,
+            ..Signals::default()
+        };
+        signals.keystore.password = "wrong".to_string();
+
+        let response =
+            unlock_and_run(State(state.clone()), HeaderMap::new(), ReadSignals(signals)).await;
+
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+        assert!(
+            state.keystore_status().await.0,
+            "state should remain locked"
+        );
+
+        let mut saw_invalid = false;
+        while let Ok(event) = events.try_recv() {
+            if let ServerEvent::Signals(payload) = event
+                && payload.contains(r#""keystore":{"password":"","invalid":true}"#)
+            {
+                saw_invalid = true;
+            }
+        }
+        assert!(saw_invalid, "expected invalid-password keystore signal");
     }
 }

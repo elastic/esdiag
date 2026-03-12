@@ -1,11 +1,15 @@
 {% extends "layout.html" %}
 
-{% block title %}Manage Hosts{% endblock %}
+{% block title %}Settings{% endblock %}
 
 {% block content %}
 <content id="main-content" class="full-page">
-    <section-title>Manage Hosts</section-title>
+    <section-title>Settings</section-title>
     {{ hosts_panel_html|safe }}
     {{ secrets_panel_html|safe }}
+    {{ clusters_panel_html|safe }}
 </content>
+{% if show_keystore_bootstrap %}
+<div id="keystore-bootstrap-init" data-init="@get('/keystore/bootstrap-modal')"></div>
+{% endif %}
 {% endblock %}

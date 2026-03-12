@@ -1,27 +1,27 @@
 <panel
-    id="hosts-table-panel"
+    id="clusters-table-panel"
     data-signals='{
-        hosts: {
+        clusters: {
             rows: {}
         }
     }'
 >
-    <h3 style="margin-top: 0">Known Hosts</h3>
-    <info-text>Save known hosts to collect diagnostic from. Use a stored secret for authentication.</info-text>
-    <div id="hosts-table-error"></div>
-    <table-records id="hosts-table">
+    <h3 style="margin-top: 0">Diagnostic Clusters</h3>
+    <info-text>Elasticsearch clusters with the Elastic Stack Diagnostics assets installed for diagnostic analysis.</info-text>
+    <div id="clusters-table-error"></div>
+    <table-records id="clusters-table">
         <table>
             <thead>
                 <tr>
                     <th scope="col">Name</th>
-                    <th scope="col" class="host-product-column">Product</th>
-                    <th scope="col">Secret</th>
+                    <th scope="col" class="cluster-secret-column">Secret</th>
                     <th scope="col">Certificates</th>
-                    <th scope="col">URL</th>
+                    <th scope="col" class="cluster-url-column">Elasticsearch URL</th>
+                    <th scope="col" class="cluster-url-column">Kibana URL</th>
                     <th scope="col">Actions</th>
                 </tr>
             </thead>
-            <tbody id="hosts-table-body">
+            <tbody id="clusters-table-body">
                 {{ rows_html|safe }}
             </tbody>
         </table>
@@ -39,6 +39,6 @@
             <icon-lock data-show="$keystore.locked"></icon-lock>
             <icon-key data-show="!$keystore.locked"></icon-key>
         </button>
-        <button type="button" {% if keystore_locked %}disabled{% endif %} data-on:click="@post('/settings/host/create/new')">Add Host</button>
+        <button type="button" {% if keystore_locked %}disabled{% endif %} data-on:click="@post('/settings/cluster/create/new')">Add Diagnostic Cluster</button>
     </footer>
 </panel>

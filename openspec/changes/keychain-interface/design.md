@@ -4,7 +4,7 @@ The current web settings modal combines two concerns: selecting an output target
 
 This change introduces a Datastar-first management flow that separates quick output switching from host/keychain maintenance:
 - Footer output control remains for active target selection only.
-- Host and secret maintenance live in the dedicated `/hosts` management UI.
+- Host and secret maintenance live in the dedicated `/settings` management UI.
 - Keychain operations are gated by a secrets password supplied by the user.
 - A `Keystore` user-menu action exposes explicit unlock/lock toggling.
 - Secure-host processing startup is blocked until keystore unlock succeeds.
@@ -41,13 +41,13 @@ Constraints:
      - Prompt-on-every-operation: rejected for poor UX and repetitive friction.
 
 2. Split footer interactions from host management
-   - Decision: Keep output selector focused on choosing the active output target, including a live CLI-defined target label when applicable; move host and secret CRUD into the dedicated `/hosts` management UI.
+   - Decision: Keep output selector focused on choosing the active output target, including a live CLI-defined target label when applicable; move host and secret CRUD into the dedicated `/settings` management UI.
    - Rationale: Clarifies intent, preserves fast switching, and avoids overloading the footer with full record authoring.
    - Alternatives considered:
      - Keep add/edit in selector dropdown: rejected as hard to scale for full record editing and keychain management.
 
 3. Dedicated host/keychain management UI with backend-mediated secret operations
-   - Decision: The `/hosts` interface presents host forms and keychain entry list as separate but related sections; keychain list exposes only metadata (name, optional description/timestamps), while active drafts may carry plaintext values the user is editing for submission.
+   - Decision: The `/settings` interface presents host forms and keychain entry list as separate but related sections; keychain list exposes only metadata (name, optional description/timestamps), while active drafts may carry plaintext values the user is editing for submission.
    - Rationale: Preserves security boundaries while allowing users to wire host auth to named secrets.
    - Alternatives considered:
      - Return masked secret values to frontend: rejected because even masked/derived secret data expands leakage surface.
@@ -106,11 +106,11 @@ Constraints:
    - Alternatives considered:
      - Persistent lockout store: rejected for this phase to keep state ephemeral.
 
-13. Enforce deterministic keystore startup behavior
-   - Decision: If keystore file is missing, create empty keystore and log INFO. If file exists but is unreadable (permission or I/O), log ERROR; fail fast in CLI modes and surface startup error in serve UI.
-   - Rationale: Keeps startup behavior predictable and failure modes explicit by runtime mode.
+13. Use explicit bootstrap flow for missing keystore state
+   - Decision: If the keystore file is missing, user-mode web flows initialize the bootstrap modal so the user explicitly creates or migrates the keystore with a chosen password, rather than auto-creating storage at startup.
+   - Rationale: Keeps keystore creation intentional and aligned with the password-confirmation UX already used for migration/bootstrap.
    - Alternatives considered:
-     - Best-effort startup with degraded keystore reads: rejected because failures become latent and harder to diagnose.
+     - Auto-create an empty keystore on startup: rejected because it creates encrypted storage before the user has explicitly confirmed password setup.
 
 ## Risks / Trade-offs
 
@@ -126,14 +126,14 @@ Constraints:
 
 1. Update footer/template controls to reduce output selector scope, include the live CLI-defined output target, and remove inline host creation.
 2. Introduce backend unlock/session primitives and route/actions for lock/unlock status.
-3. Implement `/hosts` management actions for `KnownHost` CRUD and keychain metadata listing.
+3. Implement `/settings` management actions for `KnownHost` CRUD and keychain metadata listing.
 4. Add keystore user-menu flow backed only by idempotent `/keystore/unlock` and `/keystore/lock`.
 5. Add manager-page lock/unlock icon and Datastar signal hydration from backend lock state.
 6. Add compile-time `keystore` feature gates and runtime `service` mode route exclusion (`/keystore/*` -> 404).
 7. Add secure-host processing preflight unlock gate with retry-on-invalid-password behavior (401 on invalid password).
 8. Add session lease refresh on keystore reads and secure host requests.
 9. Add unlock rate limiting and structured lock/auth logging.
-10. Implement keystore startup lifecycle (create-missing, fail-unreadable by mode).
+10. Implement missing-keystore bootstrap lifecycle in the web UI.
 11. Update output-target save flow to support saved host names plus the live CLI-defined output target.
 12. Add integration tests for:
    - lock/unlock behavior,

@@ -1,7 +1,7 @@
 ## 1. Footer interaction refactor
 
 - [x] 1.1 Update footer Datastar template/state so output selection supports saved host selection plus the live CLI-defined output target
-- [x] 1.2 Keep host and secret management in the dedicated `/hosts` UI rather than the footer flow
+- [x] 1.2 Keep host and secret management in the dedicated `/settings` UI rather than the footer flow
 - [x] 1.3 Remove inline add-new-host controls from the output selector flow and adjust related UI actions
 
 ## 2. Session keychain unlock flow
@@ -34,22 +34,22 @@
 - [x] 4.6 On incorrect preflight password, keep processing blocked and invalidate password field for retry
 - [x] 4.7 Reject secure-host processing start with a keystore-unavailable error when feature is disabled or runtime mode is `service`
 - [x] 4.8 Ensure secure-host processing lifecycle refreshes session lease on each keystore-backed host request
-- [ ] 4.9 Add startup keystore lifecycle handling: create missing keystore (INFO), unreadable keystore logs ERROR and fails CLI / surfaces UI error in serve
+- [x] 4.9 Add missing-keystore bootstrap lifecycle handling in the web UI instead of auto-creating keystore storage at startup
 - [x] 4.10 Add structured logging: INFO for successful auth and timeout closures, WARN for failed auth
-- [ ] 4.11 Ensure `settings.yml` active target updates remain consistent when host edits happen in the same session
+- [x] 4.11 Ensure `settings.yml` active target updates remain consistent when host edits happen in the same session
 
 ## 5. Validation and regression coverage
 
 - [x] 5.1 Add tests for idempotent `/keystore/unlock` and `/keystore/lock` behavior and PatchSignals updates for `keystore.*`
-- [ ] 5.2 Add tests for unlock HTTP semantics (`401` invalid password, `404` when keystore routes unavailable)
-- [ ] 5.3 Add tests for 12-hour lease initialization and lease refresh on keystore reads and secure-host processing requests
-- [ ] 5.4 Add tests for rate-limiting curve (3 free failures, +5 minutes per failure from 4th, max 60 minutes, reset on restart)
-- [ ] 5.5 Add integration/UI tests for `Keystore` user-menu flow, lock confirmation, and password field invalidation
-- [ ] 5.6 Add tests for secure-host classification by auth type (`NoAuth` bypass, others gated)
-- [ ] 5.7 Add tests for secure-host preflight unlock flow (success auto-continues, failure blocks and retries)
-- [ ] 5.8 Add tests for availability matrix: feature-enabled user mode, feature-disabled build, and `service` mode route absence
-- [ ] 5.9 Add startup tests for keystore file lifecycle (create missing; unreadable handling in CLI vs serve)
-- [ ] 5.10 Add tests proving frontend payloads contain keychain names/metadata only and never persisted keychain secret values outside transient drafts
+- [x] 5.2 Add tests for unlock HTTP semantics (`401` invalid password, `404` when keystore routes unavailable)
+- [x] 5.3 Add tests for 12-hour lease initialization and lease refresh on keystore reads and secure-host processing requests
+- [x] 5.4 Add tests for rate-limiting curve (3 free failures, +5 minutes per failure from 4th, max 60 minutes, reset on restart)
+- [x] 5.5 Add integration/UI tests for `Keystore` user-menu flow, lock confirmation, and password field invalidation
+- [x] 5.6 Add tests for secure-host classification by auth type (`NoAuth` bypass, others gated)
+- [x] 5.7 Add tests for secure-host preflight unlock flow (success auto-continues, failure blocks and retries)
+- [x] 5.8 Add tests for availability matrix: feature-enabled user mode, feature-disabled build, and `service` mode route absence
+- [x] 5.9 Add startup tests for missing-keystore bootstrap lifecycle in user-mode web flows
+- [x] 5.10 Add tests proving frontend payloads contain keychain names/metadata only and never persisted keychain secret values outside transient drafts
 - [x] 5.11 Add regression coverage for footer changes (CLI output option, output selector restrictions, no inline host creation)
-- [ ] 5.12 Run `cargo clippy --all-targets --all-features`
-- [ ] 5.13 Run `cargo test`
+- [x] 5.12 Run `cargo clippy --all-targets --all-features`
+- [x] 5.13 Run `cargo test`

@@ -239,7 +239,9 @@ impl Exporter {
     pub fn target_label(&self) -> String {
         match self {
             Exporter::Archive(exporter) => format!("archive: {}", exporter),
-            Exporter::Directory(exporter) => format!("dir: {}", format_directory_label(&exporter.to_string())),
+            Exporter::Directory(exporter) => {
+                format!("dir: {}", format_directory_label(&exporter.to_string()))
+            }
             Exporter::Elasticsearch(exporter) => format!("elasticsearch: {}", exporter),
             Exporter::File(exporter) => format!("file: {}", exporter),
             Exporter::Stream(_) => "stdout: -".to_string(),

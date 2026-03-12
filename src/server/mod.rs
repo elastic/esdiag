@@ -234,22 +234,29 @@ impl Server {
 
             #[cfg(feature = "keystore")]
             let app = if runtime_mode_policy.allows_local_artifacts() {
-                app.route("/hosts", get(hosts::page))
-                    .route("/hosts/create", post(hosts::create_host))
-                    .route("/hosts/update", put(hosts::update_host))
-                    .route("/hosts/host/{action}/{id}", post(hosts::host_action))
-                    .route("/hosts/host/upsert", post(hosts::upsert_host))
-                    .route("/hosts/host/delete", post(hosts::delete_host))
-                    .route("/hosts/secret/{action}/{id}", post(hosts::secret_action))
-                    .route("/hosts/secret/upsert", post(hosts::upsert_secret))
-                    .route("/hosts/secret/delete", post(hosts::delete_secret))
+                app.route("/settings", get(hosts::page))
+                    .route("/settings/create", post(hosts::create_host))
+                    .route("/settings/update", put(hosts::update_host))
+                    .route("/settings/host/{action}/{id}", post(hosts::host_action))
+                    .route(
+                        "/settings/cluster/{action}/{id}",
+                        post(hosts::cluster_action),
+                    )
+                    .route("/settings/host/upsert", post(hosts::upsert_host))
+                    .route("/settings/host/delete", post(hosts::delete_host))
+                    .route("/settings/secret/{action}/{id}", post(hosts::secret_action))
+                    .route("/settings/secret/upsert", post(hosts::upsert_secret))
+                    .route("/settings/secret/delete", post(hosts::delete_secret))
                     .route(
                         "/keystore/bootstrap-modal",
                         get(keystore::get_bootstrap_modal),
                     )
                     .route("/keystore/bootstrap", post(keystore::bootstrap))
                     .route("/keystore/modal", get(keystore::get_unlock_modal))
-                    .route("/keystore/modal/process", get(keystore::get_process_unlock_modal))
+                    .route(
+                        "/keystore/modal/process",
+                        get(keystore::get_process_unlock_modal),
+                    )
                     .route("/keystore/unlock", post(keystore::unlock))
                     .route("/keystore/unlock-and-run", post(keystore::unlock_and_run))
                     .route("/keystore/lock", post(keystore::lock))
@@ -631,6 +638,16 @@ impl ServerState {
     #[cfg(test)]
     pub(crate) fn subscribe_events(&self) -> broadcast::Receiver<ServerEvent> {
         self.event_tx.subscribe()
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn keystore_expires_at_epoch(&self) -> Option<i64> {
+        self.keystore_state.read().await.expires_at_epoch
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn keystore_failed_attempts(&self) -> u32 {
+        self.keystore_state.read().await.failed_attempts
     }
 
     fn notify_stats_changed(&self) {
