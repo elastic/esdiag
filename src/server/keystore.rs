@@ -323,10 +323,6 @@ pub async fn ensure_unlocked_for_active_output(
     state: &Arc<ServerState>,
     user: &str,
 ) -> Result<(), String> {
-    if !state.runtime_mode_policy.allows_local_artifacts() {
-        return Err("Keystore unavailable in service mode.".to_string());
-    }
-
     let send_hosts = KnownHost::list_by_role(crate::data::HostRole::Send).unwrap_or_default();
     let exporter = state.exporter.read().await.clone();
     let preferred_target = Settings::load()
@@ -337,6 +333,10 @@ pub async fn ensure_unlocked_for_active_output(
 
     if !template::active_output_requires_keystore(&send_hosts, &selected_output, &exporter) {
         return Ok(());
+    }
+
+    if !state.runtime_mode_policy.allows_local_artifacts() {
+        return Err("Keystore unavailable in service mode.".to_string());
     }
 
     if !state.is_keystore_unlocked_for(user).await {
@@ -356,16 +356,26 @@ mod tests {
     };
     use crate::{
         data::{KnownHost, Settings, authenticate},
-        server::{ServerEvent, Signals, Tab, test_server_state},
+        exporter::Exporter,
+        server::{
+            RuntimeMode, RuntimeModePolicy, ServerEvent, ServerState, Signals, Stats, Tab,
+            test_server_state,
+        },
     };
     use axum::{
         extract::{Form, State},
         http::{HeaderMap, StatusCode},
         response::IntoResponse,
     };
+    use bytes::Bytes;
     use datastar::axum::ReadSignals;
-    use std::{collections::BTreeMap, path::PathBuf, sync::Mutex};
+    use std::{
+        collections::{BTreeMap, HashMap},
+        path::PathBuf,
+        sync::{Arc, Mutex},
+    };
     use tempfile::TempDir;
+    use tokio::sync::{RwLock, broadcast, watch};
     use url::Url;
 
     fn env_lock() -> &'static Mutex<()> {
@@ -389,6 +399,27 @@ mod tests {
 
     fn write_hosts(hosts: BTreeMap<String, KnownHost>) {
         KnownHost::write_hosts_yml(&hosts).expect("write hosts");
+    }
+
+    fn test_service_state() -> Arc<ServerState> {
+        let (stats_updates_tx, stats_updates_rx) = watch::channel(0u64);
+        let runtime_mode = RuntimeMode::Service;
+        Arc::new(ServerState {
+            exporter: Arc::new(RwLock::new(Exporter::default())),
+            kibana_url: Arc::new(RwLock::new(String::new())),
+            signals: Arc::new(RwLock::new(Signals::default())),
+            uploads: Arc::new(RwLock::new(HashMap::<u64, (String, Bytes)>::new())),
+            links: Arc::new(RwLock::new(HashMap::new())),
+            keys: Arc::new(RwLock::new(HashMap::new())),
+            runtime_mode,
+            runtime_mode_policy: RuntimeModePolicy::new(runtime_mode),
+            keystore_state: Arc::new(RwLock::new(HashMap::new())),
+            stats: Arc::new(RwLock::new(Stats::default())),
+            shutdown: watch::channel(false).1,
+            event_tx: broadcast::channel(16).0,
+            stats_updates_tx,
+            stats_updates_rx,
+        })
     }
 
     #[tokio::test]
@@ -811,6 +842,25 @@ mod tests {
             .expect("secure output should pass once unlocked");
         let refreshed_lock_time = state.keystore_status().await.1;
         assert!(refreshed_lock_time > first_lock_time);
+    }
+
+    #[tokio::test]
+    async fn service_mode_non_secure_output_bypasses_keystore_preflight() {
+        let state = test_service_state();
+        *state.exporter.write().await = crate::exporter::Exporter::try_from(KnownHost::NoAuth {
+            app: crate::data::Product::Elasticsearch,
+            roles: vec![crate::data::HostRole::Send],
+            viewer: None,
+            url: Url::parse("http://localhost:9200").expect("url"),
+        })
+        .expect("noauth exporter");
+
+        assert!(
+            ensure_unlocked_for_active_output(&state, "Anonymous")
+                .await
+                .is_ok(),
+            "service mode should allow non-secure outputs without keystore access"
+        );
     }
 
     #[tokio::test]

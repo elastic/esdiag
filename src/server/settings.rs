@@ -1,4 +1,6 @@
-use super::{ServerState, append_body_event, execute_script_event, html_event, keystore};
+#[cfg(feature = "keystore")]
+use super::keystore;
+use super::{ServerState, append_body_event, execute_script_event, html_event};
 use crate::data::{KnownHost, Settings, Uri, with_scoped_keystore_password};
 use crate::exporter::Exporter;
 use crate::server::template::SettingsModal;
@@ -180,7 +182,10 @@ async fn secure_host_unlock_required_response(
     headers: HeaderMap,
     err_msg: String,
 ) -> Response {
+    #[cfg(feature = "keystore")]
     let _ = keystore::get_unlock_modal(State(state.clone()), headers).await;
+    #[cfg(not(feature = "keystore"))]
+    let _ = headers;
     settings_error_response(state, err_msg)
 }
 

@@ -303,10 +303,10 @@ impl std::fmt::Display for Exporter {
 }
 
 fn format_directory_label(value: &str) -> String {
-    if value.ends_with('/') {
+    if value.ends_with('/') || value.ends_with('\\') {
         value.to_string()
     } else {
-        format!("{value}/")
+        format!("{value}{}", std::path::MAIN_SEPARATOR)
     }
 }
 
@@ -319,5 +319,24 @@ impl TryFrom<KnownHost> for Exporter {
             )?)),
             _ => Err(eyre!("Unsupported product")),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::format_directory_label;
+
+    #[test]
+    fn format_directory_label_preserves_existing_trailing_separator() {
+        assert_eq!(format_directory_label("/tmp/out/"), "/tmp/out/");
+        assert_eq!(format_directory_label(r"C:\out\"), r"C:\out\");
+    }
+
+    #[test]
+    fn format_directory_label_appends_platform_separator_when_missing() {
+        assert_eq!(
+            format_directory_label("/tmp/out"),
+            format!("/tmp/out{}", std::path::MAIN_SEPARATOR)
+        );
     }
 }
