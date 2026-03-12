@@ -183,26 +183,30 @@ pub async fn update_settings(
     // 4. Update the active Exporter in ServerState (user mode only)
     if state.runtime_mode_policy.allows_exporter_updates() {
         let target = form.target.clone();
-        let exporter_uri = if let Some(host) = KnownHost::get_known(&target) {
-            Uri::try_from(host).map_err(|e| format!("Invalid Host URI: {}", e))
+        let current_exporter = state.exporter.read().await.clone();
+
+        let next_exporter = if let Some(host) = KnownHost::get_known(&target) {
+            Exporter::try_from(host).map_err(|e| format!("Failed to construct exporter: {}", e))
+        } else if target == current_exporter.target_value() {
+            Ok(current_exporter)
         } else {
-            Uri::try_from(target.clone()).map_err(|e| format!("Invalid output target: {}", e))
+            let exporter_uri = match Uri::try_from(target.clone()) {
+                Ok(uri) => uri,
+                Err(e) => {
+                    let err_msg = format!("Invalid output target: {}", e);
+                    log::error!("{}", err_msg);
+                    return settings_error_response(&state, err_msg);
+                }
+            };
+            Exporter::try_from(exporter_uri)
+                .map_err(|e| format!("Failed to construct exporter: {}", e))
         };
 
-        let exporter_uri = match exporter_uri {
-            Ok(uri) => uri,
-            Err(err_msg) => {
-                log::error!("{}", err_msg);
-                return settings_error_response(&state, err_msg);
-            }
-        };
-
-        match Exporter::try_from(exporter_uri) {
+        match next_exporter {
             Ok(new_exporter) => {
                 *state.exporter.write().await = new_exporter;
             }
-            Err(e) => {
-                let err_msg = format!("Failed to construct exporter: {}", e);
+            Err(err_msg) => {
                 log::error!("{}", err_msg);
                 return settings_error_response(&state, err_msg);
             }
