@@ -1,4 +1,4 @@
-use super::{ServerState, append_body_event, html_event, prepend_selector_event};
+use super::{ServerState, append_body_event, execute_script_event, html_event};
 use crate::data::{KnownHost, Settings, Uri, with_scoped_keystore_password};
 use crate::exporter::Exporter;
 use crate::server::template::SettingsModal;
@@ -66,6 +66,7 @@ pub async fn update_settings(
         if let Some(kibana) = form.kibana_url {
             *state.kibana_url.write().await = kibana;
         }
+        clear_settings_errors(&state);
         state.publish_event(html_event(
             r#"
             <div id="settings-modal" data-init="window.location.reload();">
@@ -148,6 +149,7 @@ pub async fn update_settings(
     }
 
     // 5. Build response to remove modal and update exporter text
+    clear_settings_errors(&state);
     let html = r#"
         <div id="settings-modal" data-init="window.location.reload();">
             Reloading...
@@ -159,12 +161,35 @@ pub async fn update_settings(
 }
 
 fn settings_error_response(state: &Arc<ServerState>, err_msg: String) -> Response {
-    state.publish_event(prepend_selector_event(
-        "#settings-form",
-        format!(
-            "<div id='settings-error' style='color: red; padding: 10px;'>{}</div>",
-            err_msg
-        ),
-    ));
+    state.publish_event(execute_script_event(render_settings_error_script(&err_msg)));
     StatusCode::NO_CONTENT.into_response()
+}
+
+fn clear_settings_errors(state: &Arc<ServerState>) {
+    state.publish_event(execute_script_event(render_settings_error_script("")));
+}
+
+fn render_settings_error_script(err_msg: &str) -> String {
+    let message = serde_json::to_string(err_msg).unwrap_or_else(|_| "\"\"".to_string());
+    format!(
+        r#"
+            (() => {{
+                const message = {message};
+                const targetIds = ["settings-form-error", "footer-settings-error"];
+                targetIds.forEach((id) => {{
+                    const target = document.getElementById(id);
+                    if (!target) return;
+                    target.replaceChildren();
+                    if (!message) return;
+                    const wrapper = document.createElement("div");
+                    wrapper.className = "error";
+                    wrapper.setAttribute("role", "alert");
+                    const text = document.createElement("p");
+                    text.textContent = message;
+                    wrapper.appendChild(text);
+                    target.appendChild(wrapper);
+                }});
+            }})();
+        "#
+    )
 }

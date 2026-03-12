@@ -412,8 +412,11 @@ class DocumentationOutline extends HTMLElement {
     });
 
     const activeScope = this._topScopeById.get(activeId);
-    this._topScopeElements.forEach((element, scopeId) => {
-      element.classList.toggle("active-scope", scopeId === activeScope);
+    this._topScopeElements.forEach((element) => {
+      const elementScope =
+        (element.dataset && element.dataset.outlineScope) ||
+        element.getAttribute("data-outline-scope");
+      element.classList.toggle("active-scope", elementScope === activeScope);
     });
   }
 
