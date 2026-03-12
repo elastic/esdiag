@@ -427,6 +427,14 @@ fn normalize_keystore_user(user: &str) -> String {
 }
 
 impl ServerState {
+    fn keystore_user_key(&self, user: &str) -> String {
+        if self.runtime_mode_policy.requires_iap_headers() {
+            normalize_keystore_user(user)
+        } else {
+            default_keystore_user().to_string()
+        }
+    }
+
     pub async fn record_job_started(&self) {
         let mut stats = self.stats.write().await;
         stats.jobs.active += 1;
@@ -467,7 +475,7 @@ impl ServerState {
     }
 
     pub async fn keystore_status_for(&self, user: &str) -> (bool, i64) {
-        let user = normalize_keystore_user(user);
+        let user = self.keystore_user_key(user);
         let mut states = self.keystore_state.write().await;
         let state = states.entry(user).or_default();
         state.apply_timeout();
@@ -479,7 +487,7 @@ impl ServerState {
     }
 
     pub async fn is_keystore_unlocked_for(&self, user: &str) -> bool {
-        let user = normalize_keystore_user(user);
+        let user = self.keystore_user_key(user);
         let mut states = self.keystore_state.write().await;
         let state = states.entry(user).or_default();
         state.apply_timeout();
@@ -491,7 +499,7 @@ impl ServerState {
     }
 
     pub async fn touch_keystore_session_for(&self, user: &str) {
-        let user = normalize_keystore_user(user);
+        let user = self.keystore_user_key(user);
         let mut states = self.keystore_state.write().await;
         let state = states.entry(user).or_default();
         state.apply_timeout();
@@ -507,7 +515,7 @@ impl ServerState {
     }
 
     pub async fn set_keystore_unlocked_for(&self, user: &str, password: String) {
-        let user = normalize_keystore_user(user);
+        let user = self.keystore_user_key(user);
         let mut states = self.keystore_state.write().await;
         let state = states.entry(user.clone()).or_default();
         state.locked = false;
@@ -527,7 +535,7 @@ impl ServerState {
     }
 
     pub async fn set_keystore_locked_for(&self, user: &str, reason: &str) {
-        let user = normalize_keystore_user(user);
+        let user = self.keystore_user_key(user);
         let mut states = self.keystore_state.write().await;
         let state = states.entry(user.clone()).or_default();
         state.apply_timeout();
@@ -546,7 +554,7 @@ impl ServerState {
     }
 
     pub async fn record_keystore_failed_attempt_for(&self, user: &str) -> Option<i64> {
-        let user = normalize_keystore_user(user);
+        let user = self.keystore_user_key(user);
         let mut states = self.keystore_state.write().await;
         let state = states.entry(user.clone()).or_default();
         state.apply_timeout();
@@ -581,7 +589,7 @@ impl ServerState {
     }
 
     pub async fn keystore_blocked_until_for(&self, user: &str) -> Option<i64> {
-        let user = normalize_keystore_user(user);
+        let user = self.keystore_user_key(user);
         let mut states = self.keystore_state.write().await;
         let state = states.entry(user).or_default();
         state.apply_timeout();
@@ -594,7 +602,7 @@ impl ServerState {
     }
 
     pub async fn keystore_password_for(&self, user: &str) -> Option<String> {
-        let user = normalize_keystore_user(user);
+        let user = self.keystore_user_key(user);
         let mut states = self.keystore_state.write().await;
         let state = states.entry(user).or_default();
         state.apply_timeout();
