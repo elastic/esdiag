@@ -1,47 +1,98 @@
 :root {
-    --color-info: #54c7ec;
+    --color-primary: #3578e5;
     --color-secondary: #ebedf0;
-    --color-success: #00a400;
-    --color-warning: #ffba00;
-    --background-color-accent: #ffebf5;
-    --background-color-danger: #ffe8e5;
-    --background-color-primary: #e8f1ff;
-    --background-color-success: #e2f8f0;
-    --background-color-warning: #fdf3d8;
-
-    --pre-background-color: #f6f9fc;
-    --background-color: #ffffff;
-    --background-color-dimmed: #f6f9fc;
+    --color-accent: #bc1e70;
     --color-white: #ffffff;
     --color-transparent: transparent;
-    --color-overlay: #cad3e264;
+    --color-overlay: #cad3e296;
+
+    --background-color: #ffffff;
+    --background-color-accent: #ffebf5;
+    --background-color-dimmed: #f6f9fc;
+    --pre-background-color: #f6f9fc;
+
     --button-text-color: #ffffff;
     --button-primary-background: #0b64dd;
     --button-primary-background-hover: #1750ba;
     --button-empty-primary-hover: rgb(55 136 255 / 30%);
     --button-empty-primary-active: rgb(55 136 255 / 40%);
+    --theme-sun-icon-color: #d39b00;
+    --theme-moon-icon-color: #8fb3ff;
     --tab-panel-background-blend-color: #f7f9fc;
     --theme-shadow-small: 0 1px 2px rgb(0 0 0 / 0.12);
     --theme-shadow-medium: 0 6px 12px rgb(0 0 0 / 0.08);
 
     --text-color: #1d2a3e;
     --text-subdued-color: #516381;
-    --text-color-code: rgb(107, 60, 159);
     --page-background-color: #f6f9fc;
     --color-empty-shade: #ffffff;
-    --border-color: #cad3e2;
-    --border-color-strong: #b4bfd1;
-    --color-primary: #0b64dd;
     --color-primary-shade: #1750ba;
-    --focus-ring-color: #1750ba;
-    --color-danger: #c61e25;
     --form-control-disabled-color: #cad3e2;
     --form-background-color: #ffffff;
     --form-placeholder-color: #516381;
     --page-top-color: #f9fbfd;
 
+    --shadow-small: 0 1px 2px rgb(25 10 57 / 0.12);
+    --shadow-medium: 0 8px 18px rgb(25 10 57 / 0.16);
+
+    /* Status Colors */
+
+    --color-danger: #fa383e;
+    --color-info: #54c7ec;
+    --color-success: #00a400;
+    --color-warning: #ffba00;
+
+    --background-color-danger: #ffe8e5;
+    --background-color-primary: #e8f1ff;
+    --background-color-success: #e2f8f0;
+    --background-color-warning: #fdf3d8;
+
+    /* Borders */
+
+    --border-thin: 1px;
+    --border-medium: 2px;
+    --border-thick: 3px;
     --border-radius-small: 0.25rem;
     --border-radius: 0.5rem;
+
+    --border-color: #cad3e2;
+    --border-color-light: #cad3e2;
+    --focus-ring-color: #1750ba;
+
+    /* Icons */
+    --icon-paintbrush: url("data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20xmlns:xlink=%22http://www.w3.org/1999/xlink%22%20width=%2216%22%20height=%2216%22%20viewBox=%220%200%2016%2016%22%3E%0A%20%20%3Cpath%20d=%22M11.9928058%2C8.16982791%20C11.9928058%2C9.00087929%2011.3203437%2C9.67717623%2010.4940048%2C9.67717623%20L5.4980016%2C9.67717623%20C4.67166267%2C9.67717623%203.99920064%2C9.00087929%203.99920064%2C8.16982791%20L3.99920064%2C6.66247959%20L11.9928058%2C6.66247959%20L11.9928058%2C8.16982791%20Z%20M8.99520384%2C14.1680693%20C8.99520384%2C14.6232885%208.54656275%2C14.9951011%207.9960032%2C14.9951011%20C7.44544365%2C14.9951011%206.99680256%2C14.6232885%206.99680256%2C14.1680693%20L6.99680256%2C10.6820751%20L8.99520384%2C10.6820751%20L8.99520384%2C14.1680693%20Z%20M3.99920064%2C5.65758071%20L5.26119105%2C5.65758071%20L5.26119105%2C1.00489888%20L3.99920064%2C1.00489888%20L3.99920064%2C5.65758071%20Z%20M6.26039169%2C5.65758071%20L7.50439648%2C5.65758071%20L7.50439648%2C1.00489888%20L6.26039169%2C1.00489888%20L6.26039169%2C5.65758071%20Z%20M8.50359712%2C5.65758071%20L9.73860911%2C5.65758071%20L9.73860911%2C1.00489888%20L8.50359712%2C1.00489888%20L8.50359712%2C5.65758071%20Z%20M10.7378098%2C5.65758071%20L11.9918066%2C5.65758071%20L11.9918066%2C1.00489888%20L10.7378098%2C1.00489888%20L10.7378098%2C5.65758071%20Z%20M3.00799361%2C-1.8e-15%20L3%2C8.16982791%20C3%2C9.55457857%204.12110312%2C10.6820751%205.4980016%2C10.6820751%20L5.99760192%2C10.6820751%20L5.99760192%2C14.1680693%20C5.99760192%2C15.1779927%206.89388489%2C16%207.9960032%2C16%20C9.0981215%2C16%209.99440448%2C15.1779927%209.99440448%2C14.1680693%20L9.99440448%2C10.6820751%20L10.4940048%2C10.6820751%20C11.8709033%2C10.6820751%2012.9920064%2C9.55457857%2012.9920064%2C8.16982791%20L13%2C-1.8e-15%20L3.00799361%2C-1.8e-15%20Z%22%20/%3E%0A%3C/svg%3E");
+    --icon-sun: url("data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20width=%2216%22%20height=%2216%22%20viewBox=%220%200%2016%2016%22%3E%0A%20%20%3Cpath%20d=%22M8.5%2015h-1v-2h1v2Zm-3.674-3.107-1.414%201.414-.707-.707%201.414-1.415.707.708Zm8.479.707-.707.707-1.414-1.414.707-.708%201.414%201.415Z%22/%3E%0A%20%20%3Cpath%20fill-rule=%22evenodd%22%20d=%22M8%204a4%204%200%201%201%200%208%204%204%200%200%201%200-8Zm0%201a3%203%200%201%200%200%206%203%203%200%200%200%200-6Z%22%20clip-rule=%22evenodd%22/%3E%0A%20%20%3Cpath%20d=%22M3.005%208.505h-2v-1h2v1Zm12%200h-2v-1h2v1ZM4.82%204.114l-.708.707-1.414-1.414.707-.707L4.82%204.114Zm8.492-.707-1.414%201.414-.708-.707L12.605%202.7l.707.707ZM8.5%203h-1V1h1v2Z%22/%3E%0A%3C/svg%3E");
+    --icon-moon: url("data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20width=%2216%22%20height=%2216%22%20viewBox=%220%200%2016%2016%22%3E%0A%20%20%3Cpath%20d=%22M4.05%2012.95A6.982%206.982%200%200%201%202%208c0-1.79.684-3.583%202.05-4.95A6.982%206.982%200%200%201%209%201a1%201%200%200%201%20.708%201.707%204.982%204.982%200%200%200-1.465%203.536%204.98%204.98%200%200%200%201.465%203.535%204.98%204.98%200%200%200%203.535%201.465%201%201%200%200%201%20.707%201.707A6.981%206.981%200%200%201%209%2015a6.983%206.983%200%200%201-4.95-2.05Zm.708-.707A5.983%205.983%200%200%200%209%2014c1.535%200%203.07-.586%204.242-1.757a5.98%205.98%200%200%201-4.018-1.545L9%2010.485a5.982%205.982%200%200%201-1.758-4.242A5.986%205.986%200%200%201%209%202a5.983%205.983%200%200%200-4.243%201.757A5.98%205.98%200%200%200%203%208l.006.288a5.978%205.978%200%200%200%201.75%203.955Z%22/%3E%0A%3C/svg%3E");
+    --icon-zap: url("data:image/svg+xml,%3Csvg%20width=%2216%22%20height=%2216%22%20viewBox=%220%200%2016%2016%22%20xmlns=%22http://www.w3.org/2000/svg%22%3E%0A%3Cpath%20d=%22M13%201L9.99905%205H13C13.4152%205%2013.787%205.25652%2013.9346%205.64453C14.0821%206.03261%2013.9744%206.47124%2013.6641%206.74707L4.66408%2014.7471C4.30581%2015.0655%203.7721%2015.0855%203.39162%2014.7939C3.01114%2014.5024%202.89111%2013.9815%203.10549%2013.5527L5.38186%209H3.00002C2.63123%209%202.29221%208.79684%202.11819%208.47168C1.94429%208.14656%201.96346%207.7521%202.16799%207.44531L6.46487%201H13ZM3.00002%208H7.00002L4.00002%2014L13%206H8.00002L11%202H7.00002L3.00002%208Z%22/%3E%0A%3C/svg%3E");
+    --icon-chevron-right: url("data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20width=%2216%22%20height=%2216%22%20viewBox=%220%200%2016%2016%22%3E%0A%20%20%3Cpath%20fill-rule=%22evenodd%22%20d=%22M10.293%208%204.646%202.354l.708-.708L11.707%208l-6.353%206.354-.708-.707L10.293%208Z%22%20clip-rule=%22evenodd%22/%3E%0A%3C/svg%3E");
+    --icon-pencil: url("data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20width=%2216%22%20height=%2216%22%20viewBox=%220%200%2016%2016%22%3E%0A%20%20%3Cpath%20fill-rule=%22evenodd%22%20d=%22M10%202.293a1%201%200%200%201%201.414%200l2.293%202.293a1%201%200%200%201%200%201.414l-7%207H11v1H2v-3.707l8-8Zm-7%208.414V13h2.293l5.5-5.5L8.5%205.207l-5.5%205.5ZM9.207%204.5%2011.5%206.793l1.5-1.5L10.707%203l-1.5%201.5Z%22%20clip-rule=%22evenodd%22/%3E%0A%20%20%3Cpath%20d=%22M14%2014h-2v-1h2v1Z%22/%3E%0A%3C/svg%3E");
+    --icon-file-added: url("data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20width=%2216%22%20height=%2216%22%20viewBox=%220%200%2016%2016%22%3E%0A%20%20%3Cpath%20fill-rule=%22evenodd%22%20d=%22M2%203a1%201%200%200%201%201-1h8a1%201%200%200%201%20.707.293l2%202A1%201%200%200%201%2014%205v8a1%201%200%200%201-1%201H3a1%201%200%200%201-1-1V3Zm3%2010h6v-3H5v3Zm7%200v-3a1%201%200%200%200-1-1H5a1%201%200%200%200-1%201v3H3V3h2v3a1%201%200%200%200%201%201h4a1%201%200%200%200%201-1V3l2%202v8h-1ZM6%203h4v3H6V3Z%22%20clip-rule=%22evenodd%22/%3E%0A%3C/svg%3E");
+    --icon-undo: url("data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20width=%2216%22%20height=%2216%22%20viewBox=%220%200%2016%2016%22%3E%0A%20%20%3Cpath%20d=%22M11.5%206a2.5%202.5%200%200%201%200%205H6v1h5.5a3.5%203.5%200%201%200%200-7H2.707l2.647-2.646-.708-.708L.793%205.5l3.853%203.854.708-.708L2.707%206H11.5Z%22/%3E%0A%3C/svg%3E");
+    --icon-trash: url("data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20width=%2216%22%20height=%2216%22%20viewBox=%220%200%2016%2016%22%3E%0A%20%20%3Cpath%20d=%22M7%206H6v6h1V6Zm2.997%200h-1v6h1V6Z%22/%3E%0A%20%20%3Cpath%20fill-rule=%22evenodd%22%20d=%22M5%202v1H2v1h1v10a1%201%200%200%200%201%201h8a1%201%200%200%200%201-1V4h1V3h-3V2a1%201%200%200%200-1-1H6a1%201%200%200%200-1%201Zm5%200H6v1h4V2ZM4%2014V4h8v10H4Z%22%20clip-rule=%22evenodd%22/%3E%0A%3C/svg%3E");
+    --icon-chevron-left: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2216%22%20height%3D%2216%22%20viewBox%3D%220%200%2016%2016%22%3E%0A%20%20%3Cpath%20fill-rule%3D%22evenodd%22%20d%3D%22m5.707%208%205.647-5.646-.707-.708L4.292%208l6.353%206.354.708-.707L5.707%208Z%22%20clip-rule%3D%22evenodd%22%2F%3E%0A%3C%2Fsvg%3E");
+    --icon-chevron-right: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2216%22%20height%3D%2216%22%20viewBox%3D%220%200%2016%2016%22%3E%0A%20%20%3Cpath%20fill-rule%3D%22evenodd%22%20d%3D%22M10.293%208%204.646%202.354l.708-.708L11.707%208l-6.353%206.354-.708-.707L10.293%208Z%22%20clip-rule%3D%22evenodd%22%2F%3E%0A%3C%2Fsvg%3E");
+    --icon-chevron-up: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2216%22%20height%3D%2216%22%20viewBox%3D%220%200%2016%2016%22%3E%0A%20%20%3Cpath%20fill-rule%3D%22evenodd%22%20d%3D%22m8%205.707%205.646%205.647.708-.708L8%204.293l-6.354%206.353.708.707L8%205.708Z%22%20clip-rule%3D%22evenodd%22%2F%3E%0A%3C%2Fsvg%3E");
+    --icon-chevron-down: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2216%22%20height%3D%2216%22%20viewBox%3D%220%200%2016%2016%22%3E%0A%20%20%3Cpath%20fill-rule%3D%22evenodd%22%20d%3D%22m8%2010.293%205.646-5.647.708.708L8%2011.707%201.646%205.354l.708-.708L8%2010.293Z%22%20clip-rule%3D%22evenodd%22%2F%3E%0A%3C%2Fsvg%3E");
+    --icon-arrow-left: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2216%22%20height%3D%2216%22%20viewBox%3D%220%200%2016%2016%22%3E%0A%20%20%3Cpath%20d%3D%22M14%208.5H3.207l3.147%203.146-.708.707L1.293%208l4.353-4.354.708.708L3.207%207.5H14v1Z%22%2F%3E%0A%3C%2Fsvg%3E");
+    --icon-arrow-right: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2216%22%20height%3D%2216%22%20viewBox%3D%220%200%2016%2016%22%3E%0A%20%20%3Cpath%20d%3D%22M2%207.5h10.793L9.646%204.354l.707-.708L14.707%208l-4.354%204.354-.707-.707L12.793%208.5H2v-1Z%22%2F%3E%0A%3C%2Fsvg%3E");
+    --icon-arrow-up: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2216%22%20height%3D%2216%22%20viewBox%3D%220%200%2016%2016%22%3E%0A%20%20%3Cpath%20d%3D%22M8.5%2014V3.207l3.146%203.147.707-.708L8%201.293%203.646%205.646l.708.708L7.5%203.207V14h1Z%22%2F%3E%0A%3C%2Fsvg%3E");
+    --icon-arrow-down: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2216%22%20height%3D%2216%22%20viewBox%3D%220%200%2016%2016%22%3E%0A%20%20%3Cpath%20d%3D%22M8.5%202v10.793l3.146-3.147.707.707L8%2014.707l-4.354-4.354.708-.707L7.5%2012.793V2h1Z%22%2F%3E%0A%3C%2Fsvg%3E");
+    --icon-plus: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2216%22%20height%3D%2216%22%20viewBox%3D%220%200%2016%2016%22%3E%0A%20%20%3Cpath%20fill-rule%3D%22evenodd%22%20d%3D%22M7.5%207.5V2h1v5.5H14v1H8.5V14h-1V8.5H2v-1h5.5Z%22%20clip-rule%3D%22evenodd%22%2F%3E%0A%3C%2Fsvg%3E");
+    --icon-dash: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2216%22%20height%3D%2216%22%20viewBox%3D%220%200%2016%2016%22%3E%0A%20%20%3Cpath%20fill-rule%3D%22evenodd%22%20d%3D%22M14%208.5H2v-1h12v1Z%22%20clip-rule%3D%22evenodd%22%2F%3E%0A%3C%2Fsvg%3E");
+    --icon-check: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2216%22%20height%3D%2216%22%20viewBox%3D%220%200%2016%2016%22%3E%0A%20%20%3Cpath%20fill-rule%3D%22evenodd%22%20d%3D%22M15.354%204.354%206.5%2013.207%201.646%208.354l.708-.708L6.5%2011.793l8.146-8.147.708.708Z%22%20clip-rule%3D%22evenodd%22%2F%3E%0A%3C%2Fsvg%3E");
+    --icon-x: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2216%22%20height%3D%2216%22%20viewBox%3D%220%200%2016%2016%22%3E%0A%20%20%3Cpath%20fill-rule%3D%22evenodd%22%20d%3D%22M7.293%208%202.646%203.354l.708-.708L8%207.293l4.646-4.647.708.708L8.707%208l4.647%204.646-.707.708L8%208.707l-4.646%204.647-.708-.707L7.293%208Z%22%20clip-rule%3D%22evenodd%22%2F%3E%0A%3C%2Fsvg%3E");
+    --icon-copy: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2216%22%20height%3D%2216%22%20viewBox%3D%220%200%2016%2016%22%3E%0A%20%20%3Cpath%20fill-rule%3D%22evenodd%22%20d%3D%22M6%201a1%201%200%200%200-1%201v8a1%201%200%200%200%201%201h8a1%201%200%200%200%201-1V2a1%201%200%200%200-1-1H6Zm0%201h8v8H6V2Z%22%20clip-rule%3D%22evenodd%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M2%205h2v1H2v8h8v-2h1v2a1%201%200%200%201-1%201H2a1%201%200%200%201-1-1V6a1%201%200%200%201%201-1Z%22%2F%3E%0A%3C%2Fsvg%3E");
+    --icon-file: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2216%22%20height%3D%2216%22%20viewBox%3D%220%200%2016%2016%22%3E%0A%20%20%3Cpath%20fill-rule%3D%22evenodd%22%20d%3D%22M3%202a1%201%200%200%201%201-1h4.707L13%205.293V14a1%201%200%200%201-1%201H4a1%201%200%200%201-1-1V2Zm5%200H4v12h8V6H9a1%201%200%200%201-1-1V2Zm1%20.707L11.293%205H9V2.707Z%22%20clip-rule%3D%22evenodd%22%2F%3E%0A%3C%2Fsvg%3E");
+    --icon-info: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2216%22%20height%3D%2216%22%20viewBox%3D%220%200%2016%2016%22%3E%0A%20%20%3Cpath%20fill-rule%3D%22evenodd%22%20d%3D%22M8%2014A6%206%200%201%200%208%202a6%206%200%200%200%200%2012Zm0%201A7%207%200%201%200%208%201a7%207%200%200%200%200%2014Z%22%20clip-rule%3D%22evenodd%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M9%205a1%201%200%201%201-2%200%201%201%200%200%201%202%200Z%22%2F%3E%0A%20%20%3Cpath%20fill-rule%3D%22evenodd%22%20d%3D%22M6.5%207h2v4H10v1H6v-1h1.5V8h-1V7Z%22%20clip-rule%3D%22evenodd%22%2F%3E%0A%3C%2Fsvg%3E");
+    --icon-alert: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2216%22%20height%3D%2216%22%20viewBox%3D%220%200%2016%2016%22%3E%0A%20%20%3Cpath%20d%3D%22M9%2012a1%201%200%201%201-2%200%201%201%200%200%201%202%200Z%22%2F%3E%0A%20%20%3Cpath%20fill-rule%3D%22evenodd%22%20d%3D%22M7.5%2010V5h1v5h-1Z%22%20clip-rule%3D%22evenodd%22%2F%3E%0A%20%20%3Cpath%20fill-rule%3D%22evenodd%22%20d%3D%22M8%201a1%201%200%200%201%20.864.496l7%2012A1%201%200%200%201%2015%2015H1a1%201%200%200%201-.864-1.504l7-12A1%201%200%200%201%208%201ZM1%2014h14L8%202%201%2014Z%22%20clip-rule%3D%22evenodd%22%2F%3E%0A%3C%2Fsvg%3E");
+    --icon-light-bulb: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2216%22%20height%3D%2216%22%20viewBox%3D%220%200%2016%2016%22%3E%0A%20%20%3Cpath%20fill-rule%3D%22evenodd%22%20d%3D%22M8%202a4%204%200%200%201%204%204%203.98%203.98%200%200%201-1.1%202.752c-.608.638-.9%201.086-.9%201.487V14H6v-3.76c0-.402-.292-.85-.9-1.488A3.98%203.98%200%200%201%204%206a4%204%200%200%201%204-4ZM7%2013h2v-1H7v1ZM8%203a3%203%200%200%200-3%203c0%20.8.314%201.526.825%202.063C6.41%208.675%207%209.392%207%2010.239V11h2v-.76c0-.848.59-1.564%201.175-2.178A2.98%202.98%200%200%200%2011%206a3%203%200%200%200-3-3Z%22%20clip-rule%3D%22evenodd%22%2F%3E%0A%20%20%3Cpath%20d%3D%22m3.923%208.929-1.733%201-.5-.867%201.733-1%20.5.867Zm10.397.134-.5.866-1.732-1%20.5-.867%201.731%201ZM3.005%206.495h-2v-1h2v1Zm12%200h-2v-1h2v1ZM3.928%203.063l-.501.866-1.732-1%20.5-.866%201.733%201Zm10.387-.134-1.732%201-.5-.866%201.732-1%20.5.866Z%22%2F%3E%0A%3C%2Fsvg%3E");
+    --icon-download: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2216%22%20height%3D%2216%22%20viewBox%3D%220%200%2016%2016%22%3E%0A%20%20%3Cpath%20d%3D%22M8.5%202v10.793l3.146-3.147.707.707L8%2014.707l-4.354-4.354.708-.707L7.5%2012.793V2h1Z%22%2F%3E%0A%3C%2Fsvg%3E");
+    --icon-upload: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2216%22%20height%3D%2216%22%20viewBox%3D%220%200%2016%2016%22%3E%0A%20%20%3Cpath%20d%3D%22M8.5%2014V3.207l3.146%203.147.707-.708L8%201.293%203.646%205.646l.708.708L7.5%203.207V14h1Z%22%2F%3E%0A%3C%2Fsvg%3E");
+    --icon-sync: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2216%22%20height%3D%2216%22%20viewBox%3D%220%200%2016%2016%22%3E%0A%20%20%3Cpath%20fill-rule%3D%22evenodd%22%20d%3D%22M2%208a5.98%205.98%200%200%200%201.757%204.243A5.98%205.98%200%200%200%208%2014v1a6.98%206.98%200%200%201-4.95-2.05A6.98%206.98%200%200%201%201%208c0-1.79.683-3.58%202.048-4.947l.004-.004.019-.02L3.1%203H1V2h4v4H4V3.525a6.51%206.51%200%200%200-.22.21l-.013.013-.003.002-.007.007A5.98%205.98%200%200%200%202%208Zm10.243-4.243A5.98%205.98%200%200%200%208%202V1a6.98%206.98%200%200%201%204.95%202.05A6.98%206.98%200%200%201%2015%208a6.98%206.98%200%200%201-2.047%204.947l-.005.004-.018.02-.03.029H15v1h-4v-4h1v2.475a6.744%206.744%200%200%200%20.22-.21l.013-.013.003-.002.007-.007A5.98%205.98%200%200%200%2014%208a5.98%205.98%200%200%200-1.757-4.243Z%22%20clip-rule%3D%22evenodd%22%2F%3E%0A%3C%2Fsvg%3E");
+    --icon-stop: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2216%22%20height%3D%2216%22%20viewBox%3D%220%200%2016%2016%22%3E%0A%20%20%3Cpath%20d%3D%22M11.354%205.354%208.707%208l2.646%202.646-.707.707L8%208.707l-2.646%202.646-.708-.707L7.293%208%204.646%205.354l.708-.708L8%207.293l2.646-2.647.707.708Z%22%2F%3E%0A%20%20%3Cpath%20fill-rule%3D%22evenodd%22%20d%3D%22M10.293%201a1%201%200%200%201%20.707.293L14.707%205a1%201%200%200%201%20.293.707v4.586a1%201%200%200%201-.293.707L11%2014.707a1%201%200%200%201-.707.293H5.707A1%201%200%200%201%205%2014.707L1.293%2011A1%201%200%200%201%201%2010.293V5.707A1%201%200%200%201%201.293%205L5%201.293A1%201%200%200%201%205.707%201h4.586ZM2%205.707v4.586L5.707%2014h4.586L14%2010.293V5.707L10.293%202H5.707L2%205.707Z%22%20clip-rule%3D%22evenodd%22%2F%3E%0A%3C%2Fsvg%3E");
+    --icon-lock: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2216%22%20height%3D%2216%22%20viewBox%3D%220%200%2016%2016%22%3E%0A%20%20%3Cpath%20fill-rule%3D%22evenodd%22%20d%3D%22M4%207V5a4%204%200%201%201%208%200v2h1a1%201%200%200%201%201%201v6a1%201%200%200%201-1%201H3a1%201%200%200%201-1-1V8a1%201%200%200%201%201-1h1Zm1-2a3%203%200%200%201%206%200v2H5V5Zm-2%209V8h10v6H3Z%22%20clip-rule%3D%22evenodd%22%2F%3E%0A%3C%2Fsvg%3E");
+    --icon-key: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2216%22%20height%3D%2216%22%20viewBox%3D%220%200%2016%2016%22%3E%0A%20%20%3Cpath%20fill-rule%3D%22evenodd%22%20d%3D%22M11.5%203a1.5%201.5%200%201%201%200%203%201.5%201.5%200%200%201%200-3Zm0%201a.5.5%200%201%200%200%201%20.5.5%200%200%200%200-1Z%22%20clip-rule%3D%22evenodd%22%2F%3E%0A%20%20%3Cpath%20fill-rule%3D%22evenodd%22%20d%3D%22M10.5%201A4.5%204.5%200%201%201%209%209.742V11H7v2H5v2H1v-3.707l5.06-5.06A4.5%204.5%200%200%201%2010.5%201Zm0%201a3.5%203.5%200%200%200-3.411%204.287l.061.27L2%2011.707V14h2v-2h2v-2h2V8.098l.75.434A3.5%203.5%200%201%200%2010.5%202Z%22%20clip-rule%3D%22evenodd%22%2F%3E%0A%3C%2Fsvg%3E");
+    --icon-report: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2216%22%20height%3D%2216%22%20viewBox%3D%220%200%2016%2016%22%3E%0A%20%20%3Cpath%20d%3D%22M5%207a1%201%200%201%200%200-2%201%201%200%200%200%200%202Zm4-1a1%201%200%201%201-2%200%201%201%200%200%201%202%200Zm2%201a1%201%200%201%200%200-2%201%201%200%200%200%200%202Z%22%2F%3E%0A%20%20%3Cpath%20fill-rule%3D%22evenodd%22%20d%3D%22M2%201a1%201%200%200%200-1%201v8a1%201%200%200%200%201%201h2v4.414L8.414%2011H14a1%201%200%200%200%201-1V2a1%201%200%200%200-1-1H2Zm3%2012v-3H2V2h12v8H8l-3%203Z%22%20clip-rule%3D%22evenodd%22%2F%3E%0A%3C%2Fsvg%3E");
 }
 
 html {
@@ -49,10 +100,16 @@ html {
 }
 
 html:has(#dark-mode:checked) {
+    --color-primary: #61a2ff;
+    --color-primary-shade: #61a2ff;
+
+    --color-accent: #ee72a6;
+    --color-danger: #f6726a;
     --color-info: #54c7ec;
     --color-secondary: #ebedf0;
     --color-success: #00a400;
     --color-warning: #ffba00;
+
     --background-color-accent: #351725;
     --background-color-danger: #351721;
     --background-color-primary: #0a2342;
@@ -62,121 +119,26 @@ html:has(#dark-mode:checked) {
     --pre-background-color: #050f21;
     --background-color: #0b1628;
     --background-color-dimmed: #050f21;
-    --color-overlay: #2b394f64;
+    --color-overlay: #2b394f96;
     --text-color: #cad3e2;
-    --text-color-code: rgb(179, 134, 249);
     --text-subdued-color: #98a8c3;
     --page-background-color: #0b1628;
     --color-empty-shade: #050f21;
-    --border-color: #2b394f;
-    --border-color-strong: rgb(72, 89, 117);
-    --color-primary: #61a2ff;
-    --color-primary-shade: #61a2ff;
     --button-text-color: #07101f;
     --button-primary-background: #61a2ff;
     --button-primary-background-hover: #85b7ff;
     --button-empty-primary-hover: rgb(55 136 255 / 16%);
     --button-empty-primary-active: rgb(55 136 255 / 20%);
-    --focus-ring-color: #61a2ff;
-    --color-danger: #f6726a;
     --form-control-disabled-color: #2b394f;
     --form-background-color: #0b1628;
     --form-placeholder-color: #98a8c3;
     --page-top-color: #111c2c;
+
+    --border-color: #2b394f;
+    --border-color-light: rgb(72, 89, 117);
+    --focus-ring-color: #61a2ff;
+    --shadow-small:
+        rgb(0 0 0 / 0.52) 0 3px 10px 0, rgb(0 0 0 / 0.28) 0 6px 14px 0;
+
     background: var(--background-color-dimmed);
-}
-
-/* Prism.js Code Coloring */
-
-code:not([class*="language-"]) {
-    background-color: var(--color-overlay);
-    border-radius: var(--border-radius-small);
-    border: none;
-    color: var(--text-color-code);
-    font-family: "Roboto Mono", Menlo, Courier, monospace;
-    font-size: var(--font-size-s);
-    font-weight: 600;
-    padding-block: var(--size-xs);
-    padding-inline: var(--size);
-    vertical-align: initial;
-}
-
-pre:not([class*="language-"]) {
-    background-color: var(--pre-background-color);
-    padding: var(--size-m);
-    overflow: auto;
-    border-radius: var(--border-radius-small);
-    font-size: var(--font-size-s);
-}
-
-html code[class*="language-"],
-html pre[class*="language-"] {
-    color: var(--text-color);
-    font-size: var(--font-size-s);
-    text-shadow: none;
-}
-
-html pre[class*="language-"],
-html :not(pre) > code[class*="language-"] {
-    font-size: var(--font-size-s);
-    background: var(--pre-background-color);
-    border: 1px solid var(--border-color);
-    box-shadow: var(--theme-shadow-small);
-    border-radius: var(--border-radius-small);
-}
-
-html pre[class*="language-"] ::selection,
-html pre[class*="language-"]::-moz-selection,
-html code[class*="language-"] ::selection,
-html code[class*="language-"]::-moz-selection {
-    text-shadow: none;
-    background: color-mix(in srgb, var(--color-primary) 35%, transparent);
-}
-
-html .token.comment,
-html .token.prolog,
-html .token.doctype,
-html .token.cdata {
-    color: var(--text-subdued-color);
-}
-
-html .token.punctuation {
-    color: var(--text-color);
-}
-
-html .token.property,
-html .token.tag,
-html .token.attr-name,
-html .token.class-name,
-html .token.function,
-html .token.keyword {
-    color: var(--color-primary);
-}
-
-html .token.selector,
-html .token.string,
-html .token.char,
-html .token.builtin,
-html .token.inserted,
-html .token.attr-value {
-    color: var(--color-success);
-}
-
-html .token.boolean,
-html .token.number,
-html .token.constant,
-html .token.symbol,
-html .token.regex,
-html .token.variable,
-html .token.important {
-    color: var(--text-color-code);
-}
-
-html .token.operator,
-html .token.entity,
-html .token.url,
-html .language-css .token.string,
-html .style .token.string {
-    color: var(--text-subdued-color);
-    background: transparent;
 }

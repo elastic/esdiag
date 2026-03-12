@@ -48,21 +48,7 @@
                         class="dropzone"
                     >
                         <div class="file-icon">
-                            <!--- upload icon -->
-                            <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="2"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                            >
-                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                                <polyline points="14 2 14 8 20 8"></polyline>
-                                <line x1="12" y1="18" x2="12" y2="12"></line>
-                                <line x1="9" y1="15" x2="15" y2="15"></line>
-                            </svg>
+                            <icon-upload></icon-upload>
                         </div>
                         <div id="upload-instructions">
                             <p>Select or drag and drop a <code>.zip</code> file</p>
@@ -122,14 +108,9 @@
                                 uploadButton.disabled = false;
                                 uploadInstructions.classList.add("hidden");
                                 dropzone.classList.add("active");
-                                fileIcon.style.color = "var(--primary)";
+                                fileIcon.style.color = "var(--color-primary)";
 
-                                // Change the icon to a check mark
-                                document.querySelector(".file-icon svg").innerHTML = `
-                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                                <polyline points="14 2 14 8 20 8"></polyline>
-                                <path d="M9 15L11 17L15 13"></path>
-                            `;
+                                fileIcon.innerHTML = "<icon-check></icon-check>";
                             } else {
                                 fileInput.value = "";
                                 fileInfo.classList.add("hidden");
@@ -138,13 +119,7 @@
                                 dropzone.classList.remove("active");
                                 fileIcon.style.color = "var(--text-subdued-color)";
 
-                                // Reset to upload icon
-                                document.querySelector(".file-icon svg").innerHTML = `
-                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                                <polyline points="14 2 14 8 20 8"></polyline>
-                                <line x1="12" y1="18" x2="12" y2="12"></line>
-                                <line x1="9" y1="15" x2="15" y2="15"></line>
-                            `;
+                                fileIcon.innerHTML = "<icon-upload></icon-upload>";
                             }
                         }
 
@@ -308,7 +283,7 @@
                         class="button"
                         type="button"
                         value="Process"
-                        data-on:click="$loading = true; $message = 'Connecting to Elastic Upload service...'; @post('/service_link')"
+                        data-on:click="if ($keystore.locked && $output.secure) { @get('/keystore/modal/process'); } else { $loading = true; $message = 'Connecting to Elastic Upload service...'; @post('/service_link'); }"
                         data-attr:disabled="$loading || !$service_link.url || !$service_link.token"
                     />
                     <script>
@@ -372,7 +347,7 @@
                         class="button"
                         type="button"
                         value="Process"
-                        data-on:click="$loading = true; $message = 'Connecting with API key...'; @post('/api_key')"
+                        data-on:click="if ($keystore.locked && $output.secure) { @get('/keystore/modal/process'); } else { $loading = true; $message = 'Connecting with API key...'; @post('/api_key'); }"
                         data-attr:disabled="$loading || !$es_api.url || !$es_api.key"
                     />
                 </form>

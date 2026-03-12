@@ -1,12 +1,18 @@
-use super::{ServerState, append_body_event, execute_script_event, html_event, signal_event};
+use super::{
+    ServerState, Signals, Tab, api_key, append_body_event, execute_script_event, file_upload,
+    html_event, service_link, signal_event,
+};
 use crate::data::{KnownHost, Settings, authenticate, keystore_exists};
-use crate::server::template::{KeystoreBootstrapModal, KeystoreUnlockModal};
+use crate::server::template::{
+    KeystoreBootstrapModal, KeystoreProcessUnlockModal, KeystoreUnlockModal,
+};
 use askama::Template;
 use axum::{
     extract::{Form, State},
     http::{HeaderMap, HeaderValue, header::SET_COOKIE},
     response::{IntoResponse, Response},
 };
+use datastar::axum::ReadSignals;
 use serde::Deserialize;
 use std::sync::Arc;
 
@@ -23,6 +29,15 @@ pub async fn get_unlock_modal(State(state): State<Arc<ServerState>>) -> Response
         return get_bootstrap_modal(State(state)).await;
     }
     let modal = KeystoreUnlockModal {};
+    match modal.render() {
+        Ok(html) => state.publish_event(append_body_event(html)),
+        Err(err) => state.publish_event(html_event(format!("<div>Error: {}</div>", err))),
+    }
+    axum::http::StatusCode::NO_CONTENT.into_response()
+}
+
+pub async fn get_process_unlock_modal(State(state): State<Arc<ServerState>>) -> Response {
+    let modal = KeystoreProcessUnlockModal {};
     match modal.render() {
         Ok(html) => state.publish_event(append_body_event(html)),
         Err(err) => state.publish_event(html_event(format!("<div>Error: {}</div>", err))),
@@ -191,8 +206,67 @@ pub async fn unlock(
     }
 }
 
+pub async fn unlock_and_run(
+    State(state): State<Arc<ServerState>>,
+    headers: HeaderMap,
+    ReadSignals(signals): ReadSignals<Signals>,
+) -> Response {
+    let password = signals.keystore.password.trim().to_string();
+    if password.is_empty() {
+        state.publish_event(signal_event(
+            r#"{"message":"Keystore password is required."}"#,
+        ));
+        state.publish_event(signal_event(r#"{"keystore":{"invalid":true}}"#));
+        return axum::http::StatusCode::NO_CONTENT.into_response();
+    }
+
+    match authenticate(&password) {
+        Ok(_) => {
+            state.set_keystore_unlocked(password).await;
+            state.publish_event(signal_event(
+                r#"{"keystore":{"password":"","invalid":false}}"#,
+            ));
+            state.publish_event(html_event(
+                r#"<div id="keystore-process-unlock-modal" data-init="document.getElementById('keystore-process-unlock-modal')?.remove();"></div>"#,
+            ));
+
+            match signals.tab {
+                Tab::FileUpload => {
+                    file_upload::process(State(state), headers, ReadSignals(signals))
+                        .await
+                        .into_response()
+                }
+                Tab::ServiceLink => {
+                    service_link::form(State(state), headers, ReadSignals(signals))
+                        .await
+                        .into_response()
+                }
+                Tab::ApiKey => {
+                    api_key::form(State(state), headers, ReadSignals(signals))
+                        .await
+                        .into_response()
+                }
+            }
+        }
+        Err(err) => {
+            state.record_keystore_failed_attempt().await;
+            state.publish_event(signal_event(
+                r#"{"message":"Invalid keystore password. Try again."}"#,
+            ));
+            state.publish_event(signal_event(
+                r#"{"keystore":{"password":"","invalid":true}}"#,
+            ));
+            log::warn!("Keystore unlock-and-run failed: {}", err);
+            axum::http::StatusCode::NO_CONTENT.into_response()
+        }
+    }
+}
+
 pub async fn lock(State(state): State<Arc<ServerState>>) -> impl IntoResponse {
     state.set_keystore_locked("manual").await;
+    state.publish_event(execute_script_event(
+        "if (window.location.pathname === '/hosts') { window.location.reload(); }",
+    ));
     axum::http::StatusCode::NO_CONTENT
 }
 
@@ -220,4 +294,146 @@ pub async fn ensure_unlocked_for_active_output(state: &Arc<ServerState>) -> Resu
 
     state.touch_keystore_session().await;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{KeystoreForm, lock, unlock};
+    use crate::data::authenticate;
+    use crate::server::{ServerEvent, test_server_state};
+    use axum::{
+        extract::{Form, State},
+        http::{HeaderValue, StatusCode, header::SET_COOKIE},
+        response::IntoResponse,
+    };
+    use std::{
+        path::PathBuf,
+        sync::Mutex,
+    };
+    use tempfile::TempDir;
+
+    fn env_lock() -> &'static Mutex<()> {
+        crate::test_env_lock()
+    }
+
+    fn setup_env() -> (TempDir, PathBuf) {
+        let tmp = TempDir::new().expect("temp dir");
+        let config_dir = tmp.path().join(".esdiag");
+        std::fs::create_dir_all(&config_dir).expect("create config dir");
+        let keystore_path = config_dir.join("secrets.yml");
+        unsafe {
+            std::env::set_var("HOME", tmp.path());
+            std::env::set_var("USERPROFILE", tmp.path());
+            std::env::set_var("ESDIAG_KEYSTORE", &keystore_path);
+        }
+        (tmp, keystore_path)
+    }
+
+    #[tokio::test]
+    async fn unlock_is_idempotent_and_emits_cookie_and_signal_updates() {
+        let _guard = env_lock().lock().expect("env lock");
+        let (_tmp, keystore_path) = setup_env();
+        authenticate("pw").expect("create keystore");
+        assert!(keystore_path.is_file(), "keystore should exist");
+
+        let state = test_server_state();
+        let mut events = state.subscribe_events();
+
+        let response = unlock(
+            State(state.clone()),
+            Form(KeystoreForm {
+                password: "pw".to_string(),
+                confirm: None,
+            }),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+        assert_eq!(
+            response.headers().get(SET_COOKIE),
+            Some(&HeaderValue::from_static(
+                "keystore_session=1; Path=/; Max-Age=43200; SameSite=Lax"
+            ))
+        );
+        assert!(
+            !state.keystore_status().await.0,
+            "unlock should transition state to unlocked"
+        );
+
+        let first = events.recv().await.expect("unlock signal");
+        match first {
+            ServerEvent::Signals(payload) => {
+                assert!(payload.contains(r#""keystore":{"locked":false"#));
+            }
+            other => panic!("expected keystore signal, got {other:?}"),
+        }
+
+        let response = unlock(
+            State(state.clone()),
+            Form(KeystoreForm {
+                password: "pw".to_string(),
+                confirm: None,
+            }),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+        assert!(
+            !state.keystore_status().await.0,
+            "repeat unlock should remain unlocked"
+        );
+    }
+
+    #[tokio::test]
+    async fn unlock_rejects_invalid_password_with_401_and_stays_locked() {
+        let _guard = env_lock().lock().expect("env lock");
+        let (_tmp, _keystore_path) = setup_env();
+        authenticate("pw").expect("create keystore");
+
+        let state = test_server_state();
+        let response = unlock(
+            State(state.clone()),
+            Form(KeystoreForm {
+                password: "wrong".to_string(),
+                confirm: None,
+            }),
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert!(state.keystore_status().await.0, "state should remain locked");
+    }
+
+    #[tokio::test]
+    async fn unlock_requires_existing_keystore() {
+        let _guard = env_lock().lock().expect("env lock");
+        let (_tmp, keystore_path) = setup_env();
+        assert!(!keystore_path.exists(), "keystore should start missing");
+
+        let state = test_server_state();
+        let response = unlock(
+            State(state),
+            Form(KeystoreForm {
+                password: "pw".to_string(),
+                confirm: None,
+            }),
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::PRECONDITION_FAILED);
+    }
+
+    #[tokio::test]
+    async fn lock_is_idempotent_and_preserves_locked_state() {
+        let _guard = env_lock().lock().expect("env lock");
+        let (_tmp, _keystore_path) = setup_env();
+        let state = test_server_state();
+        state.set_keystore_unlocked("pw".to_string()).await;
+
+        let response = lock(State(state.clone())).await.into_response();
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+        assert!(state.keystore_status().await.0, "lock should relock state");
+
+        let response = lock(State(state.clone())).await.into_response();
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+        assert!(state.keystore_status().await.0, "repeat lock stays locked");
+    }
 }

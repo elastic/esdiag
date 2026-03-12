@@ -33,9 +33,7 @@
                     data-on:click="$navigation.{{ section.id }} = !$navigation.{{ section.id }}"
                 >
                     <span>{{ section.title }}</span>
-                    <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-                        <path d="M5.5 3.5 10.5 8l-5 4.5"></path>
-                    </svg>
+                    <icon-chevron-right></icon-chevron-right>
                 </button>
                 <ul
                     class="{% if !section.open %}collapsed clip{% endif %}"

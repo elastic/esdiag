@@ -82,8 +82,17 @@ pub async fn handler(
         .unwrap_or('_')
         .to_ascii_uppercase();
 
-    let exporter_target = { state.exporter.read().await.to_string() };
+    let exporter = { state.exporter.read().await.clone() };
     let send_hosts = KnownHost::list_by_role(HostRole::Send).unwrap_or_default();
+    let preferred_target = if state.runtime_mode_policy.allows_local_artifacts() {
+        crate::data::Settings::load().ok().and_then(|settings| settings.active_target)
+    } else {
+        None
+    };
+    let (output_options, selected_output, exporter_label) =
+        template::build_footer_output_context(&send_hosts, &exporter, preferred_target.as_deref());
+    let active_output_secure =
+        template::active_output_requires_keystore(&send_hosts, &selected_output, &exporter);
     let theme_dark = get_theme_dark(&headers);
     let kibana_url = { state.kibana_url.read().await.clone() };
     let (keystore_locked, keystore_lock_time) = state.keystore_status().await;
@@ -95,8 +104,10 @@ pub async fn handler(
         debug: log::max_level() >= log::LevelFilter::Debug,
         desktop: cfg!(feature = "desktop"),
         can_configure_output: state.runtime_mode_policy.allows_exporter_updates(),
-        send_hosts,
-        exporter: exporter_target,
+        output_options,
+        selected_output,
+        exporter_label,
+        active_output_secure,
         kibana_url,
         key_id: params.key_id,
         link_id: params.link_id,

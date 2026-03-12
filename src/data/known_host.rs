@@ -774,12 +774,11 @@ impl From<KnownHost> for Url {
 mod tests {
     use super::*;
     use crate::data::{get_secret, upsert_secret_auth};
-    use std::sync::{Mutex, OnceLock};
+    use std::sync::Mutex;
     use tempfile::TempDir;
 
     fn env_lock() -> &'static Mutex<()> {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(()))
+        crate::test_env_lock()
     }
 
     fn setup_env() -> (TempDir, std::path::PathBuf, std::path::PathBuf) {

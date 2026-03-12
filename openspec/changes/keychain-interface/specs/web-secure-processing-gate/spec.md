@@ -5,7 +5,7 @@ The system SHALL block starting diagnostic processing for secure hosts that depe
 
 #### Scenario: Processing attempt while keystore locked
 - **WHEN** the user attempts to start processing for a secure host and the keystore is locked
-- **THEN** processing does not start and the user is prompted for the keystore password
+- **THEN** processing does not start and the user is prompted for the keystore password in a modal
 
 ### Requirement: Secure Host Classification
 Host security classification SHALL be derived from authentication type, where only `NoAuth` is non-secure and all other auth types are secure.

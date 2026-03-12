@@ -237,8 +237,10 @@ impl Server {
                 app.route("/hosts", get(hosts::page))
                     .route("/hosts/create", post(hosts::create_host))
                     .route("/hosts/update", put(hosts::update_host))
+                    .route("/hosts/host/{action}/{id}", post(hosts::host_action))
                     .route("/hosts/host/upsert", post(hosts::upsert_host))
                     .route("/hosts/host/delete", post(hosts::delete_host))
+                    .route("/hosts/secret/{action}/{id}", post(hosts::secret_action))
                     .route("/hosts/secret/upsert", post(hosts::upsert_secret))
                     .route("/hosts/secret/delete", post(hosts::delete_secret))
                     .route(
@@ -247,7 +249,9 @@ impl Server {
                     )
                     .route("/keystore/bootstrap", post(keystore::bootstrap))
                     .route("/keystore/modal", get(keystore::get_unlock_modal))
+                    .route("/keystore/modal/process", get(keystore::get_process_unlock_modal))
                     .route("/keystore/unlock", post(keystore::unlock))
+                    .route("/keystore/unlock-and-run", post(keystore::unlock_and_run))
                     .route("/keystore/lock", post(keystore::lock))
             } else {
                 app
@@ -622,6 +626,11 @@ impl ServerState {
 
     pub fn stats_updates_receiver(&self) -> watch::Receiver<u64> {
         self.stats_updates_rx.clone()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn subscribe_events(&self) -> broadcast::Receiver<ServerEvent> {
+        self.event_tx.subscribe()
     }
 
     fn notify_stats_changed(&self) {

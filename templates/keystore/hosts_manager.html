@@ -1,9 +1,9 @@
 <div id="hosts-manager-modal" class="modal">
     <div class="modal-content">
-        <button type="button" class="close-button" aria-label="Close hosts manager" data-on:click="document.getElementById('hosts-manager-modal')?.remove()">&times;</button>
+        <button type="button" class="close-button" aria-label="Close hosts manager" data-on:click="document.getElementById('hosts-manager-modal')?.remove()"><icon-x></icon-x></button>
         <h2>
             Edit Hosts
-            <span title="Keystore state">{% if keystore_locked %}🔒{% else %}🔓{% endif %}</span>
+            <span title="Keystore state">{% if keystore_locked %}<icon-lock></icon-lock>{% else %}<icon-key></icon-key>{% endif %}</span>
         </h2>
         <p><small>{% if keystore_locked %}Keystore is locked.{% else %}Keystore is unlocked.{% endif %}</small></p>
 

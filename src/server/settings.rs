@@ -164,7 +164,7 @@ pub async fn update_settings(
             }
         }
     } else {
-        settings.active_target = Some(form.target.clone());
+        settings.active_target = KnownHost::get_known(&form.target).map(|_| form.target.clone());
     }
 
     // 2. Process kibana URL
@@ -181,29 +181,28 @@ pub async fn update_settings(
     }
 
     // 4. Update the active Exporter in ServerState (user mode only)
-    if state.runtime_mode_policy.allows_exporter_updates()
-        && let Some(target) = &settings.active_target
-    {
-        match KnownHost::get_known(target).ok_or_else(|| eyre::eyre!("Host not found")) {
-            Ok(host) => match Uri::try_from(host) {
-                Ok(uri) => match Exporter::try_from(uri) {
-                    Ok(new_exporter) => {
-                        *state.exporter.write().await = new_exporter;
-                    }
-                    Err(e) => {
-                        let err_msg = format!("Failed to construct exporter: {}", e);
-                        log::error!("{}", err_msg);
-                        return settings_error_response(&state, err_msg);
-                    }
-                },
-                Err(e) => {
-                    let err_msg = format!("Invalid Host URI: {}", e);
-                    log::error!("{}", err_msg);
-                    return settings_error_response(&state, err_msg);
-                }
-            },
+    if state.runtime_mode_policy.allows_exporter_updates() {
+        let target = form.target.clone();
+        let exporter_uri = if let Some(host) = KnownHost::get_known(&target) {
+            Uri::try_from(host).map_err(|e| format!("Invalid Host URI: {}", e))
+        } else {
+            Uri::try_from(target.clone()).map_err(|e| format!("Invalid output target: {}", e))
+        };
+
+        let exporter_uri = match exporter_uri {
+            Ok(uri) => uri,
+            Err(err_msg) => {
+                log::error!("{}", err_msg);
+                return settings_error_response(&state, err_msg);
+            }
+        };
+
+        match Exporter::try_from(exporter_uri) {
+            Ok(new_exporter) => {
+                *state.exporter.write().await = new_exporter;
+            }
             Err(e) => {
-                let err_msg = format!("Could not find Target in hosts.yml: {}", e);
+                let err_msg = format!("Failed to construct exporter: {}", e);
                 log::error!("{}", err_msg);
                 return settings_error_response(&state, err_msg);
             }
