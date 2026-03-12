@@ -360,8 +360,6 @@ pub struct KeystoreSessionState {
     pub failed_attempts: u32,
     pub blocked_until_epoch: Option<i64>,
     #[serde(skip)]
-    pub unlocked_password: Option<String>,
-    #[serde(skip)]
     pub expires_at_epoch: Option<i64>,
 }
 
@@ -372,7 +370,6 @@ impl Default for KeystoreSessionState {
             lock_time: now_epoch_seconds(),
             failed_attempts: 0,
             blocked_until_epoch: None,
-            unlocked_password: None,
             expires_at_epoch: None,
         }
     }
@@ -402,7 +399,6 @@ impl KeystoreSessionState {
             self.locked = true;
             self.lock_time = now;
             self.expires_at_epoch = None;
-            self.unlocked_password = None;
             unsafe {
                 std::env::remove_var(ESDIAG_KEYSTORE_PASSWORD);
             }
@@ -459,7 +455,8 @@ impl ServerState {
     }
 
     pub async fn keystore_status(&self) -> (bool, i64) {
-        let state = self.keystore_state.read().await;
+        let mut state = self.keystore_state.write().await;
+        state.apply_timeout();
         (state.locked, state.lock_time)
     }
 
@@ -484,7 +481,6 @@ impl ServerState {
         state.failed_attempts = 0;
         state.blocked_until_epoch = None;
         state.expires_at_epoch = Some(now_epoch_seconds() + (12 * 60 * 60));
-        state.unlocked_password = Some(password.clone());
         unsafe {
             std::env::set_var(ESDIAG_KEYSTORE_PASSWORD, password);
         }
@@ -498,7 +494,6 @@ impl ServerState {
         state.locked = true;
         state.lock_time = now_epoch_seconds();
         state.expires_at_epoch = None;
-        state.unlocked_password = None;
         unsafe {
             std::env::remove_var(ESDIAG_KEYSTORE_PASSWORD);
         }

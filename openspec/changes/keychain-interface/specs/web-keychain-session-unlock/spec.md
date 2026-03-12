@@ -15,7 +15,7 @@ The system SHALL retain keychain unlock state in server memory for the current u
 - **THEN** subsequent keychain-backed actions in that session execute without prompting again until the session is relocked, expired, or terminated
 
 ### Requirement: User Mode Session Lease
-In user mode, keystore session awareness SHALL use a 12-hour cookie-backed session lease for unlocked state tracking.
+In user mode, keystore session awareness SHALL use a 12-hour in-memory session lease for unlocked state tracking.
 
 #### Scenario: Unlock establishes 12-hour lease
 - **WHEN** the user successfully unlocks keystore in user mode

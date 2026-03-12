@@ -4,12 +4,12 @@ use super::{
 };
 use crate::data::{KnownHost, Settings, authenticate, keystore_exists};
 use crate::server::template::{
-    KeystoreBootstrapModal, KeystoreProcessUnlockModal, KeystoreUnlockModal,
+    self, KeystoreBootstrapModal, KeystoreProcessUnlockModal, KeystoreUnlockModal,
 };
 use askama::Template;
 use axum::{
     extract::{Form, State},
-    http::{HeaderMap, HeaderValue, header::SET_COOKIE},
+    http::HeaderMap,
     response::{IntoResponse, Response},
 };
 use datastar::axum::ReadSignals;
@@ -68,15 +68,6 @@ fn missing_keystore_unlock_message() -> &'static str {
     } else {
         "Create a keystore before unlocking."
     }
-}
-
-fn keystore_session_header() -> HeaderMap {
-    let mut headers = HeaderMap::new();
-    let cookie = "keystore_session=1; Path=/; Max-Age=43200; SameSite=Lax";
-    if let Ok(value) = HeaderValue::from_str(cookie) {
-        headers.append(SET_COOKIE, value);
-    }
-    headers
 }
 
 pub async fn get_bootstrap_modal(State(state): State<Arc<ServerState>>) -> Response {
@@ -151,11 +142,7 @@ pub async fn bootstrap(
     state.publish_event(html_event(
         r#"<div id="keystore-bootstrap-modal" data-init="document.getElementById('keystore-bootstrap-modal')?.remove();"></div>"#,
     ));
-    (
-        axum::http::StatusCode::NO_CONTENT,
-        keystore_session_header(),
-    )
-        .into_response()
+    axum::http::StatusCode::NO_CONTENT.into_response()
 }
 
 pub async fn unlock(
@@ -203,11 +190,7 @@ pub async fn unlock(
             state.publish_event(html_event(
                 r#"<div id="keystore-unlock-modal" data-init="document.getElementById('keystore-unlock-modal')?.remove();"></div>"#,
             ));
-            (
-                axum::http::StatusCode::NO_CONTENT,
-                keystore_session_header(),
-            )
-                .into_response()
+            axum::http::StatusCode::NO_CONTENT.into_response()
         }
         Err(err) => {
             state.record_keystore_failed_attempt().await;
@@ -288,16 +271,15 @@ pub async fn ensure_unlocked_for_active_output(state: &Arc<ServerState>) -> Resu
         return Err("Keystore unavailable in service mode.".to_string());
     }
 
-    let settings = Settings::load().unwrap_or_default();
-    let Some(target) = settings.active_target else {
-        return Ok(());
-    };
-    let Some(host) = KnownHost::get_known(&target) else {
-        return Ok(());
-    };
+    let send_hosts = KnownHost::list_by_role(crate::data::HostRole::Send).unwrap_or_default();
+    let exporter = state.exporter.read().await.clone();
+    let preferred_target = Settings::load()
+        .ok()
+        .and_then(|settings| settings.active_target);
+    let (_output_options, selected_output, _exporter_label) =
+        template::build_footer_output_context(&send_hosts, &exporter, preferred_target.as_deref());
 
-    let secure = !matches!(host, KnownHost::NoAuth { .. });
-    if !secure {
+    if !template::active_output_requires_keystore(&send_hosts, &selected_output, &exporter) {
         return Ok(());
     }
 
@@ -322,7 +304,7 @@ mod tests {
     };
     use axum::{
         extract::{Form, State},
-        http::{HeaderMap, HeaderValue, StatusCode, header::SET_COOKIE},
+        http::{HeaderMap, StatusCode},
         response::IntoResponse,
     };
     use datastar::axum::ReadSignals;
@@ -354,7 +336,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn unlock_is_idempotent_and_emits_cookie_and_signal_updates() {
+    async fn unlock_is_idempotent_and_emits_signal_updates() {
         let _guard = env_lock().lock().expect("env lock");
         let (_tmp, _hosts_path, keystore_path) = setup_env();
         authenticate("pw").expect("create keystore");
@@ -372,12 +354,6 @@ mod tests {
         )
         .await;
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
-        assert_eq!(
-            response.headers().get(SET_COOKIE),
-            Some(&HeaderValue::from_static(
-                "keystore_session=1; Path=/; Max-Age=43200; SameSite=Lax"
-            ))
-        );
         assert!(
             !state.keystore_status().await.0,
             "unlock should transition state to unlocked"
@@ -685,29 +661,26 @@ mod tests {
         let _guard = env_lock().lock().expect("env lock");
         let (_tmp, _hosts_path, _keystore_path) = setup_env();
 
+        let noauth_host = KnownHost::NoAuth {
+            app: crate::data::Product::Elasticsearch,
+            roles: vec![crate::data::HostRole::Send],
+            viewer: None,
+            url: Url::parse("http://localhost:9200").expect("url"),
+        };
+        let secure_host = KnownHost::Basic {
+            accept_invalid_certs: false,
+            app: crate::data::Product::Elasticsearch,
+            password: None,
+            roles: vec![crate::data::HostRole::Send],
+            secret: Some("secure".to_string()),
+            viewer: None,
+            url: Url::parse("https://secure.example.com:9200").expect("url"),
+            username: None,
+        };
+
         let mut hosts = BTreeMap::new();
-        hosts.insert(
-            "noauth".to_string(),
-            KnownHost::NoAuth {
-                app: crate::data::Product::Elasticsearch,
-                roles: vec![crate::data::HostRole::Send],
-                viewer: None,
-                url: Url::parse("http://localhost:9200").expect("url"),
-            },
-        );
-        hosts.insert(
-            "secure".to_string(),
-            KnownHost::Basic {
-                accept_invalid_certs: false,
-                app: crate::data::Product::Elasticsearch,
-                password: None,
-                roles: vec![crate::data::HostRole::Send],
-                secret: Some("secure".to_string()),
-                viewer: None,
-                url: Url::parse("https://secure.example.com:9200").expect("url"),
-                username: None,
-            },
-        );
+        hosts.insert("noauth".to_string(), noauth_host.clone());
+        hosts.insert("secure".to_string(), secure_host.clone());
         write_hosts(hosts);
 
         let mut settings = Settings {
@@ -717,6 +690,8 @@ mod tests {
         settings.save().expect("save settings");
 
         let state = test_server_state();
+        *state.exporter.write().await =
+            crate::exporter::Exporter::try_from(noauth_host).expect("noauth exporter");
         assert!(
             ensure_unlocked_for_active_output(&state).await.is_ok(),
             "NoAuth output should bypass keystore preflight"
@@ -724,6 +699,13 @@ mod tests {
 
         settings.active_target = Some("secure".to_string());
         settings.save().expect("save secure settings");
+        *state.exporter.write().await = crate::exporter::Exporter::try_from(KnownHost::NoAuth {
+            app: crate::data::Product::Elasticsearch,
+            roles: vec![crate::data::HostRole::Send],
+            viewer: None,
+            url: Url::parse("https://secure.example.com:9200").expect("secure url"),
+        })
+        .expect("secure exporter");
         assert!(
             ensure_unlocked_for_active_output(&state).await.is_err(),
             "secure output should require unlock"

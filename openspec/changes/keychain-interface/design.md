@@ -34,10 +34,10 @@ Constraints:
 ## Decisions
 
 1. Introduce explicit unlock state in server session context
-   - Decision: Add a per-session keychain unlock state machine in user mode with a 12-hour cookie TTL: `Locked` -> `Unlocked(session_key_ref)` -> `Locked`.
+   - Decision: Add an explicit keychain unlock state machine in user mode with a 12-hour in-memory session lease: `Locked` -> `Unlocked` -> `Locked`.
    - Rationale: Prevent accidental keychain access before user intent and make lock behavior explicit.
    - Alternatives considered:
-     - Global process-level unlock: rejected because it leaks trust boundary across browser sessions.
+     - Browser cookie-backed unlock tracking: rejected because the server does not actually validate a session cookie and the extra header would imply isolation guarantees that do not exist.
      - Prompt-on-every-operation: rejected for poor UX and repetitive friction.
 
 2. Split footer interactions from host management
