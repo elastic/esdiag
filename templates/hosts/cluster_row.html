@@ -1,4 +1,4 @@
-<tr id="clusters-table-row-{{ row_id }}">
+<tr id="clusters-table-row-{{ row_id }}" data-cluster-name="{{ cluster.name }}">
     {% if editing %}
     <td><form-input><input data-bind:clusters.rows.{{ row_id }}.draft.name placeholder="name" /></form-input></td>
     <td class="cluster-secret-column">
@@ -50,7 +50,7 @@
             <icon-undo></icon-undo>
         </button>
         {% if persisted %}
-        <button type="button" title="Delete cluster" aria-label="Delete cluster {{ cluster.name }}" data-on:click="if (confirm('Delete diagnostic cluster {{ cluster.name }}?')) { @post('/settings/cluster/delete/{{ row_id }}'); }">
+        <button type="button" title="Delete cluster" aria-label="Delete cluster {{ cluster.name }}" data-on:click="if (confirm(`Delete diagnostic cluster ${evt.currentTarget.closest('tr').dataset.clusterName}?`)) { @post('/settings/cluster/delete/{{ row_id }}'); }">
             <icon-trash></icon-trash>
         </button>
         {% endif %}
@@ -65,7 +65,7 @@
         <button type="button" {% if keystore_locked %}disabled{% endif %} title="Edit cluster" aria-label="Edit cluster {{ cluster.name }}" data-on:click="@post('/settings/cluster/read/{{ row_id }}')">
             <icon-pencil></icon-pencil>
         </button>
-        <button type="button" title="Delete cluster" aria-label="Delete cluster {{ cluster.name }}" data-on:click="if (confirm('Delete diagnostic cluster {{ cluster.name }}?')) { @post('/settings/cluster/delete/{{ row_id }}'); }">
+        <button type="button" title="Delete cluster" aria-label="Delete cluster {{ cluster.name }}" data-on:click="if (confirm(`Delete diagnostic cluster ${evt.currentTarget.closest('tr').dataset.clusterName}?`)) { @post('/settings/cluster/delete/{{ row_id }}'); }">
             <icon-trash></icon-trash>
         </button>
     </td>

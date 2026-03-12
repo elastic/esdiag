@@ -37,6 +37,10 @@ pub async fn get_unlock_modal(State(state): State<Arc<ServerState>>) -> Response
 }
 
 pub async fn get_process_unlock_modal(State(state): State<Arc<ServerState>>) -> Response {
+    if !keystore_exists().unwrap_or(false) {
+        return get_bootstrap_modal(State(state)).await;
+    }
+
     let modal = KeystoreProcessUnlockModal {};
     match modal.render() {
         Ok(html) => state.publish_event(append_body_event(html)),
@@ -68,6 +72,15 @@ fn missing_keystore_unlock_message() -> &'static str {
     } else {
         "Create a keystore before unlocking."
     }
+}
+
+async fn missing_keystore_response(state: &Arc<ServerState>) -> Response {
+    state.publish_event(signal_event(format!(
+        r#"{{"message":"{}"}}"#,
+        missing_keystore_unlock_message()
+    )));
+    let _ = get_bootstrap_modal(State(state.clone())).await;
+    axum::http::StatusCode::PRECONDITION_FAILED.into_response()
 }
 
 pub async fn get_bootstrap_modal(State(state): State<Arc<ServerState>>) -> Response {
@@ -150,12 +163,7 @@ pub async fn unlock(
     Form(form): Form<KeystoreForm>,
 ) -> Response {
     if !keystore_exists().unwrap_or(false) {
-        state.publish_event(signal_event(format!(
-            r#"{{"message":"{}"}}"#,
-            missing_keystore_unlock_message()
-        )));
-        let _ = get_bootstrap_modal(State(state.clone())).await;
-        return axum::http::StatusCode::PRECONDITION_FAILED.into_response();
+        return missing_keystore_response(&state).await;
     }
 
     if let Some(blocked_until) = state.keystore_blocked_until().await {
@@ -174,6 +182,9 @@ pub async fn unlock(
     if password.is_empty() {
         state.publish_event(signal_event(
             r#"{"message":"Keystore password is required."}"#,
+        ));
+        state.publish_event(signal_event(
+            r#"{"keystore":{"password":"","invalid":true}}"#,
         ));
         return axum::http::StatusCode::BAD_REQUEST.into_response();
     }
@@ -211,12 +222,18 @@ pub async fn unlock_and_run(
     headers: HeaderMap,
     ReadSignals(signals): ReadSignals<Signals>,
 ) -> Response {
+    if !keystore_exists().unwrap_or(false) {
+        return missing_keystore_response(&state).await;
+    }
+
     let password = signals.keystore.password.trim().to_string();
     if password.is_empty() {
         state.publish_event(signal_event(
             r#"{"message":"Keystore password is required."}"#,
         ));
-        state.publish_event(signal_event(r#"{"keystore":{"invalid":true}}"#));
+        state.publish_event(signal_event(
+            r#"{"keystore":{"password":"","invalid":true}}"#,
+        ));
         return axum::http::StatusCode::NO_CONTENT.into_response();
     }
 
@@ -295,8 +312,8 @@ pub async fn ensure_unlocked_for_active_output(state: &Arc<ServerState>) -> Resu
 #[allow(clippy::await_holding_lock)]
 mod tests {
     use super::{
-        KeystoreForm, bootstrap, ensure_unlocked_for_active_output, get_unlock_modal, lock, unlock,
-        unlock_and_run,
+        KeystoreForm, bootstrap, ensure_unlocked_for_active_output, get_process_unlock_modal,
+        get_unlock_modal, lock, unlock, unlock_and_run,
     };
     use crate::{
         data::{KnownHost, Settings, authenticate},
@@ -486,6 +503,27 @@ mod tests {
         let state = test_server_state();
         let mut events = state.subscribe_events();
         let response = get_unlock_modal(State(state)).await;
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+
+        let event = events.recv().await.expect("bootstrap modal event");
+        match event {
+            ServerEvent::AppendBody(html) => {
+                assert!(html.contains("keystore-bootstrap-modal"));
+                assert!(html.contains("Create Keystore"));
+            }
+            other => panic!("expected bootstrap modal append event, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn missing_keystore_process_unlock_modal_falls_back_to_bootstrap_modal() {
+        let _guard = env_lock().lock().expect("env lock");
+        let (_tmp, _hosts_path, keystore_path) = setup_env();
+        assert!(!keystore_path.exists(), "keystore should start missing");
+
+        let state = test_server_state();
+        let mut events = state.subscribe_events();
+        let response = get_process_unlock_modal(State(state)).await;
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
 
         let event = events.recv().await.expect("bootstrap modal event");
@@ -803,5 +841,71 @@ mod tests {
             }
         }
         assert!(saw_invalid, "expected invalid-password keystore signal");
+    }
+
+    #[tokio::test]
+    async fn unlock_empty_password_marks_field_invalid() {
+        let _guard = env_lock().lock().expect("env lock");
+        let (_tmp, _hosts_path, _keystore_path) = setup_env();
+        authenticate("pw").expect("create keystore");
+
+        let state = test_server_state();
+        let mut events = state.subscribe_events();
+        let response = unlock(
+            State(state),
+            Form(KeystoreForm {
+                password: "   ".to_string(),
+                confirm: None,
+            }),
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+        let mut saw_invalid = false;
+        while let Ok(event) = events.try_recv() {
+            if let ServerEvent::Signals(payload) = event
+                && payload.contains(r#""keystore":{"password":"","invalid":true}"#)
+            {
+                saw_invalid = true;
+            }
+        }
+        assert!(saw_invalid, "expected empty-password keystore signal");
+    }
+
+    #[tokio::test]
+    async fn unlock_and_run_requires_existing_keystore_before_processing() {
+        let _guard = env_lock().lock().expect("env lock");
+        let (_tmp, _hosts_path, keystore_path) = setup_env();
+        assert!(!keystore_path.exists(), "keystore should start missing");
+
+        let state = test_server_state();
+        let mut events = state.subscribe_events();
+        let mut signals = Signals {
+            tab: Tab::FileUpload,
+            ..Signals::default()
+        };
+        signals.keystore.password = "pw".to_string();
+
+        let response = unlock_and_run(State(state), HeaderMap::new(), ReadSignals(signals)).await;
+
+        assert_eq!(response.status(), StatusCode::PRECONDITION_FAILED);
+
+        let first = events.recv().await.expect("missing keystore message event");
+        match first {
+            ServerEvent::Signals(payload) => {
+                assert!(payload.contains("Create a keystore before unlocking."));
+            }
+            other => panic!("expected missing keystore signal, got {other:?}"),
+        }
+
+        let second = events.recv().await.expect("bootstrap modal event");
+        match second {
+            ServerEvent::AppendBody(html) => {
+                assert!(html.contains("keystore-bootstrap-modal"));
+                assert!(html.contains("Create Keystore"));
+            }
+            other => panic!("expected bootstrap modal append event, got {other:?}"),
+        }
     }
 }

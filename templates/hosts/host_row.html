@@ -1,4 +1,4 @@
-<tr id="hosts-table-row-{{ row_id }}">
+<tr id="hosts-table-row-{{ row_id }}" data-host-name="{{ host.name }}">
     {% if editing %}
     <td><form-input><input data-bind:hosts.rows.{{ row_id }}.draft.name placeholder="name" /></form-input></td>
     <td class="host-product-column">
@@ -56,7 +56,7 @@
             <icon-undo></icon-undo>
         </button>
         {% if persisted %}
-        <button type="button" title="Delete host" aria-label="Delete host {{ host.name }}" data-on:click="if (confirm('Delete host {{ host.name }}?')) { @post('/settings/host/delete/{{ row_id }}'); }">
+        <button type="button" title="Delete host" aria-label="Delete host {{ host.name }}" data-on:click="if (confirm(`Delete host ${evt.currentTarget.closest('tr').dataset.hostName}?`)) { @post('/settings/host/delete/{{ row_id }}'); }">
             <icon-trash></icon-trash>
         </button>
         {% endif %}
@@ -71,7 +71,7 @@
         <button type="button" {% if keystore_locked %}disabled{% endif %} title="Edit host" aria-label="Edit host {{ host.name }}" data-on:click="@post('/settings/host/read/{{ row_id }}')">
             <icon-pencil></icon-pencil>
         </button>
-        <button type="button" title="Delete host" aria-label="Delete host {{ host.name }}" data-on:click="if (confirm('Delete host {{ host.name }}?')) { @post('/settings/host/delete/{{ row_id }}'); }">
+        <button type="button" title="Delete host" aria-label="Delete host {{ host.name }}" data-on:click="if (confirm(`Delete host ${evt.currentTarget.closest('tr').dataset.hostName}?`)) { @post('/settings/host/delete/{{ row_id }}'); }">
             <icon-trash></icon-trash>
         </button>
     </td>
