@@ -9,11 +9,12 @@ use crate::server::template::{
 use askama::Template;
 use axum::{
     extract::{Form, State},
-    http::HeaderMap,
+    http::{HeaderMap, HeaderValue, header::RETRY_AFTER},
     response::{IntoResponse, Response},
 };
 use datastar::axum::ReadSignals;
 use serde::Deserialize;
+use serde_json::json;
 use std::sync::Arc;
 
 #[derive(Deserialize, Default)]
@@ -128,19 +129,17 @@ pub async fn bootstrap(
     let should_migrate = migration_needed();
 
     if let Err(err) = authenticate(&password) {
-        state.publish_event(signal_event(format!(
-            r#"{{"message":"Failed to initialize keystore: {}"}}"#,
-            err
-        )));
+        state.publish_event(signal_event(
+            json!({ "message": format!("Failed to initialize keystore: {err}") }).to_string(),
+        ));
         log::error!("Keystore bootstrap failed: {}", err);
         return axum::http::StatusCode::INTERNAL_SERVER_ERROR.into_response();
     }
 
     if should_migrate && let Err(err) = KnownHost::migrate_hosts_to_keystore(&password) {
-        state.publish_event(signal_event(format!(
-            r#"{{"message":"Failed to migrate hosts to keystore: {}"}}"#,
-            err
-        )));
+        state.publish_event(signal_event(
+            json!({ "message": format!("Failed to migrate hosts to keystore: {err}") }).to_string(),
+        ));
         log::error!("Keystore migration failed: {}", err);
         return axum::http::StatusCode::INTERNAL_SERVER_ERROR.into_response();
     }
@@ -174,7 +173,11 @@ pub async fn unlock(
                 r#"{{"message":"Keystore temporarily locked. Retry in {} seconds."}}"#,
                 retry_after
             )));
-            return axum::http::StatusCode::TOO_MANY_REQUESTS.into_response();
+            let mut response = axum::http::StatusCode::TOO_MANY_REQUESTS.into_response();
+            if let Ok(value) = HeaderValue::from_str(&retry_after.to_string()) {
+                response.headers_mut().insert(RETRY_AFTER, value);
+            }
+            return response;
         }
     }
 

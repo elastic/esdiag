@@ -16,6 +16,7 @@ use std::{
     collections::BTreeMap,
     env,
     fs::File,
+    future::Future,
     io::{BufReader, BufWriter, IsTerminal},
     path::PathBuf,
 };
@@ -25,6 +26,10 @@ const KEY_SIZE: usize = 32;
 const SALT_SIZE: usize = 16;
 const NONCE_SIZE: usize = 12;
 const KEYSTORE_FILE: &str = "secrets.yml";
+
+tokio::task_local! {
+    static SCOPED_KEYSTORE_PASSWORD: String;
+}
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum SecretAuth {
@@ -130,9 +135,21 @@ pub fn get_keystore_path() -> Result<PathBuf> {
 }
 
 pub fn get_password_from_env() -> Result<String> {
+    if let Ok(password) = SCOPED_KEYSTORE_PASSWORD.try_with(Clone::clone) {
+        return Ok(password);
+    }
     env::var(ESDIAG_KEYSTORE_PASSWORD).map_err(|_| {
         eyre!("{ESDIAG_KEYSTORE_PASSWORD} is not set; cannot decrypt secrets from keystore.")
     })
+}
+
+pub async fn with_scoped_keystore_password<F>(keystore_password: String, future: F) -> F::Output
+where
+    F: Future,
+{
+    SCOPED_KEYSTORE_PASSWORD
+        .scope(keystore_password, future)
+        .await
 }
 
 pub fn get_password_for_secret_commands() -> Result<String> {

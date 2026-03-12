@@ -21,7 +21,6 @@ mod theme;
 use super::processor::Identifiers;
 use crate::{
     data::{KnownHost, Uri},
-    env::ESDIAG_KEYSTORE_PASSWORD,
     exporter::Exporter,
 };
 use askama::Template;
@@ -219,7 +218,6 @@ impl Server {
                     "/documentation-outline.js",
                     get(assets::documentation_outline),
                 )
-                .route("/document-outline.js", get(assets::document_outline))
                 .route("/theme-borealis.css", get(assets::theme_borealis))
                 .route("/theme", post(theme::set_theme))
                 .route("/docs/{*path}", get(docs::handler))
@@ -360,6 +358,8 @@ pub struct KeystoreSessionState {
     pub failed_attempts: u32,
     pub blocked_until_epoch: Option<i64>,
     #[serde(skip)]
+    pub unlocked_password: Option<String>,
+    #[serde(skip)]
     pub expires_at_epoch: Option<i64>,
 }
 
@@ -370,6 +370,7 @@ impl Default for KeystoreSessionState {
             lock_time: now_epoch_seconds(),
             failed_attempts: 0,
             blocked_until_epoch: None,
+            unlocked_password: None,
             expires_at_epoch: None,
         }
     }
@@ -398,10 +399,8 @@ impl KeystoreSessionState {
         {
             self.locked = true;
             self.lock_time = now;
+            self.unlocked_password = None;
             self.expires_at_epoch = None;
-            unsafe {
-                std::env::remove_var(ESDIAG_KEYSTORE_PASSWORD);
-            }
             log::info!("Keystore session timed out and was locked");
         }
     }
@@ -480,10 +479,8 @@ impl ServerState {
         state.lock_time = now_epoch_seconds();
         state.failed_attempts = 0;
         state.blocked_until_epoch = None;
+        state.unlocked_password = Some(password);
         state.expires_at_epoch = Some(now_epoch_seconds() + (12 * 60 * 60));
-        unsafe {
-            std::env::set_var(ESDIAG_KEYSTORE_PASSWORD, password);
-        }
         drop(state);
         self.publish_event(signal_event(self.keystore_signal_payload().await));
         log::info!("Keystore authentication succeeded");
@@ -493,10 +490,8 @@ impl ServerState {
         let mut state = self.keystore_state.write().await;
         state.locked = true;
         state.lock_time = now_epoch_seconds();
+        state.unlocked_password = None;
         state.expires_at_epoch = None;
-        unsafe {
-            std::env::remove_var(ESDIAG_KEYSTORE_PASSWORD);
-        }
         drop(state);
         self.publish_event(signal_event(self.keystore_signal_payload().await));
         log::info!("Keystore locked: {reason}");
@@ -528,6 +523,16 @@ impl ServerState {
         let mut state = self.keystore_state.write().await;
         state.apply_timeout();
         state.blocked_until_epoch
+    }
+
+    pub async fn keystore_password(&self) -> Option<String> {
+        let mut state = self.keystore_state.write().await;
+        state.apply_timeout();
+        if state.locked {
+            None
+        } else {
+            state.unlocked_password.clone()
+        }
     }
 
     pub async fn record_success(&self, _docs: u32, errors: u32) {
