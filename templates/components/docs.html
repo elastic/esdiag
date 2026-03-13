@@ -10,7 +10,7 @@
         data-signals='{
             navigation: {
                 {% for section in nav_sections %}
-                {{ section.id }}: {% if section.open %}true{% else %}false{% endif %}{% if !loop.last %},{% endif %}
+                "{{ section.id }}": {% if section.open %}true{% else %}false{% endif %}{% if !loop.last %},{% endif %}
                 {% endfor %}
             }
         }'
@@ -29,8 +29,8 @@
                     type="button"
                     aria-label="Toggle {{ section.title }} section"
                     aria-expanded="{% if section.open %}true{% else %}false{% endif %}"
-                    data-attr:aria-expanded="$navigation.{{ section.id }} ? 'true' : 'false'"
-                    data-on:click="$navigation.{{ section.id }} = !$navigation.{{ section.id }}"
+                    data-attr:aria-expanded="$navigation['{{ section.id }}'] ? 'true' : 'false'"
+                    data-on:click="$navigation['{{ section.id }}'] = !$navigation['{{ section.id }}']"
                 >
                     <span>{{ section.title }}</span>
                     <icon-chevron-right></icon-chevron-right>
@@ -38,9 +38,9 @@
                 <ul
                     class="{% if !section.open %}collapsed clip{% endif %}"
                     aria-hidden="{% if section.open %}false{% else %}true{% endif %}"
-                    data-class:collapsed="!$navigation.{{ section.id }}"
-                    data-class:clip="!$navigation.{{ section.id }}"
-                    data-attr:aria-hidden="$navigation.{{ section.id }} ? 'false' : 'true'"
+                    data-class:collapsed="!$navigation['{{ section.id }}']"
+                    data-class:clip="!$navigation['{{ section.id }}']"
+                    data-attr:aria-hidden="$navigation['{{ section.id }}'] ? 'false' : 'true'"
                 >
                     {% for entry in section.items %}
                     <li class="nested">

@@ -284,6 +284,10 @@ pub fn active_output_requires_keystore(
         return !matches!(host, KnownHost::NoAuth { .. });
     }
 
+    if selected_output == exporter.target_value() {
+        return exporter.requires_keystore();
+    }
+
     send_hosts.iter().any(|host_name| {
         let Some(host) = KnownHost::get_known(host_name) else {
             return false;
@@ -409,7 +413,7 @@ mod tests {
             "secure-prod",
             &secure_exporter
         ));
-        assert!(active_output_requires_keystore(
+        assert!(!active_output_requires_keystore(
             &send_hosts,
             &secure_exporter.target_value(),
             &secure_exporter
@@ -421,6 +425,19 @@ mod tests {
             &send_hosts,
             &dir_exporter.target_value(),
             &dir_exporter
+        ));
+
+        let live_url_exporter = Exporter::try_from(KnownHost::NoAuth {
+            app: Product::Elasticsearch,
+            roles: vec![HostRole::Send],
+            viewer: None,
+            url: Url::parse("https://secure.example.com:9200").expect("live url"),
+        })
+        .expect("live url exporter");
+        assert!(!active_output_requires_keystore(
+            &send_hosts,
+            &live_url_exporter.target_value(),
+            &live_url_exporter
         ));
     }
 }
