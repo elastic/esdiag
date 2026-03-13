@@ -4,13 +4,9 @@
 
 use super::{
     Identifiers, ServerEvent, ServerState, Signals, job_feed_event, receiver_stream, signal_event,
-    template, template_event,
+    template, template_event, workflow,
 };
-use crate::{
-    data::{KnownHost, KnownHostBuilder},
-    processor::{Processor, new_job_id},
-    receiver::Receiver,
-};
+use crate::{data::KnownHostBuilder, processor::new_job_id};
 use axum::{
     extract::{Path, State},
     http::HeaderMap,
@@ -95,21 +91,8 @@ async fn run_api_key_form(
     request_user: String,
     tx: mpsc::Sender<ServerEvent>,
 ) {
-    if let Err(err) = super::ensure_active_output_ready(&state, &request_user).await {
-        send_event(
-            &tx,
-            job_feed_event(template::JobFailed {
-                job_id: new_job_id(),
-                error: &err,
-                source: &uri,
-            }),
-        )
-        .await;
-        return;
-    }
-
-    let host = match KnownHostBuilder::new(signals.es_api.url.into())
-        .apikey(Some(signals.es_api.key))
+    let host = match KnownHostBuilder::new(signals.es_api.url.clone().into())
+        .apikey(Some(signals.es_api.key.clone()))
         .build()
     {
         Ok(host) => host,
@@ -129,145 +112,15 @@ async fn run_api_key_form(
             return;
         }
     };
-    let source = &host.get_url().to_string();
-
-    let receiver = match Receiver::try_from(host) {
-        Ok(receiver) => {
-            tracing::info!("Created receiver: {}", receiver);
-            Arc::new(receiver)
-        }
-        Err(e) => {
-            state.record_failure().await;
-            let error_msg = format!("Failed to create receiver: {}", e);
-            tracing::error!("Failed to create receiver: {}", e);
-            send_event(
-                &tx,
-                job_feed_event(template::JobFailed {
-                    job_id: new_job_id(),
-                    error: &error_msg,
-                    source: &uri,
-                }),
-            )
-            .await;
-            return;
-        }
+    let job = super::WorkflowJob {
+        identifiers: Identifiers::default(),
+        artifact: super::CollectedArtifact::RemoteCollection {
+            source: host.get_url().to_string(),
+            host,
+            diagnostic_type: signals.workflow.collect.diagnostic_type.clone(),
+        },
     };
-
-    let exporter = Arc::new(state.exporter.read().await.clone());
-    let identifiers = Identifiers {
-        user: Some(request_user),
-        ..signals.metadata
-    };
-
-    let job = match Processor::try_new(receiver, exporter, identifiers).await {
-        Ok(job) => job,
-        Err(error) => {
-            state.record_failure().await;
-            send_event(
-                &tx,
-                template_event(template::JobFailed {
-                    job_id: new_job_id(),
-                    error: &error.to_string(),
-                    source,
-                }),
-            )
-            .await;
-            return;
-        }
-    };
-
-    match job.start().await {
-        Ok(job) => {
-            state.record_job_started().await;
-            send_event(
-                &tx,
-                job_feed_event(template::JobProcessing {
-                    job_id: job.id,
-                    source,
-                }),
-            )
-            .await;
-            send_event(&tx, signal_event(r#"{"loading":false,"processing":true}"#)).await;
-
-            match job.process().await {
-                Ok(job) => {
-                    let report = &job.state.report;
-                    state
-                        .record_success(report.diagnostic.docs.total, report.diagnostic.docs.errors)
-                        .await;
-                    send_event(
-                        &tx,
-                        template_event(template::JobCompleted {
-                            job_id: job.id,
-                            diagnostic_id: &report.diagnostic.metadata.id,
-                            docs_created: &report.diagnostic.docs.created,
-                            duration: &format!(
-                                "{:.3}",
-                                report.diagnostic.processing_duration as f64 / 1000.0
-                            ),
-                            source,
-                            kibana_link: report
-                                .diagnostic
-                                .kibana_link
-                                .as_ref()
-                                .unwrap_or(&"#".to_string()),
-                            product: &report.diagnostic.product.to_string(),
-                        }),
-                    )
-                    .await;
-                }
-                Err(job) => {
-                    state.record_failure().await;
-                    send_event(
-                        &tx,
-                        template_event(template::JobFailed {
-                            job_id: job.id,
-                            error: &job.state.error,
-                            source,
-                        }),
-                    )
-                    .await;
-                }
-            };
-            send_event(
-                &tx,
-                signal_event(format!(
-                    r#"{{"es_api":{{"url":"","key":""}},"processing":false,"stats":{}}}"#,
-                    state.get_stats().await
-                )),
-            )
-            .await;
-        }
-        Err(job) => {
-            state.record_failure().await;
-            send_event(
-                &tx,
-                job_feed_event(template::JobFailed {
-                    job_id: job.id,
-                    error: &job.state.error,
-                    source,
-                }),
-            )
-            .await;
-            send_event(
-                &tx,
-                signal_event(format!(
-                    r#"{{"processing":false,"stats":{}}}"#,
-                    state.get_stats().await
-                )),
-            )
-            .await;
-        }
-    };
-
-    send_event(
-        &tx,
-        signal_event(format!(
-            r#"{{"processing":false,"stats":{}}}"#,
-            state.get_stats().await
-        )),
-    )
-    .await;
+    workflow::run_job(state, signals, new_job_id(), request_user, tx, job).await;
 }
 
 async fn run_api_key_id(
@@ -276,24 +129,8 @@ async fn run_api_key_id(
     request_user: String,
     tx: mpsc::Sender<ServerEvent>,
 ) {
-    if let Err(err) = super::ensure_active_output_ready(&state, &request_user).await {
-        send_event(
-            &tx,
-            template_event(template::JobFailed {
-                job_id,
-                error: &err,
-                source: "output target",
-            }),
-        )
-        .await;
-        return;
-    }
-
-    let (identifiers, host): (Identifiers, KnownHost) = match state.pop_key(job_id).await {
-        Some((mut identifiers, host)) => {
-            identifiers.user = Some(request_user);
-            (identifiers, host)
-        }
+    let job = match state.pop_workflow_job(job_id).await {
+        Some(job) => job,
         None => {
             send_event(
                 &tx,
@@ -308,150 +145,5 @@ async fn run_api_key_id(
             return;
         }
     };
-
-    let source = &host.get_url().to_string();
-    send_event(
-        &tx,
-        template_event(template::JobProcessing { job_id, source }),
-    )
-    .await;
-
-    let receiver = match Receiver::try_from(host) {
-        Ok(receiver) => {
-            tracing::info!("Created receiver: {}", receiver);
-            Arc::new(receiver)
-        }
-        Err(e) => {
-            state.record_failure().await;
-            let error_msg = format!("Failed to create receiver: {}", e);
-            tracing::error!("Failed to create receiver: {}", e);
-            send_event(
-                &tx,
-                template_event(template::JobFailed {
-                    job_id,
-                    error: &error_msg,
-                    source,
-                }),
-            )
-            .await;
-            return;
-        }
-    };
-
-    let exporter = Arc::new(state.exporter.read().await.clone());
-    let processor = match Processor::try_new(receiver, exporter, identifiers).await {
-        Ok(job) => job,
-        Err(error) => {
-            state.record_failure().await;
-            send_event(
-                &tx,
-                template_event(template::JobFailed {
-                    job_id: new_job_id(),
-                    error: &error.to_string(),
-                    source,
-                }),
-            )
-            .await;
-            return;
-        }
-    };
-
-    match processor.start().await {
-        Ok(processor) => {
-            state.record_job_started().await;
-            send_event(
-                &tx,
-                job_feed_event(template::JobProcessing {
-                    job_id: processor.id,
-                    source,
-                }),
-            )
-            .await;
-            send_event(
-                &tx,
-                signal_event(format!(
-                    r#"{{"loading":false,"processing":true,"es_api":{{"url":"{source}"}}}}"#
-                )),
-            )
-            .await;
-
-            match processor.process().await {
-                Ok(completed) => {
-                    let report = &completed.state.report;
-                    state
-                        .record_success(report.diagnostic.docs.total, report.diagnostic.docs.errors)
-                        .await;
-                    send_event(
-                        &tx,
-                        template_event(template::JobCompleted {
-                            job_id: completed.id,
-                            diagnostic_id: &report.diagnostic.metadata.id,
-                            docs_created: &report.diagnostic.docs.created,
-                            duration: &format!(
-                                "{:.3}",
-                                report.diagnostic.processing_duration as f64 / 1000.0
-                            ),
-                            source,
-                            kibana_link: report
-                                .diagnostic
-                                .kibana_link
-                                .as_ref()
-                                .unwrap_or(&"#".to_string()),
-                            product: &report.diagnostic.product.to_string(),
-                        }),
-                    )
-                    .await;
-                }
-                Err(failed) => {
-                    state.record_failure().await;
-                    send_event(
-                        &tx,
-                        template_event(template::JobFailed {
-                            job_id: failed.id,
-                            error: &failed.state.error,
-                            source,
-                        }),
-                    )
-                    .await;
-                }
-            };
-            send_event(
-                &tx,
-                signal_event(format!(
-                    r#"{{"es_api":{{"url":"","key":""}},"loading":false,"processing":false,"stats":{}}}"#,
-                    state.get_stats().await
-                )),
-            )
-            .await;
-        }
-        Err(failed) => {
-            state.record_failure().await;
-            send_event(
-                &tx,
-                template_event(template::JobFailed {
-                    job_id,
-                    error: &failed.state.error,
-                    source,
-                }),
-            )
-            .await;
-            send_event(
-                &tx,
-                signal_event(format!(
-                    r#"{{"loading":false,"processing":false,"stats":{}}}"#,
-                    state.get_stats().await
-                )),
-            )
-            .await;
-        }
-    };
-
-    send_event(
-        &tx,
-        signal_event(format!(
-            r#"{{"processing":false,"stats":{}}}"#,
-            state.get_stats().await
-        )),
-    )
-    .await;
+    workflow::run_job(state, Signals::default(), job_id, request_user, tx, job).await;
 }

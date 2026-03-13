@@ -3,41 +3,20 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::{
-    Identifiers, ServerEvent, ServerState, Signals, receiver_stream, signal_event, template,
-    template_event,
+    ServerEvent, ServerState, Signals, receiver_stream, signal_event, template, template_event,
+    workflow,
 };
-use crate::{
-    data::Uri,
-    processor::{Processor, new_job_id},
-    receiver::Receiver,
-};
+use crate::processor::new_job_id;
 use axum::{
     extract::{Multipart, State},
     http::HeaderMap,
     response::{Html, IntoResponse, Sse},
 };
-use bytes::Bytes;
 use datastar::axum::ReadSignals;
 use reqwest::StatusCode;
-use std::{path::PathBuf, sync::Arc};
+use std::sync::Arc;
 use tokio::sync::mpsc;
 use uuid::Uuid;
-
-struct TempFileCleanup {
-    path: PathBuf,
-}
-
-impl Drop for TempFileCleanup {
-    fn drop(&mut self) {
-        if let Err(err) = std::fs::remove_file(&self.path) {
-            tracing::debug!(
-                "Failed to remove temp upload file {}: {}",
-                self.path.display(),
-                err
-            );
-        }
-    }
-}
 
 pub async fn submit(
     State(state): State<Arc<ServerState>>,
@@ -88,14 +67,32 @@ pub async fn submit(
 
             match field.bytes().await {
                 Ok(data) => {
-                    state.push_upload(job_id, filename, data).await;
+                    let temp_upload_path = std::env::temp_dir()
+                        .join(format!("esdiag-upload-{job_id}-{}.zip", Uuid::new_v4()));
+                    if let Err(err) = std::fs::write(&temp_upload_path, &data) {
+                        return (
+                            StatusCode::BAD_REQUEST,
+                            Html(format!(
+                                r#"<div id="job-{job_id}" class="status-box history-item error">
+                            🛑 Error staging upload: {err}
+                        </div>"#
+                            )),
+                        );
+                    }
+                    state.push_upload(job_id, filename, temp_upload_path).await;
 
                     // Add a cleanup task to prevent memory leaks if /upload/process is never called
                     let state_clone = state.clone();
                     tokio::spawn(async move {
                         tokio::time::sleep(tokio::time::Duration::from_secs(300)).await;
-                        if state_clone.pop_upload(job_id).await.is_some() {
-                            tracing::warn!(
+                        if state_clone
+                            .workflow_jobs
+                            .read()
+                            .await
+                            .contains_key(&job_id)
+                        {
+                            state_clone.discard_workflow_job(job_id).await;
+                            log::warn!(
                                 "Upload job {} was never processed and was removed from state to free memory",
                                 job_id
                             );
@@ -213,8 +210,8 @@ async fn run_upload_job(
     }
 
     send_event(&tx, signal_event(r#"{"processing":true}"#)).await;
-    let (filename, data): (String, Bytes) = match state.pop_upload(job_id).await {
-        Some((filename, data)) => (filename, data),
+    let job = match state.pop_workflow_job(job_id).await {
+        Some(job) => job,
         None => {
             send_event(
                 &tx,
@@ -229,133 +226,7 @@ async fn run_upload_job(
             return;
         }
     };
-
-    let temp_upload_path =
-        std::env::temp_dir().join(format!("esdiag-upload-{job_id}-{}.zip", Uuid::new_v4()));
-    if let Err(e) = std::fs::write(&temp_upload_path, &data) {
-        let error = format!("Failed to write temp upload file: {}", e);
-        tracing::error!("{}", error);
-        send_event(
-            &tx,
-            template_event(template::JobFailed {
-                job_id,
-                error: "Failed to stage uploaded file",
-                source: &filename,
-            }),
-        )
-        .await;
-        send_terminal_signal(&tx, &state).await;
-        return;
-    }
-    drop(data);
-    let _temp_upload_cleanup = TempFileCleanup {
-        path: temp_upload_path.clone(),
-    };
-
-    let receiver = match Receiver::try_from(Uri::File(temp_upload_path)) {
-        Ok(receiver) => Arc::new(receiver),
-        Err(e) => {
-            let error = format!("Failed to create receiver: {}", e);
-            tracing::error!("{}", error);
-            send_event(
-                &tx,
-                template_event(template::JobFailed {
-                    job_id,
-                    error: "Failed to create file receiver",
-                    source: &filename,
-                }),
-            )
-            .await;
-            send_terminal_signal(&tx, &state).await;
-            return;
-        }
-    };
-
-    let exporter = Arc::new(state.exporter.read().await.clone());
-    let identifiers = Identifiers {
-        user: Some(request_user),
-        filename: Some(filename.clone()),
-        ..signals.metadata
-    };
-
-    let processor = match Processor::try_new(receiver, exporter, identifiers).await {
-        Ok(ready) => ready,
-        Err(error) => {
-            state.record_failure().await;
-            send_event(
-                &tx,
-                template_event(template::JobFailed {
-                    job_id,
-                    error: &error.to_string(),
-                    source: &filename,
-                }),
-            )
-            .await;
-            send_terminal_signal(&tx, &state).await;
-            return;
-        }
-    };
-
-    match processor.start().await {
-        Ok(processor) => {
-            state.record_job_started().await;
-            send_event(&tx, signal_event(r#"{"loading":false,"processing":true}"#)).await;
-            match processor.process().await {
-                Ok(completed) => {
-                    let report = &completed.state.report;
-                    state
-                        .record_success(report.diagnostic.docs.total, report.diagnostic.docs.errors)
-                        .await;
-                    send_event(
-                        &tx,
-                        template_event(template::JobCompleted {
-                            job_id,
-                            diagnostic_id: &report.diagnostic.metadata.id,
-                            docs_created: &report.diagnostic.docs.created,
-                            duration: &format!(
-                                "{:.3}",
-                                report.diagnostic.processing_duration as f64 / 1000.0
-                            ),
-                            source: &filename,
-                            kibana_link: report
-                                .diagnostic
-                                .kibana_link
-                                .as_ref()
-                                .unwrap_or(&"#".to_string()),
-                            product: &report.diagnostic.product.to_string(),
-                        }),
-                    )
-                    .await;
-                }
-                Err(failed) => {
-                    state.record_failure().await;
-                    send_event(
-                        &tx,
-                        template_event(template::JobFailed {
-                            job_id,
-                            error: &failed.state.error,
-                            source: &filename,
-                        }),
-                    )
-                    .await;
-                }
-            };
-        }
-        Err(failed) => {
-            state.record_failure().await;
-            send_event(
-                &tx,
-                template_event(template::JobFailed {
-                    job_id,
-                    error: &failed.state.error,
-                    source: &filename,
-                }),
-            )
-            .await;
-        }
-    };
-
-    send_terminal_signal(&tx, &state).await;
+    workflow::run_job(state, signals, job_id, request_user, tx, job).await;
 }
 
 #[cfg(test)]

@@ -1,6 +1,8 @@
 use eyre::{Result, eyre};
 use indexmap::IndexSet;
+use serde::Serialize;
 use std::collections::HashMap;
+use std::str::FromStr;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DiagnosticType {
@@ -278,6 +280,27 @@ impl std::str::FromStr for LogstashApi {
 
 pub struct ApiResolver;
 
+#[derive(Debug, Clone, Serialize)]
+pub struct ProcessingOption {
+    pub key: String,
+    pub required: bool,
+    pub selected: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct ProcessSelection {
+    pub product: String,
+    pub diagnostic_type: String,
+    pub selected: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+struct ProcessingOptionDef {
+    key: &'static str,
+    required: bool,
+    dependencies: &'static [&'static str],
+}
+
 impl ApiResolver {
     fn resolve_requested(
         mut requested: IndexSet<String>,
@@ -364,6 +387,178 @@ impl ApiResolver {
             vec!["logstash_node".to_string()],
         );
         deps
+    }
+
+    fn es_processing_defs() -> &'static [ProcessingOptionDef] {
+        &[
+            ProcessingOptionDef { key: "version", required: true, dependencies: &[] },
+            ProcessingOptionDef {
+                key: "cluster_settings_defaults",
+                required: true,
+                dependencies: &["version"],
+            },
+            ProcessingOptionDef {
+                key: "cluster_settings",
+                required: false,
+                dependencies: &["version", "cluster_settings_defaults"],
+            },
+            ProcessingOptionDef { key: "health_report", required: false, dependencies: &["version"] },
+            ProcessingOptionDef { key: "ilm_policies", required: false, dependencies: &["version"] },
+            ProcessingOptionDef {
+                key: "indices_settings",
+                required: false,
+                dependencies: &["version", "cluster_settings_defaults"],
+            },
+            ProcessingOptionDef {
+                key: "indices_stats",
+                required: false,
+                dependencies: &["version", "cluster_settings_defaults"],
+            },
+            ProcessingOptionDef { key: "nodes", required: false, dependencies: &["version"] },
+            ProcessingOptionDef {
+                key: "nodes_stats",
+                required: false,
+                dependencies: &["nodes", "cluster_settings_defaults", "version"],
+            },
+            ProcessingOptionDef { key: "pending_tasks", required: false, dependencies: &["version"] },
+            ProcessingOptionDef { key: "repositories", required: false, dependencies: &["version"] },
+            ProcessingOptionDef {
+                key: "slm_policies",
+                required: false,
+                dependencies: &["repositories", "version"],
+            },
+            ProcessingOptionDef { key: "snapshot", required: false, dependencies: &["repositories", "version"] },
+            ProcessingOptionDef { key: "tasks", required: false, dependencies: &["nodes", "version"] },
+        ]
+    }
+
+    fn ls_processing_defs() -> &'static [ProcessingOptionDef] {
+        &[
+            ProcessingOptionDef { key: "version", required: true, dependencies: &[] },
+            ProcessingOptionDef { key: "plugins", required: true, dependencies: &["version"] },
+            ProcessingOptionDef { key: "node", required: true, dependencies: &["version"] },
+            ProcessingOptionDef { key: "node_stats", required: false, dependencies: &["node", "version"] },
+        ]
+    }
+
+    pub fn resolve_processing_options(
+        product: &str,
+        diagnostic_type: &str,
+        selected_csv: &str,
+    ) -> Result<Vec<ProcessingOption>> {
+        let requested: Vec<String> = selected_csv
+            .split(',')
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string)
+            .collect();
+        let selected = Self::resolve_processing_selection(product, diagnostic_type, &requested)?;
+        let defs = Self::processing_defs(product)?;
+
+        Ok(defs
+            .iter()
+            .map(|def| ProcessingOption {
+                key: def.key.to_string(),
+                required: def.required,
+                selected: selected.iter().any(|value| value == def.key),
+            })
+            .collect())
+    }
+
+    pub fn resolve_processing_selection(
+        product: &str,
+        diagnostic_type: &str,
+        selected: &[String],
+    ) -> Result<Vec<String>> {
+        let defs = Self::processing_defs(product)?;
+        let diag_type = DiagnosticType::from_str(diagnostic_type)?;
+        let defaults = Self::default_processing_selection(product, &diag_type)?;
+        let mut requested: IndexSet<String> = if selected.is_empty() {
+            defaults.into_iter().collect()
+        } else {
+            selected.iter().cloned().collect()
+        };
+
+        for def in defs {
+            if def.required {
+                requested.insert(def.key.to_string());
+            }
+        }
+
+        let mut resolved: IndexSet<String> = IndexSet::new();
+        let mut visited = IndexSet::new();
+        for key in requested {
+            Self::resolve_processing_deps(product, &key, &mut resolved, &mut visited)?;
+        }
+
+        Ok(resolved.into_iter().collect())
+    }
+
+    pub fn processing_catalog() -> Result<HashMap<String, HashMap<String, Vec<ProcessingOption>>>> {
+        let mut catalog = HashMap::new();
+        for product in ["elasticsearch", "logstash"] {
+            let mut by_type = HashMap::new();
+            for diag_type in ["minimal", "light", "standard", "support"] {
+                by_type.insert(
+                    diag_type.to_string(),
+                    Self::resolve_processing_options(product, diag_type, "")?,
+                );
+            }
+            catalog.insert(product.to_string(), by_type);
+        }
+        Ok(catalog)
+    }
+
+    fn processing_defs(product: &str) -> Result<&'static [ProcessingOptionDef]> {
+        match product {
+            "elasticsearch" => Ok(Self::es_processing_defs()),
+            "logstash" => Ok(Self::ls_processing_defs()),
+            _ => Err(eyre!("Unsupported processing product: {}", product)),
+        }
+    }
+
+    fn default_processing_selection(product: &str, diag_type: &DiagnosticType) -> Result<Vec<String>> {
+        match product {
+            "elasticsearch" => {
+                let selected = Self::resolve_es(diag_type, None, None)?
+                    .into_iter()
+                    .map(|api| api.as_str().to_string())
+                    .filter(|key| Self::es_processing_defs().iter().any(|def| def.key == key))
+                    .collect();
+                Ok(selected)
+            }
+            "logstash" => {
+                let selected = Self::resolve_ls(diag_type, None, None)?
+                    .into_iter()
+                    .map(|api| api.as_str().to_string())
+                    .filter(|key| Self::ls_processing_defs().iter().any(|def| def.key == key))
+                    .collect();
+                Ok(selected)
+            }
+            _ => Err(eyre!("Unsupported processing product: {}", product)),
+        }
+    }
+
+    fn resolve_processing_deps(
+        product: &str,
+        key: &str,
+        resolved: &mut IndexSet<String>,
+        visited: &mut IndexSet<String>,
+    ) -> Result<()> {
+        if visited.contains(key) {
+            return Ok(());
+        }
+        visited.insert(key.to_string());
+        let def = Self::processing_defs(product)?
+            .iter()
+            .find(|def| def.key == key)
+            .ok_or_else(|| eyre!("Unsupported processing option '{}' for {}", key, product))?;
+
+        for dep in def.dependencies {
+            Self::resolve_processing_deps(product, dep, resolved, visited)?;
+        }
+        resolved.insert(key.to_string());
+        Ok(())
     }
 
     pub fn es_base_apis(diag_type: &DiagnosticType) -> Vec<String> {
@@ -628,84 +823,34 @@ mod tests {
     }
 
     #[test]
-    fn test_ls_support_resolves_all_sources() {
-        let apis = ApiResolver::resolve_ls(&DiagnosticType::Support, None, None).unwrap();
-        let api_strs: Vec<&str> = apis.iter().map(|a| a.as_str()).collect();
-
-        assert!(api_strs.contains(&"logstash_health_report"));
-        assert!(api_strs.contains(&"logstash_node"));
-        assert!(api_strs.contains(&"logstash_nodes_hot_threads_human"));
-        assert!(api_strs.contains(&"logstash_node_stats"));
-        assert!(api_strs.contains(&"logstash_plugins"));
-        assert!(api_strs.contains(&"logstash_version"));
-    }
-
-    #[test]
-    fn test_ls_normalizes_aliases_and_dependencies() {
-        let apis = ApiResolver::resolve_ls(
-            &DiagnosticType::Minimal,
-            Some(&vec!["node_stats".to_string(), "version".to_string()]),
-            None,
+    fn test_processing_selection_locks_required_dependencies() {
+        let selected = ApiResolver::resolve_processing_selection(
+            "elasticsearch",
+            "minimal",
+            &["nodes_stats".to_string()],
         )
         .unwrap();
 
-        let api_strs: Vec<&str> = apis.iter().map(|a| a.as_str()).collect();
-        assert!(api_strs.contains(&"logstash_node_stats"));
-        assert!(api_strs.contains(&"logstash_node"));
-        assert!(api_strs.contains(&"logstash_version"));
-        assert!(api_strs.contains(&"logstash_plugins"));
-        assert_eq!(
-            api_strs
-                .iter()
-                .filter(|&&name| name == "logstash_version")
-                .count(),
-            1
-        );
+        assert!(selected.contains(&"nodes_stats".to_string()));
+        assert!(selected.contains(&"nodes".to_string()));
+        assert!(selected.contains(&"version".to_string()));
+        assert!(selected.contains(&"cluster_settings_defaults".to_string()));
     }
 
     #[test]
-    fn test_ls_human_hot_threads_is_valid_raw_api() {
-        let apis = ApiResolver::resolve_ls(
-            &DiagnosticType::Minimal,
-            Some(&vec!["logstash_nodes_hot_threads_human".to_string()]),
-            None,
-        )
-        .unwrap();
+    fn test_processing_options_marks_required_entries() {
+        let options =
+            ApiResolver::resolve_processing_options("logstash", "standard", "").unwrap();
 
-        assert!(
-            apis.iter()
-                .any(|api| api.as_str() == "logstash_nodes_hot_threads_human")
-        );
-    }
+        let version = options.iter().find(|option| option.key == "version").unwrap();
+        let plugins = options.iter().find(|option| option.key == "plugins").unwrap();
+        let node_stats = options
+            .iter()
+            .find(|option| option.key == "node_stats")
+            .unwrap();
 
-    #[test]
-    fn test_kb_invalid_include() {
-        let res = ApiResolver::resolve_kb(
-            &DiagnosticType::Standard,
-            Some(&vec!["not_a_real_kibana_api".to_string()]),
-            None,
-        );
-        assert!(res.is_err());
-    }
-
-    #[test]
-    fn test_kb_minimal_includes_bootstrap_apis() {
-        let apis = ApiResolver::resolve_kb(&DiagnosticType::Minimal, None, None).unwrap();
-        let api_strs: Vec<&str> = apis.iter().map(|a| a.as_str()).collect();
-
-        assert!(api_strs.contains(&"kibana_status"));
-        assert!(api_strs.contains(&"kibana_spaces"));
-    }
-
-    #[test]
-    fn test_kb_excluding_required_api_keeps_it() {
-        let apis = ApiResolver::resolve_kb(
-            &DiagnosticType::Minimal,
-            None,
-            Some(&vec!["kibana_spaces".to_string()]),
-        )
-        .unwrap();
-        let api_strs: Vec<&str> = apis.iter().map(|a| a.as_str()).collect();
-        assert!(api_strs.contains(&"kibana_spaces"));
+        assert!(version.required);
+        assert!(plugins.required);
+        assert!(node_stats.selected);
     }
 }

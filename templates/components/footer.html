@@ -18,30 +18,7 @@
             >{{ version }}</a
         >
     </footer-left>
-    <footer-center
-        id="exporter"
-        data-signals:settings.target="{{ selected_output|json }}"
-        data-signals:output.secure="{{ active_output_secure }}"
-    >
-        {% if can_configure_output && output_options.len() > 0 %}
-        Output:
-        <select
-            class="form-input"
-            style="display: inline-block; width: auto; min-width: 14rem; margin-left: .5rem;"
-            name="target"
-            aria-label="Output target"
-            data-bind:settings.target
-            data-on:change="@post('/api/settings/update', {filterSignals: {include: /^settings(\.|$)/}})"
-        >
-            {% for option in output_options %}
-            <option value="{{ option.value }}" {% if option.value.as_str() == selected_output.as_str() %}selected{% endif %}>{{ option.label }}</option>
-            {% endfor %}
-        </select>
-        <div id="footer-settings-error"></div>
-        {% else %}
-        Output: {{ exporter_label }}
-        {% endif %}
-    </footer-center>
+    <footer-center id="exporter">Send target configured in workflow</footer-center>
     <footer-right
         data-init="@patch('/events')"
         data-signals="{ 'stats': {{ stats }} }"

@@ -3,7 +3,9 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::{ServerState, get_theme_dark, template};
-use crate::data::{KnownHost, keystore_exists};
+use crate::data::{HostRole, KnownHost};
+use crate::exporter::Exporter;
+use crate::processor::api::ApiResolver;
 use askama::Template;
 use axum::{
     extract::{Query, State},
@@ -11,7 +13,7 @@ use axum::{
     response::{Html, IntoResponse},
 };
 use serde::{Deserialize, Deserializer, Serialize, de};
-use std::{str::FromStr, sync::Arc};
+use std::{path::PathBuf, str::FromStr, sync::Arc};
 
 #[allow(dead_code)] // Needed when deserializing signals to modify selected tab in Web UI
 #[derive(Deserialize, Serialize)]
@@ -85,25 +87,12 @@ pub async fn handler(
     let allows_local_artifacts = state.runtime_mode_policy.allows_local_artifacts();
     let can_use_keystore = cfg!(feature = "keystore") && allows_local_artifacts;
     let exporter = { state.exporter.read().await.clone() };
-    let hosts_by_name = if allows_local_artifacts {
-        KnownHost::parse_hosts_yml().unwrap_or_default()
-    } else {
-        std::collections::BTreeMap::new()
-    };
-    let preferred_target = if allows_local_artifacts {
-        crate::data::Settings::load()
-            .ok()
-            .and_then(|settings| settings.active_target)
-    } else {
-        None
-    };
-    let (output_options, selected_output, exporter_label) = template::build_footer_output_context(
-        &hosts_by_name,
-        &exporter,
-        preferred_target.as_deref(),
-    );
-    let active_output_secure =
-        template::active_output_requires_keystore(&hosts_by_name, &selected_output, &exporter);
+    let send_defaults = classify_configured_exporter(&exporter);
+    let (collect_hosts, send_remote_hosts, send_local_hosts) = workflow_host_options(&state);
+    let default_save_dir = default_downloads_dir().display().to_string();
+    let process_options_json =
+        serde_json::to_string(&ApiResolver::processing_catalog().unwrap_or_default())
+            .unwrap_or_else(|_| "{}".to_string());
     let theme_dark = get_theme_dark(&headers);
     let kibana_url = { state.kibana_url.read().await.clone() };
     let (keystore_locked, keystore_lock_time) = if can_use_keystore {
@@ -116,14 +105,19 @@ pub async fn handler(
         auth_header,
         debug: tracing::enabled!(tracing::Level::DEBUG),
         desktop: cfg!(feature = "desktop"),
-        can_configure_output: state.runtime_mode_policy.allows_exporter_updates(),
-        output_options,
-        selected_output,
-        exporter_label,
-        active_output_secure,
+        collect_hosts,
+        configured_local_path: send_defaults.local_path,
+        configured_remote_target: send_defaults.remote_target,
+        default_save_dir,
+        initial_send_mode: send_defaults.mode,
+        initial_local_target: send_defaults.local_target,
+        initial_remote_target: send_defaults.remote_target_default,
         kibana_url,
         key_id: params.key_id,
         link_id: params.link_id,
+        process_options_json,
+        send_local_hosts,
+        send_remote_hosts,
         upload_id: params.upload_id,
         stats: state.get_stats_as_signals().await,
         user: user_email,
@@ -148,77 +142,86 @@ pub async fn handler(
     Html(index_html).into_response()
 }
 
-#[cfg(test)]
-#[allow(clippy::await_holding_lock)]
-mod tests {
-    use super::{Params, handler};
-    use crate::{
-        exporter::Exporter,
-        server::{RuntimeMode, RuntimeModePolicy, test_server_state},
-    };
-    use axum::{
-        extract::{Query, State},
-        http::{HeaderMap, HeaderValue, StatusCode},
-        response::IntoResponse,
-    };
-    use std::{sync::Arc, sync::Mutex};
-    use tempfile::TempDir;
+struct SendDefaults {
+    mode: String,
+    local_path: String,
+    local_target: String,
+    remote_target: String,
+    remote_target_default: String,
+}
 
-    fn env_lock() -> &'static Mutex<()> {
-        crate::test_env_lock()
+fn classify_configured_exporter(exporter: &Exporter) -> SendDefaults {
+    let display = exporter.to_string();
+    match exporter {
+        Exporter::Elasticsearch(_) => SendDefaults {
+            mode: "remote".to_string(),
+            local_path: String::new(),
+            local_target: String::new(),
+            remote_target: display.clone(),
+            remote_target_default: display,
+        },
+        Exporter::Directory(_) | Exporter::File(_) => SendDefaults {
+            mode: "local".to_string(),
+            local_path: display,
+            local_target: "directory".to_string(),
+            remote_target: String::new(),
+            remote_target_default: String::new(),
+        },
+        Exporter::Archive(_) | Exporter::Stream(_) => SendDefaults {
+            mode: "remote".to_string(),
+            local_path: String::new(),
+            local_target: String::new(),
+            remote_target: display.clone(),
+            remote_target_default: display,
+        },
+    }
+}
+
+fn workflow_host_options(state: &Arc<ServerState>) -> (Vec<String>, Vec<String>, Vec<String>) {
+    if !state.runtime_mode_policy.allows_host_management() {
+        return (Vec::new(), Vec::new(), Vec::new());
     }
 
-    fn setup_env() -> (TempDir, std::path::PathBuf, std::path::PathBuf) {
-        let tmp = TempDir::new().expect("temp dir");
-        let config_dir = tmp.path().join(".esdiag");
-        let hosts_path = config_dir.join("hosts.yml");
-        let settings_path = config_dir.join("settings.yml");
-        unsafe {
-            std::env::set_var("HOME", tmp.path());
-            std::env::set_var("USERPROFILE", tmp.path());
-            std::env::set_var("ESDIAG_HOSTS", &hosts_path);
-            std::env::set_var("ESDIAG_SETTINGS", &settings_path);
+    let names = KnownHost::list_all().unwrap_or_default();
+    let mut collect_hosts = Vec::new();
+    let mut send_remote_hosts = Vec::new();
+    let mut send_local_hosts = Vec::new();
+
+    for name in names {
+        let Some(host) = KnownHost::get_known(&name) else {
+            continue;
+        };
+
+        if host.has_role(HostRole::Collect) {
+            collect_hosts.push(name.clone());
         }
-        (tmp, hosts_path, settings_path)
+
+        if host.has_role(HostRole::Send) {
+            send_remote_hosts.push(name.clone());
+            if host.get_url().host_str().is_some_and(is_local_host) {
+                send_local_hosts.push(name.clone());
+            }
+        }
     }
 
-    #[tokio::test]
-    async fn service_mode_index_does_not_touch_local_artifacts() {
-        let _guard = env_lock().lock().expect("env lock");
-        let (_tmp, hosts_path, settings_path) = setup_env();
+    (collect_hosts, send_remote_hosts, send_local_hosts)
+}
 
-        let mut state = test_server_state();
-        let state_mut = Arc::get_mut(&mut state).expect("unique state");
-        state_mut.runtime_mode = RuntimeMode::Service;
-        state_mut.runtime_mode_policy = RuntimeModePolicy::new(RuntimeMode::Service);
-        *state.exporter.write().await = Exporter::default();
+fn is_local_host(host: &str) -> bool {
+    matches!(host, "localhost" | "127.0.0.1")
+}
 
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            "X-Goog-Authenticated-User-Email",
-            HeaderValue::from_static("accounts.google.com:test@example.com"),
-        );
+fn default_downloads_dir() -> PathBuf {
+    let home_dir = match std::env::consts::OS {
+        "windows" => std::env::var("USERPROFILE").unwrap_or_default(),
+        "linux" | "macos" => std::env::var("HOME").unwrap_or_default(),
+        _ => String::new(),
+    };
 
-        let response = handler(
-            State(state),
-            Query(Params {
-                key_id: None,
-                link_id: None,
-                upload_id: None,
-            }),
-            headers,
-        )
-        .await
-        .into_response();
-
-        assert_eq!(response.status(), StatusCode::OK);
-        assert!(
-            !hosts_path.exists(),
-            "service mode index should not create hosts.yml"
-        );
-        assert!(
-            !settings_path.exists(),
-            "service mode index should not create settings.yml"
-        );
+    let home_path = PathBuf::from(home_dir);
+    if home_path.as_os_str().is_empty() {
+        PathBuf::from("Downloads")
+    } else {
+        home_path.join("Downloads")
     }
 }

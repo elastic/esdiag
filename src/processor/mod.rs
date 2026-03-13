@@ -29,6 +29,7 @@ pub use elasticsearch::Cluster as ElasticsearchCluster;
 
 pub use crate::processor::diagnostic::data_source::StreamingDataSource;
 use crate::{data::Product, exporter::Exporter, receiver::Receiver};
+use api::ProcessSelection;
 use elastic_cloud_kubernetes::ElasticCloudKubernetesDiagnostic;
 use elasticsearch::ElasticsearchDiagnostic;
 use eyre::{Result, eyre};
@@ -51,6 +52,7 @@ pub struct Processor<S: State> {
 pub struct Ready {
     manifest: DiagnosticManifest,
     identifiers: Identifiers,
+    process_selection: Option<ProcessSelection>,
 }
 
 /// The `Processing` state represents an active processing job
@@ -136,6 +138,15 @@ impl Processor<Ready> {
         exporter: Arc<Exporter>,
         identifiers: Identifiers,
     ) -> Result<Self> {
+        Self::try_new_with_selection(receiver, exporter, identifiers, None).await
+    }
+
+    pub async fn try_new_with_selection(
+        receiver: Arc<Receiver>,
+        exporter: Arc<Exporter>,
+        identifiers: Identifiers,
+        process_selection: Option<ProcessSelection>,
+    ) -> Result<Self> {
         let manifest = receiver.try_get_manifest().await?;
         Ok(Self {
             receiver,
@@ -145,6 +156,7 @@ impl Processor<Ready> {
             state: Ready {
                 manifest,
                 identifiers,
+                process_selection,
             },
         })
     }
@@ -173,6 +185,7 @@ impl Processor<Ready> {
                 self.receiver.clone(),
                 self.exporter.clone(),
                 self.state.manifest.clone(),
+                self.state.process_selection.clone(),
             )
             .await
             {
@@ -224,6 +237,7 @@ impl Processor<Ready> {
             self.receiver.clone(),
             self.exporter.clone(),
             self.state.manifest,
+            self.state.process_selection,
         )
         .await
         {
@@ -393,31 +407,55 @@ impl Diagnostic {
         receiver: Arc<Receiver>,
         exporter: Arc<Exporter>,
         manifest: DiagnosticManifest,
+        process_selection: Option<ProcessSelection>,
     ) -> Result<(Self, DiagnosticReport)> {
         tracing::info!("Processing {} diagnostic", manifest.product);
         tracing::trace!(
             "Diagnostic Manifest: {}",
             serde_json::to_string(&manifest).unwrap()
         );
+        if let Some(selection) = &process_selection
+            && product_key(&manifest.product) != selection.product
+        {
+            return Err(eyre!(
+                "Selected processing product '{}' does not match diagnostic product '{}'",
+                selection.product,
+                product_key(&manifest.product)
+            ));
+        }
         match manifest.product {
             Product::Elasticsearch => {
                 let (diagnostic, report) =
-                    ElasticsearchDiagnostic::try_new(receiver, exporter, manifest).await?;
+                    ElasticsearchDiagnostic::try_new(receiver, exporter, manifest, process_selection)
+                        .await?;
                 Ok((Self::Elasticsearch(diagnostic), report))
             }
             Product::ECK => {
                 let (diagnostic, report) =
-                    ElasticCloudKubernetesDiagnostic::try_new(receiver, exporter, manifest).await?;
+                    ElasticCloudKubernetesDiagnostic::try_new(
+                        receiver,
+                        exporter,
+                        manifest,
+                        process_selection,
+                    )
+                    .await?;
                 Ok((Self::ElasticCloudKubernetes(diagnostic), report))
             }
             Product::KubernetesPlatform => {
                 let (diagnostic, report) =
-                    KubernetesPlatformDiagnostic::try_new(receiver, exporter, manifest).await?;
+                    KubernetesPlatformDiagnostic::try_new(
+                        receiver,
+                        exporter,
+                        manifest,
+                        process_selection,
+                    )
+                    .await?;
                 Ok((Self::KubernetesPlatform(diagnostic), report))
             }
             Product::Logstash => {
                 let (diagnostic, report) =
-                    LogstashDiagnostic::try_new(receiver, exporter, manifest).await?;
+                    LogstashDiagnostic::try_new(receiver, exporter, manifest, process_selection)
+                        .await?;
                 Ok((Self::Logstash(diagnostic), report))
             }
             Product::Kibana => Err(eyre!("Kibana processing is not yet implemented")),
@@ -469,11 +507,25 @@ trait DiagnosticProcessor {
         receiver: Arc<Receiver>,
         exporter: Arc<Exporter>,
         manifest: DiagnosticManifest,
+        process_selection: Option<ProcessSelection>,
     ) -> Result<(Box<Self>, DiagnosticReport)>;
     async fn process(self, summary_tx: mpsc::Sender<ProcessorSummary>) -> Result<()>;
     #[allow(dead_code)]
     fn id(&self) -> &str;
     fn origin(&self) -> (String, String, String);
+}
+
+fn product_key(product: &Product) -> String {
+    match product {
+        Product::Elasticsearch => "elasticsearch".to_string(),
+        Product::Logstash => "logstash".to_string(),
+        Product::KubernetesPlatform => "kubernetes-platform".to_string(),
+        Product::ECK => "elastic-cloud-kubernetes".to_string(),
+        Product::ECE => "elastic-cloud-enterprise".to_string(),
+        Product::ElasticCloudHosted => "elastic-cloud-hosted".to_string(),
+        Product::Kibana => "kibana".to_string(),
+        other => other.to_string().to_lowercase(),
+    }
 }
 
 trait Metadata {

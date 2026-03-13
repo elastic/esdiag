@@ -19,6 +19,7 @@ use esdiag::{
     exporter::Exporter,
     processor::{Collector, Identifiers, Processor},
     receiver::Receiver,
+    uploader,
 };
 use eyre::{Result, eyre};
 use std::sync::Arc;
@@ -197,6 +198,22 @@ enum Commands {
         /// Diagnostic report user
         #[arg(help = "Diagnostic report user", long, short)]
         user: Option<String>,
+    },
+    /// Upload a raw diagnostic archive to Elastic Upload Service
+    Upload {
+        /// Local diagnostic archive to upload
+        #[arg(help = "Local diagnostic archive file path")]
+        file_name: String,
+        /// Elastic Upload Service upload id or URL
+        #[arg(help = "Upload id or Elastic Upload Service URL")]
+        upload_id: String,
+        /// Upload API base URL
+        #[arg(
+            long,
+            default_value = uploader::DEFAULT_UPLOAD_API_URL,
+            help = "Elastic Upload Service base URL"
+        )]
+        api_url: String,
     },
     #[cfg(feature = "setup")]
     /// Import assets (templates, ingest pipelines, etc.) to a known Elasticsearch host
@@ -547,6 +564,24 @@ async fn run(cli: Cli) -> Result<&'static str> {
                     }
                 }
             }
+            Commands::Upload {
+                file_name,
+                upload_id,
+                api_url,
+            } => {
+                let file_path = uploader::default_upload_path(&file_name);
+                log::info!(
+                    "Uploading raw diagnostic archive {} to {}",
+                    file_path.display(),
+                    upload_id
+                );
+                let response = uploader::upload_file(&file_path, &upload_id, &api_url).await?;
+                log::info!(
+                    "Upload complete for slug {}",
+                    response.slug
+                );
+                Ok("upload")
+            }
             #[cfg(feature = "setup")]
             Commands::Setup { host } => {
                 if let Some(host) = host {
@@ -830,6 +865,23 @@ mod tests {
                 assert_eq!(roles, Some(vec![HostRole::Collect, HostRole::Send]));
             }
             _ => panic!("expected host command"),
+        }
+    }
+
+    #[test]
+    fn upload_command_parses_file_and_upload_id() {
+        let cli = Cli::parse_from(["esdiag", "upload", "diag.zip", "abc123"]);
+        match cli.command.expect("command") {
+            Commands::Upload {
+                file_name,
+                upload_id,
+                api_url,
+            } => {
+                assert_eq!(file_name, "diag.zip");
+                assert_eq!(upload_id, "abc123");
+                assert_eq!(api_url, esdiag::uploader::DEFAULT_UPLOAD_API_URL);
+            }
+            _ => panic!("expected upload command"),
         }
     }
 }

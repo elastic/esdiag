@@ -1223,6 +1223,56 @@ panel > :is(h1, h2, h3, h4, h5, h6):first-child {
     margin-top: 0;
 }
 
+.workflow-panel {
+    padding: var(--size-l);
+}
+
+stage-panel {
+    display: block;
+    width: 100%;
+}
+
+stage-header {
+    display: block;
+    margin-bottom: var(--size);
+}
+
+stage-divider {
+    display: block;
+    margin: var(--size-l) 0 var(--size);
+    border-top: 1px solid var(--border-color);
+}
+
+.stage-options {
+    margin-bottom: var(--size);
+}
+
+.stage-options.nested {
+    margin-top: var(--size);
+}
+
+advanced-panel {
+    display: block;
+    margin-top: var(--size);
+    padding: var(--size);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-small);
+    background-color: var(--background-color-dimmed);
+}
+
+processor-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--size-xs);
+    margin-top: var(--size);
+}
+
+.save-controls {
+    display: flex;
+    align-items: center;
+    gap: var(--size);
+}
+
 panel > footer {
     display: flex;
     justify-content: flex-start;

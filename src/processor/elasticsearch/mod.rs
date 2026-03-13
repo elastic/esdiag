@@ -57,6 +57,7 @@ pub use {
 use super::{
     DataSource, DiagnosticManifest, DiagnosticProcessor, DiagnosticReport, DocumentExporter,
     Metadata, ProcessorSummary,
+    api::ProcessSelection,
     diagnostic::{DiagnosticReportBuilder, Lookup},
     elasticsearch::health_report::HealthReport,
 };
@@ -67,7 +68,7 @@ use crate::{
 };
 use eyre::{Result, eyre};
 use serde::{Serialize, de::DeserializeOwned};
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 use {
     alias::{Alias, AliasList},
     cluster_settings::{ClusterSettings, ClusterSettingsDefaults},
@@ -92,6 +93,7 @@ use {
 pub struct ElasticsearchDiagnostic {
     lookups: Lookups,
     metadata: ElasticsearchMetadata,
+    selected_processors: Option<HashSet<String>>,
     #[serde(skip)]
     exporter: Arc<Exporter>,
     #[serde(skip)]
@@ -99,6 +101,12 @@ pub struct ElasticsearchDiagnostic {
 }
 
 impl ElasticsearchDiagnostic {
+    fn should_process(&self, key: &str) -> bool {
+        self.selected_processors
+            .as_ref()
+            .is_none_or(|selected| selected.contains(key))
+    }
+
     async fn process_cluster_settings(
         &self,
         summary_tx: mpsc::Sender<ProcessorSummary>,
@@ -212,6 +220,7 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
         receiver: Arc<Receiver>,
         exporter: Arc<Exporter>,
         manifest: DiagnosticManifest,
+        process_selection: Option<ProcessSelection>,
     ) -> Result<(Box<Self>, DiagnosticReport)> {
         let cluster = receiver.get::<version::Cluster>().await?;
         let display_name = match receiver.get::<ClusterSettingsDefaults>().await {
@@ -272,6 +281,8 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
                 lookups,
                 metadata,
                 receiver,
+                selected_processors: process_selection
+                    .map(|selection| selection.selected.into_iter().collect()),
             }),
             report,
         ))
@@ -291,40 +302,66 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
         // Future 1: IndicesStats
         let (diag_idx, summary_tx_idx) = (diag.clone(), summary_tx.clone());
         let thread1 = async move {
-            diag_idx
-                .process_streaming_datasource::<IndicesStats>(summary_tx_idx)
-                .await?;
+            if diag_idx.should_process("indices_stats") {
+                diag_idx
+                    .process_streaming_datasource::<IndicesStats>(summary_tx_idx)
+                    .await?;
+            }
             Ok::<(), eyre::Error>(())
         };
 
         // Future 2: NodesStats
         let (diag_nodes, summary_tx_nodes) = (diag.clone(), summary_tx.clone());
         let thread2 = async move {
-            diag_nodes
-                .process_streaming_datasource::<NodesStats>(summary_tx_nodes)
-                .await?;
+            if diag_nodes.should_process("nodes_stats") {
+                diag_nodes
+                    .process_streaming_datasource::<NodesStats>(summary_tx_nodes)
+                    .await?;
+            }
             Ok::<(), eyre::Error>(())
         };
 
         // Future 3: Everything else
         let thread3 = async move {
-            diag.process_cluster_settings(summary_tx.clone()).await?;
-            diag.process_datasource::<HealthReport>(summary_tx.clone())
-                .await?;
-            diag.process_datasource::<IlmPolicies>(summary_tx.clone())
-                .await?;
-            diag.process_datasource::<IndicesSettings>(summary_tx.clone())
-                .await?;
-            diag.process_datasource::<Nodes>(summary_tx.clone()).await?;
-            diag.process_datasource::<PendingTasks>(summary_tx.clone())
-                .await?;
-            diag.process_datasource::<SlmPolicies>(summary_tx.clone())
-                .await?;
-            diag.process_datasource::<Repositories>(summary_tx.clone())
-                .await?;
-            diag.process_streaming_datasource::<Snapshots>(summary_tx.clone())
-                .await?;
-            diag.process_datasource::<Tasks>(summary_tx.clone()).await?;
+            if diag.should_process("cluster_settings")
+                || diag.should_process("cluster_settings_defaults")
+            {
+                diag.process_cluster_settings(summary_tx.clone()).await?;
+            }
+            if diag.should_process("health_report") {
+                diag.process_datasource::<HealthReport>(summary_tx.clone())
+                    .await?;
+            }
+            if diag.should_process("ilm_policies") {
+                diag.process_datasource::<IlmPolicies>(summary_tx.clone())
+                    .await?;
+            }
+            if diag.should_process("indices_settings") {
+                diag.process_datasource::<IndicesSettings>(summary_tx.clone())
+                    .await?;
+            }
+            if diag.should_process("nodes") {
+                diag.process_datasource::<Nodes>(summary_tx.clone()).await?;
+            }
+            if diag.should_process("pending_tasks") {
+                diag.process_datasource::<PendingTasks>(summary_tx.clone())
+                    .await?;
+            }
+            if diag.should_process("slm_policies") {
+                diag.process_datasource::<SlmPolicies>(summary_tx.clone())
+                    .await?;
+            }
+            if diag.should_process("repositories") {
+                diag.process_datasource::<Repositories>(summary_tx.clone())
+                    .await?;
+            }
+            if diag.should_process("snapshot") {
+                diag.process_streaming_datasource::<Snapshots>(summary_tx.clone())
+                    .await?;
+            }
+            if diag.should_process("tasks") {
+                diag.process_datasource::<Tasks>(summary_tx.clone()).await?;
+            }
             Ok::<(), eyre::Error>(())
         };
 

@@ -197,3 +197,113 @@ async fn user_mode_allows_anonymous_web_access() {
 
     server.shutdown().await;
 }
+
+#[tokio::test]
+async fn user_mode_index_shows_known_host_collect_and_local_save_defaults() {
+    let (mut server, client, base) = start_server(RuntimeMode::User).await;
+
+    let response = client
+        .get(format!("{base}/"))
+        .send()
+        .await
+        .expect("user mode request");
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let body = response.text().await.expect("user mode body");
+
+    assert!(body.contains("id=\"collect-known-host\""));
+    assert!(body.contains("data-signals:workflow.collect.source=\"'known-host'\""));
+    assert!(body.contains("id=\"collect-save-toggle\""));
+    assert!(body.contains("id=\"upload-form\""));
+    assert!(body.contains(
+        "data-show=\"$workflow.collect.mode === 'collect' || $workflow.collect.source === 'service-link'\""
+    ));
+    assert!(body.contains("placeholder=\"/"));
+
+    server.shutdown().await;
+}
+
+#[tokio::test]
+async fn service_mode_index_hides_known_host_selection_and_disables_save() {
+    let (mut server, client, base) = start_server(RuntimeMode::Service).await;
+
+    let response = client
+        .get(format!("{base}/"))
+        .header("X-Goog-Authenticated-User-Email", "accounts.google.com:ops@example.com")
+        .send()
+        .await
+        .expect("service mode authorized request");
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let body = response.text().await.expect("service mode body");
+
+    assert!(body.contains("data-signals:workflow.collect.source=\"'api-key'\""));
+    assert!(body.contains("Service mode does not allow local save artifacts."));
+    assert!(body.contains("id=\"collect-save-toggle\""));
+    assert!(body.contains("id=\"upload-form\""));
+    assert!(body.contains("id=\"collect-save-toggle\"\n                        type=\"checkbox\"\n                        data-bind:workflow.collect.save\n                        disabled"));
+
+    server.shutdown().await;
+}
+
+#[tokio::test]
+async fn index_shows_process_controls_and_forward_remote_input() {
+    let (mut server, client, base) = start_server(RuntimeMode::User).await;
+
+    let response = client
+        .get(format!("{base}/"))
+        .send()
+        .await
+        .expect("workflow page");
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let body = response.text().await.expect("workflow page body");
+
+    assert!(body.contains("id=\"process-product\""));
+    assert!(body.contains("id=\"process-type\""));
+    assert!(body.contains("id=\"process-advanced-toggle\""));
+    assert!(body.contains("id=\"process-option-list\""));
+    assert!(body.contains("id=\"process-selected-options\""));
+    assert!(body.contains("id=\"send-forward-upload\""));
+    assert!(body.contains("Forward preserves the raw diagnostic archive"));
+
+    server.shutdown().await;
+}
+
+#[tokio::test]
+async fn index_embeds_send_target_disable_and_auto_save_rules() {
+    let (mut server, client, base) = start_server(RuntimeMode::User).await;
+
+    let response = client
+        .get(format!("{base}/"))
+        .send()
+        .await
+        .expect("workflow page");
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let body = response.text().await.expect("workflow page body");
+
+    assert!(body.contains("data-attr:disabled=\"$workflow.process.mode === 'forward'\""));
+    assert!(body.contains("Local bundle is saved in `Collect`. Save has been enabled automatically if needed."));
+    assert!(body.contains("Forward + Local` is disabled. Save the bundle in `Collect` to keep a local archive."));
+    assert!(body.contains("id=\"send-local-directory\""));
+    assert!(body.contains("Local directory"));
+
+    server.shutdown().await;
+}
+
+#[tokio::test]
+async fn user_mode_index_exposes_os_aware_save_dir_and_override_binding() {
+    let (mut server, client, base) = start_server(RuntimeMode::User).await;
+
+    let response = client
+        .get(format!("{base}/"))
+        .send()
+        .await
+        .expect("workflow page");
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let body = response.text().await.expect("workflow page body");
+
+    assert!(body.contains("data-signals:workflow.collect.save_dir=\"'"));
+    assert!(body.contains("/Downloads"));
+    assert!(body.contains("id=\"collect-save-dir\""));
+    assert!(body.contains("data-bind:workflow.collect.save_dir"));
+
+    server.shutdown().await;
+}

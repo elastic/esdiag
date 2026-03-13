@@ -24,14 +24,19 @@ pub struct Index {
     pub auth_header: bool,
     pub debug: bool,
     pub desktop: bool,
-    pub can_configure_output: bool,
-    pub output_options: Vec<FooterOutputOption>,
-    pub selected_output: String,
-    pub exporter_label: String,
-    pub active_output_secure: bool,
+    pub collect_hosts: Vec<String>,
+    pub configured_local_path: String,
+    pub configured_remote_target: String,
+    pub default_save_dir: String,
+    pub initial_send_mode: String,
+    pub initial_local_target: String,
+    pub initial_remote_target: String,
     pub kibana_url: String,
     pub key_id: Option<u64>,
     pub link_id: Option<u64>,
+    pub process_options_json: String,
+    pub send_local_hosts: Vec<String>,
+    pub send_remote_hosts: Vec<String>,
     pub upload_id: Option<u64>,
     pub stats: String,
     pub user: String,
@@ -202,6 +207,29 @@ pub struct JobCompleted<'a> {
 }
 
 #[derive(Template)]
+#[template(path = "job/collection_processing.html")]
+pub struct JobCollectionProcessing<'a> {
+    pub job_id: u64,
+    pub source: &'a str,
+}
+
+#[derive(Template)]
+#[template(path = "job/collection_completed.html")]
+pub struct JobCollectionCompleted<'a> {
+    pub job_id: u64,
+    pub source: &'a str,
+    pub archive_path: &'a str,
+}
+
+#[derive(Template)]
+#[template(path = "job/forward_completed.html")]
+pub struct JobForwardCompleted<'a> {
+    pub job_id: u64,
+    pub source: &'a str,
+    pub destination: &'a str,
+}
+
+#[derive(Template)]
 #[template(path = "job/failed.html")]
 pub struct JobFailed<'a> {
     pub job_id: u64,
@@ -212,6 +240,13 @@ pub struct JobFailed<'a> {
 #[derive(Template)]
 #[template(path = "job/processing.html")]
 pub struct JobProcessing<'a> {
+    pub job_id: u64,
+    pub source: &'a str,
+}
+
+#[derive(Template)]
+#[template(path = "job/forward_processing.html")]
+pub struct JobForwardProcessing<'a> {
     pub job_id: u64,
     pub source: &'a str,
 }

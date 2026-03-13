@@ -17,6 +17,7 @@ mod settings;
 mod stats;
 mod template;
 mod theme;
+mod workflow;
 
 use super::processor::Identifiers;
 use crate::{
@@ -47,8 +48,7 @@ use eyre::Result;
 use eyre::eyre;
 use futures::stream;
 use serde::{Deserialize, Serialize};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use std::{collections::HashMap, convert::Infallible, net::SocketAddr, sync::Arc};
+use std::{collections::HashMap, convert::Infallible, net::SocketAddr, path::PathBuf, sync::Arc};
 use tokio::sync::{RwLock, broadcast, mpsc, watch};
 
 type UploadReceiver = Arc<RwLock<mpsc::Receiver<(Identifiers, Bytes)>>>;
@@ -168,12 +168,10 @@ impl Server {
         // Create shared state
         let state = Arc::new(ServerState {
             exporter: Arc::new(RwLock::new(exporter)),
-            keys: Arc::new(RwLock::new(HashMap::new())),
             kibana_url: Arc::new(RwLock::new(kibana_url)),
-            links: Arc::new(RwLock::new(HashMap::new())),
             signals: Arc::new(RwLock::new(Signals::default())),
             stats: Arc::new(RwLock::new(Stats::default())),
-            uploads: Arc::new(RwLock::new(HashMap::new())),
+            workflow_jobs: Arc::new(RwLock::new(HashMap::new())),
             shutdown: shutdown_rx,
             event_tx,
             stats_updates_tx,
@@ -351,9 +349,7 @@ pub struct ServerState {
     pub exporter: Arc<RwLock<Exporter>>,
     pub kibana_url: Arc<RwLock<String>>,
     pub signals: Arc<RwLock<Signals>>,
-    pub uploads: Arc<RwLock<HashMap<u64, (String, Bytes)>>>,
-    pub links: Arc<RwLock<HashMap<u64, (Identifiers, Uri)>>>,
-    pub keys: Arc<RwLock<HashMap<u64, (Identifiers, KnownHost)>>>,
+    pub workflow_jobs: Arc<RwLock<HashMap<u64, WorkflowJob>>>,
     pub runtime_mode: RuntimeMode,
     pub runtime_mode_policy: RuntimeModePolicy,
     // Keystore session state is intentionally single-user only. User mode keeps one
@@ -710,48 +706,83 @@ impl ServerState {
             .replace('\"', "'")
     }
 
+    pub async fn push_workflow_job(&self, id: u64, job: WorkflowJob) -> Option<WorkflowJob> {
+        self.workflow_jobs.write().await.insert(id, job)
+    }
+
+    pub async fn pop_workflow_job(&self, id: u64) -> Option<WorkflowJob> {
+        log::debug!("Popping workflow job id: {id}");
+        self.workflow_jobs.write().await.remove(&id)
+    }
+
+    pub async fn discard_workflow_job(&self, id: u64) {
+        if let Some(job) = self.workflow_jobs.write().await.remove(&id) {
+            job.cleanup();
+        }
+    }
+
     pub async fn push_key(
         &self,
         id: u64,
         identifiers: Identifiers,
         host: KnownHost,
-    ) -> Option<(Identifiers, KnownHost)> {
-        self.keys.write().await.insert(id, (identifiers, host))
-    }
-
-    pub async fn pop_key(&self, id: u64) -> Option<(Identifiers, KnownHost)> {
-        tracing::debug!("Popping api key id: {id}");
-        self.keys.write().await.remove(&id)
+        diagnostic_type: String,
+    ) -> Option<WorkflowJob> {
+        self.push_workflow_job(
+            id,
+            WorkflowJob {
+                identifiers,
+                artifact: CollectedArtifact::RemoteCollection {
+                    source: host.get_url().to_string(),
+                    host,
+                    diagnostic_type,
+                },
+            },
+        )
+        .await
     }
 
     pub async fn push_link(
         &self,
         id: u64,
         identifiers: Identifiers,
+        filename: String,
         uri: Uri,
-    ) -> Option<(Identifiers, Uri)> {
-        tracing::debug!("Pushing service link id: {id}");
-        self.links.write().await.insert(id, (identifiers, uri))
-    }
-
-    pub async fn pop_link(&self, id: u64) -> Option<(Identifiers, Uri)> {
-        tracing::debug!("Popping service link id: {id}");
-        self.links.write().await.remove(&id)
+    ) -> Option<WorkflowJob> {
+        log::debug!("Pushing service link id: {id}");
+        self.push_workflow_job(
+            id,
+            WorkflowJob {
+                identifiers,
+                artifact: CollectedArtifact::ServiceLink {
+                    source: filename,
+                    uri,
+                },
+            },
+        )
+        .await
     }
 
     pub async fn push_upload(
         &self,
         id: u64,
         filename: String,
-        data: Bytes,
-    ) -> Option<(String, Bytes)> {
-        tracing::debug!("Pushing file upload id: {id}");
-        self.uploads.write().await.insert(id, (filename, data))
-    }
-
-    pub async fn pop_upload(&self, id: u64) -> Option<(String, Bytes)> {
-        tracing::debug!("Popping file upload id: {id}");
-        self.uploads.write().await.remove(&id)
+        path: PathBuf,
+    ) -> Option<WorkflowJob> {
+        log::debug!("Pushing file upload id: {id}");
+        self.push_workflow_job(
+            id,
+            WorkflowJob {
+                identifiers: Identifiers::default(),
+                artifact: CollectedArtifact::LocalArchive {
+                    source: filename.clone(),
+                    filename,
+                    path: path.clone(),
+                    cleanup_path: Some(path),
+                },
+            },
+        )
+        .await
     }
 
     pub fn shutdown_receiver(&self) -> watch::Receiver<bool> {
@@ -831,12 +862,10 @@ pub(crate) fn test_server_state() -> Arc<ServerState> {
     let runtime_mode = RuntimeMode::User;
     Arc::new(ServerState {
         exporter: Arc::new(RwLock::new(Exporter::default())),
-        keys: Arc::new(RwLock::new(HashMap::new())),
         kibana_url: Arc::new(RwLock::new(String::new())),
-        links: Arc::new(RwLock::new(HashMap::new())),
         signals: Arc::new(RwLock::new(Signals::default())),
         stats: Arc::new(RwLock::new(Stats::default())),
-        uploads: Arc::new(RwLock::new(HashMap::new())),
+        workflow_jobs: Arc::new(RwLock::new(HashMap::new())),
         runtime_mode,
         runtime_mode_policy: RuntimeModePolicy::new(runtime_mode),
         keystore_state: Arc::new(RwLock::new(KeystoreSessionState::default())),
@@ -902,6 +931,8 @@ pub struct Signals {
     pub loading: bool,
     pub message: String,
     pub metadata: Identifiers,
+    #[serde(default)]
+    pub workflow: Workflow,
     pub file_upload: FileUpload,
     pub service_link: ServiceLink,
     pub es_api: EsApiKey,
@@ -921,6 +952,7 @@ impl Default for Signals {
             loading: false,
             message: String::new(),
             metadata: Identifiers::default(),
+            workflow: Workflow::default(),
             file_upload: FileUpload { job_id: 0 },
             service_link: ServiceLink {
                 url: Uri::default(),
@@ -939,22 +971,177 @@ impl Default for Signals {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Default)]
-pub struct KeystoreSignals {
-    #[serde(default)]
-    pub password: String,
-    #[serde(default)]
-    pub invalid: bool,
-    #[serde(default)]
-    pub confirm: bool,
-    #[serde(default = "default_keystore_locked")]
-    pub locked: bool,
-    #[serde(default)]
-    pub lock_time: i64,
+#[derive(Clone, Default, Deserialize, Serialize)]
+pub struct Workflow {
+    pub collect: CollectStage,
+    pub process: ProcessStage,
+    pub send: SendStage,
 }
 
-fn default_keystore_locked() -> bool {
-    true
+#[derive(Clone, Deserialize, Serialize)]
+pub struct CollectStage {
+    pub mode: CollectMode,
+    pub source: CollectSource,
+    #[serde(default)]
+    pub known_host: String,
+    #[serde(default)]
+    pub diagnostic_type: String,
+    #[serde(default)]
+    pub save: bool,
+    #[serde(default)]
+    pub save_dir: String,
+}
+
+impl Default for CollectStage {
+    fn default() -> Self {
+        Self {
+            mode: CollectMode::Collect,
+            source: CollectSource::KnownHost,
+            known_host: String::new(),
+            diagnostic_type: "standard".to_string(),
+            save: false,
+            save_dir: String::new(),
+        }
+    }
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+pub struct ProcessStage {
+    pub mode: ProcessMode,
+    #[serde(default)]
+    pub product: String,
+    #[serde(default)]
+    pub diagnostic_type: String,
+    #[serde(default)]
+    pub advanced: bool,
+    #[serde(default)]
+    pub selected: String,
+}
+
+impl Default for ProcessStage {
+    fn default() -> Self {
+        Self {
+            mode: ProcessMode::Process,
+            product: "elasticsearch".to_string(),
+            diagnostic_type: "standard".to_string(),
+            advanced: false,
+            selected: String::new(),
+        }
+    }
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+pub struct SendStage {
+    pub mode: SendMode,
+    #[serde(default)]
+    pub remote_target: String,
+    #[serde(default)]
+    pub local_target: String,
+    #[serde(default)]
+    pub local_directory: String,
+}
+
+impl Default for SendStage {
+    fn default() -> Self {
+        Self {
+            mode: SendMode::Remote,
+            remote_target: String::new(),
+            local_target: String::new(),
+            local_directory: String::new(),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct WorkflowJob {
+    pub identifiers: Identifiers,
+    pub artifact: CollectedArtifact,
+}
+
+impl WorkflowJob {
+    pub fn source(&self) -> &str {
+        self.artifact.source()
+    }
+
+    pub fn cleanup(&self) {
+        self.artifact.cleanup();
+    }
+}
+
+#[derive(Clone)]
+pub enum CollectedArtifact {
+    LocalArchive {
+        source: String,
+        filename: String,
+        path: PathBuf,
+        cleanup_path: Option<PathBuf>,
+    },
+    ServiceLink {
+        source: String,
+        uri: Uri,
+    },
+    RemoteCollection {
+        source: String,
+        host: KnownHost,
+        diagnostic_type: String,
+    },
+}
+
+impl CollectedArtifact {
+    pub fn source(&self) -> &str {
+        match self {
+            Self::LocalArchive { source, .. } => source,
+            Self::ServiceLink { source, .. } => source,
+            Self::RemoteCollection { source, .. } => source,
+        }
+    }
+
+    pub fn cleanup(&self) {
+        if let Self::LocalArchive {
+            cleanup_path: Some(path),
+            ..
+        } = self
+        {
+            let result = if path.is_dir() {
+                std::fs::remove_dir_all(path)
+            } else {
+                std::fs::remove_file(path)
+            };
+            if let Err(err) = result {
+                log::debug!("Failed to clean workflow artifact {}: {}", path.display(), err);
+            }
+        }
+    }
+}
+
+#[derive(Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum CollectMode {
+    Collect,
+    Upload,
+}
+
+#[derive(Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum CollectSource {
+    KnownHost,
+    ApiKey,
+    ServiceLink,
+    UploadFile,
+}
+
+#[derive(Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum ProcessMode {
+    Process,
+    Forward,
+}
+
+#[derive(Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum SendMode {
+    Remote,
+    Local,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -1194,7 +1381,6 @@ mod tests {
     };
     use crate::exporter::Exporter;
     use axum::http::HeaderMap;
-    use bytes::Bytes;
     use futures::StreamExt;
     use std::{collections::HashMap, sync::Arc};
     use tokio::{
@@ -1208,9 +1394,7 @@ mod tests {
             exporter: Arc::new(RwLock::new(Exporter::default())),
             kibana_url: Arc::new(RwLock::new(String::new())),
             signals: Arc::new(RwLock::new(Signals::default())),
-            uploads: Arc::new(RwLock::new(HashMap::<u64, (String, Bytes)>::new())),
-            links: Arc::new(RwLock::new(HashMap::new())),
-            keys: Arc::new(RwLock::new(HashMap::new())),
+            workflow_jobs: Arc::new(RwLock::new(HashMap::new())),
             runtime_mode: mode,
             runtime_mode_policy: RuntimeModePolicy::new(mode),
             keystore_state: Arc::new(RwLock::new(KeystoreSessionState::default())),
