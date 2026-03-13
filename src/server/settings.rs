@@ -63,6 +63,15 @@ pub async fn update_settings(
     headers: HeaderMap,
     datastar::axum::ReadSignals(signals): datastar::axum::ReadSignals<super::Signals>,
 ) -> Response {
+    let request_user = match state.resolve_user_email(&headers) {
+        Ok((_, user)) => user,
+        Err(err) if state.runtime_mode_policy.requires_iap_headers() => {
+            log::warn!("Settings update denied: {}", err);
+            return StatusCode::UNAUTHORIZED.into_response();
+        }
+        Err(_) => "Anonymous".to_string(),
+    };
+
     if !state.runtime_mode_policy.allows_local_artifacts() {
         let form = signals.settings;
         if let Some(kibana) = form.kibana_url {
@@ -108,10 +117,6 @@ pub async fn update_settings(
     if state.runtime_mode_policy.allows_exporter_updates() {
         let target = form.target.clone();
         let current_exporter = state.exporter.read().await.clone();
-        let request_user = state
-            .resolve_user_email(&headers)
-            .map(|(_, user)| user)
-            .unwrap_or_else(|_| "Anonymous".to_string());
         let keystore_password = state.keystore_password_for(&request_user).await;
 
         let next_exporter = if let Some(host) = KnownHost::get_known(&target) {
@@ -228,14 +233,18 @@ mod tests {
     use super::update_settings;
     use crate::{
         data::{KnownHost, Product, Settings, authenticate},
-        server::{ServerEvent, Signals, test_server_state},
+        server::{RuntimeMode, RuntimeModePolicy, ServerEvent, Signals, test_server_state},
     };
     use axum::{
         extract::State,
-        http::{HeaderMap, StatusCode},
+        http::{HeaderMap, HeaderValue, StatusCode},
     };
     use datastar::axum::ReadSignals;
-    use std::{collections::BTreeMap, path::PathBuf, sync::Mutex};
+    use std::{
+        collections::BTreeMap,
+        path::PathBuf,
+        sync::{Arc, Mutex},
+    };
     use tempfile::TempDir;
     use url::Url;
 
@@ -322,5 +331,51 @@ mod tests {
 
         assert!(saw_unlock_modal, "expected unlock modal to be shown");
         assert!(saw_unlock_message, "expected unlock-required error message");
+    }
+
+    #[tokio::test]
+    async fn service_mode_settings_update_requires_iap_header() {
+        let _guard = env_lock().lock().expect("env lock");
+        let (_tmp, _hosts_path, _keystore_path) = setup_env();
+
+        let mut state = test_server_state();
+        let state_mut = Arc::get_mut(&mut state).expect("unique state");
+        state_mut.runtime_mode = RuntimeMode::Service;
+        state_mut.runtime_mode_policy = RuntimeModePolicy::new(RuntimeMode::Service);
+
+        let mut signals = Signals::default();
+        signals.settings.kibana_url = Some("https://kibana.example".to_string());
+
+        let response = update_settings(State(state), HeaderMap::new(), ReadSignals(signals)).await;
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn service_mode_settings_update_accepts_iap_header() {
+        let _guard = env_lock().lock().expect("env lock");
+        let (_tmp, _hosts_path, _keystore_path) = setup_env();
+
+        let mut state = test_server_state();
+        let state_mut = Arc::get_mut(&mut state).expect("unique state");
+        state_mut.runtime_mode = RuntimeMode::Service;
+        state_mut.runtime_mode_policy = RuntimeModePolicy::new(RuntimeMode::Service);
+
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "X-Goog-Authenticated-User-Email",
+            HeaderValue::from_static("accounts.google.com:test@example.com"),
+        );
+
+        let mut signals = Signals::default();
+        signals.settings.kibana_url = Some("https://kibana.example".to_string());
+
+        let response = update_settings(State(state.clone()), headers, ReadSignals(signals)).await;
+
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+        assert_eq!(
+            state.kibana_url.read().await.as_str(),
+            "https://kibana.example"
+        );
     }
 }
