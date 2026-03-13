@@ -7,6 +7,7 @@ on:
       - "tauri.conf.json"
       - "packaging/**"
       - "bin/verify-desktop-config.sh"
+      - "bin/normalize-cargo-version-for-msi.sh"
       - "bin/build-flatpak-local.sh"
       - "bin/validate-desktop-artifacts.sh"
       - ".github/workflows/desktop-artifacts.yml"
@@ -62,25 +63,8 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Normalize Cargo version for MSI
-        shell: pwsh
-        run: |
-          $content = Get-Content Cargo.toml -Raw
-          $versionPattern = '(?m)^version = "([^"]+)"$'
-          $match = [regex]::Match($content, $versionPattern)
-          if (-not $match.Success) {
-            throw "Could not find package version in Cargo.toml"
-          }
-
-          $version = $match.Groups[1].Value
-          if ($version -match '-') {
-            $baseVersion = $version.Split('-', 2)[0]
-            $normalizedVersion = "$baseVersion-0"
-            $updated = $content -replace $versionPattern, "version = `"$normalizedVersion`""
-            Set-Content Cargo.toml $updated -Encoding utf8NoBOM
-            Write-Host "Normalized Cargo version from $version to $normalizedVersion for MSI packaging."
-          } else {
-            Write-Host "Cargo version $version is already MSI-safe."
-          }
+        shell: bash
+        run: bash bin/normalize-cargo-version-for-msi.sh Cargo.toml
 
       - name: Install Tauri CLI
         run: cargo install tauri-cli --locked

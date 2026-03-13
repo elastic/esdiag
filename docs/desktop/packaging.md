@@ -43,6 +43,18 @@ Validate packaging configuration:
 bash bin/verify-desktop-config.sh
 ```
 
+Normalize the package version to an MSI-safe form:
+
+```sh
+bash bin/normalize-cargo-version-for-msi.sh Cargo.toml
+```
+
+Run the local regression test for MSI version normalization:
+
+```sh
+bash bin/test-normalize-cargo-version-for-msi.sh
+```
+
 Build desktop macOS/Windows bundles with Tauri:
 
 ```sh
@@ -62,6 +74,7 @@ At the moment, the local Buildx path is experimental.
   - `WebView2Loader.dll`
 - Windows Buildx does not produce an `.msi`.
 - The official Windows `.msi` bundle is produced by the native `windows-latest` GitHub Actions job.
+- That MSI CI path sets `ESDIAG_GENERATE_NOTICE=0`, so it does not require `cargo-about`.
 
 Build local Flatpak artifact:
 
