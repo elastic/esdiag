@@ -1,4 +1,4 @@
-<div id="settings-modal" class="modal" data-signals:settings.target="{{ active_target|json }}">
+<div id="settings-modal" class="modal" data-signals:settings.target="{{ selected_output|json }}">
     <div class="modal-content">
         <button type="button" class="close-button" aria-label="Close settings" data-on:click="document.getElementById('settings-modal').remove()"><icon-x></icon-x></button>
         <h2>Settings</h2>
@@ -8,8 +8,8 @@
             <input-group>
                 <label for="target-host" class="form-label">Output Target (Hosts.yml)</label>
                 <select id="target-host" name="target" class="form-input" data-bind:settings.target {% if !can_update_exporter %}disabled{% endif %}>
-                    {% for host in hosts %}
-                        <option value="{{ host }}" {% if host == &active_target %}selected{% endif %}>{{ host }}</option>
+                    {% for option in output_options %}
+                        <option value="{{ option.value }}" {% if option.value == selected_output %}selected{% endif %}>{{ option.label }}</option>
                     {% endfor %}
                 </select>
                 {% if !can_update_exporter %}

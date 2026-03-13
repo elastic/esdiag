@@ -1,7 +1,7 @@
 #[cfg(feature = "keystore")]
 use super::keystore;
 use super::{ServerState, append_body_event, execute_script_event, html_event, signal_event};
-use crate::data::{KnownHost, Settings, Uri, with_scoped_keystore_password};
+use crate::data::{HostRole, KnownHost, Settings, Uri, with_scoped_keystore_password};
 use crate::exporter::Exporter;
 use crate::server::template::{self, SettingsModal};
 use askama::Template;
@@ -14,32 +14,33 @@ use serde::Deserialize;
 use std::sync::Arc;
 
 pub async fn get_modal(State(state): State<Arc<ServerState>>) -> impl IntoResponse {
-    let can_manage_hosts = state.runtime_mode_policy.allows_host_management();
     let can_update_exporter = state.runtime_mode_policy.allows_exporter_updates();
-
-    let settings = if state.runtime_mode_policy.allows_local_artifacts() {
-        Settings::load().unwrap_or_default()
-    } else {
-        Settings::default()
-    };
-
-    // In service mode, avoid hosts.yml reads entirely.
-    let hosts = if can_manage_hosts {
-        KnownHost::list_all().unwrap_or_default()
-    } else {
-        vec![state.exporter.read().await.to_string()]
-    };
-
-    let active_target = if can_update_exporter {
-        settings.active_target.clone().unwrap_or_default()
-    } else {
-        state.exporter.read().await.to_string()
-    };
+    let settings = Settings::load().unwrap_or_default();
+    let exporter = state.exporter.read().await.clone();
+    let (output_options, selected_output, _exporter_label) =
+        if state.runtime_mode_policy.allows_local_artifacts() {
+            let send_hosts = KnownHost::list_by_role(HostRole::Send).unwrap_or_default();
+            template::build_footer_output_context(
+                &send_hosts,
+                &exporter,
+                settings.active_target.as_deref(),
+            )
+        } else {
+            let selected_output = exporter.target_value();
+            (
+                vec![template::FooterOutputOption {
+                    value: selected_output.clone(),
+                    label: exporter.target_label(),
+                }],
+                selected_output,
+                exporter.target_label(),
+            )
+        };
     let kibana_url = state.kibana_url.read().await.clone();
 
     let modal = SettingsModal {
-        hosts,
-        active_target,
+        output_options,
+        selected_output,
         kibana_url,
         mode: state.runtime_mode.to_string(),
         can_update_exporter,
@@ -275,14 +276,16 @@ fn render_settings_error_script(err_msg: &str) -> String {
 #[cfg(test)]
 #[allow(clippy::await_holding_lock)]
 mod tests {
-    use super::update_settings;
+    use super::{get_modal, update_settings};
     use crate::{
-        data::{KnownHost, Product, Settings, authenticate},
+        data::{KnownHost, Product, Settings, Uri, authenticate},
+        exporter::Exporter,
         server::{RuntimeMode, RuntimeModePolicy, ServerEvent, Signals, test_server_state},
     };
     use axum::{
         extract::State,
         http::{HeaderMap, HeaderValue, StatusCode},
+        response::IntoResponse,
     };
     use datastar::axum::ReadSignals;
     use std::{
@@ -391,6 +394,41 @@ mod tests {
         assert!(saw_unlock_message, "expected unlock-required error message");
         assert!(saw_target_revert, "expected target selection to revert");
         assert!(saw_secure_revert, "expected secure indicator to revert");
+    }
+
+    #[tokio::test]
+    async fn settings_modal_includes_live_exporter_option_when_no_saved_target_selected() {
+        let _guard = env_lock().lock().expect("env lock");
+        let (_tmp, _hosts_path, _keystore_path) = setup_env();
+
+        let mut hosts = BTreeMap::new();
+        hosts.insert(
+            "saved-host".to_string(),
+            KnownHost::NoAuth {
+                app: Product::Elasticsearch,
+                roles: vec![],
+                viewer: None,
+                url: Url::parse("http://localhost:9200").expect("url"),
+            },
+        );
+        write_hosts(hosts);
+        Settings::default().save().expect("save settings");
+
+        let state = test_server_state();
+        *state.exporter.write().await =
+            Exporter::try_from(Uri::Directory(PathBuf::from("/tmp/output")))
+                .expect("directory exporter");
+        let mut events = state.subscribe_events();
+
+        let response = get_modal(State(state)).await.into_response();
+
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+        let event = events.try_recv().expect("modal render event");
+        let ServerEvent::AppendBody(html) = event else {
+            panic!("expected modal html");
+        };
+        assert!(html.contains(r#"option value="/tmp/output" selected"#));
+        assert!(html.contains("dir: /tmp/output/"));
     }
 
     #[tokio::test]

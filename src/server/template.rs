@@ -47,8 +47,8 @@ pub struct Index {
 #[derive(Template)]
 #[template(path = "settings.html")]
 pub struct SettingsModal {
-    pub hosts: Vec<String>,
-    pub active_target: String,
+    pub output_options: Vec<FooterOutputOption>,
+    pub selected_output: String,
     pub kibana_url: String,
     pub mode: String,
     pub can_update_exporter: bool,
