@@ -1,7 +1,7 @@
 #[cfg(feature = "keystore")]
 use super::keystore;
 use super::{ServerState, append_body_event, execute_script_event, html_event, signal_event};
-use crate::data::{HostRole, KnownHost, Settings, Uri, with_scoped_keystore_password};
+use crate::data::{KnownHost, Settings, Uri, with_scoped_keystore_password};
 use crate::exporter::Exporter;
 use crate::server::template::{self, SettingsModal};
 use askama::Template;
@@ -23,9 +23,9 @@ pub async fn get_modal(State(state): State<Arc<ServerState>>) -> impl IntoRespon
     };
     let exporter = state.exporter.read().await.clone();
     let (output_options, selected_output, _exporter_label) = if allows_local_artifacts {
-        let send_hosts = KnownHost::list_by_role(HostRole::Send).unwrap_or_default();
+        let hosts_by_name = KnownHost::parse_hosts_yml().unwrap_or_default();
         template::build_footer_output_context(
-            &send_hosts,
+            &hosts_by_name,
             &exporter,
             settings.active_target.as_deref(),
         )
@@ -239,12 +239,12 @@ async fn footer_selection_signal_payload(
     state: &Arc<ServerState>,
     prior_active_target: Option<&str>,
 ) -> String {
-    let send_hosts = KnownHost::list_by_role(crate::data::HostRole::Send).unwrap_or_default();
+    let hosts_by_name = KnownHost::parse_hosts_yml().unwrap_or_default();
     let exporter = state.exporter.read().await.clone();
     let (_output_options, selected_output, _label) =
-        template::build_footer_output_context(&send_hosts, &exporter, prior_active_target);
+        template::build_footer_output_context(&hosts_by_name, &exporter, prior_active_target);
     let secure =
-        template::active_output_requires_keystore(&send_hosts, &selected_output, &exporter);
+        template::active_output_requires_keystore(&hosts_by_name, &selected_output, &exporter);
     serde_json::json!({
         "settings": { "target": selected_output },
         "output": { "secure": secure }

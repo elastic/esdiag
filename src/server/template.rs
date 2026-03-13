@@ -3,11 +3,12 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use crate::{
-    data::{KnownHost, Uri},
+    data::{HostRole, KnownHost, Uri},
     exporter::Exporter,
 };
 use askama::Template;
 use serde::Serialize;
+use std::collections::BTreeMap;
 
 #[derive(Template)]
 #[template(path = "error.html")]
@@ -222,14 +223,17 @@ pub struct FooterOutputOption {
 }
 
 pub fn build_footer_output_context(
-    send_hosts: &[String],
+    hosts_by_name: &BTreeMap<String, KnownHost>,
     exporter: &Exporter,
     preferred_target: Option<&str>,
 ) -> (Vec<FooterOutputOption>, String, String) {
+    let send_hosts = send_host_names(hosts_by_name);
     let exporter_value = exporter.target_value();
     let selected_output = preferred_target
         .filter(|target| send_hosts.iter().any(|host| host == *target))
-        .and_then(|target| preferred_target_matches_exporter(target, exporter).then_some(target))
+        .and_then(|target| {
+            preferred_target_matches_exporter(target, exporter, hosts_by_name).then_some(target)
+        })
         .map(str::to_string)
         .unwrap_or_else(|| exporter_value.clone());
 
@@ -268,19 +272,30 @@ pub fn build_footer_output_context(
     (output_options, selected_output, exporter_label)
 }
 
-fn preferred_target_matches_exporter(target: &str, exporter: &Exporter) -> bool {
-    let Some(host) = KnownHost::get_known(&target.to_string()) else {
+fn send_host_names(hosts_by_name: &BTreeMap<String, KnownHost>) -> Vec<String> {
+    hosts_by_name
+        .iter()
+        .filter_map(|(name, host)| host.has_role(HostRole::Send).then_some(name.clone()))
+        .collect()
+}
+
+fn preferred_target_matches_exporter(
+    target: &str,
+    exporter: &Exporter,
+    hosts_by_name: &BTreeMap<String, KnownHost>,
+) -> bool {
+    let Some(host) = hosts_by_name.get(target) else {
         return false;
     };
     host.get_url().to_string() == exporter.target_value()
 }
 
 pub fn active_output_requires_keystore(
-    send_hosts: &[String],
+    hosts_by_name: &BTreeMap<String, KnownHost>,
     selected_output: &str,
     exporter: &Exporter,
 ) -> bool {
-    if let Some(host) = KnownHost::get_known(&selected_output.to_string()) {
+    if let Some(host) = hosts_by_name.get(selected_output) {
         return !matches!(host, KnownHost::NoAuth { .. });
     }
 
@@ -288,10 +303,10 @@ pub fn active_output_requires_keystore(
         return exporter.requires_keystore();
     }
 
-    send_hosts.iter().any(|host_name| {
-        let Some(host) = KnownHost::get_known(host_name) else {
+    hosts_by_name.values().any(|host| {
+        if !host.has_role(HostRole::Send) {
             return false;
-        };
+        }
         let secure = !matches!(host, KnownHost::NoAuth { .. });
         if !secure {
             return false;
@@ -380,12 +395,12 @@ mod tests {
     fn footer_context_prefers_live_cli_output_over_saved_host_override() {
         let _guard = env_lock().lock().expect("env lock");
         let _tmp = setup_hosts();
-        let send_hosts = vec!["localhost".to_string(), "secure-prod".to_string()];
+        let hosts = KnownHost::parse_hosts_yml().expect("parse hosts");
         let exporter = Exporter::try_from(Uri::Directory(PathBuf::from("/tmp/output")))
             .expect("directory exporter");
 
         let (options, selected_output, label) =
-            build_footer_output_context(&send_hosts, &exporter, Some("localhost"));
+            build_footer_output_context(&hosts, &exporter, Some("localhost"));
 
         assert_eq!(selected_output, "/tmp/output");
         assert_eq!(label, "dir: /tmp/output/");
@@ -399,7 +414,7 @@ mod tests {
     fn active_output_security_tracks_selected_host_or_matching_exporter() {
         let _guard = env_lock().lock().expect("env lock");
         let _tmp = setup_hosts();
-        let send_hosts = vec!["localhost".to_string(), "secure-prod".to_string()];
+        let hosts = KnownHost::parse_hosts_yml().expect("parse hosts");
 
         let secure_exporter = Exporter::try_from(KnownHost::NoAuth {
             app: Product::Elasticsearch,
@@ -409,12 +424,12 @@ mod tests {
         })
         .expect("secure exporter");
         assert!(active_output_requires_keystore(
-            &send_hosts,
+            &hosts,
             "secure-prod",
             &secure_exporter
         ));
         assert!(!active_output_requires_keystore(
-            &send_hosts,
+            &hosts,
             &secure_exporter.target_value(),
             &secure_exporter
         ));
@@ -422,7 +437,7 @@ mod tests {
         let dir_exporter = Exporter::try_from(Uri::Directory(PathBuf::from("/tmp/output")))
             .expect("directory exporter");
         assert!(!active_output_requires_keystore(
-            &send_hosts,
+            &hosts,
             &dir_exporter.target_value(),
             &dir_exporter
         ));
@@ -435,7 +450,7 @@ mod tests {
         })
         .expect("live url exporter");
         assert!(!active_output_requires_keystore(
-            &send_hosts,
+            &hosts,
             &live_url_exporter.target_value(),
             &live_url_exporter
         ));

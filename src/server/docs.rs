@@ -171,11 +171,10 @@ pub async fn handler(
                 } else {
                     (true, 0)
                 };
-                let send_hosts = if allows_local_artifacts {
-                    crate::data::KnownHost::list_by_role(crate::data::HostRole::Send)
-                        .unwrap_or_default()
+                let hosts_by_name = if allows_local_artifacts {
+                    crate::data::KnownHost::parse_hosts_yml().unwrap_or_default()
                 } else {
-                    vec![]
+                    std::collections::BTreeMap::new()
                 };
                 let exporter = state.exporter.read().await.clone();
                 let preferred_target = if allows_local_artifacts {
@@ -187,12 +186,12 @@ pub async fn handler(
                 };
                 let (output_options, selected_output, exporter_label) =
                     crate::server::template::build_footer_output_context(
-                        &send_hosts,
+                        &hosts_by_name,
                         &exporter,
                         preferred_target.as_deref(),
                     );
                 let active_output_secure = crate::server::template::active_output_requires_keystore(
-                    &send_hosts,
+                    &hosts_by_name,
                     &selected_output,
                     &exporter,
                 );

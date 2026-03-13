@@ -332,14 +332,17 @@ pub async fn ensure_unlocked_for_active_output(
         };
     }
 
-    let send_hosts = KnownHost::list_by_role(crate::data::HostRole::Send).unwrap_or_default();
+    let hosts_by_name = KnownHost::parse_hosts_yml().unwrap_or_default();
     let preferred_target = Settings::load()
         .ok()
         .and_then(|settings| settings.active_target);
-    let (_output_options, selected_output, _exporter_label) =
-        template::build_footer_output_context(&send_hosts, &exporter, preferred_target.as_deref());
+    let (_output_options, selected_output, _exporter_label) = template::build_footer_output_context(
+        &hosts_by_name,
+        &exporter,
+        preferred_target.as_deref(),
+    );
 
-    if !template::active_output_requires_keystore(&send_hosts, &selected_output, &exporter) {
+    if !template::active_output_requires_keystore(&hosts_by_name, &selected_output, &exporter) {
         return Ok(());
     }
 

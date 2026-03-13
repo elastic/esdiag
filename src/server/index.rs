@@ -3,7 +3,7 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::{ServerState, get_theme_dark, template};
-use crate::data::{HostRole, KnownHost, keystore_exists};
+use crate::data::{KnownHost, keystore_exists};
 use askama::Template;
 use axum::{
     extract::{Query, State},
@@ -85,10 +85,10 @@ pub async fn handler(
     let allows_local_artifacts = state.runtime_mode_policy.allows_local_artifacts();
     let can_use_keystore = cfg!(feature = "keystore") && allows_local_artifacts;
     let exporter = { state.exporter.read().await.clone() };
-    let send_hosts = if allows_local_artifacts {
-        KnownHost::list_by_role(HostRole::Send).unwrap_or_default()
+    let hosts_by_name = if allows_local_artifacts {
+        KnownHost::parse_hosts_yml().unwrap_or_default()
     } else {
-        vec![]
+        std::collections::BTreeMap::new()
     };
     let preferred_target = if allows_local_artifacts {
         crate::data::Settings::load()
@@ -97,10 +97,13 @@ pub async fn handler(
     } else {
         None
     };
-    let (output_options, selected_output, exporter_label) =
-        template::build_footer_output_context(&send_hosts, &exporter, preferred_target.as_deref());
+    let (output_options, selected_output, exporter_label) = template::build_footer_output_context(
+        &hosts_by_name,
+        &exporter,
+        preferred_target.as_deref(),
+    );
     let active_output_secure =
-        template::active_output_requires_keystore(&send_hosts, &selected_output, &exporter);
+        template::active_output_requires_keystore(&hosts_by_name, &selected_output, &exporter);
     let theme_dark = get_theme_dark(&headers);
     let kibana_url = { state.kibana_url.read().await.clone() };
     let (keystore_locked, keystore_lock_time) = if can_use_keystore {
