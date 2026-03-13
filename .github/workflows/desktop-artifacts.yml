@@ -65,7 +65,8 @@ jobs:
         shell: pwsh
         run: |
           $content = Get-Content Cargo.toml -Raw
-          $match = [regex]::Match($content, '(?m)^version = "([^"]+)"$')
+          $versionPattern = '(?m)^version = "([^"]+)"$'
+          $match = [regex]::Match($content, $versionPattern)
           if (-not $match.Success) {
             throw "Could not find package version in Cargo.toml"
           }
@@ -74,8 +75,8 @@ jobs:
           if ($version -match '-') {
             $baseVersion = $version.Split('-', 2)[0]
             $normalizedVersion = "$baseVersion-0"
-            $updated = [regex]::Replace($content, '(?m)^version = "[^"]+"$', "version = `"$normalizedVersion`"", 1)
-            Set-Content Cargo.toml $updated
+            $updated = $content -replace $versionPattern, "version = `"$normalizedVersion`""
+            Set-Content Cargo.toml $updated -Encoding utf8NoBOM
             Write-Host "Normalized Cargo version from $version to $normalizedVersion for MSI packaging."
           } else {
             Write-Host "Cargo version $version is already MSI-safe."
