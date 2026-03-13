@@ -164,14 +164,21 @@ pub async fn handler(
                     .next()
                     .unwrap_or('_')
                     .to_ascii_uppercase();
-                let (keystore_locked, keystore_lock_time) =
-                    state.keystore_status_for(&user_email).await;
-                let can_use_keystore = cfg!(feature = "keystore")
-                    && state.runtime_mode_policy.allows_local_artifacts();
-                let send_hosts = crate::data::KnownHost::list_by_role(crate::data::HostRole::Send)
-                    .unwrap_or_default();
+                let allows_local_artifacts = state.runtime_mode_policy.allows_local_artifacts();
+                let can_use_keystore = cfg!(feature = "keystore") && allows_local_artifacts;
+                let (keystore_locked, keystore_lock_time) = if can_use_keystore {
+                    state.keystore_status_for(&user_email).await
+                } else {
+                    (true, 0)
+                };
+                let send_hosts = if allows_local_artifacts {
+                    crate::data::KnownHost::list_by_role(crate::data::HostRole::Send)
+                        .unwrap_or_default()
+                } else {
+                    vec![]
+                };
                 let exporter = state.exporter.read().await.clone();
-                let preferred_target = if state.runtime_mode_policy.allows_local_artifacts() {
+                let preferred_target = if allows_local_artifacts {
                     crate::data::Settings::load()
                         .ok()
                         .and_then(|settings| settings.active_target)
@@ -440,4 +447,65 @@ fn inject_heading_ids(html: &str) -> String {
             format!(r#"<h{level}{attrs} id="{id}">{content}</h{level}>"#)
         })
         .into_owned()
+}
+
+#[cfg(test)]
+#[allow(clippy::await_holding_lock)]
+mod tests {
+    use super::handler_index;
+    use crate::server::{RuntimeMode, RuntimeModePolicy, test_server_state};
+    use axum::{
+        extract::State,
+        http::{HeaderMap, HeaderValue, StatusCode},
+        response::IntoResponse,
+    };
+    use std::{sync::Arc, sync::Mutex};
+    use tempfile::TempDir;
+
+    fn env_lock() -> &'static Mutex<()> {
+        crate::test_env_lock()
+    }
+
+    fn setup_env() -> (TempDir, std::path::PathBuf, std::path::PathBuf) {
+        let tmp = TempDir::new().expect("temp dir");
+        let config_dir = tmp.path().join(".esdiag");
+        let hosts_path = config_dir.join("hosts.yml");
+        let settings_path = config_dir.join("settings.yml");
+        unsafe {
+            std::env::set_var("HOME", tmp.path());
+            std::env::set_var("USERPROFILE", tmp.path());
+            std::env::set_var("ESDIAG_HOSTS", &hosts_path);
+            std::env::set_var("ESDIAG_SETTINGS", &settings_path);
+        }
+        (tmp, hosts_path, settings_path)
+    }
+
+    #[tokio::test]
+    async fn service_mode_docs_does_not_touch_local_artifacts() {
+        let _guard = env_lock().lock().expect("env lock");
+        let (_tmp, hosts_path, settings_path) = setup_env();
+
+        let mut state = test_server_state();
+        let state_mut = Arc::get_mut(&mut state).expect("unique state");
+        state_mut.runtime_mode = RuntimeMode::Service;
+        state_mut.runtime_mode_policy = RuntimeModePolicy::new(RuntimeMode::Service);
+
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "X-Goog-Authenticated-User-Email",
+            HeaderValue::from_static("accounts.google.com:test@example.com"),
+        );
+
+        let response = handler_index(headers, State(state)).await.into_response();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert!(
+            !hosts_path.exists(),
+            "service mode docs should not create hosts.yml"
+        );
+        assert!(
+            !settings_path.exists(),
+            "service mode docs should not create settings.yml"
+        );
+    }
 }

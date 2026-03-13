@@ -15,27 +15,31 @@ use std::sync::Arc;
 
 pub async fn get_modal(State(state): State<Arc<ServerState>>) -> impl IntoResponse {
     let can_update_exporter = state.runtime_mode_policy.allows_exporter_updates();
-    let settings = Settings::load().unwrap_or_default();
+    let allows_local_artifacts = state.runtime_mode_policy.allows_local_artifacts();
+    let settings = if allows_local_artifacts {
+        Settings::load().unwrap_or_default()
+    } else {
+        Settings::default()
+    };
     let exporter = state.exporter.read().await.clone();
-    let (output_options, selected_output, _exporter_label) =
-        if state.runtime_mode_policy.allows_local_artifacts() {
-            let send_hosts = KnownHost::list_by_role(HostRole::Send).unwrap_or_default();
-            template::build_footer_output_context(
-                &send_hosts,
-                &exporter,
-                settings.active_target.as_deref(),
-            )
-        } else {
-            let selected_output = exporter.target_value();
-            (
-                vec![template::FooterOutputOption {
-                    value: selected_output.clone(),
-                    label: exporter.target_label(),
-                }],
-                selected_output,
-                exporter.target_label(),
-            )
-        };
+    let (output_options, selected_output, _exporter_label) = if allows_local_artifacts {
+        let send_hosts = KnownHost::list_by_role(HostRole::Send).unwrap_or_default();
+        template::build_footer_output_context(
+            &send_hosts,
+            &exporter,
+            settings.active_target.as_deref(),
+        )
+    } else {
+        let selected_output = exporter.target_value();
+        (
+            vec![template::FooterOutputOption {
+                value: selected_output.clone(),
+                label: exporter.target_label(),
+            }],
+            selected_output,
+            exporter.target_label(),
+        )
+    };
     let kibana_url = state.kibana_url.read().await.clone();
 
     let modal = SettingsModal {
@@ -429,6 +433,34 @@ mod tests {
         };
         assert!(html.contains(r#"option value="/tmp/output" selected"#));
         assert!(html.contains("dir: /tmp/output/"));
+    }
+
+    #[tokio::test]
+    async fn service_mode_settings_modal_does_not_touch_local_artifacts() {
+        let _guard = env_lock().lock().expect("env lock");
+        let (_tmp, hosts_path, _keystore_path) = setup_env();
+        let settings_path = std::env::var_os("ESDIAG_SETTINGS")
+            .map(PathBuf::from)
+            .expect("settings path env");
+
+        let mut state = test_server_state();
+        let state_mut = Arc::get_mut(&mut state).expect("unique state");
+        state_mut.runtime_mode = RuntimeMode::Service;
+        state_mut.runtime_mode_policy = RuntimeModePolicy::new(RuntimeMode::Service);
+        let mut events = state.subscribe_events();
+
+        let response = get_modal(State(state)).await.into_response();
+
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+        let _ = events.try_recv().expect("modal render event");
+        assert!(
+            !hosts_path.exists(),
+            "service mode settings modal should not create hosts.yml"
+        );
+        assert!(
+            !settings_path.exists(),
+            "service mode settings modal should not create settings.yml"
+        );
     }
 
     #[tokio::test]
