@@ -471,8 +471,12 @@ impl ApiResolver {
         selected: &[String],
     ) -> Result<Vec<String>> {
         let defs = Self::processing_defs(product)?;
-        let diag_type = DiagnosticType::from_str(diagnostic_type)?;
-        let defaults = Self::default_processing_selection(product, &diag_type)?;
+        let defaults = if diagnostic_type.eq_ignore_ascii_case("custom") {
+            defs.iter().map(|def| def.key.to_string()).collect()
+        } else {
+            let diag_type = DiagnosticType::from_str(diagnostic_type)?;
+            Self::default_processing_selection(product, &diag_type)?
+        };
         let mut requested: IndexSet<String> = if selected.is_empty() {
             defaults.into_iter().collect()
         } else {
@@ -498,7 +502,7 @@ impl ApiResolver {
         let mut catalog = HashMap::new();
         for product in ["elasticsearch", "logstash"] {
             let mut by_type = HashMap::new();
-            for diag_type in ["minimal", "light", "standard", "support"] {
+            for diag_type in ["minimal", "light", "standard", "support", "custom"] {
                 by_type.insert(
                     diag_type.to_string(),
                     Self::resolve_processing_options(product, diag_type, "")?,
@@ -852,5 +856,14 @@ mod tests {
         assert!(version.required);
         assert!(plugins.required);
         assert!(node_stats.selected);
+    }
+
+    #[test]
+    fn test_custom_processing_selects_all_implemented_options() {
+        let options =
+            ApiResolver::resolve_processing_options("elasticsearch", "custom", "").unwrap();
+
+        assert!(options.iter().all(|option| option.selected));
+        assert!(options.iter().any(|option| option.key == "tasks"));
     }
 }

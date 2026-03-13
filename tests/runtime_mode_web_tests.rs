@@ -211,11 +211,14 @@ async fn user_mode_index_shows_known_host_collect_and_local_save_defaults() {
     let body = response.text().await.expect("user mode body");
 
     assert!(body.contains("id=\"collect-known-host\""));
-    assert!(body.contains("data-signals:workflow.collect.source=\"'known-host'\""));
+    assert!(body.contains("data-signals:workflow.collect.mode=\"'upload'\""));
+    assert!(body.contains("data-signals:workflow.collect.source=\"'upload-file'\""));
     assert!(body.contains("id=\"collect-save-toggle\""));
+    assert!(body.contains("Save Archive"));
+    assert!(body.contains("id=\"collect-save-dir\""));
     assert!(body.contains("id=\"upload-form\""));
     assert!(body.contains(
-        "data-show=\"$workflow.collect.mode === 'collect' || $workflow.collect.source === 'service-link'\""
+        "data-attr:disabled=\"($workflow.collect.mode === 'upload' && $workflow.collect.source === 'upload-file')"
     ));
     assert!(body.contains("placeholder=\"/"));
 
@@ -235,11 +238,12 @@ async fn service_mode_index_hides_known_host_selection_and_disables_save() {
     assert_eq!(response.status(), reqwest::StatusCode::OK);
     let body = response.text().await.expect("service mode body");
 
-    assert!(body.contains("data-signals:workflow.collect.source=\"'api-key'\""));
-    assert!(body.contains("Service mode does not allow local save artifacts."));
+    assert!(body.contains("data-signals:workflow.collect.mode=\"'upload'\""));
+    assert!(body.contains("data-signals:workflow.collect.source=\"'upload-file'\""));
     assert!(body.contains("id=\"collect-save-toggle\""));
     assert!(body.contains("id=\"upload-form\""));
-    assert!(body.contains("id=\"collect-save-toggle\"\n                        type=\"checkbox\"\n                        data-bind:workflow.collect.save\n                        disabled"));
+    assert!(body.contains("id=\"collect-save-toggle\""));
+    assert!(body.contains("data-attr:disabled=\"($workflow.collect.mode === 'upload' && $workflow.collect.source === 'upload-file') || true\""));
 
     server.shutdown().await;
 }
@@ -258,7 +262,10 @@ async fn index_shows_process_controls_and_forward_remote_input() {
 
     assert!(body.contains("id=\"process-product\""));
     assert!(body.contains("id=\"process-type\""));
-    assert!(body.contains("id=\"process-advanced-toggle\""));
+    assert!(body.contains("Diagnostic Processors"));
+    assert!(body.contains("<option value=\"custom\">custom</option>"));
+    assert!(body.contains("id=\"process-custom-processors\""));
+    assert!(body.contains("id=\"process-enabled-toggle\""));
     assert!(body.contains("id=\"process-option-list\""));
     assert!(body.contains("id=\"process-selected-options\""));
     assert!(body.contains("id=\"send-forward-upload\""));
@@ -279,11 +286,15 @@ async fn index_embeds_send_target_disable_and_auto_save_rules() {
     assert_eq!(response.status(), reqwest::StatusCode::OK);
     let body = response.text().await.expect("workflow page body");
 
-    assert!(body.contains("data-attr:disabled=\"$workflow.process.mode === 'forward'\""));
-    assert!(body.contains("Local bundle is saved in `Collect`. Save has been enabled automatically if needed."));
+    assert!(body.contains("data-bind:workflow.process.enabled"));
+    assert!(body.contains("$workflow.process.mode = $workflow.process.enabled ? 'process' : 'forward'"));
+    assert!(body.contains("data-attr:disabled=\"!$workflow.process.enabled\""));
+    assert!(body.contains("Local bundle retention is handled in `Collect` via Save Archive."));
     assert!(body.contains("Forward + Local` is disabled. Save the bundle in `Collect` to keep a local archive."));
     assert!(body.contains("id=\"send-local-directory\""));
     assert!(body.contains("Local directory"));
+    assert!(body.contains("id=\"workflow-go-button\""));
+    assert!(body.contains("collect + process + send"));
 
     server.shutdown().await;
 }

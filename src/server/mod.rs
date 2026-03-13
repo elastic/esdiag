@@ -1008,6 +1008,8 @@ impl Default for CollectStage {
 #[derive(Clone, Deserialize, Serialize)]
 pub struct ProcessStage {
     pub mode: ProcessMode,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
     #[serde(default)]
     pub product: String,
     #[serde(default)]
@@ -1022,6 +1024,7 @@ impl Default for ProcessStage {
     fn default() -> Self {
         Self {
             mode: ProcessMode::Process,
+            enabled: true,
             product: "elasticsearch".to_string(),
             diagnostic_type: "standard".to_string(),
             advanced: false,
@@ -1050,6 +1053,10 @@ impl Default for SendStage {
             local_directory: String::new(),
         }
     }
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Clone)]

@@ -1,35 +1,42 @@
 <content
     id="main-content"
+    class="workflow-content"
     data-signals:loading="false"
     data-signals:processing="false"
-    data-signals:workflow.collect.mode="'collect'"
-    data-signals:workflow.collect.source="{% if runtime_mode == "user" %}'known-host'{% else %}'api-key'{% endif %}"
+    data-signals:workflow.collect.mode="'upload'"
+    data-signals:workflow.collect.source="'upload-file'"
     data-signals:workflow.collect.known_host="''"
     data-signals:workflow.collect.diagnostic_type="'standard'"
     data-signals:workflow.collect.save="false"
     data-signals:workflow.collect.save_dir="'{{ default_save_dir }}'"
     data-signals:workflow.process.mode="'process'"
+    data-signals:workflow.process.enabled="true"
     data-signals:workflow.process.product="'elasticsearch'"
     data-signals:workflow.process.diagnostic_type="'standard'"
-    data-signals:workflow.process.advanced="false"
     data-signals:workflow.process.selected="''"
     data-signals:workflow.send.mode="'{{ initial_send_mode }}'"
     data-signals:workflow.send.remote_target="'{{ initial_remote_target }}'"
     data-signals:workflow.send.local_target="'{{ initial_local_target }}'"
     data-signals:workflow.send.local_directory="'{% if configured_local_path != "" %}{{ configured_local_path }}{% else %}{{ default_save_dir }}{% endif %}'"
 >
-    <section-title>Diagnostic Workflow</section-title>
-
-    <panel class="workflow-panel">
-        <stage-panel>
-            <stage-header>
-                <h3>Collect</h3>
-                <info-text>Choose whether to collect a remote diagnostic or upload an existing archive.</info-text>
-            </stage-header>
-
+    <workflow-grid>
+        <card class="workflow-card">
+            <card-badge>Collect</card-badge>
+            <card-body>
             <tab-links class="stage-options">
                 <button
                     class="tab active"
+                    data-on:click="{
+                        $workflow.collect.mode = 'upload',
+                        $workflow.collect.source = $workflow.collect.source === 'service-link' ? 'service-link' : 'upload-file',
+                        $workflow.collect.source !== 'service-link' ? $workflow.collect.save = false : null
+                    }"
+                    data-class:active="$workflow.collect.mode === 'upload'"
+                >
+                    Existing
+                </button>
+                <button
+                    class="tab"
                     data-on:click="{
                         $workflow.collect.mode = 'collect',
                         $workflow.collect.source = {% if runtime_mode == "user" %}'known-host'{% else %}'api-key'{% endif %}
@@ -37,16 +44,6 @@
                     data-class:active="$workflow.collect.mode === 'collect'"
                 >
                     New
-                </button>
-                <button
-                    class="tab"
-                    data-on:click="{
-                        $workflow.collect.mode = 'upload',
-                        $workflow.collect.source = $workflow.collect.source === 'service-link' ? 'service-link' : 'upload-file'
-                    }"
-                    data-class:active="$workflow.collect.mode === 'upload'"
-                >
-                    Existing
                 </button>
             </tab-links>
 
@@ -158,6 +155,7 @@
                         value="Collect"
                         data-on:click="$loading = true; $message = 'Connecting with API key...'; @post('/api_key')"
                         data-attr:disabled="$loading || !$es_api.url || !$es_api.key"
+                        style="display: none"
                     />
                 </form>
 
@@ -167,7 +165,7 @@
                 <tab-links class="stage-options nested">
                     <button
                         class="tab active"
-                        data-on:click="$workflow.collect.source = 'upload-file'"
+                        data-on:click="{ $workflow.collect.source = 'upload-file', $workflow.collect.save = false }"
                         data-class:active="$workflow.collect.source === 'upload-file'"
                     >
                         Local File
@@ -226,7 +224,14 @@
                         </div>
                         <div class="upload-progress-text" id="upload-progress-text">0%</div>
                     </div>
-                    <input id="upload-button" class="button" type="submit" value="Upload" disabled />
+                    <input
+                        id="upload-button"
+                        class="button"
+                        type="submit"
+                        value="Upload"
+                        disabled
+                        style="display: none"
+                    />
                 </form>
 
                 <form
@@ -312,6 +317,7 @@
                         value="Load"
                         data-on:click="$loading = true; $message = 'Connecting to Elastic Upload service...'; @post('/service_link')"
                         data-attr:disabled="$loading || !$service_link.url || !$service_link.token"
+                        style="display: none"
                     />
                 </form>
 
@@ -469,34 +475,6 @@
                 </script>
             </div>
 
-            <div
-                data-show="$workflow.collect.mode === 'collect' || $workflow.collect.source === 'service-link'"
-            >
-                <input-group class="save-controls">
-                    <label class="form-label" for="collect-save-toggle">Save Bundle</label>
-                    <input
-                        id="collect-save-toggle"
-                        type="checkbox"
-                        data-bind:workflow.collect.save
-                        {% if runtime_mode != "user" %}disabled{% endif %}
-                    />
-                </input-group>
-                <input-group data-show="$workflow.collect.save" style="display: none">
-                    <label for="collect-save-dir" class="form-label">Save Directory</label>
-                    <input
-                        type="text"
-                        id="collect-save-dir"
-                        class="form-input"
-                        data-bind:workflow.collect.save_dir
-                        placeholder="{{ default_save_dir }}"
-                        {% if runtime_mode != "user" %}disabled{% endif %}
-                    />
-                </input-group>
-                {% if runtime_mode != "user" %}
-                <info-text>Service mode does not allow local save artifacts.</info-text>
-                {% endif %}
-            </div>
-
             <stage-divider></stage-divider>
             <h3>Metadata</h3>
             <input-group>
@@ -548,36 +526,42 @@
                     data-attr:disabled="$loading || $processing"
                 />
             </input-group>
-        </stage-panel>
-    </panel>
+            </card-body>
+            <footer class="workflow-card-footer">
+                <choice-row class="footer-choice">
+                    <input
+                        id="collect-save-toggle"
+                        type="checkbox"
+                        class="switch"
+                        data-bind:workflow.collect.save
+                        data-attr:disabled="($workflow.collect.mode === 'upload' && $workflow.collect.source === 'upload-file'){% if runtime_mode != "user" %} || true{% endif %}"
+                    />
+                    <switch-clip>
+                        <switch-glyphs data-class="{'switch-on': $workflow.collect.save, 'switch-off': !$workflow.collect.save}">
+                            <svg viewBox="0 0 50 20" aria-hidden="true" focusable="false">
+                                <path class="glyph" d="M2 9 L6 13 L13 6"></path>
+                                <circle class="glyph filled" cx="26" cy="10" r="7"></circle>
+                                <path class="glyph" d="M41 6 L49 14 M49 6 L41 14"></path>
+                            </svg>
+                        </switch-glyphs>
+                    </switch-clip>
+                    <label for="collect-save-toggle">Save Archive</label>
+                </choice-row>
+                <input
+                    type="text"
+                    id="collect-save-dir"
+                    class="form-input footer-input"
+                    data-bind:workflow.collect.save_dir
+                    placeholder="{{ default_save_dir }}"
+                    data-attr:disabled="!$workflow.collect.save || ($workflow.collect.mode === 'upload' && $workflow.collect.source === 'upload-file'){% if runtime_mode != "user" %} || true{% endif %}"
+                />
+            </footer>
+        </card>
 
-    <panel class="workflow-panel">
-        <stage-panel>
-            <stage-header>
-                <h3>Process</h3>
-                <info-text>Choose whether to process the diagnostic into docs or forward the raw bundle.</info-text>
-            </stage-header>
-            <tab-links class="stage-options">
-                <button
-                    class="tab active"
-                    data-on:click="$workflow.process.mode = 'process'"
-                    data-class:active="$workflow.process.mode === 'process'"
-                >
-                    Process
-                </button>
-                <button
-                    class="tab"
-                    data-on:click="{
-                        $workflow.process.mode = 'forward',
-                        $workflow.send.mode === 'local' && !$workflow.collect.save ? $workflow.collect.save = true : null
-                    }"
-                    data-class:active="$workflow.process.mode === 'forward'"
-                >
-                    Forward
-                </button>
-            </tab-links>
-
-            <div data-show="$workflow.process.mode === 'process'">
+        <card class="workflow-card">
+            <card-badge>Process</card-badge>
+            <card-body>
+            <div data-show="$workflow.process.enabled">
                 <input-group>
                     <label for="process-product" class="form-label">Product</label>
                     <select id="process-product" class="form-input" data-bind:workflow.process.product>
@@ -586,41 +570,67 @@
                     </select>
                 </input-group>
                 <input-group>
-                    <label for="process-type" class="form-label">Diagnostic Type</label>
+                    <label for="process-type" class="form-label">Diagnostic Processors</label>
                     <select id="process-type" class="form-input" data-bind:workflow.process.diagnostic_type>
                         <option value="minimal">minimal</option>
                         <option value="light">light</option>
                         <option value="standard">standard</option>
                         <option value="support">support</option>
+                        <option value="custom">custom</option>
                     </select>
                 </input-group>
                 <input-group>
-                    <label class="form-label" for="process-advanced-toggle">Advanced Options</label>
-                    <input
-                        id="process-advanced-toggle"
-                        type="checkbox"
-                        data-bind:workflow.process.advanced
-                    />
+                    <details
+                        id="process-custom-processors"
+                        class="processor-accordion"
+                        data-show="$workflow.process.diagnostic_type === 'custom'"
+                        data-preserve-attr="open"
+                        style="display: none"
+                        open
+                    >
+                        <summary>API Selection</summary>
+                        <advanced-panel>
+                            <info-text>Only fully implemented processors are shown. Required processors stay locked on.</info-text>
+                            <processor-list id="process-option-list"></processor-list>
+                        </advanced-panel>
+                    </details>
                 </input-group>
                 <input type="hidden" id="process-selected-options" data-bind:workflow.process.selected />
-                <advanced-panel data-show="$workflow.process.advanced" style="display: none">
-                    <info-text>Only fully implemented processors are shown. Required processors stay locked on.</info-text>
-                    <processor-list id="process-option-list"></processor-list>
-                </advanced-panel>
             </div>
 
-            <div data-show="$workflow.process.mode === 'forward'" style="display: none">
+            <div data-show="!$workflow.process.enabled" style="display: none">
                 <info-text>Forward preserves the raw diagnostic archive without processing it into documents.</info-text>
             </div>
-        </stage-panel>
-    </panel>
+            </card-body>
+            <footer class="workflow-card-footer">
+                <choice-row class="footer-choice">
+                    <input
+                        id="process-enabled-toggle"
+                        type="checkbox"
+                        class="switch"
+                        data-bind:workflow.process.enabled
+                        data-on:change="{
+                            $workflow.process.mode = $workflow.process.enabled ? 'process' : 'forward',
+                            !$workflow.process.enabled ? $workflow.send.mode = 'remote' : null
+                        }"
+                    />
+                    <switch-clip>
+                        <switch-glyphs data-class="{'switch-on': $workflow.process.enabled, 'switch-off': !$workflow.process.enabled}">
+                            <svg viewBox="0 0 50 20" aria-hidden="true" focusable="false">
+                                <path class="glyph" d="M2 9 L6 13 L13 6"></path>
+                                <circle class="glyph filled" cx="26" cy="10" r="7"></circle>
+                                <path class="glyph" d="M41 6 L49 14 M49 6 L41 14"></path>
+                            </svg>
+                        </switch-glyphs>
+                    </switch-clip>
+                    <label for="process-enabled-toggle">Enabled</label>
+                </choice-row>
+            </footer>
+        </card>
 
-    <panel class="workflow-panel">
-        <stage-panel>
-            <stage-header>
-                <h3>Send</h3>
-                <info-text>Choose where the workflow output should go next.</info-text>
-            </stage-header>
+        <card class="workflow-card">
+            <card-badge>Send</card-badge>
+            <card-body>
             <tab-links class="stage-options">
                 <button
                     class="tab active"
@@ -631,19 +641,16 @@
                 </button>
                 <button
                     class="tab"
-                    data-on:click="{
-                        $workflow.send.mode = 'local',
-                        $workflow.process.mode === 'forward' && !$workflow.collect.save ? $workflow.collect.save = true : null
-                    }"
+                    data-on:click="$workflow.send.mode = 'local'"
                     data-class:active="$workflow.send.mode === 'local'"
-                    data-attr:disabled="$workflow.process.mode === 'forward'"
+                    data-attr:disabled="!$workflow.process.enabled"
                 >
                     Local
                 </button>
             </tab-links>
 
             <div data-show="$workflow.send.mode === 'remote'">
-                <input-group data-show="$workflow.process.mode === 'process'">
+                <input-group data-show="$workflow.process.enabled">
                     <label for="send-remote-target" class="form-label">Remote Target</label>
                     <select
                         id="send-remote-target"
@@ -658,7 +665,7 @@
                         {% endfor %}
                     </select>
                 </input-group>
-                <input-group data-show="$workflow.process.mode === 'forward'" style="display: none">
+                <input-group data-show="!$workflow.process.enabled" style="display: none">
                     <label for="send-forward-upload" class="form-label">Upload ID or URL</label>
                     <input
                         id="send-forward-upload"
@@ -668,16 +675,16 @@
                         placeholder="https://upload.elastic.co/g/<upload_id> or <upload_id>"
                     />
                 </input-group>
-                <info-text data-show="$workflow.process.mode === 'process'">
+                <info-text data-show="$workflow.process.enabled">
                     Remote send uses the configured output target for processed diagnostics.
                 </info-text>
-                <info-text data-show="$workflow.process.mode === 'forward'" style="display: none">
+                <info-text data-show="!$workflow.process.enabled" style="display: none">
                     Remote send for forwarded archives uses the Elastic uploader capability.
                 </info-text>
             </div>
 
             <div data-show="$workflow.send.mode === 'local'" style="display: none">
-                <input-group data-show="$workflow.process.mode === 'process'">
+                <input-group data-show="$workflow.process.enabled">
                     <label for="send-local-target" class="form-label">Local Target</label>
                     <select
                         id="send-local-target"
@@ -691,11 +698,11 @@
                         <option value="directory">{% if configured_local_path != "" %}Configured local path{% else %}Local directory{% endif %}</option>
                     </select>
                 </input-group>
-                <info-text data-show="$workflow.process.mode === 'process'">
+                <info-text data-show="$workflow.process.enabled">
                     Local send supports localhost diagnostic clusters or local directory output.
                 </info-text>
                 <input-group
-                    data-show="$workflow.process.mode === 'process' && $workflow.send.local_target === 'directory'"
+                    data-show="$workflow.process.enabled && $workflow.send.local_target === 'directory'"
                     style="display: none"
                 >
                     <label for="send-local-directory" class="form-label">Local Directory</label>
@@ -707,16 +714,45 @@
                         placeholder="{% if configured_local_path != "" %}{{ configured_local_path }}{% else %}{{ default_save_dir }}{% endif %}"
                     />
                 </input-group>
-                <info-text data-show="$workflow.process.mode === 'forward'" style="display: none">
-                    Local bundle is saved in `Collect`. Save has been enabled automatically if needed.
+                <info-text data-show="!$workflow.process.enabled" style="display: none">
+                    Local bundle retention is handled in `Collect` via Save Archive.
                 </info-text>
             </div>
-            <info-text data-show="$workflow.process.mode === 'forward'" style="display: none">
+            <info-text data-show="!$workflow.process.enabled" style="display: none">
                 `Forward + Local` is disabled. Save the bundle in `Collect` to keep a local archive.
             </info-text>
-        </stage-panel>
-    </panel>
+            </card-body>
+            <footer class="workflow-card-footer send-card-footer">
+                <button
+                    id="workflow-go-button"
+                    type="button"
+                    data-on:click="{
+                        $workflow.collect.mode === 'upload' && $workflow.collect.source === 'upload-file'
+                            ? document.getElementById('upload-form').requestSubmit()
+                            : null,
+                        $workflow.collect.mode === 'upload' && $workflow.collect.source === 'service-link'
+                            ? document.getElementById('service-link-button').click()
+                            : null,
+                        $workflow.collect.mode === 'collect' && $workflow.collect.source === 'api-key'
+                            ? document.getElementById('es-api-key-button').click()
+                            : null
+                    }"
+                    data-attr:disabled="$loading || $processing || ($workflow.collect.mode === 'collect' && $workflow.collect.source === 'known-host')"
+                >
+                    Go
+                </button>
+                <span
+                    id="workflow-step-label"
+                    class="footer-status"
+                    data-text="$workflow.process.enabled ? 'collect + process + send' : 'collect + send'"
+                >
+                    collect + process + send
+                </span>
+            </footer>
+        </card>
+    </workflow-grid>
 
+    <workflow-results>
     <div id="current-status" data-show="$loading && $_job_id === '' " class="status-box loading" style="display: none">
         <div class="spinner"></div>
         <span id="status-message" data-text="$message">Uploading...</span>
@@ -735,7 +771,7 @@
     {% else if let Some(link_id) = link_id %}
     <div
         id="job-{{ link_id }}"
-        data-init="$loading = true; $workflow.collect.mode='collect'; $workflow.collect.source='service-link'; $message = 'Forwarding service link {{ link_id }}'; @post('/service_link/{{ link_id }}')"
+        data-init="$loading = true; $workflow.collect.mode='upload'; $workflow.collect.source='service-link'; $message = 'Forwarding service link {{ link_id }}'; @post('/service_link/{{ link_id }}')"
         data-signals:_job_id="true"
         class="status-box loading"
     >
@@ -753,6 +789,7 @@
         Loading file upload {{ upload_id }}
     </div>
     {% endif %}
+    </workflow-results>
     <script>
         const PROCESS_OPTIONS = {{ process_options_json|safe }};
 

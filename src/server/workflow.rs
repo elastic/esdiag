@@ -345,8 +345,7 @@ async fn run_processor_job(
 }
 
 fn explicit_process_selection(signals: &Signals) -> Result<Option<ProcessSelection>> {
-    let has_explicit_choice = signals.workflow.process.advanced
-        || !signals.workflow.process.selected.trim().is_empty()
+    let has_explicit_choice = !signals.workflow.process.selected.trim().is_empty()
         || signals.workflow.process.product != "elasticsearch"
         || signals.workflow.process.diagnostic_type != "standard";
     if !has_explicit_choice {

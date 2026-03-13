@@ -25,6 +25,7 @@
     --size-xxl: 2.5rem;
     --size-neg-xs: -0.25rem;
     --size-neg-l: -1.5rem;
+    --size-header: 52px;
 
     --size-footer: 0px;
     --size-header: 52px;
@@ -1180,10 +1181,16 @@ tab-bar > button:hover {
     color: var(--color-primary-shade);
 }
 
-tab-bar > button:focus-visible,
-form-input > input:focus-visible {
-    outline: var(--focus-ring-outline);
-    outline-offset: 3px;
+content.workflow-content {
+    max-width: min(1500px, calc(100vw - var(--size-xl)));
+}
+
+metadata-form {
+    display: block;
+    width: 40%;
+    background-color: var(--background-color);
+    padding: var(--size-m);
+    border-left: 1px solid var(--border-color);
 }
 
 tab-bar > button.active,
@@ -1227,6 +1234,221 @@ panel > :is(h1, h2, h3, h4, h5, h6):first-child {
     padding: var(--size-l);
 }
 
+workflow-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--size-l);
+    align-items: stretch;
+    margin: var(--size-xl) 0;
+}
+
+card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    background-color: var(--background-color);
+    box-shadow: var(--shadow-small);
+    overflow: visible;
+}
+
+card.workflow-card {
+    min-height: calc(100svh - var(--size-header) - 8rem);
+    max-height: calc(100svh - var(--size-header) - 8rem);
+}
+
+card > card-badge {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    z-index: 2;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 6rem;
+    min-height: var(--size-l);
+    padding: 0 calc(var(--size-s) + var(--size-xs));
+    border: 1px solid var(--border-color-strong);
+    border-radius: 999px;
+    background: var(--background-color);
+    color: var(--text-color);
+    font-size: var(--font-size-xs);
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    transform: translate(-50%, -50%);
+}
+
+card > card-body {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: var(--size);
+    min-height: 0;
+    overflow: auto;
+    padding: var(--size-xl) var(--size-l) var(--size-l);
+}
+
+card > footer {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    gap: var(--size-s);
+    margin-top: auto;
+    padding: var(--size-s);
+    background: var(--background-color-dimmed);
+    border-top: 1px solid var(--border-color);
+    border-bottom-left-radius: var(--border-radius);
+    border-bottom-right-radius: var(--border-radius);
+}
+
+card > footer > button {
+    border: none;
+    border-radius: var(--border-radius-small);
+    background: var(--color-primary);
+    color: var(--background-color);
+    font: inherit;
+    font-size: var(--font-size-s);
+    line-height: var(--font-size-l);
+    padding: var(--size-xs) var(--size);
+    cursor: pointer;
+    transition:
+        background-color 120ms ease,
+        border-color 120ms ease,
+        color 120ms ease;
+}
+
+card > footer > button:hover {
+    background: var(--color-overlay);
+}
+
+card > footer > button:focus-visible {
+    outline: 3px solid
+        color-mix(
+            in srgb,
+            var(--focus-ring-color) 40%,
+            var(--color-transparent)
+        );
+    outline-offset: 2px;
+}
+
+.workflow-card-footer {
+    gap: var(--size);
+}
+
+.footer-choice {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--size-s);
+    white-space: nowrap;
+    margin: 0;
+}
+
+.footer-choice > label {
+    font-size: var(--font-size-s);
+    font-weight: 600;
+}
+
+.footer-input {
+    flex: 1 1 14rem;
+    min-width: 12rem;
+    margin: 0;
+}
+
+.footer-status {
+    color: var(--text-subdued-color);
+    font-size: var(--font-size-s);
+    font-weight: 600;
+}
+
+.footer-choice > input.switch {
+    width: 40px;
+    min-width: 40px;
+    height: 20px;
+    margin: 0;
+    appearance: none;
+    border: 0;
+    border-radius: 20px;
+    background: var(--text-subdued-color);
+    cursor: pointer;
+    transition: background-color 300ms ease;
+}
+
+.footer-choice > input.switch:checked {
+    background: var(--color-primary);
+}
+
+.footer-choice > input.switch:focus-visible {
+    outline: 3px solid
+        color-mix(
+            in srgb,
+            var(--focus-ring-color) 40%,
+            var(--color-transparent)
+        );
+    outline-offset: 2px;
+}
+
+.footer-choice > input.switch:disabled {
+    cursor: not-allowed;
+    opacity: 0.65;
+}
+
+switch-clip {
+    width: 40px;
+    height: 20px;
+    margin-left: calc(-40px - var(--size-s));
+    pointer-events: none;
+    overflow: hidden;
+    border-radius: 20px;
+}
+
+switch-glyphs {
+    color: var(--background-color);
+    pointer-events: none;
+    position: relative;
+    display: flex;
+    width: 50px;
+    height: 20px;
+    left: -16px;
+    transition: left 200ms ease;
+}
+
+switch-glyphs > svg {
+    width: 50px;
+    height: 20px;
+}
+
+switch-glyphs .glyph {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+switch-glyphs .filled {
+    fill: currentColor;
+    transform-box: fill-box;
+    transform-origin: center;
+    transition: transform 120ms ease;
+}
+
+.footer-choice > input.switch:active + switch-clip switch-glyphs .filled {
+    transform: scale(0.9);
+}
+
+switch-glyphs.switch-off {
+    left: -16px;
+}
+
+switch-glyphs.switch-on {
+    left: 4px;
+}
+
 stage-panel {
     display: block;
     width: 100%;
@@ -1258,6 +1480,33 @@ advanced-panel {
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius-small);
     background-color: var(--background-color-dimmed);
+}
+
+.processor-accordion {
+    width: 100%;
+    margin-top: var(--size);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-small);
+    background-color: var(--background-color-dimmed);
+}
+
+.processor-accordion > summary {
+    cursor: pointer;
+    list-style: none;
+    padding: var(--size) var(--size-m);
+    font-size: var(--font-size-s);
+    font-weight: 600;
+}
+
+.processor-accordion > summary::-webkit-details-marker {
+    display: none;
+}
+
+.processor-accordion > advanced-panel {
+    margin-top: 0;
+    border: 0;
+    border-top: 1px solid var(--border-color);
+    border-radius: 0 0 var(--border-radius-small) var(--border-radius-small);
 }
 
 processor-list {
@@ -2360,6 +2609,32 @@ panel.no-padding {
     margin-top: var(--size);
 }
 
+workflow-results {
+    display: block;
+    width: 100%;
+    margin-top: var(--size-xl);
+}
+
+content.workflow-content .status-box {
+    max-width: none;
+    margin: var(--size-s) 0;
+}
+
+@media (max-width: 1200px) {
+    workflow-grid {
+        grid-template-columns: 1fr;
+    }
+
+    card.workflow-card {
+        min-height: 0;
+        max-height: none;
+    }
+
+    card > card-body {
+        overflow: visible;
+    }
+}
+
 .status-box {
     max-width: 800px;
     margin: var(--size-s) auto;
@@ -2752,6 +3027,52 @@ user-icon {
     cursor: pointer;
 }
 
+#user-circle {
+    position: relative;
+}
+
+#user-circle:hover popup-menu {
+    display: block;
+}
+
+.debug-signals {
+    color: var(--text-subdued-color);
+    position: absolute;
+    right: var(--size-s);
+    top: 48px;
+    width: 20%;
+    overflow: scroll;
+}
+
+body > footer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background-color: var(--background-color-dimmed);
+    backdrop-filter: blur(4px);
+    font-family: var(--font-family-code);
+    font-size: var(--font-size-s);
+    color: var(--text-subdued-color);
+    border-top: 1px solid var(--border-color);
+    padding: var(--size-xs) var(--size);
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    z-index: 100;
+}
+
+html:has(#dark-mode:checked) header,
+html:has(#dark-mode:checked) body > footer {
+    background-color: var(--background-color-dimmed);
+}
+
+html:has(#dark-mode:checked) .form-input,
+html:has(#dark-mode:checked) .curl-textarea {
+    background-color: var(--background-color-dimmed);
+}
+
 .counter {
     display: inline-block;
     width: 8em;
@@ -2829,6 +3150,11 @@ footer-right {
     position: fixed;
     inset: 0;
     z-index: 100;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.4);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -2836,6 +3162,12 @@ footer-right {
 }
 
 .modal-content {
+    background-color: var(--background-color);
+    padding: 24px;
+    border-radius: 8px;
+    width: 80%;
+    max-width: 500px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
     position: relative;
     width: min(80%, 500px);
     padding: 24px;
