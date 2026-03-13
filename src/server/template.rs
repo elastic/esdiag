@@ -300,10 +300,10 @@ fn output_target_label(target: &str) -> String {
     match Uri::try_from(target.to_string()) {
         Ok(Uri::Directory(path)) => {
             let display = path.display().to_string();
-            if display.ends_with('/') {
+            if display.ends_with('/') || display.ends_with('\\') {
                 format!("dir: {display}")
             } else {
-                format!("dir: {display}/")
+                format!("dir: {display}{}", std::path::MAIN_SEPARATOR)
             }
         }
         Ok(Uri::File(path)) => format!("file: {}", path.display()),

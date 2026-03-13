@@ -1,9 +1,9 @@
 #[cfg(feature = "keystore")]
 use super::keystore;
-use super::{ServerState, append_body_event, execute_script_event, html_event};
+use super::{ServerState, append_body_event, execute_script_event, html_event, signal_event};
 use crate::data::{KnownHost, Settings, Uri, with_scoped_keystore_password};
 use crate::exporter::Exporter;
-use crate::server::template::SettingsModal;
+use crate::server::template::{self, SettingsModal};
 use askama::Template;
 use axum::{
     extract::State,
@@ -88,7 +88,9 @@ pub async fn update_settings(
         return StatusCode::NO_CONTENT.into_response();
     }
 
-    let mut settings = Settings::load().unwrap_or_default();
+    let settings = Settings::load().unwrap_or_default();
+    let prior_active_target = settings.active_target.clone();
+    let mut next_settings = settings.clone();
     let form = signals.settings;
 
     // 1. Process target selection
@@ -97,23 +99,18 @@ pub async fn update_settings(
         log::warn!("{}", err_msg);
         return settings_error_response(&state, err_msg);
     } else {
-        settings.active_target = KnownHost::get_known(&form.target).map(|_| form.target.clone());
+        next_settings.active_target =
+            KnownHost::get_known(&form.target).map(|_| form.target.clone());
     }
 
     // 2. Process kibana URL
     if let Some(kibana) = form.kibana_url {
-        settings.kibana_url = Some(kibana.clone());
-        *state.kibana_url.write().await = kibana;
+        next_settings.kibana_url = Some(kibana.clone());
     }
 
-    // 3. Save settings to disk
-    if let Err(e) = settings.save() {
-        let err_msg = format!("Failed to save settings: {}", e);
-        log::error!("{}", err_msg);
-        return settings_error_response(&state, err_msg);
-    }
+    let mut validated_exporter = None;
 
-    // 4. Update the active Exporter in ServerState (user mode only)
+    // 3. Validate and update the active Exporter in ServerState (user mode only)
     if state.runtime_mode_policy.allows_exporter_updates() {
         let target = form.target.clone();
         let current_exporter = state.exporter.read().await.clone();
@@ -124,8 +121,8 @@ pub async fn update_settings(
                 return secure_host_unlock_required_response(
                     &state,
                     headers.clone(),
-                    "Keystore is locked. Unlock it before selecting secure saved outputs."
-                        .to_string(),
+                    prior_active_target.as_deref(),
+                    secure_saved_output_error_message(),
                 )
                 .await;
             }
@@ -156,13 +153,28 @@ pub async fn update_settings(
 
         match next_exporter {
             Ok(new_exporter) => {
-                *state.exporter.write().await = new_exporter;
+                validated_exporter = Some(new_exporter);
             }
             Err(err_msg) => {
                 log::error!("{}", err_msg);
                 return settings_error_response(&state, err_msg);
             }
         }
+    }
+
+    // 4. Save settings to disk after validation succeeds
+    if let Err(e) = next_settings.save() {
+        let err_msg = format!("Failed to save settings: {}", e);
+        log::error!("{}", err_msg);
+        return settings_error_response(&state, err_msg);
+    }
+
+    if let Some(kibana_url) = next_settings.kibana_url.clone() {
+        *state.kibana_url.write().await = kibana_url;
+    }
+
+    if let Some(new_exporter) = validated_exporter {
+        *state.exporter.write().await = new_exporter;
     }
 
     // 5. Build response to remove modal and update exporter text
@@ -185,8 +197,12 @@ fn settings_error_response(state: &Arc<ServerState>, err_msg: String) -> Respons
 async fn secure_host_unlock_required_response(
     state: &Arc<ServerState>,
     headers: HeaderMap,
+    prior_active_target: Option<&str>,
     err_msg: String,
 ) -> Response {
+    state.publish_event(signal_event(
+        footer_selection_signal_payload(state, prior_active_target).await,
+    ));
     #[cfg(feature = "keystore")]
     let _ = keystore::get_unlock_modal(State(state.clone()), headers).await;
     #[cfg(not(feature = "keystore"))]
@@ -200,6 +216,35 @@ fn clear_settings_errors(state: &Arc<ServerState>) {
 
 fn host_requires_keystore(host: &KnownHost) -> bool {
     !matches!(host, KnownHost::NoAuth { .. })
+}
+
+fn secure_saved_output_error_message() -> String {
+    #[cfg(feature = "keystore")]
+    {
+        "Keystore is locked. Unlock it before selecting secure saved outputs.".to_string()
+    }
+    #[cfg(not(feature = "keystore"))]
+    {
+        "Keystore support is unavailable in this build, so secure saved outputs cannot be selected."
+            .to_string()
+    }
+}
+
+async fn footer_selection_signal_payload(
+    state: &Arc<ServerState>,
+    prior_active_target: Option<&str>,
+) -> String {
+    let send_hosts = KnownHost::list_by_role(crate::data::HostRole::Send).unwrap_or_default();
+    let exporter = state.exporter.read().await.clone();
+    let (_output_options, selected_output, _label) =
+        template::build_footer_output_context(&send_hosts, &exporter, prior_active_target);
+    let secure =
+        template::active_output_requires_keystore(&send_hosts, &selected_output, &exporter);
+    serde_json::json!({
+        "settings": { "target": selected_output },
+        "output": { "secure": secure }
+    })
+    .to_string()
 }
 
 fn render_settings_error_script(err_msg: &str) -> String {
@@ -303,6 +348,7 @@ mod tests {
         .expect("save settings");
 
         let state = test_server_state();
+        let expected_target = state.exporter.read().await.target_value();
         let mut events = state.subscribe_events();
         let mut signals = Signals::default();
         signals.settings.target = "secure-es".to_string();
@@ -313,8 +359,20 @@ mod tests {
 
         let mut saw_unlock_modal = false;
         let mut saw_unlock_message = false;
+        let mut saw_target_revert = false;
+        let mut saw_secure_revert = false;
         while let Ok(event) = events.try_recv() {
             match event {
+                ServerEvent::Signals(payload) => {
+                    if payload
+                        .contains(&format!(r#""settings":{{"target":"{}"}}"#, expected_target))
+                    {
+                        saw_target_revert = true;
+                    }
+                    if payload.contains(r#""output":{"secure":false}"#) {
+                        saw_secure_revert = true;
+                    }
+                }
                 ServerEvent::AppendBody(html) => {
                     if html.contains("keystore-unlock-modal") {
                         saw_unlock_modal = true;
@@ -331,6 +389,8 @@ mod tests {
 
         assert!(saw_unlock_modal, "expected unlock modal to be shown");
         assert!(saw_unlock_message, "expected unlock-required error message");
+        assert!(saw_target_revert, "expected target selection to revert");
+        assert!(saw_secure_revert, "expected secure indicator to revert");
     }
 
     #[tokio::test]

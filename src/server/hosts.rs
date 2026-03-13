@@ -1583,9 +1583,9 @@ fn host_draft(host: &template::HostsTableRow, original_name: Option<&str>) -> Ho
         roles: host.roles.clone(),
         viewer: Some(host.viewer.clone()),
         secret: Some(host.secret.clone()),
-        apikey: Some(host.apikey.clone()),
-        username: Some(host.username.clone()),
-        password: Some(host.password.clone()),
+        apikey: None,
+        username: None,
+        password: None,
         accept_invalid_certs: host.accept_invalid_certs,
     }
 }
@@ -1955,14 +1955,14 @@ async fn current_keystore_password(state: &Arc<ServerState>, user: &str) -> Resu
 #[allow(clippy::await_holding_lock)]
 mod tests {
     use super::{
-        ClusterUpsertForm, HostUpsertForm, apply_upsert_cluster, apply_upsert_host,
+        ClusterUpsertForm, HostUpsertForm, apply_upsert_cluster, apply_upsert_host, host_draft,
         read_host_and_cluster_rows, read_secret_rows, render_secret_row,
     };
     use crate::{
         data::{
             HostRole, KnownHost, Product, SecretAuth, Settings, authenticate, upsert_secret_auth,
         },
-        server::test_server_state,
+        server::{template, test_server_state},
     };
     use std::{collections::BTreeMap, sync::Mutex};
     use tempfile::TempDir;
@@ -2034,6 +2034,31 @@ mod tests {
 
         let saved = Settings::load().expect("reload settings");
         assert_eq!(saved.active_target.as_deref(), Some("new-host"));
+    }
+
+    #[test]
+    fn host_draft_omits_persisted_plaintext_credentials() {
+        let draft = host_draft(
+            &template::HostsTableRow {
+                name: "legacy-host".to_string(),
+                auth: "basic".to_string(),
+                app: "Elasticsearch".to_string(),
+                url: "https://legacy.example:9200/".to_string(),
+                roles: "collect".to_string(),
+                viewer: String::new(),
+                accept_invalid_certs: false,
+                cloud_id: String::new(),
+                secret: String::new(),
+                apikey: "legacy-api-key".to_string(),
+                username: "legacy-user".to_string(),
+                password: "legacy-password".to_string(),
+            },
+            Some("legacy-host"),
+        );
+
+        assert_eq!(draft.apikey, None);
+        assert_eq!(draft.username, None);
+        assert_eq!(draft.password, None);
     }
 
     #[tokio::test]

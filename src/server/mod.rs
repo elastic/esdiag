@@ -28,12 +28,14 @@ use askama::Template;
 use axum::routing::put;
 use axum::{
     Router,
-    extract::DefaultBodyLimit,
+    extract::{DefaultBodyLimit, Request, State},
     http::{
         HeaderMap,
         header::{HeaderName, VARY},
     },
     middleware,
+    middleware::Next,
+    response::IntoResponse,
     response::sse::Event,
     response::{Response, Sse},
     routing::{get, patch, post},
@@ -264,6 +266,15 @@ impl Server {
                 app
             };
 
+            let app = if runtime_mode_policy.requires_iap_headers() {
+                app.layer(middleware::from_fn_with_state(
+                    state.clone(),
+                    require_authenticated_user,
+                ))
+            } else {
+                app
+            };
+
             let app = app
                 .layer(DefaultBodyLimit::max(FIVE_HUNDRED_TWELVE_MEBIBYTES))
                 .layer(middleware::map_response(add_client_hint_headers));
@@ -429,6 +440,12 @@ fn normalize_keystore_user(user: &str) -> String {
 }
 
 impl ServerState {
+    fn apply_keystore_timeout_locked(state: &mut KeystoreSessionState) -> bool {
+        let was_locked = state.locked;
+        state.apply_timeout();
+        !was_locked && state.locked
+    }
+
     fn keystore_user_key(&self, user: &str) -> String {
         if self.runtime_mode_policy.requires_iap_headers() {
             normalize_keystore_user(user)
@@ -479,9 +496,14 @@ impl ServerState {
     pub async fn keystore_status_for(&self, user: &str) -> (bool, i64) {
         let user = self.keystore_user_key(user);
         let mut states = self.keystore_state.write().await;
-        let state = states.entry(user).or_default();
-        state.apply_timeout();
-        (state.locked, state.lock_time)
+        let state = states.entry(user.clone()).or_default();
+        let timed_out = Self::apply_keystore_timeout_locked(state);
+        let status = (state.locked, state.lock_time);
+        drop(states);
+        if timed_out {
+            self.publish_event(signal_event(self.keystore_signal_payload_for(&user).await));
+        }
+        status
     }
 
     pub async fn keystore_status(&self) -> (bool, i64) {
@@ -491,9 +513,14 @@ impl ServerState {
     pub async fn is_keystore_unlocked_for(&self, user: &str) -> bool {
         let user = self.keystore_user_key(user);
         let mut states = self.keystore_state.write().await;
-        let state = states.entry(user).or_default();
-        state.apply_timeout();
-        !state.locked
+        let state = states.entry(user.clone()).or_default();
+        let timed_out = Self::apply_keystore_timeout_locked(state);
+        let unlocked = !state.locked;
+        drop(states);
+        if timed_out {
+            self.publish_event(signal_event(self.keystore_signal_payload_for(&user).await));
+        }
+        unlocked
     }
 
     pub async fn is_keystore_unlocked(&self) -> bool {
@@ -503,11 +530,15 @@ impl ServerState {
     pub async fn touch_keystore_session_for(&self, user: &str) {
         let user = self.keystore_user_key(user);
         let mut states = self.keystore_state.write().await;
-        let state = states.entry(user).or_default();
-        state.apply_timeout();
+        let state = states.entry(user.clone()).or_default();
+        let timed_out = Self::apply_keystore_timeout_locked(state);
         if !state.locked {
             state.expires_at_epoch = Some(now_epoch_seconds() + (12 * 60 * 60));
             state.lock_time = now_epoch_seconds();
+        }
+        drop(states);
+        if timed_out {
+            self.publish_event(signal_event(self.keystore_signal_payload_for(&user).await));
         }
     }
 
@@ -540,7 +571,7 @@ impl ServerState {
         let user = self.keystore_user_key(user);
         let mut states = self.keystore_state.write().await;
         let state = states.entry(user.clone()).or_default();
-        state.apply_timeout();
+        Self::apply_keystore_timeout_locked(state);
         state.locked = true;
         state.lock_time = now_epoch_seconds();
         state.unlocked_password = None;
@@ -559,7 +590,7 @@ impl ServerState {
         let user = self.keystore_user_key(user);
         let mut states = self.keystore_state.write().await;
         let state = states.entry(user.clone()).or_default();
-        state.apply_timeout();
+        Self::apply_keystore_timeout_locked(state);
         state.failed_attempts = state.failed_attempts.saturating_add(1);
         let block_seconds = state.current_backoff_seconds();
         if block_seconds > 0 {
@@ -578,7 +609,13 @@ impl ServerState {
     }
 
     pub async fn keystore_signal_payload_for(&self, user: &str) -> String {
-        let (locked, lock_time) = self.keystore_status_for(user).await;
+        let user = self.keystore_user_key(user);
+        let mut states = self.keystore_state.write().await;
+        let state = states.entry(user).or_default();
+        Self::apply_keystore_timeout_locked(state);
+        let locked = state.locked;
+        let lock_time = state.lock_time;
+        drop(states);
         format!(
             r#"{{"keystore":{{"locked":{},"lock_time":{}}}}}"#,
             locked, lock_time
@@ -593,9 +630,14 @@ impl ServerState {
     pub async fn keystore_blocked_until_for(&self, user: &str) -> Option<i64> {
         let user = self.keystore_user_key(user);
         let mut states = self.keystore_state.write().await;
-        let state = states.entry(user).or_default();
-        state.apply_timeout();
-        state.blocked_until_epoch
+        let state = states.entry(user.clone()).or_default();
+        let timed_out = Self::apply_keystore_timeout_locked(state);
+        let blocked_until = state.blocked_until_epoch;
+        drop(states);
+        if timed_out {
+            self.publish_event(signal_event(self.keystore_signal_payload_for(&user).await));
+        }
+        blocked_until
     }
 
     pub async fn keystore_blocked_until(&self) -> Option<i64> {
@@ -606,13 +648,18 @@ impl ServerState {
     pub async fn keystore_password_for(&self, user: &str) -> Option<String> {
         let user = self.keystore_user_key(user);
         let mut states = self.keystore_state.write().await;
-        let state = states.entry(user).or_default();
-        state.apply_timeout();
-        if state.locked {
+        let state = states.entry(user.clone()).or_default();
+        let timed_out = Self::apply_keystore_timeout_locked(state);
+        let password = if state.locked {
             None
         } else {
             state.unlocked_password.clone()
+        };
+        drop(states);
+        if timed_out {
+            self.publish_event(signal_event(self.keystore_signal_payload_for(&user).await));
         }
+        password
     }
 
     pub async fn keystore_password(&self) -> Option<String> {
@@ -747,6 +794,21 @@ impl ServerState {
         let next = *self.stats_updates_tx.borrow() + 1;
         let _ = self.stats_updates_tx.send(next);
     }
+}
+
+async fn require_authenticated_user(
+    State(state): State<Arc<ServerState>>,
+    request: Request,
+    next: Next,
+) -> Response {
+    if state.runtime_mode_policy.requires_iap_headers()
+        && let Err(err) = state.resolve_user_email(request.headers())
+    {
+        log::warn!("Rejected unauthenticated request: {}", err);
+        return axum::http::StatusCode::UNAUTHORIZED.into_response();
+    }
+
+    next.run(request).await
 }
 
 #[cfg(test)]
@@ -1227,6 +1289,32 @@ mod tests {
             matches!(next_after_shutdown, Ok(None) | Err(_)),
             "expected stream to end or error after shutdown"
         );
+    }
+
+    #[tokio::test]
+    async fn keystore_timeout_status_read_publishes_locked_signal() {
+        let state = test_server_state();
+        let mut events = state.subscribe_events();
+
+        {
+            let mut keystore_state = state.keystore_state.write().await;
+            let session = keystore_state.entry("Anonymous".to_string()).or_default();
+            session.locked = false;
+            session.lock_time = 1;
+            session.expires_at_epoch = Some(0);
+            session.unlocked_password = Some("pw".to_string());
+        }
+
+        let (locked, lock_time) = state.keystore_status().await;
+
+        assert!(locked);
+        assert!(lock_time > 0);
+
+        let event = events.try_recv().expect("timeout should publish signal");
+        let ServerEvent::Signals(payload) = event else {
+            panic!("expected signal event");
+        };
+        assert!(payload.contains(r#""keystore":{"locked":true"#));
     }
 
     #[test]

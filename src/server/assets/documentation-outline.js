@@ -322,7 +322,10 @@ class DocumentationOutline extends HTMLElement {
   }
 
   _onMouseDown(event) {
-    const link = event.target.closest('a[href^="#"]');
+    const target =
+      event.target instanceof Element ? event.target : event.target?.parentElement;
+    if (!target) return;
+    const link = target.closest('a[href^="#"]');
     if (!link || !this.contains(link)) return;
     event.preventDefault();
 
@@ -341,7 +344,10 @@ class DocumentationOutline extends HTMLElement {
   }
 
   _onClick(event) {
-    const link = event.target.closest('a[href^="#"]');
+    const target =
+      event.target instanceof Element ? event.target : event.target?.parentElement;
+    if (!target) return;
+    const link = target.closest('a[href^="#"]');
     if (!link || !this.contains(link)) return;
     event.preventDefault();
 

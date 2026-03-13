@@ -55,6 +55,35 @@ async fn service_mode_requires_iap_header_for_web_access() {
 }
 
 #[tokio::test]
+async fn service_mode_requires_iap_header_for_settings_update() {
+    let (mut server, client, base) = start_server(RuntimeMode::Service).await;
+
+    let unauthorized = client
+        .post(format!("{base}/api/settings/update"))
+        .body(r#"{"settings":{"kibana_url":"https://kibana.example"}}"#)
+        .header("content-type", "application/json")
+        .send()
+        .await
+        .expect("service mode settings update without header");
+    assert_eq!(unauthorized.status(), reqwest::StatusCode::UNAUTHORIZED);
+
+    let authorized = client
+        .post(format!("{base}/api/settings/update"))
+        .body(r#"{"settings":{"kibana_url":"https://kibana.example"}}"#)
+        .header("content-type", "application/json")
+        .header(
+            "X-Goog-Authenticated-User-Email",
+            "accounts.google.com:ops@example.com",
+        )
+        .send()
+        .await
+        .expect("service mode settings update with header");
+    assert_ne!(authorized.status(), reqwest::StatusCode::UNAUTHORIZED);
+
+    server.shutdown().await;
+}
+
+#[tokio::test]
 async fn service_mode_does_not_mount_keystore_routes() {
     let (mut server, client, base) = start_server(RuntimeMode::Service).await;
 
