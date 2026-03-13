@@ -248,6 +248,16 @@ impl Exporter {
         }
     }
 
+    pub fn requires_keystore(&self) -> bool {
+        match self {
+            Exporter::Elasticsearch(exporter) => exporter.requires_keystore(),
+            Exporter::Archive(_)
+            | Exporter::Directory(_)
+            | Exporter::File(_)
+            | Exporter::Stream(_) => false,
+        }
+    }
+
     pub async fn save_report(&self, report: &DiagnosticReport) -> Result<()> {
         match self {
             Exporter::Archive(_) => Err(eyre!("save report not supported for archive exporter")),

@@ -323,8 +323,16 @@ pub async fn ensure_unlocked_for_active_output(
     state: &Arc<ServerState>,
     user: &str,
 ) -> Result<(), String> {
-    let send_hosts = KnownHost::list_by_role(crate::data::HostRole::Send).unwrap_or_default();
     let exporter = state.exporter.read().await.clone();
+    if !state.runtime_mode_policy.allows_local_artifacts() {
+        return if exporter.requires_keystore() {
+            Err("Keystore unavailable in service mode.".to_string())
+        } else {
+            Ok(())
+        };
+    }
+
+    let send_hosts = KnownHost::list_by_role(crate::data::HostRole::Send).unwrap_or_default();
     let preferred_target = Settings::load()
         .ok()
         .and_then(|settings| settings.active_target);
@@ -333,10 +341,6 @@ pub async fn ensure_unlocked_for_active_output(
 
     if !template::active_output_requires_keystore(&send_hosts, &selected_output, &exporter) {
         return Ok(());
-    }
-
-    if !state.runtime_mode_policy.allows_local_artifacts() {
-        return Err("Keystore unavailable in service mode.".to_string());
     }
 
     if !state.is_keystore_unlocked_for(user).await {
@@ -860,6 +864,44 @@ mod tests {
                 .await
                 .is_ok(),
             "service mode should allow non-secure outputs without keystore access"
+        );
+    }
+
+    #[tokio::test]
+    async fn service_mode_secure_output_does_not_touch_local_artifacts() {
+        let _guard = env_lock().lock().expect("env lock");
+        let (tmp, hosts_path, _keystore_path) = setup_env();
+        let settings_path = tmp.path().join(".esdiag").join("settings.yml");
+        unsafe {
+            std::env::set_var("ESDIAG_SETTINGS", &settings_path);
+        }
+
+        let state = test_service_state();
+        *state.exporter.write().await = crate::exporter::Exporter::try_from(KnownHost::ApiKey {
+            accept_invalid_certs: false,
+            apikey: Some("secret".to_string()),
+            app: crate::data::Product::Elasticsearch,
+            cloud_id: None,
+            roles: vec![crate::data::HostRole::Send],
+            secret: None,
+            viewer: None,
+            url: Url::parse("https://secure.example.com:9200").expect("url"),
+        })
+        .expect("secure exporter");
+
+        let result = ensure_unlocked_for_active_output(&state, "Anonymous").await;
+
+        assert!(
+            result.is_err(),
+            "secure service output should still require keystore"
+        );
+        assert!(
+            !hosts_path.exists(),
+            "service mode preflight should not touch hosts.yml"
+        );
+        assert!(
+            !settings_path.exists(),
+            "service mode preflight should not touch settings.yml"
         );
     }
 
