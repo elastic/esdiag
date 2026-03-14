@@ -34,8 +34,8 @@ Constraints:
 ## Decisions
 
 1. Introduce explicit unlock state in server session context
-   - Decision: Add an explicit keychain unlock state machine in user mode with a 12-hour in-memory session lease: `Locked` -> `Unlocked` -> `Locked`.
-   - Rationale: Prevent accidental keychain access before user intent and make lock behavior explicit.
+   - Decision: Add an explicit keychain unlock state machine in user mode with a 12-hour in-memory session lease: `Locked` -> `Unlocked` -> `Locked`. This unlock state is intentionally a single local user-mode web session for the running process, not a multi-user or distributed session model.
+   - Rationale: Prevent accidental keychain access before user intent, keep lock behavior explicit, and avoid implying stronger per-user isolation guarantees than the current local user-mode web flow provides.
    - Alternatives considered:
      - Browser cookie-backed unlock tracking: rejected because the server does not actually validate a session cookie and the extra header would imply isolation guarantees that do not exist.
      - Prompt-on-every-operation: rejected for poor UX and repetitive friction.
@@ -83,14 +83,14 @@ Constraints:
      - Generic modal error banners only: rejected because they are less actionable.
 
 9. Add availability matrix for keystore capability
-   - Decision: Keystore routes are compiled only when `cfg(feature = "keystore")` is active and are not mounted in `service` mode. In both cases, `/keystore/*` resolves to HTTP 404.
-   - Rationale: Prevents presenting unusable controls and keeps non-keystore builds lean.
+   - Decision: Keystore routes are compiled only when `cfg(feature = "keystore")` is active and are not mounted in `service` mode. In both cases, `/keystore/*` resolves to HTTP 404. When keystore capability is unavailable, processing may still use a runtime-configured authenticated exporter if its credentials were provided outside local keystore storage, because there is no local unlock step to satisfy.
+   - Rationale: Prevents presenting unusable controls, keeps non-keystore builds lean, and preserves valid single-target runtime configurations that already provide their own output authentication.
    - Alternatives considered:
      - Runtime-only hiding without compile-time flag: rejected because code paths still compile/ship in non-keystore builds.
 
 10. Make backend lock state the only UI truth source
-   - Decision: Track `keystore.locked: bool` and `keystore.lock_time: int` in Datastar signals as UI status fields; mutate only via `/keystore/unlock` and `/keystore/lock` responses that return PatchSignals payloads.
-   - Rationale: Prevents frontend-side drift and guarantees signal consistency with server state.
+   - Decision: Track `keystore.locked: bool` and `keystore.lock_time: int` in Datastar signals as UI status fields; mutate them only through backend state transitions, including `/keystore/unlock`, `/keystore/lock`, and timeout-driven lease expiry.
+   - Rationale: Prevents frontend-side drift and guarantees signal consistency with server state, even when a lease expires outside an explicit user-initiated lock request.
    - Alternatives considered:
      - Client-generated lock state transitions: rejected because it can desynchronize from backend security state.
 

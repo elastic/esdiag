@@ -36,12 +36,16 @@ If the user provides an incorrect password in the processing preflight prompt, t
 - **THEN** processing remains blocked, the password input is invalidated, and the user is prompted again
 
 ### Requirement: Processing Gate Availability by Feature and Mode
-The secure-host unlock preflight prompt SHALL run only when the `keystore` feature is enabled and runtime mode is not `service`; otherwise, secure-host processing start SHALL be rejected with a keystore-unavailable error.
+The secure-host unlock preflight prompt SHALL run only when the `keystore` feature is enabled, runtime mode is not `service`, and the active output depends on keystore-backed local secrets. When keystore capability is unavailable but the active exporter is already fully configured by runtime-provided authentication outside local keystore storage, processing MAY proceed without unlock.
 
-#### Scenario: Secure-host start rejected when feature disabled
-- **WHEN** the application is built without the `keystore` feature and a secure-host processing action is started
-- **THEN** processing does not start and the system returns a keystore-unavailable error
+#### Scenario: Runtime-configured secure output proceeds when feature disabled
+- **WHEN** the application is built without the `keystore` feature and a processing action targets an exporter whose authentication was already provided by runtime configuration instead of local keystore storage
+- **THEN** processing starts without an unlock prompt because there is no local keystore dependency to satisfy
 
-#### Scenario: Secure-host start rejected in service mode
-- **WHEN** runtime mode is `service` and a secure-host processing action is started
-- **THEN** processing does not start and the system returns a keystore-unavailable error
+#### Scenario: Runtime-configured secure output proceeds in service mode
+- **WHEN** runtime mode is `service` and a processing action targets an exporter whose authentication was already provided by runtime configuration instead of local keystore storage
+- **THEN** processing starts without an unlock prompt because keystore interaction is not required
+
+#### Scenario: Keystore-backed secure output still requires unlock when available
+- **WHEN** the active output depends on local keystore-backed secrets and keystore capability is available
+- **THEN** processing does not start until unlock succeeds

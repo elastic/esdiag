@@ -8,7 +8,7 @@ The system SHALL require the user to provide the secrets password before any enc
 - **THEN** the system prompts for the secrets password and does not perform the keychain operation until unlock succeeds
 
 ### Requirement: Session-Scoped Unlock Retention
-The system SHALL retain keychain unlock state in server memory for the current user session after a successful unlock until the session is relocked, expired, or terminated.
+In user mode, the system SHALL retain keychain unlock state as a single local in-memory web session after a successful unlock until the session is relocked, expired, or terminated. Service mode SHALL NOT expose or maintain keystore session state.
 
 #### Scenario: Successful unlock retains session state
 - **WHEN** the user submits a valid secrets password
@@ -101,11 +101,15 @@ When keystore is unavailable (feature disabled or runtime mode `service`), `/key
 - **THEN** the server responds with HTTP 404
 
 ### Requirement: Keystore Status Signal Ownership
-The backend SHALL own Datastar status signals `keystore.locked` and `keystore.lock_time` (epoch seconds). These fields are UI status only and SHALL be mutable only through `/keystore/unlock` and `/keystore/lock` responses using JSON PatchSignals payloads.
+The backend SHALL own Datastar status signals `keystore.locked` and `keystore.lock_time` (epoch seconds). These fields are UI status only and SHALL be mutable only by backend state transitions, including successful `/keystore/unlock` and `/keystore/lock` responses and timeout-driven lease expiry.
 
 #### Scenario: Unlock returns PatchSignals update
 - **WHEN** `/keystore/unlock` succeeds
 - **THEN** the response includes PatchSignals updates for `keystore.locked` and `keystore.lock_time`
+
+#### Scenario: Timeout closure updates backend-owned status signals
+- **WHEN** an unlocked session expires due to lease timeout
+- **THEN** the backend updates `keystore.locked` and `keystore.lock_time` to reflect the timeout-driven lock transition
 
 #### Scenario: Client cannot set lock status directly
 - **WHEN** a client attempts to mutate `keystore.locked` or `keystore.lock_time` in a request body
