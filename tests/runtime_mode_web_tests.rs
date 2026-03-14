@@ -112,6 +112,14 @@ async fn service_mode_does_not_mount_keystore_routes() {
 
     let response = client
         .post(format!("{base}/keystore/unlock"))
+        .form(&[("password", "pw")])
+        .send()
+        .await
+        .expect("service mode keystore request without header");
+    assert_eq!(response.status(), reqwest::StatusCode::NOT_FOUND);
+
+    let response = client
+        .post(format!("{base}/keystore/unlock"))
         .header(
             "X-Goog-Authenticated-User-Email",
             "accounts.google.com:ops@example.com",

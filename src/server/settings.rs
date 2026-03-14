@@ -59,7 +59,7 @@ pub async fn get_modal(State(state): State<Arc<ServerState>>) -> impl IntoRespon
 
 #[derive(Deserialize, Default)]
 pub struct UpdateSettingsForm {
-    target: String,
+    target: Option<String>,
     kibana_url: Option<String>,
 }
 
@@ -97,22 +97,21 @@ pub async fn update_settings(
     let prior_active_target = settings.active_target.clone();
     let mut next_settings = settings.clone();
     let form = signals.settings;
+    let target = form.target.as_deref().unwrap_or("").trim().to_string();
+    let target_changed = !target.is_empty();
 
     // 1. Process target selection
-    if form.target == "new_host" {
+    if target == "new_host" {
         let err_msg = "Inline host creation from output settings is no longer supported. Use /settings instead.".to_string();
         log::warn!("{}", err_msg);
         return settings_error_response(&state, err_msg);
-    } else {
-        match KnownHost::get_known(&form.target) {
+    } else if target_changed {
+        match KnownHost::get_known(&target) {
             Some(host) if host.has_role(HostRole::Send) => {
-                next_settings.active_target = Some(form.target.clone());
+                next_settings.active_target = Some(target.clone());
             }
             Some(_) => {
-                let err_msg = format!(
-                    "Output target '{}' is not a send-capable host.",
-                    form.target
-                );
+                let err_msg = format!("Output target '{}' is not a send-capable host.", target);
                 log::warn!("{}", err_msg);
                 return settings_error_response(&state, err_msg);
             }
@@ -130,8 +129,7 @@ pub async fn update_settings(
     let mut validated_exporter = None;
 
     // 3. Validate and update the active Exporter in ServerState (user mode only)
-    if state.runtime_mode_policy.allows_exporter_updates() {
-        let target = form.target.clone();
+    if state.runtime_mode_policy.allows_exporter_updates() && target_changed {
         let current_exporter = state.exporter.read().await.clone();
         let keystore_password = state.keystore_password_for(&request_user).await;
 
@@ -377,7 +375,7 @@ mod tests {
         let expected_target = state.exporter.read().await.target_value();
         let mut events = state.subscribe_events();
         let mut signals = Signals::default();
-        signals.settings.target = "secure-es".to_string();
+        signals.settings.target = Some("secure-es".to_string());
 
         let response = update_settings(State(state), HeaderMap::new(), ReadSignals(signals)).await;
 
@@ -474,7 +472,7 @@ mod tests {
         let state = test_server_state();
         let mut events = state.subscribe_events();
         let mut signals = Signals::default();
-        signals.settings.target = "collector-only".to_string();
+        signals.settings.target = Some("collector-only".to_string());
 
         let response = update_settings(State(state), HeaderMap::new(), ReadSignals(signals)).await;
 
@@ -558,6 +556,37 @@ mod tests {
         assert_eq!(
             state.kibana_url.read().await.as_str(),
             "https://kibana.example"
+        );
+    }
+
+    #[tokio::test]
+    async fn empty_target_keeps_existing_output_selection() {
+        let _guard = env_lock().lock().expect("env lock");
+        let (_tmp, _hosts_path, _keystore_path) = setup_env();
+
+        Settings {
+            active_target: Some("stdout".to_string()),
+            kibana_url: Some("https://old-kibana.example".to_string()),
+        }
+        .save()
+        .expect("save settings");
+
+        let state = test_server_state();
+        let original_target = state.exporter.read().await.target_value();
+        let mut signals = Signals::default();
+        signals.settings.target = Some(String::new());
+        signals.settings.kibana_url = Some("https://new-kibana.example".to_string());
+
+        let response =
+            update_settings(State(state.clone()), HeaderMap::new(), ReadSignals(signals)).await;
+
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+        assert_eq!(state.exporter.read().await.target_value(), original_target);
+        let saved = Settings::load().expect("reload settings");
+        assert_eq!(saved.active_target.as_deref(), Some("stdout"));
+        assert_eq!(
+            saved.kibana_url.as_deref(),
+            Some("https://new-kibana.example")
         );
     }
 }

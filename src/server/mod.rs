@@ -801,7 +801,11 @@ async fn require_authenticated_user(
     request: Request,
     next: Next,
 ) -> Response {
+    let path = request.uri().path();
+    let path_is_routable_without_iap =
+        request.method() == axum::http::Method::OPTIONS || path.starts_with("/keystore/");
     if state.runtime_mode_policy.requires_iap_headers()
+        && !path_is_routable_without_iap
         && let Err(err) = state.resolve_user_email(request.headers())
     {
         log::warn!("Rejected unauthenticated request: {}", err);

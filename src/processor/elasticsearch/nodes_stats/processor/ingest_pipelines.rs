@@ -21,8 +21,7 @@ pub async fn extract(
     metadata: &ElasticsearchMetadata,
     node_metadata: Option<&NodeDocument>,
 ) -> Result<()> {
-    let ingest_pipeline_metadata = metadata
-        .for_data_stream("metrics-ingest.pipeline-esdiag");
+    let ingest_pipeline_metadata = metadata.for_data_stream("metrics-ingest.pipeline-esdiag");
 
     let ingest_processor_metadata = metadata.for_data_stream("metrics-ingest.processor-esdiag");
 
@@ -68,23 +67,18 @@ async fn extract_ingest_processors(
             .par_drain(..)
             .enumerate()
             .filter_map(|(index, mut processor)| {
-                processor
-                    .drain()
-                    .next()
-                    .map(|(name, processor)| {
-                        IngestDoc {
-                            metadata: metadata.clone(),
-                            node: node_summary.clone(),
-                            ingest: IngestProcessorDoc {
-                                pipeline: IngestPipelineName {
-                                    name: pipeline_name.to_string(),
-                                },
-                                processor: IngestProcessorStatsDoc::from(processor)
-                                    .with_name(name)
-                                    .with_order(index),
-                            },
-                        }
-                    })
+                processor.drain().next().map(|(name, processor)| IngestDoc {
+                    metadata: metadata.clone(),
+                    node: node_summary.clone(),
+                    ingest: IngestProcessorDoc {
+                        pipeline: IngestPipelineName {
+                            name: pipeline_name.to_string(),
+                        },
+                        processor: IngestProcessorStatsDoc::from(processor)
+                            .with_name(name)
+                            .with_order(index),
+                    },
+                })
             })
             .collect(),
         None => Vec::new(),

@@ -25,15 +25,13 @@ pub async fn extract(
     docs.extend(
         adaptive_selection
             .into_iter()
-            .map(|(peer_node_id, adaptive_selection)| {
-                AdaptiveSelectionDoc {
-                    node: node_metadata.cloned(),
-                    adaptive_selection: AdaptiveSelectionEntry {
-                        node: lookup_node.by_id(&peer_node_id).cloned(),
-                        data: adaptive_selection,
-                    },
-                    metadata: metadata.clone(),
-                }
+            .map(|(peer_node_id, adaptive_selection)| AdaptiveSelectionDoc {
+                node: node_metadata.cloned(),
+                adaptive_selection: AdaptiveSelectionEntry {
+                    node: lookup_node.by_id(&peer_node_id).cloned(),
+                    data: adaptive_selection,
+                },
+                metadata: metadata.clone(),
             }),
     );
 

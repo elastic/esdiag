@@ -33,7 +33,7 @@
         {% block content %}{% endblock %}
         {% include "components/footer.html" %}
         {% if debug %}
-        <signals-panel>
+        <signals-panel data-signals:signalsPanel="false">
           <signals-toggle>
             <button type="button" title="Toggle signals panel" aria-label="Toggle signals panel" data-on:click="$signalsPanel = !$signalsPanel">
               <icon-zap></icon-zap>

@@ -23,17 +23,12 @@ pub async fn extract(
     docs.extend(
         std::mem::take(actions)
             .into_iter()
-            .map(|(name, action)| {
-                TransportActionDoc {
-                    node: node_metadata.cloned(),
-                    metadata: metadata.clone(),
-                    transport: TransportActionContainer {
-                        action: NamedAction {
-                            name,
-                            data: action,
-                        },
-                    },
-                }
+            .map(|(name, action)| TransportActionDoc {
+                node: node_metadata.cloned(),
+                metadata: metadata.clone(),
+                transport: TransportActionContainer {
+                    action: NamedAction { name, data: action },
+                },
             }),
     );
 
