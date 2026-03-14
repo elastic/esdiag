@@ -212,7 +212,7 @@ pub async fn page(State(state): State<Arc<ServerState>>, headers: HeaderMap) -> 
                 (rows, ids)
             }
             Err(err) => {
-                log::warn!("Failed to list keystore secrets for /settings: {}", err);
+                tracing::warn!("Failed to list keystore secrets for /settings: {}", err);
                 (Vec::new(), Vec::new())
             }
         }
@@ -248,7 +248,7 @@ pub async fn page(State(state): State<Arc<ServerState>>, headers: HeaderMap) -> 
         template::active_output_requires_keystore(&hosts_by_name, &selected_output, &exporter);
     let page = template::HostsPage {
         auth_header,
-        debug: log::max_level() >= log::LevelFilter::Debug,
+        debug: tracing::enabled!(tracing::Level::DEBUG),
         desktop: cfg!(feature = "desktop"),
         can_configure_output: state.runtime_mode_policy.allows_exporter_updates(),
         output_options,
@@ -295,7 +295,7 @@ pub async fn host_action(
     let editing_action = matches!(action.as_str(), "create" | "read" | "update");
 
     if editing_action && !state.is_keystore_unlocked_for(&user).await {
-        log::warn!(
+        tracing::warn!(
             "Rejected host action '{}' for row '{}' because keystore is locked",
             action,
             id
@@ -309,7 +309,7 @@ pub async fn host_action(
 
     if action == "create" {
         if id != "new" {
-            log::warn!("Rejected host create with unexpected id '{}'", id);
+            tracing::warn!("Rejected host create with unexpected id '{}'", id);
             return (StatusCode::BAD_REQUEST, "create expects id 'new'").into_response();
         }
 
@@ -334,7 +334,7 @@ pub async fn host_action(
     let row_id = match id.parse::<usize>() {
         Ok(value) => value,
         Err(_) => {
-            log::warn!(
+            tracing::warn!(
                 "Rejected host action '{}' with non-numeric id '{}'",
                 action,
                 id
@@ -347,7 +347,7 @@ pub async fn host_action(
     match action.as_str() {
         "read" => {
             let Some(host) = host_row_by_id(&hosts, row_id).cloned() else {
-                log::warn!("Host read for row {} failed: row not found", row_id);
+                tracing::warn!("Host read for row {} failed: row not found", row_id);
                 return (StatusCode::NOT_FOUND, "host row not found").into_response();
             };
             let secret_ids = load_secret_ids(&state, &user).await;
@@ -365,7 +365,7 @@ pub async fn host_action(
         }
         "cancel" => {
             let Some(host) = host_row_by_id(&hosts, row_id).cloned() else {
-                log::warn!(
+                tracing::warn!(
                     "Host cancel for transient row {} removed patched row",
                     row_id
                 );
@@ -387,21 +387,21 @@ pub async fn host_action(
         "update" => {
             let Some(draft) = host_draft_from_signals(signal_state, row_id) else {
                 let message = "Missing host row draft signals.".to_string();
-                log::warn!("Host update for row {} failed: {}", row_id, message);
+                tracing::warn!("Host update for row {} failed: {}", row_id, message);
                 return sse_response(vec![patch_host_error_event(&message)]);
             };
             let host_name = draft.name.clone();
             match apply_upsert_host(&state, draft, &user).await {
                 Ok(_) => patch_host_row_saved_response(&state, row_id, &host_name, &user).await,
                 Err(err) => {
-                    log::warn!("Host update for row {} failed: {}", row_id, err);
+                    tracing::warn!("Host update for row {} failed: {}", row_id, err);
                     sse_response(vec![patch_host_error_event(&err)])
                 }
             }
         }
         "delete" => delete_host_row(&hosts, row_id).await,
         _ => {
-            log::warn!(
+            tracing::warn!(
                 "Rejected unsupported host action '{}' for row {}",
                 action,
                 row_id
@@ -426,7 +426,7 @@ pub async fn cluster_action(
     let editing_action = matches!(action.as_str(), "create" | "read" | "update");
 
     if editing_action && !state.is_keystore_unlocked_for(&user).await {
-        log::warn!(
+        tracing::warn!(
             "Rejected cluster action '{}' for row '{}' because keystore is locked",
             action,
             id
@@ -440,7 +440,7 @@ pub async fn cluster_action(
 
     if action == "create" {
         if id != "new" {
-            log::warn!("Rejected cluster create with unexpected id '{}'", id);
+            tracing::warn!("Rejected cluster create with unexpected id '{}'", id);
             return (StatusCode::BAD_REQUEST, "create expects id 'new'").into_response();
         }
 
@@ -465,7 +465,7 @@ pub async fn cluster_action(
     let row_id = match id.parse::<usize>() {
         Ok(value) => value,
         Err(_) => {
-            log::warn!(
+            tracing::warn!(
                 "Rejected cluster action '{}' with non-numeric id '{}'",
                 action,
                 id
@@ -478,7 +478,7 @@ pub async fn cluster_action(
     match action.as_str() {
         "read" => {
             let Some(cluster) = cluster_row_by_id(&clusters, row_id).cloned() else {
-                log::warn!("Cluster read for row {} failed: row not found", row_id);
+                tracing::warn!("Cluster read for row {} failed: row not found", row_id);
                 return (StatusCode::NOT_FOUND, "cluster row not found").into_response();
             };
             let secret_ids = load_secret_ids(&state, &user).await;
@@ -500,7 +500,7 @@ pub async fn cluster_action(
         }
         "cancel" => {
             let Some(cluster) = cluster_row_by_id(&clusters, row_id).cloned() else {
-                log::warn!(
+                tracing::warn!(
                     "Cluster cancel for transient row {} removed patched row",
                     row_id
                 );
@@ -522,7 +522,7 @@ pub async fn cluster_action(
         "update" => {
             let Some(draft) = cluster_draft_from_signals(signal_state, row_id) else {
                 let message = "Missing diagnostic cluster row draft signals.".to_string();
-                log::warn!("Cluster update for row {} failed: {}", row_id, message);
+                tracing::warn!("Cluster update for row {} failed: {}", row_id, message);
                 return sse_response(vec![patch_cluster_error_event(&message)]);
             };
             match apply_upsert_cluster(&state, draft, &user).await {
@@ -535,7 +535,7 @@ pub async fn cluster_action(
                     .await
                 }
                 Err(err) => {
-                    log::warn!("Cluster update for row {} failed: {}", row_id, err);
+                    tracing::warn!("Cluster update for row {} failed: {}", row_id, err);
                     sse_response(vec![patch_cluster_error_event(&err)])
                 }
             }
@@ -1114,7 +1114,7 @@ async fn load_table_panel_data(
                 (rows, ids)
             }
             Err(err) => {
-                log::warn!(
+                tracing::warn!(
                     "Failed to list keystore secrets for /settings patch: {}",
                     err
                 );
@@ -1758,7 +1758,7 @@ async fn load_secret_ids(state: &Arc<ServerState>, user: &str) -> Vec<String> {
             ids
         }
         Err(err) => {
-            log::warn!("Failed to read secret ids for hosts row render: {}", err);
+            tracing::warn!("Failed to read secret ids for hosts row render: {}", err);
             Vec::new()
         }
     }
@@ -1766,7 +1766,7 @@ async fn load_secret_ids(state: &Arc<ServerState>, user: &str) -> Vec<String> {
 
 async fn delete_host_row(hosts: &[template::HostsTableRow], row_id: usize) -> Response {
     let Some(host) = host_row_by_id(hosts, row_id) else {
-        log::warn!(
+        tracing::warn!(
             "Host delete for transient row {} removed patched row",
             row_id
         );
@@ -1788,14 +1788,14 @@ async fn delete_host_row(hosts: &[template::HostsTableRow], row_id: usize) -> Re
             ]),
             Err(err) => {
                 let message = to_message(err);
-                log::warn!("Host delete for row {} failed: {}", row_id, message);
+                tracing::warn!("Host delete for row {} failed: {}", row_id, message);
                 sse_response(vec![patch_host_error_event(&message)])
             }
         };
     }
 
     let message = host_map.err().unwrap_or_default();
-    log::warn!("Host delete for row {} failed: {}", row_id, message);
+    tracing::warn!("Host delete for row {} failed: {}", row_id, message);
     sse_response(vec![patch_host_error_event(&message)])
 }
 
@@ -1806,7 +1806,7 @@ async fn delete_cluster_row(
     user: &str,
 ) -> Response {
     let Some(cluster) = cluster_row_by_id(clusters, row_id) else {
-        log::warn!(
+        tracing::warn!(
             "Cluster delete for transient row {} removed patched row",
             row_id
         );
@@ -1835,7 +1835,7 @@ async fn delete_cluster_row(
             Ok(_) => {
                 if settings_changed && let Err(err) = settings.save() {
                     let message = to_message(err);
-                    log::warn!("Cluster delete for row {} failed: {}", row_id, message);
+                    tracing::warn!("Cluster delete for row {} failed: {}", row_id, message);
                     return sse_response(vec![patch_cluster_error_event(&message)]);
                 }
                 patch_hosts_and_secrets_with_clear_response(state, Some(("clusters", row_id)), user)
@@ -1843,14 +1843,14 @@ async fn delete_cluster_row(
             }
             Err(err) => {
                 let message = to_message(err);
-                log::warn!("Cluster delete for row {} failed: {}", row_id, message);
+                tracing::warn!("Cluster delete for row {} failed: {}", row_id, message);
                 sse_response(vec![patch_cluster_error_event(&message)])
             }
         };
     }
 
     let message = host_map.err().unwrap_or_default();
-    log::warn!("Cluster delete for row {} failed: {}", row_id, message);
+    tracing::warn!("Cluster delete for row {} failed: {}", row_id, message);
     sse_response(vec![patch_cluster_error_event(&message)])
 }
 
@@ -1909,7 +1909,7 @@ async fn patch_host_row_saved_response(
             "Saved host '{}' but could not reload the updated row.",
             host_name
         );
-        log::warn!("{}", message);
+        tracing::warn!("{}", message);
         return sse_response(vec![patch_host_error_event(&message)]);
     };
     let keystore_locked = state.keystore_status_for(user).await.0;

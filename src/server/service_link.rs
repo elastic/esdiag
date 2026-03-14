@@ -25,7 +25,7 @@ pub async fn form(
     headers: HeaderMap,
     ReadSignals(signals): ReadSignals<Signals>,
 ) -> impl IntoResponse {
-    log::info!(
+    tracing::info!(
         "Received Elastic upload service request for: {}",
         signals.service_link.url
     );
@@ -139,7 +139,7 @@ async fn run_service_link_form(
         Uri::ServiceLink(url)
     } else {
         let error_msg = format!("Unsupported URL: {}", service_link.url);
-        log::error!("Invalid URL provided: {}", service_link.url);
+        tracing::error!("Invalid URL provided: {}", service_link.url);
         send_event(
             &tx,
             template_event(template::Error {
@@ -153,14 +153,14 @@ async fn run_service_link_form(
         return;
     };
 
-    log::debug!("Tokenized URI: {}", tokenized_uri);
+    tracing::debug!("Tokenized URI: {}", tokenized_uri);
     let source = &signals.service_link.filename;
     let receiver = match Receiver::try_from(tokenized_uri) {
         Ok(receiver) => Arc::new(receiver),
         Err(e) => {
             state.record_failure().await;
             let error = &format!("Failed to create receiver: {}", e);
-            log::error!("Failed to create receiver: {}", e);
+            tracing::error!("Failed to create receiver: {}", e);
             send_event(
                 &tx,
                 job_feed_event(template::JobFailed {
@@ -341,7 +341,7 @@ async fn run_service_link_id(
         Err(e) => {
             state.record_failure().await;
             let error = &format!("Failed to create receiver: {}", e);
-            log::error!("Failed to create receiver: {}", e);
+            tracing::error!("Failed to create receiver: {}", e);
             send_event(
                 &tx,
                 template_event(template::JobFailed {

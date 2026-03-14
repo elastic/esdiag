@@ -3,7 +3,7 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::super::processor::{
-    DataSource, DiagnosticManifest, ElasticsearchCluster, ManifestBuilder, SourceContext,
+    DataSource, DiagnosticManifest, ElasticsearchCluster, ManifestBuilder, PathType,
     StreamingDataSource,
 };
 use super::{Receive, ReceiveRaw};
@@ -38,7 +38,7 @@ impl ElasticsearchReceiver {
     pub async fn get_version(&self) -> Result<&semver::Version> {
         self.version
             .get_or_try_init(|| async {
-                log::debug!("Fetching version from {}", self.url);
+                tracing::debug!("Fetching version from {}", self.url);
                 let response = self
                     .client
                     .send(
@@ -54,7 +54,8 @@ impl ElasticsearchReceiver {
                 let cluster: Value = serde_json::from_slice(&bytes)?;
                 let version_str = cluster
                     .get("version")
-                    .and_then(|version| version.get("number").and_then(|number| number.as_str()))
+                    .and_then(|v| v.get("number"))
+                    .and_then(|v| v.as_str())
                     .ok_or_else(|| eyre!("No version found in root response"))?;
                 semver::Version::parse(version_str)
                     .map_err(|e| eyre!("Failed to parse version: {}", e))
@@ -63,7 +64,7 @@ impl ElasticsearchReceiver {
     }
 
     pub async fn get_raw_by_path(&self, path: &str, extension: &str) -> Result<String> {
-        log::debug!("Getting raw API path: {}", path);
+        tracing::debug!("Getting raw API path: {}", path);
 
         let mut headers = http::headers::HeaderMap::new();
         // By default, the Elasticsearch client enforces Accept: application/json
@@ -110,7 +111,7 @@ impl Receive for ElasticsearchReceiver {
     }
 
     async fn is_connected(&self) -> bool {
-        log::debug!("Testing Elasticsearch client connection");
+        tracing::debug!("Testing Elasticsearch client connection");
         // An empty request to `/`
         let response = self
             .client
@@ -126,14 +127,14 @@ impl Receive for ElasticsearchReceiver {
 
         match response {
             Ok(response) => {
-                log::debug!(
+                tracing::debug!(
                     "Elasticsearch client connection successful: {}",
                     response.status_code()
                 );
                 true
             }
             Err(e) => {
-                log::error!("Elasticsearch client connection failed: {e}");
+                tracing::error!("Elasticsearch client connection failed: {e}");
                 false
             }
         }
@@ -147,9 +148,10 @@ impl Receive for ElasticsearchReceiver {
     where
         T: DataSource + DeserializeOwned,
     {
-        let ctx = SourceContext::new("elasticsearch", self.get_version().await.ok().cloned());
-        let path = T::resolve_source_request_path(&ctx)?;
-        log::debug!("Getting API: {}", &path);
+        // Get the API URL path for the provided type
+        let version = self.get_version().await.ok();
+        let path = T::source(PathType::Url, version)?;
+        tracing::debug!("Getting API: {}", &path);
 
         // Send a simple GET request to the API path
         let response = self
@@ -168,7 +170,7 @@ impl Receive for ElasticsearchReceiver {
             http::StatusCode::OK => response.json::<T>().await.map_err(Into::into),
             status => {
                 let body: Value = response.json::<Value>().await?;
-                log::debug!("Failed to get API response: {}", body);
+                tracing::debug!("Failed to get API response: {}", body);
                 let reason = body
                     .get("error")
                     .and_then(|e| e.get("reason").and_then(|r| r.as_str()))
@@ -193,11 +195,11 @@ impl Receive for ElasticsearchReceiver {
 
     async fn try_get_manifest(&self) -> Result<DiagnosticManifest> {
         let collection_date = chrono::Utc::now().to_rfc3339();
-        log::info!("Creating diagnostic manifest with collection date {collection_date}");
+        tracing::info!("Creating diagnostic manifest with collection date {collection_date}");
         let cluster = match self.get::<ElasticsearchCluster>().await {
             Ok(cluster) => cluster,
             Err(err) => {
-                log::debug!("Failed to get Elasticsearch cluster info: {}", err);
+                tracing::debug!("Failed to get Elasticsearch cluster info: {}", err);
                 return Err(err);
             }
         };
@@ -214,11 +216,17 @@ impl ReceiveRaw for ElasticsearchReceiver {
     where
         T: DataSource,
     {
-        let ctx = SourceContext::new("elasticsearch", self.get_version().await.ok().cloned());
-        let path = T::resolve_source_request_path(&ctx)?;
-        let extension = T::resolve_source_extension(&ctx)?;
+        // Get the API URL path for the provided type
+        let version = self.get_version().await.ok();
+        let path = T::source(PathType::Url, version)?;
 
-        self.get_raw_by_path(&path, &extension).await
+        let name = T::name();
+        let aliases = T::aliases();
+        let source_conf =
+            crate::processor::diagnostic::data_source::get_source(T::product(), &name, &aliases)?;
+        let extension = source_conf.1.extension.as_deref().unwrap_or(".json");
+
+        self.get_raw_by_path(&path, extension).await
     }
 }
 

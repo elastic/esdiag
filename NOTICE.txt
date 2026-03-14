@@ -5,8 +5,8 @@ Copyright 2012-2025 Elasticsearch B.V.
 This document lists the licenses of the projects used in esdiag.
 
 ## Overview of licenses
-- [Apache License 2.0](#Apache-2.0) (243)
-- [MIT License](#MIT) (66)
+- [Apache License 2.0](#Apache-2.0) (240)
+- [MIT License](#MIT) (71)
 - [Unicode License v3](#Unicode-3.0) (19)
 - [BSD 3-Clause "New" or "Revised" License](#BSD-3-Clause) (3)
 - [zlib License](#Zlib) (2)
@@ -1142,8 +1142,6 @@ Apache License 2.0
 - [colorchoice]( https://github.com/rust-cli/anstyle.git ) 1.0.4
 - [core2]( https://github.com/bbqsrc/core2 ) 0.4.0
 - [crc32fast]( https://github.com/srijs/rust-crc32fast ) 1.5.0
-- [env_filter]( https://github.com/rust-cli/env_logger ) 1.0.0
-- [env_logger]( https://github.com/rust-cli/env_logger ) 0.11.9
 - [foreign-types-shared]( https://github.com/sfackler/foreign-types ) 0.1.1
 - [foreign-types]( https://github.com/sfackler/foreign-types ) 0.3.2
 - [is_terminal_polyfill]( https://github.com/polyfill-rs/is_terminal_polyfill ) 1.70.2
@@ -3763,6 +3761,7 @@ Apache License 2.0
 - [system-configuration]( https://github.com/mullvad/system-configuration-rs ) 0.7.0
 - [tar]( https://github.com/alexcrichton/tar-rs ) 0.4.44
 - [tempfile]( https://github.com/Stebalien/tempfile ) 3.26.0
+- [thread_local]( https://github.com/Amanieu/thread_local-rs ) 1.1.9
 - [unicase]( https://github.com/seanmonstar/unicase ) 2.9.0
 - [unicode-width]( https://github.com/unicode-rs/unicode-width ) 0.2.2
 - [url]( https://github.com/servo/rust-url ) 2.5.8
@@ -5699,8 +5698,6 @@ Apache License 2.0
 - [libc]( https://github.com/rust-lang/libc ) 0.2.182
 - [miniz_oxide]( https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide ) 0.8.9
 - [pin-project-lite]( https://github.com/taiki-e/pin-project-lite ) 0.2.16
-- [portable-atomic-util]( https://github.com/taiki-e/portable-atomic ) 0.2.5
-- [portable-atomic]( https://github.com/taiki-e/portable-atomic ) 1.13.1
 - [proc-macro2]( https://github.com/dtolnay/proc-macro2 ) 1.0.106
 - [quote]( https://github.com/dtolnay/quote ) 1.0.44
 - [r-efi]( https://github.com/r-efi/r-efi ) 5.3.0
@@ -6590,8 +6587,69 @@ DEALINGS IN THE SOFTWARE.
 MIT License
 
 #### Used by
+- [sharded-slab]( https://github.com/hawkw/sharded-slab ) 0.1.7
+
+#### License
+```
+Copyright (c) 2019 Eliza Weisman
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+
+```
+### MIT
+MIT License
+
+#### Used by
+- [matchers]( https://github.com/hawkw/matchers ) 0.2.0
+
+#### License
+```
+Copyright (c) 2019 Eliza Weisman
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+```
+### MIT
+MIT License
+
+#### Used by
 - [tokio-native-tls]( https://github.com/tokio-rs/tls ) 0.3.1
+- [tracing-attributes]( https://github.com/tokio-rs/tracing ) 0.1.31
 - [tracing-core]( https://github.com/tokio-rs/tracing ) 0.1.36
+- [tracing-log]( https://github.com/tokio-rs/tracing ) 0.2.0
+- [tracing-subscriber]( https://github.com/tokio-rs/tracing ) 0.3.23
 - [tracing]( https://github.com/tokio-rs/tracing ) 0.1.44
 
 #### License
@@ -7457,7 +7515,6 @@ MIT License
 
 #### Used by
 - [aho-corasick]( https://github.com/BurntSushi/aho-corasick ) 1.1.4
-- [jiff]( https://github.com/BurntSushi/jiff ) 0.2.21
 - [memchr]( https://github.com/BurntSushi/memchr ) 2.8.0
 - [walkdir]( https://github.com/BurntSushi/walkdir ) 2.5.0
 
@@ -7601,6 +7658,38 @@ Permission is hereby granted, free of charge, to any person obtaining a copy of 
 The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+```
+### MIT
+MIT License
+
+#### Used by
+- [nu-ansi-term]( https://github.com/nushell/nu-ansi-term ) 0.50.3
+
+#### License
+```
+The MIT License (MIT)
+
+Copyright (c) 2014 Benjamin Sago
+Copyright (c) 2021-2022 The Nushell Project Developers
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 
 ```
 ### MIT

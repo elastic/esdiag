@@ -58,7 +58,7 @@ impl Receive for ArchiveBytesReceiver {
         for source_path in source_paths {
             match resolve_archive_path(self.subdir.as_ref(), &mut *archive, &source_path) {
                 Ok(filename) => {
-                    log::debug!("Reading {}", filename);
+                    tracing::debug!("Reading {}", filename);
                     let file = match archive.by_name(&filename) {
                         Ok(file) => file,
                         Err(_) => return Err(eyre!("Failed to read file {filename} from archive")),
@@ -100,7 +100,7 @@ impl Receive for ArchiveBytesReceiver {
 
 impl ReceiveMultiple for ArchiveBytesReceiver {
     fn set_work_dir(&mut self, work_dir: &str) -> Result<()> {
-        log::trace!("Setting subdir: {}", work_dir);
+        tracing::trace!("Setting subdir: {}", work_dir);
         self.subdir = Some(PathBuf::from(work_dir));
         Ok(())
     }
@@ -110,7 +110,7 @@ impl TryFrom<Bytes> for ArchiveBytesReceiver {
     type Error = eyre::Report;
 
     fn try_from(bytes: Bytes) -> Result<Self> {
-        log::debug!("Using in-memory archive");
+        tracing::debug!("Using in-memory archive");
         let archive = ZipArchive::new(BufReader::new(Cursor::new(bytes)))?;
         Ok(Self {
             archive: Arc::new(RwLock::new(archive)),
@@ -133,7 +133,7 @@ impl ArchiveBytesReceiver {
     {
         let mut archive = self.archive.write().await;
         let filename = resolve_archive_path(self.subdir.as_ref(), &mut *archive, filename)?;
-        log::debug!("Reading bundle file {}", filename);
+        tracing::debug!("Reading bundle file {}", filename);
         let file = match archive.by_name(&filename) {
             Ok(file) => file,
             Err(_) => return Err(eyre!("Failed to read file {filename} from archive")),

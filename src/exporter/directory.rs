@@ -57,7 +57,7 @@ impl DirectoryExporter {
 
     pub async fn save(&self, path: PathBuf, content: String) -> Result<()> {
         let path = &self.path.join(path);
-        log::debug!("Writing file: {}", &path.display());
+        tracing::debug!("Writing file: {}", &path.display());
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -67,7 +67,7 @@ impl DirectoryExporter {
     }
 
     pub fn collection_directory(mut self, directory: String) -> Result<Self> {
-        log::debug!("Creating directory: {}", &directory);
+        tracing::debug!("Creating directory: {}", &directory);
         self.path = self.path.join(directory);
         std::fs::create_dir_all(&self.path)?;
         Ok(self)
@@ -98,7 +98,7 @@ impl TryFrom<PathBuf> for DirectoryExporter {
                 ));
             }
         } else {
-            log::debug!("Creating directory: {}", path.display());
+            tracing::debug!("Creating directory: {}", path.display());
             std::fs::create_dir_all(&path)?;
         }
 
@@ -127,7 +127,7 @@ impl Export for DirectoryExporter {
     async fn is_connected(&self) -> bool {
         let is_dir = self.path.is_dir();
         let dir_name = self.path.to_str().unwrap_or("");
-        log::debug!("Directory {dir_name} is valid: {is_dir}");
+        tracing::debug!("Directory {dir_name} is valid: {is_dir}");
         is_dir
     }
 
@@ -151,7 +151,7 @@ impl Export for DirectoryExporter {
         }
         batch.time = start_time.elapsed().as_millis() as u32;
 
-        log::info!("{}, created {} docs", index, doc_count);
+        tracing::info!("{}, created {} docs", index, doc_count);
         if let Some(tx) = &self.docs_tx {
             let _ = tx.send(doc_count).await;
         }
@@ -174,10 +174,10 @@ impl Export for DirectoryExporter {
         match self.batch_send(index, docs).await {
             Ok(batch_response) => {
                 if tx.send(batch_response).is_err() {
-                    log::error!("Failed to send batch response");
+                    tracing::error!("Failed to send batch response");
                 }
             }
-            Err(e) => log::warn!("File write failed: {}", e),
+            Err(e) => tracing::warn!("File write failed: {}", e),
         }
 
         Ok(rx)

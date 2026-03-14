@@ -116,7 +116,7 @@ async fn run_api_key_form(
         Err(e) => {
             state.record_failure().await;
             let error_msg = format!("Failed to build host: {}", e);
-            log::error!("Failed to build host: {}", e);
+            tracing::error!("Failed to build host: {}", e);
             send_event(
                 &tx,
                 job_feed_event(template::JobFailed {
@@ -133,13 +133,13 @@ async fn run_api_key_form(
 
     let receiver = match Receiver::try_from(host) {
         Ok(receiver) => {
-            log::info!("Created receiver: {}", receiver);
+            tracing::info!("Created receiver: {}", receiver);
             Arc::new(receiver)
         }
         Err(e) => {
             state.record_failure().await;
             let error_msg = format!("Failed to create receiver: {}", e);
-            log::error!("Failed to create receiver: {}", e);
+            tracing::error!("Failed to create receiver: {}", e);
             send_event(
                 &tx,
                 job_feed_event(template::JobFailed {
@@ -318,13 +318,13 @@ async fn run_api_key_id(
 
     let receiver = match Receiver::try_from(host) {
         Ok(receiver) => {
-            log::info!("Created receiver: {}", receiver);
+            tracing::info!("Created receiver: {}", receiver);
             Arc::new(receiver)
         }
         Err(e) => {
             state.record_failure().await;
             let error_msg = format!("Failed to create receiver: {}", e);
-            log::error!("Failed to create receiver: {}", e);
+            tracing::error!("Failed to create receiver: {}", e);
             send_event(
                 &tx,
                 template_event(template::JobFailed {

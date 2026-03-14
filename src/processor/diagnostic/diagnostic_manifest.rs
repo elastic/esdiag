@@ -112,7 +112,7 @@ impl DiagnosticManifest {
         {
             date.timestamp_millis() as u64
         } else {
-            log::warn!("Failed to parse collection date: {}", &self.collection_date);
+            tracing::warn!("Failed to parse collection date: {}", &self.collection_date);
             chrono::Utc::now().timestamp_millis() as u64
         }
     }

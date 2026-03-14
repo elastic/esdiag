@@ -59,7 +59,7 @@ async fn export_cluster_settings_docs(
     let data_stream_name = DataStreamName::from(data_stream.as_str());
     let metadata = metadata.for_data_stream(&data_stream).as_meta_doc();
 
-    log::debug!("cluster_settings scopes: {}", scopes.len());
+    tracing::debug!("cluster_settings scopes: {}", scopes.len());
     let cluster_settings_doc = ClusterSettingsDoc::new(metadata.clone(), data_stream_name);
 
     let cluster_settings: Vec<Value> = scopes
@@ -110,11 +110,11 @@ async fn export_cluster_settings_docs(
             json!(cluster_settings_doc)
         })
         .collect();
-    log::debug!("cluster_settings docs: {}", cluster_settings.len());
+    tracing::debug!("cluster_settings docs: {}", cluster_settings.len());
     let mut summary = ProcessorSummary::new(data_stream.clone());
     match exporter.send(data_stream, cluster_settings).await {
         Ok(batch) => summary.add_batch(batch),
-        Err(err) => log::error!("Failed to send cluster settings: {}", err),
+        Err(err) => tracing::error!("Failed to send cluster settings: {}", err),
     }
     summary
 }

@@ -82,7 +82,7 @@ impl From<Result<Nodes>> for Lookup<NodeDocument> {
         match nodes_result {
             Ok(nodes) => Lookup::<NodeDocument>::from_parsed(nodes),
             Err(e) => {
-                log::warn!("Failed to parse Nodes: {}", e);
+                tracing::warn!("Failed to parse Nodes: {}", e);
                 Lookup::new()
             }
         }

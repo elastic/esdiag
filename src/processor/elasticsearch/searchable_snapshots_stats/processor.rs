@@ -42,7 +42,7 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for SearchableSnapshotsSta
             })
             .collect();
 
-        log::debug!(
+        tracing::debug!(
             "searchable_snapshot_stats docs: {}",
             searchable_snapshot_stats.len()
         );
@@ -50,7 +50,7 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for SearchableSnapshotsSta
         let mut summary = ProcessorSummary::new(data_stream.clone());
         match exporter.send(data_stream, searchable_snapshot_stats).await {
             Ok(batch) => summary.add_batch(batch),
-            Err(err) => log::error!("Failed to send searchable snapshots stats: {}", err),
+            Err(err) => tracing::error!("Failed to send searchable snapshots stats: {}", err),
         }
         summary
     }

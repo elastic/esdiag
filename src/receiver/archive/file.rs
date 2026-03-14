@@ -37,7 +37,7 @@ impl TryFrom<PathBuf> for ArchiveFileReceiver {
         let filename = format!("{}", path.file_name().unwrap_or_default().display());
         match path.is_file() {
             true => {
-                log::debug!("File is valid: {}", path.display());
+                tracing::debug!("File is valid: {}", path.display());
                 let file = File::open(path)?;
                 let modified_date = file.metadata()?.modified()?;
                 let archive = ZipArchive::new(file)?;
@@ -50,7 +50,7 @@ impl TryFrom<PathBuf> for ArchiveFileReceiver {
                 })
             }
             false => {
-                log::debug!("File is invalid: {}", path.display());
+                tracing::debug!("File is invalid: {}", path.display());
                 Err(eyre!("Archive input must be a file: {}", path.display()))
             }
         }
@@ -65,12 +65,12 @@ impl Receive for ArchiveFileReceiver {
     async fn is_connected(&self) -> bool {
         let archive = self.archive.read().await;
         let is_empty = archive.is_empty();
-        if log::log_enabled!(log::Level::Trace) {
+        if tracing::enabled!(tracing::Level::TRACE) {
             let file_names: Vec<String> =
                 archive.file_names().map(|name| name.to_string()).collect();
-            log::trace!("Files in archive: {:?}", file_names);
+            tracing::trace!("Files in archive: {:?}", file_names);
         }
-        log::debug!("Directory {} is valid: {is_empty}", &self.filename);
+        tracing::debug!("Directory {} is valid: {is_empty}", &self.filename);
         is_empty
     }
 
@@ -91,7 +91,7 @@ impl Receive for ArchiveFileReceiver {
         for source_path in source_paths {
             match resolve_archive_path(self.subdir.as_ref(), &mut *archive, &source_path) {
                 Ok(filename) => {
-                    log::debug!("Reading {}", filename);
+                    tracing::debug!("Reading {}", filename);
                     let file = archive.by_name(&filename)?;
                     let reader = BufReader::new(file);
                     let data: T = serde_json::from_reader(reader)?;
@@ -137,7 +137,7 @@ impl ReceiveRaw for ArchiveFileReceiver {
         for source_path in source_paths {
             match resolve_archive_path(self.subdir.as_ref(), &mut *archive, &source_path) {
                 Ok(filename) => {
-                    log::debug!("Reading {}", filename);
+                    tracing::debug!("Reading {}", filename);
                     let file = archive.by_name(&filename)?;
                     let mut reader = BufReader::new(file);
                     let mut data = String::new();
@@ -163,7 +163,7 @@ impl ReceiveRaw for ArchiveFileReceiver {
 
 impl ReceiveMultiple for ArchiveFileReceiver {
     fn set_work_dir(&mut self, work_dir: &str) -> Result<()> {
-        log::trace!("Setting subdir: {}", work_dir);
+        tracing::trace!("Setting subdir: {}", work_dir);
         self.subdir = Some(PathBuf::from(work_dir));
         Ok(())
     }
@@ -182,7 +182,7 @@ impl ArchiveFileReceiver {
     {
         let mut archive = self.archive.write().await;
         let filename = resolve_archive_path(self.subdir.as_ref(), &mut *archive, filename)?;
-        log::debug!("Reading bundle file {}", filename);
+        tracing::debug!("Reading bundle file {}", filename);
         let file = archive.by_name(&filename)?;
         let reader = BufReader::new(file);
         serde_json::from_reader(reader).map_err(Into::into)

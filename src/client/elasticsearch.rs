@@ -47,7 +47,7 @@ impl ElasticsearchBuilder {
     }
 
     pub fn auth(self, auth: Auth) -> Self {
-        log::debug!("Setting client auth to {}", auth);
+        tracing::debug!("Setting client auth to {}", auth);
         match auth {
             Auth::Apikey(apikey) => self.apikey(apikey),
             Auth::Basic(username, password) => self.basic_auth(username, password),

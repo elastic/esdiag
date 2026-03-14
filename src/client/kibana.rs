@@ -60,7 +60,7 @@ impl KibanaClient {
             .collect();
         let use_form_data = match headers.get("Content-Type") {
             Some(content_type) => {
-                log::debug!("Content-Type: {}", content_type.to_str()?);
+                tracing::debug!("Content-Type: {}", content_type.to_str()?);
                 content_type.to_str()?.starts_with("multipart/form-data")
             }
             None => false,
@@ -90,7 +90,7 @@ impl KibanaClient {
             Some(body) if use_form_data => {
                 // As of October 2025 we're using a static filename, as the only
                 // use of form data is dashboards.ndjson for the saved objects API
-                log::debug!("Sending request with form-data");
+                tracing::debug!("Sending request with form-data");
                 let part = multipart::Part::bytes(body.to_vec())
                     .file_name("dashboards.ndjson")
                     .mime_str("application/x-ndjson")?;
@@ -98,7 +98,7 @@ impl KibanaClient {
                 request.multipart(form).send().await
             }
             Some(body) => {
-                log::debug!("Sending request with body");
+                tracing::debug!("Sending request with body");
                 request.body(body.to_vec()).send().await
             }
             None => request.send().await,

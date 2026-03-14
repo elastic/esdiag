@@ -16,7 +16,7 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for SlmPolicies {
         _lookups: &Lookups,
         metadata: &ElasticsearchMetadata,
     ) -> ProcessorSummary {
-        log::debug!("processing SLM policies");
+        tracing::debug!("processing SLM policies");
         let data_stream = "settings-slm-esdiag".to_string();
         let metadata = metadata.for_data_stream(&data_stream).as_meta_doc();
 
@@ -33,11 +33,11 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for SlmPolicies {
             })
             .collect();
 
-        log::debug!("SLM policies docs: {}", policies.len());
+        tracing::debug!("SLM policies docs: {}", policies.len());
         let mut summary = ProcessorSummary::new(data_stream.clone());
         match exporter.send(data_stream, policies).await {
             Ok(batch) => summary.add_batch(batch),
-            Err(err) => log::error!("Failed to send SLM policies: {}", err),
+            Err(err) => tracing::error!("Failed to send SLM policies: {}", err),
         }
         summary
     }

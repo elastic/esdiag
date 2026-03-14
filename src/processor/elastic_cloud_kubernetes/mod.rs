@@ -52,7 +52,7 @@ impl DiagnosticProcessor for ElasticCloudKubernetesDiagnostic {
 
     async fn process(self, _summary_tx: mpsc::Sender<ProcessorSummary>) -> Result<()> {
         self.receiver.is_connected().await;
-        log::warn!(
+        tracing::warn!(
             "Elastic Cloud Kubernetes diagnostics only process included Elasticsearch bundles"
         );
         Ok(())

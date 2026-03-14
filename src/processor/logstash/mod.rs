@@ -64,7 +64,7 @@ impl LogstashDiagnostic {
             .documents_export(&self.exporter, &self.lookups, &self.metadata)
             .await;
         summary_tx.send(summary).await.map_err(|err| {
-            log::error!("Failed to send summary: {}", err);
+            tracing::error!("Failed to send summary: {}", err);
             eyre!(err)
         })
     }
@@ -102,8 +102,8 @@ impl DiagnosticProcessor for LogstashDiagnostic {
     }
 
     async fn process(mut self, summary_tx: mpsc::Sender<ProcessorSummary>) -> Result<()> {
-        log::debug!("Running Logstash diagnostic processors");
-        if log::max_level() >= log::Level::Debug {
+        tracing::debug!("Running Logstash diagnostic processors");
+        if tracing::enabled!(tracing::Level::DEBUG) {
             data::save_file("diagnostic.json", &self)?;
         }
 

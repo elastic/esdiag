@@ -197,7 +197,7 @@ impl KnownHostBuilder {
             path_segments.clear().extend(new_segments);
         }
 
-        log::debug!("Updated Cloud API URL: {}", url);
+        tracing::debug!("Updated Cloud API URL: {}", url);
         self.url = url;
     }
 
@@ -373,7 +373,7 @@ impl KnownHost {
         let mut hosts = match KnownHost::parse_hosts_yml() {
             Ok(hosts) => hosts,
             Err(e) => {
-                log::error!("Error parsing hosts.yml: {}", e);
+                tracing::error!("Error parsing hosts.yml: {}", e);
                 return Err(eyre!("Error parsing hosts.yml"));
             }
         };
@@ -420,11 +420,11 @@ impl KnownHost {
         let hosts = match KnownHost::parse_hosts_yml() {
             Ok(hosts) => hosts,
             Err(e) => {
-                log::error!("Error parsing hosts.yml: {}", e);
+                tracing::error!("Error parsing hosts.yml: {}", e);
                 return None;
             }
         };
-        log::debug!(
+        tracing::debug!(
             "Known hosts: {}",
             hosts
                 .clone()
@@ -472,12 +472,12 @@ impl KnownHost {
         let total = hosts.len();
         let mut pending = Vec::new();
 
-        log::info!("Starting keystore migration for {total} host(s).");
+        tracing::info!("Starting keystore migration for {total} host(s).");
 
         for (index, (name, host)) in hosts.iter_mut().enumerate() {
             match host.legacy_auth() {
                 Some(auth) => {
-                    log::debug!(
+                    tracing::debug!(
                         "Preparing host {}/{} for keystore migration: {}",
                         index + 1,
                         total,
@@ -488,7 +488,7 @@ impl KnownHost {
                     migrated += 1;
                 }
                 None => {
-                    log::debug!(
+                    tracing::debug!(
                         "Skipping host {}/{} without legacy credentials: {}",
                         index + 1,
                         total,
@@ -500,14 +500,14 @@ impl KnownHost {
         }
 
         if !pending.is_empty() {
-            log::info!(
+            tracing::info!(
                 "Writing {} migrated secret(s) to keystore in a single batch.",
                 pending.len()
             );
             upsert_secret_auth_batch(pending, keystore_password)?;
         }
 
-        log::info!("Writing migrated host references back to hosts.yml.");
+        tracing::info!("Writing migrated host references back to hosts.yml.");
         Self::write_hosts_yml(&hosts)?;
         Ok((migrated, unchanged))
     }
@@ -582,7 +582,7 @@ impl KnownHost {
     /// Loads hosts from the ~/.esdiag/hosts.yml (defalt) file
     pub fn parse_hosts_yml() -> Result<BTreeMap<String, KnownHost>> {
         let path = KnownHost::get_hosts_path();
-        log::debug!("Parsing {:?}", path);
+        tracing::debug!("Parsing {:?}", path);
         match path.is_file() {
             true => {
                 let file = File::open(path)?;
@@ -595,7 +595,7 @@ impl KnownHost {
                 Ok(hosts)
             }
             false => {
-                log::info!("No hosts, file creating {:?}", path);
+                tracing::info!("No hosts, file creating {:?}", path);
                 File::create(path)?;
                 Ok(BTreeMap::new())
             }
@@ -609,7 +609,7 @@ impl KnownHost {
             host.normalize_and_validate_roles(name)?;
         }
         validate_viewer_links(&hosts)?;
-        log::debug!(
+        tracing::debug!(
             "Writing hosts: {} to {:?}",
             hosts
                 .clone()
@@ -719,7 +719,7 @@ fn resolve_auth_with_precedence(
     if let Some(secret_id) = secret_id {
         let auth = resolve_explicit_secret(secret_id)?;
         if legacy_apikey.is_some() || legacy_basic.is_some() {
-            log::warn!(
+            tracing::warn!(
                 "Legacy credentials exist in hosts.yml and keystore entry '{secret_id}' exists; using keystore credentials."
             );
         }

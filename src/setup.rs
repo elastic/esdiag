@@ -96,8 +96,8 @@ async fn send_asset(
             match status.is_success() {
                 true => {
                     let body = response.text().await?;
-                    log::info!("{} {} {} {}", &asset.name, &stem, &asset.method, status);
-                    log::trace!("Response body: {}", body);
+                    tracing::info!("{} {} {} {}", &asset.name, &stem, &asset.method, status);
+                    tracing::trace!("Response body: {}", body);
                     Ok(())
                 }
                 false => {
@@ -109,7 +109,7 @@ async fn send_asset(
             }
         }
         Err(e) => {
-            log::error!("Failed to send asset: {e:?}");
+            tracing::error!("Failed to send asset: {e:?}");
             Err(eyre!(e))
         }
     }
@@ -128,7 +128,7 @@ pub async fn assets(client: &Client) -> Result<()> {
         .wrap_err("Failed to determine security status")?;
 
     if !security_enabled {
-        log::info!(
+        tracing::info!(
             "Security is disabled on the cluster. Security-dependent assets will be skipped."
         );
     }
@@ -137,42 +137,42 @@ pub async fn assets(client: &Client) -> Result<()> {
 
     for asset in assets {
         if should_skip_asset(&asset, security_enabled) {
-            log::debug!("Skipping security-dependent asset: {}", &asset.name);
+            tracing::debug!("Skipping security-dependent asset: {}", &asset.name);
             continue;
         }
 
-        log::info!("Processing asset: {}", &asset.name);
-        log::debug!("Asset: {}", serde_json::to_string(&asset).unwrap());
+        tracing::info!("Processing asset: {}", &asset.name);
+        tracing::debug!("Asset: {}", serde_json::to_string(&asset).unwrap());
         let path = PathBuf::from(format!("{}/{}", client, asset.name));
 
         let dir_files = embedded_assets.get_dir_files(&path);
         if !dir_files.is_empty() {
             // do something with the directory
             for (file_path, contents) in dir_files {
-                log::debug!("file.path: {:?}", file_path);
+                tracing::debug!("file.path: {:?}", file_path);
                 match send_asset(client, &asset, &file_path, &contents, true).await {
-                    Ok(res) => log::debug!("Response: {:?}", res),
+                    Ok(res) => tracing::debug!("Response: {:?}", res),
                     Err(e) => {
-                        log::error!("Failed to send asset: {e:?}");
+                        tracing::error!("Failed to send asset: {e:?}");
                         error_count += 1;
                     }
                 }
             }
         } else if let Some(contents) = embedded_assets.get_file(&path) {
             // do something with the file
-            log::debug!("file.path: {:?}", &path);
+            tracing::debug!("file.path: {:?}", &path);
             if let Err(e) = send_asset(client, &asset, &path, &contents, false).await {
-                log::error!("Failed to send asset: {e:?}");
+                tracing::error!("Failed to send asset: {e:?}");
                 error_count += 1;
             }
         } else {
-            log::error!("Asset not found: {}", &asset.name);
+            tracing::error!("Asset not found: {}", &asset.name);
             return Err(eyre!("Asset not found: {}", asset.name));
         }
     }
     match error_count {
-        0 => log::info!("completed setup for {client}"),
-        _ => log::error!("{error_count} errors in setup for {client}"),
+        0 => tracing::info!("completed setup for {client}"),
+        _ => tracing::error!("{error_count} errors in setup for {client}"),
     }
     Ok(())
 }

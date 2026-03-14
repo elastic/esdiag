@@ -32,7 +32,7 @@ async fn run_stats_events_loop(state: Arc<ServerState>, tx: broadcast::Sender<Se
                         let _ = tx.send(signal_event(format!(r#"{{"stats":{}}}"#, json)));
                     }
                     Err(err) => {
-                        log::error!("Failed to serialize stats: {}", err);
+                        tracing::error!("Failed to serialize stats: {}", err);
                     }
                 }
             }

@@ -25,7 +25,7 @@ pub async fn extract(
         let client_raw = match serde_json::value::to_raw_value(&client) {
             Ok(raw) => raw,
             Err(err) => {
-                log::warn!("Skipping malformed http client stats record: {}", err);
+                tracing::warn!("Skipping malformed http client stats record: {}", err);
                 return None;
             }
         };

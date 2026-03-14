@@ -100,7 +100,7 @@ impl ElasticsearchExporter {
             .and_then(|s| s.parse::<usize>().ok())
             .unwrap_or(10);
 
-        log::info!("Elasticsearch task limit set to {}", limit);
+        tracing::info!("Elasticsearch task limit set to {}", limit);
 
         Ok(Self {
             client,
@@ -158,7 +158,7 @@ impl TryFrom<KnownHost> for ElasticsearchExporter {
             .and_then(|s| s.parse::<usize>().ok())
             .unwrap_or(10);
 
-        log::debug!("Elasticsearch output task limit: {}", limit);
+        tracing::debug!("Elasticsearch output task limit: {}", limit);
 
         Ok(Self {
             client,
@@ -181,16 +181,16 @@ impl Export for ElasticsearchExporter {
     async fn is_connected(&self) -> bool {
         let status_code = match timeout(Self::request_timeout(), self.client.info().send()).await {
             Ok(Ok(res)) => {
-                log::debug!("Exporter is connected: {}", res.status_code());
-                log::trace!("{:?}", res);
+                tracing::debug!("Exporter is connected: {}", res.status_code());
+                tracing::trace!("{:?}", res);
                 res.status_code().as_u16()
             }
             Ok(Err(e)) => {
-                log::error!("{e}");
+                tracing::error!("{e}");
                 599
             }
             Err(_) => {
-                log::error!(
+                tracing::error!(
                     "Timed out checking exporter connection after {:?}",
                     Self::request_timeout()
                 );
@@ -244,7 +244,7 @@ impl Export for ElasticsearchExporter {
                 Ok(batch_response) => return Ok(batch_response),
                 Err(ExporterError::RateLimited) if attempt < config.max_retries => {
                     let sleep_ms = backoff_ms(attempt, &config);
-                    log::warn!(
+                    tracing::warn!(
                         "{index} - http 429, retry {}/{}, sleeping {sleep_ms}ms",
                         u32::from(attempt) + 1,
                         config.max_retries,
@@ -253,7 +253,7 @@ impl Export for ElasticsearchExporter {
                     retries += 1;
                 }
                 Err(ExporterError::RateLimited) => {
-                    log::error!(
+                    tracing::error!(
                         "{index} - http 429, batch dropped after {} attempts",
                         u32::from(config.max_retries) + 1,
                     );
@@ -299,13 +299,13 @@ impl Export for ElasticsearchExporter {
             match exporter.batch_send(index, docs).await {
                 Ok(batch_response) => {
                     if tx.send(batch_response).is_err() {
-                        log::error!("Failed to send batch response: receiver dropped");
+                        tracing::error!("Failed to send batch response: receiver dropped");
                     } else if let Some(ch) = docs_tx {
                         let _ = ch.send(doc_count).await;
                     }
                 }
                 Err(e) => {
-                    log::warn!("Bulk batch failed: {}", e);
+                    tracing::warn!("Bulk batch failed: {}", e);
                 }
             }
         });
@@ -338,11 +338,11 @@ impl Export for ElasticsearchExporter {
                     let body = res.json::<Value>().await?;
                     match status_code {
                         200 | 201 => {
-                            log::info!(
+                            tracing::info!(
                                 "metrics-diagnostic-esdiag, created diagnostic report {}",
                                 diagnostic_id
                             );
-                            log::trace!("response body: {body}");
+                            tracing::trace!("response body: {body}");
                             Ok(())
                         }
                         400..600 => Err(eyre!("http {status_code}: {body}")),
@@ -350,7 +350,7 @@ impl Export for ElasticsearchExporter {
                     }
                 }
                 Err(e) => {
-                    log::error!("{e}");
+                    tracing::error!("{e}");
                     Err(e.into())
                 }
             },
@@ -370,7 +370,7 @@ async fn parse_response(
     retries: u16,
 ) -> Result<BatchResponse, ExporterError> {
     let response = response.map_err(|e| ExporterError::Fatal(e.into()))?;
-    log::trace!("{:?}", &response);
+    tracing::trace!("{:?}", &response);
     let status_code = response.status_code().as_u16();
     if status_code == 429 {
         return Err(ExporterError::RateLimited);
@@ -392,8 +392,8 @@ async fn parse_response(
     let error_count = error_items.len();
     let doc_count = item_count - error_count;
 
-    if (status_code != 200 && log::max_level() >= log::Level::Debug)
-        || (log::max_level() >= log::Level::Trace)
+    if (status_code != 200 && tracing::enabled!(tracing::Level::DEBUG))
+        || (tracing::enabled!(tracing::Level::TRACE))
     {
         data::save_file(
             "responses.ndjson",
@@ -409,8 +409,8 @@ async fn parse_response(
     }
 
     match status_code {
-        200 if error_count == 0 => log::debug!("{}, created {} docs", index, doc_count),
-        200 => log::warn!(
+        200 if error_count == 0 => tracing::debug!("{}, created {} docs", index, doc_count),
+        200 => tracing::warn!(
             "{}, created {} docs with {} errors",
             index,
             doc_count,
@@ -433,7 +433,7 @@ async fn parse_response(
                 status_code
             )));
         }
-        _ => log::warn!("unexpected http response: {}", status_code),
+        _ => tracing::warn!("unexpected http response: {}", status_code),
     }
 
     if error_count > 0 {

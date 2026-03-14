@@ -25,7 +25,7 @@ impl From<AliasList> for Lookup<Alias> {
                     lookup.add(alias).with_name(&index_name);
                 });
         });
-        log::debug!("lookup alias entries: {}", lookup.len());
+        tracing::debug!("lookup alias entries: {}", lookup.len());
         lookup
     }
 }
@@ -35,7 +35,7 @@ impl From<Result<AliasList>> for Lookup<Alias> {
         match alias_list {
             Ok(alias_list) => Lookup::<Alias>::from_parsed(alias_list),
             Err(e) => {
-                log::warn!("Failed to parse AliasList: {}", e);
+                tracing::warn!("Failed to parse AliasList: {}", e);
                 Lookup::new()
             }
         }

@@ -108,7 +108,7 @@ impl KibanaReceiver {
     }
 
     pub async fn get_raw_by_path(&self, path: &str, extension: &str) -> Result<String> {
-        log::debug!("Getting raw Kibana API path: {}", path);
+        tracing::debug!("Getting raw Kibana API path: {}", path);
 
         let mut headers = HashMap::new();
         if extension == ".txt" {
