@@ -300,7 +300,7 @@ pub fn active_output_requires_keystore(
     }
 
     if selected_output == exporter.target_value() {
-        return exporter.requires_keystore();
+        return exporter.requires_secret();
     }
 
     hosts_by_name.values().any(|host| {

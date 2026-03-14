@@ -39,9 +39,7 @@
               <icon-zap></icon-zap>
             </button>
           </signals-toggle>
-          <signals-view data-show="$signalsPanel">
-            <pre data-text="JSON.stringify({ tab: $tab, loading: $loading, processing: $processing, message: $message, auth: { header: $auth.header }, metadata: { user: $metadata.user, account: $metadata.account, case_number: $metadata.case_number, opportunity: $metadata.opportunity }, settings: { target: $settings.target }, keystore: { locked: $keystore.locked, invalid: $keystore.invalid, lock_time: $keystore.lock_time }, stats: $stats }, null, 2)"></pre>
-          </signals-view>
+          <signals-view data-json-signals data-show="$signalsPanel"></signals-view>
         </signals-panel>
         {% endif %}
     </body>

@@ -26,7 +26,7 @@ pub struct ElasticsearchExporter {
     client: ElasticsearchClient,
     tx_limit: Arc<Semaphore>,
     docs_tx: Option<mpsc::Sender<usize>>,
-    requires_keystore: bool,
+    requires_secret: bool,
     url: Url,
 }
 
@@ -42,7 +42,7 @@ impl ElasticsearchExporter {
 
     /// Create a new ElasticsearchExporter from a URL and Auth
     pub fn try_new(url: Url, auth: Auth) -> Result<Self> {
-        let requires_keystore = !matches!(auth, Auth::None);
+        let requires_secret = !matches!(auth, Auth::None);
         let client = ElasticsearchBuilder::new(url.clone())
             .insecure(true)
             .auth(auth)
@@ -60,12 +60,12 @@ impl ElasticsearchExporter {
             tx_limit: Arc::new(Semaphore::new(limit)),
             url,
             docs_tx: None,
-            requires_keystore,
+            requires_secret,
         })
     }
 
-    pub fn requires_keystore(&self) -> bool {
-        self.requires_keystore
+    pub fn requires_secret(&self) -> bool {
+        self.requires_secret
     }
 
     /// Request to an arbitrary path on the Elasticsearch client
@@ -103,7 +103,7 @@ impl TryFrom<KnownHost> for ElasticsearchExporter {
     type Error = eyre::Report;
 
     fn try_from(host: KnownHost) -> Result<Self> {
-        let requires_keystore = !matches!(host.get_auth()?, Auth::None);
+        let requires_secret = !matches!(host.get_auth()?, Auth::None);
         let url = host.get_url();
         let client = ElasticsearchClient::try_from(host)?;
         let limit = std::env::var("ESDIAG_OUTPUT_TASK_LIMIT")
@@ -118,7 +118,7 @@ impl TryFrom<KnownHost> for ElasticsearchExporter {
             tx_limit: Arc::new(Semaphore::new(limit)),
             url,
             docs_tx: None,
-            requires_keystore,
+            requires_secret,
         })
     }
 }

@@ -113,7 +113,8 @@ pub async fn update_settings(
             Some(_) => {
                 let err_msg = format!("Output target '{}' is not a send-capable host.", target);
                 log::warn!("{}", err_msg);
-                return settings_error_response(&state, prior_active_target.as_deref(), err_msg).await;
+                return settings_error_response(&state, prior_active_target.as_deref(), err_msg)
+                    .await;
             }
             None => {
                 next_settings.active_target = None;
@@ -137,7 +138,8 @@ pub async fn update_settings(
             if !host.has_role(HostRole::Send) {
                 let err_msg = format!("Output target '{}' is not a send-capable host.", target);
                 log::warn!("{}", err_msg);
-                return settings_error_response(&state, prior_active_target.as_deref(), err_msg).await;
+                return settings_error_response(&state, prior_active_target.as_deref(), err_msg)
+                    .await;
             }
             if host_requires_keystore(&host) && keystore_password.is_none() {
                 return secure_host_unlock_required_response(
@@ -166,8 +168,12 @@ pub async fn update_settings(
                 Err(e) => {
                     let err_msg = format!("Invalid output target: {}", e);
                     log::error!("{}", err_msg);
-                    return settings_error_response(&state, prior_active_target.as_deref(), err_msg)
-                        .await;
+                    return settings_error_response(
+                        &state,
+                        prior_active_target.as_deref(),
+                        err_msg,
+                    )
+                    .await;
                 }
             };
             Exporter::try_from(exporter_uri)
@@ -180,7 +186,8 @@ pub async fn update_settings(
             }
             Err(err_msg) => {
                 log::error!("{}", err_msg);
-                return settings_error_response(&state, prior_active_target.as_deref(), err_msg).await;
+                return settings_error_response(&state, prior_active_target.as_deref(), err_msg)
+                    .await;
             }
         }
     }

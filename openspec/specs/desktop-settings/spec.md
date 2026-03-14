@@ -14,30 +14,30 @@ The system SHALL support mode-aware settings persistence. In `user` mode, it SHA
 - **THEN** the system does not write credentials or host target records to local `settings.yml` or `hosts.yml` artifacts
 
 ### Requirement: Settings Modal Access
-The web UI SHALL provide an interactable element in the footer displaying the currently active target. Clicking this element SHALL open a configuration modal.
+The web UI SHALL provide footer controls where the output target selector remains available for switching active targets, while host and secret management live in the dedicated `/settings` interface.
 
-#### Scenario: Opening the settings modal
+#### Scenario: Opening host manager from navigation
 - **GIVEN** the web UI is loaded
-- **WHEN** the user clicks on the "Target: [CurrentTarget]" text in the footer
-- **THEN** a modal opens displaying inputs for Kibana URL and Output Target selection
+- **WHEN** the user selects `Settings`
+- **THEN** the application opens the dedicated host/keychain management interface
 
 ### Requirement: Output Target Selection
-The settings UI SHALL provide mode-aware target behavior. In `user` mode, the modal SHALL allow selecting an existing `KnownHost` from `hosts.yml` or manually inputting a new host (URL, API Key, Username, Password). In `service` mode, host creation and persisted credential flows SHALL be unavailable, and export target selection SHALL be constrained to the startup-defined exporter.
+The footer output selector SHALL allow selecting an existing saved `KnownHost`, and it SHALL also surface the live CLI-defined output target when it is not one of the saved hosts. It SHALL NOT allow inline creation of a new host entry.
 
-#### Scenario: Selecting an existing host in user mode
-- **GIVEN** the settings modal is open in `user` mode
-- **WHEN** the user selects an existing host from a dropdown and submits
+#### Scenario: Selecting an existing host as output target
+- **GIVEN** the footer output selector is visible
+- **WHEN** the user chooses an existing host name
 - **THEN** the backend updates persisted settings to set the active target to that host name
 
-#### Scenario: Creating a new host
-- **GIVEN** the settings modal is open in `user` mode
-- **WHEN** the user provides details for a new host and clicks save
-- **THEN** the backend validates the connection, adds the host to `hosts.yml`, and sets it as the active target in `settings.yml`
+#### Scenario: CLI-defined output is preserved as selected target
+- **GIVEN** the application started with a CLI-defined output target that is not a saved host
+- **WHEN** the footer output selector is rendered
+- **THEN** the live output target appears as an option with an exporter-type label and remains selected by default
 
-#### Scenario: Service mode enforces fixed exporter
-- **GIVEN** the settings modal is open in `service` mode
-- **WHEN** the user attempts to change host-backed exporter credentials
-- **THEN** the UI blocks persisted host credential updates and the backend continues using the startup-defined exporter
+#### Scenario: Inline host creation is unavailable in output selector
+- **GIVEN** the footer output selector is open
+- **WHEN** the user inspects available controls
+- **THEN** no add-new-host form fields are present in that selector flow
 
 ### Requirement: Dynamic State Updates
 Updating configuration via the settings surface SHALL update `ServerState` dynamically. In `user` mode, runtime updates SHALL include exporter and host-backed preferences without restart. In `service` mode, runtime updates SHALL be limited to allowed preferences and MUST NOT change the fixed exporter contract.
