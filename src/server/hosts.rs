@@ -2017,7 +2017,11 @@ mod tests {
         },
         server::{template, test_server_state},
     };
-    use axum::{body::to_bytes, extract::Path, http::{HeaderMap, StatusCode}};
+    use axum::{
+        body::to_bytes,
+        extract::Path,
+        http::{HeaderMap, StatusCode},
+    };
     use datastar::axum::ReadSignals;
     use serde_json::json;
     use std::{collections::BTreeMap, sync::Mutex};

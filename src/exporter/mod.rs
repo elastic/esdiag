@@ -248,9 +248,9 @@ impl Exporter {
         }
     }
 
-    pub fn requires_keystore(&self) -> bool {
+    pub fn requires_secret(&self) -> bool {
         match self {
-            Exporter::Elasticsearch(exporter) => exporter.requires_keystore(),
+            Exporter::Elasticsearch(exporter) => exporter.requires_secret(),
             Exporter::Archive(_)
             | Exporter::Directory(_)
             | Exporter::File(_)
