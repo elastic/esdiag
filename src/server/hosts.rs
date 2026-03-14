@@ -594,16 +594,16 @@ pub async fn secret_action(
         Ok(value) => value,
         Err(_) => return (StatusCode::BAD_REQUEST, "id must be numeric or 'new'").into_response(),
     };
-    let (secrets, _) = match current_keystore_password(&state, &user)
-        .await
-        .and_then(|password| read_secret_rows(&password))
-    {
-        Ok(result) => result,
-        Err(err) => return (StatusCode::BAD_REQUEST, err).into_response(),
-    };
 
     match action.as_str() {
         "read" => {
+            let (secrets, _) = match current_keystore_password(&state, &user)
+                .await
+                .and_then(|password| read_secret_rows(&password))
+            {
+                Ok(result) => result,
+                Err(err) => return (StatusCode::BAD_REQUEST, err).into_response(),
+            };
             let Some(secret) = secret_row_by_id(&secrets, row_id).cloned() else {
                 return (StatusCode::NOT_FOUND, "secret row not found").into_response();
             };
@@ -623,6 +623,29 @@ pub async fn secret_action(
             ])
         }
         "cancel" => {
+            if !state.is_keystore_unlocked_for(&user).await {
+                let Some(secret) = secret_row_for_cancel_from_signals(signal_state, row_id) else {
+                    return clear_and_remove_row("secrets", &secret_row_selector(row_id), row_id);
+                };
+                return sse_response(vec![
+                    clear_row_signal_patch("secrets", row_id)
+                        .as_datastar_event()
+                        .to_string(),
+                    patch_row_event(
+                        &secret_row_selector(row_id),
+                        render_secret_row(row_id, &secret, false, true, false),
+                    )
+                    .to_string(),
+                ]);
+            }
+
+            let (secrets, _) = match current_keystore_password(&state, &user)
+                .await
+                .and_then(|password| read_secret_rows(&password))
+            {
+                Ok(result) => result,
+                Err(err) => return (StatusCode::BAD_REQUEST, err).into_response(),
+            };
             let Some(secret) = secret_row_by_id(&secrets, row_id).cloned() else {
                 return clear_and_remove_row("secrets", &secret_row_selector(row_id), row_id);
             };
@@ -654,7 +677,16 @@ pub async fn secret_action(
                 Err(err) => (StatusCode::BAD_REQUEST, err).into_response(),
             }
         }
-        "delete" => delete_secret_row(&state, &secrets, row_id, &user).await,
+        "delete" => {
+            let (secrets, _) = match current_keystore_password(&state, &user)
+                .await
+                .and_then(|password| read_secret_rows(&password))
+            {
+                Ok(result) => result,
+                Err(err) => return (StatusCode::BAD_REQUEST, err).into_response(),
+            };
+            delete_secret_row(&state, &secrets, row_id, &user).await
+        }
         _ => (
             StatusCode::BAD_REQUEST,
             "unsupported action; supported: create, read, cancel, update, delete",
@@ -1674,6 +1706,23 @@ fn secret_draft_from_signals(
     })
 }
 
+fn secret_row_for_cancel_from_signals(
+    signals: Option<&SecretsUiSignals>,
+    row_id: usize,
+) -> Option<template::SecretTableRow> {
+    let draft = secret_draft_from_signals(signals, row_id)?;
+    Some(template::SecretTableRow {
+        secret_id: draft
+            .original_secret_id
+            .clone()
+            .unwrap_or(draft.secret_id)
+            .trim()
+            .to_string(),
+        auth_type: draft.auth_type.trim().to_string(),
+        username: draft.username.unwrap_or_default(),
+    })
+}
+
 fn draft_from_rows<T: for<'de> Deserialize<'de>>(
     signals: Option<&TableUiSignals>,
     row_id: usize,
@@ -1958,8 +2007,9 @@ async fn current_keystore_password(state: &Arc<ServerState>, user: &str) -> Resu
 #[allow(clippy::await_holding_lock)]
 mod tests {
     use super::{
-        ClusterUpsertForm, HostUpsertForm, apply_upsert_cluster, apply_upsert_host, host_draft,
-        read_host_and_cluster_rows, read_secret_rows, render_secret_row,
+        ClusterUpsertForm, HostUpsertForm, SecretsUiSignals, TableRowSignals, TableUiSignals,
+        apply_upsert_cluster, apply_upsert_host, host_draft, read_host_and_cluster_rows,
+        read_secret_rows, render_secret_row, secret_action,
     };
     use crate::{
         data::{
@@ -1967,6 +2017,9 @@ mod tests {
         },
         server::{template, test_server_state},
     };
+    use axum::{body::to_bytes, extract::Path, http::{HeaderMap, StatusCode}};
+    use datastar::axum::ReadSignals;
+    use serde_json::json;
     use std::{collections::BTreeMap, sync::Mutex};
     use tempfile::TempDir;
     use url::Url;
@@ -2111,6 +2164,66 @@ mod tests {
             }
             _ => panic!("expected ApiKey host"),
         }
+    }
+
+    #[tokio::test]
+    async fn secret_cancel_after_lock_timeout_uses_draft_without_keystore_read() {
+        let _guard = env_lock().lock().expect("env lock");
+        let _tmp = setup_env();
+        authenticate("pw").expect("create keystore");
+        upsert_secret_auth(
+            "existing-secret",
+            SecretAuth::Basic {
+                username: "elastic".to_string(),
+                password: "super-secret-password".to_string(),
+            },
+            "pw",
+        )
+        .expect("store secret");
+
+        let state = test_server_state();
+        state.set_keystore_unlocked("pw".to_string()).await;
+        state.set_keystore_locked("test timeout").await;
+
+        let signals = SecretsUiSignals {
+            secrets: TableUiSignals {
+                rows: [(
+                    "1".to_string(),
+                    TableRowSignals {
+                        draft: Some(
+                            json!({
+                                "original_secret_id": "existing-secret",
+                                "secret_id": "renamed-secret",
+                                "authtype": "Basic",
+                                "username": "elastic"
+                            })
+                            .as_object()
+                            .cloned()
+                            .expect("draft object"),
+                        ),
+                    },
+                )]
+                .into_iter()
+                .collect(),
+            },
+        };
+
+        let response = secret_action(
+            axum::extract::State(state),
+            HeaderMap::new(),
+            Path(("cancel".to_string(), "1".to_string())),
+            Some(ReadSignals(signals)),
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("response body");
+        let body = String::from_utf8(body.to_vec()).expect("utf8 body");
+        assert!(body.contains("secrets-table-row-1"));
+        assert!(body.contains("existing-secret"));
+        assert!(!body.contains("Keystore password is not available"));
     }
 
     #[test]
