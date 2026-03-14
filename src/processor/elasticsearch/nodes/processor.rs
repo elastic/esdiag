@@ -4,9 +4,9 @@
 
 use super::super::{DocumentExporter, ElasticsearchMetadata, Lookups, ProcessorSummary};
 use super::super::metadata::MetadataRawValue;
-use super::super::json_utils::merge_values;
 use super::{Node, Nodes};
 use crate::exporter::Exporter;
+use json_patch::merge;
 use rayon::prelude::*;
 use serde::Serialize;
 use serde_json::Value;
@@ -46,7 +46,7 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for Nodes {
                     if let Some(summary) = lookup_node.by_id(&node_id)
                         && let Ok(summary_val) = serde_json::to_value(summary)
                     {
-                        merge_values(node_val, &summary_val);
+                        merge(node_val, &summary_val);
                     }
                 }
                 Some(node_doc)
