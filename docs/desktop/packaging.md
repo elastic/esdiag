@@ -26,8 +26,8 @@ This project supports desktop packaging for:
 
 ## Linux Flatpak Notes
 
-- Build runs inside Flatpak SDK and needs Rust plus `cargo-about` for `build.rs`.
-- Notice generation is enabled by default and can be disabled with `ESDIAG_GENERATE_NOTICE=0` for read-only build contexts such as the Docker image build.
+- Flatpak builds run inside the Flatpak SDK and disable NOTICE generation in the manifest, so they do not require `cargo-about`.
+- Notice generation is enabled by default elsewhere and can be disabled with `ESDIAG_GENERATE_NOTICE=0` for read-only build contexts such as the Docker image build.
 - SBOM generation is opt-in via `ESDIAG_GENERATE_SBOM=1` and additionally requires `cargo-sbom`.
 - Local workflow requires runtime availability from Flathub:
   - `org.gnome.Platform//49`
@@ -104,6 +104,6 @@ bash bin/validate-desktop-artifacts.sh target/artifacts
 
 Expected CI artifacts:
 
-- `target/artifacts/macos/ESDiag*.dmg`
-- `target/artifacts/windows/ESDiag*.msi`
+- `target/artifacts/macos/*.dmg`
+- `target/artifacts/windows/*.msi`
 - `target/artifacts/flatpak/com.elastic.esdiag-0.15.0.flatpak`

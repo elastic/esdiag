@@ -102,7 +102,7 @@ jobs:
           flatpak install --user -y flathub org.gnome.Platform//49 org.gnome.Sdk//49 org.freedesktop.Sdk.Extension.rust-stable//25.08
 
       - name: Build local Flatpak artifact
-        run: ESDIAG_GENERATE_NOTICE=0 bash bin/build-flatpak-local.sh
+        run: bash bin/build-flatpak-local.sh
 
       - name: Stage Flatpak artifact
         run: |
