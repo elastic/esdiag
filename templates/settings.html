@@ -3,7 +3,7 @@
         <button type="button" class="close-button" aria-label="Close settings" data-on:click="document.getElementById('settings-modal').remove()"><icon-x></icon-x></button>
         <h2>Settings</h2>
         <p><small>Mode: <strong>{{ mode }}</strong></small></p>
-        <form id="settings-form" data-on:submit__prevent="@post('/api/settings/update')">
+        <form id="settings-form" data-on:submit__prevent="@post('/api/settings/update', {filterSignals: {include: /^settings(\.|$)/}})">
             <div id="settings-form-error"></div>
             <input-group>
                 <label for="target-host" class="form-label">Output Target (Hosts.yml)</label>

@@ -283,7 +283,7 @@
                         class="button"
                         type="button"
                         value="Process"
-                        data-on:click="if ($keystore.locked && $output.secure) { @get('/keystore/modal/process'); } else { $loading = true; $message = 'Connecting to Elastic Upload service...'; @post('/service_link'); }"
+                        data-on:click="{% if can_use_keystore %}if ($keystore.locked && $output.secure) { @get('/keystore/modal/process'); } else { $loading = true; $message = 'Connecting to Elastic Upload service...'; @post('/service_link'); }{% else %}$loading = true; $message = 'Connecting to Elastic Upload service...'; @post('/service_link');{% endif %}"
                         data-attr:disabled="$loading || !$service_link.url || !$service_link.token"
                     />
                     <script>
@@ -347,7 +347,7 @@
                         class="button"
                         type="button"
                         value="Process"
-                        data-on:click="if ($keystore.locked && $output.secure) { @get('/keystore/modal/process'); } else { $loading = true; $message = 'Connecting with API key...'; @post('/api_key'); }"
+                        data-on:click="{% if can_use_keystore %}if ($keystore.locked && $output.secure) { @get('/keystore/modal/process'); } else { $loading = true; $message = 'Connecting with API key...'; @post('/api_key'); }{% else %}$loading = true; $message = 'Connecting with API key...'; @post('/api_key');{% endif %}"
                         data-attr:disabled="$loading || !$es_api.url || !$es_api.key"
                     />
                 </form>

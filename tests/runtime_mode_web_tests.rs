@@ -55,6 +55,29 @@ async fn service_mode_requires_iap_header_for_web_access() {
 }
 
 #[tokio::test]
+async fn service_mode_index_does_not_render_process_unlock_routes() {
+    let (mut server, client, base) = start_server(RuntimeMode::Service).await;
+
+    let response = client
+        .get(format!("{base}/"))
+        .header(
+            "X-Goog-Authenticated-User-Email",
+            "accounts.google.com:ops@example.com",
+        )
+        .send()
+        .await
+        .expect("service mode request");
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let body = response.text().await.expect("service mode body");
+    assert!(
+        !body.contains("/keystore/modal/process"),
+        "service mode should not render process unlock modal routes"
+    );
+
+    server.shutdown().await;
+}
+
+#[tokio::test]
 async fn service_mode_requires_iap_header_for_settings_update() {
     let (mut server, client, base) = start_server(RuntimeMode::Service).await;
 
