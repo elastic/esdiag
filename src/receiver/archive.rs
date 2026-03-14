@@ -51,7 +51,7 @@ where
                 }
             };
 
-        log::debug!("Streaming from archive: {}", filename);
+        tracing::debug!("Streaming from archive: {}", filename);
         let stream_result = match archive_guard.by_name(&filename) {
             Ok(file) => {
                 let reader = BufReader::new(file);
@@ -63,7 +63,7 @@ where
         };
 
         if let Err(e) = stream_result {
-            log::error!("Error deserializing stream from archive: {}", e);
+            tracing::error!("Error deserializing stream from archive: {}", e);
             let _ = tx.blocking_send(Err(e));
         }
     });

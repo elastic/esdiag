@@ -57,7 +57,7 @@ impl LogstashCollector {
             )?;
 
             let api_names: Vec<&str> = apis.iter().map(|a| a.as_str()).collect();
-            log::debug!("Resolved Logstash APIs for collection: {:?}", api_names);
+            tracing::debug!("Resolved Logstash APIs for collection: {:?}", api_names);
 
             let mut result = CollectionResult {
                 path: self.exporter.to_string(),
@@ -117,7 +117,7 @@ impl LogstashCollector {
                 Ok(success) => return success,
                 Err(e) => {
                     if start_time.elapsed() > max_duration {
-                        log::error!(
+                        tracing::error!(
                             "Failed to save {} after {} attempts (5 min timeout): {}",
                             api.as_str(),
                             attempt,
@@ -125,7 +125,7 @@ impl LogstashCollector {
                         );
                         return 0;
                     }
-                    log::warn!(
+                    tracing::warn!(
                         "Attempt {} failed for {}: {}. Retrying in {:?}...",
                         attempt,
                         api.as_str(),
@@ -153,7 +153,7 @@ impl LogstashCollector {
             match crate::processor::diagnostic::data_source::get_source("logstash", name, &[]) {
                 Ok((_, conf)) => conf,
                 Err(e) => {
-                    log::debug!("Skipping {} collection: {}", name, e);
+                    tracing::debug!("Skipping {} collection: {}", name, e);
                     return Ok(0);
                 }
             };
@@ -162,7 +162,7 @@ impl LogstashCollector {
             Receiver::Logstash(r) => match r.get_version().await {
                 Ok(v) => v,
                 Err(e) => {
-                    log::debug!("Cannot collect raw API without version: {}", e);
+                    tracing::debug!("Cannot collect raw API without version: {}", e);
                     return Ok(0);
                 }
             },
@@ -172,7 +172,7 @@ impl LogstashCollector {
         let path = match source_conf.get_url(version) {
             Ok(p) => p,
             Err(e) => {
-                log::debug!("Skipping {} collection on version {}: {}", name, version, e);
+                tracing::debug!("Skipping {} collection on version {}: {}", name, version, e);
                 return Ok(0);
             }
         };
@@ -181,7 +181,7 @@ impl LogstashCollector {
         let content = match self.receiver.get_raw_by_path(&path, extension).await {
             Ok(c) => c,
             Err(e) => {
-                log::warn!("Failed to get raw API {}: {}", name, e);
+                tracing::warn!("Failed to get raw API {}: {}", name, e);
                 return Err(e);
             }
         };
@@ -191,11 +191,11 @@ impl LogstashCollector {
 
         match self.exporter.save(file_path, content).await {
             Ok(()) => {
-                log::info!("Saved {filename}");
+                tracing::info!("Saved {filename}");
                 Ok(1)
             }
             Err(e) => {
-                log::error!("Failed to save {filename}: {e}");
+                tracing::error!("Failed to save {filename}: {e}");
                 Ok(0)
             }
         }
@@ -211,7 +211,7 @@ impl LogstashCollector {
                 if let Some(ds_err) =
                     e.downcast_ref::<crate::processor::diagnostic::data_source::DataSourceError>()
                 {
-                    log::debug!("Skipping {} collection: {}", T::name(), ds_err);
+                    tracing::debug!("Skipping {} collection: {}", T::name(), ds_err);
                     return Ok(0);
                 }
                 return Err(e);
@@ -223,11 +223,11 @@ impl LogstashCollector {
         let filename = format!("{}", path.display());
         match self.exporter.save(path, content).await {
             Ok(()) => {
-                log::info!("Saved {filename}");
+                tracing::info!("Saved {filename}");
                 Ok(1)
             }
             Err(e) => {
-                log::error!("Failed to save {filename}: {e}");
+                tracing::error!("Failed to save {filename}: {e}");
                 Ok(0)
             }
         }
@@ -278,7 +278,7 @@ impl LogstashCollector {
         let filename = format!("{}", path.display());
         let content = serde_json::to_string_pretty(&manifest)?;
         self.exporter.save(path, content).await?;
-        log::info!("Saved {filename}");
+        tracing::info!("Saved {filename}");
         Ok(1)
     }
 }

@@ -53,7 +53,7 @@ impl ElasticsearchExporter {
             .and_then(|s| s.parse::<usize>().ok())
             .unwrap_or(10);
 
-        log::info!("Elasticsearch task limit set to {}", limit);
+        tracing::info!("Elasticsearch task limit set to {}", limit);
 
         Ok(Self {
             client,
@@ -111,7 +111,7 @@ impl TryFrom<KnownHost> for ElasticsearchExporter {
             .and_then(|s| s.parse::<usize>().ok())
             .unwrap_or(10);
 
-        log::debug!("Elasticsearch output task limit: {}", limit);
+        tracing::debug!("Elasticsearch output task limit: {}", limit);
 
         Ok(Self {
             client,
@@ -134,16 +134,16 @@ impl Export for ElasticsearchExporter {
     async fn is_connected(&self) -> bool {
         let status_code = match timeout(Self::request_timeout(), self.client.info().send()).await {
             Ok(Ok(res)) => {
-                log::debug!("Exporter is connected: {}", res.status_code());
-                log::trace!("{:?}", res);
+                tracing::debug!("Exporter is connected: {}", res.status_code());
+                tracing::trace!("{:?}", res);
                 res.status_code().as_u16()
             }
             Ok(Err(e)) => {
-                log::error!("{e}");
+                tracing::error!("{e}");
                 599
             }
             Err(_) => {
-                log::error!(
+                tracing::error!(
                     "Timed out checking exporter connection after {:?}",
                     Self::request_timeout()
                 );
@@ -229,13 +229,13 @@ impl Export for ElasticsearchExporter {
             match parsed {
                 Ok(batch_response) => {
                     if tx.send(batch_response).is_err() {
-                        log::error!("Failed to send batch response: receiver dropped");
+                        tracing::error!("Failed to send batch response: receiver dropped");
                     } else if let Some(tx) = docs_tx {
                         let _ = tx.send(doc_count).await;
                     }
                 }
                 Err(e) => {
-                    log::warn!("Bulk batch failed: {}", e);
+                    tracing::warn!("Bulk batch failed: {}", e);
                 }
             }
         });
@@ -268,11 +268,11 @@ impl Export for ElasticsearchExporter {
                     let body = res.json::<Value>().await?;
                     match status_code {
                         200 | 201 => {
-                            log::info!(
+                            tracing::info!(
                                 "metrics-diagnostic-esdiag, created diagnostic report {}",
                                 diagnostic_id
                             );
-                            log::trace!("response body: {body}");
+                            tracing::trace!("response body: {body}");
                             Ok(())
                         }
                         400..600 => Err(eyre!("http {status_code}: {body}")),
@@ -280,7 +280,7 @@ impl Export for ElasticsearchExporter {
                     }
                 }
                 Err(e) => {
-                    log::error!("{e}");
+                    tracing::error!("{e}");
                     Err(e.into())
                 }
             },
@@ -299,7 +299,7 @@ async fn parse_response(
     response: Result<Response, elasticsearch::Error>,
 ) -> Result<BatchResponse> {
     let response = response?;
-    log::trace!("{:?}", &response);
+    tracing::trace!("{:?}", &response);
     let status_code = response.status_code().as_u16();
     let body: Value = response.json().await?;
     let mut items: Vec<Value> = body["items"].as_array().unwrap_or(&Vec::new()).clone();
@@ -315,8 +315,8 @@ async fn parse_response(
     let error_count = error_items.len();
     let doc_count = item_count - error_count;
 
-    if (status_code != 200 && log::max_level() >= log::Level::Debug)
-        || (log::max_level() >= log::Level::Trace)
+    if (status_code != 200 && tracing::enabled!(tracing::Level::DEBUG))
+        || (tracing::enabled!(tracing::Level::TRACE))
     {
         data::save_file(
             "responses.ndjson",
@@ -331,8 +331,8 @@ async fn parse_response(
     }
 
     match status_code {
-        200 if error_count == 0 => log::debug!("{}, created {} docs", index, doc_count),
-        200 => log::warn!(
+        200 if error_count == 0 => tracing::debug!("{}, created {} docs", index, doc_count),
+        200 => tracing::warn!(
             "{}, created {} docs with {} errors",
             index,
             doc_count,
@@ -345,7 +345,7 @@ async fn parse_response(
         413 => return Err(eyre!("{} - http 413 request too large", index)),
         429 => return Err(eyre!("{} - http 429 too many requests", index)),
         500..=599 => return Err(eyre!("{} - server errors: http {}", status_code, index)),
-        _ => log::warn!("unexpected http response: {}", status_code),
+        _ => tracing::warn!("unexpected http response: {}", status_code),
     }
 
     if error_count > 0 {

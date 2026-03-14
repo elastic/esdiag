@@ -10,7 +10,7 @@ impl From<&String> for Lookup<SharedCacheStats> {
         match serde_json::from_str::<SearchableSnapshotsCacheStats>(string) {
             Ok(nodes) => Lookup::<SharedCacheStats>::from_parsed(nodes),
             Err(e) => {
-                log::warn!("Failed to parse SearchableSnapshotsCacheStats: {}", e);
+                tracing::warn!("Failed to parse SearchableSnapshotsCacheStats: {}", e);
                 Lookup::new()
             }
         }
@@ -28,7 +28,7 @@ impl From<SearchableSnapshotsCacheStats> for Lookup<SharedCacheStats> {
                 lookup.add(node.shared_cache).with_id(&node_id);
             });
 
-        log::debug!("lookup shared_cache entries: {}", lookup.len(),);
+        tracing::debug!("lookup shared_cache entries: {}", lookup.len(),);
         lookup
     }
 }
@@ -38,7 +38,7 @@ impl From<Result<SearchableSnapshotsCacheStats>> for Lookup<SharedCacheStats> {
         match stats_result {
             Ok(stats) => Lookup::<SharedCacheStats>::from_parsed(stats),
             Err(e) => {
-                log::warn!("Failed to parse SearchableSnapshotsCacheStats: {}", e);
+                tracing::warn!("Failed to parse SearchableSnapshotsCacheStats: {}", e);
                 Lookup::new()
             }
         }

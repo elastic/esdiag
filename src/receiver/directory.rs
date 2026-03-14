@@ -2,8 +2,9 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use super::super::processor::{DataSource, SourceContext, StreamingDataSource};
+use super::super::processor::{DataSource, PathType, StreamingDataSource};
 use super::{Receive, ReceiveMultiple, ReceiveRaw};
+use crate::processor::diagnostic::data_source::get_source;
 use eyre::{Result, eyre};
 use futures::stream::{self, BoxStream};
 use serde::de::DeserializeOwned;
@@ -11,8 +12,6 @@ use std::{
     fs::File,
     io::{BufReader, Read},
     path::PathBuf,
-    sync::Arc,
-    sync::OnceLock,
     time::SystemTime,
 };
 use tokio::sync::mpsc;
@@ -22,7 +21,6 @@ pub struct DirectoryReceiver {
     path: PathBuf,
     work_dir: String,
     modified_date: SystemTime,
-    source_product: Arc<OnceLock<&'static str>>,
 }
 
 impl TryFrom<PathBuf> for DirectoryReceiver {
@@ -31,16 +29,15 @@ impl TryFrom<PathBuf> for DirectoryReceiver {
     fn try_from(path: PathBuf) -> Result<Self> {
         match path.is_dir() {
             true => {
-                log::debug!("Directory is valid: {}", path.display());
+                tracing::debug!("Directory is valid: {}", path.display());
                 Ok(Self {
                     path: path.clone(),
                     work_dir: String::from(""),
                     modified_date: path.metadata()?.modified()?,
-                    source_product: Arc::new(OnceLock::new()),
                 })
             }
             false => {
-                log::debug!("Directory is invalid: {}", path.display());
+                tracing::debug!("Directory is invalid: {}", path.display());
                 Err(eyre!(
                     "Directory input must be a directory: {}",
                     path.display()
@@ -58,7 +55,7 @@ impl Receive for DirectoryReceiver {
     async fn is_connected(&self) -> bool {
         let is_dir = self.path.is_dir();
         let directory_name = self.path.to_str().unwrap_or("");
-        log::debug!("Directory {directory_name} is valid: {is_dir}");
+        tracing::debug!("Directory {directory_name} is valid: {is_dir}");
         is_dir
     }
 
@@ -70,13 +67,12 @@ impl Receive for DirectoryReceiver {
     where
         T: DeserializeOwned + DataSource,
     {
-        let ctx = self.source_context()?;
-        let source_paths = T::candidate_source_file_paths(&ctx)?;
+        let source_paths = candidate_file_paths::<T>()?;
         let mut last_open_error = None;
 
         for source_path in source_paths {
             let filename = self.path.join(&self.work_dir).join(source_path);
-            log::debug!("Reading file: {}", &filename.display());
+            tracing::debug!("Reading file: {}", &filename.display());
             match File::open(&filename) {
                 Ok(file) => {
                     let reader = BufReader::new(file);
@@ -105,10 +101,11 @@ impl Receive for DirectoryReceiver {
         T: StreamingDataSource + DeserializeOwned,
         T::Item: DeserializeOwned + Send + 'static,
     {
-        let ctx = self.source_context()?;
-        let source_path = T::resolve_source_file_path(&ctx)?;
-        let filename = self.path.join(&self.work_dir).join(source_path);
-        log::debug!("Streaming file: {}", &filename.display());
+        let filename = self
+            .path
+            .join(&self.work_dir)
+            .join(T::source(PathType::File, None)?);
+        tracing::debug!("Streaming file: {}", &filename.display());
 
         let filename_clone = filename.clone();
         let (tx, rx) = mpsc::channel(100);
@@ -119,7 +116,7 @@ impl Receive for DirectoryReceiver {
                 let reader = BufReader::new(file);
                 let mut deserializer = serde_json::Deserializer::from_reader(reader);
                 if let Err(e) = T::deserialize_stream(&mut deserializer, tx.clone()) {
-                    log::error!("Error deserializing stream: {}", e);
+                    tracing::error!("Error deserializing stream: {}", e);
                     let _ = tx.blocking_send(Err(eyre!(e)));
                 }
             }
@@ -145,13 +142,12 @@ impl ReceiveRaw for DirectoryReceiver {
     where
         T: DataSource,
     {
-        let ctx = self.source_context()?;
-        let source_paths = T::candidate_source_file_paths(&ctx)?;
+        let source_paths = candidate_file_paths::<T>()?;
         let mut last_open_error = None;
 
         for source_path in source_paths {
             let filename = self.path.join(&self.work_dir).join(source_path);
-            log::debug!("Reading file: {}", &filename.display());
+            tracing::debug!("Reading file: {}", &filename.display());
             match File::open(&filename) {
                 Ok(file) => {
                     let mut reader = BufReader::new(file);
@@ -190,41 +186,18 @@ impl std::fmt::Display for DirectoryReceiver {
     }
 }
 
-impl DirectoryReceiver {
-    pub async fn read_bundle_json<T>(&self, filename: &str) -> Result<T>
-    where
-        T: DeserializeOwned,
-    {
-        let path = self.path.join(&self.work_dir).join(filename);
-        log::debug!("Reading bundle file: {}", path.display());
-        let file = File::open(path)?;
-        let reader = BufReader::new(file);
-        serde_json::from_reader(reader).map_err(Into::into)
-    }
+fn candidate_file_paths<T: DataSource>() -> Result<Vec<String>> {
+    let mut paths = Vec::new();
+    paths.push(T::source(PathType::File, None)?);
 
-    pub fn set_source_product(&self, product: &'static str) -> Result<()> {
-        match self.source_product.get() {
-            Some(existing) if *existing != product => Err(eyre!(
-                "Directory receiver source product already set to {}, cannot change to {}",
-                existing,
-                product
-            )),
-            Some(_) => Ok(()),
-            None => self
-                .source_product
-                .set(product)
-                .map_err(|_| eyre!("Failed to initialize directory receiver source product")),
+    for alias in T::aliases() {
+        if let Ok((matched_name, source_conf)) = get_source(T::product(), alias, &[]) {
+            let path = source_conf.get_file_path(matched_name);
+            if !paths.contains(&path) {
+                paths.push(path);
+            }
         }
     }
 
-    pub fn source_product(&self) -> Result<&'static str> {
-        self.source_product
-            .get()
-            .copied()
-            .ok_or_else(|| eyre!("Directory receiver source product is not initialized"))
-    }
-
-    pub fn source_context(&self) -> Result<SourceContext> {
-        Ok(SourceContext::new(self.source_product()?, None))
-    }
+    Ok(paths)
 }

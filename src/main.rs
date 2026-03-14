@@ -22,6 +22,9 @@ use esdiag::{
 };
 use eyre::{Result, eyre};
 use std::sync::Arc;
+use tracing_subscriber::{EnvFilter, fmt};
+#[cfg(feature = "server")]
+use tokio::signal::unix::{SignalKind, signal};
 use url::Url;
 
 // CLI Styling
@@ -39,8 +42,7 @@ struct Cli {
     /// Enable debug logging
     #[arg(global = true, long)]
     debug: bool,
-    /// Override the embedded sources.yml for the detected Elasticsearch or Logstash workflow.
-    /// The file must match the active product or the command fails before collection/processing.
+    /// Override the path to sources.yml
     #[arg(global = true, long)]
     sources: Option<String>,
     /// Commands
@@ -53,7 +55,7 @@ enum Commands {
     /// Collect a diagnostic bundle from a known host's API endpoints, writes output to a directory
     Collect {
         /// The host to collect diagnostics from
-        #[arg(help = "The Elastic Stack host to collect diagnostics from")]
+        #[arg(help = "The Elasticsearch host to collect diagnostics from")]
         host: String,
         /// The output directory to save the diagnostics to
         #[arg(help = "An existing directory to create a diagnostic directory and files in")]
@@ -267,41 +269,40 @@ async fn main() -> Result<()> {
     // Parse CLI early to check for debug flag
     let cli = Cli::parse();
 
-    // Initialize logging with debug override if flag is set
-    if cli.debug {
-        env_logger::Builder::new()
-            .filter_level(log::LevelFilter::Debug)
-            .format_timestamp_millis()
-            .init();
+    // Initialize tracing subscriber with debug override if flag is set
+    let filter = if cli.debug {
+        EnvFilter::new("debug")
     } else {
-        let env = env_logger::Env::default().filter_or("LOG_LEVEL", LOG_LEVEL);
-        env_logger::Builder::from_env(env)
-            .format_timestamp_millis()
-            .init();
-    }
+        EnvFilter::try_from_env("LOG_LEVEL").unwrap_or_else(|_| EnvFilter::new(LOG_LEVEL))
+    };
+    fmt().with_env_filter(filter).init();
 
     std::panic::set_hook(Box::new(|panic| {
         // Log any panics as errors
-        log::debug!("{:?}", panic);
-        log::error!("{}", panic);
+        tracing::debug!("{:?}", panic);
+        tracing::error!("{}", panic);
     }));
 
     clear_last_run_files()?;
 
+    if let Some(sources) = cli.sources.clone() {
+        esdiag::processor::init_sources(Some(sources))?;
+    }
+
     match run(cli).await {
         Ok(cmd) => {
-            log::debug!("{cmd} complete");
+            tracing::debug!("{cmd} complete");
             Ok(())
         }
         Err(e) => {
-            log::error!("{}", e);
+            tracing::error!("{}", e);
             Err(eyre!(e))
         }
     }
 }
 
+#[tracing::instrument(skip_all)]
 async fn run(cli: Cli) -> Result<&'static str> {
-    let sources_override = cli.sources.clone();
     // If there are CLI arguments but no subcommand, avoid starting the desktop/Tauri
     // entrypoint. The desktop UI should only start when launched absolutely without arguments.
     if should_error_for_missing_subcommand(std::env::args_os().len(), cli.command.is_none()) {
@@ -321,7 +322,7 @@ async fn run(cli: Cli) -> Result<&'static str> {
                 output,
                 kibana,
             } => {
-                log::info!("Starting ESDiag server");
+                tracing::info!("Starting ESDiag server");
 
                 let output_uri = Uri::try_from(output)?;
                 let exporter = Exporter::try_from(output_uri)?;
@@ -335,11 +336,26 @@ async fn run(cli: Cli) -> Result<&'static str> {
                     }
                 });
 
-                let (mut server, _bound_addr) =
-                    Server::start([0, 0, 0, 0], port, exporter, kibana_url, RuntimeMode::User)
-                        .await?;
+                let (mut server, _bound_addr) = Server::start(
+                    [0, 0, 0, 0],
+                    port,
+                    exporter,
+                    kibana_url,
+                    RuntimeMode::User,
+                )
+                .await?;
 
-                wait_for_shutdown_signal().await?;
+                tokio::select! {
+                    _ = tokio::signal::ctrl_c() => {
+                        tracing::info!("Shutting down server (Ctrl+C)...");
+                    }
+                    _ = async {
+                        let mut term_signal = signal(SignalKind::terminate()).map_err(|e| eyre!("Failed to install SIGTERM handler: {}", e))?;
+                        term_signal.recv().await;
+                        tracing::info!("Shutting down server (SIGTERM)...");
+                        Ok::<_, eyre::Report>(())
+                    } => {}
+                }
 
                 server.shutdown().await;
                 Ok("serve")
@@ -362,16 +378,9 @@ async fn run(cli: Cli) -> Result<&'static str> {
                     | Uri::ElasticCloudAdmin(host)
                     | Uri::ElasticGovCloudAdmin(host) => {
                         ensure_host_role(&host, HostRole::Collect, "collect")?;
-                        let product = host.app().clone();
-                        if let Some(sources) = sources_override.clone() {
-                            esdiag::processor::init_sources(
-                                sources_product_key(&product)?,
-                                sources,
-                            )?;
-                        }
                         let known_host = Uri::try_from(host)?;
-                        log::info!("Collecting diagnostic from {known_host}");
-                        log::info!("Saving diagnostic to {output}");
+                        tracing::info!("Collecting diagnostic from {known_host}");
+                        tracing::info!("Saving diagnostic to {output}");
                         let receiver = Receiver::try_from(known_host)?;
                         let output_dir = match output {
                             Uri::Directory(path) | Uri::File(path) => path,
@@ -389,7 +398,6 @@ async fn run(cli: Cli) -> Result<&'static str> {
                         let collector = Collector::try_new(
                             receiver,
                             exporter,
-                            product,
                             r#type,
                             include,
                             exclude,
@@ -417,7 +425,7 @@ async fn run(cli: Cli) -> Result<&'static str> {
                 roles,
                 nosave,
             } => {
-                log::info!("Configuring host {name}");
+                tracing::info!("Configuring host {name}");
                 let host = if let (Some(app), Some(url)) = (app, url) {
                     let mut builder = KnownHostBuilder::new(url)
                         .product(app)
@@ -440,12 +448,12 @@ async fn run(cli: Cli) -> Result<&'static str> {
 
                 let valid_connection = match Client::try_from(uri)?.test_connection().await {
                     Ok(message) => {
-                        log::info!("Host {name}: {}", &message);
+                        tracing::info!("Host {name}: {}", &message);
                         true
                     }
                     Err(message) => {
-                        log::error!("Host connection: FAILED ❌ {}", &message);
-                        log::warn!("Check your URL and certificates!");
+                        tracing::error!("Host connection: FAILED ❌ {}", &message);
+                        tracing::warn!("Check your URL and certificates!");
                         false
                     }
                 };
@@ -453,7 +461,7 @@ async fn run(cli: Cli) -> Result<&'static str> {
                 if valid_connection {
                     if !nosave {
                         let hostfile = host.save(&name)?;
-                        log::info!("Host {name} successfully saved to {hostfile}");
+                        tracing::info!("Host {name} successfully saved to {hostfile}");
                     }
                     Ok("host")
                 } else {
@@ -471,7 +479,7 @@ async fn run(cli: Cli) -> Result<&'static str> {
                     } => {
                         let path =
                             add_secret(&secret_id, username, password, apikey, &keystore_password)?;
-                        log::info!("Secret '{secret_id}' saved to {path}");
+                        tracing::info!("Secret '{secret_id}' saved to {path}");
                         Ok("keystore")
                     }
                     KeystoreCommands::Remove {
@@ -482,13 +490,13 @@ async fn run(cli: Cli) -> Result<&'static str> {
                     } => {
                         let expected = expected_secret_auth(username, password, apikey)?;
                         let path = remove_secret(&secret_id, expected, &keystore_password)?;
-                        log::info!("Secret '{secret_id}' deleted from {path}");
+                        tracing::info!("Secret '{secret_id}' deleted from {path}");
                         Ok("keystore")
                     }
                     KeystoreCommands::Migrate => {
                         let (migrated, unchanged) =
                             KnownHost::migrate_hosts_to_keystore(&keystore_password)?;
-                        log::info!(
+                        tracing::info!(
                             "Keystore migration complete: migrated {migrated} host(s), unchanged {unchanged} host(s)."
                         );
                         Ok("keystore")
@@ -511,14 +519,9 @@ async fn run(cli: Cli) -> Result<&'static str> {
                     ensure_uri_role(&output_uri, HostRole::Send, "process output")?;
                 }
 
-                log::info!("input: {}", input_uri);
+                tracing::info!("input: {}", input_uri);
 
-                let receiver = Receiver::try_from(input_uri.clone())?;
-                if let Some(sources) = sources_override.clone() {
-                    let product = detect_sources_product_for_process(&input_uri, &receiver).await?;
-                    esdiag::processor::init_sources(sources_product_key(&product)?, sources)?;
-                }
-                let receiver = Arc::new(receiver);
+                let receiver = Arc::new(Receiver::try_from(input_uri)?);
                 let exporter = Arc::new(Exporter::try_from(output_uri)?);
 
                 let identifiers =
@@ -533,14 +536,14 @@ async fn run(cli: Cli) -> Result<&'static str> {
 
                 match processor.process().await {
                     Ok(processor) => {
-                        log::info!(
+                        tracing::info!(
                             "Process complete in {:.3} seconds",
                             processor.state.runtime as f64 / 1000.0
                         );
                         Ok("process")
                     }
                     Err(processor) => {
-                        log::info!(
+                        tracing::info!(
                             "Process failed in {:.3} seconds",
                             processor.state.runtime as f64 / 1000.0
                         );
@@ -553,18 +556,18 @@ async fn run(cli: Cli) -> Result<&'static str> {
                 if let Some(host) = host {
                     let uri = Uri::try_from(host)?;
                     let client = Client::try_from(uri)?;
-                    log::info!("Setting up assets in {client}");
+                    tracing::info!("Setting up assets in {client}");
                     setup::assets(&client).await?;
                     Ok("setup")
                 } else {
-                    log::debug!("Setting up assets with environment variables");
+                    tracing::debug!("Setting up assets with environment variables");
                     let es_uri = Uri::try_from_output_env()?;
                     let es_client = Client::try_from(es_uri)?;
-                    log::info!("Setting up assets in {es_client}");
+                    tracing::info!("Setting up assets in {es_client}");
                     setup::assets(&es_client).await?;
                     let kb_uri = Uri::try_from_kibana_env()?;
                     let kb_client = Client::try_from(kb_uri)?;
-                    log::info!("Setting up Kibana assets in {kb_client}");
+                    tracing::info!("Setting up Kibana assets in {kb_client}");
                     setup::assets(&kb_client).await?;
                     Ok("setup")
                 }
@@ -621,12 +624,12 @@ async fn run(cli: Cli) -> Result<&'static str> {
                         )
                         .await
                         {
-                            Ok(res) => res,
-                            Err(e) => {
-                                log::error!("Failed to start embedded server: {}", e);
-                                return;
-                            }
-                        };
+                                Ok(res) => res,
+                                Err(e) => {
+                                    tracing::error!("Failed to start embedded server: {}", e);
+                                    return;
+                                }
+                            };
 
                         let url = format!("http://localhost:{}", bound_addr.port());
 
@@ -676,56 +679,6 @@ async fn run(cli: Cli) -> Result<&'static str> {
     }
 }
 
-fn sources_product_key(product: &Product) -> Result<&'static str> {
-    esdiag::processor::diagnostic::data_source::source_product_key(product).map_err(|_| {
-        eyre!(
-            "--sources is only supported for Elasticsearch and Logstash inputs, got {}",
-            product
-        )
-    })
-}
-
-async fn detect_sources_product_for_process(
-    input_uri: &Uri,
-    receiver: &Receiver,
-) -> Result<Product> {
-    match input_uri {
-        Uri::KnownHost(host) | Uri::ElasticCloudAdmin(host) | Uri::ElasticGovCloudAdmin(host) => {
-            Ok(host.app().clone())
-        }
-        _ => Ok(receiver.try_get_manifest_from_files().await?.product),
-    }
-}
-
-#[cfg(all(feature = "server", unix))]
-async fn wait_for_shutdown_signal() -> Result<()> {
-    use tokio::signal::unix::{SignalKind, signal};
-
-    tokio::select! {
-        _ = tokio::signal::ctrl_c() => {
-            log::info!("Shutting down server (Ctrl+C)...");
-        }
-        _ = async {
-            let mut term_signal = signal(SignalKind::terminate())
-                .map_err(|e| eyre!("Failed to install SIGTERM handler: {}", e))?;
-            term_signal.recv().await;
-            log::info!("Shutting down server (SIGTERM)...");
-            Ok::<_, eyre::Report>(())
-        } => {}
-    }
-
-    Ok(())
-}
-
-#[cfg(all(feature = "server", not(unix)))]
-async fn wait_for_shutdown_signal() -> Result<()> {
-    tokio::signal::ctrl_c()
-        .await
-        .map_err(|e| eyre!("Failed to install Ctrl+C handler: {}", e))?;
-    log::info!("Shutting down server (Ctrl+C)...");
-    Ok(())
-}
-
 fn expected_secret_auth(
     username: Option<String>,
     password: Option<String>,
@@ -773,7 +726,7 @@ fn clear_last_run_files() -> Result<()> {
         "linux" | "macos" => std::env::var("HOME")?,
         os => return Err(eyre!("Unknown home directory for operating system: {os} ")),
     };
-    log::debug!("Home directory is: {home_dir}");
+    tracing::debug!("Home directory is: {home_dir}");
     let last_run = std::path::PathBuf::from(home_dir).join(".esdiag/last_run");
     if !last_run.exists() {
         std::fs::create_dir_all(&last_run)?;
@@ -786,7 +739,7 @@ fn clear_last_run_files() -> Result<()> {
     ];
     for file in files {
         let file = last_run.join(file);
-        log::debug!("Removing {}", &file.display());
+        tracing::debug!("Removing {}", &file.display());
         // Ignore "file not found" errors on delete
         let _ = std::fs::remove_file(file);
     }
@@ -844,10 +797,15 @@ mod desktop_startup_tests {
     async fn embedded_server_starts_and_serves_local_url() {
         let exporter = Exporter::default();
         let kibana_url = String::new();
-        let (mut server, bound_addr) =
-            Server::start([127, 0, 0, 1], 0, exporter, kibana_url, RuntimeMode::User)
-                .await
-                .expect("desktop embedded server should start");
+        let (mut server, bound_addr) = Server::start(
+            [127, 0, 0, 1],
+            0,
+            exporter,
+            kibana_url,
+            RuntimeMode::User,
+        )
+        .await
+        .expect("desktop embedded server should start");
 
         let url = format!("http://localhost:{}", bound_addr.port());
         let parsed = tauri::Url::parse(&url).expect("desktop URL should be valid");
@@ -875,10 +833,15 @@ mod desktop_startup_tests {
 
         let exporter = Exporter::default();
         let kibana_url = String::new();
-        let (mut server, bound_addr) =
-            Server::start([127, 0, 0, 1], 0, exporter, kibana_url, RuntimeMode::User)
-                .await
-                .expect("desktop embedded server should start while another port is occupied");
+        let (mut server, bound_addr) = Server::start(
+            [127, 0, 0, 1],
+            0,
+            exporter,
+            kibana_url,
+            RuntimeMode::User,
+        )
+        .await
+        .expect("desktop embedded server should start while another port is occupied");
 
         assert_ne!(
             bound_addr.port(),

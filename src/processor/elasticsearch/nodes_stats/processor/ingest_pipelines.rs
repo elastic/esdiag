@@ -36,7 +36,7 @@ pub async fn extract(
             )
             .await
             {
-                log::error!("Error extracting ingest pipelines stats: {}", e);
+                tracing::error!("Error extracting ingest pipelines stats: {}", e);
             };
 
             sender_pipelines

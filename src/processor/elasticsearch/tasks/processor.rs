@@ -20,7 +20,7 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for Tasks {
         lookups: &Lookups,
         metadata: &ElasticsearchMetadata,
     ) -> ProcessorSummary {
-        log::debug!("processing tasks");
+        tracing::debug!("processing tasks");
         let data_stream = "metrics-task-esdiag".to_string();
         let lookup_node = &lookups.node;
         let task_metadata = metadata.for_data_stream(&data_stream);
@@ -35,7 +35,7 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for Tasks {
                     .map(|(_, task)| {
                         let node = lookup_node.by_id(node_id.as_str()).cloned();
                         if node.is_none() {
-                            log::warn!("Node [{}] not found for task [{}]", node_id, task.id);
+                            tracing::warn!("Node [{}] not found for task [{}]", node_id, task.id);
                         }
                         serde_json::to_value(EnrichedTask::new(task, task_metadata.clone(), node))
                             .unwrap_or_default()
@@ -44,11 +44,11 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for Tasks {
             })
             .collect();
 
-        log::debug!("task docs: {}", tasks.len());
+        tracing::debug!("task docs: {}", tasks.len());
         let mut summary = ProcessorSummary::new(data_stream.clone());
         match exporter.send(data_stream, tasks).await {
             Ok(batch) => summary.add_batch(batch),
-            Err(err) => log::error!("Failed to send tasks: {}", err),
+            Err(err) => tracing::error!("Failed to send tasks: {}", err),
         }
         summary
     }

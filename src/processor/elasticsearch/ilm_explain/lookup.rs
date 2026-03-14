@@ -20,7 +20,7 @@ impl From<IlmExplain> for Lookup<IlmStats> {
             lookup.add(ilm_stats).with_name(&index);
         });
 
-        log::debug!("lookup_ilm entries: {}", lookup.len());
+        tracing::debug!("lookup_ilm entries: {}", lookup.len());
         lookup
     }
 }
@@ -30,7 +30,7 @@ impl From<Result<IlmExplain>> for Lookup<IlmStats> {
         match ilm_explain_result {
             Ok(ilm_explain) => Lookup::<IlmStats>::from_parsed(ilm_explain),
             Err(e) => {
-                log::warn!("Failed to parse IlmExplain: {}", e);
+                tracing::warn!("Failed to parse IlmExplain: {}", e);
                 Lookup::new()
             }
         }

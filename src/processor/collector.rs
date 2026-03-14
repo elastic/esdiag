@@ -80,7 +80,7 @@ impl Collector {
             Self::Kibana(collector) => collector.collect().await?,
         };
 
-        log::info!(
+        tracing::info!(
             "Collected {} of {} files into {}",
             result.success,
             result.total,

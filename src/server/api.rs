@@ -32,7 +32,7 @@ pub async fn service_link(
     Query(params): Query<ServiceLinkQueryParams>,
     Json(payload): Json<UploadServiceRequest>,
 ) -> impl IntoResponse {
-    log::info!(
+    tracing::info!(
         "Received JSON elastic uploader request for: {}",
         payload.url
     );
@@ -70,7 +70,7 @@ pub async fn service_link(
             url
         }
         Err(e) => {
-            log::error!("Invalid URL provided: {}", e);
+            tracing::error!("Invalid URL provided: {}", e);
             return (
                 StatusCode::BAD_REQUEST,
                 Json(json!({
@@ -84,7 +84,7 @@ pub async fn service_link(
     let uri = match Uri::try_from(uploader_service_url.to_string()) {
         Ok(uri) => uri,
         Err(e) => {
-            log::error!("Failed to create URI: {}", e);
+            tracing::error!("Failed to create URI: {}", e);
             return (
                 StatusCode::BAD_REQUEST,
                 Json(json!({
@@ -106,7 +106,7 @@ pub async fn service_link(
     let request_user = match state.resolve_user_email(&headers) {
         Ok((_, user)) => user,
         Err(err) => {
-            log::warn!("Rejecting service_link request due to auth policy: {err}");
+            tracing::warn!("Rejecting service_link request due to auth policy: {err}");
             return (
                 StatusCode::UNAUTHORIZED,
                 Json(json!({
@@ -257,10 +257,10 @@ pub async fn api_key(
     Query(params): Query<ApiKeyQueryParams>,
     Json(payload): Json<ApiKeyRequest>,
 ) -> impl IntoResponse {
-    log::info!("Received JSON api key request for: {}", payload.url);
+    tracing::info!("Received JSON api key request for: {}", payload.url);
 
     let job_id = new_job_id();
-    log::debug!(
+    tracing::debug!(
         "[fsm][api.api_key] start: job_id={}, wait_for_completion={}",
         job_id,
         params.wait_for_completion
@@ -269,7 +269,7 @@ pub async fn api_key(
     let request_user = match state.resolve_user_email(&headers) {
         Ok((_, user)) => user,
         Err(err) => {
-            log::warn!("Rejecting api_key request due to auth policy: {err}");
+            tracing::warn!("Rejecting api_key request due to auth policy: {err}");
             return (
                 StatusCode::UNAUTHORIZED,
                 Json(json!({
@@ -283,7 +283,7 @@ pub async fn api_key(
     let url = match Url::parse(&payload.url) {
         Ok(url) => url,
         Err(e) => {
-            log::error!("Failed to parse URL: {}", e);
+            tracing::error!("Failed to parse URL: {}", e);
             return (
                 StatusCode::BAD_REQUEST,
                 Json(json!({
@@ -309,7 +309,7 @@ pub async fn api_key(
     {
         Ok(host) => host,
         Err(e) => {
-            log::error!("Failed to build host: {}", e);
+            tracing::error!("Failed to build host: {}", e);
             return (
                 StatusCode::BAD_REQUEST,
                 Json(json!({
@@ -321,18 +321,18 @@ pub async fn api_key(
 
     // If wait_for_completion is true, process the job synchronously
     if params.wait_for_completion {
-        log::info!("Processing job: {}", job_id);
-        log::debug!("[fsm][api.api_key] queued -> processing(sync): job_id={job_id}");
+        tracing::info!("Processing job: {}", job_id);
+        tracing::debug!("[fsm][api.api_key] queued -> processing(sync): job_id={job_id}");
 
         // Create receiver from host
         let receiver = match Receiver::try_from(host) {
             Ok(receiver) => {
-                log::info!("Created receiver: {}", receiver);
-                log::debug!("[fsm][api.api_key] receiver created: job_id={job_id}");
+                tracing::info!("Created receiver: {}", receiver);
+                tracing::debug!("[fsm][api.api_key] receiver created: job_id={job_id}");
                 Arc::new(receiver)
             }
             Err(e) => {
-                log::error!("Failed to create receiver: {}", e);
+                tracing::error!("Failed to create receiver: {}", e);
                 state.record_failure().await;
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
@@ -346,19 +346,19 @@ pub async fn api_key(
         let exporter = Arc::new(state.exporter.read().await.clone());
         let mut identifiers = payload.metadata;
         identifiers.user = Some(request_user.clone());
-        log::debug!("[fsm][api.api_key] ready->try_new: job_id={job_id}");
+        tracing::debug!("[fsm][api.api_key] ready->try_new: job_id={job_id}");
 
         // Create and start the processor
         let processor = match Processor::try_new(receiver, exporter, identifiers).await {
             Ok(processor) => {
-                log::debug!(
+                tracing::debug!(
                     "[fsm][api.api_key] try_new ok: processor_id={}, job_id={job_id}",
                     processor.id
                 );
                 processor
             }
             Err(error) => {
-                log::error!("Failed to create processor: {}", error);
+                tracing::error!("Failed to create processor: {}", error);
                 state.record_failure().await;
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
@@ -369,20 +369,20 @@ pub async fn api_key(
             }
         };
 
-        log::debug!(
+        tracing::debug!(
             "[fsm][api.api_key] ready->start: processor_id={}, job_id={job_id}",
             processor.id
         );
         let processing = match processor.start().await {
             Ok(processing) => {
-                log::debug!(
+                tracing::debug!(
                     "[fsm][api.api_key] start ok -> processing: processor_id={}, job_id={job_id}",
                     processing.id
                 );
                 processing
             }
             Err(failed) => {
-                log::error!("Failed to start processor: {}", failed.state.error);
+                tracing::error!("Failed to start processor: {}", failed.state.error);
                 state.record_failure().await;
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
@@ -394,13 +394,13 @@ pub async fn api_key(
         };
 
         // Process the job
-        log::debug!(
+        tracing::debug!(
             "[fsm][api.api_key] processing->process await: processor_id={}, job_id={job_id}",
             processing.id
         );
         match processing.process().await {
             Ok(completed) => {
-                log::debug!(
+                tracing::debug!(
                     "[fsm][api.api_key] process ok -> completed: processor_id={}, job_id={job_id}",
                     completed.id
                 );
@@ -415,18 +415,18 @@ pub async fn api_key(
                     "took": completed.state.runtime
                 });
 
-                log::info!(
+                tracing::info!(
                     "Job completed successfully: {}",
                     report.diagnostic.metadata.id
                 );
                 (StatusCode::OK, Json(response))
             }
             Err(failed) => {
-                log::debug!(
+                tracing::debug!(
                     "[fsm][api.api_key] process failed -> failed: processor_id={}, job_id={job_id}",
                     failed.id
                 );
-                log::error!("Processing failed: {}", failed.state.error);
+                tracing::error!("Processing failed: {}", failed.state.error);
                 state.record_failure().await;
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
@@ -438,7 +438,7 @@ pub async fn api_key(
         }
     } else {
         // Stash the username and (filename, URI) into the server state for later use
-        log::debug!("[fsm][api.api_key] queued(in state): job_id={job_id}");
+        tracing::debug!("[fsm][api.api_key] queued(in state): job_id={job_id}");
         let mut metadata = payload.metadata;
         metadata.user = Some(request_user);
         state.push_key(job_id, metadata, host).await;

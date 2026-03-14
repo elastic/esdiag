@@ -34,7 +34,7 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for Repositories {
         let mut summary = ProcessorSummary::new(data_stream.clone());
         match exporter.send(data_stream, repositories).await {
             Ok(batch) => summary.add_batch(batch),
-            Err(err) => log::error!("Failed to send repository settings: {}", err),
+            Err(err) => tracing::error!("Failed to send repository settings: {}", err),
         }
         summary
     }
@@ -82,12 +82,12 @@ impl StreamingDocumentExporter<Lookups, ElasticsearchMetadata> for Snapshots {
                         .await
                         .is_err()
                     {
-                        log::warn!("Snapshot channel closed unexpectedly");
+                        tracing::warn!("Snapshot channel closed unexpectedly");
                         break;
                     }
                 }
                 Err(err) => {
-                    log::error!("Error reading from snapshot stream: {}", err);
+                    tracing::error!("Error reading from snapshot stream: {}", err);
                 }
             }
         }

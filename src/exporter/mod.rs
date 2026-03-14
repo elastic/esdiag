@@ -107,8 +107,9 @@ impl Exporter {
     ///   batch is also sent.
     /// - Batch responses are collected from parallel workers and merged into the summary.
     /// - Errors from batch processing do not abort processing; they are logged
-    ///   with `log::warn!` and the loop continues.
+    ///   with `tracing::warn!` and the loop continues.
     /// - The final (possibly partially updated) `ProcessorSummary` is returned.
+    #[tracing::instrument(skip_all, fields(index))]
     pub async fn document_channel<T: Serialize + Send + Sync + 'static>(
         self,
         mut rx: mpsc::Receiver<T>,
@@ -125,7 +126,7 @@ impl Exporter {
                 let batch = std::mem::replace(&mut accumulator, Vec::with_capacity(batch_size));
                 match self.tx(index.clone(), batch).await {
                     Ok(batch_rx) => batch_receivers.push(batch_rx),
-                    Err(err) => log::warn!("Failed to send document batch: {}", err),
+                    Err(err) => tracing::warn!("Failed to send document batch: {}", err),
                 }
             }
         }
@@ -134,7 +135,7 @@ impl Exporter {
         if !accumulator.is_empty() {
             match self.tx(index.clone(), accumulator).await {
                 Ok(batch_rx) => batch_receivers.push(batch_rx),
-                Err(err) => log::warn!("Failed to send final document batch: {}", err),
+                Err(err) => tracing::warn!("Failed to send final document batch: {}", err),
             }
         }
 
@@ -142,14 +143,15 @@ impl Exporter {
         for batch_rx in batch_receivers {
             match batch_rx.await {
                 Ok(batch_response) => summary.add_batch(batch_response),
-                Err(_) => log::warn!("Batch response channel closed unexpectedly"),
+                Err(_) => tracing::warn!("Batch response channel closed unexpectedly"),
             }
         }
 
-        log::debug!("document_channel {} sent: {}", index, summary.docs);
+        tracing::debug!("document_channel {} sent: {}", index, summary.docs);
         summary
     }
 
+    #[tracing::instrument(skip_all, fields(index))]
     pub async fn send<T>(
         &self,
         index: String,

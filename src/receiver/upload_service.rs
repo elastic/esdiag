@@ -28,7 +28,7 @@ impl UploadServiceDownloader {
             let request = client.get(self.url.clone()).headers(headers);
             let response = request.send()?;
             let bytes = response.bytes()?;
-            log::debug!("Downloaded archive size: {} bytes", bytes.len());
+            tracing::debug!("Downloaded archive size: {} bytes", bytes.len());
             match bytes.len() {
                 0 => Err(eyre!("Downloaded empty file, check upload link expiration")),
                 _ => Ok(ArchiveBytesReceiver::try_from(bytes)?),
@@ -49,7 +49,7 @@ impl TryFrom<Url> for UploadServiceDownloader {
         // Since token authentication is by header, clear provided username and password from the URL
         url.set_username("").ok();
         url.set_password(None).ok();
-        log::info!("Downloading archive from {url}");
+        tracing::info!("Downloading archive from {url}");
         Ok(Self { token, url })
     }
 }

@@ -39,11 +39,11 @@ impl TryFrom<PathBuf> for FileExporter {
     fn try_from(path: PathBuf) -> Result<Self> {
         match path.is_file() {
             false => {
-                log::info!("Creating file {}", path.display());
+                tracing::info!("Creating file {}", path.display());
                 File::create(&path)?;
             }
             true => {
-                log::debug!("File {} exists", path.display());
+                tracing::debug!("File {} exists", path.display());
             }
         }
 
@@ -73,7 +73,7 @@ impl Export for FileExporter {
     async fn is_connected(&self) -> bool {
         let is_file = self.path.is_file();
         let filename = self.path.to_str().unwrap_or("");
-        log::debug!("File {filename} is valid: {is_file}");
+        tracing::debug!("File {filename} is valid: {is_file}");
         is_file
     }
 
@@ -114,7 +114,7 @@ impl Export for FileExporter {
         }
         batch.time = start_time.elapsed().as_millis() as u32;
 
-        log::info!("{}, created {} docs", index, doc_count);
+        tracing::info!("{}, created {} docs", index, doc_count);
         if let Some(tx) = &self.docs_tx {
             let _ = tx.send(doc_count).await;
         }
@@ -137,10 +137,10 @@ impl Export for FileExporter {
         match self.batch_send(index, docs).await {
             Ok(batch_response) => {
                 if tx.send(batch_response).is_err() {
-                    log::error!("Failed to send batch response");
+                    tracing::error!("Failed to send batch response");
                 }
             }
-            Err(e) => log::warn!("File write failed: {}", e),
+            Err(e) => tracing::warn!("File write failed: {}", e),
         }
 
         Ok(rx)

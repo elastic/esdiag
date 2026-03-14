@@ -109,7 +109,7 @@ impl ElasticsearchDiagnostic {
                 .await
                 .was_parsed(),
             Err(defaults_err) => {
-                log::debug!(
+                tracing::debug!(
                     "Failed to read cluster_settings_defaults, falling back to cluster_settings: {}",
                     defaults_err
                 );
@@ -119,7 +119,7 @@ impl ElasticsearchDiagnostic {
                         .await
                         .was_parsed(),
                     Err(settings_err) => {
-                        log::warn!(
+                        tracing::warn!(
                             "Failed to read cluster_settings_defaults and cluster_settings: {}; {}",
                             defaults_err,
                             settings_err
@@ -131,7 +131,7 @@ impl ElasticsearchDiagnostic {
         };
 
         summary_tx.send(summary).await.map_err(|err| {
-            log::error!("Failed to send summary: {}", err);
+            tracing::error!("Failed to send summary: {}", err);
             eyre!(err)
         })
     }
@@ -151,15 +151,15 @@ impl ElasticsearchDiagnostic {
                     .await
                     .was_parsed();
                 summary_tx.send(summary).await.map_err(|err| {
-                    log::error!("Failed to send summary: {}", err);
+                    tracing::error!("Failed to send summary: {}", err);
                     eyre!(err)
                 })
             }
             Err(err) => {
-                log::warn!("{}", err);
+                tracing::warn!("{}", err);
                 let summary = ProcessorSummary::new(T::name());
                 summary_tx.send(summary).await.map_err(|err| {
-                    log::error!("Failed to send summary: {}", err);
+                    tracing::error!("Failed to send summary: {}", err);
                     eyre!(err)
                 })
             }
@@ -191,12 +191,12 @@ impl ElasticsearchDiagnostic {
                 .await
                 .was_parsed();
                 summary_tx.send(summary).await.map_err(|err| {
-                    log::error!("Failed to send summary: {}", err);
+                    tracing::error!("Failed to send summary: {}", err);
                     eyre!(err)
                 })
             }
             Err(e) => {
-                log::debug!(
+                tracing::debug!(
                     "Streaming failed/not supported for {}, falling back to full load: {}",
                     T::name(),
                     e
@@ -217,7 +217,7 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
         let display_name = match receiver.get::<ClusterSettingsDefaults>().await {
             Ok(settings) => settings.get_display_name(),
             Err(err) => {
-                log::debug!(
+                tracing::debug!(
                     "Failed to read cluster_settings_defaults for display name, falling back to cluster_settings: {}",
                     err
                 );
@@ -243,7 +243,7 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
             mapping_stats: match receiver.get_stream::<MappingStats>().await {
                 Ok(stream) => Lookup::<MappingSummary>::from_stream(stream).await,
                 Err(e) => {
-                    log::debug!(
+                    tracing::debug!(
                         "Streaming mappings failed: {}, falling back to full load",
                         e
                     );
@@ -278,12 +278,12 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
     }
 
     async fn process(self, summary_tx: mpsc::Sender<ProcessorSummary>) -> Result<()> {
-        log::debug!("Running Elasticsearch diagnostic processors");
+        tracing::debug!("Running Elasticsearch diagnostic processors");
         if !self.exporter.is_connected().await {
             return Err(eyre!("Exporter is not connected"));
         }
 
-        if log::max_level() >= log::Level::Debug {
+        if tracing::enabled!(tracing::Level::DEBUG) {
             data::save_file("diagnostic.json", &self)?;
         }
 

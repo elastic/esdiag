@@ -25,7 +25,7 @@ impl DocumentExporter<Lookups, LogstashMetadata> for Plugins {
         let mut summary = ProcessorSummary::new(data_stream.clone());
         match exporter.send(data_stream, docs).await {
             Ok(batch) => summary.add_batch(batch),
-            Err(err) => log::error!("Failed to send plugins: {}", err),
+            Err(err) => tracing::error!("Failed to send plugins: {}", err),
         }
         summary
     }

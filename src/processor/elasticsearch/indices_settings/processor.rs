@@ -16,7 +16,7 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for IndicesSettings {
         lookups: &Lookups,
         metadata: &ElasticsearchMetadata,
     ) -> ProcessorSummary {
-        log::debug!("processing indices: {}", self.len());
+        tracing::debug!("processing indices: {}", self.len());
         let data_stream = "settings-index-esdiag";
         let index_metadata = metadata.for_data_stream(data_stream);
         let collection_date = metadata.timestamp;
@@ -40,11 +40,11 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for IndicesSettings {
             })
             .collect();
 
-        log::debug!("index settings docs: {}", index_settings.len());
+        tracing::debug!("index settings docs: {}", index_settings.len());
         let mut summary = ProcessorSummary::new(data_stream.to_string());
         match exporter.send(data_stream.to_string(), index_settings).await {
             Ok(batch) => summary.add_batch(batch),
-            Err(err) => log::error!("Failed to send index settings: {}", err),
+            Err(err) => tracing::error!("Failed to send index settings: {}", err),
         }
         summary
     }

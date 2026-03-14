@@ -27,7 +27,7 @@ impl Lookup<MappingSummary> {
                     lookup.add(index_mapping.summarize()).with_name(&index_name);
                 }
                 Err(e) => {
-                    log::warn!("Error reading from mapping stats stream: {}", e);
+                    tracing::warn!("Error reading from mapping stats stream: {}", e);
                 }
             }
         }
@@ -40,7 +40,7 @@ impl From<Result<MappingStats>> for Lookup<MappingSummary> {
         match mapping_stats {
             Ok(stats) => Lookup::<MappingSummary>::from(stats),
             Err(e) => {
-                log::warn!("Failed to parse MappingStats: {}", e);
+                tracing::warn!("Failed to parse MappingStats: {}", e);
                 Lookup::new()
             }
         }
