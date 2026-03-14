@@ -104,7 +104,7 @@ pub async fn update_settings(
     if target == "new_host" {
         let err_msg = "Inline host creation from output settings is no longer supported. Use /settings instead.".to_string();
         log::warn!("{}", err_msg);
-        return settings_error_response(&state, err_msg);
+        return settings_error_response(&state, prior_active_target.as_deref(), err_msg).await;
     } else if target_changed {
         match KnownHost::get_known(&target) {
             Some(host) if host.has_role(HostRole::Send) => {
@@ -113,7 +113,7 @@ pub async fn update_settings(
             Some(_) => {
                 let err_msg = format!("Output target '{}' is not a send-capable host.", target);
                 log::warn!("{}", err_msg);
-                return settings_error_response(&state, err_msg);
+                return settings_error_response(&state, prior_active_target.as_deref(), err_msg).await;
             }
             None => {
                 next_settings.active_target = None;
@@ -137,7 +137,7 @@ pub async fn update_settings(
             if !host.has_role(HostRole::Send) {
                 let err_msg = format!("Output target '{}' is not a send-capable host.", target);
                 log::warn!("{}", err_msg);
-                return settings_error_response(&state, err_msg);
+                return settings_error_response(&state, prior_active_target.as_deref(), err_msg).await;
             }
             if host_requires_keystore(&host) && keystore_password.is_none() {
                 return secure_host_unlock_required_response(
@@ -166,7 +166,8 @@ pub async fn update_settings(
                 Err(e) => {
                     let err_msg = format!("Invalid output target: {}", e);
                     log::error!("{}", err_msg);
-                    return settings_error_response(&state, err_msg);
+                    return settings_error_response(&state, prior_active_target.as_deref(), err_msg)
+                        .await;
                 }
             };
             Exporter::try_from(exporter_uri)
@@ -179,7 +180,7 @@ pub async fn update_settings(
             }
             Err(err_msg) => {
                 log::error!("{}", err_msg);
-                return settings_error_response(&state, err_msg);
+                return settings_error_response(&state, prior_active_target.as_deref(), err_msg).await;
             }
         }
     }
@@ -188,7 +189,7 @@ pub async fn update_settings(
     if let Err(e) = next_settings.save() {
         let err_msg = format!("Failed to save settings: {}", e);
         log::error!("{}", err_msg);
-        return settings_error_response(&state, err_msg);
+        return settings_error_response(&state, prior_active_target.as_deref(), err_msg).await;
     }
 
     if let Some(kibana_url) = next_settings.kibana_url.clone() {
@@ -211,7 +212,14 @@ pub async fn update_settings(
     StatusCode::NO_CONTENT.into_response()
 }
 
-fn settings_error_response(state: &Arc<ServerState>, err_msg: String) -> Response {
+async fn settings_error_response(
+    state: &Arc<ServerState>,
+    prior_active_target: Option<&str>,
+    err_msg: String,
+) -> Response {
+    state.publish_event(signal_event(
+        footer_selection_signal_payload(state, prior_active_target).await,
+    ));
     state.publish_event(execute_script_event(render_settings_error_script(&err_msg)));
     StatusCode::NO_CONTENT.into_response()
 }
@@ -222,14 +230,11 @@ async fn secure_host_unlock_required_response(
     prior_active_target: Option<&str>,
     err_msg: String,
 ) -> Response {
-    state.publish_event(signal_event(
-        footer_selection_signal_payload(state, prior_active_target).await,
-    ));
     #[cfg(feature = "keystore")]
     let _ = keystore::get_unlock_modal(State(state.clone()), headers).await;
     #[cfg(not(feature = "keystore"))]
     let _ = headers;
-    settings_error_response(state, err_msg)
+    settings_error_response(state, prior_active_target, err_msg).await
 }
 
 fn clear_settings_errors(state: &Arc<ServerState>) {
@@ -469,7 +474,15 @@ mod tests {
         );
         write_hosts(hosts);
 
+        Settings {
+            active_target: Some("stdout".to_string()),
+            kibana_url: None,
+        }
+        .save()
+        .expect("save settings");
+
         let state = test_server_state();
+        let expected_target = state.exporter.read().await.target_value();
         let mut events = state.subscribe_events();
         let mut signals = Signals::default();
         signals.settings.target = Some("collector-only".to_string());
@@ -477,12 +490,32 @@ mod tests {
         let response = update_settings(State(state), HeaderMap::new(), ReadSignals(signals)).await;
 
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
-        let event = events.try_recv().expect("settings error event");
-        let ServerEvent::ExecuteScript(script) = event else {
-            panic!("expected settings error script");
-        };
-        assert!(script.contains("collector-only"));
-        assert!(script.contains("send-capable host"));
+        let mut saw_target_revert = false;
+        let mut saw_secure_revert = false;
+        let mut saw_error = false;
+        while let Ok(event) = events.try_recv() {
+            match event {
+                ServerEvent::Signals(payload) => {
+                    if payload
+                        .contains(&format!(r#""settings":{{"target":"{}"}}"#, expected_target))
+                    {
+                        saw_target_revert = true;
+                    }
+                    if payload.contains(r#""output":{"secure":false}"#) {
+                        saw_secure_revert = true;
+                    }
+                }
+                ServerEvent::ExecuteScript(script) => {
+                    if script.contains("collector-only") && script.contains("send-capable host") {
+                        saw_error = true;
+                    }
+                }
+                _ => {}
+            }
+        }
+        assert!(saw_target_revert, "expected target selection to revert");
+        assert!(saw_secure_revert, "expected secure indicator to revert");
+        assert!(saw_error, "expected settings error script");
     }
 
     #[tokio::test]

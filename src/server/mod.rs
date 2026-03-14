@@ -180,7 +180,7 @@ impl Server {
             stats_updates_rx,
             runtime_mode,
             runtime_mode_policy,
-            keystore_state: Arc::new(RwLock::new(HashMap::new())),
+            keystore_state: Arc::new(RwLock::new(KeystoreSessionState::default())),
         });
 
         stats::spawn_stats_publisher(state.clone(), state.event_sender());
@@ -356,7 +356,9 @@ pub struct ServerState {
     pub keys: Arc<RwLock<HashMap<u64, (Identifiers, KnownHost)>>>,
     pub runtime_mode: RuntimeMode,
     pub runtime_mode_policy: RuntimeModePolicy,
-    pub keystore_state: Arc<RwLock<HashMap<String, KeystoreSessionState>>>,
+    // Keystore session state is intentionally single-user only. User mode keeps one
+    // local in-memory session, and service mode never enables keystore access.
+    pub keystore_state: Arc<RwLock<KeystoreSessionState>>,
     stats: Arc<RwLock<Stats>>,
     shutdown: watch::Receiver<bool>,
     event_tx: broadcast::Sender<ServerEvent>,
@@ -426,19 +428,6 @@ fn now_epoch_seconds() -> i64 {
         .as_secs() as i64
 }
 
-fn default_keystore_user() -> &'static str {
-    "Anonymous"
-}
-
-fn normalize_keystore_user(user: &str) -> String {
-    let trimmed = user.trim();
-    if trimmed.is_empty() {
-        default_keystore_user().to_string()
-    } else {
-        trimmed.to_string()
-    }
-}
-
 impl ServerState {
     fn apply_keystore_timeout_locked(state: &mut KeystoreSessionState) -> bool {
         let was_locked = state.locked;
@@ -446,12 +435,12 @@ impl ServerState {
         !was_locked && state.locked
     }
 
-    fn keystore_user_key(&self, user: &str) -> String {
-        if self.runtime_mode_policy.requires_iap_headers() {
-            normalize_keystore_user(user)
-        } else {
-            default_keystore_user().to_string()
-        }
+    fn can_use_keystore_session(&self) -> bool {
+        // Keystore support is only available for the local single-user web flow.
+        // Service mode is explicitly excluded, even if a request is authenticated.
+        cfg!(feature = "keystore")
+            && self.runtime_mode_policy.allows_local_artifacts()
+            && !self.runtime_mode_policy.requires_iap_headers()
     }
 
     pub async fn record_job_started(&self) {
@@ -494,128 +483,138 @@ impl ServerState {
     }
 
     pub async fn keystore_status_for(&self, user: &str) -> (bool, i64) {
-        let user = self.keystore_user_key(user);
-        let mut states = self.keystore_state.write().await;
-        let state = states.entry(user.clone()).or_default();
-        let timed_out = Self::apply_keystore_timeout_locked(state);
+        if !self.can_use_keystore_session() {
+            return (true, 0);
+        }
+        let mut state = self.keystore_state.write().await;
+        let timed_out = Self::apply_keystore_timeout_locked(&mut state);
         let status = (state.locked, state.lock_time);
-        drop(states);
+        drop(state);
         if timed_out {
-            self.publish_event(signal_event(self.keystore_signal_payload_for(&user).await));
+            let _ = user;
+            self.publish_event(signal_event(self.keystore_signal_payload().await));
         }
         status
     }
 
     pub async fn keystore_status(&self) -> (bool, i64) {
-        self.keystore_status_for(default_keystore_user()).await
+        self.keystore_status_for("single-user").await
     }
 
     pub async fn is_keystore_unlocked_for(&self, user: &str) -> bool {
-        let user = self.keystore_user_key(user);
-        let mut states = self.keystore_state.write().await;
-        let state = states.entry(user.clone()).or_default();
-        let timed_out = Self::apply_keystore_timeout_locked(state);
+        if !self.can_use_keystore_session() {
+            return false;
+        }
+        let mut state = self.keystore_state.write().await;
+        let timed_out = Self::apply_keystore_timeout_locked(&mut state);
         let unlocked = !state.locked;
-        drop(states);
+        drop(state);
         if timed_out {
-            self.publish_event(signal_event(self.keystore_signal_payload_for(&user).await));
+            let _ = user;
+            self.publish_event(signal_event(self.keystore_signal_payload().await));
         }
         unlocked
     }
 
     pub async fn is_keystore_unlocked(&self) -> bool {
-        self.is_keystore_unlocked_for(default_keystore_user()).await
+        self.is_keystore_unlocked_for("single-user").await
     }
 
     pub async fn touch_keystore_session_for(&self, user: &str) {
-        let user = self.keystore_user_key(user);
-        let mut states = self.keystore_state.write().await;
-        let state = states.entry(user.clone()).or_default();
-        let timed_out = Self::apply_keystore_timeout_locked(state);
+        if !self.can_use_keystore_session() {
+            return;
+        }
+        let mut state = self.keystore_state.write().await;
+        let timed_out = Self::apply_keystore_timeout_locked(&mut state);
         if !state.locked {
             state.expires_at_epoch = Some(now_epoch_seconds() + (12 * 60 * 60));
-            state.lock_time = now_epoch_seconds();
         }
-        drop(states);
+        drop(state);
         if timed_out {
-            self.publish_event(signal_event(self.keystore_signal_payload_for(&user).await));
+            let _ = user;
+            self.publish_event(signal_event(self.keystore_signal_payload().await));
         }
     }
 
     pub async fn touch_keystore_session(&self) {
-        self.touch_keystore_session_for(default_keystore_user())
-            .await
+        self.touch_keystore_session_for("single-user").await
     }
 
     pub async fn set_keystore_unlocked_for(&self, user: &str, password: String) {
-        let user = self.keystore_user_key(user);
-        let mut states = self.keystore_state.write().await;
-        let state = states.entry(user.clone()).or_default();
+        if !self.can_use_keystore_session() {
+            log::warn!("Ignoring keystore unlock because keystore is unavailable in this runtime mode");
+            return;
+        }
+        let mut state = self.keystore_state.write().await;
         state.locked = false;
         state.lock_time = now_epoch_seconds();
         state.failed_attempts = 0;
         state.blocked_until_epoch = None;
         state.unlocked_password = Some(password);
         state.expires_at_epoch = Some(now_epoch_seconds() + (12 * 60 * 60));
-        drop(states);
-        self.publish_event(signal_event(self.keystore_signal_payload_for(&user).await));
-        log::info!("Keystore authentication succeeded for {user}");
+        drop(state);
+        self.publish_event(signal_event(self.keystore_signal_payload().await));
+        let _ = user;
+        log::info!("Keystore authentication succeeded for the local user session");
     }
 
     pub async fn set_keystore_unlocked(&self, password: String) {
-        self.set_keystore_unlocked_for(default_keystore_user(), password)
-            .await
+        self.set_keystore_unlocked_for("single-user", password).await
     }
 
     pub async fn set_keystore_locked_for(&self, user: &str, reason: &str) {
-        let user = self.keystore_user_key(user);
-        let mut states = self.keystore_state.write().await;
-        let state = states.entry(user.clone()).or_default();
-        Self::apply_keystore_timeout_locked(state);
+        if !self.can_use_keystore_session() {
+            return;
+        }
+        let mut state = self.keystore_state.write().await;
+        Self::apply_keystore_timeout_locked(&mut state);
         state.locked = true;
         state.lock_time = now_epoch_seconds();
         state.unlocked_password = None;
         state.expires_at_epoch = None;
-        drop(states);
-        self.publish_event(signal_event(self.keystore_signal_payload_for(&user).await));
-        log::info!("Keystore locked for {user}: {reason}");
+        drop(state);
+        self.publish_event(signal_event(self.keystore_signal_payload().await));
+        let _ = user;
+        log::info!("Keystore locked for the local user session: {reason}");
     }
 
     pub async fn set_keystore_locked(&self, reason: &str) {
-        self.set_keystore_locked_for(default_keystore_user(), reason)
-            .await
+        self.set_keystore_locked_for("single-user", reason).await
     }
 
     pub async fn record_keystore_failed_attempt_for(&self, user: &str) -> Option<i64> {
-        let user = self.keystore_user_key(user);
-        let mut states = self.keystore_state.write().await;
-        let state = states.entry(user.clone()).or_default();
-        Self::apply_keystore_timeout_locked(state);
+        if !self.can_use_keystore_session() {
+            return None;
+        }
+        let mut state = self.keystore_state.write().await;
+        Self::apply_keystore_timeout_locked(&mut state);
         state.failed_attempts = state.failed_attempts.saturating_add(1);
         let block_seconds = state.current_backoff_seconds();
         if block_seconds > 0 {
             state.blocked_until_epoch = Some(now_epoch_seconds() + block_seconds as i64);
         }
         let blocked_until = state.blocked_until_epoch;
-        drop(states);
-        log::warn!("Keystore authentication failed for {user}");
-        self.publish_event(signal_event(self.keystore_signal_payload_for(&user).await));
+        drop(state);
+        let _ = user;
+        log::warn!("Keystore authentication failed for the local user session");
+        self.publish_event(signal_event(self.keystore_signal_payload().await));
         blocked_until
     }
 
     pub async fn record_keystore_failed_attempt(&self) -> Option<i64> {
-        self.record_keystore_failed_attempt_for(default_keystore_user())
-            .await
+        self.record_keystore_failed_attempt_for("single-user").await
     }
 
     pub async fn keystore_signal_payload_for(&self, user: &str) -> String {
-        let user = self.keystore_user_key(user);
-        let mut states = self.keystore_state.write().await;
-        let state = states.entry(user).or_default();
-        Self::apply_keystore_timeout_locked(state);
+        if !self.can_use_keystore_session() {
+            return r#"{"keystore":{"locked":true,"lock_time":0}}"#.to_string();
+        }
+        let mut state = self.keystore_state.write().await;
+        Self::apply_keystore_timeout_locked(&mut state);
         let locked = state.locked;
         let lock_time = state.lock_time;
-        drop(states);
+        drop(state);
+        let _ = user;
         format!(
             r#"{{"keystore":{{"locked":{},"lock_time":{}}}}}"#,
             locked, lock_time
@@ -623,47 +622,49 @@ impl ServerState {
     }
 
     pub async fn keystore_signal_payload(&self) -> String {
-        self.keystore_signal_payload_for(default_keystore_user())
-            .await
+        self.keystore_signal_payload_for("single-user").await
     }
 
     pub async fn keystore_blocked_until_for(&self, user: &str) -> Option<i64> {
-        let user = self.keystore_user_key(user);
-        let mut states = self.keystore_state.write().await;
-        let state = states.entry(user.clone()).or_default();
-        let timed_out = Self::apply_keystore_timeout_locked(state);
+        if !self.can_use_keystore_session() {
+            return None;
+        }
+        let mut state = self.keystore_state.write().await;
+        let timed_out = Self::apply_keystore_timeout_locked(&mut state);
         let blocked_until = state.blocked_until_epoch;
-        drop(states);
+        drop(state);
         if timed_out {
-            self.publish_event(signal_event(self.keystore_signal_payload_for(&user).await));
+            let _ = user;
+            self.publish_event(signal_event(self.keystore_signal_payload().await));
         }
         blocked_until
     }
 
     pub async fn keystore_blocked_until(&self) -> Option<i64> {
-        self.keystore_blocked_until_for(default_keystore_user())
-            .await
+        self.keystore_blocked_until_for("single-user").await
     }
 
     pub async fn keystore_password_for(&self, user: &str) -> Option<String> {
-        let user = self.keystore_user_key(user);
-        let mut states = self.keystore_state.write().await;
-        let state = states.entry(user.clone()).or_default();
-        let timed_out = Self::apply_keystore_timeout_locked(state);
+        if !self.can_use_keystore_session() {
+            return None;
+        }
+        let mut state = self.keystore_state.write().await;
+        let timed_out = Self::apply_keystore_timeout_locked(&mut state);
         let password = if state.locked {
             None
         } else {
             state.unlocked_password.clone()
         };
-        drop(states);
+        drop(state);
         if timed_out {
-            self.publish_event(signal_event(self.keystore_signal_payload_for(&user).await));
+            let _ = user;
+            self.publish_event(signal_event(self.keystore_signal_payload().await));
         }
         password
     }
 
     pub async fn keystore_password(&self) -> Option<String> {
-        self.keystore_password_for(default_keystore_user()).await
+        self.keystore_password_for("single-user").await
     }
 
     pub async fn record_success(&self, _docs: u32, errors: u32) {
@@ -773,21 +774,12 @@ impl ServerState {
 
     #[cfg(test)]
     pub(crate) async fn keystore_expires_at_epoch(&self) -> Option<i64> {
-        self.keystore_state
-            .read()
-            .await
-            .get(default_keystore_user())
-            .and_then(|state| state.expires_at_epoch)
+        self.keystore_state.read().await.expires_at_epoch
     }
 
     #[cfg(test)]
     pub(crate) async fn keystore_failed_attempts(&self) -> u32 {
-        self.keystore_state
-            .read()
-            .await
-            .get(default_keystore_user())
-            .map(|state| state.failed_attempts)
-            .unwrap_or(0)
+        self.keystore_state.read().await.failed_attempts
     }
 
     fn notify_stats_changed(&self) {
@@ -829,7 +821,7 @@ pub(crate) fn test_server_state() -> Arc<ServerState> {
         uploads: Arc::new(RwLock::new(HashMap::new())),
         runtime_mode,
         runtime_mode_policy: RuntimeModePolicy::new(runtime_mode),
-        keystore_state: Arc::new(RwLock::new(HashMap::new())),
+        keystore_state: Arc::new(RwLock::new(KeystoreSessionState::default())),
         shutdown: watch::channel(false).1,
         event_tx: broadcast::channel(16).0,
         stats_updates_tx,
@@ -1179,8 +1171,8 @@ async fn add_client_hint_headers(mut response: Response) -> Response {
 #[cfg(test)]
 mod tests {
     use super::{
-        RuntimeMode, RuntimeModePolicy, Server, ServerEvent, ServerState, Signals, Stats,
-        receiver_stream, test_server_state,
+        KeystoreSessionState, RuntimeMode, RuntimeModePolicy, Server, ServerEvent, ServerState,
+        Signals, Stats, receiver_stream, test_server_state,
     };
     use crate::exporter::Exporter;
     use axum::http::HeaderMap;
@@ -1203,7 +1195,7 @@ mod tests {
             keys: Arc::new(RwLock::new(HashMap::new())),
             runtime_mode: mode,
             runtime_mode_policy: RuntimeModePolicy::new(mode),
-            keystore_state: Arc::new(RwLock::new(HashMap::new())),
+            keystore_state: Arc::new(RwLock::new(KeystoreSessionState::default())),
             stats: Arc::new(RwLock::new(Stats::default())),
             shutdown: watch::channel(false).1,
             event_tx: broadcast::channel(16).0,
@@ -1302,11 +1294,10 @@ mod tests {
 
         {
             let mut keystore_state = state.keystore_state.write().await;
-            let session = keystore_state.entry("Anonymous".to_string()).or_default();
-            session.locked = false;
-            session.lock_time = 1;
-            session.expires_at_epoch = Some(0);
-            session.unlocked_password = Some("pw".to_string());
+            keystore_state.locked = false;
+            keystore_state.lock_time = 1;
+            keystore_state.expires_at_epoch = Some(0);
+            keystore_state.unlocked_password = Some("pw".to_string());
         }
 
         let (locked, lock_time) = state.keystore_status().await;
@@ -1319,6 +1310,60 @@ mod tests {
             panic!("expected signal event");
         };
         assert!(payload.contains(r#""keystore":{"locked":true"#));
+    }
+
+    #[tokio::test]
+    async fn service_mode_keystore_session_remains_disabled() {
+        let state = test_state(RuntimeMode::Service);
+
+        state
+            .set_keystore_unlocked_for("alice@example.com", "pw".to_string())
+            .await;
+
+        assert_eq!(state.keystore_status_for("alice@example.com").await, (true, 0));
+        assert_eq!(state.keystore_status_for("bob@example.com").await, (true, 0));
+        assert_eq!(state.keystore_password_for("alice@example.com").await, None);
+        assert_eq!(state.keystore_password_for("bob@example.com").await, None);
+    }
+
+    #[tokio::test]
+    async fn user_mode_keystore_session_is_shared_across_request_users() {
+        let state = test_state(RuntimeMode::User);
+
+        state
+            .set_keystore_unlocked_for("alice@example.com", "pw".to_string())
+            .await;
+
+        assert!(state.is_keystore_unlocked_for("alice@example.com").await);
+        assert!(state.is_keystore_unlocked_for("bob@example.com").await);
+        assert_eq!(
+            state.keystore_password_for("bob@example.com").await,
+            Some("pw".to_string())
+        );
+
+        state
+            .set_keystore_locked_for("carol@example.com", "test")
+            .await;
+
+        assert!(!state.is_keystore_unlocked_for("alice@example.com").await);
+        assert!(!state.is_keystore_unlocked_for("bob@example.com").await);
+    }
+
+    #[tokio::test]
+    async fn touch_keystore_session_preserves_lock_transition_time() {
+        let state = test_state(RuntimeMode::User);
+
+        state.set_keystore_unlocked("pw".to_string()).await;
+        let first_lock_time = state.keystore_status().await.1;
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
+        state.touch_keystore_session().await;
+
+        assert_eq!(state.keystore_status().await.1, first_lock_time);
+        assert!(
+            state.keystore_expires_at_epoch().await.is_some(),
+            "touch should still extend the session lease"
+        );
     }
 
     #[test]

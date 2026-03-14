@@ -365,8 +365,8 @@ mod tests {
         data::{KnownHost, Settings, authenticate},
         exporter::Exporter,
         server::{
-            RuntimeMode, RuntimeModePolicy, ServerEvent, ServerState, Signals, Stats, Tab,
-            test_server_state,
+            KeystoreSessionState, RuntimeMode, RuntimeModePolicy, ServerEvent, ServerState,
+            Signals, Stats, Tab, test_server_state,
         },
     };
     use axum::{
@@ -420,7 +420,7 @@ mod tests {
             keys: Arc::new(RwLock::new(HashMap::new())),
             runtime_mode,
             runtime_mode_policy: RuntimeModePolicy::new(runtime_mode),
-            keystore_state: Arc::new(RwLock::new(HashMap::new())),
+            keystore_state: Arc::new(RwLock::new(KeystoreSessionState::default())),
             stats: Arc::new(RwLock::new(Stats::default())),
             shutdown: watch::channel(false).1,
             event_tx: broadcast::channel(16).0,
@@ -779,7 +779,7 @@ mod tests {
             .expect("expiry refreshed");
         let refreshed_lock_time = state.keystore_status().await.1;
         assert!(refreshed_expiry >= first_expiry);
-        assert!(refreshed_lock_time >= first_lock_time);
+        assert_eq!(refreshed_lock_time, first_lock_time);
     }
 
     #[tokio::test]
@@ -848,7 +848,7 @@ mod tests {
             .await
             .expect("secure output should pass once unlocked");
         let refreshed_lock_time = state.keystore_status().await.1;
-        assert!(refreshed_lock_time > first_lock_time);
+        assert_eq!(refreshed_lock_time, first_lock_time);
     }
 
     #[tokio::test]
