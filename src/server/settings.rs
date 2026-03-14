@@ -1,7 +1,7 @@
 #[cfg(feature = "keystore")]
 use super::keystore;
 use super::{ServerState, append_body_event, execute_script_event, html_event, signal_event};
-use crate::data::{KnownHost, Settings, Uri, with_scoped_keystore_password};
+use crate::data::{HostRole, KnownHost, Settings, Uri, with_scoped_keystore_password};
 use crate::exporter::Exporter;
 use crate::server::template::{self, SettingsModal};
 use askama::Template;
@@ -104,8 +104,22 @@ pub async fn update_settings(
         log::warn!("{}", err_msg);
         return settings_error_response(&state, err_msg);
     } else {
-        next_settings.active_target =
-            KnownHost::get_known(&form.target).map(|_| form.target.clone());
+        match KnownHost::get_known(&form.target) {
+            Some(host) if host.has_role(HostRole::Send) => {
+                next_settings.active_target = Some(form.target.clone());
+            }
+            Some(_) => {
+                let err_msg = format!(
+                    "Output target '{}' is not a send-capable host.",
+                    form.target
+                );
+                log::warn!("{}", err_msg);
+                return settings_error_response(&state, err_msg);
+            }
+            None => {
+                next_settings.active_target = None;
+            }
+        }
     }
 
     // 2. Process kibana URL
@@ -122,6 +136,11 @@ pub async fn update_settings(
         let keystore_password = state.keystore_password_for(&request_user).await;
 
         let next_exporter = if let Some(host) = KnownHost::get_known(&target) {
+            if !host.has_role(HostRole::Send) {
+                let err_msg = format!("Output target '{}' is not a send-capable host.", target);
+                log::warn!("{}", err_msg);
+                return settings_error_response(&state, err_msg);
+            }
             if host_requires_keystore(&host) && keystore_password.is_none() {
                 return secure_host_unlock_required_response(
                     &state,
@@ -282,7 +301,7 @@ fn render_settings_error_script(err_msg: &str) -> String {
 mod tests {
     use super::{get_modal, update_settings};
     use crate::{
-        data::{KnownHost, Product, Settings, Uri, authenticate},
+        data::{HostRole, KnownHost, Product, Settings, Uri, authenticate},
         exporter::Exporter,
         server::{RuntimeMode, RuntimeModePolicy, ServerEvent, Signals, test_server_state},
     };
@@ -339,7 +358,7 @@ mod tests {
                 apikey: None,
                 app: Product::Elasticsearch,
                 cloud_id: None,
-                roles: vec![],
+                roles: vec![HostRole::Send],
                 secret: Some("secure-es".to_string()),
                 viewer: None,
                 url: Url::parse("http://localhost:9200").expect("url"),
@@ -410,7 +429,7 @@ mod tests {
             "saved-host".to_string(),
             KnownHost::NoAuth {
                 app: Product::Elasticsearch,
-                roles: vec![],
+                roles: vec![HostRole::Send],
                 viewer: None,
                 url: Url::parse("http://localhost:9200").expect("url"),
             },
@@ -433,6 +452,39 @@ mod tests {
         };
         assert!(html.contains(r#"option value="/tmp/output" selected"#));
         assert!(html.contains("dir: /tmp/output/"));
+    }
+
+    #[tokio::test]
+    async fn collect_only_host_cannot_be_selected_as_output_target() {
+        let _guard = env_lock().lock().expect("env lock");
+        let (_tmp, _hosts_path, _keystore_path) = setup_env();
+
+        let mut hosts = BTreeMap::new();
+        hosts.insert(
+            "collector-only".to_string(),
+            KnownHost::NoAuth {
+                app: Product::Elasticsearch,
+                roles: vec![HostRole::Collect],
+                viewer: None,
+                url: Url::parse("http://localhost:9200").expect("url"),
+            },
+        );
+        write_hosts(hosts);
+
+        let state = test_server_state();
+        let mut events = state.subscribe_events();
+        let mut signals = Signals::default();
+        signals.settings.target = "collector-only".to_string();
+
+        let response = update_settings(State(state), HeaderMap::new(), ReadSignals(signals)).await;
+
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+        let event = events.try_recv().expect("settings error event");
+        let ServerEvent::ExecuteScript(script) = event else {
+            panic!("expected settings error script");
+        };
+        assert!(script.contains("collector-only"));
+        assert!(script.contains("send-capable host"));
     }
 
     #[tokio::test]

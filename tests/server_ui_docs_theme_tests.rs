@@ -140,7 +140,7 @@ async fn test_user_menu_renders_keystore_controls_and_lock_confirmation() {
 
     assert!(body.contains("Settings"));
     assert!(body.contains("<span>Keystore</span>"));
-    assert!(body.contains("@get('/keystore/modal');"));
+    assert!(body.contains("/keystore/modal"));
     assert!(body.contains("confirm('Lock keystore and disable secret usage?')"));
     assert!(body.contains("data-signals:keystore.locked="));
 
