@@ -35,7 +35,7 @@ impl Client {
         path: &str,
         body: Option<&[u8]>,
     ) -> Result<reqwest::Response> {
-        log::debug!("Request: {method} {path}");
+        tracing::debug!("Request: {method} {path}");
         match self {
             Client::Elasticsearch(client) => {
                 let method = match method {
@@ -51,7 +51,7 @@ impl Client {
                     .filter_map(|(k, v)| match (k.parse(), v.parse()) {
                         (Ok(k), Ok(v)) => Some((k, v)),
                         x => {
-                            log::warn!("Failed to parse header: {:?}", x);
+                            tracing::warn!("Failed to parse header: {:?}", x);
                             None
                         }
                     })
@@ -99,7 +99,7 @@ impl Client {
                     .json::<serde_json::Value>()
                     .await
                     .map_err(|e| format!("Failed to read test body: {e}"))?;
-                log::debug!("Test response {} ", json);
+                tracing::debug!("Test response {} ", json);
 
                 if json.get("tagline").is_some() {
                     Ok(format!("{} ✅ Elasticsearch", status))
@@ -117,7 +117,7 @@ impl Client {
                     .json::<serde_json::Value>()
                     .await
                     .map_err(|e| format!("Failed to read test body: {e}"))?;
-                log::debug!("Test response {} ", json);
+                tracing::debug!("Test response {} ", json);
                 match json.get("name") {
                     Some(name) => Ok(format!("{status} ✅ Kibana: {name}")),
                     None => Err(format!("{status} ❌ Host is not an Kibana node!")),
@@ -130,7 +130,7 @@ impl Client {
                     .json::<serde_json::Value>()
                     .await
                     .map_err(|e| format!("Failed to read test body: {e}"))?;
-                log::debug!("Test response {} ", json);
+                tracing::debug!("Test response {} ", json);
 
                 if let Some(version) = json.get("version").and_then(|v| v.as_str()) {
                     let name = json
@@ -178,19 +178,19 @@ impl Client {
                 } else {
                     match status.as_u16() {
                         401 | 403 => {
-                            log::debug!(
+                            tracing::debug!(
                                 "Security detection returned {status}. Security is enabled but access to /_xpack/usage is restricted."
                             );
                             Ok(true)
                         }
                         404 => {
-                            log::debug!(
+                            tracing::debug!(
                                 "Security detection returned 404. Assuming security is disabled or not supported."
                             );
                             Ok(false)
                         }
                         _ => {
-                            log::warn!("Failed to check security status (HTTP {status}).");
+                            tracing::warn!("Failed to check security status (HTTP {status}).");
                             Err(eyre!("Failed to check security status: HTTP {status}"))
                         }
                     }

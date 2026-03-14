@@ -147,7 +147,7 @@ pub async fn handler(
                         response
                     }
                     Err(err) => {
-                        log::error!("Template rendering error: {}", err);
+                        tracing::error!("Template rendering error: {}", err);
                         (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error").into_response()
                     }
                 }
@@ -202,7 +202,7 @@ pub async fn handler(
                     current_path,
                     html_content,
                     auth_header,
-                    debug: log::max_level() >= log::LevelFilter::Debug,
+                    debug: tracing::enabled!(tracing::Level::DEBUG),
                     desktop: cfg!(feature = "desktop"),
                     can_configure_output: state.runtime_mode_policy.allows_exporter_updates(),
                     output_options,
@@ -224,7 +224,7 @@ pub async fn handler(
                 match template.render() {
                     Ok(html) => Html(html).into_response(),
                     Err(err) => {
-                        log::error!("Template rendering error: {}", err);
+                        tracing::error!("Template rendering error: {}", err);
                         (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error").into_response()
                     }
                 }

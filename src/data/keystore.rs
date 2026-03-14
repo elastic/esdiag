@@ -272,7 +272,7 @@ pub fn authenticate(keystore_password: &str) -> Result<()> {
     if !path.is_file() {
         let store = KeystoreData::default();
         write_store(&store, keystore_password)?;
-        log::info!("Created empty keystore at {}", path.display());
+        tracing::info!("Created empty keystore at {}", path.display());
         return Ok(());
     }
 

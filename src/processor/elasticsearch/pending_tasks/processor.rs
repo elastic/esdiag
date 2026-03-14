@@ -16,7 +16,7 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for PendingTasks {
         _lookups: &Lookups,
         metadata: &ElasticsearchMetadata,
     ) -> ProcessorSummary {
-        log::debug!("processing pending tasks");
+        tracing::debug!("processing pending tasks");
         let data_stream = "metrics-task.pending-esdiag".to_string();
         let metadata = metadata.for_data_stream(&data_stream).as_meta_doc();
 
@@ -33,7 +33,7 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for PendingTasks {
             })
             .collect();
 
-        log::debug!("pending task docs: {}", pending_tasks.len());
+        tracing::debug!("pending task docs: {}", pending_tasks.len());
 
         let mut summary = match pending_tasks.is_empty() {
             false => ProcessorSummary::new(data_stream.clone()),
@@ -41,7 +41,7 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for PendingTasks {
         };
         match exporter.send(data_stream, pending_tasks).await {
             Ok(batch) => summary.add_batch(batch),
-            Err(err) => log::error!("Failed to send pending tasks: {}", err),
+            Err(err) => tracing::error!("Failed to send pending tasks: {}", err),
         }
         summary
     }

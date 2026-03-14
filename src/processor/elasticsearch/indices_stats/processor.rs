@@ -59,12 +59,12 @@ async fn process_index(
                 IndexStatsDocument::new(stats, ctx.index_metadata.clone()).calculate();
             let write_phase_sec = index_document.index.write_phase_sec;
             if (ctx.index_tx.send(index_document).await).is_err() {
-                log::warn!("Index channel closed unexpectedly");
+                tracing::warn!("Index channel closed unexpectedly");
             }
             write_phase_sec
         }
         Err(_) => {
-            log::warn!("Failed to create index document");
+            tracing::warn!("Failed to create index document");
             None
         }
     };
@@ -83,13 +83,13 @@ async fn process_index(
             Ok(docs) => {
                 for doc in docs {
                     if (ctx.shard_tx.send(doc).await).is_err() {
-                        log::warn!("Shard channel closed unexpectedly");
+                        tracing::warn!("Shard channel closed unexpectedly");
                         break;
                     }
                 }
             }
             Err(err) => {
-                log::warn!("Failed to create shard documents: {}", err);
+                tracing::warn!("Failed to create shard documents: {}", err);
             }
         }
     }
@@ -102,7 +102,7 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for IndicesStats {
         lookups: &Lookups,
         metadata: &ElasticsearchMetadata,
     ) -> ProcessorSummary {
-        log::debug!("index_stats indices: {}", self.indices.len());
+        tracing::debug!("index_stats indices: {}", self.indices.len());
         let stream = futures::stream::iter(self.indices.into_iter().map(Ok));
         Self::documents_export_stream(Box::pin(stream), exporter, lookups, metadata).await
     }
@@ -115,7 +115,7 @@ impl StreamingDocumentExporter<Lookups, ElasticsearchMetadata> for IndicesStats 
         lookups: &Lookups,
         metadata: &ElasticsearchMetadata,
     ) -> ProcessorSummary {
-        log::debug!("Processing indices_stats stream");
+        tracing::debug!("Processing indices_stats stream");
         let data_stream_name = "metrics-index-esdiag".to_string();
         let index_metadata = metadata.for_data_stream(&data_stream_name);
         let shard_metadata = metadata.for_data_stream("metrics-shard-esdiag");
@@ -153,7 +153,7 @@ impl StreamingDocumentExporter<Lookups, ElasticsearchMetadata> for IndicesStats 
                     process_index(index_name, index_stats, &ctx).await;
                 }
                 Err(e) => {
-                    log::error!("Error reading from indices stats stream: {}", e);
+                    tracing::error!("Error reading from indices stats stream: {}", e);
                 }
             }
         }
@@ -168,7 +168,7 @@ impl StreamingDocumentExporter<Lookups, ElasticsearchMetadata> for IndicesStats 
         summary.merge(index_result.map_err(|err| eyre::Report::new(err)));
         summary.merge(shard_result.map_err(|err| eyre::Report::new(err)));
 
-        log::debug!("indices_stats stream processed: {}", summary.docs);
+        tracing::debug!("indices_stats stream processed: {}", summary.docs);
         summary
     }
 }
@@ -198,7 +198,7 @@ fn extract_shard_documents(
                             )
                         }
                         Err(err) => {
-                            log::warn!(
+                            tracing::warn!(
                                 "Failed to parse shard stats for index {}, shard {}: {}",
                                 &index_name,
                                 number,

@@ -30,7 +30,7 @@ struct TempFileCleanup {
 impl Drop for TempFileCleanup {
     fn drop(&mut self) {
         if let Err(err) = std::fs::remove_file(&self.path) {
-            log::debug!(
+            tracing::debug!(
                 "Failed to remove temp upload file {}: {}",
                 self.path.display(),
                 err
@@ -95,7 +95,7 @@ pub async fn submit(
                     tokio::spawn(async move {
                         tokio::time::sleep(tokio::time::Duration::from_secs(300)).await;
                         if state_clone.pop_upload(job_id).await.is_some() {
-                            log::warn!(
+                            tracing::warn!(
                                 "Upload job {} was never processed and was removed from state to free memory",
                                 job_id
                             );
@@ -104,7 +104,7 @@ pub async fn submit(
                 }
                 Err(e) => {
                     let error_msg = format!("Failed to read upload data: {}", e);
-                    log::error!("{}", error_msg);
+                    tracing::error!("{}", error_msg);
                     state.record_failure().await;
                     return (
                         StatusCode::BAD_REQUEST,
@@ -234,7 +234,7 @@ async fn run_upload_job(
         std::env::temp_dir().join(format!("esdiag-upload-{job_id}-{}.zip", Uuid::new_v4()));
     if let Err(e) = std::fs::write(&temp_upload_path, &data) {
         let error = format!("Failed to write temp upload file: {}", e);
-        log::error!("{}", error);
+        tracing::error!("{}", error);
         send_event(
             &tx,
             template_event(template::JobFailed {
@@ -256,7 +256,7 @@ async fn run_upload_job(
         Ok(receiver) => Arc::new(receiver),
         Err(e) => {
             let error = format!("Failed to create receiver: {}", e);
-            log::error!("{}", error);
+            tracing::error!("{}", error);
             send_event(
                 &tx,
                 template_event(template::JobFailed {

@@ -24,7 +24,7 @@ pub async fn extract(
         let recording_raw = match serde_json::value::to_raw_value(&recording) {
             Ok(raw) => raw,
             Err(err) => {
-                log::warn!("Skipping malformed cluster applier recording: {}", err);
+                tracing::warn!("Skipping malformed cluster applier recording: {}", err);
                 return None;
             }
         };

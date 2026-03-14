@@ -11,7 +11,7 @@ impl From<&String> for Lookup<DataStreamDocument> {
         match serde_json::from_str::<DataStreams>(string) {
             Ok(data_streams) => Lookup::<DataStreamDocument>::from_parsed(data_streams),
             Err(e) => {
-                log::warn!("Failed to parse DataStreams: {}", e);
+                tracing::warn!("Failed to parse DataStreams: {}", e);
                 Lookup::new()
             }
         }
@@ -56,7 +56,7 @@ impl From<DataStreams> for Lookup<DataStreamDocument> {
                 }
             });
 
-        log::debug!("lookup data_stream entries: {}", lookup.len(),);
+        tracing::debug!("lookup data_stream entries: {}", lookup.len(),);
         lookup
     }
 }
@@ -66,7 +66,7 @@ impl From<Result<DataStreams>> for Lookup<DataStreamDocument> {
         match data_streams {
             Ok(data_streams) => Lookup::<DataStreamDocument>::from_parsed(data_streams),
             Err(e) => {
-                log::warn!("Failed to parse DataStreams: {}", e);
+                tracing::warn!("Failed to parse DataStreams: {}", e);
                 Lookup::new()
             }
         }

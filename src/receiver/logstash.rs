@@ -27,7 +27,7 @@ impl LogstashReceiver {
     pub async fn get_version(&self) -> Result<&semver::Version> {
         self.version
             .get_or_try_init(|| async {
-                log::debug!("Fetching Logstash version from {}", self.url);
+                tracing::debug!("Fetching Logstash version from {}", self.url);
                 let response = self
                     .client
                     .request(Method::GET, &HashMap::new(), "/", None)
@@ -44,7 +44,7 @@ impl LogstashReceiver {
     }
 
     pub async fn get_raw_by_path(&self, path: &str, extension: &str) -> Result<String> {
-        log::debug!("Getting raw Logstash API path: {}", path);
+        tracing::debug!("Getting raw Logstash API path: {}", path);
 
         let accept = if extension == ".txt" {
             "text/plain"
@@ -81,7 +81,7 @@ impl Receive for LogstashReceiver {
     }
 
     async fn is_connected(&self) -> bool {
-        log::debug!("Testing Logstash receiver connection");
+        tracing::debug!("Testing Logstash receiver connection");
         self.client.test_connection().await.is_ok()
     }
 
@@ -95,7 +95,7 @@ impl Receive for LogstashReceiver {
     {
         let ctx = SourceContext::new("logstash", self.get_version().await.ok().cloned());
         let path = T::resolve_source_request_path(&ctx)?;
-        log::debug!("Getting Logstash API: {}", &path);
+        tracing::debug!("Getting Logstash API: {}", &path);
 
         let response = self
             .client
@@ -106,7 +106,7 @@ impl Receive for LogstashReceiver {
             reqwest::StatusCode::OK => response.json::<T>().await.map_err(Into::into),
             status => {
                 let body = response.text().await.unwrap_or_default();
-                log::debug!("Failed to get Logstash API response: {}", body);
+                tracing::debug!("Failed to get Logstash API response: {}", body);
                 Err(eyre!("http {} - {}", status, body))
             }
         }

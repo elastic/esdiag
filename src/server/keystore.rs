@@ -71,7 +71,7 @@ fn migration_needed() -> bool {
     match KnownHost::parse_hosts_yml() {
         Ok(hosts) => hosts.values().any(KnownHost::has_legacy_secret),
         Err(err) => {
-            log::warn!(
+            tracing::warn!(
                 "Unable to inspect hosts.yml for plaintext secret migration: {}",
                 err
             );
@@ -168,7 +168,7 @@ pub async fn bootstrap(
         state.publish_event(signal_event(
             json!({ "message": format!("Failed to initialize keystore: {err}") }).to_string(),
         ));
-        log::error!("Keystore bootstrap failed: {}", err);
+        tracing::error!("Keystore bootstrap failed: {}", err);
         return axum::http::StatusCode::INTERNAL_SERVER_ERROR.into_response();
     }
 
@@ -176,7 +176,7 @@ pub async fn bootstrap(
         state.publish_event(signal_event(
             json!({ "message": format!("Failed to migrate hosts to keystore: {err}") }).to_string(),
         ));
-        log::error!("Keystore migration failed: {}", err);
+        tracing::error!("Keystore migration failed: {}", err);
         return axum::http::StatusCode::INTERNAL_SERVER_ERROR.into_response();
     }
 
@@ -241,7 +241,7 @@ pub async fn unlock(
             state.publish_event(signal_event(
                 r#"{"keystore":{"password":"","invalid":true}}"#,
             ));
-            log::warn!("Keystore unlock failed: {}", err);
+            tracing::warn!("Keystore unlock failed: {}", err);
             axum::http::StatusCode::UNAUTHORIZED.into_response()
         }
     }
@@ -304,7 +304,7 @@ pub async fn unlock_and_run(
             state.publish_event(signal_event(
                 r#"{"keystore":{"password":"","invalid":true}}"#,
             ));
-            log::warn!("Keystore unlock-and-run failed: {}", err);
+            tracing::warn!("Keystore unlock-and-run failed: {}", err);
             axum::http::StatusCode::NO_CONTENT.into_response()
         }
     }

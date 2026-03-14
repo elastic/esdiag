@@ -97,11 +97,11 @@ impl KibanaCollector {
                 Ok(success) => return success,
                 Err(e) => {
                     if !should_retry_kibana_error(&e) {
-                        log::warn!("Skipping non-retriable failure for {}: {}", api.as_str(), e);
+                        tracing::warn!("Skipping non-retriable failure for {}: {}", api.as_str(), e);
                         return 0;
                     }
                     if start_time.elapsed() > max_duration {
-                        log::error!(
+                        tracing::error!(
                             "Failed to save {} after {} attempts (5 min timeout): {}",
                             api.as_str(),
                             attempt,
@@ -109,7 +109,7 @@ impl KibanaCollector {
                         );
                         return 0;
                     }
-                    log::warn!(
+                    tracing::warn!(
                         "Attempt {} failed for {}: {}. Retrying in {:?}...",
                         attempt,
                         api.as_str(),
@@ -136,7 +136,7 @@ impl KibanaCollector {
         ) {
             Ok((_, conf)) => conf,
             Err(e) => {
-                log::debug!("Skipping {} collection: {}", api.as_str(), e);
+                tracing::debug!("Skipping {} collection: {}", api.as_str(), e);
                 return Ok(0);
             }
         };
@@ -145,7 +145,7 @@ impl KibanaCollector {
         let resolved = match source_conf.resolve_version(version) {
             Ok(resolved) => resolved,
             Err(e) => {
-                log::debug!(
+                tracing::debug!(
                     "Skipping {} collection on version {}: {}",
                     api.as_str(),
                     version,
@@ -160,7 +160,7 @@ impl KibanaCollector {
                 Ok(spaces) if !spaces.is_empty() => spaces.clone(),
                 Ok(_) => vec!["default".to_string()],
                 Err(err) => {
-                    log::warn!(
+                    tracing::warn!(
                         "Failed to resolve Kibana spaces for {}: {}. Falling back to default space.",
                         api.as_str(),
                         err
@@ -273,11 +273,11 @@ impl KibanaCollector {
 
         match self.exporter.save(file_path, content).await {
             Ok(()) => {
-                log::info!("Saved {filename}");
+                tracing::info!("Saved {filename}");
                 Ok(1)
             }
             Err(e) => {
-                log::error!("Failed to save {filename}: {e}");
+                tracing::error!("Failed to save {filename}: {e}");
                 Ok(0)
             }
         }
@@ -309,7 +309,7 @@ impl KibanaCollector {
         let filename = format!("{}", path.display());
         let content = serde_json::to_string_pretty(&manifest)?;
         self.exporter.save(path, content).await?;
-        log::info!("Saved {filename}");
+        tracing::info!("Saved {filename}");
         Ok(1)
     }
 }

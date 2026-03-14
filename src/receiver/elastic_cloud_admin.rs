@@ -46,7 +46,7 @@ impl ElasticCloudAdminReceiver {
     pub async fn get_version(&self) -> Result<&semver::Version> {
         self.version
             .get_or_try_init(|| async {
-                log::debug!("Fetching version from {}", self.url);
+                tracing::debug!("Fetching version from {}", self.url);
                 let url = self.url.join(&format!("{}/", self.url.path()))?;
                 let response = self.client.get(url).send().await?;
                 let bytes = response.bytes().await?;
@@ -81,7 +81,7 @@ impl Receive for ElasticCloudAdminReceiver {
     }
 
     async fn is_connected(&self) -> bool {
-        log::debug!(
+        tracing::debug!(
             "Testing Elastic Cloud Admin connection to {}",
             self.url.as_str()
         );
@@ -90,11 +90,11 @@ impl Receive for ElasticCloudAdminReceiver {
 
         match response {
             Ok(response) => {
-                log::debug!("Elastic Cloud connection successful: {}", response.status());
+                tracing::debug!("Elastic Cloud connection successful: {}", response.status());
                 true
             }
             Err(e) => {
-                log::error!("Elastic Cloud connection failed: {e}");
+                tracing::error!("Elastic Cloud connection failed: {e}");
                 false
             }
         }
@@ -116,10 +116,10 @@ impl Receive for ElasticCloudAdminReceiver {
             _ => format!("{}/{}", self.url.path(), source_path),
         };
         let url = self.url.join(&path)?;
-        log::debug!("Getting API: {}", url);
+        tracing::debug!("Getting API: {}", url);
         let response = self.client.get(url).send().await?;
 
-        log::debug!("Get Response: {:?}", response);
+        tracing::debug!("Get Response: {:?}", response);
 
         let bytes = response.bytes().await?;
         serde_json::from_slice(&bytes).map_err(Into::into)
@@ -127,7 +127,7 @@ impl Receive for ElasticCloudAdminReceiver {
 
     async fn try_get_manifest(&self) -> Result<DiagnosticManifest> {
         let collection_date = chrono::Utc::now().to_rfc3339();
-        log::info!("Creating diagnostic manifest with collection date {collection_date}");
+        tracing::info!("Creating diagnostic manifest with collection date {collection_date}");
         let cluster = self.get::<ElasticsearchCluster>().await?;
         let manifest = ManifestBuilder::from(cluster)
             .runner("esdiag")
@@ -150,7 +150,7 @@ impl ReceiveRaw for ElasticCloudAdminReceiver {
             _ => format!("{}/{}", self.url.path(), source_path),
         };
         let url = self.url.join(&path)?;
-        log::debug!("Getting API: {}", url);
+        tracing::debug!("Getting API: {}", url);
         let response = self.client.get(url).send().await?;
 
         // Return raw text

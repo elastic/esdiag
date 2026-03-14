@@ -65,7 +65,7 @@ pub async fn handler(
     let (auth_header, user_email) = match state.resolve_user_email(&headers) {
         Ok(result) => result,
         Err(err) => {
-            log::warn!("Authentication header validation failed: {err}");
+            tracing::warn!("Authentication header validation failed: {err}");
             return (
                 StatusCode::UNAUTHORIZED,
                 Html(format!(
@@ -114,7 +114,7 @@ pub async fn handler(
     let show_keystore_bootstrap = can_use_keystore && !keystore_exists().unwrap_or(false);
     let index_html = template::Index {
         auth_header,
-        debug: log::max_level() >= log::LevelFilter::Debug,
+        debug: tracing::enabled!(tracing::Level::DEBUG),
         desktop: cfg!(feature = "desktop"),
         can_configure_output: state.runtime_mode_policy.allows_exporter_updates(),
         output_options,

@@ -378,7 +378,7 @@ impl ProcessorSummary {
                 self.doc_errors += other.doc_errors;
             }
             Err(err) => {
-                log::warn!("processor summary was err: {}", err);
+                tracing::warn!("processor summary was err: {}", err);
             }
         }
     }

@@ -52,7 +52,7 @@ impl DiagnosticProcessor for KubernetesPlatformDiagnostic {
 
     async fn process(self, _summary_tx: mpsc::Sender<ProcessorSummary>) -> Result<()> {
         self.receiver.is_connected().await;
-        log::warn!("Kubernetes Platform diagnostics only process included Elasticsearch bundles");
+        tracing::warn!("Kubernetes Platform diagnostics only process included Elasticsearch bundles");
         Ok(())
     }
 

@@ -19,7 +19,7 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for Nodes {
         metadata: &ElasticsearchMetadata,
     ) -> ProcessorSummary {
         let mut nodes = self.nodes;
-        log::debug!("nodes: {}", nodes.len());
+        tracing::debug!("nodes: {}", nodes.len());
         let data_stream = "settings-node-esdiag".to_string();
         let lookup_node = &lookups.node;
         let metadata = metadata.for_data_stream(&data_stream);
@@ -35,7 +35,7 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for Nodes {
                 let mut node_doc = match serde_json::to_value(node_doc.clone().with_node(node)) {
                     Ok(doc) => doc,
                     Err(err) => {
-                        log::error!("Failed to serialize node document for {}: {}", node_id, err);
+                        tracing::error!("Failed to serialize node document for {}: {}", node_id, err);
                         return None;
                     }
                 };
@@ -53,11 +53,11 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for Nodes {
             })
             .collect();
 
-        log::debug!("node docs: {}", node_docs.len());
+        tracing::debug!("node docs: {}", node_docs.len());
         let mut summary = ProcessorSummary::new(data_stream.clone());
         match exporter.send(data_stream, node_docs).await {
             Ok(batch) => summary.add_batch(batch),
-            Err(err) => log::error!("Failed to send nodes: {}", err),
+            Err(err) => tracing::error!("Failed to send nodes: {}", err),
         }
         summary
     }

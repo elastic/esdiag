@@ -16,7 +16,7 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for HealthReport {
         _lookups: &Lookups,
         metadata: &ElasticsearchMetadata,
     ) -> ProcessorSummary {
-        log::debug!("processing pending tasks");
+        tracing::debug!("processing pending tasks");
         let metadata_indicator = metadata
             .for_data_stream("health-indicator-esdiag")
             .as_meta_doc();
@@ -74,14 +74,14 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for HealthReport {
             })
             .collect();
 
-        log::debug!("Health report docs: {}", health_docs.len());
+        tracing::debug!("Health report docs: {}", health_docs.len());
         let mut summary = ProcessorSummary::new("health-indicator-esdiag".to_string());
         match exporter
             .send("health-indicator-esdiag".to_string(), health_docs)
             .await
         {
             Ok(batch) => summary.add_batch(batch),
-            Err(err) => log::error!("Failed to send health report: {}", err),
+            Err(err) => tracing::error!("Failed to send health report: {}", err),
         }
         summary
     }
