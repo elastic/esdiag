@@ -627,6 +627,7 @@ async fn collect_remote_archive(
     let collector = Collector::try_new(
         receiver,
         exporter,
+        host.app().clone(),
         diagnostic_type.to_string(),
         None,
         None,
@@ -836,6 +837,7 @@ mod tests {
             workflow_jobs: Arc::new(RwLock::new(HashMap::new())),
             runtime_mode: mode,
             runtime_mode_policy: RuntimeModePolicy::new(mode),
+            keystore_state: Arc::new(RwLock::new(HashMap::new())),
             stats: Arc::new(RwLock::new(Stats::default())),
             shutdown: watch::channel(false).1,
             event_tx: broadcast::channel::<ServerEvent>(8).0,

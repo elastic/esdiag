@@ -374,7 +374,6 @@ mod tests {
         http::{HeaderMap, StatusCode},
         response::IntoResponse,
     };
-    use bytes::Bytes;
     use datastar::axum::ReadSignals;
     use std::{
         collections::{BTreeMap, HashMap},
@@ -415,9 +414,7 @@ mod tests {
             exporter: Arc::new(RwLock::new(Exporter::default())),
             kibana_url: Arc::new(RwLock::new(String::new())),
             signals: Arc::new(RwLock::new(Signals::default())),
-            uploads: Arc::new(RwLock::new(HashMap::<u64, (String, Bytes)>::new())),
-            links: Arc::new(RwLock::new(HashMap::new())),
-            keys: Arc::new(RwLock::new(HashMap::new())),
+            workflow_jobs: Arc::new(RwLock::new(HashMap::new())),
             runtime_mode,
             runtime_mode_policy: RuntimeModePolicy::new(runtime_mode),
             keystore_state: Arc::new(RwLock::new(KeystoreSessionState::default())),

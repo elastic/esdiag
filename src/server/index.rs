@@ -3,7 +3,7 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::{ServerState, get_theme_dark, template};
-use crate::data::{HostRole, KnownHost};
+use crate::data::{HostRole, KnownHost, keystore_exists};
 use crate::exporter::Exporter;
 use crate::processor::api::ApiResolver;
 use askama::Template;

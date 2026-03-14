@@ -10,6 +10,8 @@ mod file_upload;
 #[cfg(feature = "keystore")]
 mod hosts;
 mod index;
+#[cfg(feature = "keystore")]
+mod keystore;
 mod known_host;
 mod service_link;
 mod settings;
@@ -34,6 +36,8 @@ use axum::{
         header::{HeaderName, VARY},
     },
     middleware,
+    middleware::Next,
+    response::IntoResponse,
     response::sse::Event,
     response::{Response, Sse},
     routing::{get, patch, post},
@@ -45,6 +49,7 @@ use eyre::Result;
 use eyre::eyre;
 use futures::stream;
 use serde::{Deserialize, Serialize};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::{collections::HashMap, convert::Infallible, net::SocketAddr, path::PathBuf, sync::Arc};
 use tokio::sync::{RwLock, broadcast, mpsc, watch};
 
@@ -967,6 +972,24 @@ impl Default for Signals {
             tab: Tab::FileUpload,
         }
     }
+}
+
+#[derive(Clone, Debug, Deserialize, Default)]
+pub struct KeystoreSignals {
+    #[serde(default)]
+    pub password: String,
+    #[serde(default)]
+    pub invalid: bool,
+    #[serde(default)]
+    pub confirm: bool,
+    #[serde(default = "default_keystore_locked")]
+    pub locked: bool,
+    #[serde(default)]
+    pub lock_time: i64,
+}
+
+fn default_keystore_locked() -> bool {
+    true
 }
 
 #[derive(Clone, Default, Deserialize, Serialize)]

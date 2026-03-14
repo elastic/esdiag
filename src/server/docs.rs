@@ -3,7 +3,6 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use crate::embeds::DocsAssets;
-use crate::server::template::FooterOutputOption;
 use askama::Template;
 use axum::{
     extract::Path,
@@ -159,6 +158,10 @@ pub async fn handler(
                     .next()
                     .unwrap_or('_')
                     .to_ascii_uppercase();
+                let (keystore_locked, keystore_lock_time) =
+                    state.keystore_status_for(&user_email).await;
+                let can_use_keystore = cfg!(feature = "keystore")
+                    && state.runtime_mode_policy.allows_local_artifacts();
 
                 let template = DocsTemplate {
                     nav_root_items,

@@ -148,31 +148,10 @@ pub async fn page(State(state): State<Arc<ServerState>>, headers: HeaderMap) -> 
             format!("<panel id=\"clusters-table-panel\"><div>Error: {err}</div></panel>")
         });
 
-    let hosts_by_name = KnownHost::parse_hosts_yml().unwrap_or_default();
-    let exporter = state.exporter.read().await.clone();
-    let preferred_target = if state.runtime_mode_policy.allows_local_artifacts() {
-        Settings::load()
-            .ok()
-            .and_then(|settings| settings.active_target)
-    } else {
-        None
-    };
-    let (output_options, selected_output, exporter_label) = template::build_footer_output_context(
-        &hosts_by_name,
-        &exporter,
-        preferred_target.as_deref(),
-    );
-    let active_output_secure =
-        template::active_output_requires_keystore(&hosts_by_name, &selected_output, &exporter);
     let page = template::HostsPage {
         auth_header,
         debug: tracing::enabled!(tracing::Level::DEBUG),
         desktop: cfg!(feature = "desktop"),
-        can_configure_output: state.runtime_mode_policy.allows_exporter_updates(),
-        output_options,
-        selected_output,
-        exporter_label,
-        active_output_secure,
         kibana_url: state.kibana_url.read().await.clone(),
         stats: state.get_stats_as_signals().await,
         user: user_email,

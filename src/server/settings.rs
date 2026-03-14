@@ -1,5 +1,7 @@
-use super::{ServerState, append_body_event, html_event, prepend_selector_event};
-use crate::data::{KnownHost, KnownHostBuilder, Settings, Uri};
+#[cfg(feature = "keystore")]
+use super::keystore;
+use super::{ServerState, append_body_event, execute_script_event, html_event, signal_event};
+use crate::data::{KnownHost, Settings, Uri, with_scoped_keystore_password};
 use crate::exporter::Exporter;
 use crate::server::template::{self, SettingsModal};
 use askama::Template;
@@ -128,17 +130,12 @@ pub async fn update_settings(
     let mut validated_exporter = None;
 
     // 3. Validate and update the active Exporter in ServerState (user mode only)
-    if state.runtime_mode_policy.allows_exporter_updates() && target_changed {
+    if state.runtime_mode_policy.allows_exporter_updates() {
+        let target = form.target.clone();
         let current_exporter = state.exporter.read().await.clone();
         let keystore_password = state.keystore_password_for(&request_user).await;
 
         let next_exporter = if let Some(host) = KnownHost::get_known(&target) {
-            if !host.has_role(HostRole::Send) {
-                let err_msg = format!("Output target '{}' is not a send-capable host.", target);
-                tracing::warn!("{}", err_msg);
-                return settings_error_response(&state, prior_active_target.as_deref(), err_msg)
-                    .await;
-            }
             if host_requires_keystore(&host) && keystore_password.is_none() {
                 return secure_host_unlock_required_response(
                     &state,

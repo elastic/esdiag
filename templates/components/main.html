@@ -951,4 +951,7 @@
             renderProcessOptions();
         });
     </script>
+    {% if show_keystore_bootstrap %}
+    <div id="keystore-bootstrap-init" data-init="@get('/keystore/bootstrap-modal')"></div>
+    {% endif %}
 </content>

@@ -24,3 +24,11 @@ pub mod server;
 pub mod setup;
 /// Upload raw diagnostic archives to Elastic Upload Service
 pub mod uploader;
+
+#[cfg(test)]
+pub(crate) fn test_env_lock() -> &'static std::sync::Mutex<()> {
+    use std::sync::{Mutex, OnceLock};
+
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}

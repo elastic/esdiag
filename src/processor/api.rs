@@ -585,7 +585,12 @@ impl ApiResolver {
             "logstash" => {
                 let selected = Self::resolve_ls(diag_type, None, None)?
                     .into_iter()
-                    .map(|api| api.as_str().to_string())
+                    .map(|api| {
+                        api.as_str()
+                            .strip_prefix("logstash_")
+                            .unwrap_or(api.as_str())
+                            .to_string()
+                    })
                     .filter(|key| Self::ls_processing_defs().iter().any(|def| def.key == key))
                     .collect();
                 Ok(selected)
