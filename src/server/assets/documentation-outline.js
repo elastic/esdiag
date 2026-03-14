@@ -377,22 +377,18 @@ class DocumentationOutline extends HTMLElement {
 
     const header = document.querySelector("header");
     const headerBottom = header ? header.getBoundingClientRect().bottom : 52;
-    const goingUp = window.scrollY < this._lastScrollY;
-    let index = Math.max(0, Math.min(maxIndex, this._activeIndex));
-
     const headingTop = (idx) => {
       const id = this._flatNodes[idx]?.id;
       const heading = id ? this._headingById.get(id) : null;
       return heading ? heading.getBoundingClientRect().top : Number.POSITIVE_INFINITY;
     };
+    let index = 0;
 
-    if (goingUp) {
-      if (index > 0 && headingTop(index - 1) >= headerBottom) {
-        index -= 1;
-      }
-    } else {
-      if (index < maxIndex && headingTop(index + 1) <= headerBottom) {
-        index += 1;
+    for (let idx = 0; idx <= maxIndex; idx += 1) {
+      if (headingTop(idx) <= headerBottom) {
+        index = idx;
+      } else {
+        break;
       }
     }
 

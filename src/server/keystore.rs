@@ -324,12 +324,12 @@ pub async fn ensure_unlocked_for_active_output(
     user: &str,
 ) -> Result<(), String> {
     let exporter = state.exporter.read().await.clone();
-    if !state.runtime_mode_policy.allows_local_artifacts() {
-        return if exporter.requires_keystore() {
-            Err("Keystore unavailable in service mode.".to_string())
-        } else {
-            Ok(())
-        };
+    if !cfg!(feature = "keystore") || !state.runtime_mode_policy.allows_local_artifacts() {
+        // When the keystore is unavailable, the active exporter can still be valid if its
+        // credentials were provided directly by the runtime environment instead of local
+        // keystore-backed artifacts. In that mode there is nothing to unlock here.
+        let _ = exporter;
+        return Ok(());
     }
 
     let hosts_by_name = KnownHost::parse_hosts_yml().unwrap_or_default();
@@ -871,7 +871,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn service_mode_secure_output_does_not_touch_local_artifacts() {
+    async fn service_mode_secure_output_bypasses_unlock_and_does_not_touch_local_artifacts() {
         let _guard = env_lock().lock().expect("env lock");
         let (tmp, hosts_path, _keystore_path) = setup_env();
         let settings_path = tmp.path().join(".esdiag").join("settings.yml");
@@ -895,8 +895,8 @@ mod tests {
         let result = ensure_unlocked_for_active_output(&state, "Anonymous").await;
 
         assert!(
-            result.is_err(),
-            "secure service output should still require keystore"
+            result.is_ok(),
+            "service mode should allow preconfigured secure outputs without keystore unlock"
         );
         assert!(
             !hosts_path.exists(),

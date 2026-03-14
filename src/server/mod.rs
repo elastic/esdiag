@@ -542,7 +542,9 @@ impl ServerState {
 
     pub async fn set_keystore_unlocked_for(&self, user: &str, password: String) {
         if !self.can_use_keystore_session() {
-            log::warn!("Ignoring keystore unlock because keystore is unavailable in this runtime mode");
+            log::warn!(
+                "Ignoring keystore unlock because keystore is unavailable in this runtime mode"
+            );
             return;
         }
         let mut state = self.keystore_state.write().await;
@@ -559,7 +561,8 @@ impl ServerState {
     }
 
     pub async fn set_keystore_unlocked(&self, password: String) {
-        self.set_keystore_unlocked_for("single-user", password).await
+        self.set_keystore_unlocked_for("single-user", password)
+            .await
     }
 
     pub async fn set_keystore_locked_for(&self, user: &str, reason: &str) {
@@ -785,6 +788,21 @@ impl ServerState {
     fn notify_stats_changed(&self) {
         let next = *self.stats_updates_tx.borrow() + 1;
         let _ = self.stats_updates_tx.send(next);
+    }
+}
+
+pub async fn ensure_active_output_ready(
+    state: &Arc<ServerState>,
+    user: &str,
+) -> Result<(), String> {
+    #[cfg(feature = "keystore")]
+    {
+        keystore::ensure_unlocked_for_active_output(state, user).await
+    }
+    #[cfg(not(feature = "keystore"))]
+    {
+        let _ = (state, user);
+        Ok(())
     }
 }
 
@@ -1320,8 +1338,14 @@ mod tests {
             .set_keystore_unlocked_for("alice@example.com", "pw".to_string())
             .await;
 
-        assert_eq!(state.keystore_status_for("alice@example.com").await, (true, 0));
-        assert_eq!(state.keystore_status_for("bob@example.com").await, (true, 0));
+        assert_eq!(
+            state.keystore_status_for("alice@example.com").await,
+            (true, 0)
+        );
+        assert_eq!(
+            state.keystore_status_for("bob@example.com").await,
+            (true, 0)
+        );
         assert_eq!(state.keystore_password_for("alice@example.com").await, None);
         assert_eq!(state.keystore_password_for("bob@example.com").await, None);
     }
