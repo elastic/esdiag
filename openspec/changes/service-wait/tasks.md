@@ -9,11 +9,11 @@
 
 - [x] 2.1 Fix `docs/api/types.md`: rename `kibana_url` → `kibana_link` in the ApiKey Response (Synchronous) section
 - [x] 2.2 Fix `docs/api/types.md`: change `link_id` field type description from `String` to `Integer`
-- [x] 2.3 Fix `docs/api/types.md`: change `case_number` type in `ApiKeyRequest` JSON example from `"string | null"` to `"number | null"` to match `Identifiers`
+- [x] 2.3 Fix `docs/api/types.md`: correct `case_number` type to `"string | null"` in all locations (matches `Option<String>` in `Identifiers`)
 - [x] 2.4 Fix `docs/api/types.md`: change file size limit from `512 GiB` to `512 MiB`
 - [x] 2.5 Fix `docs/api/types.md`: clarify HTTP 201 status code description to cover both `/api/service_link` and `/api/api_key` (async)
 - [x] 2.6 Fix `docs/api/examples.md`: remove trailing comma after `"opportunity": null,` in the `service_link` request example
-- [x] 2.7 Fix `docs/api/examples.md`: change `case_number` value from string `"98765"` to number `98765` in all examples
+- [x] 2.7 Fix `docs/api/examples.md`: correct `case_number` examples to use quoted strings (e.g. `"98765"`) matching `Option<String>` type
 - [x] 2.8 Fix `docs/api/examples.md`: change `link_id` in workflow response example from string `"45678"` to integer `456789`
 - [x] 2.9 Fix `docs/api/examples.md`: rename `kibana_url` → `kibana_link` in all synchronous response examples
 - [x] 2.10 Fix `docs/api/README.md`: remove broken reference to non-existent `endpoints.md`

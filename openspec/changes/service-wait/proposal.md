@@ -6,8 +6,8 @@ The `/api/service_link` endpoint only supports asynchronous processing, requirin
 
 - **`/api/service_link`**: Accept a `?wait_for_completion` query parameter (same semantics as `/api/api_key`). When `true`, process the service link synchronously and return `diagnostic_id`, `kibana_link`, and `took`. When `false` or absent, preserve current async behavior returning `link_id`.
 - **`docs/api/README.md`**: Remove broken reference to non-existent `endpoints.md`; document `wait_for_completion` for `service_link`.
-- **`docs/api/types.md`**: Fix `kibana_url` → `kibana_link` (matches actual response field); fix `link_id` type `String` → `Integer`; fix `case_number` type in `ApiKeyRequest` example (`string` → `number`); fix file size limit `512 GiB` → `512 MiB`; clarify 201/200 status code usage.
-- **`docs/api/examples.md`**: Fix trailing comma in `service_link` JSON example (invalid JSON); fix `case_number` as string `"98765"` → number `98765`; fix `link_id` shown as string `"45678"` → integer `456789`; rename `kibana_url` → `kibana_link` in response examples; add synchronous `service_link` examples.
+- **`docs/api/types.md`**: Fix `kibana_url` → `kibana_link` (matches actual response field); fix `link_id` type `String` → `Integer`; fix `case_number` type to `string | null` (matches `Option<String>` in `Identifiers`); fix file size limit `512 GiB` → `512 MiB`; clarify 201/200 status code usage.
+- **`docs/api/examples.md`**: Fix trailing comma in `service_link` JSON example (invalid JSON); fix `case_number` examples to use quoted strings (matches `Option<String>` type); fix `link_id` shown as string `"45678"` → integer `456789`; rename `kibana_url` → `kibana_link` in response examples; add synchronous `service_link` examples.
 
 ## Capabilities
 

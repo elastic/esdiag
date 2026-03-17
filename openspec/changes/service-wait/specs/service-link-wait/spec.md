@@ -47,7 +47,7 @@ The API documentation in `docs/api/` SHALL accurately reflect the implemented en
 
 #### Scenario: case_number type consistency
 - **WHEN** the `Identifiers` and `ApiKeyRequest` type documentation is read
-- **THEN** `case_number` MUST be consistently documented as `Number` (nullable) in all locations
+- **THEN** `case_number` MUST be consistently documented as `String` (nullable) in all locations, matching the `Option<String>` type in `Identifiers`
 
 #### Scenario: JSON examples are valid
 - **WHEN** any JSON example in `docs/api/examples.md` is parsed
