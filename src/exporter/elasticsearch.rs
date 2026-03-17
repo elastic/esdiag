@@ -379,7 +379,7 @@ async fn parse_response(
         .json()
         .await
         .map_err(|e| ExporterError::Fatal(e.into()))?;
-    let mut items: Vec<Value> = body["items"].as_array().unwrap_or(&Vec::new()).clone();
+    let mut items: Vec<Value> = body.get("items").and_then(Value::as_array).cloned().unwrap_or_default();
     let item_count = items.len();
 
     let error_items: Vec<Value> = items
@@ -533,25 +533,41 @@ mod tests {
 
     static ENV_LOCK: Mutex<()> = Mutex::new(());
 
-    struct RetryEnvGuard;
+    struct RetryEnvGuard {
+        prev_max: Option<String>,
+        prev_initial: Option<String>,
+        prev_max_ms: Option<String>,
+    }
 
     impl RetryEnvGuard {
         fn set(max_retries: &str) -> Self {
+            let prev_max = std::env::var("ESDIAG_EXPORT_RETRY_MAX").ok();
+            let prev_initial = std::env::var("ESDIAG_EXPORT_RETRY_INITIAL_MS").ok();
+            let prev_max_ms = std::env::var("ESDIAG_EXPORT_RETRY_MAX_MS").ok();
             unsafe {
                 std::env::set_var("ESDIAG_EXPORT_RETRY_MAX", max_retries);
                 std::env::set_var("ESDIAG_EXPORT_RETRY_INITIAL_MS", "1");
                 std::env::set_var("ESDIAG_EXPORT_RETRY_MAX_MS", "5");
             }
-            Self
+            Self { prev_max, prev_initial, prev_max_ms }
         }
     }
 
     impl Drop for RetryEnvGuard {
         fn drop(&mut self) {
             unsafe {
-                std::env::remove_var("ESDIAG_EXPORT_RETRY_MAX");
-                std::env::remove_var("ESDIAG_EXPORT_RETRY_INITIAL_MS");
-                std::env::remove_var("ESDIAG_EXPORT_RETRY_MAX_MS");
+                match &self.prev_max {
+                    Some(v) => std::env::set_var("ESDIAG_EXPORT_RETRY_MAX", v),
+                    None => std::env::remove_var("ESDIAG_EXPORT_RETRY_MAX"),
+                }
+                match &self.prev_initial {
+                    Some(v) => std::env::set_var("ESDIAG_EXPORT_RETRY_INITIAL_MS", v),
+                    None => std::env::remove_var("ESDIAG_EXPORT_RETRY_INITIAL_MS"),
+                }
+                match &self.prev_max_ms {
+                    Some(v) => std::env::set_var("ESDIAG_EXPORT_RETRY_MAX_MS", v),
+                    None => std::env::remove_var("ESDIAG_EXPORT_RETRY_MAX_MS"),
+                }
             }
         }
     }
