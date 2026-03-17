@@ -31,7 +31,7 @@ http://localhost:{port}
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/` | Serves the main application interface, may include a `?job_id=<job_id>` parameter to immediately start processing |
-| POST | `/api/service_link` | Stores a `link_id` for later processing |
+| POST | `/api/service_link` | Stores a `link_id` for later processing, or processes synchronously with `?wait_for_completion` |
 | POST | `/api/api_key` | Stores a `key_id` for later processing, or processes synchronously with `?wait_for_completion` |
 
 ## Query Parameters

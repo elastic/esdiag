@@ -116,29 +116,6 @@ async fn start_mock_upload_server(
     (addr, shutdown_tx)
 }
 
-/// Downloads the diagnostic zip from the Elastic Upload Service using
-/// `reqwest` — the same `Authorization` header pattern used by
-/// `UploadServiceDownloader` internally.
-///
-/// Only used by `#[ignore]`d tests that require real network access.
-async fn download_from_upload_service() -> Bytes {
-    let (token, url) = upload_credentials();
-    let client = reqwest::Client::new();
-    let response = client
-        .get(url)
-        .header("Authorization", token)
-        .send()
-        .await
-        .expect("request to upload service should succeed");
-    assert!(
-        response.status().is_success(),
-        "upload service returned {}: link may have expired",
-        response.status()
-    );
-    let bytes = response.bytes().await.expect("read response bytes");
-    assert!(!bytes.is_empty(), "downloaded zip should not be empty");
-    bytes
-}
 
 async fn start_esdiag_server() -> (Server, Client, String) {
     let (server, bound_addr) = Server::start(
