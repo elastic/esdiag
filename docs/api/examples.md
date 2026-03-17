@@ -33,6 +33,8 @@ curl -X GET http://localhost:2501/
 
 ## POST `/api/service_link` - Remote Service Processing
 
+### Asynchronous Processing (Default)
+
 ### Request
 ```bash
 curl -X POST http://localhost:2501/api/service_link \
@@ -40,9 +42,9 @@ curl -X POST http://localhost:2501/api/service_link \
   -d '{
     "metadata": {
       "account": "customer-123",
-      "case_number": 98765,
+      "case_number": "98765",
       "filename": "remote-diagnostic.zip",
-      "opportunity": null,
+      "opportunity": null
     },
     "token": "0123456789",
     "url": "https://upload.elastic.co/d/abcdefghijklmnopqrstuvwxyz"
@@ -53,6 +55,40 @@ curl -X POST http://localhost:2501/api/service_link \
 ```json
 {
   "link_id": 456789
+}
+```
+
+### Synchronous Processing with `wait_for_completion`
+
+### Request (with parameter but no value)
+```bash
+curl -X POST 'http://localhost:2501/api/service_link?wait_for_completion' \
+  -H "Content-Type: application/json" \
+  -d '{
+    "metadata": {
+      "account": "customer-123",
+      "case_number": "98765",
+      "filename": "remote-diagnostic.zip",
+      "opportunity": null
+    },
+    "token": "0123456789",
+    "url": "https://upload.elastic.co/d/abcdefghijklmnopqrstuvwxyz"
+  }'
+```
+
+### Successful Response
+```json
+{
+  "diagnostic_id": "elasticsearch-diagnostic-2024-01-15-abc123",
+  "kibana_link": "https://kibana.example.com/app/dashboards#/view/4e0a26b2-e5f8-4b2c-a5c8-1a3f2c4d5e6f",
+  "took": 42000
+}
+```
+
+### Error Response - Processing failure
+```json
+{
+  "error": "Processing failed: <detail>"
 }
 ```
 
@@ -144,7 +180,7 @@ curl -X POST 'http://localhost:2501/api/api_key?wait_for_completion=true' \
 ```json
 {
   "diagnostic_id": "elasticsearch-diagnostic-2024-01-15-abc123",
-  "kibana_url": "https://kibana.example.com/app/dashboards#/view/4e0a26b2-e5f8-4b58-b617-86f5cdd0edad?_g=...",
+  "kibana_link": "https://kibana.example.com/app/dashboards#/view/4e0a26b2-e5f8-4b58-b617-86f5cdd0edad?_g=...",
   "took": 12345
 }
 ```
@@ -152,7 +188,7 @@ curl -X POST 'http://localhost:2501/api/api_key?wait_for_completion=true' \
 | Field | Type | Description |
 |-------|------|-------------|
 | `diagnostic_id` | String | Unique identifier for the processed diagnostic |
-| `kibana_url` | String | URL to view the diagnostic in Kibana (empty string if not configured) |
+| `kibana_link` | String | URL to view the diagnostic in Kibana (empty string if not configured) |
 | `took` | Number | Processing time in milliseconds |
 
 ### Error Response - Processing Failed
@@ -206,12 +242,12 @@ curl -X POST http://localhost:2501/api/service_link \
 
 2. Retrieve `link_id` from response
 ```json
-{ "link_id": "45678" }
+{ "link_id": 456789 }
 ```
 
 3. Forward user to ESDiag with `link_id` as a parameter
 ```bash
-open "http://localhost:2501/?link_id=45678"
+open "http://localhost:2501/?link_id=456789"
 ```
 
 ### Example: API key workflow (asynchronous)
@@ -262,12 +298,12 @@ curl -X POST 'http://localhost:2501/api/api_key?wait_for_completion' \
   }'
 ```
 
-2. Response includes diagnostic ID and Kibana URL
+2. Response includes diagnostic ID and Kibana link
 
 ```json
 {
   "diagnostic_id": "elasticsearch-diagnostic-2024-01-15-abc123",
-  "kibana_url": "https://kibana.example.com/app/dashboards#/view/4e0a26b2-e5f8-4b58-b617-86f5cdd0edad?_g=...",
+  "kibana_link": "https://kibana.example.com/app/dashboards#/view/4e0a26b2-e5f8-4b58-b617-86f5cdd0edad?_g=...",
   "took": 12345
 }
 ```
