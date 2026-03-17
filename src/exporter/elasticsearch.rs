@@ -246,7 +246,7 @@ impl Export for ElasticsearchExporter {
                     let sleep_ms = backoff_ms(attempt, &config);
                     log::warn!(
                         "{index} - http 429, retry {}/{}, sleeping {sleep_ms}ms",
-                        attempt + 1,
+                        u32::from(attempt) + 1,
                         config.max_retries,
                     );
                     tokio::time::sleep(Duration::from_millis(sleep_ms)).await;
@@ -533,33 +533,39 @@ mod tests {
 
     static ENV_LOCK: Mutex<()> = Mutex::new(());
 
-    fn set_fast_retry(max_attempts: &str) {
-        unsafe {
-            std::env::set_var("ESDIAG_EXPORT_RETRY_MAX", max_attempts);
-            std::env::set_var("ESDIAG_EXPORT_RETRY_INITIAL_MS", "1");
-            std::env::set_var("ESDIAG_EXPORT_RETRY_MAX_MS", "5");
+    struct RetryEnvGuard;
+
+    impl RetryEnvGuard {
+        fn set(max_retries: &str) -> Self {
+            unsafe {
+                std::env::set_var("ESDIAG_EXPORT_RETRY_MAX", max_retries);
+                std::env::set_var("ESDIAG_EXPORT_RETRY_INITIAL_MS", "1");
+                std::env::set_var("ESDIAG_EXPORT_RETRY_MAX_MS", "5");
+            }
+            Self
         }
     }
 
-    fn clear_retry_env() {
-        unsafe {
-            std::env::remove_var("ESDIAG_EXPORT_RETRY_MAX");
-            std::env::remove_var("ESDIAG_EXPORT_RETRY_INITIAL_MS");
-            std::env::remove_var("ESDIAG_EXPORT_RETRY_MAX_MS");
+    impl Drop for RetryEnvGuard {
+        fn drop(&mut self) {
+            unsafe {
+                std::env::remove_var("ESDIAG_EXPORT_RETRY_MAX");
+                std::env::remove_var("ESDIAG_EXPORT_RETRY_INITIAL_MS");
+                std::env::remove_var("ESDIAG_EXPORT_RETRY_MAX_MS");
+            }
         }
     }
 
     #[tokio::test]
     async fn retries_on_429_then_succeeds() {
-        let _guard = ENV_LOCK.lock().unwrap();
-        set_fast_retry("5");
+        let _lock = ENV_LOCK.lock().unwrap();
+        let _env = RetryEnvGuard::set("5");
         let (url, call_count) = mock_bulk_server(vec![429, 429, 200]).await;
         let exporter = ElasticsearchExporter::try_new(url, Auth::None).unwrap();
 
         let result = exporter
             .batch_send("test-index".to_string(), vec![json!({"x": 1})])
             .await;
-        clear_retry_env();
 
         assert!(result.is_ok(), "expected Ok");
         let br = result.unwrap();
@@ -570,9 +576,9 @@ mod tests {
 
     #[tokio::test]
     async fn exhausted_retries_returns_ok_with_errors() {
-        let _guard = ENV_LOCK.lock().unwrap();
-        // max_attempts=2 → 1 initial + 2 retries = 3 total, all 429
-        set_fast_retry("2");
+        let _lock = ENV_LOCK.lock().unwrap();
+        // max_retries=2 → 1 initial + 2 retries = 3 total, all 429
+        let _env = RetryEnvGuard::set("2");
         let (url, call_count) = mock_bulk_server(vec![429, 429, 429]).await;
         let exporter = ElasticsearchExporter::try_new(url, Auth::None).unwrap();
 
@@ -580,7 +586,6 @@ mod tests {
         let result = exporter
             .batch_send("test-index".to_string(), docs)
             .await;
-        clear_retry_env();
 
         assert!(result.is_ok(), "exhaustion should return Ok, not Err");
         let br = result.unwrap();
@@ -592,15 +597,14 @@ mod tests {
 
     #[tokio::test]
     async fn fatal_status_not_retried() {
-        let _guard = ENV_LOCK.lock().unwrap();
-        set_fast_retry("5");
+        let _lock = ENV_LOCK.lock().unwrap();
+        let _env = RetryEnvGuard::set("5");
         let (url, call_count) = mock_bulk_server(vec![400]).await;
         let exporter = ElasticsearchExporter::try_new(url, Auth::None).unwrap();
 
         let result = exporter
             .batch_send("test-index".to_string(), vec![json!({"x": 1})])
             .await;
-        clear_retry_env();
 
         assert!(result.is_err(), "expected Err for 400");
         assert_eq!(*call_count.lock().unwrap(), 1, "400 must not be retried");
