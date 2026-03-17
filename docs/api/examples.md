@@ -40,7 +40,7 @@ curl -X POST http://localhost:2501/api/service_link \
   -d '{
     "metadata": {
       "account": "customer-123",
-      "case_number": 98765,
+      "case_number": "98765",
       "filename": "remote-diagnostic.zip",
       "opportunity": null
     },
@@ -88,7 +88,7 @@ curl -X POST http://localhost:2501/api/api_key \
   -d '{
     "metadata": {
       "account": "Acme, Inc.",
-      "case_number": 98765,
+      "case_number": "98765",
       "opportunity": null,
       "user": "user@example.com"
     },
@@ -115,7 +115,7 @@ curl -X POST 'http://localhost:2501/api/api_key?wait_for_completion' \
   -d '{
     "metadata": {
       "account": "Acme, Inc.",
-      "case_number": 98765,
+      "case_number": "98765",
       "opportunity": null,
       "user": "user@example.com"
     },
@@ -131,7 +131,7 @@ curl -X POST 'http://localhost:2501/api/api_key?wait_for_completion=true' \
   -d '{
     "metadata": {
       "account": "Acme, Inc.",
-      "case_number": 98765,
+      "case_number": "98765",
       "opportunity": null,
       "user": "user@example.com"
     },
@@ -195,7 +195,7 @@ curl -X POST http://localhost:2501/api/service_link \
   -d '{
     "metadata": {
       "account": "customer-123",
-      "case_number": 98765,
+      "case_number": "98765",
       "filename": "remote-diagnostic.zip",
       "opportunity": null
     },
@@ -224,7 +224,7 @@ curl -X POST http://localhost:2501/api/api_key \
   -d '{
     "metadata": {
       "account": "Acme, Inc",
-      "case_number": 12345,
+      "case_number": "12345",
       "user": "user@example.com"
     },
     "apikey": "abcdefghijklmnopqrstuvwxyz=",
@@ -254,7 +254,7 @@ curl -X POST 'http://localhost:2501/api/api_key?wait_for_completion' \
   -d '{
     "metadata": {
       "account": "Acme, Inc",
-      "case_number": 12345,
+      "case_number": "12345",
       "user": "user@example.com"
     },
     "apikey": "abcdefghijklmnopqrstuvwxyz=",

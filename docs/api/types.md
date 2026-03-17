@@ -11,7 +11,7 @@ Metadata structure used to identify and categorize diagnostic bundles.
 ```json
 {
   "account": "string | null",
-  "case_number": "number | null",
+  "case_number": "string | null",
   "filename": "string | null",
   "opportunity": "string | null",
   "user": "string | null"
@@ -21,7 +21,7 @@ Metadata structure used to identify and categorize diagnostic bundles.
 | Field | Type | Description |
 |-------|------|-------------|
 | `account` | String (optional) | Account identifier associated with the diagnostic |
-| `case_number` | Number (optional) | Case number for support ticket tracking |
+| `case_number` | String (optional) | Case number for support ticket tracking |
 | `filename` | String (optional) | Original filename of the diagnostic bundle |
 | `opportunity` | String (optional) | Business opportunity identifier |
 | `user` | String (optional) | User who created/uploaded the diagnostic |
@@ -36,7 +36,7 @@ Request payload for the `/api/service_link` endpoint.
   "url": "string",
   "metadata": {
     "account": "string | null",
-    "case_number": "number | null",
+    "case_number": "string | null",
     "filename": "string | null",
     "opportunity": "string | null",
     "user": "string | null"
@@ -74,7 +74,7 @@ Request payload for the `/api/api_key` endpoint.
   "url": "string",
   "metadata": {
     "account": "string | null",
-    "case_number": "number | null",
+    "case_number": "string | null",
     "filename": "string | null",
     "opportunity": "string | null",
     "user": "string | null"

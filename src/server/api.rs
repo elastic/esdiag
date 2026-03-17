@@ -94,7 +94,7 @@ pub async fn service_link(
         }
     };
 
-    if let Uri::Url(_) = uri {
+    if matches!(&uri, Uri::Url(_)) {
         return (
             StatusCode::BAD_REQUEST,
             Json(json!({
@@ -196,7 +196,7 @@ pub async fn service_link(
 
                 let response = json!({
                     "diagnostic_id": report.diagnostic.metadata.id,
-                    "kibana_link": report.diagnostic.kibana_link.as_ref().unwrap_or(&"".to_string()),
+                    "kibana_link": report.diagnostic.kibana_link.as_deref().unwrap_or(""),
                     "took": completed.state.runtime
                 });
 
@@ -411,7 +411,7 @@ pub async fn api_key(
 
                 let response = json!({
                     "diagnostic_id": report.diagnostic.metadata.id,
-                    "kibana_link": report.diagnostic.kibana_link.as_ref().unwrap_or(&"".to_string()),
+                    "kibana_link": report.diagnostic.kibana_link.as_deref().unwrap_or(""),
                     "took": completed.state.runtime
                 });
 
