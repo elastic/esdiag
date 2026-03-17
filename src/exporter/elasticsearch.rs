@@ -36,7 +36,7 @@ impl std::fmt::Display for ExporterError {
 }
 
 struct RetryConfig {
-    max_attempts: u32,
+    max_retries: u16,
     initial_ms: u64,
     max_ms: u64,
 }
@@ -44,7 +44,7 @@ struct RetryConfig {
 impl RetryConfig {
     fn from_env() -> Self {
         Self {
-            max_attempts: std::env::var("ESDIAG_EXPORT_RETRY_MAX")
+            max_retries: std::env::var("ESDIAG_EXPORT_RETRY_MAX")
                 .ok()
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(5),
@@ -60,11 +60,11 @@ impl RetryConfig {
     }
 }
 
-fn backoff_ms(attempt: u32, config: &RetryConfig) -> u64 {
-    let base = config.initial_ms.saturating_mul(1u64 << attempt.min(30));
-    let capped = base.min(config.max_ms);
+fn backoff_ms(attempt: u16, config: &RetryConfig) -> u64 {
+    let base = config.initial_ms.saturating_mul(1u64 << u32::from(attempt).min(30));
     let jitter = 0.75 + rand::random::<f64>() * 0.5;
-    (capped as f64 * jitter) as u64
+    let jittered = (base as f64 * jitter) as u64;
+    jittered.min(config.max_ms)
 }
 
 /// An exporter that sends documents to an Elasticsearch cluster.
@@ -218,7 +218,7 @@ impl Export for ElasticsearchExporter {
 
         let mut retries: u16 = 0;
 
-        for attempt in 0..=config.max_attempts {
+        for attempt in 0..=config.max_retries {
             let batch: Vec<BulkOperation<Value>> = values
                 .iter()
                 .map(|doc| BulkOperation::create(doc.clone()).pipeline("esdiag").into())
@@ -242,12 +242,12 @@ impl Export for ElasticsearchExporter {
 
             match parse_response(index.clone(), response, retries).await {
                 Ok(batch_response) => return Ok(batch_response),
-                Err(ExporterError::RateLimited) if attempt < config.max_attempts => {
+                Err(ExporterError::RateLimited) if attempt < config.max_retries => {
                     let sleep_ms = backoff_ms(attempt, &config);
                     log::warn!(
                         "{index} - http 429, retry {}/{}, sleeping {sleep_ms}ms",
                         attempt + 1,
-                        config.max_attempts,
+                        config.max_retries,
                     );
                     tokio::time::sleep(Duration::from_millis(sleep_ms)).await;
                     retries += 1;
@@ -255,7 +255,7 @@ impl Export for ElasticsearchExporter {
                 Err(ExporterError::RateLimited) => {
                     log::error!(
                         "{index} - http 429, batch dropped after {} attempts",
-                        config.max_attempts + 1,
+                        u32::from(config.max_retries) + 1,
                     );
                     return Ok(BatchResponse {
                         docs: values.len() as u32,
@@ -372,6 +372,9 @@ async fn parse_response(
     let response = response.map_err(|e| ExporterError::Fatal(e.into()))?;
     log::trace!("{:?}", &response);
     let status_code = response.status_code().as_u16();
+    if status_code == 429 {
+        return Err(ExporterError::RateLimited);
+    }
     let body: Value = response
         .json()
         .await
@@ -423,12 +426,11 @@ async fn parse_response(
                 index
             )));
         }
-        429 => return Err(ExporterError::RateLimited),
         500..=599 => {
             return Err(ExporterError::Fatal(eyre!(
                 "{} - server errors: http {}",
-                status_code,
-                index
+                index,
+                status_code
             )));
         }
         _ => log::warn!("unexpected http response: {}", status_code),

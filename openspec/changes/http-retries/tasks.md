@@ -10,7 +10,7 @@
 
 ## 3. Retry Loop in `batch_send`
 
-- [x] 3.1 Refactor `batch_send` to accept `&RetryConfig` and loop up to `max_attempts` times
+- [x] 3.1 Refactor `batch_send` to construct `RetryConfig::from_env()` internally and loop up to `max_retries` times
 - [x] 3.2 Implement exponential backoff with ±25% jitter: `delay = min(initial_ms * 2^attempt, max_ms)` with jitter applied using `rand`
 - [x] 3.3 On `ExporterError::RateLimited`: log `warn!` with attempt number and sleep duration, sleep, increment retry counter, then retry
 - [x] 3.4 On `ExporterError::Fatal`: propagate immediately without retry

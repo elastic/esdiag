@@ -62,7 +62,7 @@ Consistent with existing exporter logging style. Each retry emits `log::warn!` w
 ## Risks / Trade-offs
 
 - **Increased latency on export** → Mitigation: backoff is bounded by `ESDIAG_EXPORT_RETRY_MAX_MS`; the semaphore still limits total concurrent tasks so blocked retry tasks reduce throughput rather than piling up unbounded.
-- **Batch data clone for retry** → `batch_send` takes `Vec<T>` by value; a retry loop requires keeping the data alive. The batch is re-serialised each attempt. For large batches this may increase memory briefly — acceptable given current default batch sizes.
+- **Batch data clone for retry** → `batch_send` serializes docs to `serde_json::Value` once upfront, then clones the pre-serialized values for each attempt. This avoids re-serialization overhead per retry at the cost of holding the serialized batch in memory for the duration of the retry loop — acceptable given current default batch sizes.
 - **Silent data loss on exhaustion** → This is the same behaviour as today (warning, continue). Operators who need zero-loss semantics should reduce write load or lower `ESDIAG_OUTPUT_TASK_LIMIT`.
 
 ## Migration Plan
