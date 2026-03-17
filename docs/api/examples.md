@@ -33,6 +33,8 @@ curl -X GET http://localhost:2501/
 
 ## POST `/api/service_link` - Remote Service Processing
 
+### Asynchronous Processing (Default)
+
 ### Request
 ```bash
 curl -X POST http://localhost:2501/api/service_link \
@@ -53,6 +55,40 @@ curl -X POST http://localhost:2501/api/service_link \
 ```json
 {
   "link_id": 456789
+}
+```
+
+### Synchronous Processing with `wait_for_completion`
+
+### Request (with parameter but no value)
+```bash
+curl -X POST 'http://localhost:2501/api/service_link?wait_for_completion' \
+  -H "Content-Type: application/json" \
+  -d '{
+    "metadata": {
+      "account": "customer-123",
+      "case_number": "98765",
+      "filename": "remote-diagnostic.zip",
+      "opportunity": null
+    },
+    "token": "0123456789",
+    "url": "https://upload.elastic.co/d/abcdefghijklmnopqrstuvwxyz"
+  }'
+```
+
+### Successful Response
+```json
+{
+  "diagnostic_id": "elasticsearch-diagnostic-2024-01-15-abc123",
+  "kibana_link": "https://kibana.example.com/app/dashboards#/view/4e0a26b2-e5f8-4b2c-a5c8-1a3f2c4d5e6f",
+  "took": 42000
+}
+```
+
+### Error Response - Processing failure
+```json
+{
+  "error": "Failed to process diagnostic: <detail>"
 }
 ```
 
