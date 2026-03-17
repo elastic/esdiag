@@ -56,7 +56,7 @@ impl std::fmt::Display for ExporterError {
 Standard approach for rate-limit retry. Initial delay doubles each attempt (2^n × initial_ms), with ±25% random jitter to spread concurrent retries. Cap prevents indefinite blocking.
 
 Environment variables (with defaults):
-- `ESDIAG_EXPORT_RETRY_MAX` — max attempts before giving up (default: `5`)
+- `ESDIAG_EXPORT_RETRY_MAX` — maximum retries after the initial attempt (default: `5`, giving 6 total attempts)
 - `ESDIAG_EXPORT_RETRY_INITIAL_MS` — initial backoff in ms (default: `1000`)
 - `ESDIAG_EXPORT_RETRY_MAX_MS` — cap on a single backoff sleep in ms (default: `30000`)
 
@@ -69,7 +69,7 @@ Consistent with existing exporter logging style. Each retry emits `log::warn!` w
 ## Risks / Trade-offs
 
 - **Increased latency on export** → Mitigation: backoff is bounded by `ESDIAG_EXPORT_RETRY_MAX_MS`; the semaphore still limits total concurrent tasks so blocked retry tasks reduce throughput rather than piling up unbounded.
-- **Batch data clone for retry** → `batch_send` serializes docs to `serde_json::Value` once upfront, then clones the pre-serialized values for each attempt. This avoids re-serialization overhead per retry at the cost of holding the serialized batch in memory for the duration of the retry loop — acceptable given current default batch sizes.
+- **Batch data clone for retry** → `batch_send` serializes docs to `Arc<serde_json::Value>` once upfront, then `Arc::clone`s the references for each attempt. This avoids both re-serialization and deep-copying the JSON payload per retry, at the cost of holding the serialized batch in memory for the duration of the retry loop — acceptable given current default batch sizes.
 - **Silent data loss on exhaustion** → This is the same behaviour as today (warning, continue). Operators who need zero-loss semantics should reduce write load or lower `ESDIAG_OUTPUT_TASK_LIMIT`.
 
 ## Migration Plan
