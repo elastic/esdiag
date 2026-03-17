@@ -21,6 +21,7 @@ jobs:
 
           new_changes=$(git diff --name-only --diff-filter=A "$base" "$head" \
             | grep '^openspec/changes/' \
+            | grep -v '^openspec/changes/archive/' \
             | sed 's|^openspec/changes/||' \
             | cut -d/ -f1 \
             | sort -u)
