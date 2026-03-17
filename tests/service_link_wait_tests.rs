@@ -183,18 +183,19 @@ fn empty_zip_bytes() -> Bytes {
 /// Exercises the full Receiver → Processor pipeline that `wait_for_completion=true`
 /// invokes on `/api/service_link`.
 ///
-/// Downloads the real diagnostic zip from the Elastic Upload Service, serves it
-/// from a local mock HTTP server, then builds `Uri::ServiceLink` directly (bypassing
-/// the `upload.elastic.co` domain guard that lives only in the HTTP routing layer)
-/// to drive `UploadServiceDownloader` against the mock.
-///
-/// Requires network access to `upload.elastic.co`; the upload link will expire
-/// after its TTL. Run explicitly with:
-/// `cargo test -- --ignored service_link_wait_for_completion_processes_synchronously`
-#[ignore = "requires network access to download the real diagnostic zip"]
+/// Loads a checked-in diagnostic zip from `tests/archives/`, serves it from a
+/// local mock HTTP server, then builds `Uri::ServiceLink` directly (bypassing the
+/// `upload.elastic.co` domain guard that lives only in the HTTP routing layer) to
+/// drive `UploadServiceDownloader` against the mock.
 #[tokio::test(flavor = "multi_thread")]
 async fn service_link_wait_for_completion_processes_synchronously() {
-    let zip_bytes = download_from_upload_service().await;
+    let zip_bytes = Bytes::from(
+        std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/archives/elasticsearch-api-diagnostics-9.1.3.zip"
+        ))
+        .expect("test archive should be readable"),
+    );
     let mock_token = "mock-token";
     let (mock_addr, shutdown_tx) = start_mock_upload_server(zip_bytes, mock_token).await;
 
