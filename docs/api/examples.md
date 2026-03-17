@@ -88,7 +88,7 @@ curl -X POST 'http://localhost:2501/api/service_link?wait_for_completion' \
 ### Error Response - Processing failure
 ```json
 {
-  "error": "Failed to process diagnostic: <detail>"
+  "error": "Processing failed: <detail>"
 }
 ```
 
@@ -247,7 +247,7 @@ curl -X POST http://localhost:2501/api/service_link \
 
 3. Forward user to ESDiag with `link_id` as a parameter
 ```bash
-open "http://localhost:2501/?link_id=45678"
+open "http://localhost:2501/?link_id=456789"
 ```
 
 ### Example: API key workflow (asynchronous)
