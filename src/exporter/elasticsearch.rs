@@ -210,18 +210,18 @@ impl Export for ElasticsearchExporter {
     {
         let config = RetryConfig::from_env();
 
-        let values: Vec<Value> = docs
+        let values: Vec<Arc<Value>> = docs
             .into_iter()
-            .map(serde_json::to_value)
+            .map(|doc| serde_json::to_value(doc).map(Arc::new))
             .collect::<std::result::Result<_, _>>()
             .map_err(|e| eyre!("Failed to serialize document: {e}"))?;
 
         let mut retries: u16 = 0;
 
         for attempt in 0..=config.max_retries {
-            let batch: Vec<BulkOperation<Value>> = values
+            let batch: Vec<BulkOperation<Arc<Value>>> = values
                 .iter()
-                .map(|doc| BulkOperation::create(doc.clone()).pipeline("esdiag").into())
+                .map(|doc| BulkOperation::create(Arc::clone(doc)).pipeline("esdiag").into())
                 .collect();
 
             let response = timeout(
@@ -378,7 +378,7 @@ async fn parse_response(
     let body: Value = response
         .json()
         .await
-        .map_err(|e| ExporterError::Fatal(eyre!("{e}")))?;
+        .map_err(|e| ExporterError::Fatal(e.into()))?;
     let mut items: Vec<Value> = body["items"].as_array().unwrap_or(&Vec::new()).clone();
     let item_count = items.len();
 

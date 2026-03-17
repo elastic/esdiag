@@ -26,17 +26,24 @@ Instead, `batch_send` drives the loop: call the bulk API, call `parse_response`,
 
 **Alternative considered**: Introduce a wrapper at the semaphore-task level (`async_batch_tx`). Rejected because it duplicates the batch data across clones unnecessarily and increases complexity in the task-spawning path.
 
-### Decision: New `RetryableError` type to distinguish 429 from fatal errors
+### Decision: New `ExporterError` type to distinguish 429 from fatal errors
 
 `parse_response` returns `Result<BatchResponse>`. To signal a retryable 429 without a new return type, the simplest approach is a dedicated error variant that `batch_send` can pattern-match on:
 
 ```rust
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug)]
 enum ExporterError {
-    #[error("http 429 too many requests — retryable")]
     RateLimited,
-    #[error(transparent)]
-    Fatal(#[from] eyre::Report),
+    Fatal(eyre::Report),
+}
+
+impl std::fmt::Display for ExporterError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ExporterError::RateLimited => write!(f, "http 429 too many requests"),
+            ExporterError::Fatal(e) => write!(f, "{e}"),
+        }
+    }
 }
 ```
 

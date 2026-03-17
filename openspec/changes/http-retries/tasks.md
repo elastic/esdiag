@@ -5,7 +5,7 @@
 
 ## 2. Retry Configuration
 
-- [x] 2.1 Add `RetryConfig` struct with fields `max_attempts: u32`, `initial_ms: u64`, `max_ms: u64`
+- [x] 2.1 Add `RetryConfig` struct with fields `max_retries: u16`, `initial_ms: u64`, `max_ms: u64`
 - [x] 2.2 Implement `RetryConfig::from_env()` reading `ESDIAG_EXPORT_RETRY_MAX`, `ESDIAG_EXPORT_RETRY_INITIAL_MS`, `ESDIAG_EXPORT_RETRY_MAX_MS` with defaults (5, 1000, 30000)
 
 ## 3. Retry Loop in `batch_send`
