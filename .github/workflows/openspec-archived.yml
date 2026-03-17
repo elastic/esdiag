@@ -26,7 +26,7 @@ jobs:
             | sort -u)
 
           if [ -n "$new_changes" ]; then
-            echo "::error::This PR adds the following openspec/changes/* director(ies) that have not been archived:"
+            echo "::error::This PR adds the following openspec/changes/* directory(ies) that have not been archived:"
             echo "$new_changes" | while read -r dir; do
               echo "  - openspec/changes/$dir"
             done
