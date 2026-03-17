@@ -338,7 +338,11 @@ fn test_process_zip_accepts_output_directory_with_dot() {
     let dotted_out = dir.path().join("out.v1.ndjson");
 
     let status = Command::new(env!("CARGO_BIN_EXE_esdiag"))
-        .args(["process", "elasticsearch-local", dotted_out.to_str().unwrap()])
+        .args([
+            "process",
+            "elasticsearch-local",
+            dotted_out.to_str().unwrap(),
+        ])
         .status()
         .expect("Failed to execute process with dotted output file");
 
@@ -969,7 +973,12 @@ fn run_kibana_collect_matrix_case(host_env: &str) {
 fn test_collect_kibana_localhost_no_auth() {
     let home = tempdir().expect("temp home");
     let host_output = run_esdiag(
-        &["host", "localhost-kibana", "kibana", "http://localhost:5601"],
+        &[
+            "host",
+            "localhost-kibana",
+            "kibana",
+            "http://localhost:5601",
+        ],
         &home,
         &[],
     );

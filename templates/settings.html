@@ -1,55 +1,30 @@
-<div id="settings-modal" class="modal" data-signals:settings.target="{{ active_target|json }}">
+<div id="settings-modal" class="modal" data-signals:settings.target="{{ selected_output|json }}">
     <div class="modal-content">
-        <button type="button" class="close-button" aria-label="Close settings" data-on:click="document.getElementById('settings-modal').remove()">&times;</button>
+        <button type="button" class="close-button" aria-label="Close settings" data-on:click="document.getElementById('settings-modal').remove()"><icon-x></icon-x></button>
         <h2>Settings</h2>
         <p><small>Mode: <strong>{{ mode }}</strong></small></p>
-        <form id="settings-form" data-on:submit="@post('/api/settings/update')">
+        <form id="settings-form" data-on:submit__prevent="@post('/api/settings/update', {filterSignals: {include: /^settings(\.|$)/}})">
+            <div id="settings-form-error"></div>
             <input-group>
                 <label for="target-host" class="form-label">Output Target (Hosts.yml)</label>
                 <select id="target-host" name="target" class="form-input" data-bind:settings.target {% if !can_update_exporter %}disabled{% endif %}>
-                    {% for host in hosts %}
-                        <option value="{{ host }}" {% if host == &active_target %}selected{% endif %}>{{ host }}</option>
+                    {% for option in output_options %}
+                        <option value="{{ option.value }}" {% if option.value == selected_output %}selected{% endif %}>{{ option.label }}</option>
                     {% endfor %}
-                    {% if can_manage_hosts %}
-                    <option value="new_host">-- Add New Host --</option>
-                    {% endif %}
                 </select>
                 {% if !can_update_exporter %}
                 <info-text><i>Service mode uses the exporter configured at startup.</i></info-text>
                 {% endif %}
             </input-group>
 
-            <div id="new-host-form" data-show="$settings.target === 'new_host'" style="display: none;" {% if !can_manage_hosts %}hidden{% endif %}>
-                <input-group>
-                    <label for="new-host-name" class="form-label">New Host Name</label>
-                    <input type="text" id="new-host-name" name="new_host_name" data-bind:settings.new_host_name class="form-input" placeholder="my-cluster" />
-                </input-group>
-                <input-group>
-                    <label for="new-host-url" class="form-label">Elasticsearch URL</label>
-                    <input type="url" id="new-host-url" name="new_host_url" data-bind:settings.new_host_url class="form-input" placeholder="https://..." />
-                </input-group>
-                <input-group>
-                    <label for="new-host-apikey" class="form-label">API Key</label>
-                    <input type="password" id="new-host-apikey" name="new_host_apikey" data-bind:settings.new_host_apikey class="form-input" placeholder="Secret" />
-                </input-group>
-                <div style="display: flex; gap: var(--size-m);">
-                    <input-group style="flex: 1;">
-                        <label for="new-host-username" class="form-label">Username</label>
-                        <input type="text" id="new-host-username" name="new_host_username" data-bind:settings.new_host_username class="form-input" placeholder="elastic" style="width: 100%;" />
-                    </input-group>
-                    <input-group style="flex: 1;">
-                        <label for="new-host-password" class="form-label">Password</label>
-                        <input type="password" id="new-host-password" name="new_host_password" data-bind:settings.new_host_password class="form-input" placeholder="Secret" style="width: 100%;" />
-                    </input-group>
-                </div>
-            </div>
-
             <input-group>
                 <label for="kibana-url" class="form-label">Kibana URL</label>
                 <input type="url" id="kibana-url" name="kibana_url" data-bind:settings.kibana_url class="form-input" value="{{ kibana_url }}" />
             </input-group>
 
-            <input class="button" type="submit" value="Save Settings" />
+            <div style="display: flex; gap: var(--size-s); align-items: center;">
+                <input class="button" type="submit" value="Save Settings" />
+            </div>
         </form>
     </div>
 </div>

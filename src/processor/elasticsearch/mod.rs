@@ -36,10 +36,10 @@ mod pending_tasks;
 mod searchable_snapshots_cache_stats;
 /// The `_searchable_snapshots/stats` API
 mod searchable_snapshots_stats;
-/// The `_snapshot` API
-mod snapshots;
 /// The `_slm/policy` API
 mod slm_policies;
+/// The `_snapshot` API
+mod snapshots;
 /// The `_tasks` API
 mod tasks;
 /// The cluster `/` API -- "You know, for search!"

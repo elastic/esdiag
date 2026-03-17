@@ -1,0 +1,28 @@
+<div id="hosts-manager-modal" class="modal">
+    <div class="modal-content">
+        <button type="button" class="close-button" aria-label="Close hosts manager" data-on:click="document.getElementById('hosts-manager-modal')?.remove()"><icon-x></icon-x></button>
+        <h2>
+            Edit Hosts
+            <span title="Keystore state">{% if keystore_locked %}<icon-lock></icon-lock>{% else %}<icon-key></icon-key>{% endif %}</span>
+        </h2>
+        <p><small>{% if keystore_locked %}Keystore is locked.{% else %}Keystore is unlocked.{% endif %}</small></p>
+
+        <input-group>
+            <label class="form-label">Saved Hosts</label>
+            <select class="form-input">
+                {% for host in hosts %}
+                <option value="{{ host }}">{{ host }}</option>
+                {% endfor %}
+            </select>
+        </input-group>
+
+        <input-group>
+            <label class="form-label">Keychain Entries</label>
+            <select class="form-input" {% if keystore_locked %}disabled{% endif %}>
+                {% for secret in secret_names %}
+                <option value="{{ secret }}">{{ secret }}</option>
+                {% endfor %}
+            </select>
+        </input-group>
+    </div>
+</div>

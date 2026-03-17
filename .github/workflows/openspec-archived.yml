@@ -1,0 +1,39 @@
+name: OpenSpec Archived
+
+on:
+  pull_request:
+    paths:
+      - "openspec/changes/**"
+
+jobs:
+  check-archived:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fail if openspec/changes/* directories are present in PR
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+
+          new_changes=$(git diff --name-only --diff-filter=A "$base" "$head" \
+            | grep '^openspec/changes/' \
+            | grep -v '^openspec/changes/archive/' \
+            | sed 's|^openspec/changes/||' \
+            | cut -d/ -f1 \
+            | sort -u)
+
+          if [ -n "$new_changes" ]; then
+            echo "::error::This PR adds the following openspec/changes/* directory(ies) that have not been archived:"
+            echo "$new_changes" | while read -r dir; do
+              echo "  - openspec/changes/$dir"
+            done
+            echo ""
+            echo "Run 'openspec archive' to move them to openspec/archive/ before merging."
+            exit 1
+          fi
+
+          echo "No unarchived openspec/changes directories found."

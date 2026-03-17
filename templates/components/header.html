@@ -8,46 +8,15 @@
     <header-links>
         <header-icon id="docs" title="Documentation">
             <a href="/docs" class="link" style="color: inherit; text-decoration: none">
-                <svg
-                    class="icon"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="16"
-                    height="16"
-                >
-                    <path
-                        d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"
-                        stroke="currentColor"
-                        stroke-width="2"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                    />
-                    <path
-                        d="M6.5 2H20V22H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"
-                        stroke="currentColor"
-                        stroke-width="2"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                    />
-                </svg>
+                <icon-file></icon-file>
             </a>
         </header-icon>
         <header-icon id="theme-toggle" title="Toggle dark mode">
             <button type="button" class="theme-toggle-button" aria-label="Enable dark mode" data-show="!$theme.dark" data-on:click="$theme.dark = true; @post('/theme'); {% if desktop %}window.location.reload();{% endif %}">
-                <theme-icon class="sun">
-                    <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-                        <circle cx="8" cy="8" r="2.5"></circle>
-                        <path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3 3l1.5 1.5M11.5 11.5L13 13M13 3l-1.5 1.5M4.5 11.5L3 13"></path>
-                    </svg>
-                </theme-icon>
+                <icon-sun></icon-sun>
             </button>
             <button type="button" class="theme-toggle-button" aria-label="Disable dark mode" data-show="$theme.dark" data-on:click="$theme.dark = false; @post('/theme'); {% if desktop %}window.location.reload();{% endif %}">
-                <theme-icon class="moon">
-                    <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-                        <path d="M8 2a4 4 0 0 0 6 6A6 6 0 1 1 8 2z"></path>
-                    </svg>
-                </theme-icon>
+                <icon-moon></icon-moon>
             </button>
         </header-icon>
         <header-icon id="kibana">
@@ -104,8 +73,25 @@
                     id="username-display"
                     data-signals:auth.header="{{ auth_header }}"
                     data-signals:metadata.user="'{{ user }}'"
+                    data-signals:keystore.locked="{{ keystore_locked }}"
+                    data-signals:keystore.lock_time="{{ keystore_lock_time }}"
                     data-text="$metadata.user"
                 ></popup-menu-item>
+                {% if can_use_keystore %}
+                <popup-menu-item>
+                    <a href="/settings" style="color: inherit; text-decoration: none">Settings</a>
+                </popup-menu-item>
+                <popup-menu-item
+                    data-on:click="
+                        if ($keystore.locked) { @get('/keystore/modal'); }
+                        else if (confirm('Lock keystore and disable secret usage?')) { @post('/keystore/lock'); }
+                    "
+                >
+                    <icon-lock data-show="$keystore.locked"></icon-lock>
+                    <icon-key data-show="!$keystore.locked"></icon-key>
+                    <span>Keystore</span>
+                </popup-menu-item>
+                {% endif %}
             </popup-menu>
         </header-icon>
     </header-links>

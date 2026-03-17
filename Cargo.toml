@@ -7,9 +7,10 @@ license = "Elastic-2.0"
 
 [features]
 default = ["full"]
-full = ["server", "setup"]
+full = ["server", "setup", "keystore"]
 setup = []
 server = []
+keystore = []
 desktop = ["server", "dep:tauri", "dep:tauri-build", "dep:tauri-plugin-opener"]
 
 [dependencies]
@@ -38,7 +39,7 @@ rayon = "1.11"
 regex = "1.12"
 reqwest = { version = "0.12.28", features = ["json", "blocking", "multipart"] }
 rpassword = "7.4.0"
-rust-embed = { version = "8.9.0", features = ["compression", "debug-embed"] }
+rust-embed = { version = "8.9.0", features = ["compression"] }
 semver = { version = "1.0.27", features = ["serde"] }
 serde = { version = "1.0.228", features = ["derive", "rc"] }
 serde_json = { version = "1.0.149", features = ["float_roundtrip", "raw_value"] }

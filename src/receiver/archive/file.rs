@@ -119,12 +119,8 @@ impl Receive for ArchiveFileReceiver {
         T::Item: DeserializeOwned + Send + 'static,
     {
         let ctx = self.source_context()?;
-        super::get_stream_from_archive::<File, T>(
-            self.archive.clone(),
-            self.subdir.clone(),
-            ctx,
-        )
-        .await
+        super::get_stream_from_archive::<File, T>(self.archive.clone(), self.subdir.clone(), ctx)
+            .await
     }
 }
 

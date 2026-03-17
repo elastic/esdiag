@@ -95,6 +95,19 @@ async fn run_api_key_form(
     request_user: String,
     tx: mpsc::Sender<ServerEvent>,
 ) {
+    if let Err(err) = super::ensure_active_output_ready(&state, &request_user).await {
+        send_event(
+            &tx,
+            job_feed_event(template::JobFailed {
+                job_id: new_job_id(),
+                error: &err,
+                source: &uri,
+            }),
+        )
+        .await;
+        return;
+    }
+
     let host = match KnownHostBuilder::new(signals.es_api.url.into())
         .apikey(Some(signals.es_api.key))
         .build()
@@ -238,7 +251,10 @@ async fn run_api_key_form(
             .await;
             send_event(
                 &tx,
-                signal_event(format!(r#"{{"processing":false,"stats":{}}}"#, state.get_stats().await)),
+                signal_event(format!(
+                    r#"{{"processing":false,"stats":{}}}"#,
+                    state.get_stats().await
+                )),
             )
             .await;
         }
@@ -246,7 +262,10 @@ async fn run_api_key_form(
 
     send_event(
         &tx,
-        signal_event(format!(r#"{{"processing":false,"stats":{}}}"#, state.get_stats().await)),
+        signal_event(format!(
+            r#"{{"processing":false,"stats":{}}}"#,
+            state.get_stats().await
+        )),
     )
     .await;
 }
@@ -257,6 +276,19 @@ async fn run_api_key_id(
     request_user: String,
     tx: mpsc::Sender<ServerEvent>,
 ) {
+    if let Err(err) = super::ensure_active_output_ready(&state, &request_user).await {
+        send_event(
+            &tx,
+            template_event(template::JobFailed {
+                job_id,
+                error: &err,
+                source: "output target",
+            }),
+        )
+        .await;
+        return;
+    }
+
     let (identifiers, host): (Identifiers, KnownHost) = match state.pop_key(job_id).await {
         Some((mut identifiers, host)) => {
             identifiers.user = Some(request_user);
@@ -416,7 +448,10 @@ async fn run_api_key_id(
 
     send_event(
         &tx,
-        signal_event(format!(r#"{{"processing":false,"stats":{}}}"#, state.get_stats().await)),
+        signal_event(format!(
+            r#"{{"processing":false,"stats":{}}}"#,
+            state.get_stats().await
+        )),
     )
     .await;
 }

@@ -31,12 +31,14 @@ http://localhost:{port}
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/` | Serves the main application interface, may include a `?job_id=<job_id>` parameter to immediately start processing |
-| POST | `/api/service_link` | Stores a `link_id` for later processing |
+| POST | `/api/service_link` | Stores a `link_id` for later processing, or processes synchronously with `?wait_for_completion` |
 | POST | `/api/api_key` | Stores a `key_id` for later processing, or processes synchronously with `?wait_for_completion` |
 
 ## Query Parameters
 
-### `/api/api_key` Endpoint
+### `/api/api_key` and `/api/service_link` Endpoints
+
+Both endpoints support the `wait_for_completion` parameter:
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
@@ -44,14 +46,14 @@ http://localhost:{port}
 
 When `wait_for_completion=true`:
 - The request blocks until processing completes
-- Returns `diagnostic_id`, `kibana_url`, and `took` (processing time in milliseconds)
+- Returns `diagnostic_id`, `kibana_link`, and `took` (processing time in milliseconds)
 - Returns HTTP 200 on success instead of 201
 - May take significantly longer to respond depending on diagnostic size
 
 When `wait_for_completion=false` (default):
-- Returns immediately with a `key_id`
+- Returns immediately with a job ID (`key_id` for `/api/api_key`, `link_id` for `/api/service_link`)
 - Processing occurs asynchronously in the background
-- User must navigate to the web interface with the `key_id` to monitor progress
+- User must navigate to the web interface with the job ID to monitor progress
 
 ## Request Limits
 
@@ -70,6 +72,5 @@ All API responses return JSON with consistent structure:
 
 ## Documentation Structure
 
-- [`endpoints.md`](./endpoints.md) - Detailed endpoint documentation
 - [`types.md`](./types.md) - Data type definitions
 - [`examples.md`](./examples.md) - Request/response examples

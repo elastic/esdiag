@@ -1,0 +1,73 @@
+<tr id="clusters-table-row-{{ row_id }}" data-cluster-name="{{ cluster.name }}">
+    {% if editing %}
+    <td><form-input><input data-bind:clusters.rows.{{ row_id }}.draft.name placeholder="name" /></form-input></td>
+    <td class="cluster-secret-column">
+        <form-input>
+            <select data-bind:clusters.rows.{{ row_id }}.draft.secret>
+                <option value="">-none-</option>
+                {% for secret_id in secret_ids %}
+                <option value="{{ secret_id }}" {% if cluster.secret.as_str() == secret_id.as_str() %}selected{% endif %}>{{ secret_id }}</option>
+                {% endfor %}
+            </select>
+        </form-input>
+    </td>
+    <td>
+        <choice-row>
+            <input
+                type="checkbox"
+                {% if !cluster.accept_invalid_certs %}checked{% endif %}
+                data-attr:checked="(!$clusters.rows.{{ row_id }}.draft.accept_invalid_certs) || null"
+                data-on:change="$clusters.rows.{{ row_id }}.draft.accept_invalid_certs = !evt.target.checked"
+            />
+            <label>Secure</label>
+        </choice-row>
+    </td>
+    <td class="cluster-url-column">
+        <form-input>
+            <input
+                type="url"
+                data-bind:clusters.rows.{{ row_id }}.draft.elasticsearch_url
+                data-on:keydown="if (evt.key === 'Enter') { evt.preventDefault(); @post('/settings/cluster/update/{{ row_id }}', {filterSignals: {include: /^clusters\.rows\.{{ row_id }}(\.|$)/}}); }"
+                required
+            />
+        </form-input>
+    </td>
+    <td class="cluster-url-column">
+        <form-input>
+            <input
+                type="url"
+                data-bind:clusters.rows.{{ row_id }}.draft.kibana_url
+                data-on:keydown="if (evt.key === 'Enter') { evt.preventDefault(); @post('/settings/cluster/update/{{ row_id }}', {filterSignals: {include: /^clusters\.rows\.{{ row_id }}(\.|$)/}}); }"
+                required
+            />
+        </form-input>
+    </td>
+    <td>
+        <button type="button" {% if keystore_locked %}disabled{% endif %} title="Save cluster" aria-label="Save cluster {{ cluster.name }}" data-on:click="@post('/settings/cluster/update/{{ row_id }}', {filterSignals: {include: /^clusters\.rows\.{{ row_id }}(\.|$)/}})">
+            <icon-check></icon-check>
+        </button>
+        <button type="button" title="Cancel cluster edit" aria-label="Cancel cluster edit" data-on:click="@post('/settings/cluster/{% if persisted %}cancel{% else %}delete{% endif %}/{{ row_id }}')">
+            <icon-undo></icon-undo>
+        </button>
+        {% if persisted %}
+        <button type="button" title="Delete cluster" aria-label="Delete cluster {{ cluster.name }}" data-on:click="if (confirm(`Delete diagnostic cluster ${evt.currentTarget.closest('tr').dataset.clusterName}?`)) { @post('/settings/cluster/delete/{{ row_id }}'); }">
+            <icon-trash></icon-trash>
+        </button>
+        {% endif %}
+    </td>
+    {% else %}
+    <td>{{ cluster.name }}</td>
+    <td class="cluster-secret-column">{% if cluster.secret.is_empty() %}-none-{% else %}{{ cluster.secret }}{% endif %}</td>
+    <td>{% if cluster.accept_invalid_certs %}<span class="certificate-status-insecure">Insecure</span>{% else %}Secure{% endif %}</td>
+    <td class="cluster-url-column">{{ cluster.elasticsearch_url }}</td>
+    <td class="cluster-url-column">{{ cluster.kibana_url }}</td>
+    <td>
+        <button type="button" {% if keystore_locked %}disabled{% endif %} title="Edit cluster" aria-label="Edit cluster {{ cluster.name }}" data-on:click="@post('/settings/cluster/read/{{ row_id }}')">
+            <icon-pencil></icon-pencil>
+        </button>
+        <button type="button" title="Delete cluster" aria-label="Delete cluster {{ cluster.name }}" data-on:click="if (confirm(`Delete diagnostic cluster ${evt.currentTarget.closest('tr').dataset.clusterName}?`)) { @post('/settings/cluster/delete/{{ row_id }}'); }">
+            <icon-trash></icon-trash>
+        </button>
+    </td>
+    {% endif %}
+</tr>

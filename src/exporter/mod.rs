@@ -226,6 +226,38 @@ impl Exporter {
         self.clone()
     }
 
+    pub fn target_value(&self) -> String {
+        match self {
+            Exporter::Archive(exporter) => exporter.to_string(),
+            Exporter::Directory(exporter) => exporter.to_string(),
+            Exporter::Elasticsearch(exporter) => exporter.to_string(),
+            Exporter::File(exporter) => exporter.to_string(),
+            Exporter::Stream(_) => "-".to_string(),
+        }
+    }
+
+    pub fn target_label(&self) -> String {
+        match self {
+            Exporter::Archive(exporter) => format!("archive: {}", exporter),
+            Exporter::Directory(exporter) => {
+                format!("dir: {}", format_directory_label(&exporter.to_string()))
+            }
+            Exporter::Elasticsearch(exporter) => format!("elasticsearch: {}", exporter),
+            Exporter::File(exporter) => format!("file: {}", exporter),
+            Exporter::Stream(_) => "stdout: -".to_string(),
+        }
+    }
+
+    pub fn requires_secret(&self) -> bool {
+        match self {
+            Exporter::Elasticsearch(exporter) => exporter.requires_secret(),
+            Exporter::Archive(_)
+            | Exporter::Directory(_)
+            | Exporter::File(_)
+            | Exporter::Stream(_) => false,
+        }
+    }
+
     pub async fn save_report(&self, report: &DiagnosticReport) -> Result<()> {
         match self {
             Exporter::Archive(_) => Err(eyre!("save report not supported for archive exporter")),
@@ -280,6 +312,14 @@ impl std::fmt::Display for Exporter {
     }
 }
 
+fn format_directory_label(value: &str) -> String {
+    if value.ends_with('/') || value.ends_with('\\') {
+        value.to_string()
+    } else {
+        format!("{value}{}", std::path::MAIN_SEPARATOR)
+    }
+}
+
 impl TryFrom<KnownHost> for Exporter {
     type Error = eyre::Report;
     fn try_from(host: KnownHost) -> std::result::Result<Self, Self::Error> {
@@ -289,5 +329,24 @@ impl TryFrom<KnownHost> for Exporter {
             )?)),
             _ => Err(eyre!("Unsupported product")),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::format_directory_label;
+
+    #[test]
+    fn format_directory_label_preserves_existing_trailing_separator() {
+        assert_eq!(format_directory_label("/tmp/out/"), "/tmp/out/");
+        assert_eq!(format_directory_label(r"C:\out\"), r"C:\out\");
+    }
+
+    #[test]
+    fn format_directory_label_appends_platform_separator_when_missing() {
+        assert_eq!(
+            format_directory_label("/tmp/out"),
+            format!("/tmp/out{}", std::path::MAIN_SEPARATOR)
+        );
     }
 }

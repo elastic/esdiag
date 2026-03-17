@@ -97,6 +97,19 @@ async fn run_service_link_form(
     request_user: String,
     tx: mpsc::Sender<ServerEvent>,
 ) {
+    if let Err(err) = super::ensure_active_output_ready(&state, &request_user).await {
+        send_event(
+            &tx,
+            template_event(template::JobFailed {
+                job_id: new_job_id(),
+                error: &err,
+                source: "output target",
+            }),
+        )
+        .await;
+        return;
+    }
+
     let service_link = &signals.service_link;
     send_event(&tx, signal_event(r#"{"loading":true}"#)).await;
 
@@ -231,7 +244,10 @@ async fn run_service_link_form(
                     .await;
                     send_event(
                         &tx,
-                        signal_event(format!(r#"{{"processing":false,"stats":{}}}"#, state.get_stats().await)),
+                        signal_event(format!(
+                            r#"{{"processing":false,"stats":{}}}"#,
+                            state.get_stats().await
+                        )),
                     )
                     .await;
                 }
@@ -248,7 +264,10 @@ async fn run_service_link_form(
                     .await;
                     send_event(
                         &tx,
-                        signal_event(format!(r#"{{"processing":false,"stats":{}}}"#, state.get_stats().await)),
+                        signal_event(format!(
+                            r#"{{"processing":false,"stats":{}}}"#,
+                            state.get_stats().await
+                        )),
                     )
                     .await;
                 }
@@ -267,7 +286,10 @@ async fn run_service_link_form(
             .await;
             send_event(
                 &tx,
-                signal_event(format!(r#"{{"processing":false,"stats":{}}}"#, state.get_stats().await)),
+                signal_event(format!(
+                    r#"{{"processing":false,"stats":{}}}"#,
+                    state.get_stats().await
+                )),
             )
             .await;
         }
@@ -280,6 +302,19 @@ async fn run_service_link_id(
     request_user: String,
     tx: mpsc::Sender<ServerEvent>,
 ) {
+    if let Err(err) = super::ensure_active_output_ready(&state, &request_user).await {
+        send_event(
+            &tx,
+            template_event(template::JobFailed {
+                job_id,
+                error: &err,
+                source: "output target",
+            }),
+        )
+        .await;
+        return;
+    }
+
     let (identifiers, uri): (Identifiers, Uri) = match state.pop_link(job_id).await {
         Some((mut identifiers, uri)) => {
             identifiers.user = Some(request_user);
@@ -415,7 +450,10 @@ async fn run_service_link_id(
             .await;
             send_event(
                 &tx,
-                signal_event(format!(r#"{{"processing":false,"stats":{}}}"#, state.get_stats().await)),
+                signal_event(format!(
+                    r#"{{"processing":false,"stats":{}}}"#,
+                    state.get_stats().await
+                )),
             )
             .await;
         }

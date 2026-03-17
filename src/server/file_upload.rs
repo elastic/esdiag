@@ -44,6 +44,8 @@ pub async fn submit(
     mut multipart: Multipart,
 ) -> impl IntoResponse {
     let job_id = new_job_id();
+    let can_use_keystore =
+        cfg!(feature = "keystore") && state.runtime_mode_policy.allows_local_artifacts();
 
     // Process the multipart form
     if let Ok(Some(field)) = multipart.next_field().await {
@@ -76,7 +78,7 @@ pub async fn submit(
             let upload_file_element = format!(
                 r#"<div id="job-{job_id}"
                     class="status-box history-item processing"
-                    data-init="$loading=false; $file_upload.job_id={job_id}; @post('upload/process', {{openWhenHidden: true}})"
+                    data-init="$loading=false; $file_upload.job_id={job_id}; if ({can_use_keystore} && $keystore.locked && $output.secure) {{ @get('/keystore/modal/process'); }} else {{ @post('upload/process', {{openWhenHidden: true}}); }}"
                 >
                     <div class="spinner"></div> Processing diagnostic
                         <p><b>Filename:</b> {filename}</p>
@@ -196,6 +198,20 @@ async fn run_upload_job(
     request_user: String,
     tx: mpsc::Sender<ServerEvent>,
 ) {
+    if let Err(err) = super::ensure_active_output_ready(&state, &request_user).await {
+        send_event(
+            &tx,
+            template_event(template::JobFailed {
+                job_id,
+                error: &err,
+                source: "output target",
+            }),
+        )
+        .await;
+        send_terminal_signal(&tx, &state).await;
+        return;
+    }
+
     send_event(&tx, signal_event(r#"{"processing":true}"#)).await;
     let (filename, data): (String, Bytes) = match state.pop_upload(job_id).await {
         Some((filename, data)) => (filename, data),
@@ -214,7 +230,8 @@ async fn run_upload_job(
         }
     };
 
-    let temp_upload_path = std::env::temp_dir().join(format!("esdiag-upload-{job_id}-{}.zip", Uuid::new_v4()));
+    let temp_upload_path =
+        std::env::temp_dir().join(format!("esdiag-upload-{job_id}-{}.zip", Uuid::new_v4()));
     if let Err(e) = std::fs::write(&temp_upload_path, &data) {
         let error = format!("Failed to write temp upload file: {}", e);
         log::error!("{}", error);

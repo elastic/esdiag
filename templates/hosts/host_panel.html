@@ -1,0 +1,44 @@
+<panel
+    id="hosts-table-panel"
+    data-signals='{
+        hosts: {
+            rows: {}
+        }
+    }'
+>
+    <h3 style="margin-top: 0">Known Hosts</h3>
+    <info-text>Save known hosts to collect diagnostics from. Use a stored secret for authentication.</info-text>
+    <div id="hosts-table-error"></div>
+    <table-records id="hosts-table">
+        <table>
+            <thead>
+                <tr>
+                    <th scope="col">Name</th>
+                    <th scope="col" class="host-product-column">Product</th>
+                    <th scope="col">Secret</th>
+                    <th scope="col">Certificates</th>
+                    <th scope="col">URL</th>
+                    <th scope="col">Actions</th>
+                </tr>
+            </thead>
+            <tbody id="hosts-table-body">
+                {{ rows_html|safe }}
+            </tbody>
+        </table>
+    </table-records>
+    <footer>
+        <button
+            type="button"
+            title="Toggle keystore"
+            aria-label="Toggle keystore"
+            data-on:click="
+                if ($keystore.locked) { @get('/keystore/modal'); }
+                else if (confirm('Lock keystore and disable secret usage?')) { @post('/keystore/lock'); }
+            "
+        >
+            <icon-lock data-show="$keystore.locked"></icon-lock>
+            <icon-key data-show="!$keystore.locked"></icon-key>
+        </button>
+        <button type="button" {% if keystore_locked %}disabled{% endif %} data-on:click="@post('/settings/host/create/new')">Add Host</button>
+    </footer>
+</panel>

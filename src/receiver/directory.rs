@@ -107,10 +107,7 @@ impl Receive for DirectoryReceiver {
     {
         let ctx = self.source_context()?;
         let source_path = T::resolve_source_file_path(&ctx)?;
-        let filename = self
-            .path
-            .join(&self.work_dir)
-            .join(source_path);
+        let filename = self.path.join(&self.work_dir).join(source_path);
         log::debug!("Streaming file: {}", &filename.display());
 
         let filename_clone = filename.clone();

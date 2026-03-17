@@ -54,6 +54,14 @@ pub async fn prism_json5() -> impl IntoResponse {
     serve_server_asset("prism-json5.js", "text/javascript")
 }
 
+pub async fn prism_rust() -> impl IntoResponse {
+    serve_server_asset("prism-rust.js", "text/javascript")
+}
+
 pub async fn prism_css() -> impl IntoResponse {
     serve_server_asset("prism.css", "text/css")
+}
+
+pub async fn documentation_outline() -> impl IntoResponse {
+    serve_server_asset("documentation-outline.js", "text/javascript")
 }

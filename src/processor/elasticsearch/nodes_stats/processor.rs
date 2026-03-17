@@ -61,22 +61,21 @@ async fn process_node(
                 .and_then(|obj| obj.remove("actions"))
                 .unwrap_or(Value::Null);
             let mut extracted_actions = true;
-            if !actions.is_null() {
-                if let Err(e) = transport_actions::extract(
+            if !actions.is_null()
+                && let Err(e) = transport_actions::extract(
                     ctx.actions_tx,
                     actions,
                     ctx.actions_metadata,
                     node_metadata,
                 )
                 .await
-                {
-                    extracted_actions = false;
-                    log::error!(
-                        "Error extracting transport stats for node {}: {}",
-                        node_id,
-                        e
-                    );
-                }
+            {
+                extracted_actions = false;
+                log::error!(
+                    "Error extracting transport stats for node {}: {}",
+                    node_id,
+                    e
+                );
             }
             if extracted_actions {
                 match serde_json::value::RawValue::from_string(transport_val.to_string()) {
@@ -106,19 +105,17 @@ async fn process_node(
             obj.remove("routes");
         }
         let mut extracted_clients = true;
-        if !clients.is_null() {
-            if let Err(e) =
-                http_clients::extract(
-                    ctx.http_clients_tx,
-                    clients,
-                    ctx.http_clients_metadata,
-                    node_metadata,
-                )
-                    .await
-            {
-                extracted_clients = false;
-                log::error!("Error extracting HTTP clients stats: {}", e);
-            }
+        if !clients.is_null()
+            && let Err(e) = http_clients::extract(
+                ctx.http_clients_tx,
+                clients,
+                ctx.http_clients_metadata,
+                node_metadata,
+            )
+            .await
+        {
+            extracted_clients = false;
+            log::error!("Error extracting HTTP clients stats: {}", e);
         }
         if extracted_clients {
             match serde_json::value::RawValue::from_string(http_val.to_string()) {
@@ -133,8 +130,7 @@ async fn process_node(
     // Extract adaptive replica selection stats
     if let Some(adaptive_raw) = node_stats.adaptive_selection.take()
         && let Ok(adaptive_val) = serde_json::from_str::<Value>(adaptive_raw.get())
-    {
-        if let Err(e) = adaptive_selections::extract(
+        && let Err(e) = adaptive_selections::extract(
             ctx.adaptive_tx,
             Some(adaptive_val),
             ctx.adaptive_metadata,
@@ -142,9 +138,8 @@ async fn process_node(
             lookup_node,
         )
         .await
-        {
-            log::error!("Error extracting adaptive selection stats: {}", e);
-        }
+    {
+        log::error!("Error extracting adaptive selection stats: {}", e);
     }
 
     // Extract cluster applier state
@@ -242,17 +237,19 @@ impl StreamingDocumentExporter<Lookups, ElasticsearchMetadata> for NodesStats {
                 batch_size,
             ));
 
-        let (actions_tx, actions_rx) = mpsc::channel::<transport_actions::TransportActionDoc>(BUFFER_SIZE);
+        let (actions_tx, actions_rx) =
+            mpsc::channel::<transport_actions::TransportActionDoc>(BUFFER_SIZE);
         let actions_data_stream = "metrics-node.transport.actions-esdiag".to_string();
         let actions_metadata = metadata.for_data_stream(&actions_data_stream);
         let actions_processor = tokio::spawn(
             exporter
                 .clone()
                 .document_channel::<transport_actions::TransportActionDoc>(
-            actions_rx,
-            actions_data_stream,
-            batch_size,
-        ));
+                    actions_rx,
+                    actions_data_stream,
+                    batch_size,
+                ),
+        );
 
         let (http_clients_tx, http_clients_rx) =
             mpsc::channel::<http_clients::HttpClientDoc>(BUFFER_SIZE);
@@ -262,10 +259,11 @@ impl StreamingDocumentExporter<Lookups, ElasticsearchMetadata> for NodesStats {
             exporter
                 .clone()
                 .document_channel::<http_clients::HttpClientDoc>(
-            http_clients_rx,
-            http_clients_data_stream,
-            batch_size,
-        ));
+                    http_clients_rx,
+                    http_clients_data_stream,
+                    batch_size,
+                ),
+        );
 
         let (applier_tx, applier_rx) =
             mpsc::channel::<cluster_applier_stats::ClusterApplierDoc>(BUFFER_SIZE);
@@ -275,10 +273,11 @@ impl StreamingDocumentExporter<Lookups, ElasticsearchMetadata> for NodesStats {
             exporter
                 .clone()
                 .document_channel::<cluster_applier_stats::ClusterApplierDoc>(
-            applier_rx,
-            applier_data_stream,
-            batch_size,
-        ));
+                    applier_rx,
+                    applier_data_stream,
+                    batch_size,
+                ),
+        );
 
         let (adaptive_tx, adaptive_rx) =
             mpsc::channel::<adaptive_selections::AdaptiveSelectionDoc>(BUFFER_SIZE);
@@ -288,10 +287,11 @@ impl StreamingDocumentExporter<Lookups, ElasticsearchMetadata> for NodesStats {
             exporter
                 .clone()
                 .document_channel::<adaptive_selections::AdaptiveSelectionDoc>(
-            adaptive_rx,
-            adaptive_data_stream,
-            batch_size,
-        ));
+                    adaptive_rx,
+                    adaptive_data_stream,
+                    batch_size,
+                ),
+        );
 
         let (pipelines_tx, pipelines_rx) =
             mpsc::channel::<ingest_pipelines::IngestPipelineDoc>(BUFFER_SIZE);
@@ -300,10 +300,11 @@ impl StreamingDocumentExporter<Lookups, ElasticsearchMetadata> for NodesStats {
             exporter
                 .clone()
                 .document_channel::<ingest_pipelines::IngestPipelineDoc>(
-            pipelines_rx,
-            pipelines_data_stream,
-            batch_size,
-        ));
+                    pipelines_rx,
+                    pipelines_data_stream,
+                    batch_size,
+                ),
+        );
 
         let (processors_tx, processors_rx) =
             mpsc::channel::<ingest_pipelines::IngestDoc>(BUFFER_SIZE);
@@ -312,10 +313,11 @@ impl StreamingDocumentExporter<Lookups, ElasticsearchMetadata> for NodesStats {
             exporter
                 .clone()
                 .document_channel::<ingest_pipelines::IngestDoc>(
-            processors_rx,
-            processors_data_stream,
-            batch_size,
-        ));
+                    processors_rx,
+                    processors_data_stream,
+                    batch_size,
+                ),
+        );
 
         while let Some(result) = stream.next().await {
             match result {

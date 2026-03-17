@@ -3,6 +3,7 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use crate::embeds::DocsAssets;
+use crate::server::template::FooterOutputOption;
 use askama::Template;
 use axum::{
     extract::Path,
@@ -10,12 +11,14 @@ use axum::{
     response::{Html, IntoResponse},
 };
 use pulldown_cmark::{Event, Options, Parser, html};
-use std::{collections::BTreeMap, path::PathBuf};
+use regex::Regex;
+use std::{collections::BTreeMap, collections::HashSet, path::PathBuf, sync::OnceLock};
 
 #[derive(Template)]
 #[template(path = "docs.html")]
 pub struct DocsTemplate {
-    pub toc: Vec<TocEntry>,
+    pub nav_root_items: Vec<DocsNavLink>,
+    pub nav_sections: Vec<DocsNavSection>,
     pub current_path: String,
     pub html_content: String,
     // Add layout vars
@@ -23,22 +26,42 @@ pub struct DocsTemplate {
     pub debug: bool,
     pub desktop: bool,
     pub can_configure_output: bool,
+    pub output_options: Vec<FooterOutputOption>,
+    pub active_output_secure: bool,
     pub user: String,
     pub user_initial: char,
     pub version: String,
     pub kibana_url: String,
-    pub exporter: String,
+    pub selected_output: String,
+    pub exporter_label: String,
     pub stats: String,
     pub theme_dark: bool,
     pub runtime_mode: String,
+    pub can_use_keystore: bool,
+    pub keystore_locked: bool,
+    pub keystore_lock_time: i64,
 }
 
 #[derive(Template)]
 #[template(path = "components/docs.html")]
 pub struct DocsComponentTemplate {
-    pub toc: Vec<TocEntry>,
+    pub nav_root_items: Vec<DocsNavLink>,
+    pub nav_sections: Vec<DocsNavSection>,
     pub current_path: String,
     pub html_content: String,
+}
+
+pub struct DocsNavLink {
+    pub title: String,
+    pub path: String,
+    pub is_active: bool,
+}
+
+pub struct DocsNavSection {
+    pub id: String,
+    pub title: String,
+    pub open: bool,
+    pub items: Vec<DocsNavLink>,
 }
 
 pub struct TocEntry {
@@ -95,6 +118,7 @@ pub async fn handler(
             // Write to a new String buffer.
             let mut html_content = String::new();
             html::push_html(&mut html_content, parser);
+            html_content = inject_heading_ids(&html_content);
 
             let toc = generate_toc();
 
@@ -104,10 +128,12 @@ pub async fn handler(
             } else {
                 path
             };
+            let (nav_root_items, nav_sections) = build_nav(&toc, &current_path);
 
             if is_datastar {
                 let template = DocsComponentTemplate {
-                    toc,
+                    nav_root_items,
+                    nav_sections,
                     current_path,
                     html_content,
                 };
@@ -129,24 +155,60 @@ pub async fn handler(
                 let (auth_header, user_email) = match state.resolve_user_email(&headers) {
                     Ok(result) => result,
                     Err(err) => {
-                        return (
-                            StatusCode::UNAUTHORIZED,
-                            format!("Unauthorized: {err}"),
-                        )
+                        return (StatusCode::UNAUTHORIZED, format!("Unauthorized: {err}"))
                             .into_response();
                     }
                 };
-                let user_initial = user_email.chars().next().unwrap_or('_').to_ascii_uppercase();
+                let user_initial = user_email
+                    .chars()
+                    .next()
+                    .unwrap_or('_')
+                    .to_ascii_uppercase();
+                let allows_local_artifacts = state.runtime_mode_policy.allows_local_artifacts();
+                let can_use_keystore = cfg!(feature = "keystore") && allows_local_artifacts;
+                let (keystore_locked, keystore_lock_time) = if can_use_keystore {
+                    state.keystore_status_for(&user_email).await
+                } else {
+                    (true, 0)
+                };
+                let hosts_by_name = if allows_local_artifacts {
+                    crate::data::KnownHost::parse_hosts_yml().unwrap_or_default()
+                } else {
+                    std::collections::BTreeMap::new()
+                };
+                let exporter = state.exporter.read().await.clone();
+                let preferred_target = if allows_local_artifacts {
+                    crate::data::Settings::load()
+                        .ok()
+                        .and_then(|settings| settings.active_target)
+                } else {
+                    None
+                };
+                let (output_options, selected_output, exporter_label) =
+                    crate::server::template::build_footer_output_context(
+                        &hosts_by_name,
+                        &exporter,
+                        preferred_target.as_deref(),
+                    );
+                let active_output_secure = crate::server::template::active_output_requires_keystore(
+                    &hosts_by_name,
+                    &selected_output,
+                    &exporter,
+                );
 
                 let template = DocsTemplate {
-                    toc,
+                    nav_root_items,
+                    nav_sections,
                     current_path,
                     html_content,
                     auth_header,
                     debug: log::max_level() >= log::LevelFilter::Debug,
                     desktop: cfg!(feature = "desktop"),
                     can_configure_output: state.runtime_mode_policy.allows_exporter_updates(),
-                    exporter: state.exporter.read().await.to_string(),
+                    output_options,
+                    active_output_secure,
+                    selected_output,
+                    exporter_label,
                     kibana_url: state.kibana_url.read().await.clone(),
                     stats: state.get_stats_as_signals().await,
                     user: user_email,
@@ -154,6 +216,9 @@ pub async fn handler(
                     version: env!("CARGO_PKG_VERSION").to_string(),
                     theme_dark: crate::server::get_theme_dark(&headers),
                     runtime_mode: state.runtime_mode.to_string(),
+                    can_use_keystore,
+                    keystore_locked,
+                    keystore_lock_time,
                 };
 
                 match template.render() {
@@ -167,6 +232,53 @@ pub async fn handler(
         }
         None => (StatusCode::NOT_FOUND, "Document not found").into_response(),
     }
+}
+
+fn build_nav(entries: &[TocEntry], current_path: &str) -> (Vec<DocsNavLink>, Vec<DocsNavSection>) {
+    let mut root_items = Vec::new();
+    let mut sections = Vec::new();
+    let mut current_section: Option<DocsNavSection> = None;
+
+    for entry in entries {
+        if entry.is_dir {
+            if let Some(section) = current_section.take() {
+                sections.push(section);
+            }
+            current_section = Some(DocsNavSection {
+                id: slugify(&entry.title),
+                title: entry.title.clone(),
+                open: false,
+                items: Vec::new(),
+            });
+            continue;
+        }
+
+        let link = DocsNavLink {
+            title: entry.title.clone(),
+            path: entry.path.clone(),
+            is_active: current_path == entry.path,
+        };
+
+        if entry.level == 0 {
+            if let Some(section) = current_section.take() {
+                sections.push(section);
+            }
+            root_items.push(link);
+        } else if let Some(section) = current_section.as_mut() {
+            if link.is_active {
+                section.open = true;
+            }
+            section.items.push(link);
+        } else {
+            root_items.push(link);
+        }
+    }
+
+    if let Some(section) = current_section.take() {
+        sections.push(section);
+    }
+
+    (root_items, sections)
 }
 
 fn generate_toc() -> Vec<TocEntry> {
@@ -251,4 +363,148 @@ fn format_title(s: &str) -> String {
         })
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+fn slugify(s: &str) -> String {
+    s.to_ascii_lowercase()
+        .chars()
+        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '-' })
+        .collect::<String>()
+        .split('-')
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("-")
+}
+
+fn extract_existing_ids(html: &str) -> HashSet<String> {
+    static ID_ATTR_RE: OnceLock<Regex> = OnceLock::new();
+    let re = ID_ATTR_RE.get_or_init(|| {
+        Regex::new(r#"(?i)\bid\s*=\s*"([^"]+)""#).expect("id attribute regex should compile")
+    });
+    re.captures_iter(html)
+        .filter_map(|caps| caps.get(1).map(|m| m.as_str().to_string()))
+        .collect()
+}
+
+fn strip_html_tags(input: &str) -> String {
+    static TAG_RE: OnceLock<Regex> = OnceLock::new();
+    let re = TAG_RE.get_or_init(|| Regex::new(r"(?s)<[^>]*>").expect("tag regex should compile"));
+    re.replace_all(input, " ").into_owned()
+}
+
+fn next_unique_id(base: &str, used_ids: &mut HashSet<String>) -> String {
+    let root = if base.is_empty() { "section" } else { base };
+    if used_ids.insert(root.to_string()) {
+        return root.to_string();
+    }
+
+    let mut suffix = 2usize;
+    loop {
+        let candidate = format!("{root}-{suffix}");
+        if used_ids.insert(candidate.clone()) {
+            return candidate;
+        }
+        suffix += 1;
+    }
+}
+
+fn inject_heading_ids(html: &str) -> String {
+    static HEADING_RE: OnceLock<Regex> = OnceLock::new();
+    static HAS_ID_RE: OnceLock<Regex> = OnceLock::new();
+    let heading_re = HEADING_RE.get_or_init(|| {
+        Regex::new(r#"(?is)<h([1-3])([^>]*)>(.*?)</h([1-3])>"#)
+            .expect("heading regex should compile")
+    });
+    let has_id_re = HAS_ID_RE.get_or_init(|| {
+        Regex::new(r#"(?i)\bid\s*="#).expect("heading id presence regex should compile")
+    });
+
+    let mut used_ids = extract_existing_ids(html);
+    heading_re
+        .replace_all(html, |caps: &regex::Captures<'_>| {
+            let level = caps.get(1).map_or("1", |m| m.as_str());
+            let attrs = caps.get(2).map_or("", |m| m.as_str());
+            let content = caps.get(3).map_or("", |m| m.as_str());
+            let closing_level = caps.get(4).map_or(level, |m| m.as_str());
+
+            if closing_level != level {
+                return caps
+                    .get(0)
+                    .map_or_else(String::new, |m| m.as_str().to_string());
+            }
+
+            if has_id_re.is_match(attrs) {
+                return caps
+                    .get(0)
+                    .map_or_else(String::new, |m| m.as_str().to_string());
+            }
+
+            let label_text = strip_html_tags(content);
+            let base = slugify(label_text.trim());
+            let id = next_unique_id(&base, &mut used_ids);
+
+            format!(r#"<h{level}{attrs} id="{id}">{content}</h{level}>"#)
+        })
+        .into_owned()
+}
+
+#[cfg(test)]
+#[allow(clippy::await_holding_lock)]
+mod tests {
+    use super::handler_index;
+    use crate::server::{RuntimeMode, RuntimeModePolicy, test_server_state};
+    use axum::{
+        extract::State,
+        http::{HeaderMap, HeaderValue, StatusCode},
+        response::IntoResponse,
+    };
+    use std::{sync::Arc, sync::Mutex};
+    use tempfile::TempDir;
+
+    fn env_lock() -> &'static Mutex<()> {
+        crate::test_env_lock()
+    }
+
+    fn setup_env() -> (TempDir, std::path::PathBuf, std::path::PathBuf) {
+        let tmp = TempDir::new().expect("temp dir");
+        let config_dir = tmp.path().join(".esdiag");
+        let hosts_path = config_dir.join("hosts.yml");
+        let settings_path = config_dir.join("settings.yml");
+        unsafe {
+            std::env::set_var("HOME", tmp.path());
+            std::env::set_var("USERPROFILE", tmp.path());
+            std::env::set_var("ESDIAG_HOSTS", &hosts_path);
+            std::env::set_var("ESDIAG_SETTINGS", &settings_path);
+        }
+        (tmp, hosts_path, settings_path)
+    }
+
+    #[tokio::test]
+    async fn service_mode_docs_does_not_touch_local_artifacts() {
+        let _guard = env_lock().lock().expect("env lock");
+        let (_tmp, hosts_path, settings_path) = setup_env();
+
+        let mut state = test_server_state();
+        let state_mut = Arc::get_mut(&mut state).expect("unique state");
+        state_mut.runtime_mode = RuntimeMode::Service;
+        state_mut.runtime_mode_policy = RuntimeModePolicy::new(RuntimeMode::Service);
+
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "X-Goog-Authenticated-User-Email",
+            HeaderValue::from_static("accounts.google.com:test@example.com"),
+        );
+
+        let response = handler_index(headers, State(state)).await.into_response();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert!(
+            !hosts_path.exists(),
+            "service mode docs should not create hosts.yml"
+        );
+        assert!(
+            !settings_path.exists(),
+            "service mode docs should not create settings.yml"
+        );
+    }
 }

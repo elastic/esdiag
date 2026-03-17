@@ -1,0 +1,44 @@
+<panel
+    id="clusters-table-panel"
+    data-signals='{
+        clusters: {
+            rows: {}
+        }
+    }'
+>
+    <h3 style="margin-top: 0">Diagnostic Clusters</h3>
+    <info-text>Elasticsearch clusters with the Elastic Stack Diagnostics assets installed for diagnostic analysis.</info-text>
+    <div id="clusters-table-error"></div>
+    <table-records id="clusters-table">
+        <table>
+            <thead>
+                <tr>
+                    <th scope="col">Name</th>
+                    <th scope="col" class="cluster-secret-column">Secret</th>
+                    <th scope="col">Certificates</th>
+                    <th scope="col" class="cluster-url-column">Elasticsearch URL</th>
+                    <th scope="col" class="cluster-url-column">Kibana URL</th>
+                    <th scope="col">Actions</th>
+                </tr>
+            </thead>
+            <tbody id="clusters-table-body">
+                {{ rows_html|safe }}
+            </tbody>
+        </table>
+    </table-records>
+    <footer>
+        <button
+            type="button"
+            title="Toggle keystore"
+            aria-label="Toggle keystore"
+            data-on:click="
+                if ($keystore.locked) { @get('/keystore/modal'); }
+                else if (confirm('Lock keystore and disable secret usage?')) { @post('/keystore/lock'); }
+            "
+        >
+            <icon-lock data-show="$keystore.locked"></icon-lock>
+            <icon-key data-show="!$keystore.locked"></icon-key>
+        </button>
+        <button type="button" {% if keystore_locked %}disabled{% endif %} data-on:click="@post('/settings/cluster/create/new')">Add Diagnostic Cluster</button>
+    </footer>
+</panel>

@@ -16,6 +16,7 @@ use std::{
     collections::BTreeMap,
     env,
     fs::File,
+    future::Future,
     io::{BufReader, BufWriter, IsTerminal},
     path::PathBuf,
 };
@@ -25,6 +26,10 @@ const KEY_SIZE: usize = 32;
 const SALT_SIZE: usize = 16;
 const NONCE_SIZE: usize = 12;
 const KEYSTORE_FILE: &str = "secrets.yml";
+
+tokio::task_local! {
+    static SCOPED_KEYSTORE_PASSWORD: String;
+}
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum SecretAuth {
@@ -130,9 +135,21 @@ pub fn get_keystore_path() -> Result<PathBuf> {
 }
 
 pub fn get_password_from_env() -> Result<String> {
+    if let Ok(password) = SCOPED_KEYSTORE_PASSWORD.try_with(Clone::clone) {
+        return Ok(password);
+    }
     env::var(ESDIAG_KEYSTORE_PASSWORD).map_err(|_| {
         eyre!("{ESDIAG_KEYSTORE_PASSWORD} is not set; cannot decrypt secrets from keystore.")
     })
+}
+
+pub async fn with_scoped_keystore_password<F>(keystore_password: String, future: F) -> F::Output
+where
+    F: Future,
+{
+    SCOPED_KEYSTORE_PASSWORD
+        .scope(keystore_password, future)
+        .await
 }
 
 pub fn get_password_for_secret_commands() -> Result<String> {
@@ -220,12 +237,57 @@ pub fn upsert_secret_auth(
     Ok(())
 }
 
+pub(crate) fn upsert_secret_auth_batch<I>(entries: I, keystore_password: &str) -> Result<usize>
+where
+    I: IntoIterator<Item = (String, SecretAuth)>,
+{
+    let mut store = read_store(keystore_password)?;
+    let mut updated = 0_usize;
+
+    for (secret_id, auth) in entries {
+        let entry = store
+            .secrets
+            .entry(secret_id)
+            .or_insert_with(SecretEntry::default);
+        entry.upsert_auth(auth);
+        updated += 1;
+    }
+
+    if updated > 0 {
+        write_store(&store, keystore_password)?;
+    }
+    Ok(updated)
+}
+
 pub fn resolve_secret_auth(secret_id: &str, keystore_password: &str) -> Result<Option<SecretAuth>> {
     let store = read_store(keystore_password)?;
     Ok(store
         .secrets
         .get(secret_id)
         .and_then(SecretEntry::resolve_auth))
+}
+
+pub fn authenticate(keystore_password: &str) -> Result<()> {
+    let path = get_keystore_path()?;
+    if !path.is_file() {
+        let store = KeystoreData::default();
+        write_store(&store, keystore_password)?;
+        log::info!("Created empty keystore at {}", path.display());
+        return Ok(());
+    }
+
+    read_store(keystore_password).map(|_| ())
+}
+
+pub fn list_secret_names(keystore_password: &str) -> Result<Vec<String>> {
+    let store = read_store(keystore_password)?;
+    let mut names: Vec<String> = store.secrets.keys().cloned().collect();
+    names.sort();
+    Ok(names)
+}
+
+pub fn keystore_exists() -> Result<bool> {
+    Ok(get_keystore_path()?.is_file())
 }
 
 fn read_store(keystore_password: &str) -> Result<KeystoreData> {
@@ -238,10 +300,7 @@ fn read_store(keystore_password: &str) -> Result<KeystoreData> {
     let reader = BufReader::new(file);
     let encrypted: EncryptedKeystore = serde_yaml::from_reader(reader)?;
     if encrypted.version != 1 {
-        return Err(eyre!(
-            "Unsupported keystore version {}",
-            encrypted.version
-        ));
+        return Err(eyre!("Unsupported keystore version {}", encrypted.version));
     }
 
     let salt = base64::engine::general_purpose::STANDARD.decode(encrypted.salt)?;
