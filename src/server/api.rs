@@ -19,9 +19,17 @@ use serde_json::json;
 use std::sync::Arc;
 use url::Url;
 
+#[derive(Deserialize)]
+pub struct ServiceLinkQueryParams {
+    #[serde(default, deserialize_with = "deserialize_empty_as_true")]
+    wait_for_completion: bool,
+}
+
+#[axum::debug_handler]
 pub async fn service_link(
     State(state): State<Arc<ServerState>>,
     headers: HeaderMap,
+    Query(params): Query<ServiceLinkQueryParams>,
     Json(payload): Json<UploadServiceRequest>,
 ) -> impl IntoResponse {
     log::info!(
@@ -111,11 +119,112 @@ pub async fn service_link(
     let mut metadata = payload.metadata;
     metadata.user = Some(request_user);
 
-    // Stash the user-scoped metadata and (filename, URI) into the server state for later use
-    state.push_link(job_id, metadata, uri).await;
+    if params.wait_for_completion {
+        log::info!("Processing service link synchronously: {}", job_id);
+        log::debug!("[fsm][api.service_link] queued -> processing(sync): job_id={job_id}");
 
-    // Respond with a JSON success
-    (StatusCode::CREATED, Json(json!({"link_id": job_id})))
+        let receiver = match Receiver::try_from(uri) {
+            Ok(receiver) => {
+                log::debug!("[fsm][api.service_link] receiver created: job_id={job_id}");
+                Arc::new(receiver)
+            }
+            Err(e) => {
+                log::error!("Failed to create receiver: {}", e);
+                state.record_failure().await;
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({
+                        "error": format!("Failed to create receiver: {}", e)
+                    })),
+                );
+            }
+        };
+
+        let exporter = Arc::new(state.exporter.read().await.clone());
+        log::debug!("[fsm][api.service_link] ready->try_new: job_id={job_id}");
+
+        let processor = match Processor::try_new(receiver, exporter, metadata).await {
+            Ok(processor) => {
+                log::debug!(
+                    "[fsm][api.service_link] try_new ok: processor_id={}, job_id={job_id}",
+                    processor.id
+                );
+                processor
+            }
+            Err(error) => {
+                log::error!("Failed to create processor: {}", error);
+                state.record_failure().await;
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({
+                        "error": format!("Failed to create processor: {}", error)
+                    })),
+                );
+            }
+        };
+
+        let processing = match processor.start().await {
+            Ok(processing) => {
+                log::debug!(
+                    "[fsm][api.service_link] start ok -> processing: processor_id={}, job_id={job_id}",
+                    processing.id
+                );
+                processing
+            }
+            Err(failed) => {
+                log::error!("Failed to start processor: {}", failed.state.error);
+                state.record_failure().await;
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({
+                        "error": format!("Failed to start processor: {}", failed.state.error)
+                    })),
+                );
+            }
+        };
+
+        match processing.process().await {
+            Ok(completed) => {
+                log::debug!(
+                    "[fsm][api.service_link] process ok -> completed: processor_id={}, job_id={job_id}",
+                    completed.id
+                );
+                let report = &completed.state.report;
+                state
+                    .record_success(report.diagnostic.docs.total, report.diagnostic.docs.errors)
+                    .await;
+
+                let response = json!({
+                    "diagnostic_id": report.diagnostic.metadata.id,
+                    "kibana_link": report.diagnostic.kibana_link.as_ref().unwrap_or(&"".to_string()),
+                    "took": completed.state.runtime
+                });
+
+                log::info!(
+                    "Service link job completed synchronously: {}",
+                    report.diagnostic.metadata.id
+                );
+                (StatusCode::OK, Json(response))
+            }
+            Err(failed) => {
+                log::error!("Processing failed: {}", failed.state.error);
+                state.record_failure().await;
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({
+                        "error": format!("Processing failed: {}", failed.state.error)
+                    })),
+                )
+            }
+        }
+    } else {
+        // Stash the user-scoped metadata and (filename, URI) into the server state for later use
+        log::debug!("[fsm][api.service_link] queued(in state): job_id={job_id}");
+        state.push_link(job_id, metadata, uri).await;
+
+        // Respond with a JSON success
+        (StatusCode::CREATED, Json(json!({"link_id": job_id})))
+    }
 }
 
 #[derive(Deserialize)]

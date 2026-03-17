@@ -42,7 +42,7 @@ curl -X POST http://localhost:2501/api/service_link \
       "account": "customer-123",
       "case_number": 98765,
       "filename": "remote-diagnostic.zip",
-      "opportunity": null,
+      "opportunity": null
     },
     "token": "0123456789",
     "url": "https://upload.elastic.co/d/abcdefghijklmnopqrstuvwxyz"
@@ -88,7 +88,7 @@ curl -X POST http://localhost:2501/api/api_key \
   -d '{
     "metadata": {
       "account": "Acme, Inc.",
-      "case_number": "98765",
+      "case_number": 98765,
       "opportunity": null,
       "user": "user@example.com"
     },
@@ -115,7 +115,7 @@ curl -X POST 'http://localhost:2501/api/api_key?wait_for_completion' \
   -d '{
     "metadata": {
       "account": "Acme, Inc.",
-      "case_number": "98765",
+      "case_number": 98765,
       "opportunity": null,
       "user": "user@example.com"
     },
@@ -131,7 +131,7 @@ curl -X POST 'http://localhost:2501/api/api_key?wait_for_completion=true' \
   -d '{
     "metadata": {
       "account": "Acme, Inc.",
-      "case_number": "98765",
+      "case_number": 98765,
       "opportunity": null,
       "user": "user@example.com"
     },
@@ -144,7 +144,7 @@ curl -X POST 'http://localhost:2501/api/api_key?wait_for_completion=true' \
 ```json
 {
   "diagnostic_id": "elasticsearch-diagnostic-2024-01-15-abc123",
-  "kibana_url": "https://kibana.example.com/app/dashboards#/view/4e0a26b2-e5f8-4b58-b617-86f5cdd0edad?_g=...",
+  "kibana_link": "https://kibana.example.com/app/dashboards#/view/4e0a26b2-e5f8-4b58-b617-86f5cdd0edad?_g=...",
   "took": 12345
 }
 ```
@@ -152,7 +152,7 @@ curl -X POST 'http://localhost:2501/api/api_key?wait_for_completion=true' \
 | Field | Type | Description |
 |-------|------|-------------|
 | `diagnostic_id` | String | Unique identifier for the processed diagnostic |
-| `kibana_url` | String | URL to view the diagnostic in Kibana (empty string if not configured) |
+| `kibana_link` | String | URL to view the diagnostic in Kibana (empty string if not configured) |
 | `took` | Number | Processing time in milliseconds |
 
 ### Error Response - Processing Failed
@@ -195,7 +195,7 @@ curl -X POST http://localhost:2501/api/service_link \
   -d '{
     "metadata": {
       "account": "customer-123",
-      "case_number": "98765",
+      "case_number": 98765,
       "filename": "remote-diagnostic.zip",
       "opportunity": null
     },
@@ -206,7 +206,7 @@ curl -X POST http://localhost:2501/api/service_link \
 
 2. Retrieve `link_id` from response
 ```json
-{ "link_id": "45678" }
+{ "link_id": 456789 }
 ```
 
 3. Forward user to ESDiag with `link_id` as a parameter
@@ -224,7 +224,7 @@ curl -X POST http://localhost:2501/api/api_key \
   -d '{
     "metadata": {
       "account": "Acme, Inc",
-      "case_number": "12345",
+      "case_number": 12345,
       "user": "user@example.com"
     },
     "apikey": "abcdefghijklmnopqrstuvwxyz=",
@@ -254,7 +254,7 @@ curl -X POST 'http://localhost:2501/api/api_key?wait_for_completion' \
   -d '{
     "metadata": {
       "account": "Acme, Inc",
-      "case_number": "12345",
+      "case_number": 12345,
       "user": "user@example.com"
     },
     "apikey": "abcdefghijklmnopqrstuvwxyz=",
@@ -262,12 +262,12 @@ curl -X POST 'http://localhost:2501/api/api_key?wait_for_completion' \
   }'
 ```
 
-2. Response includes diagnostic ID and Kibana URL
+2. Response includes diagnostic ID and Kibana link
 
 ```json
 {
   "diagnostic_id": "elasticsearch-diagnostic-2024-01-15-abc123",
-  "kibana_url": "https://kibana.example.com/app/dashboards#/view/4e0a26b2-e5f8-4b58-b617-86f5cdd0edad?_g=...",
+  "kibana_link": "https://kibana.example.com/app/dashboards#/view/4e0a26b2-e5f8-4b58-b617-86f5cdd0edad?_g=...",
   "took": 12345
 }
 ```

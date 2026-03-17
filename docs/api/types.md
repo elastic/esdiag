@@ -62,7 +62,7 @@ Response from the `/api/service_link` endpoint.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `link_id` | String | Unique identifier for the created job |
+| `link_id` | Integer | Unique identifier for the created job |
 
 ### ApiKeyRequest
 
@@ -74,7 +74,7 @@ Request payload for the `/api/api_key` endpoint.
   "url": "string",
   "metadata": {
     "account": "string | null",
-    "case_number": "string | null",
+    "case_number": "number | null",
     "filename": "string | null",
     "opportunity": "string | null",
     "user": "string | null"
@@ -102,14 +102,14 @@ Response from the `/api/api_key` endpoint when `wait_for_completion` is `false` 
 |-------|------|-------------|
 | `key_id` | Integer | Unique identifier for the created API key job |
 
-### ApiKey Response (Synchronous)
+### Synchronous Response (wait_for_completion=true)
 
-Response from the `/api/api_key` endpoint when `wait_for_completion` is `true`.
+Response from `/api/api_key` or `/api/service_link` when `wait_for_completion` is `true`.
 
 ```json
 {
   "diagnostic_id": "string",
-  "kibana_url": "string",
+  "kibana_link": "string",
   "took": integer
 }
 ```
@@ -117,7 +117,7 @@ Response from the `/api/api_key` endpoint when `wait_for_completion` is `true`.
 | Field | Type | Description |
 |-------|------|-------------|
 | `diagnostic_id` | String | Unique identifier for the processed diagnostic |
-| `kibana_url` | String | URL to view the diagnostic in Kibana dashboard (empty string if `ESDIAG_KIBANA_URL` is not configured) |
+| `kibana_link` | String | URL to view the diagnostic in Kibana dashboard (empty string if `ESDIAG_KIBANA_URL` is not configured) |
 | `took` | Integer | Processing time in milliseconds |
 
 ### Error Response
@@ -137,7 +137,7 @@ Standard error response format used across all endpoints.
 ### HTTP Status Codes
 
 - `200 OK` - Request successful
-- `201 Created` - Resource created successfully (used by `/api/api_key`)
+- `201 Created` - Resource created successfully (used by `/api/service_link` and `/api/api_key` when `wait_for_completion=false`)
 - `400 Bad Request` - Invalid request data or parameters
 - `422 Unprocessable Entity` - Invalid request data structure
 - `500 Internal Server Error` - Server-side processing error
@@ -147,7 +147,7 @@ Standard error response format used across all endpoints.
 ### File Upload Constraints
 
 - **File Extension**: Must be `.zip`
-- **File Size**: Maximum 512 GiB (549,755,813,888 bytes)
+- **File Size**: Maximum 512 MiB (536,870,912 bytes)
 - **Filename**: Must be provided and non-empty
 
 ## Notes
