@@ -274,6 +274,8 @@ async fn main() -> Result<()> {
     } else {
         EnvFilter::try_from_env("LOG_LEVEL").unwrap_or_else(|_| EnvFilter::new(LOG_LEVEL))
     };
+    // Bridge log crate events from third-party dependencies into the tracing pipeline
+    tracing_log::LogTracer::init().ok();
     fmt().with_env_filter(filter).init();
 
     std::panic::set_hook(Box::new(|panic| {

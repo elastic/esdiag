@@ -70,8 +70,8 @@ impl Receive for ArchiveFileReceiver {
                 archive.file_names().map(|name| name.to_string()).collect();
             tracing::trace!("Files in archive: {:?}", file_names);
         }
-        tracing::debug!("Directory {} is valid: {is_empty}", &self.filename);
-        is_empty
+        tracing::debug!("Archive {} is valid: {}", &self.filename, !is_empty);
+        !is_empty
     }
 
     fn filename(&self) -> Option<String> {

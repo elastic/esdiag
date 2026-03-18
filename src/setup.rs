@@ -44,7 +44,7 @@ impl EmbeddedAssets {
     }
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Asset {
     pub endpoint: String,
     pub method: String,
@@ -142,7 +142,7 @@ pub async fn assets(client: &Client) -> Result<()> {
         }
 
         tracing::info!("Processing asset: {}", &asset.name);
-        tracing::debug!("Asset: {}", serde_json::to_string(&asset).unwrap());
+        tracing::debug!("Asset: {:?}", &asset);
         let path = PathBuf::from(format!("{}/{}", client, asset.name));
 
         let dir_files = embedded_assets.get_dir_files(&path);

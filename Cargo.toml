@@ -31,6 +31,7 @@ indexmap = "2.13.0"
 json-patch = "4.1"
 mimalloc = "0.1.48"
 tracing = "0.1"
+tracing-log = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "tracing-log"] }
 pbkdf2 = "0.12.2"
 pulldown-cmark = "0.13.1"
