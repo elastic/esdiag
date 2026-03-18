@@ -2,6 +2,8 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
+/// Processors for Elastic Agent diagnostics
+mod agent;
 /// Collect diagnostic data from applications
 pub mod api;
 mod collector;
@@ -25,10 +27,12 @@ pub use diagnostic::{
     manifest::ManifestBuilder,
     report::{BatchResponse, Identifiers, ProcessorSummary},
 };
+pub use agent::AgentInfo;
 pub use elasticsearch::Cluster as ElasticsearchCluster;
 
 pub use crate::processor::diagnostic::data_source::StreamingDataSource;
 use crate::{data::Product, exporter::Exporter, receiver::Receiver};
+use agent::AgentDiagnostic;
 use elastic_cloud_kubernetes::ElasticCloudKubernetesDiagnostic;
 use elasticsearch::ElasticsearchDiagnostic;
 use eyre::{Result, eyre};
@@ -372,6 +376,7 @@ impl std::fmt::Display for Processor<Failed> {
 }
 
 enum Diagnostic {
+    Agent(Box<AgentDiagnostic>),
     Elasticsearch(Box<ElasticsearchDiagnostic>),
     ElasticCloudKubernetes(Box<ElasticCloudKubernetesDiagnostic>),
     KubernetesPlatform(Box<KubernetesPlatformDiagnostic>),
@@ -382,6 +387,7 @@ enum Diagnostic {
 impl Diagnostic {
     pub fn uuid(&self) -> Option<String> {
         match self {
+            Diagnostic::Agent(diagnostic) => Some(diagnostic.uuid().to_string()),
             Diagnostic::Elasticsearch(diagnostic) => Some(diagnostic.uuid().to_string()),
             Diagnostic::ElasticCloudKubernetes(diagnostic) => Some(diagnostic.uuid().to_string()),
             Diagnostic::KubernetesPlatform(diagnostic) => Some(diagnostic.uuid().to_string()),
@@ -400,6 +406,11 @@ impl Diagnostic {
             serde_json::to_string(&manifest).unwrap()
         );
         match manifest.product {
+            Product::Agent => {
+                let (diagnostic, report) =
+                    AgentDiagnostic::try_new(receiver, exporter, manifest).await?;
+                Ok((Self::Agent(diagnostic), report))
+            }
             Product::Elasticsearch => {
                 let (diagnostic, report) =
                     ElasticsearchDiagnostic::try_new(receiver, exporter, manifest).await?;
@@ -427,6 +438,7 @@ impl Diagnostic {
 
     async fn process(self, summary_tx: mpsc::Sender<ProcessorSummary>) -> Result<()> {
         match self {
+            Diagnostic::Agent(diagnostic) => diagnostic.process(summary_tx).await,
             Diagnostic::Elasticsearch(diagnostic) => diagnostic.process(summary_tx).await,
             Diagnostic::ElasticCloudKubernetes(diagnostic) => diagnostic.process(summary_tx).await,
             Diagnostic::KubernetesPlatform(diagnostic) => diagnostic.process(summary_tx).await,
@@ -437,6 +449,7 @@ impl Diagnostic {
 
     fn origin(&self) -> (String, String, String) {
         match self {
+            Diagnostic::Agent(diagnostic) => diagnostic.origin(),
             Diagnostic::Elasticsearch(diagnostic) => diagnostic.origin(),
             Diagnostic::ElasticCloudKubernetes(diagnostic) => diagnostic.origin(),
             Diagnostic::KubernetesPlatform(diagnostic) => diagnostic.origin(),

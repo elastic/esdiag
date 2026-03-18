@@ -94,7 +94,11 @@ impl Receive for ArchiveFileReceiver {
                     tracing::debug!("Reading {}", filename);
                     let file = archive.by_name(&filename)?;
                     let reader = BufReader::new(file);
-                    let data: T = serde_json::from_reader(reader)?;
+                    let data: T = if filename.ends_with(".yaml") || filename.ends_with(".yml") {
+                        serde_yaml::from_reader(reader)?
+                    } else {
+                        serde_json::from_reader(reader)?
+                    };
                     return Ok(data);
                 }
                 Err(e) => {
@@ -186,6 +190,36 @@ impl ArchiveFileReceiver {
         let file = archive.by_name(&filename)?;
         let reader = BufReader::new(file);
         serde_json::from_reader(reader).map_err(Into::into)
+    }
+
+    pub async fn read_bundle_yaml<T>(&self, filename: &str) -> Result<T>
+    where
+        T: DeserializeOwned,
+    {
+        let mut archive = self.archive.write().await;
+        let filename = resolve_archive_path(self.subdir.as_ref(), &mut *archive, filename)?;
+        log::debug!("Reading bundle YAML file {}", filename);
+        let file = archive.by_name(&filename)?;
+        let reader = BufReader::new(file);
+        serde_yaml::from_reader(reader).map_err(Into::into)
+    }
+
+    pub async fn list_files(&self, prefix: &str, extension: &str) -> Vec<String> {
+        let archive = self.archive.read().await;
+        archive
+            .file_names()
+            .filter(|name| name.contains(prefix) && name.ends_with(extension))
+            .map(|name| name.to_string())
+            .collect()
+    }
+
+    pub async fn read_file_string(&self, path: &str) -> Result<String> {
+        let mut archive = self.archive.write().await;
+        let resolved = resolve_archive_path(self.subdir.as_ref(), &mut *archive, path)?;
+        let mut file = archive.by_name(&resolved)?;
+        let mut content = String::new();
+        std::io::Read::read_to_string(&mut file, &mut content)?;
+        Ok(content)
     }
 
     pub fn set_source_product(&self, product: &'static str) -> Result<()> {

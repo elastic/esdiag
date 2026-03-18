@@ -80,7 +80,11 @@ impl Receive for DirectoryReceiver {
             match File::open(&filename) {
                 Ok(file) => {
                     let reader = BufReader::new(file);
-                    let data: T = serde_json::from_reader(reader)?;
+                    let ext = filename.extension().and_then(|e| e.to_str()).unwrap_or("");
+                    let data: T = match ext {
+                        "yaml" | "yml" => serde_yaml::from_reader(reader)?,
+                        _ => serde_json::from_reader(reader)?,
+                    };
                     return Ok(data);
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -200,6 +204,59 @@ impl DirectoryReceiver {
         let file = File::open(path)?;
         let reader = BufReader::new(file);
         serde_json::from_reader(reader).map_err(Into::into)
+    }
+
+    pub async fn read_bundle_yaml<T>(&self, filename: &str) -> Result<T>
+    where
+        T: DeserializeOwned,
+    {
+        let path = self.path.join(&self.work_dir).join(filename);
+        log::debug!("Reading bundle YAML file: {}", path.display());
+        let file = File::open(path)?;
+        let reader = BufReader::new(file);
+        serde_yaml::from_reader(reader).map_err(Into::into)
+    }
+
+    pub fn list_files(&self, prefix: &str, extension: &str) -> Vec<String> {
+        let root = self.path.join(&self.work_dir);
+        let mut files = Vec::new();
+        Self::collect_files(&root, prefix, extension, &root, &mut files);
+        files.sort();
+        files
+    }
+
+    fn collect_files(
+        dir: &std::path::Path,
+        prefix: &str,
+        extension: &str,
+        root: &std::path::Path,
+        files: &mut Vec<String>,
+    ) {
+        let entries = match std::fs::read_dir(dir) {
+            Ok(e) => e,
+            Err(_) => return,
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                Self::collect_files(&path, prefix, extension, root, files);
+            } else if let Ok(rel) = path.strip_prefix(root) {
+                let rel_str = rel.to_string_lossy();
+                if rel_str.contains(prefix) && rel_str.ends_with(extension) {
+                    files.push(rel_str.to_string());
+                }
+            }
+        }
+    }
+
+    pub fn read_file_string(&self, path: &str) -> Result<String> {
+        let full_path = self.path.join(&self.work_dir).join(path);
+        log::debug!("Reading file: {}", full_path.display());
+        let mut content = String::new();
+        let file = File::open(full_path)?;
+        let mut reader = BufReader::new(file);
+        reader.read_to_string(&mut content)?;
+        Ok(content)
     }
 
     pub fn set_source_product(&self, product: &'static str) -> Result<()> {

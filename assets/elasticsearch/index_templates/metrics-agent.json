@@ -1,0 +1,56 @@
+{
+  "_meta": {
+    "description": "ESDiag Elastic Agent metrics"
+  },
+  "index_patterns": ["metrics-agent*-esdiag*"],
+  "composed_of": [
+    "esdiag@agent-mappings",
+    "esdiag@agent-metadata",
+    "esdiag@settings"
+  ],
+  "allow_auto_create": true,
+  "data_stream": {
+    "hidden": false,
+    "allow_custom_routing": false
+  },
+  "priority": 300,
+  "template": {
+    "mappings": {
+      "numeric_detection": false,
+      "dynamic": true,
+      "dynamic_templates": [
+        {
+          "strings_as_keywords": {
+            "mapping": {
+              "type": "keyword"
+            },
+            "match_mapping_type": "string"
+          }
+        }
+      ],
+      "properties": {
+        "data_stream": {
+          "type": "object",
+          "properties": {
+            "dataset": {
+              "type": "keyword"
+            },
+            "type": {
+              "type": "constant_keyword",
+              "value": "metrics"
+            }
+          }
+        },
+        "component": {
+          "type": "keyword",
+          "ignore_above": 1024
+        },
+        "input": {
+          "type": "keyword",
+          "ignore_above": 1024
+        }
+      }
+    }
+  },
+  "version": 1
+}

@@ -118,6 +118,17 @@ where
     deserializer.deserialize_map(MapVisitor(std::marker::PhantomData))
 }
 
+/// Deserialize a string value, treating empty strings as `None`.
+/// Use with `#[serde(default, deserialize_with = "empty_string_as_none")]`
+/// on `Option<String>` fields.
+pub fn empty_string_as_none<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value: Option<String> = Option::deserialize(deserializer)?;
+    Ok(value.filter(|s| !s.is_empty()))
+}
+
 pub fn option_map_as_vec_entries<'de, D, T>(
     deserializer: D,
 ) -> Result<Option<Vec<(String, T)>>, D::Error>

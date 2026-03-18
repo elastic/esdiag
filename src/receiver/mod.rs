@@ -260,10 +260,10 @@ impl Receiver {
                 self.set_source_product_from_manifest(&manifest.product)?;
                 Ok(manifest)
             }
-            Err(e) => Err(eyre!(
-                "Failed to identify product from diagnostic manifest: {}",
-                e
-            )),
+            Err(e) => {
+                log::debug!("Error reading manifest.json: {e}");
+                self.try_get_manifest_from_agent_info().await
+            }
         }
     }
 
@@ -279,6 +279,67 @@ impl Receiver {
                 "Bundle file reads are only supported for archive and directory receivers"
             )),
         }
+    }
+
+    pub async fn read_bundle_yaml<T>(&self, filename: &str) -> Result<T>
+    where
+        T: DeserializeOwned,
+    {
+        match self {
+            Receiver::ArchiveBytes(receiver) => receiver.read_bundle_yaml(filename).await,
+            Receiver::ArchiveFile(receiver) => receiver.read_bundle_yaml(filename).await,
+            Receiver::Directory(receiver) => receiver.read_bundle_yaml(filename).await,
+            _ => Err(eyre!("Bundle file reads are only supported for archive and directory receivers")),
+        }
+    }
+
+    pub async fn list_files(&self, prefix: &str, extension: &str) -> Vec<String> {
+        match self {
+            Receiver::ArchiveBytes(receiver) => receiver.list_files(prefix, extension).await,
+            Receiver::ArchiveFile(receiver) => receiver.list_files(prefix, extension).await,
+            Receiver::Directory(receiver) => receiver.list_files(prefix, extension),
+            _ => Vec::new(),
+        }
+    }
+
+    pub async fn read_file_string(&self, path: &str) -> Result<String> {
+        match self {
+            Receiver::ArchiveBytes(receiver) => receiver.read_file_string(path).await,
+            Receiver::ArchiveFile(receiver) => receiver.read_file_string(path).await,
+            Receiver::Directory(receiver) => receiver.read_file_string(path).map_err(Into::into),
+            _ => Err(eyre!("File reads are only supported for archive and directory receivers")),
+        }
+    }
+
+    async fn try_get_manifest_from_agent_info(&self) -> Result<DiagnosticManifest> {
+        use crate::processor::AgentInfo;
+
+        let agent_info: AgentInfo =
+            self.read_bundle_yaml("agent-info.yaml").await.map_err(|e| {
+                eyre!(
+                    "Failed to identify product from diagnostic manifest \
+                     (tried diagnostic_manifest.json, manifest.json, agent-info.yaml): {}",
+                    e
+                )
+            })?;
+        log::info!("Using agent-info.yaml as manifest source");
+
+        let collection_date = self.collection_date().await;
+
+        let manifest = DiagnosticManifest::new(
+            collection_date,
+            None,
+            None,
+            None,
+            None,
+            Product::Agent,
+            Some("agent_diagnostic".to_string()),
+            Some("elastic_agent".to_string()),
+            agent_info.version(),
+        )
+        .with_name(agent_info.hostname());
+        self.set_source_product_from_manifest(&manifest.product)?;
+        Ok(manifest)
     }
 
     fn set_source_product_from_manifest(&self, product: &Product) -> Result<()> {

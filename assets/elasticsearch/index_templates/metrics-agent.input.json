@@ -1,0 +1,45 @@
+{
+  "_meta": {
+    "description": "ESDiag Elastic Agent input metrics — adds component alias to input field"
+  },
+  "index_patterns": ["metrics-agent.input-esdiag*"],
+  "composed_of": [
+    "esdiag@agent-mappings",
+    "esdiag@agent-metadata",
+    "esdiag@settings"
+  ],
+  "allow_auto_create": true,
+  "data_stream": {
+    "hidden": false,
+    "allow_custom_routing": false
+  },
+  "priority": 310,
+  "template": {
+    "mappings": {
+      "properties": {
+        "data_stream": {
+          "type": "object",
+          "properties": {
+            "dataset": {
+              "type": "constant_keyword",
+              "value": "agent.input"
+            },
+            "type": {
+              "type": "constant_keyword",
+              "value": "metrics"
+            }
+          }
+        },
+        "input": {
+          "type": "keyword",
+          "ignore_above": 1024
+        },
+        "component": {
+          "type": "alias",
+          "path": "input"
+        }
+      }
+    }
+  },
+  "version": 1
+}

@@ -1,0 +1,96 @@
+{
+  "_meta": {
+    "description": "ESDiag Elastic Agent settings and configuration"
+  },
+  "index_patterns": ["settings-agent*-esdiag*"],
+  "composed_of": [
+    "esdiag@agent-mappings",
+    "esdiag@agent-metadata",
+    "esdiag@settings"
+  ],
+  "allow_auto_create": true,
+  "data_stream": {
+    "hidden": false,
+    "allow_custom_routing": false
+  },
+  "priority": 300,
+  "template": {
+    "mappings": {
+      "numeric_detection": false,
+      "dynamic": true,
+      "dynamic_templates": [
+        {
+          "strings_as_keywords": {
+            "mapping": {
+              "type": "keyword"
+            },
+            "match_mapping_type": "string"
+          }
+        }
+      ],
+      "properties": {
+        "data_stream": {
+          "type": "object",
+          "properties": {
+            "dataset": {
+              "type": "keyword"
+            },
+            "type": {
+              "type": "constant_keyword",
+              "value": "settings"
+            }
+          }
+        },
+        "config": {
+          "type": "flattened"
+        },
+        "processors": {
+          "type": "flattened"
+        },
+        "streams": {
+          "type": "flattened"
+        },
+        "request": {
+          "type": "flattened"
+        },
+        "response": {
+          "type": "flattened"
+        },
+        "cursor": {
+          "type": "flattened"
+        },
+        "publisher_pipeline": {
+          "type": "flattened"
+        },
+        "redact": {
+          "type": "flattened"
+        },
+        "resource": {
+          "type": "flattened"
+        },
+        "state": {
+          "type": "flattened"
+        },
+        "ssl": {
+          "type": "flattened"
+        },
+        "auth": {
+          "type": "flattened"
+        },
+        "sqs": {
+          "type": "flattened"
+        },
+        "file_selectors": {
+          "type": "flattened"
+        },
+        "queue": {
+          "type": "flattened"
+        },
+        "elasticsearch": {
+          "type": "flattened"
+        }
+      }
+    }
+  },
+  "version": 1
+}

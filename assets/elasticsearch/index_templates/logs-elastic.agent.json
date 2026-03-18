@@ -1,0 +1,74 @@
+{
+  "_meta": {
+    "description": "ESDiag Elastic Agent logs"
+  },
+  "index_patterns": ["logs-elastic.agent-esdiag*"],
+  "composed_of": [
+    "esdiag@agent-metadata",
+    "esdiag@settings"
+  ],
+  "allow_auto_create": true,
+  "data_stream": {
+    "hidden": false,
+    "allow_custom_routing": false
+  },
+  "priority": 300,
+  "template": {
+    "mappings": {
+      "dynamic": true,
+      "dynamic_templates": [
+        {
+          "strings_as_keywords": {
+            "mapping": {
+              "type": "keyword"
+            },
+            "match_mapping_type": "string"
+          }
+        }
+      ],
+      "properties": {
+        "data_stream": {
+          "type": "object",
+          "properties": {
+            "dataset": {
+              "type": "constant_keyword",
+              "value": "elastic.agent"
+            },
+            "type": {
+              "type": "constant_keyword",
+              "value": "logs"
+            }
+          }
+        },
+        "@timestamp": {
+          "type": "date"
+        },
+        "log.level": {
+          "type": "keyword",
+          "ignore_above": 256
+        },
+        "message": {
+          "type": "match_only_text"
+        },
+        "log.logger": {
+          "type": "keyword",
+          "ignore_above": 1024
+        },
+        "service.name": {
+          "type": "keyword",
+          "ignore_above": 1024
+        },
+        "component": {
+          "type": "flattened"
+        },
+        "monitoring": {
+          "type": "flattened"
+        },
+        "url": {
+          "type": "flattened"
+        }
+      }
+    }
+  },
+  "version": 1
+}
