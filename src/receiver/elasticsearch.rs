@@ -3,7 +3,7 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::super::processor::{
-    DataSource, DiagnosticManifest, ElasticsearchCluster, ManifestBuilder, PathType,
+    DataSource, DiagnosticManifest, ElasticsearchCluster, ManifestBuilder, SourceContext,
     StreamingDataSource,
 };
 use super::{Receive, ReceiveRaw};
@@ -54,8 +54,7 @@ impl ElasticsearchReceiver {
                 let cluster: Value = serde_json::from_slice(&bytes)?;
                 let version_str = cluster
                     .get("version")
-                    .and_then(|v| v.get("number"))
-                    .and_then(|v| v.as_str())
+                    .and_then(|version| version.get("number").and_then(|number| number.as_str()))
                     .ok_or_else(|| eyre!("No version found in root response"))?;
                 semver::Version::parse(version_str)
                     .map_err(|e| eyre!("Failed to parse version: {}", e))
@@ -148,9 +147,8 @@ impl Receive for ElasticsearchReceiver {
     where
         T: DataSource + DeserializeOwned,
     {
-        // Get the API URL path for the provided type
-        let version = self.get_version().await.ok();
-        let path = T::source(PathType::Url, version)?;
+        let ctx = SourceContext::new("elasticsearch", self.get_version().await.ok().cloned());
+        let path = T::resolve_source_request_path(&ctx)?;
         tracing::debug!("Getting API: {}", &path);
 
         // Send a simple GET request to the API path
@@ -216,17 +214,11 @@ impl ReceiveRaw for ElasticsearchReceiver {
     where
         T: DataSource,
     {
-        // Get the API URL path for the provided type
-        let version = self.get_version().await.ok();
-        let path = T::source(PathType::Url, version)?;
+        let ctx = SourceContext::new("elasticsearch", self.get_version().await.ok().cloned());
+        let path = T::resolve_source_request_path(&ctx)?;
+        let extension = T::resolve_source_extension(&ctx)?;
 
-        let name = T::name();
-        let aliases = T::aliases();
-        let source_conf =
-            crate::processor::diagnostic::data_source::get_source(T::product(), &name, &aliases)?;
-        let extension = source_conf.1.extension.as_deref().unwrap_or(".json");
-
-        self.get_raw_by_path(&path, extension).await
+        self.get_raw_by_path(&path, &extension).await
     }
 }
 
