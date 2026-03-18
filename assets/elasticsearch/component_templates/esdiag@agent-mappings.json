@@ -1,0 +1,56 @@
+{
+  "_meta": {
+    "managed": false,
+    "description": "ESDiag Elastic Agent field mappings"
+  },
+  "template": {
+    "mappings": {
+      "_routing": {
+        "required": false
+      },
+      "date_detection": false,
+      "numeric_detection": false,
+      "dynamic": true,
+      "dynamic_templates": [
+        {
+          "strings_as_keywords": {
+            "mapping": {
+              "type": "keyword"
+            },
+            "match_mapping_type": "string"
+          }
+        },
+        {
+          "long_metrics": {
+            "mapping": {
+              "index": false,
+              "type": "long"
+            },
+            "match_mapping_type": "long"
+          }
+        },
+        {
+          "float_metrics": {
+            "mapping": {
+              "index": false,
+              "type": "float"
+            },
+            "match_mapping_type": "double"
+          }
+        }
+      ],
+      "properties": {
+        "data_stream": {
+          "type": "object",
+          "properties": {
+            "namespace": {
+              "type": "constant_keyword",
+              "value": "esdiag"
+            }
+          }
+        }
+      }
+    }
+  },
+  "version": 1
+}

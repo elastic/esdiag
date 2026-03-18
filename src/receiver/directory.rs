@@ -80,7 +80,11 @@ impl Receive for DirectoryReceiver {
             match File::open(&filename) {
                 Ok(file) => {
                     let reader = BufReader::new(file);
-                    let data: T = serde_json::from_reader(reader)?;
+                    let ext = filename.extension().and_then(|e| e.to_str()).unwrap_or("");
+                    let data: T = match ext {
+                        "yaml" | "yml" => serde_yaml::from_reader(reader)?,
+                        _ => serde_json::from_reader(reader)?,
+                    };
                     return Ok(data);
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -203,6 +207,17 @@ impl DirectoryReceiver {
         let file = File::open(path)?;
         let reader = BufReader::new(file);
         serde_json::from_reader(reader).map_err(Into::into)
+    }
+
+    pub async fn read_bundle_yaml<T>(&self, filename: &str) -> Result<T>
+    where
+        T: DeserializeOwned,
+    {
+        let path = self.path.join(&self.work_dir).join(filename);
+        log::debug!("Reading bundle YAML file: {}", path.display());
+        let file = File::open(path)?;
+        let reader = BufReader::new(file);
+        serde_yaml::from_reader(reader).map_err(Into::into)
     }
 
     pub fn set_source_product(&self, product: &'static str) -> Result<()> {

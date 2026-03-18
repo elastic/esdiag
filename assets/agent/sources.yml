@@ -1,0 +1,29 @@
+# Elastic Agent diagnostic bundle sources.
+#
+# The Elastic Agent outputs it's own diagnostics bundle from the
+# `elastic-agent diagnostics` CLI command. There are no HTTP endpoints
+# to collect a diagnostic from.
+#
+# Reference: elastic-agent diagnostics command
+# https://www.elastic.co/docs/reference/fleet/agent-command-reference
+
+agent-info:
+  extension: .yaml
+
+state:
+  extension: .yaml
+
+computed-config:
+  extension: .yaml
+
+local-config:
+  extension: .yaml
+
+beat_metrics:
+  extension: .json
+
+input_metrics:
+  extension: .json
+
+beat-rendered-config:
+  extension: .yml

@@ -59,6 +59,13 @@ pub trait DataSource {
         let name = Self::name();
         let aliases = Self::aliases();
         let (_, source_conf) = get_source(ctx.product, &name, &aliases)?;
+        if source_conf.versions.is_none() {
+            return Err(eyre!(
+                "Source '{}' for product '{}' does not support live API collection",
+                name,
+                ctx.product
+            ));
+        }
         source_conf.get_url(version)
     }
 
@@ -103,6 +110,7 @@ pub trait DataSource {
 
 pub fn source_product_key(product: &Product) -> Result<&'static str> {
     match product {
+        Product::Agent => Ok("agent"),
         Product::Elasticsearch => Ok("elasticsearch"),
         Product::Kibana => Ok("kibana"),
         Product::Logstash => Ok("logstash"),
@@ -150,7 +158,10 @@ pub struct Source {
     pub extension: Option<String>,
     pub subdir: Option<String>,
     pub tags: Option<String>,
-    pub versions: BTreeMap<String, VersionSource>,
+    /// Version-gated URL mappings for live API collection.
+    /// None for archive-only products (e.g. Agent) where there is no REST API.
+    #[serde(default)]
+    pub versions: Option<BTreeMap<String, VersionSource>>,
 }
 
 impl Default for Source {
@@ -159,7 +170,7 @@ impl Default for Source {
             extension: Some(String::from(".json")),
             subdir: None,
             tags: None,
-            versions: BTreeMap::new(),
+            versions: Some(BTreeMap::new()),
         }
     }
 }
@@ -177,6 +188,7 @@ static SOURCES: OnceLock<HashMap<&'static str, HashMap<String, Source>>> = OnceL
 
 fn embedded_sources_str(product: &str) -> Result<&'static str> {
     match product {
+        "agent" => Ok(include_str!("../../../assets/agent/sources.yml")),
         "elasticsearch" => Ok(include_str!("../../../assets/elasticsearch/sources.yml")),
         "kibana" => Ok(include_str!("../../../assets/kibana/sources.yml")),
         "logstash" => Ok(include_str!("../../../assets/logstash/sources.yml")),
@@ -186,6 +198,7 @@ fn embedded_sources_str(product: &str) -> Result<&'static str> {
 
 fn required_source_keys(product: &str) -> &'static [&'static str] {
     match product {
+        "agent" => &["agent-info"],
         "elasticsearch" => &["version"],
         "kibana" => &["kibana_status", "kibana_spaces"],
         "logstash" => &["logstash_node", "logstash_version"],
@@ -226,7 +239,7 @@ fn load_embedded_sources(
 ) -> Result<HashMap<&'static str, HashMap<String, Source>>> {
     let mut products = HashMap::new();
 
-    for product in ["elasticsearch", "kibana", "logstash"] {
+    for product in ["agent", "elasticsearch", "kibana", "logstash"] {
         let (label, content) = if override_product == Some(product) {
             let path =
                 override_path.ok_or_else(|| eyre!("Override path missing for {}", product))?;
@@ -348,20 +361,29 @@ impl Source {
     }
 
     pub fn is_spaceaware(&self) -> bool {
-        self.versions.values().any(|version| match version {
-            VersionSource::Url(_) => false,
-            VersionSource::Structured(details) => details.spaceaware,
-        })
+        self.versions
+            .as_ref()
+            .map(|v| {
+                v.values().any(|version| match version {
+                    VersionSource::Url(_) => false,
+                    VersionSource::Structured(details) => details.spaceaware,
+                })
+            })
+            .unwrap_or(false)
     }
 
     pub fn resolve_version(&self, version: &Version) -> Result<ResolvedVersionSource> {
+        let versions = self.versions.as_ref().ok_or_else(|| {
+            eyre!("Source does not support live API collection (no version mappings)")
+        })?;
+
         // Strip pre-release tags (like -SNAPSHOT) to ensure our broad semver matching logic
         // in sources.yml (e.g. ">= 7.0.0") matches properly. Standard semver treats ">= 7.0.0"
         // as NOT matching "8.0.0-SNAPSHOT" by default unless specifically asked to.
         let mut clean_version = version.clone();
         clean_version.pre = semver::Prerelease::EMPTY;
 
-        for (req_str, source) in &self.versions {
+        for (req_str, source) in versions {
             let cargo_req_str = convert_npm_semver_to_cargo(req_str);
             let req = VersionReq::parse(&cargo_req_str)
                 .map_err(|e| eyre!("Failed to parse version req '{}': {}", req_str, e))?;
