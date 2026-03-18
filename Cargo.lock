@@ -1349,6 +1349,7 @@ dependencies = [
  "tokio",
  "tokio-test",
  "tracing",
+ "tracing-log",
  "tracing-subscriber",
  "url",
  "urlencoding",
