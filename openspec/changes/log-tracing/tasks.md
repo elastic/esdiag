@@ -8,7 +8,7 @@
 
 - [x] 2.1 Replace `env_logger::Builder` init block in `src/main.rs` with `tracing_subscriber::fmt()` setup using `EnvFilter` (respecting `LOG_LEVEL` env var defaulting to `info`)
 - [x] 2.2 Replace the `--debug` branch to use `EnvFilter::new("debug")` instead of `log::LevelFilter::Debug`
-- [x] 2.3 Enable `tracing-log` feature on `tracing-subscriber` in `Cargo.toml` so third-party `log` crate events are forwarded (replaces explicit `LogTracer::init()` to avoid double-registration)
+- [x] 2.3 Add `tracing-log` as a direct dependency and enable its feature on `tracing-subscriber`; call `tracing_log::LogTracer::init().ok()` in `src/main.rs` before subscriber init so third-party `log` crate events are forwarded through the tracing pipeline
 
 ## 3. Macro Call Site Replacement
 

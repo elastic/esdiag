@@ -109,7 +109,7 @@ impl Exporter {
     /// - Errors from batch processing do not abort processing; they are logged
     ///   with `tracing::warn!` and the loop continues.
     /// - The final (possibly partially updated) `ProcessorSummary` is returned.
-    #[tracing::instrument(skip_all, fields(index))]
+    #[tracing::instrument(skip_all, fields(index = %index))]
     pub async fn document_channel<T: Serialize + Send + Sync + 'static>(
         self,
         mut rx: mpsc::Receiver<T>,
@@ -151,7 +151,7 @@ impl Exporter {
         summary
     }
 
-    #[tracing::instrument(skip_all, fields(index))]
+    #[tracing::instrument(skip_all, fields(index = %index))]
     pub async fn send<T>(
         &self,
         index: String,
