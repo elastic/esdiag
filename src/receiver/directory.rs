@@ -217,6 +217,48 @@ impl DirectoryReceiver {
         serde_yaml::from_reader(reader).map_err(Into::into)
     }
 
+    pub fn list_files(&self, prefix: &str, extension: &str) -> Vec<String> {
+        let root = self.path.join(&self.work_dir);
+        let mut files = Vec::new();
+        Self::collect_files(&root, prefix, extension, &root, &mut files);
+        files.sort();
+        files
+    }
+
+    fn collect_files(
+        dir: &std::path::Path,
+        prefix: &str,
+        extension: &str,
+        root: &std::path::Path,
+        files: &mut Vec<String>,
+    ) {
+        let entries = match std::fs::read_dir(dir) {
+            Ok(e) => e,
+            Err(_) => return,
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                Self::collect_files(&path, prefix, extension, root, files);
+            } else if let Ok(rel) = path.strip_prefix(root) {
+                let rel_str = rel.to_string_lossy();
+                if rel_str.contains(prefix) && rel_str.ends_with(extension) {
+                    files.push(rel_str.to_string());
+                }
+            }
+        }
+    }
+
+    pub fn read_file_string(&self, path: &str) -> Result<String> {
+        let full_path = self.path.join(&self.work_dir).join(path);
+        log::debug!("Reading file: {}", full_path.display());
+        let mut content = String::new();
+        let file = File::open(full_path)?;
+        let mut reader = BufReader::new(file);
+        reader.read_to_string(&mut content)?;
+        Ok(content)
+    }
+
     pub fn set_source_product(&self, product: &'static str) -> Result<()> {
         match self.source_product.get() {
             Some(existing) if *existing != product => Err(eyre!(

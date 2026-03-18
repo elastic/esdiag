@@ -223,20 +223,22 @@ impl DiagnosticProcessor for AgentDiagnostic {
                 .await?;
         }
 
-        // Process logs
-        if let Some(filename) = self.receiver.filename() {
-            let logs_root = std::path::Path::new(&filename).join("logs");
-            if logs_root.is_dir() {
-                let log_files = logs::discover_log_files(&logs_root);
-                if !log_files.is_empty() {
-                    log::info!("Processing {} log files", log_files.len());
-                    match logs::export_logs(&log_files, &self.exporter, &self.metadata).await {
-                        Ok(summary) => {
-                            let _ = summary_tx.send(summary).await;
-                        }
-                        Err(e) => log::error!("Failed to process logs: {}", e),
-                    }
+        // Process logs — discover .ndjson files via receiver (works for both archives and directories)
+        let log_files = self.receiver.list_files("logs/", ".ndjson").await;
+        // Filter out events/ directories (sensitive data)
+        let log_files: Vec<String> = log_files
+            .into_iter()
+            .filter(|f| !f.contains("/events/"))
+            .collect();
+        if !log_files.is_empty() {
+            log::info!("Processing {} log files", log_files.len());
+            match logs::export_logs(&log_files, &self.receiver, &self.exporter, &self.metadata)
+                .await
+            {
+                Ok(summary) => {
+                    let _ = summary_tx.send(summary).await;
                 }
+                Err(e) => log::error!("Failed to process logs: {}", e),
             }
         }
 

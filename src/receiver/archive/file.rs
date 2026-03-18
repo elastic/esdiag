@@ -204,6 +204,24 @@ impl ArchiveFileReceiver {
         serde_yaml::from_reader(reader).map_err(Into::into)
     }
 
+    pub async fn list_files(&self, prefix: &str, extension: &str) -> Vec<String> {
+        let archive = self.archive.read().await;
+        archive
+            .file_names()
+            .filter(|name| name.contains(prefix) && name.ends_with(extension))
+            .map(|name| name.to_string())
+            .collect()
+    }
+
+    pub async fn read_file_string(&self, path: &str) -> Result<String> {
+        let mut archive = self.archive.write().await;
+        let resolved = resolve_archive_path(self.subdir.as_ref(), &mut *archive, path)?;
+        let mut file = archive.by_name(&resolved)?;
+        let mut content = String::new();
+        std::io::Read::read_to_string(&mut file, &mut content)?;
+        Ok(content)
+    }
+
     pub fn set_source_product(&self, product: &'static str) -> Result<()> {
         match self.source_product.get() {
             Some(existing) if *existing != product => Err(eyre!(

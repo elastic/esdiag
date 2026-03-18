@@ -3,49 +3,19 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::{AgentMetadata, Metadata};
-use crate::{exporter::Exporter, processor::ProcessorSummary};
+use crate::{exporter::Exporter, receiver::Receiver};
+use crate::processor::ProcessorSummary;
 use eyre::Result;
 use serde_json::Value;
-use std::io::BufRead;
-use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 const DATA_STREAM: &str = "logs-elastic.agent-esdiag";
 
-/// Discover all `.ndjson` log files under the given root, excluding `events/` directories.
-pub fn discover_log_files(root: &Path) -> Vec<PathBuf> {
-    let mut files = Vec::new();
-    collect_ndjson_files(root, &mut files);
-    files.sort();
-    files
-}
-
-fn collect_ndjson_files(dir: &Path, files: &mut Vec<PathBuf>) {
-    let entries = match std::fs::read_dir(dir) {
-        Ok(entries) => entries,
-        Err(e) => {
-            log::warn!("Failed to read log directory {}: {}", dir.display(), e);
-            return;
-        }
-    };
-
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            // Exclude events/ directories (sensitive data)
-            if path.file_name().is_some_and(|name| name == "events") {
-                log::debug!("Skipping sensitive events directory: {}", path.display());
-                continue;
-            }
-            collect_ndjson_files(&path, files);
-        } else if path.extension().is_some_and(|ext| ext == "ndjson") {
-            files.push(path);
-        }
-    }
-}
-
 /// Export all log files, enriching each NDJSON line with agent metadata.
+/// Log file paths are relative to the receiver root (e.g. "logs/data/elastic-agent-20260315.ndjson").
 pub async fn export_logs(
-    log_files: &[PathBuf],
+    log_files: &[String],
+    receiver: &Arc<Receiver>,
     exporter: &Exporter,
     metadata: &AgentMetadata,
 ) -> Result<ProcessorSummary> {
@@ -53,35 +23,26 @@ pub async fn export_logs(
     let mut summary = ProcessorSummary::new(DATA_STREAM.to_string());
 
     for log_file in log_files {
-        log::debug!("Processing log file: {}", log_file.display());
-        let file = match std::fs::File::open(log_file) {
-            Ok(f) => f,
+        log::debug!("Processing log file: {}", log_file);
+        let content = match receiver.read_file_string(log_file).await {
+            Ok(c) => c,
             Err(e) => {
-                log::warn!("Failed to open log file {}: {}", log_file.display(), e);
+                log::warn!("Failed to read log file {}: {}", log_file, e);
                 continue;
             }
         };
 
-        let reader = std::io::BufReader::new(file);
         let mut batch: Vec<Value> = Vec::new();
 
-        for line in reader.lines() {
-            let line = match line {
-                Ok(l) => l,
-                Err(e) => {
-                    log::warn!("Failed to read line from {}: {}", log_file.display(), e);
-                    continue;
-                }
-            };
-
+        for line in content.lines() {
             if line.trim().is_empty() {
                 continue;
             }
 
-            let mut log_entry: Value = match serde_json::from_str(&line) {
+            let mut log_entry: Value = match serde_json::from_str(line) {
                 Ok(v) => v,
                 Err(e) => {
-                    log::debug!("Skipping non-JSON line in {}: {}", log_file.display(), e);
+                    log::debug!("Skipping non-JSON line in {}: {}", log_file, e);
                     continue;
                 }
             };

@@ -293,6 +293,24 @@ impl Receiver {
         }
     }
 
+    pub async fn list_files(&self, prefix: &str, extension: &str) -> Vec<String> {
+        match self {
+            Receiver::ArchiveBytes(receiver) => receiver.list_files(prefix, extension).await,
+            Receiver::ArchiveFile(receiver) => receiver.list_files(prefix, extension).await,
+            Receiver::Directory(receiver) => receiver.list_files(prefix, extension),
+            _ => Vec::new(),
+        }
+    }
+
+    pub async fn read_file_string(&self, path: &str) -> Result<String> {
+        match self {
+            Receiver::ArchiveBytes(receiver) => receiver.read_file_string(path).await,
+            Receiver::ArchiveFile(receiver) => receiver.read_file_string(path).await,
+            Receiver::Directory(receiver) => receiver.read_file_string(path).map_err(Into::into),
+            _ => Err(eyre!("File reads are only supported for archive and directory receivers")),
+        }
+    }
+
     async fn try_get_manifest_from_agent_info(&self) -> Result<DiagnosticManifest> {
         use crate::processor::AgentInfo;
 
