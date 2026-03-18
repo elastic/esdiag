@@ -168,16 +168,20 @@ function command_auth_returns_success() {
 
 function command_up_insecure_starts_stack_containers() {
     test_start "command_up_insecure_starts_stack_containers"
-    esdiag_control up --insecure
+    if ! esdiag_control up --insecure; then
+        test_fail command_up_insecure_starts_stack_containers with exit code "${?}"
+        return 1
+    fi
 
-    elasticsearch_status=$(${container} inspect esdiag-elasticsearch --format '{{.State.Status}}')
-    kibana_status=$(${container} inspect esdiag-kibana --format '{{.State.Status}}')
-    esdiag_status=$(${container} inspect esdiag --format '{{.State.Status}}')
+    elasticsearch_status=$(${container} inspect esdiag-elasticsearch --format '{{.State.Status}}' 2>/dev/null)
+    kibana_status=$(${container} inspect esdiag-kibana --format '{{.State.Status}}' 2>/dev/null)
+    esdiag_status=$(${container} inspect esdiag --format '{{.State.Status}}' 2>/dev/null)
 
     if [[ ${elasticsearch_status} == "running" && ${kibana_status} == "running" && ${esdiag_status} == "running" ]]; then
         test_pass command_up_insecure_starts_stack_containers
     else
-        test_fail command_up_insecure_starts_stack_containers
+        test_fail command_up_insecure_starts_stack_containers Elasticsearch: "$(magenta "${elasticsearch_status}")" Kibana: "$(magenta "${kibana_status}")" ESDiag: "$(magenta "${esdiag_status}")"
+        return 1
     fi
 }
 
@@ -212,16 +216,20 @@ function command_down_removes_containers {
 function command_up_secure_starts_stack_containers {
     test_start "command_up_secure_starts_stack_containers"
     sed -i -e 's/ELASTIC_SECURITY_ENABLED=false/ELASTIC_SECURITY_ENABLED=true/' .env.test
-    esdiag_control up
+    if ! esdiag_control up; then
+        test_fail command_up_secure_starts_stack_containers with exit code "${?}"
+        return 1
+    fi
 
-    elasticsearch_status=$(${container} inspect esdiag-elasticsearch --format '{{.State.Status}}')
-    kibana_status=$(${container} inspect esdiag-kibana --format '{{.State.Status}}')
-    esdiag_status=$(${container} inspect esdiag --format '{{.State.Status}}')
+    elasticsearch_status=$(${container} inspect esdiag-elasticsearch --format '{{.State.Status}}' 2>/dev/null)
+    kibana_status=$(${container} inspect esdiag-kibana --format '{{.State.Status}}' 2>/dev/null)
+    esdiag_status=$(${container} inspect esdiag --format '{{.State.Status}}' 2>/dev/null)
 
     if [[ ${elasticsearch_status} == "running" && ${kibana_status} == "running" && ${esdiag_status} == "running" ]]; then
         test_pass command_up_secure_starts_stack_containers
     else
         test_fail command_up_secure_starts_stack_containers Elasticsearch: "$(magenta "${elasticsearch_status}")" Kibana: "$(magenta "${kibana_status}")" ESDiag: "$(magenta "${esdiag_status}")"
+        return 1
     fi
 }
 
@@ -271,14 +279,16 @@ function tests_run() {
     command_build_creates_container_image
     # TODO: command_buildx_creates_multi_platform_images
     # First up and auth with security disabled
-    command_up_insecure_starts_stack_containers
-    command_auth_returns_success
-    command_setup_completes_successfully
+    if command_up_insecure_starts_stack_containers; then
+        command_auth_returns_success
+        command_setup_completes_successfully
+    fi
     command_down_removes_containers
     # Second up and with security enabled
-    command_up_secure_starts_stack_containers
-    command_auth_returns_success
-    command_setup_completes_successfully
+    if command_up_secure_starts_stack_containers; then
+        command_auth_returns_success
+        command_setup_completes_successfully
+    fi
     # Tear down environment
     command_down_removes_containers
 }

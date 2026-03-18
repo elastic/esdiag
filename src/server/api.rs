@@ -120,16 +120,16 @@ pub async fn service_link(
     metadata.user = Some(request_user);
 
     if params.wait_for_completion {
-        log::info!("Processing service link synchronously: {}", job_id);
-        log::debug!("[fsm][api.service_link] queued -> processing(sync): job_id={job_id}");
+        tracing::info!("Processing service link synchronously: {}", job_id);
+        tracing::debug!("[fsm][api.service_link] queued -> processing(sync): job_id={job_id}");
 
         let receiver = match Receiver::try_from(uri) {
             Ok(receiver) => {
-                log::debug!("[fsm][api.service_link] receiver created: job_id={job_id}");
+                tracing::debug!("[fsm][api.service_link] receiver created: job_id={job_id}");
                 Arc::new(receiver)
             }
             Err(e) => {
-                log::error!("Failed to create receiver: {}", e);
+                tracing::error!("Failed to create receiver: {}", e);
                 state.record_failure().await;
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
@@ -141,18 +141,18 @@ pub async fn service_link(
         };
 
         let exporter = Arc::new(state.exporter.read().await.clone());
-        log::debug!("[fsm][api.service_link] ready->try_new: job_id={job_id}");
+        tracing::debug!("[fsm][api.service_link] ready->try_new: job_id={job_id}");
 
         let processor = match Processor::try_new(receiver, exporter, metadata).await {
             Ok(processor) => {
-                log::debug!(
+                tracing::debug!(
                     "[fsm][api.service_link] try_new ok: processor_id={}, job_id={job_id}",
                     processor.id
                 );
                 processor
             }
             Err(error) => {
-                log::error!("Failed to create processor: {}", error);
+                tracing::error!("Failed to create processor: {}", error);
                 state.record_failure().await;
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
@@ -165,14 +165,14 @@ pub async fn service_link(
 
         let processing = match processor.start().await {
             Ok(processing) => {
-                log::debug!(
+                tracing::debug!(
                     "[fsm][api.service_link] start ok -> processing: processor_id={}, job_id={job_id}",
                     processing.id
                 );
                 processing
             }
             Err(failed) => {
-                log::error!("Failed to start processor: {}", failed.state.error);
+                tracing::error!("Failed to start processor: {}", failed.state.error);
                 state.record_failure().await;
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
@@ -185,7 +185,7 @@ pub async fn service_link(
 
         match processing.process().await {
             Ok(completed) => {
-                log::debug!(
+                tracing::debug!(
                     "[fsm][api.service_link] process ok -> completed: processor_id={}, job_id={job_id}",
                     completed.id
                 );
@@ -200,14 +200,14 @@ pub async fn service_link(
                     "took": completed.state.runtime
                 });
 
-                log::info!(
+                tracing::info!(
                     "Service link job completed synchronously: {}",
                     report.diagnostic.metadata.id
                 );
                 (StatusCode::OK, Json(response))
             }
             Err(failed) => {
-                log::error!("Processing failed: {}", failed.state.error);
+                tracing::error!("Processing failed: {}", failed.state.error);
                 state.record_failure().await;
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
@@ -219,7 +219,7 @@ pub async fn service_link(
         }
     } else {
         // Stash the user-scoped metadata and (filename, URI) into the server state for later use
-        log::debug!("[fsm][api.service_link] queued(in state): job_id={job_id}");
+        tracing::debug!("[fsm][api.service_link] queued(in state): job_id={job_id}");
         state.push_link(job_id, metadata, uri).await;
 
         // Respond with a JSON success

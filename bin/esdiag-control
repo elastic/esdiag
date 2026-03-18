@@ -683,10 +683,13 @@ function esdiag_setup() {
         fi
         # Make sure the container is still running
         if [[ ! -z ${compose_file} ]]; then
-            local container_status && container_status=$(${container} inspect esdiag-elasticsearch --format '{{.State.Status}}')
-            if [[ $container_status == "exited" ]]; then
+            local container_status && container_status=$(${container} inspect esdiag-elasticsearch --format '{{.State.Status}}' 2>/dev/null)
+            if [[ $container_status == "exited" || $container_status == "dead" ]]; then
                 log_info "$(blue Elasticsearch) container $(red exited)!"
                 ${container} logs esdiag-elasticsearch | tail -n 10
+                exit 1
+            elif [[ -z "$container_status" ]]; then
+                log_error "$(blue Elasticsearch) container does not exist"
                 exit 1
             fi
         fi
@@ -716,10 +719,13 @@ function esdiag_setup() {
         # Make sure the container is still running
         if [[ ! -z ${compose_file} ]]; then
             local container_status
-            container_status=$(${container} inspect esdiag-kibana --format '{{.State.Status}}')
-            if [[ $container_status == "exited" ]]; then
-                log_info "$(green exited) $(magenta Kibana) container"
+            container_status=$(${container} inspect esdiag-kibana --format '{{.State.Status}}' 2>/dev/null)
+            if [[ $container_status == "exited" || $container_status == "dead" ]]; then
+                log_error "$(magenta Kibana) container $(red exited)!"
                 ${container} logs esdiag-kibana | tail -n 10
+                exit 1
+            elif [[ -z "$container_status" ]]; then
+                log_error "$(magenta Kibana) container does not exist"
                 exit 1
             fi
         fi
