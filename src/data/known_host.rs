@@ -244,6 +244,44 @@ impl KnownHostBuilder {
             _ => Err(eyre!("Invalid KnownHost configuration")),
         }
     }
+
+    pub fn build_with_secret_auth(mut self, secret_auth: SecretAuth) -> Result<KnownHost> {
+        self.update_cloud_api_path();
+
+        if self.apikey.is_some() || self.username.is_some() || self.password.is_some() {
+            return Err(eyre!(
+                "Invalid KnownHost configuration: explicit credentials conflict with secret auth"
+            ));
+        }
+
+        let secret = self
+            .secret
+            .take()
+            .ok_or_else(|| eyre!("Invalid KnownHost configuration: missing secret reference"))?;
+
+        match secret_auth {
+            SecretAuth::ApiKey { .. } => Ok(KnownHost::ApiKey {
+                accept_invalid_certs: self.accept_invalid_certs,
+                apikey: None,
+                app: self.product,
+                cloud_id: self.cloud_id,
+                roles: self.roles,
+                secret: Some(secret),
+                url: self.url,
+                viewer: self.viewer,
+            }),
+            SecretAuth::Basic { .. } => Ok(KnownHost::Basic {
+                accept_invalid_certs: self.accept_invalid_certs,
+                app: self.product,
+                password: None,
+                roles: self.roles,
+                secret: Some(secret),
+                url: self.url,
+                username: None,
+                viewer: self.viewer,
+            }),
+        }
+    }
 }
 
 #[derive(Clone, Serialize, Deserialize)]

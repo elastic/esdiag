@@ -14,7 +14,11 @@ use serde::de::DeserializeOwned;
 use url::Url;
 
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::OnceCell;
+
+const ELASTIC_CLOUD_ADMIN_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
+const ELASTIC_CLOUD_ADMIN_REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 
 #[derive(Clone)]
 pub struct ElasticCloudAdminReceiver {
@@ -35,6 +39,8 @@ impl ElasticCloudAdminReceiver {
         );
         let client = ClientBuilder::new()
             .default_headers(default_headers)
+            .connect_timeout(ELASTIC_CLOUD_ADMIN_CONNECT_TIMEOUT)
+            .timeout(ELASTIC_CLOUD_ADMIN_REQUEST_TIMEOUT)
             .build()?;
         Ok(Self {
             client,
@@ -95,6 +101,11 @@ impl Receive for ElasticCloudAdminReceiver {
             }
             Err(e) => {
                 tracing::error!("Elastic Cloud connection failed: {e}");
+                if e.is_connect() || e.is_timeout() {
+                    tracing::warn!(
+                        "Elastic Cloud Admin and Elastic GovCloud Admin hosts require VPN access; verify your VPN connection and retry."
+                    );
+                }
                 false
             }
         }

@@ -13,7 +13,7 @@ use esdiag::{
     client::Client,
     data::{
         HostRole, KnownHost, KnownHostBuilder, Product, SecretAuth, Uri, add_secret,
-        get_password_for_secret_commands, remove_secret,
+        get_password_for_secret_commands, remove_secret, resolve_secret_auth,
     },
     env::LOG_LEVEL,
     exporter::Exporter,
@@ -446,6 +446,7 @@ async fn run(cli: Cli) -> Result<&'static str> {
             } => {
                 tracing::info!("Configuring host {name}");
                 let host = if let (Some(app), Some(url)) = (app, url) {
+                    let secret_auth = resolve_host_secret_auth(secret.as_deref())?;
                     let mut builder = KnownHostBuilder::new(url)
                         .product(app)
                         .accept_invalid_certs(accept_invalid_certs)
@@ -456,7 +457,10 @@ async fn run(cli: Cli) -> Result<&'static str> {
                     if let Some(roles) = roles {
                         builder = builder.roles(roles);
                     }
-                    builder.build()?
+                    match secret_auth {
+                        Some(secret_auth) => builder.build_with_secret_auth(secret_auth)?,
+                        None => builder.build()?,
+                    }
                 } else {
                     KnownHost::get_known(&name).ok_or(eyre!(
                         "Host {name} not found, must include `url` and `app` to setup a new host."
@@ -465,17 +469,7 @@ async fn run(cli: Cli) -> Result<&'static str> {
 
                 let uri = Uri::try_from(host.clone())?;
 
-                let valid_connection = match Client::try_from(uri)?.test_connection().await {
-                    Ok(message) => {
-                        tracing::info!("Host {name}: {}", &message);
-                        true
-                    }
-                    Err(message) => {
-                        tracing::error!("Host connection: FAILED ❌ {}", &message);
-                        tracing::warn!("Check your URL and certificates!");
-                        false
-                    }
-                };
+                let valid_connection = validate_host_connection(&name, uri).await?;
 
                 if valid_connection {
                     if !nosave {
@@ -806,6 +800,47 @@ fn ensure_uri_role(uri: &Uri, role: HostRole, context: &str) -> Result<()> {
     }
 }
 
+fn resolve_host_secret_auth(secret_id: Option<&str>) -> Result<Option<SecretAuth>> {
+    let Some(secret_id) = secret_id else {
+        return Ok(None);
+    };
+
+    let keystore_password = get_password_for_secret_commands()?;
+    let secret_auth = resolve_secret_auth(secret_id, &keystore_password)?
+        .ok_or_else(|| eyre!("Secret '{secret_id}' was not found in keystore"))?;
+    Ok(Some(secret_auth))
+}
+
+fn host_connection_uses_receiver(uri: &Uri) -> bool {
+    matches!(uri, Uri::ElasticCloudAdmin(_) | Uri::ElasticGovCloudAdmin(_))
+}
+
+async fn validate_host_connection(name: &str, uri: Uri) -> Result<bool> {
+    if host_connection_uses_receiver(&uri) {
+        let receiver = Receiver::try_from(uri)?;
+        if receiver.is_connected().await {
+            tracing::info!("Host {name}: connected to Elastic Cloud Admin proxy");
+            return Ok(true);
+        }
+
+        tracing::error!("Host connection: FAILED ❌ Elastic Cloud Admin proxy connection failed");
+        tracing::warn!("Check your URL, certificates, and secret credentials!");
+        return Ok(false);
+    }
+
+    match Client::try_from(uri)?.test_connection().await {
+        Ok(message) => {
+            tracing::info!("Host {name}: {}", &message);
+            Ok(true)
+        }
+        Err(message) => {
+            tracing::error!("Host connection: FAILED ❌ {}", &message);
+            tracing::warn!("Check your URL and certificates!");
+            Ok(false)
+        }
+    }
+}
+
 fn should_error_for_missing_subcommand(arg_count: usize, has_no_command: bool) -> bool {
     arg_count > 1 && has_no_command
 }
@@ -838,9 +873,34 @@ fn clear_last_run_files() -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Cli, Commands, should_error_for_missing_subcommand};
+    use super::{
+        Cli, Commands, host_connection_uses_receiver, resolve_host_secret_auth,
+        should_error_for_missing_subcommand,
+    };
     use clap::Parser;
-    use esdiag::data::HostRole;
+    use esdiag::data::{
+        ElasticCloud, HostRole, KnownHost, Product, SecretAuth, Uri, upsert_secret_auth,
+    };
+    use std::sync::{Mutex, OnceLock};
+    use tempfile::TempDir;
+    use url::Url;
+
+    fn env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    fn setup_env() -> TempDir {
+        let tmp = TempDir::new().expect("temp dir");
+        let hosts = tmp.path().join("hosts.yml");
+        let keystore = tmp.path().join("secrets.yml");
+        unsafe {
+            std::env::set_var("ESDIAG_HOSTS", &hosts);
+            std::env::set_var("ESDIAG_KEYSTORE", &keystore);
+            std::env::set_var("ESDIAG_KEYSTORE_PASSWORD", "pw");
+        }
+        tmp
+    }
 
     #[test]
     fn no_args_and_no_command_allows_desktop_path() {
@@ -892,6 +952,72 @@ mod tests {
             }
             _ => panic!("expected upload command"),
         }
+    }
+
+    #[test]
+    fn elastic_cloud_admin_hosts_validate_via_receiver() {
+        let uri = Uri::ElasticCloudAdmin(KnownHost::ApiKey {
+            accept_invalid_certs: false,
+            apikey: None,
+            app: Product::Elasticsearch,
+            cloud_id: Some(ElasticCloud::ElasticCloudAdmin),
+            roles: vec![HostRole::Collect],
+            secret: Some("ada-admin".to_string()),
+            viewer: None,
+            url: Url::parse(
+                "https://admin.found.no/api/v1/deployments/test/elasticsearch/main-elasticsearch/proxy",
+            )
+            .expect("valid url"),
+        });
+
+        assert!(host_connection_uses_receiver(&uri));
+    }
+
+    #[test]
+    fn standard_known_hosts_validate_via_client() {
+        let uri = Uri::KnownHost(KnownHost::NoAuth {
+            app: Product::Elasticsearch,
+            roles: vec![HostRole::Collect],
+            viewer: None,
+            url: Url::parse("http://localhost:9200").expect("valid url"),
+        });
+
+        assert!(!host_connection_uses_receiver(&uri));
+    }
+
+    #[test]
+    fn host_secret_auth_resolution_detects_apikey() {
+        let _guard = env_lock().lock().expect("env lock");
+        let _tmp = setup_env();
+        upsert_secret_auth(
+            "api-secret",
+            SecretAuth::ApiKey {
+                apikey: "secret-key".to_string(),
+            },
+            "pw",
+        )
+        .expect("save api secret");
+
+        let resolved = resolve_host_secret_auth(Some("api-secret")).expect("resolve auth");
+        assert!(matches!(resolved, Some(SecretAuth::ApiKey { .. })));
+    }
+
+    #[test]
+    fn host_secret_auth_resolution_detects_basic() {
+        let _guard = env_lock().lock().expect("env lock");
+        let _tmp = setup_env();
+        upsert_secret_auth(
+            "basic-secret",
+            SecretAuth::Basic {
+                username: "elastic".to_string(),
+                password: "secret-password".to_string(),
+            },
+            "pw",
+        )
+        .expect("save basic secret");
+
+        let resolved = resolve_host_secret_auth(Some("basic-secret")).expect("resolve auth");
+        assert!(matches!(resolved, Some(SecretAuth::Basic { .. })));
     }
 }
 
