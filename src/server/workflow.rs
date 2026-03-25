@@ -238,7 +238,6 @@ async fn execute_service_link_job(ctx: WorkflowExecutionContext<'_>, uri: Uri) -
                 .to_string();
             publish_retained_download(
                 &state,
-                tx,
                 request_user,
                 &signals.archive.download_token,
                 archive_filename.clone(),
@@ -364,7 +363,6 @@ async fn execute_remote_collection_job(
                 .to_string();
             publish_retained_download(
                 &state,
-                tx,
                 request_user,
                 &signals.archive.download_token,
                 archive_filename.clone(),
@@ -779,6 +777,13 @@ async fn download_service_link_to_path(uri: &Uri, path: &Path) -> Result<()> {
         .header("Authorization", token)
         .send()
         .await?;
+    let status = response.status();
+    if !status.is_success() {
+        return Err(eyre!(
+            "Elastic Upload Service download failed with HTTP {}",
+            status
+        ));
+    }
 
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).await?;
@@ -814,7 +819,6 @@ fn local_archive_filename(source: &str, job_id: u64) -> Result<String> {
 
 async fn publish_retained_download(
     state: &Arc<ServerState>,
-    tx: &mpsc::Sender<ServerEvent>,
     request_user: &str,
     download_token: &str,
     filename: String,
@@ -830,7 +834,6 @@ async fn publish_retained_download(
         )
         .await;
     state.schedule_retained_bundle_cleanup(token.clone(), RETAINED_BUNDLE_TTL);
-    let _ = (tx, filename, token);
     Ok(())
 }
 
@@ -911,7 +914,10 @@ impl Drop for LocalPathCleanup {
 
 #[cfg(test)]
 mod tests {
-    use super::{select_processed_exporter, validate_local_send_uri, validate_workflow_request};
+    use super::{
+        download_service_link_to_path, select_processed_exporter, validate_local_send_uri,
+        validate_workflow_request,
+    };
     use crate::{
         data::{HostRole, KnownHostBuilder, Uri},
         exporter::Exporter,
@@ -921,7 +927,9 @@ mod tests {
             WorkflowJob,
         },
     };
+    use axum::{Router, http::StatusCode, routing::get};
     use std::{collections::HashMap, sync::Arc};
+    use tokio::net::TcpListener;
     use tokio::sync::{RwLock, broadcast, watch};
     use url::Url;
 
@@ -1055,5 +1063,37 @@ mod tests {
             .expect("select exporter");
         assert_eq!(selected.target_uri(), configured.target_uri());
         assert_eq!(selected.to_string(), configured.to_string());
+    }
+
+    #[tokio::test]
+    async fn service_link_download_surfaces_http_status_before_writing_file() {
+        async fn unauthorized() -> StatusCode {
+            StatusCode::UNAUTHORIZED
+        }
+
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind listener");
+        let addr = listener.local_addr().expect("listener addr");
+        tokio::spawn(async move {
+            axum::serve(listener, Router::new().route("/archive.zip", get(unauthorized)))
+                .await
+                .expect("serve mock upload endpoint");
+        });
+
+        let uri = Uri::ServiceLink(
+            Url::parse(&format!("http://token:secret@{addr}/archive.zip")).expect("mock url"),
+        );
+        let path = std::env::temp_dir().join("esdiag-service-link-status-test.zip");
+        let _ = std::fs::remove_file(&path);
+        let err = download_service_link_to_path(&uri, &path)
+            .await
+            .expect_err("non-success download should fail");
+
+        assert!(
+            err.to_string().contains("HTTP 401 Unauthorized"),
+            "expected status-bearing error, got: {err}"
+        );
+        assert!(!path.exists(), "failed download should not create output file");
     }
 }

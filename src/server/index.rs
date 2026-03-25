@@ -379,18 +379,14 @@ fn workflow_host_options(state: &Arc<ServerState>) -> WorkflowHostOptions {
         };
     }
 
-    let names = KnownHost::list_all().unwrap_or_default();
+    let hosts_by_name = KnownHost::parse_hosts_yml().unwrap_or_default();
     let mut collect_hosts = Vec::new();
     let mut collect_secure_hosts = Vec::new();
     let mut send_remote_hosts = Vec::new();
     let mut send_local_hosts = Vec::new();
     let mut send_secure_hosts = Vec::new();
 
-    for name in names {
-        let Some(host) = KnownHost::get_known(&name) else {
-            continue;
-        };
-
+    for (name, host) in hosts_by_name {
         if host.has_role(HostRole::Collect) {
             collect_hosts.push(name.clone());
             if host.requires_keystore_secret() {
