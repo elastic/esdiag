@@ -3,7 +3,7 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::{ServerState, get_theme_dark, template};
-use crate::data::{HostRole, KnownHost, Settings, keystore_exists};
+use crate::data::{HostRole, KnownHost, Product, Settings, keystore_exists};
 use crate::exporter::Exporter;
 use crate::processor::api::ApiResolver;
 use askama::Template;
@@ -394,7 +394,7 @@ fn workflow_host_options(state: &Arc<ServerState>) -> WorkflowHostOptions {
             }
         }
 
-        if host.has_role(HostRole::Send) {
+        if host.has_role(HostRole::Send) && host.app() == &Product::Elasticsearch {
             send_remote_hosts.push(name.clone());
             if host.requires_keystore_secret() {
                 send_secure_hosts.push(name.clone());
@@ -430,5 +430,79 @@ fn default_downloads_dir() -> PathBuf {
         PathBuf::from("Downloads")
     } else {
         home_path.join("Downloads")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::workflow_host_options;
+    use crate::{
+        data::{HostRole, KnownHost, KnownHostBuilder, Product},
+        server::test_server_state,
+    };
+    use std::collections::BTreeMap;
+    use tempfile::TempDir;
+    use url::Url;
+
+    fn env_lock() -> &'static std::sync::Mutex<()> {
+        crate::test_env_lock()
+    }
+
+    fn setup_hosts() -> TempDir {
+        let tmp = TempDir::new().expect("temp dir");
+        let config_dir = tmp.path().join(".esdiag");
+        std::fs::create_dir_all(&config_dir).expect("create config dir");
+        let hosts_path = config_dir.join("hosts.yml");
+        unsafe {
+            std::env::set_var("HOME", tmp.path());
+            std::env::set_var("USERPROFILE", tmp.path());
+            std::env::set_var("ESDIAG_HOSTS", &hosts_path);
+        }
+
+        let mut hosts = BTreeMap::new();
+        hosts.insert(
+            "es-remote".to_string(),
+            KnownHostBuilder::new(Url::parse("https://es.example.com:9200").expect("es url"))
+                .product(Product::Elasticsearch)
+                .roles(vec![HostRole::Send])
+                .build()
+                .expect("es host"),
+        );
+        hosts.insert(
+            "es-local".to_string(),
+            KnownHostBuilder::new(Url::parse("http://localhost:9200").expect("local es url"))
+                .product(Product::Elasticsearch)
+                .roles(vec![HostRole::Send])
+                .build()
+                .expect("local es host"),
+        );
+        hosts.insert(
+            "kb-collect".to_string(),
+            KnownHostBuilder::new(Url::parse("https://kb.example.com:5601").expect("kb url"))
+                .product(Product::Kibana)
+                .roles(vec![HostRole::Collect])
+                .build()
+                .expect("kb host"),
+        );
+        KnownHost::write_hosts_yml(&hosts).expect("write hosts");
+        tmp
+    }
+
+    #[test]
+    fn workflow_host_options_only_offer_elasticsearch_send_hosts() {
+        let _guard = env_lock().lock().expect("env lock");
+        let _tmp = setup_hosts();
+        let state = test_server_state();
+
+        let options = workflow_host_options(&state);
+
+        assert_eq!(options.send_remote_hosts.len(), 2);
+        assert!(options.send_remote_hosts.contains(&"es-remote".to_string()));
+        assert!(options.send_remote_hosts.contains(&"es-local".to_string()));
+        assert_eq!(options.send_local_hosts, vec!["es-local".to_string()]);
+        assert!(options.collect_hosts.contains(&"kb-collect".to_string()));
+        assert!(!options.send_remote_hosts.contains(&"kb-collect".to_string()));
+        assert!(!options.send_local_hosts.contains(&"kb-collect".to_string()));
+        assert!(!options.send_secure_hosts.contains(&"kb-collect".to_string()));
     }
 }
