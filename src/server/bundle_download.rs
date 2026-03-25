@@ -152,7 +152,12 @@ mod tests {
     async fn download_retained_bundle_discards_expired_entries() {
         let state = test_server_state();
         let token = "expired-token".to_string();
-        let path = std::env::temp_dir().join("esdiag-retained-expired-bundle-test.zip");
+        let cleanup_dir = std::env::temp_dir().join("esdiag-retained-expired-bundle-test");
+        let _ = tokio::fs::remove_dir_all(&cleanup_dir).await;
+        tokio::fs::create_dir_all(&cleanup_dir)
+            .await
+            .expect("create cleanup dir");
+        let path = cleanup_dir.join("expired.zip");
         tokio::fs::write(&path, b"expired")
             .await
             .expect("write expired bundle");
@@ -164,6 +169,7 @@ mod tests {
                 error: None,
                 filename: Some("expired.zip".to_string()),
                 path: Some(path.clone()),
+                cleanup_path: Some(cleanup_dir.clone()),
                 expires_at_epoch: now_epoch_seconds() - 1,
             },
         );
@@ -176,5 +182,9 @@ mod tests {
         assert_eq!(response.status(), StatusCode::GONE);
         assert!(state.retained_bundle(&token).await.is_none());
         assert!(!path.exists(), "expired bundle file should be removed");
+        assert!(
+            !cleanup_dir.exists(),
+            "expired bundle cleanup directory should be removed"
+        );
     }
 }

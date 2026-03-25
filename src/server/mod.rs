@@ -386,6 +386,7 @@ pub struct RetainedBundle {
     pub error: Option<String>,
     pub filename: Option<String>,
     pub path: Option<PathBuf>,
+    pub cleanup_path: Option<PathBuf>,
     pub expires_at_epoch: i64,
 }
 
@@ -757,7 +758,7 @@ impl ServerState {
         path: PathBuf,
         ttl: Duration,
     ) -> String {
-        self.insert_retained_bundle_with_token(None, owner, filename, path, ttl)
+        self.insert_retained_bundle_internal(None, owner, filename, path, None, ttl)
             .await
     }
 
@@ -767,6 +768,20 @@ impl ServerState {
         owner: String,
         filename: String,
         path: PathBuf,
+        cleanup_path: Option<PathBuf>,
+        ttl: Duration,
+    ) -> String {
+        self.insert_retained_bundle_internal(token, owner, filename, path, cleanup_path, ttl)
+            .await
+    }
+
+    async fn insert_retained_bundle_internal(
+        &self,
+        token: Option<&str>,
+        owner: String,
+        filename: String,
+        path: PathBuf,
+        cleanup_path: Option<PathBuf>,
         ttl: Duration,
     ) -> String {
         let token = token
@@ -782,6 +797,7 @@ impl ServerState {
                 error: None,
                 filename: Some(filename),
                 path: Some(path),
+                cleanup_path,
                 expires_at_epoch,
             },
         );
@@ -801,6 +817,7 @@ impl ServerState {
             error: None,
             filename: None,
             path: None,
+            cleanup_path: None,
             expires_at_epoch,
         });
         bundle.owner = owner.to_string();
@@ -828,6 +845,7 @@ impl ServerState {
             error: None,
             filename: None,
             path: None,
+            cleanup_path: None,
             expires_at_epoch,
         });
         bundle.owner = owner.to_string();
@@ -852,17 +870,28 @@ impl ServerState {
     }
 
     pub async fn discard_retained_bundle(&self, token: &str) {
-        let path = self
+        let (path, cleanup_path) = self
             .retained_bundles
             .write()
             .await
             .remove(token)
-            .and_then(|bundle| bundle.path);
+            .map(|bundle| (bundle.path, bundle.cleanup_path))
+            .unwrap_or((None, None));
         if let Some(path) = path
             && let Err(err) = tokio::fs::remove_file(&path).await
         {
             tracing::debug!(
                 "Failed to remove retained bundle {}: {}",
+                path.display(),
+                err
+            );
+        }
+        if let Some(path) = cleanup_path
+            && let Err(err) = tokio::fs::remove_dir_all(&path).await
+            && err.kind() != std::io::ErrorKind::NotFound
+        {
+            tracing::debug!(
+                "Failed to remove retained bundle directory {}: {}",
                 path.display(),
                 err
             );

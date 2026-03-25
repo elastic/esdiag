@@ -242,6 +242,7 @@ async fn execute_service_link_job(ctx: WorkflowExecutionContext<'_>, uri: Uri) -
                 &signals.archive.download_token,
                 archive_filename.clone(),
                 path.clone(),
+                None,
             )
             .await?;
             state.record_success(0, 0).await;
@@ -354,7 +355,10 @@ async fn execute_remote_collection_job(
         _ => None,
     };
 
-    if let WorkflowInput::LocalArchive { path, .. } = collected.input {
+    if let WorkflowInput::LocalArchive {
+        path, cleanup_path, ..
+    } = collected.input
+    {
         if signals.workflow.collect.save {
             let archive_filename = path
                 .file_name()
@@ -367,6 +371,7 @@ async fn execute_remote_collection_job(
                 &signals.archive.download_token,
                 archive_filename.clone(),
                 path.clone(),
+                cleanup_path,
             )
             .await?;
             state.record_success(0, 0).await;
@@ -684,7 +689,7 @@ async fn collect_remote_archive(
     let temp_dir = std::env::temp_dir().join(format!("esdiag-workflow-{job_id}"));
     std::fs::create_dir_all(&temp_dir)?;
     let (output_dir, cleanup_path) = if signals.workflow.collect.save {
-        (temp_dir.clone(), None)
+        (temp_dir.clone(), Some(temp_dir.clone()))
     } else {
         (temp_dir.clone(), Some(temp_dir))
     };
@@ -823,6 +828,7 @@ async fn publish_retained_download(
     download_token: &str,
     filename: String,
     path: PathBuf,
+    cleanup_path: Option<PathBuf>,
 ) -> Result<()> {
     let token = state
         .insert_retained_bundle_with_token(
@@ -830,6 +836,7 @@ async fn publish_retained_download(
             request_user.to_string(),
             filename.clone(),
             path,
+            cleanup_path,
             RETAINED_BUNDLE_TTL,
         )
         .await;
