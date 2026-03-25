@@ -19,7 +19,6 @@ use std::{sync::Arc, time::Duration};
 use tokio::{fs::File, io::AsyncReadExt};
 
 const RETAINED_BUNDLE_POST_DOWNLOAD_TTL: Duration = Duration::from_secs(300);
-const RETAINED_BUNDLE_TOKEN_TTL: Duration = Duration::from_secs(1800);
 const DOWNLOAD_STREAM_CHUNK_SIZE: usize = 64 * 1024;
 
 pub async fn download_retained_bundle(
@@ -32,20 +31,16 @@ pub async fn download_retained_bundle(
         Err(err) => return (StatusCode::UNAUTHORIZED, err.to_string()).into_response(),
     };
 
-    state
-        .ensure_retained_bundle_token(
-            &token,
-            request_user.clone(),
-            RETAINED_BUNDLE_TOKEN_TTL,
-        )
-        .await;
-
     let Some(bundle) = state.retained_bundle(&token).await else {
         return (StatusCode::NOT_FOUND, "Download not found").into_response();
     };
 
     if bundle.owner != request_user {
-        return (StatusCode::FORBIDDEN, "Download does not belong to this user").into_response();
+        return (
+            StatusCode::FORBIDDEN,
+            "Download does not belong to this user",
+        )
+            .into_response();
     }
 
     if let Some(error) = bundle.error {
@@ -98,10 +93,9 @@ pub async fn download_retained_bundle(
     .boxed();
 
     let mut response = Response::new(Body::from_stream(stream));
-    response.headers_mut().insert(
-        CONTENT_TYPE,
-        HeaderValue::from_static("application/zip"),
-    );
+    response
+        .headers_mut()
+        .insert(CONTENT_TYPE, HeaderValue::from_static("application/zip"));
     response.headers_mut().insert(
         CONTENT_DISPOSITION,
         HeaderValue::from_str(&disposition)
@@ -139,10 +133,9 @@ mod tests {
             )
             .await;
 
-        let response =
-            download_retained_bundle(State(state), Path(token), HeaderMap::new())
-                .await
-                .into_response();
+        let response = download_retained_bundle(State(state), Path(token), HeaderMap::new())
+            .await
+            .into_response();
 
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(

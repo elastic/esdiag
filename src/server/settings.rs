@@ -30,6 +30,7 @@ pub async fn get_modal(State(state): State<Arc<ServerState>>) -> impl IntoRespon
             .map(|(name, _)| name.clone())
             .collect();
         template::build_footer_output_context(
+            &hosts_by_name,
             &send_hosts,
             &exporter,
             settings.active_target.as_deref(),
@@ -276,10 +277,18 @@ async fn footer_selection_signal_payload(
         .map(|(name, _)| name.clone())
         .collect();
     let exporter = state.exporter.read().await.clone();
-    let (_output_options, selected_output, _label) =
-        template::build_footer_output_context(&send_hosts, &exporter, prior_active_target);
-    let secure =
-        template::active_output_requires_keystore(&send_hosts, &selected_output, &exporter);
+    let (_output_options, selected_output, _label) = template::build_footer_output_context(
+        &hosts_by_name,
+        &send_hosts,
+        &exporter,
+        prior_active_target,
+    );
+    let secure = template::active_output_requires_keystore(
+        &hosts_by_name,
+        &send_hosts,
+        &selected_output,
+        &exporter,
+    );
     serde_json::json!({
         "settings": { "target": selected_output },
         "output": { "secure": secure }

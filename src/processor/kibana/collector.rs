@@ -97,7 +97,11 @@ impl KibanaCollector {
                 Ok(success) => return success,
                 Err(e) => {
                     if !should_retry_kibana_error(&e) {
-                        tracing::warn!("Skipping non-retriable failure for {}: {}", api.as_str(), e);
+                        tracing::warn!(
+                            "Skipping non-retriable failure for {}: {}",
+                            api.as_str(),
+                            e
+                        );
                         return 0;
                     }
                     if start_time.elapsed() > max_duration {

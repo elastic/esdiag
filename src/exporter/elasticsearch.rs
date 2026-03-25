@@ -61,7 +61,9 @@ impl RetryConfig {
 }
 
 fn backoff_ms(attempt: u16, config: &RetryConfig) -> u64 {
-    let base = config.initial_ms.saturating_mul(1u64 << u32::from(attempt).min(30));
+    let base = config
+        .initial_ms
+        .saturating_mul(1u64 << u32::from(attempt).min(30));
     let jitter = 0.75 + rand::random::<f64>() * 0.5;
     let jittered = (base as f64 * jitter) as u64;
     jittered.min(config.max_ms)
@@ -221,7 +223,11 @@ impl Export for ElasticsearchExporter {
         for attempt in 0..=config.max_retries {
             let batch: Vec<BulkOperation<Arc<Value>>> = values
                 .iter()
-                .map(|doc| BulkOperation::create(Arc::clone(doc)).pipeline("esdiag").into())
+                .map(|doc| {
+                    BulkOperation::create(Arc::clone(doc))
+                        .pipeline("esdiag")
+                        .into()
+                })
                 .collect();
 
             let response = timeout(
@@ -379,7 +385,11 @@ async fn parse_response(
         .json()
         .await
         .map_err(|e| ExporterError::Fatal(e.into()))?;
-    let mut items: Vec<Value> = body.get("items").and_then(Value::as_array).cloned().unwrap_or_default();
+    let mut items: Vec<Value> = body
+        .get("items")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
     let item_count = items.len();
 
     let error_items: Vec<Value> = items
@@ -416,10 +426,30 @@ async fn parse_response(
             doc_count,
             error_count
         ),
-        400 => return Err(ExporterError::Fatal(eyre!("{} - http 400 bad request", index))),
-        401 => return Err(ExporterError::Fatal(eyre!("{} - http 401 unauthorized", index))),
-        403 => return Err(ExporterError::Fatal(eyre!("{} - http 403 forbidden", index))),
-        404 => return Err(ExporterError::Fatal(eyre!("{} - http 404 not found", index))),
+        400 => {
+            return Err(ExporterError::Fatal(eyre!(
+                "{} - http 400 bad request",
+                index
+            )));
+        }
+        401 => {
+            return Err(ExporterError::Fatal(eyre!(
+                "{} - http 401 unauthorized",
+                index
+            )));
+        }
+        403 => {
+            return Err(ExporterError::Fatal(eyre!(
+                "{} - http 403 forbidden",
+                index
+            )));
+        }
+        404 => {
+            return Err(ExporterError::Fatal(eyre!(
+                "{} - http 404 not found",
+                index
+            )));
+        }
         413 => {
             return Err(ExporterError::Fatal(eyre!(
                 "{} - http 413 request too large",
@@ -467,8 +497,8 @@ mod tests {
     use axum::{Router, extract::State, http::StatusCode, response::IntoResponse, routing::post};
     use serde_json::json;
     use std::sync::Arc;
-    use tokio::sync::Mutex;
     use tokio::net::TcpListener;
+    use tokio::sync::Mutex;
 
     /// Spin up a minimal Axum server that returns `status_sequence` in order,
     /// falling back to 200 once the sequence is exhausted.
@@ -505,10 +535,7 @@ mod tests {
                     "error": {"type": "error", "reason": "error"}
                 }),
             };
-            (
-                StatusCode::from_u16(status).unwrap(),
-                axum::Json(body),
-            )
+            (StatusCode::from_u16(status).unwrap(), axum::Json(body))
         }
 
         let call_count = Arc::new(Mutex::new(0usize));
@@ -550,7 +577,11 @@ mod tests {
                 std::env::set_var("ESDIAG_EXPORT_RETRY_INITIAL_MS", "1");
                 std::env::set_var("ESDIAG_EXPORT_RETRY_MAX_MS", "5");
             }
-            Self { prev_max, prev_initial, prev_max_ms }
+            Self {
+                prev_max,
+                prev_initial,
+                prev_max_ms,
+            }
         }
     }
 
@@ -600,9 +631,7 @@ mod tests {
         let exporter = ElasticsearchExporter::try_new(url, Auth::None).unwrap();
 
         let docs = vec![json!({"a": 1}), json!({"b": 2})];
-        let result = exporter
-            .batch_send("test-index".to_string(), docs)
-            .await;
+        let result = exporter.batch_send("test-index".to_string(), docs).await;
 
         assert!(result.is_ok(), "exhaustion should return Ok, not Err");
         let br = result.unwrap();

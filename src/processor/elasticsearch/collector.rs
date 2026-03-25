@@ -194,7 +194,9 @@ impl ElasticsearchCollector {
                 }
             },
             Receiver::ElasticCloudAdmin(_) => {
-                tracing::debug!("ElasticCloudAdmin receiver not fully supported for raw by path yet");
+                tracing::debug!(
+                    "ElasticCloudAdmin receiver not fully supported for raw by path yet"
+                );
                 return Ok(0);
             }
             _ => return Ok(0),

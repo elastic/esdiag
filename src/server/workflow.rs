@@ -23,7 +23,7 @@ use std::{
     sync::Arc,
     time::Duration,
 };
-use tokio::sync::mpsc;
+use tokio::{fs, fs::File, io::AsyncWriteExt, sync::mpsc};
 
 const RETAINED_BUNDLE_TTL: Duration = Duration::from_secs(3600);
 
@@ -779,14 +779,23 @@ async fn download_service_link_to_path(uri: &Uri, path: &Path) -> Result<()> {
         .header("Authorization", token)
         .send()
         .await?;
-    let bytes = response.bytes().await?;
-    if bytes.is_empty() {
+
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).await?;
+    }
+    let mut file = File::create(path).await?;
+    let mut wrote_bytes = false;
+    let mut response = response;
+    while let Some(chunk) = response.chunk().await? {
+        if !chunk.is_empty() {
+            wrote_bytes = true;
+            file.write_all(&chunk).await?;
+        }
+    }
+    file.flush().await?;
+    if !wrote_bytes {
         return Err(eyre!("Downloaded empty file, check upload link expiration"));
     }
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    std::fs::write(path, bytes)?;
     Ok(())
 }
 
@@ -973,7 +982,9 @@ mod tests {
         };
 
         assert!(
-            validate_workflow_request(&state, &signals, &job).await.is_ok()
+            validate_workflow_request(&state, &signals, &job)
+                .await
+                .is_ok()
         );
     }
 
@@ -994,7 +1005,9 @@ mod tests {
         };
 
         assert!(
-            validate_workflow_request(&state, &signals, &job).await.is_ok()
+            validate_workflow_request(&state, &signals, &job)
+                .await
+                .is_ok()
         );
     }
 

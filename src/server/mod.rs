@@ -4,8 +4,8 @@
 
 mod api;
 mod api_key;
-mod bundle_download;
 mod assets;
+mod bundle_download;
 mod docs;
 mod file_upload;
 #[cfg(feature = "keystore")]
@@ -453,10 +453,16 @@ fn now_epoch_seconds() -> i64 {
 
 impl ServerState {
     fn retained_bundle_signal(token: &str, status: &str, error: Option<&str>) -> ServerEvent {
-        let error = serde_json::to_string(error.unwrap_or("")).unwrap_or_else(|_| "\"\"".to_string());
-        signal_event(format!(
-            r#"{{"archive":{{"ready_token":"{token}","status":"{status}","error":{error}}}}}"#
-        ))
+        signal_event(
+            serde_json::json!({
+                "archive": {
+                    "ready_token": token,
+                    "status": status,
+                    "error": error.unwrap_or("")
+                }
+            })
+            .to_string(),
+        )
     }
 
     fn apply_keystore_timeout_locked(state: &mut KeystoreSessionState) -> bool {
@@ -783,43 +789,20 @@ impl ServerState {
         token
     }
 
-    pub async fn ensure_retained_bundle_token(
-        &self,
-        token: &str,
-        owner: String,
-        ttl: Duration,
-    ) {
-        if token.trim().is_empty() {
-            return;
-        }
-        let expires_at_epoch = now_epoch_seconds() + ttl.as_secs() as i64;
-        let mut bundles = self.retained_bundles.write().await;
-        bundles.entry(token.to_string()).or_insert(RetainedBundle {
-            owner,
-            accepted: false,
-            error: None,
-            filename: None,
-            path: None,
-            expires_at_epoch,
-        });
-    }
-
     pub async fn accept_retained_bundle(&self, token: &str, owner: &str, ttl: Duration) {
         if token.trim().is_empty() {
             return;
         }
         let expires_at_epoch = now_epoch_seconds() + ttl.as_secs() as i64;
         let mut bundles = self.retained_bundles.write().await;
-        let bundle = bundles
-            .entry(token.to_string())
-            .or_insert(RetainedBundle {
-                owner: owner.to_string(),
-                accepted: false,
-                error: None,
-                filename: None,
-                path: None,
-                expires_at_epoch,
-            });
+        let bundle = bundles.entry(token.to_string()).or_insert(RetainedBundle {
+            owner: owner.to_string(),
+            accepted: false,
+            error: None,
+            filename: None,
+            path: None,
+            expires_at_epoch,
+        });
         bundle.owner = owner.to_string();
         bundle.accepted = true;
         bundle.error = None;
@@ -839,16 +822,14 @@ impl ServerState {
         let error = error.into();
         let expires_at_epoch = now_epoch_seconds() + ttl.as_secs() as i64;
         let mut bundles = self.retained_bundles.write().await;
-        let bundle = bundles
-            .entry(token.to_string())
-            .or_insert(RetainedBundle {
-                owner: owner.to_string(),
-                accepted: false,
-                error: None,
-                filename: None,
-                path: None,
-                expires_at_epoch,
-            });
+        let bundle = bundles.entry(token.to_string()).or_insert(RetainedBundle {
+            owner: owner.to_string(),
+            accepted: false,
+            error: None,
+            filename: None,
+            path: None,
+            expires_at_epoch,
+        });
         bundle.owner = owner.to_string();
         bundle.accepted = false;
         bundle.error = Some(error.clone());
@@ -871,9 +852,14 @@ impl ServerState {
     }
 
     pub async fn discard_retained_bundle(&self, token: &str) {
-        if let Some(bundle) = self.retained_bundles.write().await.remove(token)
-            && let Some(path) = bundle.path
-            && let Err(err) = std::fs::remove_file(&path)
+        let path = self
+            .retained_bundles
+            .write()
+            .await
+            .remove(token)
+            .and_then(|bundle| bundle.path);
+        if let Some(path) = path
+            && let Err(err) = tokio::fs::remove_file(&path).await
         {
             tracing::debug!(
                 "Failed to remove retained bundle {}: {}",
@@ -1032,30 +1018,34 @@ async fn require_authenticated_user(
 ) -> Response {
     let method = request.method().clone();
     let path = request.uri().path().to_string();
-    let path_is_routable_without_iap =
-        method == axum::http::Method::OPTIONS
-            || path.starts_with("/.well-known/")
-            || matches!(
-                path.as_str(),
-                "/datastar.js"
-                    | "/datastar.js.map"
-                    | "/documentation-outline.js"
-                    | "/esdiag.svg"
-                    | "/favicon.ico"
-                    | "/prism.js"
-                    | "/prism-bash.js"
-                    | "/prism-json.js"
-                    | "/prism-json5.js"
-                    | "/prism-rust.js"
-                    | "/prism.css"
-                    | "/style.css"
-                    | "/theme-borealis.css"
-            );
+    let path_is_routable_without_iap = method == axum::http::Method::OPTIONS
+        || path.starts_with("/.well-known/")
+        || matches!(
+            path.as_str(),
+            "/datastar.js"
+                | "/datastar.js.map"
+                | "/documentation-outline.js"
+                | "/esdiag.svg"
+                | "/favicon.ico"
+                | "/prism.js"
+                | "/prism-bash.js"
+                | "/prism-json.js"
+                | "/prism-json5.js"
+                | "/prism-rust.js"
+                | "/prism.css"
+                | "/style.css"
+                | "/theme-borealis.css"
+        );
     if state.runtime_mode_policy.requires_iap_headers()
         && !path_is_routable_without_iap
         && let Err(err) = state.resolve_user_email(request.headers())
     {
-        tracing::warn!("Rejected unauthenticated request for {} {}: {}", method, path, err);
+        tracing::warn!(
+            "Rejected unauthenticated request for {} {}: {}",
+            method,
+            path,
+            err
+        );
         return axum::http::StatusCode::UNAUTHORIZED.into_response();
     }
 
@@ -1357,11 +1347,7 @@ impl WorkflowInput {
                 std::fs::remove_file(path)
             };
             if let Err(err) = result {
-                tracing::debug!(
-                    "Failed to clean workflow input {}: {}",
-                    path.display(),
-                    err
-                );
+                tracing::debug!("Failed to clean workflow input {}: {}", path.display(), err);
             }
         }
     }

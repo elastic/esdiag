@@ -8,6 +8,7 @@ use crate::{
 };
 use askama::Template;
 use serde::Serialize;
+use std::collections::BTreeMap;
 
 #[derive(Template)]
 #[template(path = "error.html")]
@@ -310,6 +311,7 @@ pub struct FooterOutputOption {
 }
 
 pub fn build_footer_output_context(
+    hosts_by_name: &BTreeMap<String, KnownHost>,
     send_hosts: &[String],
     exporter: &Exporter,
     preferred_target: Option<&str>,
@@ -317,7 +319,9 @@ pub fn build_footer_output_context(
     let exporter_value = exporter.target_uri();
     let selected_output = preferred_target
         .filter(|target| send_hosts.iter().any(|host| host == *target))
-        .and_then(|target| preferred_target_matches_exporter(target, exporter).then_some(target))
+        .and_then(|target| {
+            preferred_target_matches_exporter(hosts_by_name, target, exporter).then_some(target)
+        })
         .map(str::to_string)
         .unwrap_or_else(|| exporter_value.clone());
 
@@ -356,24 +360,29 @@ pub fn build_footer_output_context(
     (output_options, selected_output, exporter_label)
 }
 
-fn preferred_target_matches_exporter(target: &str, exporter: &Exporter) -> bool {
-    let Some(host) = KnownHost::get_known(&target.to_string()) else {
+fn preferred_target_matches_exporter(
+    hosts_by_name: &BTreeMap<String, KnownHost>,
+    target: &str,
+    exporter: &Exporter,
+) -> bool {
+    let Some(host) = hosts_by_name.get(target) else {
         return false;
     };
     host.get_url().to_string() == exporter.target_uri()
 }
 
 pub fn active_output_requires_keystore(
+    hosts_by_name: &BTreeMap<String, KnownHost>,
     send_hosts: &[String],
     selected_output: &str,
     exporter: &Exporter,
 ) -> bool {
-    if let Some(host) = KnownHost::get_known(&selected_output.to_string()) {
+    if let Some(host) = hosts_by_name.get(selected_output) {
         return host.requires_keystore_secret();
     }
 
     send_hosts.iter().any(|host_name| {
-        let Some(host) = KnownHost::get_known(host_name) else {
+        let Some(host) = hosts_by_name.get(host_name) else {
             return false;
         };
         let secure = host.requires_keystore_secret();
@@ -468,8 +477,12 @@ mod tests {
         let exporter = Exporter::try_from(Uri::Directory(PathBuf::from("/tmp/output")))
             .expect("directory exporter");
 
-        let (options, selected_output, label) =
-            build_footer_output_context(&send_hosts, &exporter, Some("localhost"));
+        let (options, selected_output, label) = build_footer_output_context(
+            &KnownHost::parse_hosts_yml().unwrap_or_default(),
+            &send_hosts,
+            &exporter,
+            Some("localhost"),
+        );
 
         assert_eq!(selected_output, "file:///tmp/output/");
         assert_eq!(label, "dir: /tmp/output/");
@@ -492,12 +505,15 @@ mod tests {
             url: Url::parse("https://secure.example.com:9200").expect("secure url"),
         })
         .expect("secure exporter");
+        let hosts_by_name = KnownHost::parse_hosts_yml().unwrap_or_default();
         assert!(active_output_requires_keystore(
+            &hosts_by_name,
             &send_hosts,
             "secure-prod",
             &secure_exporter
         ));
         assert!(active_output_requires_keystore(
+            &hosts_by_name,
             &send_hosts,
             &secure_exporter.target_uri(),
             &secure_exporter
@@ -506,6 +522,7 @@ mod tests {
         let dir_exporter = Exporter::try_from(Uri::Directory(PathBuf::from("/tmp/output")))
             .expect("directory exporter");
         assert!(!active_output_requires_keystore(
+            &hosts_by_name,
             &send_hosts,
             &dir_exporter.target_uri(),
             &dir_exporter

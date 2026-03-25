@@ -83,8 +83,7 @@ pub async fn handler(
         .next()
         .unwrap_or('_')
         .to_ascii_uppercase();
-    let allows_local_runtime_features =
-        state.runtime_mode_policy.allows_local_runtime_features();
+    let allows_local_runtime_features = state.runtime_mode_policy.allows_local_runtime_features();
     let can_use_keystore = cfg!(feature = "keystore") && allows_local_runtime_features;
     let theme_dark = get_theme_dark(&headers);
     let kibana_url = { state.kibana_url.read().await.clone() };
@@ -150,8 +149,7 @@ pub async fn workflow_page(
         .unwrap_or('_')
         .to_ascii_uppercase();
 
-    let allows_local_runtime_features =
-        state.runtime_mode_policy.allows_local_runtime_features();
+    let allows_local_runtime_features = state.runtime_mode_policy.allows_local_runtime_features();
     let can_use_keystore = cfg!(feature = "keystore") && allows_local_runtime_features;
     let exporter = { state.exporter.read().await.clone() };
     let send_defaults = classify_configured_exporter(&exporter);
@@ -238,8 +236,7 @@ pub async fn jobs_page(
         .unwrap_or('_')
         .to_ascii_uppercase();
 
-    let allows_local_runtime_features =
-        state.runtime_mode_policy.allows_local_runtime_features();
+    let allows_local_runtime_features = state.runtime_mode_policy.allows_local_runtime_features();
     let can_use_keystore = cfg!(feature = "keystore") && allows_local_runtime_features;
     let exporter = { state.exporter.read().await.clone() };
     let send_defaults = classify_configured_exporter(&exporter);

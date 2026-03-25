@@ -278,12 +278,18 @@ pub async fn ensure_unlocked_for_active_output(
         .ok()
         .and_then(|settings| settings.active_target);
     let (_output_options, selected_output, _exporter_label) = template::build_footer_output_context(
+        &hosts_by_name,
         &send_hosts,
         &exporter,
         preferred_target.as_deref(),
     );
 
-    if !template::active_output_requires_keystore(&send_hosts, &selected_output, &exporter) {
+    if !template::active_output_requires_keystore(
+        &hosts_by_name,
+        &send_hosts,
+        &selected_output,
+        &exporter,
+    ) {
         return Ok(());
     }
 
@@ -809,7 +815,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn service_mode_secure_output_bypasses_unlock_and_does_not_touch_local_runtime_features() {
+    async fn service_mode_secure_output_bypasses_unlock_and_does_not_touch_local_runtime_features()
+    {
         let _guard = env_lock().lock().expect("env lock");
         let (tmp, hosts_path, _keystore_path) = setup_env();
         let settings_path = tmp.path().join(".esdiag").join("settings.yml");
@@ -903,5 +910,4 @@ mod tests {
         }
         assert!(saw_invalid, "expected empty-password keystore signal");
     }
-
 }

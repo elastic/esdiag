@@ -367,8 +367,7 @@ async fn run(cli: Cli) -> Result<&'static str> {
 
                 let runtime_mode = resolve_serve_runtime_mode(mode)?;
                 let (mut server, _bound_addr) =
-                    Server::start([0, 0, 0, 0], port, exporter, kibana_url, runtime_mode)
-                        .await?;
+                    Server::start([0, 0, 0, 0], port, exporter, kibana_url, runtime_mode).await?;
 
                 wait_for_shutdown_signal().await?;
 
@@ -817,7 +816,10 @@ fn resolve_host_secret_auth(secret_id: Option<&str>) -> Result<Option<SecretAuth
 }
 
 fn host_connection_uses_receiver(uri: &Uri) -> bool {
-    matches!(uri, Uri::ElasticCloudAdmin(_) | Uri::ElasticGovCloudAdmin(_))
+    matches!(
+        uri,
+        Uri::ElasticCloudAdmin(_) | Uri::ElasticGovCloudAdmin(_)
+    )
 }
 
 async fn validate_host_connection(name: &str, uri: Uri) -> Result<bool> {
@@ -890,12 +892,12 @@ fn resolve_serve_runtime_mode(mode: Option<RuntimeMode>) -> Result<RuntimeMode> 
 
 #[cfg(test)]
 mod tests {
+    #[cfg(feature = "server")]
+    use super::resolve_serve_runtime_mode;
     use super::{
         Cli, Commands, host_connection_uses_receiver, resolve_host_secret_auth,
         should_error_for_missing_subcommand,
     };
-    #[cfg(feature = "server")]
-    use super::resolve_serve_runtime_mode;
     use clap::Parser;
     use esdiag::data::{
         ElasticCloud, HostRole, KnownHost, Product, SecretAuth, Uri, upsert_secret_auth,

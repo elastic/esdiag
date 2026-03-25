@@ -116,7 +116,6 @@ async fn start_mock_upload_server(
     (addr, shutdown_tx)
 }
 
-
 async fn start_esdiag_server() -> (Server, Client, String) {
     let (server, bound_addr) = Server::start(
         [127, 0, 0, 1],
@@ -132,7 +131,12 @@ async fn start_esdiag_server() -> (Server, Client, String) {
     let base = format!("http://127.0.0.1:{}", bound_addr.port());
 
     for _ in 0..40 {
-        if client.get(format!("{base}/favicon.ico")).send().await.is_ok() {
+        if client
+            .get(format!("{base}/favicon.ico"))
+            .send()
+            .await
+            .is_ok()
+        {
             return (server, client, base);
         }
         sleep(Duration::from_millis(25)).await;
@@ -301,9 +305,10 @@ async fn receiver_fails_when_download_returns_non_zip_bytes() {
     let mock_token = "mock-token";
     let (mock_addr, shutdown_tx) = start_mock_upload_server(bad_bytes, mock_token).await;
 
-    let mock_url =
-        Url::parse(&format!("http://token:{mock_token}@{mock_addr}/d/mock-diagnostic"))
-            .expect("valid mock URL");
+    let mock_url = Url::parse(&format!(
+        "http://token:{mock_token}@{mock_addr}/d/mock-diagnostic"
+    ))
+    .expect("valid mock URL");
     let uri = Uri::ServiceLink(mock_url);
 
     let result = Receiver::try_from(uri);
@@ -321,12 +326,12 @@ async fn receiver_fails_when_download_returns_non_zip_bytes() {
 #[tokio::test(flavor = "multi_thread")]
 async fn processor_fails_when_zip_contains_no_diagnostic_files() {
     let mock_token = "mock-token";
-    let (mock_addr, shutdown_tx) =
-        start_mock_upload_server(empty_zip_bytes(), mock_token).await;
+    let (mock_addr, shutdown_tx) = start_mock_upload_server(empty_zip_bytes(), mock_token).await;
 
-    let mock_url =
-        Url::parse(&format!("http://token:{mock_token}@{mock_addr}/d/mock-diagnostic"))
-            .expect("valid mock URL");
+    let mock_url = Url::parse(&format!(
+        "http://token:{mock_token}@{mock_addr}/d/mock-diagnostic"
+    ))
+    .expect("valid mock URL");
     let uri = Uri::ServiceLink(mock_url);
 
     let receiver = Arc::new(
@@ -409,7 +414,9 @@ async fn service_link_endpoint_returns_diagnostic_when_wait_for_completion() {
     let body: serde_json::Value = response.json().await.expect("response should be JSON");
 
     assert!(
-        body["diagnostic_id"].as_str().is_some_and(|s| !s.is_empty()),
+        body["diagnostic_id"]
+            .as_str()
+            .is_some_and(|s| !s.is_empty()),
         "response should contain non-empty diagnostic_id, got: {body}"
     );
     assert!(
