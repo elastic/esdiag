@@ -1,20 +1,20 @@
 ## ADDED Requirements
 
 ### Requirement: CLI Unlock Lease Commands
-The system SHALL provide `esdiag keystore unlock`, `esdiag keystore lock`, and `esdiag keystore status` commands for CLI-managed keystore access. `unlock` SHALL create or refresh local unlock state, `lock` SHALL clear local unlock state, and `status` SHALL report whether the local keystore is present and whether CLI unlock state is active.
+The system SHALL provide `esdiag keystore unlock`, `esdiag keystore lock`, and `esdiag keystore status` commands for CLI-managed keystore access. `unlock` SHALL create or refresh local unlock state in an unlock file stored alongside the active keystore path, `lock` SHALL clear local unlock state, and `status` SHALL report whether the local keystore is present and whether CLI unlock state is active.
 
 #### Scenario: Unlock creates active lease
 - **WHEN** the user runs `esdiag keystore unlock` with a valid keystore password
-- **THEN** the system creates or refreshes `~/.esdiag/keystore.unlock`
+- **THEN** the system creates or refreshes an unlock file named `keystore.unlock` alongside the active keystore path
 - **AND** subsequent CLI runs may use that lease until it expires or is explicitly locked
 
 #### Scenario: Lock clears active lease
 - **WHEN** the user runs `esdiag keystore lock`
-- **THEN** the system removes `~/.esdiag/keystore.unlock` when it exists
+- **THEN** the system removes the unlock file alongside the active keystore path when it exists
 - **AND** later CLI runs require another valid password source before decrypting keystore-backed secrets
 
 #### Scenario: Status reports unlocked lease
-- **GIVEN** the keystore exists and `~/.esdiag/keystore.unlock` contains a valid unexpired lease
+- **GIVEN** the keystore exists and the unlock file alongside the active keystore path contains a valid unexpired lease
 - **WHEN** the user runs `esdiag keystore status`
 - **THEN** the system reports that the keystore is present
 - **AND** the system reports that CLI unlock state is active with the lease expiration time
@@ -36,20 +36,20 @@ The system SHALL write unlock leases with an `expires_at_epoch` value, SHALL def
 - **AND** no unlock lease is written
 
 #### Scenario: Expired unlock lease is deleted on read
-- **GIVEN** `~/.esdiag/keystore.unlock` contains an expiration timestamp in the past
+- **GIVEN** the unlock file alongside the active keystore path contains an expiration timestamp in the past
 - **WHEN** an `esdiag` command checks the unlock lease
 - **THEN** the system treats the keystore as locked
 - **AND** the system deletes the expired unlock file on a best-effort basis
 
 ### Requirement: Unlock Lease Confidentiality and Resilience
-The system SHALL store the cached keystore password in `~/.esdiag/keystore.unlock` using a minimally encrypted envelope rather than plaintext, SHALL create the file with restrictive local permissions when supported by the platform, and SHALL treat malformed or unreadable unlock files as locked state.
+The system SHALL store the cached keystore password in an unlock file named `keystore.unlock` alongside the active keystore path using a minimally encrypted envelope rather than plaintext, SHALL create the file with restrictive local permissions when supported by the platform, and SHALL treat malformed or unreadable unlock files as locked state.
 
 #### Scenario: Unlock file does not expose plaintext password
-- **WHEN** the system writes `~/.esdiag/keystore.unlock`
+- **WHEN** the system writes the unlock file alongside the active keystore path
 - **THEN** the file does not store the cached keystore password in plaintext form
 
 #### Scenario: Corrupt unlock file is ignored
-- **GIVEN** `~/.esdiag/keystore.unlock` is malformed or fails to decrypt
+- **GIVEN** the unlock file alongside the active keystore path is malformed or fails to decrypt
 - **WHEN** an `esdiag` command checks the unlock lease
 - **THEN** the system treats the keystore as locked
 - **AND** the command may warn about the invalid unlock file

@@ -1073,6 +1073,18 @@ fn resolve_secret_input(
     password: Option<String>,
     apikey: Option<String>,
 ) -> Result<(Option<String>, Option<String>, Option<String>)> {
+    resolve_secret_input_with_prompt(username, password, apikey, prompt_missing_secret_value)
+}
+
+fn resolve_secret_input_with_prompt<F>(
+    username: Option<String>,
+    password: Option<String>,
+    apikey: Option<String>,
+    mut prompt_secret: F,
+) -> Result<(Option<String>, Option<String>, Option<String>)>
+where
+    F: FnMut(&str) -> Result<String>,
+{
     let requested_apikey_prompt = apikey.as_ref().is_some_and(|value| value.trim().is_empty());
     let requested_password_prompt = password
         .as_ref()
@@ -1081,14 +1093,14 @@ fn resolve_secret_input(
     let mut password = normalize_optional_secret_arg(password);
     let mut apikey = normalize_optional_secret_arg(apikey);
     if requested_apikey_prompt {
-        apikey = Some(prompt_missing_secret_value("Enter secret API key: ")?);
+        apikey = Some(prompt_secret("Enter secret API key: ")?);
     }
     match (&apikey, &username, &password) {
         (Some(_), None, None) => Ok((None, None, apikey)),
         (None, Some(_), Some(_)) => Ok((username, password, None)),
         (None, Some(_), None) => {
             if requested_password_prompt || password.is_none() {
-                password = Some(prompt_missing_secret_value("Enter secret password: ")?);
+                password = Some(prompt_secret("Enter secret password: ")?);
             }
             Ok((username, password, None))
         }
@@ -1306,7 +1318,7 @@ mod tests {
     use super::{
         Cli, Commands, KeystoreCommands, format_remaining_duration,
         host_connection_uses_receiver, resolve_host_secret_auth,
-        should_error_for_missing_subcommand,
+        resolve_secret_input_with_prompt, should_error_for_missing_subcommand,
     };
     use clap::Parser;
     use esdiag::data::{
@@ -1452,6 +1464,24 @@ mod tests {
             }
             _ => panic!("expected keystore update command"),
         }
+    }
+
+    #[test]
+    fn resolve_secret_input_uses_prompted_value_for_missing_apikey() {
+        let mut prompts = Vec::new();
+        let resolved = resolve_secret_input_with_prompt(
+            None,
+            None,
+            Some(String::new()),
+            |prompt| {
+                prompts.push(prompt.to_string());
+                Ok("prompted-api-key".to_string())
+            },
+        )
+        .expect("resolve secret input");
+
+        assert_eq!(prompts, vec!["Enter secret API key: ".to_string()]);
+        assert_eq!(resolved, (None, None, Some("prompted-api-key".to_string())));
     }
 
     #[test]
