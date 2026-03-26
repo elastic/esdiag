@@ -104,12 +104,11 @@ async fn upload_parts(
     let mut chunk = BytesMut::with_capacity(CHUNK_SIZE);
 
     loop {
-        chunk.resize(CHUNK_SIZE, 0);
-        let bytes_read = file.read(&mut chunk[..]).await?;
+        chunk.clear();
+        let bytes_read = file.read_buf(&mut chunk).await?;
         if bytes_read == 0 {
             break;
         }
-        chunk.truncate(bytes_read);
 
         let mut part_hasher = Sha256::new();
         part_hasher.update(&chunk);

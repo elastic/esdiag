@@ -86,6 +86,15 @@ pub async fn submit(
                     });
                 }
                 Err(e) => {
+                    if let Err(remove_err) = tokio::fs::remove_file(&temp_upload_path).await
+                        && remove_err.kind() != std::io::ErrorKind::NotFound
+                    {
+                        tracing::debug!(
+                            "Failed to remove partial upload {}: {}",
+                            temp_upload_path.display(),
+                            remove_err
+                        );
+                    }
                     let error_msg = format!("Failed to stage upload data: {}", e);
                     tracing::error!("{}", error_msg);
                     state.record_failure().await;
