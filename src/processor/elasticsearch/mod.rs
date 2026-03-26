@@ -222,9 +222,9 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
         manifest: DiagnosticManifest,
         process_selection: Option<ProcessSelection>,
     ) -> Result<(Box<Self>, DiagnosticReport)> {
-        tracing::info!("ElasticsearchDiagnostic::try_new start");
+        tracing::debug!("ElasticsearchDiagnostic::try_new start");
         let cluster = receiver.get::<version::Cluster>().await?;
-        tracing::info!("ElasticsearchDiagnostic::try_new loaded cluster");
+        tracing::debug!("ElasticsearchDiagnostic::try_new loaded cluster");
         let display_name = match receiver.get::<ClusterSettingsDefaults>().await {
             Ok(settings) => settings.get_display_name(),
             Err(err) => {
@@ -235,17 +235,17 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
                 receiver.get::<ClusterSettings>().await?.get_display_name()
             }
         };
-        tracing::info!("ElasticsearchDiagnostic::try_new resolved display name");
+        tracing::debug!("ElasticsearchDiagnostic::try_new resolved display name");
         let metadata =
             ElasticsearchMetadata::try_new(manifest, cluster.with_display_name(display_name))?;
-        tracing::info!("ElasticsearchDiagnostic::try_new built metadata");
+        tracing::debug!("ElasticsearchDiagnostic::try_new built metadata");
 
         let mut report = DiagnosticReportBuilder::from(metadata.diagnostic.clone())
             .cluster(metadata.cluster.clone())
             .product(Product::Elasticsearch)
             .receiver(receiver.to_string())
             .build()?;
-        tracing::info!("ElasticsearchDiagnostic::try_new built report");
+        tracing::debug!("ElasticsearchDiagnostic::try_new built report");
 
         let lookups = Lookups {
             alias: Lookup::from(receiver.get::<AliasList>().await),
@@ -265,7 +265,7 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
                 }
             },
         };
-        tracing::info!("ElasticsearchDiagnostic::try_new built lookups");
+        tracing::debug!("ElasticsearchDiagnostic::try_new built lookups");
         let license = receiver
             .get::<Licenses>()
             .await

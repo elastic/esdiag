@@ -7,6 +7,7 @@ use eyre::Result;
 use futures::stream::{self, BoxStream};
 use serde::de::DeserializeOwned;
 use std::{
+    collections::HashSet,
     io::{BufReader, Read, Seek},
     path::PathBuf,
     sync::Arc,
@@ -117,9 +118,15 @@ pub fn resolve_archive_path<A: Read + Seek>(
             .ok_or_else(|| eyre::eyre!("Archive is empty"))
     }
 
-    fn archive_contains_path<A: Read + Seek>(archive: &ZipArchive<A>, path: &str) -> bool {
-        archive.file_names().any(|name| name == path)
+    fn archive_name_set<A: Read + Seek>(archive: &ZipArchive<A>) -> HashSet<String> {
+        archive.file_names().map(str::to_string).collect()
     }
+
+    fn archive_contains_path(entry_names: &HashSet<String>, path: &str) -> bool {
+        entry_names.contains(path)
+    }
+
+    let entry_names = archive_name_set(archive);
 
     let path = if let Some(dir) = subdir {
         let mut workdir = PathBuf::from(first_entry_name(archive)?);
@@ -127,7 +134,7 @@ pub fn resolve_archive_path<A: Read + Seek>(
         let path = normalize_archive_separators(
             workdir.join(dir).join(filename).to_string_lossy().as_ref(),
         );
-        if archive_contains_path(archive, &path) {
+        if archive_contains_path(&entry_names, &path) {
             return Ok(path);
         } else {
             // Fall back to double slash for ECK bundles with faulty paths
@@ -140,7 +147,7 @@ pub fn resolve_archive_path<A: Read + Seek>(
         normalize_archive_separators(path.join(filename).to_string_lossy().as_ref())
     };
 
-    if archive_contains_path(archive, &path) {
+    if archive_contains_path(&entry_names, &path) {
         Ok(path)
     } else {
         Err(eyre::eyre!("File not found in archive: {}", path))

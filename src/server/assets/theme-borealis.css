@@ -29,7 +29,7 @@
     --color-primary-shade: #1750ba;
     --form-control-disabled-color: #cad3e2;
     --form-background-color: #ffffff;
-    --form-placeholder-color: #cad3e2;
+    --form-placeholder-color: var(--text-subdued-color);
     --page-top-color: #f9fbfd;
 
     --shadow-small: 0 1px 2px rgb(25 10 57 / 0.12);
@@ -131,7 +131,7 @@ html:has(#dark-mode:checked) {
     --button-empty-primary-active: rgb(55 136 255 / 20%);
     --form-control-disabled-color: #2b394f;
     --form-background-color: #0b1628;
-    --form-placeholder-color: #485975;
+    --form-placeholder-color: var(--text-subdued-color);
     --page-top-color: #111c2c;
 
     --border-color: #2b394f;
