@@ -97,6 +97,29 @@ pub(super) async fn run_api_key_form(
     tx: mpsc::Sender<ServerEvent>,
 ) {
     let download_token = signals.archive.download_token.clone();
+    if let Err(err) = super::ensure_active_output_ready(&state, &request_user).await {
+        state
+            .reject_retained_bundle(
+                &download_token,
+                &request_user,
+                err.clone(),
+                DOWNLOAD_REJECTION_TTL,
+            )
+            .await;
+        state.record_failure().await;
+        send_event(
+            &tx,
+            job_feed_event(template::JobFailed {
+                job_id: new_job_id(),
+                error: &err,
+                source: "output target",
+            }),
+        )
+        .await;
+        send_event(&tx, signal_event(r#"{"loading":false,"processing":false}"#)).await;
+        return;
+    }
+
     let host = match KnownHostBuilder::new(signals.es_api.url.clone().into())
         .apikey(Some(signals.es_api.key.clone()))
         .build()
@@ -170,4 +193,126 @@ async fn run_api_key_id(
         }
     };
     workflow::run_job(state, Signals::default(), job_id, request_user, tx, job).await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::run_api_key_form;
+    use crate::{
+        data::{HostRole, KnownHost, Product, Settings, Uri, authenticate},
+        exporter::Exporter,
+        server::{ServerEvent, Signals, test_server_state},
+    };
+    use std::{collections::BTreeMap, sync::{Mutex, OnceLock}};
+    use tempfile::TempDir;
+    use tokio::sync::mpsc;
+    use url::Url;
+
+    fn env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    fn setup_env() -> TempDir {
+        let tmp = TempDir::new().expect("temp dir");
+        let config_dir = tmp.path().join(".esdiag");
+        std::fs::create_dir_all(&config_dir).expect("create config dir");
+        let hosts_path = config_dir.join("hosts.yml");
+        let keystore_path = config_dir.join("secrets.yml");
+        let settings_path = config_dir.join("settings.yml");
+        unsafe {
+            std::env::set_var("HOME", tmp.path());
+            std::env::set_var("USERPROFILE", tmp.path());
+            std::env::set_var("ESDIAG_HOSTS", &hosts_path);
+            std::env::set_var("ESDIAG_KEYSTORE", &keystore_path);
+            std::env::set_var("ESDIAG_SETTINGS", &settings_path);
+        }
+        tmp
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn run_api_key_form_rejects_locked_secure_output_before_job_start() {
+        let _guard = env_lock().lock().expect("env lock");
+        let _tmp = setup_env();
+        authenticate("pw").expect("create keystore");
+
+        let mut hosts = BTreeMap::new();
+        hosts.insert(
+            "secure-es".to_string(),
+            KnownHost::ApiKey {
+                accept_invalid_certs: false,
+                apikey: None,
+                app: Product::Elasticsearch,
+                cloud_id: None,
+                roles: vec![HostRole::Send],
+                secret: Some("secure-es".to_string()),
+                viewer: None,
+                url: Url::parse("http://localhost:9200").expect("url"),
+            },
+        );
+        KnownHost::write_hosts_yml(&hosts).expect("write hosts");
+        Settings {
+            active_target: Some("secure-es".to_string()),
+            kibana_url: None,
+        }
+        .save()
+        .expect("save settings");
+
+        let state = test_server_state();
+        *state.exporter.write().await = Exporter::try_from(KnownHost::NoAuth {
+            app: Product::Elasticsearch,
+            roles: vec![HostRole::Send],
+            viewer: None,
+            url: Url::parse("http://localhost:9200").expect("secure output uri"),
+        })
+        .expect("matching exporter");
+        let mut signals = Signals::default();
+        signals.archive.download_token = "token-1".to_string();
+        signals.es_api.url =
+            Uri::try_from("http://cluster.example:9200".to_string()).expect("api url");
+        signals.es_api.key = "api-key".to_string();
+        let (tx, mut rx) = mpsc::channel(8);
+
+        run_api_key_form(
+            state.clone(),
+            signals,
+            "http://cluster.example:9200".to_string(),
+            "Anonymous".to_string(),
+            tx,
+        )
+        .await;
+
+        let mut saw_failure = false;
+        let mut saw_terminal = false;
+        while let Ok(event) = rx.try_recv() {
+            match event {
+                ServerEvent::JobFeed(html)
+                    if html.contains("output target")
+                        && html.contains("Keystore is locked. Unlock it before processing secure outputs.") =>
+                {
+                    saw_failure = true;
+                }
+                ServerEvent::Signals(payload)
+                    if payload.contains(r#""loading":false"#)
+                        && payload.contains(r#""processing":false"#) =>
+                {
+                    saw_terminal = true;
+                }
+                _ => {}
+            }
+        }
+
+        assert!(saw_failure, "expected preflight failure job event");
+        assert!(saw_terminal, "expected terminal loading signal");
+        let retained = state
+            .retained_bundle("token-1")
+            .await
+            .expect("retained bundle rejection");
+        assert_eq!(
+            retained.error.as_deref(),
+            Some("Keystore is locked. Unlock it before processing secure outputs.")
+        );
+        assert_eq!(retained.owner, "Anonymous");
+    }
 }
