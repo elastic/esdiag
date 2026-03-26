@@ -203,14 +203,13 @@ mod tests {
         exporter::Exporter,
         server::{ServerEvent, Signals, test_server_state},
     };
-    use std::{collections::BTreeMap, sync::{Mutex, OnceLock}};
+    use std::{collections::BTreeMap, sync::Mutex};
     use tempfile::TempDir;
     use tokio::sync::mpsc;
     use url::Url;
 
     fn env_lock() -> &'static Mutex<()> {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(()))
+        crate::test_env_lock()
     }
 
     fn setup_env() -> TempDir {

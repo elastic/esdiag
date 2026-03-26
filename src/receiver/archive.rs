@@ -7,7 +7,6 @@ use eyre::Result;
 use futures::stream::{self, BoxStream};
 use serde::de::DeserializeOwned;
 use std::{
-    collections::HashSet,
     io::{BufReader, Read, Seek},
     path::PathBuf,
     sync::Arc,
@@ -110,31 +109,13 @@ pub fn resolve_archive_path<A: Read + Seek>(
         path.replace('\\', "/")
     }
 
-    fn first_entry_name<A: Read + Seek>(archive: &ZipArchive<A>) -> Result<String> {
-        archive
-            .file_names()
-            .next()
-            .map(str::to_string)
-            .ok_or_else(|| eyre::eyre!("Archive is empty"))
-    }
-
-    fn archive_name_set<A: Read + Seek>(archive: &ZipArchive<A>) -> HashSet<String> {
-        archive.file_names().map(str::to_string).collect()
-    }
-
-    fn archive_contains_path(entry_names: &HashSet<String>, path: &str) -> bool {
-        entry_names.contains(path)
-    }
-
-    let entry_names = archive_name_set(archive);
-
     let path = if let Some(dir) = subdir {
-        let mut workdir = PathBuf::from(first_entry_name(archive)?);
+        let mut workdir = PathBuf::from(archive.by_index(0)?.name().to_string());
         trim_to_working_directory(&mut workdir);
         let path = normalize_archive_separators(
             workdir.join(dir).join(filename).to_string_lossy().as_ref(),
         );
-        if archive_contains_path(&entry_names, &path) {
+        if archive.by_name(&path).is_ok() {
             return Ok(path);
         } else {
             // Fall back to double slash for ECK bundles with faulty paths
@@ -142,12 +123,12 @@ pub fn resolve_archive_path<A: Read + Seek>(
             format!("{base}//{filename}")
         }
     } else {
-        let mut path = PathBuf::from(first_entry_name(archive)?);
+        let mut path = PathBuf::from(archive.by_index(0)?.name().to_string());
         trim_to_working_directory(&mut path);
         normalize_archive_separators(path.join(filename).to_string_lossy().as_ref())
     };
 
-    if archive_contains_path(&entry_names, &path) {
+    if archive.by_name(&path).is_ok() {
         Ok(path)
     } else {
         Err(eyre::eyre!("File not found in archive: {}", path))
