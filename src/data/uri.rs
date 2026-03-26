@@ -163,11 +163,7 @@ impl TryFrom<&str> for Uri {
                         Ok(Uri::File(path))
                     };
                 }
-                return if path.extension().is_none() {
-                    Ok(Uri::Directory(path))
-                } else {
-                    Ok(Uri::File(path))
-                };
+                return Ok(Uri::File(path));
             }
             let domain = url.domain().ok_or_eyre("URL is missing a domain")?;
             match (domain, url.username(), url.password()) {
@@ -280,6 +276,10 @@ mod tests {
         assert!(matches!(
             Uri::try_from("file:///tmp/output/report.ndjson"),
             Ok(Uri::File(path)) if path == PathBuf::from("/tmp/output/report.ndjson")
+        ));
+        assert!(matches!(
+            Uri::try_from("file:///tmp/REPORT"),
+            Ok(Uri::File(path)) if path == PathBuf::from("/tmp/REPORT")
         ));
     }
 }

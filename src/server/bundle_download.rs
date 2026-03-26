@@ -21,6 +21,25 @@ use tokio::{fs::File, io::AsyncReadExt};
 const RETAINED_BUNDLE_POST_DOWNLOAD_TTL: Duration = Duration::from_secs(300);
 const DOWNLOAD_STREAM_CHUNK_SIZE: usize = 64 * 1024;
 
+fn sanitize_download_filename(filename: &str) -> String {
+    let sanitized: String = filename
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '.' | '-' | '_' | ' ') {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    let sanitized = sanitized.trim();
+    if sanitized.is_empty() {
+        "diagnostic.zip".to_string()
+    } else {
+        sanitized.to_string()
+    }
+}
+
 pub async fn download_retained_bundle(
     State(state): State<Arc<ServerState>>,
     Path(token): Path<String>,
@@ -73,10 +92,11 @@ pub async fn download_retained_bundle(
         .await;
     state.schedule_retained_bundle_cleanup(token, RETAINED_BUNDLE_POST_DOWNLOAD_TTL);
 
-    let safe_filename = bundle
-        .filename
-        .unwrap_or_else(|| "diagnostic.zip".to_string())
-        .replace('"', "_");
+    let safe_filename = sanitize_download_filename(
+        &bundle
+            .filename
+            .unwrap_or_else(|| "diagnostic.zip".to_string()),
+    );
     let disposition = format!("attachment; filename=\"{safe_filename}\"");
 
     let stream: BoxStream<'static, Result<Bytes, std::io::Error>> = try_stream! {
@@ -106,7 +126,7 @@ pub async fn download_retained_bundle(
 
 #[cfg(test)]
 mod tests {
-    use super::download_retained_bundle;
+    use super::{download_retained_bundle, sanitize_download_filename};
     use crate::server::{RetainedBundle, now_epoch_seconds, test_server_state};
     use axum::{
         body::to_bytes,
@@ -146,6 +166,15 @@ mod tests {
             .await
             .expect("read response body");
         assert_eq!(&body[..], b"zip-bytes");
+    }
+
+    #[test]
+    fn sanitize_download_filename_removes_header_breaking_bytes() {
+        assert_eq!(
+            sanitize_download_filename("diag\r\nX-Test: injected.zip"),
+            "diag__X-Test_ injected.zip"
+        );
+        assert_eq!(sanitize_download_filename("\"../../etc/passwd\""), "_.._.._etc_passwd_");
     }
 
     #[tokio::test]
