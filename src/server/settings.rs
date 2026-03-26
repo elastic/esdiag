@@ -104,7 +104,11 @@ pub async fn update_settings(
     let mut next_settings = settings.clone();
     let form = signals.settings;
     let target = form.target.as_deref().unwrap_or("").trim().to_string();
-    let target_changed = !target.is_empty();
+    let current_exporter = state.exporter.read().await.clone();
+    let prior_effective_target = prior_active_target
+        .clone()
+        .unwrap_or_else(|| current_exporter.target_uri());
+    let target_changed = !target.is_empty() && target != prior_effective_target;
 
     // 1. Process target selection
     if target == "new_host" {
@@ -137,7 +141,6 @@ pub async fn update_settings(
 
     // 3. Validate and update the active Exporter in ServerState (user mode only)
     if state.runtime_mode_policy.allows_exporter_updates() {
-        let current_exporter = state.exporter.read().await.clone();
         let keystore_password = state.keystore_password_for(&request_user).await;
 
         let next_exporter = if !target_changed {
@@ -642,6 +645,66 @@ mod tests {
         assert_eq!(
             saved.kibana_url.as_deref(),
             Some("https://new-kibana.example")
+        );
+    }
+
+    #[tokio::test]
+    async fn unchanged_saved_target_does_not_require_unlock_for_kibana_only_update() {
+        let _guard = env_lock().lock().expect("env lock");
+        let (_tmp, _hosts_path, _keystore_path) = setup_env();
+        authenticate("pw").expect("create keystore");
+
+        let mut hosts = BTreeMap::new();
+        hosts.insert(
+            "secure-es".to_string(),
+            KnownHost::ApiKey {
+                accept_invalid_certs: false,
+                apikey: None,
+                app: Product::Elasticsearch,
+                cloud_id: None,
+                roles: vec![HostRole::Send],
+                secret: Some("secure-es".to_string()),
+                viewer: None,
+                url: Url::parse("http://localhost:9200").expect("url"),
+            },
+        );
+        write_hosts(hosts);
+
+        Settings {
+            active_target: Some("secure-es".to_string()),
+            kibana_url: Some("https://old-kibana.example".to_string()),
+        }
+        .save()
+        .expect("save settings");
+
+        let state = test_server_state();
+        let mut events = state.subscribe_events();
+        let mut signals = Signals::default();
+        signals.settings.target = Some("secure-es".to_string());
+        signals.settings.kibana_url = Some("https://new-kibana.example".to_string());
+
+        let response =
+            update_settings(State(state.clone()), HeaderMap::new(), ReadSignals(signals)).await;
+
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+        let saved = Settings::load().expect("reload settings");
+        assert_eq!(saved.active_target.as_deref(), Some("secure-es"));
+        assert_eq!(
+            saved.kibana_url.as_deref(),
+            Some("https://new-kibana.example")
+        );
+
+        let mut saw_unlock_modal = false;
+        while let Ok(event) = events.try_recv() {
+            if let ServerEvent::AppendBody(html) = event
+                && html.contains("keystore-unlock-modal")
+            {
+                saw_unlock_modal = true;
+            }
+        }
+        assert!(
+            !saw_unlock_modal,
+            "unchanged output target should not prompt for unlock"
         );
     }
 }
