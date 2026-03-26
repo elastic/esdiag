@@ -123,6 +123,7 @@ pub(super) async fn run_api_key_form(
                 }),
             )
             .await;
+            send_event(&tx, signal_event(r#"{"loading":false,"processing":false}"#)).await;
             return;
         }
     };
