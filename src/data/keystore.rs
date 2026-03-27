@@ -500,22 +500,36 @@ where
         .await
 }
 
-pub fn get_password_for_secret_commands() -> Result<String> {
+fn get_password_for_secret_commands_with_prompt<F>(interactive: bool, prompt_fn: F) -> Result<String>
+where
+    F: FnOnce(&str) -> Result<String>,
+{
     if let Ok(password) = env::var(ESDIAG_KEYSTORE_PASSWORD) {
         return Ok(password);
     }
     if let Some(lease) = read_unlock_lease()? {
-        return Ok(lease.password);
+        if !keystore_exists()? || validate_existing_keystore_password(&lease.password).is_ok() {
+            return Ok(lease.password);
+        }
+        let unlock_path = get_unlock_path()?;
+        remove_unlock_file_best_effort(&unlock_path, "stale");
     }
 
-    if std::io::stdin().is_terminal() && std::io::stdout().is_terminal() {
+    if interactive {
         let prompt = format!("Enter keystore password ({ESDIAG_KEYSTORE_PASSWORD}): ");
-        return Ok(rpassword::prompt_password(prompt)?);
+        return prompt_fn(&prompt);
     }
 
     Err(eyre!(
         "{ESDIAG_KEYSTORE_PASSWORD} is not set and no interactive terminal is available."
     ))
+}
+
+pub fn get_password_for_secret_commands() -> Result<String> {
+    get_password_for_secret_commands_with_prompt(
+        std::io::stdin().is_terminal() && std::io::stdout().is_terminal(),
+        |prompt| Ok(rpassword::prompt_password(prompt)?),
+    )
 }
 
 pub fn add_secret(
@@ -840,5 +854,28 @@ mod tests {
 
         assert!(!clear_unlock_lease().expect("clear unlock lease"));
         assert!(unlock_path.is_dir(), "non-file unlock path should be left alone");
+    }
+
+    #[test]
+    fn stale_unlock_lease_for_secret_commands_falls_back_to_prompt() {
+        let _guard = test_env_lock().lock().expect("env lock");
+        let (_tmp, _keystore_path, unlock_path) = setup_env();
+        create_keystore("current-pw").expect("create keystore");
+        write_unlock_lease_until("stale-pw", current_epoch_seconds() + 300).expect("write lease");
+
+        let prompted = get_password_for_secret_commands_with_prompt(true, |prompt| {
+            assert_eq!(
+                prompt,
+                "Enter keystore password (ESDIAG_KEYSTORE_PASSWORD): "
+            );
+            Ok("prompted-pw".to_string())
+        })
+        .expect("prompted fallback");
+
+        assert_eq!(prompted, "prompted-pw");
+        assert!(
+            !unlock_path.exists(),
+            "stale unlock lease should be cleared before prompting"
+        );
     }
 }
