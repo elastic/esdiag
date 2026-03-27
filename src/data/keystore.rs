@@ -466,8 +466,17 @@ pub fn clear_unlock_lease() -> Result<bool> {
 pub fn get_unlock_status() -> Result<UnlockStatus> {
     let unlock_path = get_unlock_path()?;
     let lease = read_unlock_lease()?;
+    let keystore_exists = get_keystore_path()?.is_file();
+    let lease = if keystore_exists {
+        lease
+    } else {
+        if lease.is_some() {
+            remove_unlock_file_best_effort(&unlock_path, "absent keystore");
+        }
+        None
+    };
     Ok(UnlockStatus {
-        keystore_exists: get_keystore_path()?.is_file(),
+        keystore_exists,
         unlock_active: lease.is_some(),
         expires_at_epoch: lease.as_ref().map(|lease| lease.expires_at_epoch),
         unlock_path,
@@ -482,11 +491,14 @@ pub fn get_keystore_password() -> Result<String> {
         return Ok(password);
     }
     if let Some(lease) = read_unlock_lease()? {
-        if !keystore_exists()? || validate_existing_keystore_password(&lease.password).is_ok() {
-            return Ok(lease.password);
-        }
         let unlock_path = get_unlock_path()?;
-        remove_unlock_file_best_effort(&unlock_path, "stale");
+        if !keystore_exists()? {
+            remove_unlock_file_best_effort(&unlock_path, "absent keystore");
+        } else if validate_existing_keystore_password(&lease.password).is_ok() {
+            return Ok(lease.password);
+        } else {
+            remove_unlock_file_best_effort(&unlock_path, "stale");
+        }
     }
     Err(eyre!(
         "{ESDIAG_KEYSTORE_PASSWORD} is not set and no valid unlock lease is available; cannot decrypt secrets from keystore."
@@ -903,6 +915,38 @@ mod tests {
     }
 
     #[test]
+    fn unlock_status_clears_lease_when_keystore_is_absent() {
+        let _guard = test_env_lock().lock().expect("env lock");
+        let (_tmp, _keystore_path, unlock_path) = setup_env();
+        write_unlock_lease_until("pw", current_epoch_seconds() + 300).expect("write lease");
+
+        let status = get_unlock_status().expect("status");
+        assert!(!status.keystore_exists);
+        assert!(!status.unlock_active);
+        assert_eq!(status.expires_at_epoch, None);
+        assert!(
+            !unlock_path.exists(),
+            "unlock lease should be cleared when keystore is absent"
+        );
+    }
+
+    #[test]
+    fn absent_keystore_unlock_lease_is_cleared_and_rejected() {
+        let _guard = test_env_lock().lock().expect("env lock");
+        let (_tmp, _keystore_path, unlock_path) = setup_env();
+        write_unlock_lease_until("pw", current_epoch_seconds() + 300).expect("write lease");
+
+        let err = get_keystore_password().expect_err("missing keystore should reject lease");
+        assert!(err
+            .to_string()
+            .contains("no valid unlock lease is available"));
+        assert!(
+            !unlock_path.exists(),
+            "unlock lease should be cleared when keystore is absent"
+        );
+    }
+
+    #[test]
     fn secure_output_file_rejects_preexisting_paths() {
         let _guard = test_env_lock().lock().expect("env lock");
         let (_tmp, keystore_path, _unlock_path) = setup_env();
@@ -918,6 +962,7 @@ mod tests {
     fn write_unlock_lease_saturates_large_ttls() {
         let _guard = test_env_lock().lock().expect("env lock");
         let (_tmp, _keystore_path, _unlock_path) = setup_env();
+        create_keystore("pw").expect("create keystore");
 
         write_unlock_lease("pw", Duration::from_secs(u64::MAX)).expect("write large lease");
 
