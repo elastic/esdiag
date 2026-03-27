@@ -430,7 +430,7 @@ pub fn get_unlock_status() -> Result<UnlockStatus> {
     })
 }
 
-pub fn get_password_from_env() -> Result<String> {
+pub fn get_keystore_password() -> Result<String> {
     if let Ok(password) = SCOPED_KEYSTORE_PASSWORD.try_with(Clone::clone) {
         return Ok(password);
     }
@@ -759,7 +759,10 @@ mod tests {
         let status = get_unlock_status().expect("status");
         assert!(!status.unlock_active);
         assert!(!unlock_path.exists(), "expired unlock file should be deleted");
-        assert!(get_password_from_env().is_err(), "expired lease should not provide password");
+        assert!(
+            get_keystore_password().is_err(),
+            "expired lease should not provide password"
+        );
     }
 
     #[test]
@@ -784,6 +787,9 @@ mod tests {
             .expect("read secret")
             .expect("secret exists");
         assert_eq!(secret.apikey.as_deref(), Some("secret-key"));
-        assert_eq!(get_password_from_env().expect("unlock lease password"), "new-pw");
+        assert_eq!(
+            get_keystore_password().expect("unlock lease password"),
+            "new-pw"
+        );
     }
 }

@@ -725,16 +725,20 @@ impl ServerState {
         if !self.can_use_keystore_session() {
             return;
         }
-        let should_try = {
+        let (should_try, timed_out) = {
             let mut state = self.keystore_state.write().await;
-            let _ = Self::apply_keystore_timeout_locked(&mut state);
+            let timed_out = Self::apply_keystore_timeout_locked(&mut state);
             if !state.locked || !state.unlock_file_seed_available {
-                false
+                (false, timed_out)
             } else {
                 state.unlock_file_seed_available = false;
-                true
+                (true, timed_out)
             }
         };
+        if timed_out {
+            let _ = user;
+            self.publish_event(signal_event(self.keystore_signal_payload().await));
+        }
         if !should_try {
             return;
         }
@@ -1906,6 +1910,7 @@ mod tests {
     #[tokio::test]
     async fn keystore_timeout_status_read_publishes_locked_signal() {
         let state = test_server_state();
+        let mut events = state.event_sender().subscribe();
 
         {
             let mut keystore_state = state.keystore_state.write().await;
@@ -1919,6 +1924,12 @@ mod tests {
 
         assert!(locked);
         assert!(lock_time > 0);
+
+        let event = events.try_recv().expect("timeout should publish signal");
+        let ServerEvent::Signals(payload) = event else {
+            panic!("expected signal event");
+        };
+        assert!(payload.contains(r#""keystore":{"locked":true"#));
     }
 
     #[tokio::test]

@@ -4,7 +4,7 @@
 
 use super::keystore::upsert_secret_auth_batch;
 use crate::data::{
-    Auth, Product, SecretAuth, get_password_from_env, resolve_secret_auth as resolve_secret_by_id,
+    Auth, Product, SecretAuth, get_keystore_password, resolve_secret_auth as resolve_secret_by_id,
 };
 use eyre::{Result, eyre};
 use serde::{Deserialize, Serialize};
@@ -738,7 +738,8 @@ impl KnownHost {
                 // Check if the `.esdiag` directory exists, if not, create it
                 let esdiag = home_dir.join(".esdiag");
                 if !esdiag.exists() {
-                    std::fs::create_dir(&esdiag).expect("Failed to create ~/.esdiag directory");
+                    std::fs::create_dir_all(&esdiag)
+                        .expect("Failed to create ~/.esdiag directory");
                 }
 
                 home_dir.join(".esdiag").join("hosts.yml")
@@ -937,7 +938,7 @@ fn resolve_auth_with_precedence(
 }
 
 fn resolve_explicit_secret(secret_id: &str) -> Result<Auth> {
-    let keystore_password = get_password_from_env()
+    let keystore_password = get_keystore_password()
         .map_err(|err| eyre!("Host references secret '{secret_id}' but {err}"))?;
     let secret = resolve_secret_by_id(secret_id, &keystore_password)?
         .ok_or_else(|| eyre!("Secret '{secret_id}' was not found in keystore"))?;
