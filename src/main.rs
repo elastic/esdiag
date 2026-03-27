@@ -1192,7 +1192,11 @@ fn format_epoch(epoch_seconds: i64) -> String {
 }
 
 fn format_remaining_duration(expires_at_epoch: i64) -> String {
-    let remaining = expires_at_epoch.saturating_sub(chrono::Utc::now().timestamp());
+    format_remaining_duration_from(chrono::Utc::now().timestamp(), expires_at_epoch)
+}
+
+fn format_remaining_duration_from(now_epoch: i64, expires_at_epoch: i64) -> String {
+    let remaining = expires_at_epoch.saturating_sub(now_epoch);
     let duration = Duration::from_secs(remaining.max(0) as u64);
     let days = duration.as_secs() / 86_400;
     let hours = (duration.as_secs() % 86_400) / 3_600;
@@ -1316,7 +1320,7 @@ mod tests {
     #[cfg(feature = "server")]
     use super::resolve_serve_runtime_mode;
     use super::{
-        Cli, Commands, KeystoreCommands, format_remaining_duration,
+        Cli, Commands, KeystoreCommands, format_remaining_duration_from,
         host_connection_uses_receiver, resolve_host_secret_auth,
         resolve_secret_input_with_prompt, should_error_for_missing_subcommand,
     };
@@ -1487,7 +1491,7 @@ mod tests {
     #[test]
     fn remaining_duration_formats_hours_and_minutes() {
         assert_eq!(
-            format_remaining_duration(chrono::Utc::now().timestamp() + 3660),
+            format_remaining_duration_from(1_700_000_000, 1_700_003_660),
             "1h 1m remaining"
         );
     }
