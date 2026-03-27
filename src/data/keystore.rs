@@ -480,7 +480,11 @@ pub fn get_keystore_password() -> Result<String> {
         return Ok(password);
     }
     if let Some(lease) = read_unlock_lease()? {
-        return Ok(lease.password);
+        if !keystore_exists()? || validate_existing_keystore_password(&lease.password).is_ok() {
+            return Ok(lease.password);
+        }
+        let unlock_path = get_unlock_path()?;
+        remove_unlock_file_best_effort(&unlock_path, "stale");
     }
     Err(eyre!(
         "{ESDIAG_KEYSTORE_PASSWORD} is not set and no valid unlock lease is available; cannot decrypt secrets from keystore."
@@ -876,6 +880,23 @@ mod tests {
         assert!(
             !unlock_path.exists(),
             "stale unlock lease should be cleared before prompting"
+        );
+    }
+
+    #[test]
+    fn stale_unlock_lease_for_keystore_password_is_cleared_and_rejected() {
+        let _guard = test_env_lock().lock().expect("env lock");
+        let (_tmp, _keystore_path, unlock_path) = setup_env();
+        create_keystore("current-pw").expect("create keystore");
+        write_unlock_lease_until("stale-pw", current_epoch_seconds() + 300).expect("write lease");
+
+        let err = get_keystore_password().expect_err("stale lease should be rejected");
+        assert!(err
+            .to_string()
+            .contains("no valid unlock lease is available"));
+        assert!(
+            !unlock_path.exists(),
+            "stale unlock lease should be cleared on invalid password"
         );
     }
 }
