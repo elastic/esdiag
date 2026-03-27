@@ -90,7 +90,7 @@ Alternatives considered:
 
 ### 4a. Let user-mode web sessions seed from an existing CLI unlock lease once per process
 
-The user-mode web server may consume a valid CLI unlock lease as an initial in-memory session unlock source, but it will not create, refresh, or delete the file as part of normal web session lifecycle. The seed attempt happens at most once per process lifetime, and an explicit web relock prevents immediate reseeding from the same file until the process restarts.
+The user-mode web server may consume a valid CLI unlock lease as an initial in-memory session unlock source, but it will not create, refresh, extend, or write a new lease file as part of normal web session lifecycle. It may perform best-effort deletion of expired or otherwise stale leases encountered while reading the file. The seed attempt happens at most once per process lifetime, and an explicit web relock prevents immediate reseeding from the same file until the process restarts.
 
 Rationale:
 - This preserves the useful “unlock once locally” behavior for users who intentionally opted into the file-based flow.

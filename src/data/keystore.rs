@@ -173,6 +173,9 @@ fn ensure_parent_dir(path: &Path) -> Result<()> {
     let parent = path
         .parent()
         .ok_or_else(|| eyre!("Path '{}' has no parent directory", path.display()))?;
+    if parent.as_os_str().is_empty() || parent == Path::new(".") {
+        return Ok(());
+    }
     if !parent.exists() {
         std::fs::create_dir_all(parent)?;
     }
@@ -212,10 +215,34 @@ fn temp_output_path(path: &Path) -> Result<PathBuf> {
 fn replace_file_atomic(path: &Path, temp_path: &Path) -> Result<()> {
     #[cfg(windows)]
     {
+        let backup_path = path.with_extension("bak");
+        let mut backup_created = false;
+
         if path.exists() {
-            std::fs::remove_file(path)?;
+            if backup_path.exists() {
+                let _ = std::fs::remove_file(&backup_path);
+            }
+            std::fs::rename(path, &backup_path)?;
+            backup_created = true;
+        }
+
+        match std::fs::rename(temp_path, path) {
+            Ok(()) => {
+                if backup_created {
+                    let _ = std::fs::remove_file(&backup_path);
+                }
+                return Ok(());
+            }
+            Err(err) => {
+                if backup_created && !path.exists() {
+                    let _ = std::fs::rename(&backup_path, path);
+                }
+                return Err(err.into());
+            }
         }
     }
+
+    #[cfg(not(windows))]
     std::fs::rename(temp_path, path)?;
     Ok(())
 }
@@ -526,11 +553,14 @@ where
         return Ok(password);
     }
     if let Some(lease) = read_unlock_lease()? {
-        if !keystore_exists()? || validate_existing_keystore_password(&lease.password).is_ok() {
-            return Ok(lease.password);
-        }
         let unlock_path = get_unlock_path()?;
-        remove_unlock_file_best_effort(&unlock_path, "stale");
+        if !keystore_exists()? {
+            remove_unlock_file_best_effort(&unlock_path, "absent keystore");
+        } else if validate_existing_keystore_password(&lease.password).is_ok() {
+            return Ok(lease.password);
+        } else {
+            remove_unlock_file_best_effort(&unlock_path, "stale");
+        }
     }
 
     if interactive {
@@ -947,6 +977,28 @@ mod tests {
     }
 
     #[test]
+    fn absent_keystore_unlock_lease_for_secret_commands_is_cleared_before_prompt() {
+        let _guard = test_env_lock().lock().expect("env lock");
+        let (_tmp, _keystore_path, unlock_path) = setup_env();
+        write_unlock_lease_until("pw", current_epoch_seconds() + 300).expect("write lease");
+
+        let prompted = get_password_for_secret_commands_with_prompt(true, |prompt| {
+            assert_eq!(
+                prompt,
+                "Enter keystore password (ESDIAG_KEYSTORE_PASSWORD): "
+            );
+            Ok("prompted-pw".to_string())
+        })
+        .expect("prompted fallback");
+
+        assert_eq!(prompted, "prompted-pw");
+        assert!(
+            !unlock_path.exists(),
+            "unlock lease should be cleared when keystore is absent"
+        );
+    }
+
+    #[test]
     fn secure_output_file_rejects_preexisting_paths() {
         let _guard = test_env_lock().lock().expect("env lock");
         let (_tmp, keystore_path, _unlock_path) = setup_env();
@@ -968,5 +1020,24 @@ mod tests {
 
         let status = get_unlock_status().expect("unlock status");
         assert_eq!(status.expires_at_epoch, Some(i64::MAX));
+    }
+
+    #[test]
+    fn relative_keystore_path_does_not_require_parent_creation() {
+        let _guard = test_env_lock().lock().expect("env lock");
+        let tmp = TempDir::new().expect("temp dir");
+        let cwd = std::env::current_dir().expect("current dir");
+        unsafe {
+            std::env::set_current_dir(tmp.path()).expect("set current dir");
+            std::env::set_var("ESDIAG_KEYSTORE", "secrets.yml");
+        }
+
+        let path = get_keystore_path().expect("relative keystore path");
+        assert_eq!(path, PathBuf::from("secrets.yml"));
+
+        unsafe {
+            std::env::set_current_dir(cwd).expect("restore current dir");
+            std::env::remove_var("ESDIAG_KEYSTORE");
+        }
     }
 }

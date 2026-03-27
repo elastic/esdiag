@@ -15,7 +15,7 @@
 - [x] 3.1 Extend keystore password lookup precedence to check scoped password first, `ESDIAG_KEYSTORE_PASSWORD` second, and a valid unexpired unlock lease third.
 - [x] 3.2 Implement interactive `keystore unlock` bootstrap behavior for missing keystores and non-interactive refusal behavior without implicit keystore creation.
 - [x] 3.3 Ensure expired, malformed, or undeletable unlock files are treated as locked state without breaking explicit environment-based or interactive fallback flows.
-- [x] 3.4 Allow user-mode web sessions to seed their initial in-memory unlock state from an existing valid CLI unlock lease without creating, refreshing, or deleting that file.
+- [x] 3.4 Allow user-mode web sessions to seed their initial in-memory unlock state from an existing valid CLI unlock lease without creating a new lease or refreshing/extending a valid lease; readers may still perform best-effort deletion of expired or stale lease files when reading them.
 
 ## 4. Verification and documentation
 

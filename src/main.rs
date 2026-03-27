@@ -142,7 +142,7 @@ enum Commands {
         #[arg(help = "Delete the saved host configuration", long, conflicts_with_all = &["app", "url", "accept_invalid_certs", "apikey", "username", "password", "secret", "roles", "nosave"])]
         delete: bool,
         /// ApiKey for authentication
-        #[arg(help = "ApiKey, passed as http header ", long, short, conflicts_with_all = &["username", "password", "delete"])]
+        #[arg(help = "ApiKey, passed as http header", long, short, conflicts_with_all = &["username", "password", "delete"])]
         apikey: Option<String>,
         /// Username for authentication
         #[arg(
@@ -325,7 +325,7 @@ enum KeystoreCommands {
         password: Option<String>,
         /// ApiKey for authentication
         #[arg(
-            help = "ApiKey, passed as http header ",
+            help = "ApiKey, passed as http header",
             long,
             short,
             conflicts_with_all = &["username", "password"]
