@@ -265,9 +265,7 @@ fn write_yaml_atomic<T: Serialize>(path: &Path, value: &T) -> Result<()> {
 
 pub fn get_keystore_path() -> Result<PathBuf> {
     if let Ok(path) = env::var("ESDIAG_KEYSTORE") {
-        let path = PathBuf::from(path);
-        ensure_parent_dir(&path)?;
-        return Ok(path);
+        return Ok(PathBuf::from(path));
     }
     let home_dir = get_home_dir()?;
     let esdiag_dir = PathBuf::from(home_dir).join(".esdiag");
@@ -495,7 +493,16 @@ pub fn get_unlock_status() -> Result<UnlockStatus> {
     let lease = read_unlock_lease()?;
     let keystore_exists = get_keystore_path()?.is_file();
     let lease = if keystore_exists {
-        lease
+        if let Some(lease) = lease {
+            if validate_existing_keystore_password(&lease.password).is_ok() {
+                Some(lease)
+            } else {
+                remove_unlock_file_best_effort(&unlock_path, "stale");
+                None
+            }
+        } else {
+            None
+        }
     } else {
         if lease.is_some() {
             remove_unlock_file_best_effort(&unlock_path, "absent keystore");
@@ -945,6 +952,23 @@ mod tests {
     }
 
     #[test]
+    fn unlock_status_clears_stale_lease_when_keystore_password_changed() {
+        let _guard = test_env_lock().lock().expect("env lock");
+        let (_tmp, _keystore_path, unlock_path) = setup_env();
+        create_keystore("current-pw").expect("create keystore");
+        write_unlock_lease_until("stale-pw", current_epoch_seconds() + 300).expect("write lease");
+
+        let status = get_unlock_status().expect("status");
+        assert!(status.keystore_exists);
+        assert!(!status.unlock_active);
+        assert_eq!(status.expires_at_epoch, None);
+        assert!(
+            !unlock_path.exists(),
+            "stale unlock lease should be cleared on status read"
+        );
+    }
+
+    #[test]
     fn unlock_status_clears_lease_when_keystore_is_absent() {
         let _guard = test_env_lock().lock().expect("env lock");
         let (_tmp, _keystore_path, unlock_path) = setup_env();
@@ -1037,6 +1061,27 @@ mod tests {
 
         unsafe {
             std::env::set_current_dir(cwd).expect("restore current dir");
+            std::env::remove_var("ESDIAG_KEYSTORE");
+        }
+    }
+
+    #[test]
+    fn env_keystore_path_read_does_not_create_missing_parent_dirs() {
+        let _guard = test_env_lock().lock().expect("env lock");
+        let tmp = TempDir::new().expect("temp dir");
+        let keystore_path = tmp.path().join("nested").join("secrets.yml");
+        unsafe {
+            std::env::set_var("ESDIAG_KEYSTORE", &keystore_path);
+        }
+
+        let path = get_keystore_path().expect("keystore path");
+        assert_eq!(path, keystore_path);
+        assert!(
+            !tmp.path().join("nested").exists(),
+            "read path lookup should not create missing parent directories"
+        );
+
+        unsafe {
             std::env::remove_var("ESDIAG_KEYSTORE");
         }
     }
