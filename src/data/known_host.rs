@@ -4,7 +4,7 @@
 
 use super::keystore::upsert_secret_auth_batch;
 use crate::data::{
-    Auth, Product, SecretAuth, get_password_from_env, resolve_secret_auth as resolve_secret_by_id,
+    Auth, Product, SecretAuth, get_keystore_password, resolve_secret_auth as resolve_secret_by_id,
 };
 use eyre::{Result, eyre};
 use serde::{Deserialize, Serialize};
@@ -738,7 +738,8 @@ impl KnownHost {
                 // Check if the `.esdiag` directory exists, if not, create it
                 let esdiag = home_dir.join(".esdiag");
                 if !esdiag.exists() {
-                    std::fs::create_dir(&esdiag).expect("Failed to create ~/.esdiag directory");
+                    std::fs::create_dir_all(&esdiag)
+                        .expect("Failed to create ~/.esdiag directory");
                 }
 
                 home_dir.join(".esdiag").join("hosts.yml")
@@ -937,7 +938,7 @@ fn resolve_auth_with_precedence(
 }
 
 fn resolve_explicit_secret(secret_id: &str) -> Result<Auth> {
-    let keystore_password = get_password_from_env()
+    let keystore_password = get_keystore_password()
         .map_err(|err| eyre!("Host references secret '{secret_id}' but {err}"))?;
     let secret = resolve_secret_by_id(secret_id, &keystore_password)?
         .ok_or_else(|| eyre!("Secret '{secret_id}' was not found in keystore"))?;
@@ -974,7 +975,7 @@ impl From<KnownHost> for Url {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::data::{get_secret, upsert_secret_auth};
+    use crate::data::{get_secret, upsert_secret_auth, write_unlock_lease};
     use std::sync::Mutex;
     use tempfile::TempDir;
 
@@ -1237,6 +1238,45 @@ mod tests {
         unsafe {
             std::env::remove_var("ESDIAG_OUTPUT_APIKEY");
         }
+    }
+
+    #[test]
+    fn explicit_secret_uses_unlock_lease_when_env_password_is_absent() {
+        let _guard = env_lock().lock().expect("env lock");
+        let (_tmp, _hosts, _keystore) = setup_env();
+        upsert_secret_auth(
+            "lease-secret",
+            SecretAuth::ApiKey {
+                apikey: "unlock-key".to_string(),
+            },
+            "pw",
+        )
+        .expect("upsert secret");
+        write_unlock_lease("pw", std::time::Duration::from_secs(300))
+            .expect("write unlock lease");
+        unsafe {
+            std::env::remove_var("ESDIAG_KEYSTORE_PASSWORD");
+        }
+
+        let mut hosts = BTreeMap::new();
+        hosts.insert(
+            "prod-es".to_string(),
+            KnownHost::Basic {
+                accept_invalid_certs: false,
+                app: Product::Elasticsearch,
+                password: None,
+                roles: default_collect_roles(),
+                secret: Some("lease-secret".to_string()),
+                viewer: None,
+                url: Url::parse("http://localhost:9200").expect("url"),
+                username: None,
+            },
+        );
+        write_hosts(hosts);
+
+        let host = KnownHost::get_known(&"prod-es".to_string()).expect("host");
+        let auth = host.get_auth().expect("auth from unlock lease");
+        assert!(matches!(auth, Auth::Apikey(key) if key == "unlock-key"));
     }
 
     #[test]

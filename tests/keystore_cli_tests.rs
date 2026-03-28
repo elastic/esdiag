@@ -1,4 +1,4 @@
-use esdiag::data::{Auth, HostRole, KnownHost, Product, get_secret};
+use esdiag::data::{Auth, HostRole, KnownHost, Product, authenticate, get_secret, get_unlock_status};
 use std::{
     collections::BTreeMap,
     path::PathBuf,
@@ -199,4 +199,170 @@ fn keystore_migrate_command_scrubs_plaintext_hosts_and_preserves_reads() {
         .get_auth()
         .expect("resolve kb auth");
     assert!(matches!(kb_auth, Auth::Basic(user, pass) if user == "elastic" && pass == "pass-1"));
+}
+
+#[test]
+fn keystore_add_rejects_duplicate_secret() {
+    let _guard = env_lock().lock().expect("env lock");
+    let (home, _hosts_path, _keystore_path) = setup_env();
+
+    let first_add = run_esdiag(
+        &["keystore", "add", "prod-es", "--apikey", "key-1"],
+        &home,
+        &[("ESDIAG_KEYSTORE_PASSWORD", "pw")],
+    );
+    assert_success(&first_add, "first keystore add");
+
+    let second_add = run_esdiag(
+        &["keystore", "add", "prod-es", "--apikey", "key-2"],
+        &home,
+        &[("ESDIAG_KEYSTORE_PASSWORD", "pw")],
+    );
+    assert!(
+        !second_add.status.success(),
+        "duplicate add should fail\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&second_add.stdout),
+        String::from_utf8_lossy(&second_add.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&second_add.stderr).contains("already exists"),
+        "expected duplicate-secret error"
+    );
+
+    let secret = get_secret("prod-es", "pw")
+        .expect("read secret")
+        .expect("secret should still exist");
+    assert_eq!(secret.apikey.as_deref(), Some("key-1"));
+}
+
+#[test]
+fn keystore_update_updates_existing_secret_and_rejects_missing_secret() {
+    let _guard = env_lock().lock().expect("env lock");
+    let (home, _hosts_path, _keystore_path) = setup_env();
+
+    let missing_update = run_esdiag(
+        &["keystore", "update", "missing", "--apikey", "key-1"],
+        &home,
+        &[("ESDIAG_KEYSTORE_PASSWORD", "pw")],
+    );
+    assert!(
+        !missing_update.status.success(),
+        "missing update should fail\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&missing_update.stdout),
+        String::from_utf8_lossy(&missing_update.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&missing_update.stderr).contains("not found"),
+        "expected missing-secret error"
+    );
+
+    let add_output = run_esdiag(
+        &["keystore", "add", "prod-es", "--apikey", "key-1"],
+        &home,
+        &[("ESDIAG_KEYSTORE_PASSWORD", "pw")],
+    );
+    assert_success(&add_output, "keystore add before update");
+
+    let update_output = run_esdiag(
+        &[
+            "keystore",
+            "update",
+            "prod-es",
+            "--user",
+            "elastic",
+            "--password",
+            "pass-2",
+        ],
+        &home,
+        &[("ESDIAG_KEYSTORE_PASSWORD", "pw")],
+    );
+    assert_success(&update_output, "keystore update");
+
+    let secret = get_secret("prod-es", "pw")
+        .expect("read updated secret")
+        .expect("updated secret exists");
+    assert_eq!(
+        secret.basic.as_ref().map(|basic| basic.username.as_str()),
+        Some("elastic")
+    );
+    assert_eq!(
+        secret.basic.as_ref().map(|basic| basic.password.as_str()),
+        Some("pass-2")
+    );
+    assert!(secret.apikey.is_none(), "update should replace previous auth type");
+}
+
+#[test]
+fn keystore_unlock_status_and_lock_commands_manage_unlock_file() {
+    let _guard = env_lock().lock().expect("env lock");
+    let (home, _hosts_path, _keystore_path) = setup_env();
+    authenticate("pw").expect("create keystore");
+
+    let unlock_output = run_esdiag(
+        &["keystore", "unlock", "--ttl", "7d"],
+        &home,
+        &[("ESDIAG_KEYSTORE_PASSWORD", "pw")],
+    );
+    assert_success(&unlock_output, "keystore unlock");
+
+    let unlock_path = home.path().join(".esdiag").join("keystore.unlock");
+    assert!(unlock_path.exists(), "unlock file should exist");
+
+    let status_output = run_esdiag(&["keystore", "status"], &home, &[]);
+    assert_success(&status_output, "keystore status while unlocked");
+    let status = get_unlock_status().expect("unlock status while unlocked");
+    assert!(status.unlock_active, "status helper should report active unlock");
+    assert!(status.expires_at_epoch.is_some(), "status should include expiry");
+
+    let lock_output = run_esdiag(&["keystore", "lock"], &home, &[]);
+    assert_success(&lock_output, "keystore lock");
+    assert!(!unlock_path.exists(), "unlock file should be removed");
+
+    let status_after_lock = run_esdiag(&["keystore", "status"], &home, &[]);
+    assert_success(&status_after_lock, "keystore status after lock");
+    let status_after_lock = get_unlock_status().expect("unlock status after lock");
+    assert!(
+        !status_after_lock.unlock_active,
+        "status helper should report inactive unlock"
+    );
+}
+
+#[test]
+fn keystore_unlock_refuses_noninteractive_bootstrap_without_keystore() {
+    let _guard = env_lock().lock().expect("env lock");
+    let (home, _hosts_path, _keystore_path) = setup_env();
+
+    let output = run_esdiag(&["keystore", "unlock"], &home, &[]);
+    assert!(
+        !output.status.success(),
+        "unlock without keystore should fail non-interactively\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("No keystore exists"),
+        "expected missing-keystore error"
+    );
+}
+
+#[test]
+fn keystore_add_missing_secret_material_fails_noninteractive() {
+    let _guard = env_lock().lock().expect("env lock");
+    let (home, _hosts_path, _keystore_path) = setup_env();
+
+    let output = run_esdiag(
+        &["keystore", "add", "prod-es", "--apikey"],
+        &home,
+        &[("ESDIAG_KEYSTORE_PASSWORD", "pw")],
+    );
+    assert!(
+        !output.status.success(),
+        "missing secret material should fail without tty\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("Required secret value was not provided"),
+        "expected missing secret value error"
+    );
 }

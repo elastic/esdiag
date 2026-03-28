@@ -17,10 +17,13 @@ mod uri;
 
 pub use auth::{Auth, AuthType};
 pub use keystore::{
-    BasicSecret, SecretAuth, SecretEntry, add_secret, authenticate,
-    get_password_for_secret_commands, get_password_from_env, get_secret, keystore_exists,
-    list_secret_names, remove_secret, resolve_secret_auth, upsert_secret_auth,
-    with_scoped_keystore_password,
+    BasicSecret, SecretAuth, SecretEntry, UnlockStatus, add_secret, authenticate,
+    clear_unlock_lease, create_keystore, default_unlock_ttl, get_keystore_password,
+    get_password_for_secret_commands, get_password_from_unlock_file, get_secret, get_unlock_path,
+    get_unlock_status, keystore_exists,
+    list_secret_names, parse_unlock_ttl, remove_secret, resolve_secret_auth,
+    rotate_keystore_password, update_secret, upsert_secret_auth,
+    validate_existing_keystore_password, with_scoped_keystore_password, write_unlock_lease,
 };
 pub use known_host::{ElasticCloud, HostRole, KnownHost, KnownHostBuilder, KnownHostCliUpdate};
 pub use product::Product;

@@ -12,8 +12,12 @@ use esdiag::setup;
 use esdiag::{
     client::Client,
     data::{
-        HostRole, KnownHost, KnownHostBuilder, KnownHostCliUpdate, Product, SecretAuth, Settings,
-        Uri, add_secret, get_password_for_secret_commands, remove_secret, resolve_secret_auth,
+        HostRole, KnownHost, KnownHostBuilder, Product, SecretAuth, Uri, add_secret,
+        clear_unlock_lease, create_keystore, default_unlock_ttl, get_password_for_secret_commands,
+        get_unlock_status, keystore_exists, parse_unlock_ttl, remove_secret,
+        resolve_secret_auth, rotate_keystore_password, update_secret,
+        validate_existing_keystore_password, write_unlock_lease,
+        KnownHostCliUpdate, Settings,
     },
     env::LOG_LEVEL,
     exporter::Exporter,
@@ -22,7 +26,7 @@ use esdiag::{
     uploader,
 };
 use eyre::{Result, eyre};
-use std::sync::Arc;
+use std::{io::{IsTerminal, Write}, sync::Arc, time::Duration};
 use tracing_subscriber::{EnvFilter, fmt};
 use url::Url;
 
@@ -138,7 +142,7 @@ enum Commands {
         #[arg(help = "Delete the saved host configuration", long, conflicts_with_all = &["app", "url", "accept_invalid_certs", "apikey", "username", "password", "secret", "roles", "nosave"])]
         delete: bool,
         /// ApiKey for authentication
-        #[arg(help = "ApiKey, passed as http header ", long, short, conflicts_with_all = &["username", "password", "delete"])]
+        #[arg(help = "ApiKey, passed as http header", long, short, conflicts_with_all = &["username", "password", "delete"])]
         apikey: Option<String>,
         /// Username for authentication
         #[arg(
@@ -240,7 +244,7 @@ enum Commands {
 
 #[derive(Debug, Subcommand)]
 enum KeystoreCommands {
-    /// Add or update a secret in the encrypted keystore
+    /// Add a secret to the encrypted keystore
     Add {
         /// Secret identifier
         secret_id: String,
@@ -253,13 +257,53 @@ enum KeystoreCommands {
         )]
         username: Option<String>,
         /// Password for authentication
-        #[arg(help = "Password for authentication", long, short)]
+        #[arg(
+            help = "Password for authentication (prompts when omitted in interactive shells)",
+            long,
+            short,
+            num_args = 0..=1,
+            default_missing_value = ""
+        )]
         password: Option<String>,
         /// ApiKey for authentication
         #[arg(
-            help = "ApiKey, passed as http header ",
+            help = "ApiKey, passed as http header (prompts when omitted in interactive shells)",
             long,
             short,
+            num_args = 0..=1,
+            default_missing_value = "",
+            conflicts_with_all = &["username", "password"]
+        )]
+        apikey: Option<String>,
+    },
+    /// Update an existing secret in the encrypted keystore
+    Update {
+        /// Secret identifier
+        secret_id: String,
+        /// Username for authentication
+        #[arg(
+            help = "Username for authentication",
+            long = "user",
+            visible_alias = "username",
+            short
+        )]
+        username: Option<String>,
+        /// Password for authentication
+        #[arg(
+            help = "Password for authentication (prompts when omitted in interactive shells)",
+            long,
+            short,
+            num_args = 0..=1,
+            default_missing_value = ""
+        )]
+        password: Option<String>,
+        /// ApiKey for authentication
+        #[arg(
+            help = "ApiKey, passed as http header (prompts when omitted in interactive shells)",
+            long,
+            short,
+            num_args = 0..=1,
+            default_missing_value = "",
             conflicts_with_all = &["username", "password"]
         )]
         apikey: Option<String>,
@@ -281,13 +325,25 @@ enum KeystoreCommands {
         password: Option<String>,
         /// ApiKey for authentication
         #[arg(
-            help = "ApiKey, passed as http header ",
+            help = "ApiKey, passed as http header",
             long,
             short,
             conflicts_with_all = &["username", "password"]
         )]
         apikey: Option<String>,
     },
+    /// Unlock the local keystore for future CLI runs
+    Unlock {
+        /// Unlock duration like 90m, 24h, or 7d
+        #[arg(long, help = "Unlock duration like 90m, 24h, or 7d")]
+        ttl: Option<String>,
+    },
+    /// Lock the local keystore for future CLI runs
+    Lock,
+    /// Show local keystore and unlock status
+    Status,
+    /// Change the keystore password
+    Password,
     /// Migrate legacy host credentials in hosts.yml into the keystore
     Migrate,
 }
@@ -530,7 +586,6 @@ async fn run(cli: Cli) -> Result<&'static str> {
                 }
             }
             Commands::Keystore { command } => {
-                let keystore_password = get_password_for_secret_commands()?;
                 match command {
                     KeystoreCommands::Add {
                         secret_id,
@@ -538,9 +593,31 @@ async fn run(cli: Cli) -> Result<&'static str> {
                         password,
                         apikey,
                     } => {
+                        let keystore_password = get_password_for_secret_commands()?;
+                        let (username, password, apikey) =
+                            resolve_secret_input(username, password, apikey)?;
                         let path =
                             add_secret(&secret_id, username, password, apikey, &keystore_password)?;
                         tracing::info!("Secret '{secret_id}' saved to {path}");
+                        Ok("keystore")
+                    }
+                    KeystoreCommands::Update {
+                        secret_id,
+                        username,
+                        password,
+                        apikey,
+                    } => {
+                        let keystore_password = get_password_for_secret_commands()?;
+                        let (username, password, apikey) =
+                            resolve_secret_input(username, password, apikey)?;
+                        let path = update_secret(
+                            &secret_id,
+                            username,
+                            password,
+                            apikey,
+                            &keystore_password,
+                        )?;
+                        tracing::info!("Secret '{secret_id}' updated in {path}");
                         Ok("keystore")
                     }
                     KeystoreCommands::Remove {
@@ -549,12 +626,79 @@ async fn run(cli: Cli) -> Result<&'static str> {
                         password,
                         apikey,
                     } => {
+                        let keystore_password = get_password_for_secret_commands()?;
                         let expected = expected_secret_auth(username, password, apikey)?;
                         let path = remove_secret(&secret_id, expected, &keystore_password)?;
                         tracing::info!("Secret '{secret_id}' deleted from {path}");
                         Ok("keystore")
                     }
+                    KeystoreCommands::Unlock { ttl } => {
+                        let ttl = ttl
+                            .as_deref()
+                            .map(parse_unlock_ttl)
+                            .transpose()?
+                            .unwrap_or_else(default_unlock_ttl);
+                        let unlock_path = unlock_keystore(ttl)?;
+                        let status = get_unlock_status()?;
+                        if let Some(expires_at_epoch) = status.expires_at_epoch {
+                            tracing::info!(
+                                "Keystore unlocked via {} until {} ({})",
+                                unlock_path.display(),
+                                format_epoch(expires_at_epoch),
+                                format_remaining_duration(expires_at_epoch)
+                            );
+                        } else {
+                            tracing::info!("Keystore unlocked via {}", unlock_path.display());
+                        }
+                        Ok("keystore")
+                    }
+                    KeystoreCommands::Lock => {
+                        if clear_unlock_lease()? {
+                            tracing::info!("Keystore unlock lease removed");
+                        } else {
+                            tracing::info!("Keystore unlock lease was already absent");
+                        }
+                        Ok("keystore")
+                    }
+                    KeystoreCommands::Status => {
+                        let status = get_unlock_status()?;
+                        tracing::info!(
+                            "Keystore: {} ({})",
+                            if status.keystore_exists {
+                                "present"
+                            } else {
+                                "absent"
+                            },
+                            status.unlock_path.display()
+                        );
+                        if status.unlock_active {
+                            if let Some(expires_at_epoch) = status.expires_at_epoch {
+                                tracing::info!(
+                                    "CLI unlock: active until {} ({})",
+                                    format_epoch(expires_at_epoch),
+                                    format_remaining_duration(expires_at_epoch)
+                                );
+                            } else {
+                                tracing::info!("CLI unlock: active");
+                            }
+                        } else {
+                            tracing::info!("CLI unlock: inactive");
+                        }
+                        Ok("keystore")
+                    }
+                    KeystoreCommands::Password => {
+                        if !keystore_exists()? {
+                            return Err(eyre!("No keystore exists to update the password."));
+                        }
+                        let current_password = get_password_for_secret_commands()?;
+                        validate_existing_keystore_password(&current_password)?;
+                        let new_password = prompt_new_keystore_password()?;
+                        let path = rotate_keystore_password(&current_password, &new_password)?;
+                        tracing::info!("Keystore password updated for {path}");
+                        Ok("keystore")
+                    }
                     KeystoreCommands::Migrate => {
+                        let keystore_password = get_password_for_secret_commands()?;
                         let (migrated, unchanged) =
                             KnownHost::migrate_hosts_to_keystore(&keystore_password)?;
                         tracing::info!(
@@ -924,7 +1068,147 @@ fn delete_host_from_cli(name: &str) -> Result<String> {
     }
     Ok(path)
 }
+fn resolve_secret_input(
+    username: Option<String>,
+    password: Option<String>,
+    apikey: Option<String>,
+) -> Result<(Option<String>, Option<String>, Option<String>)> {
+    resolve_secret_input_with_prompt(username, password, apikey, prompt_missing_secret_value)
+}
 
+fn resolve_secret_input_with_prompt<F>(
+    username: Option<String>,
+    password: Option<String>,
+    apikey: Option<String>,
+    mut prompt_secret: F,
+) -> Result<(Option<String>, Option<String>, Option<String>)>
+where
+    F: FnMut(&str) -> Result<String>,
+{
+    let requested_apikey_prompt = apikey.as_ref().is_some_and(|value| value.trim().is_empty());
+    let requested_password_prompt = password
+        .as_ref()
+        .is_some_and(|value| value.trim().is_empty());
+    let username = normalize_optional_secret_arg(username);
+    let mut password = normalize_optional_secret_arg(password);
+    let mut apikey = normalize_optional_secret_arg(apikey);
+    if requested_apikey_prompt {
+        apikey = Some(prompt_secret("Enter secret API key: ")?);
+    }
+    match (&apikey, &username, &password) {
+        (Some(_), None, None) => Ok((None, None, apikey)),
+        (None, Some(_), Some(_)) => Ok((username, password, None)),
+        (None, Some(_), None) => {
+            if requested_password_prompt || password.is_none() {
+                password = Some(prompt_secret("Enter secret password: ")?);
+            }
+            Ok((username, password, None))
+        }
+        (None, None, Some(_)) => Err(eyre!(
+            "Invalid auth options: use either --apikey or --user with --password"
+        )),
+        (None, None, None) => Err(eyre!(
+            "Invalid auth options: use either --apikey or --user with --password"
+        )),
+        (Some(_), _, _) => Ok((None, None, apikey)),
+    }
+}
+
+fn normalize_optional_secret_arg(value: Option<String>) -> Option<String> {
+    value.and_then(|value| {
+        if value.trim().is_empty() {
+            None
+        } else {
+            Some(value)
+        }
+    })
+}
+
+fn prompt_missing_secret_value(prompt: &str) -> Result<String> {
+    if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
+        return Err(eyre!(
+            "Required secret value was not provided and no interactive terminal is available."
+        ));
+    }
+    let value = rpassword::prompt_password(prompt)?;
+    if value.is_empty() {
+        return Err(eyre!("Required secret value was not provided."));
+    }
+    Ok(value)
+}
+
+fn prompt_confirm(message: &str) -> Result<bool> {
+    if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
+        return Ok(false);
+    }
+    print!("{message}");
+    std::io::stdout().flush()?;
+    let mut line = String::new();
+    std::io::stdin().read_line(&mut line)?;
+    let answer = line.trim().to_ascii_lowercase();
+    Ok(matches!(answer.as_str(), "y" | "yes"))
+}
+
+fn prompt_new_keystore_password() -> Result<String> {
+    if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
+        return Err(eyre!(
+            "A new keystore password requires an interactive terminal."
+        ));
+    }
+    let password = rpassword::prompt_password("Enter new keystore password: ")?;
+    if password.is_empty() {
+        return Err(eyre!("Keystore password cannot be empty."));
+    }
+    let confirm = rpassword::prompt_password("Confirm new keystore password: ")?;
+    if password != confirm {
+        return Err(eyre!("Keystore password confirmation did not match."));
+    }
+    Ok(password)
+}
+
+fn unlock_keystore(ttl: Duration) -> Result<std::path::PathBuf> {
+    if keystore_exists()? {
+        let keystore_password = get_password_for_secret_commands()?;
+        validate_existing_keystore_password(&keystore_password)?;
+        return write_unlock_lease(&keystore_password, ttl);
+    }
+    if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
+        return Err(eyre!(
+            "No keystore exists and no interactive terminal is available to create one."
+        ));
+    }
+    if !prompt_confirm("No keystore exists. Create one now? [y/N]: ")? {
+        return Err(eyre!("Keystore unlock cancelled."));
+    }
+    let keystore_password = prompt_new_keystore_password()?;
+    create_keystore(&keystore_password)?;
+    write_unlock_lease(&keystore_password, ttl)
+}
+
+fn format_epoch(epoch_seconds: i64) -> String {
+    chrono::DateTime::from_timestamp(epoch_seconds, 0)
+        .map(|timestamp| timestamp.to_rfc3339())
+        .unwrap_or_else(|| epoch_seconds.to_string())
+}
+
+fn format_remaining_duration(expires_at_epoch: i64) -> String {
+    format_remaining_duration_from(chrono::Utc::now().timestamp(), expires_at_epoch)
+}
+
+fn format_remaining_duration_from(now_epoch: i64, expires_at_epoch: i64) -> String {
+    let remaining = expires_at_epoch.saturating_sub(now_epoch);
+    let duration = Duration::from_secs(remaining.max(0) as u64);
+    let days = duration.as_secs() / 86_400;
+    let hours = (duration.as_secs() % 86_400) / 3_600;
+    let minutes = (duration.as_secs() % 3_600) / 60;
+    if days > 0 {
+        format!("{days}d {hours}h remaining")
+    } else if hours > 0 {
+        format!("{hours}h {minutes}m remaining")
+    } else {
+        format!("{minutes}m remaining")
+    }
+}
 fn ensure_host_role(host: &KnownHost, role: HostRole, context: &str) -> Result<()> {
     if host.has_role(role.clone()) {
         Ok(())
@@ -1036,8 +1320,9 @@ mod tests {
     #[cfg(feature = "server")]
     use super::resolve_serve_runtime_mode;
     use super::{
-        Cli, Commands, host_connection_uses_receiver, resolve_host_secret_auth,
-        should_error_for_missing_subcommand,
+        Cli, Commands, KeystoreCommands, format_remaining_duration_from,
+        host_connection_uses_receiver, resolve_host_secret_auth,
+        resolve_secret_input_with_prompt, should_error_for_missing_subcommand,
     };
     use clap::Parser;
     use esdiag::data::{
@@ -1149,6 +1434,66 @@ mod tests {
             "rotated",
         ]);
         assert!(result.is_err(), "delete should conflict with update fields");
+    }
+
+    #[test]
+    fn keystore_add_allows_missing_apikey_value_for_prompting() {
+        let cli = Cli::parse_from(["esdiag", "keystore", "add", "prod-es", "--apikey"]);
+        match cli.command.expect("command") {
+            Commands::Keystore {
+                command: KeystoreCommands::Add { apikey, .. },
+            } => {
+                assert_eq!(apikey, Some(String::new()));
+            }
+            _ => panic!("expected keystore add command"),
+        }
+    }
+
+    #[test]
+    fn keystore_update_allows_missing_password_value_for_prompting() {
+        let cli = Cli::parse_from([
+            "esdiag",
+            "keystore",
+            "update",
+            "prod-es",
+            "--user",
+            "elastic",
+            "--password",
+        ]);
+        match cli.command.expect("command") {
+            Commands::Keystore {
+                command: KeystoreCommands::Update { password, .. },
+            } => {
+                assert_eq!(password, Some(String::new()));
+            }
+            _ => panic!("expected keystore update command"),
+        }
+    }
+
+    #[test]
+    fn resolve_secret_input_uses_prompted_value_for_missing_apikey() {
+        let mut prompts = Vec::new();
+        let resolved = resolve_secret_input_with_prompt(
+            None,
+            None,
+            Some(String::new()),
+            |prompt| {
+                prompts.push(prompt.to_string());
+                Ok("prompted-api-key".to_string())
+            },
+        )
+        .expect("resolve secret input");
+
+        assert_eq!(prompts, vec!["Enter secret API key: ".to_string()]);
+        assert_eq!(resolved, (None, None, Some("prompted-api-key".to_string())));
+    }
+
+    #[test]
+    fn remaining_duration_formats_hours_and_minutes() {
+        assert_eq!(
+            format_remaining_duration_from(1_700_000_000, 1_700_003_660),
+            "1h 1m remaining"
+        );
     }
 
     #[test]

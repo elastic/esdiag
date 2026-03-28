@@ -222,7 +222,12 @@ Manage encrypted secrets in the local keystore
 Usage: esdiag keystore <COMMAND>
 
 Commands:
-  add <SECRET_ID>       Add or update a secret in the encrypted keystore
+  add <SECRET_ID>       Add a new secret to the encrypted keystore
+  update <SECRET_ID>    Update an existing secret in the encrypted keystore
+  unlock                Unlock the local keystore for future CLI runs
+  lock                  Lock the local keystore for future CLI runs
+  status                Show local keystore and unlock status
+  password              Change the keystore password
   remove <SECRET_ID>    Remove a secret from the encrypted keystore
   migrate               Migrate legacy host credentials in hosts.yml into the keystore
 ```
@@ -236,6 +241,19 @@ esdiag keystore add prod-es-basic --user elastic --password changeme
 # Add an API key secret
 esdiag keystore add prod-es-apikey --apikey BASE64_ENCODED_KEY
 
+# Update an existing API key secret
+esdiag keystore update prod-es-apikey --apikey NEW_BASE64_ENCODED_KEY
+
+# Unlock the keystore for 24 hours (default)
+esdiag keystore unlock
+
+# Unlock for a custom duration
+esdiag keystore unlock --ttl 7d
+
+# Inspect or clear the local unlock lease
+esdiag keystore status
+esdiag keystore lock
+
 # Remove just the API key auth from a secret
 esdiag keystore remove prod-es-apikey --apikey BASE64_ENCODED_KEY
 
@@ -243,7 +261,16 @@ esdiag keystore remove prod-es-apikey --apikey BASE64_ENCODED_KEY
 esdiag keystore migrate
 ```
 
-Use `ESDIAG_KEYSTORE_PASSWORD` to provide the keystore password non-interactively. In interactive shells, `keystore add/remove` will prompt when it is unset.
+Use `ESDIAG_KEYSTORE_PASSWORD` to provide the keystore password non-interactively. In interactive shells, `keystore add`, `update`, `remove`, `unlock`, and `password` can prompt when values are missing or the keystore password is unset.
+
+For interactive secret entry, you can omit the value after `--apikey` or `--password` and `esdiag` will prompt with masked input:
+
+```sh
+esdiag keystore add prod-es-apikey --apikey
+esdiag keystore update prod-es-basic --user elastic --password
+```
+
+`esdiag keystore unlock` writes a local `keystore.unlock` lease file under `~/.esdiag/` (or alongside a custom `ESDIAG_KEYSTORE` path) so later CLI runs can reuse the keystore password until the lease expires. The default lease is 24 hours and the maximum is 30 days.
 
 #### Setup
 

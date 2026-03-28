@@ -397,6 +397,8 @@ pub struct KeystoreSessionState {
     pub failed_attempts: u32,
     pub blocked_until_epoch: Option<i64>,
     #[serde(skip)]
+    pub unlock_file_seed_available: bool,
+    #[serde(skip)]
     pub unlocked_password: Option<String>,
     #[serde(skip)]
     pub expires_at_epoch: Option<i64>,
@@ -409,6 +411,7 @@ impl Default for KeystoreSessionState {
             lock_time: now_epoch_seconds(),
             failed_attempts: 0,
             blocked_until_epoch: None,
+            unlock_file_seed_available: true,
             unlocked_password: None,
             expires_at_epoch: None,
         }
@@ -529,6 +532,7 @@ impl ServerState {
         if !self.can_use_keystore_session() {
             return (true, 0);
         }
+        self.maybe_seed_keystore_session_from_unlock_for(user).await;
         let mut state = self.keystore_state.write().await;
         let timed_out = Self::apply_keystore_timeout_locked(&mut state);
         let status = (state.locked, state.lock_time);
@@ -548,6 +552,7 @@ impl ServerState {
         if !self.can_use_keystore_session() {
             return false;
         }
+        self.maybe_seed_keystore_session_from_unlock_for(user).await;
         let mut state = self.keystore_state.write().await;
         let timed_out = Self::apply_keystore_timeout_locked(&mut state);
         let unlocked = !state.locked;
@@ -595,6 +600,7 @@ impl ServerState {
         state.lock_time = now_epoch_seconds();
         state.failed_attempts = 0;
         state.blocked_until_epoch = None;
+        state.unlock_file_seed_available = false;
         state.unlocked_password = Some(password);
         state.expires_at_epoch = Some(now_epoch_seconds() + (12 * 60 * 60));
         drop(state);
@@ -616,6 +622,7 @@ impl ServerState {
         Self::apply_keystore_timeout_locked(&mut state);
         state.locked = true;
         state.lock_time = now_epoch_seconds();
+        state.unlock_file_seed_available = false;
         state.unlocked_password = None;
         state.expires_at_epoch = None;
         drop(state);
@@ -694,6 +701,7 @@ impl ServerState {
         if !self.can_use_keystore_session() {
             return None;
         }
+        self.maybe_seed_keystore_session_from_unlock_for(user).await;
         let mut state = self.keystore_state.write().await;
         let timed_out = Self::apply_keystore_timeout_locked(&mut state);
         let password = if state.locked {
@@ -711,6 +719,43 @@ impl ServerState {
 
     pub async fn keystore_password(&self) -> Option<String> {
         self.keystore_password_for("single-user").await
+    }
+
+    async fn maybe_seed_keystore_session_from_unlock_for(&self, user: &str) {
+        if !self.can_use_keystore_session() {
+            return;
+        }
+        let (should_try, timed_out) = {
+            let mut state = self.keystore_state.write().await;
+            let timed_out = Self::apply_keystore_timeout_locked(&mut state);
+            if !state.locked || !state.unlock_file_seed_available {
+                (false, timed_out)
+            } else {
+                state.unlock_file_seed_available = false;
+                (true, timed_out)
+            }
+        };
+        if timed_out {
+            let _ = user;
+            self.publish_event(signal_event(self.keystore_signal_payload().await));
+        }
+        if !should_try {
+            return;
+        }
+        let password = match crate::data::get_password_from_unlock_file() {
+            Ok(Some(password)) => password,
+            Ok(None) => return,
+            Err(err) => {
+                tracing::warn!("Failed to inspect CLI unlock lease for web session seed: {}", err);
+                return;
+            }
+        };
+        if let Err(err) = crate::data::validate_existing_keystore_password(&password) {
+            tracing::warn!("Ignoring invalid CLI unlock lease for web session seed: {}", err);
+            return;
+        }
+        self.set_keystore_unlocked_for(user, password).await;
+        tracing::info!("Seeded web keystore session from existing CLI unlock lease");
     }
 
     pub async fn record_success(&self, _docs: u32, errors: u32) {
@@ -1695,10 +1740,12 @@ mod tests {
         Signals, Stats, event_visible_to_user, receiver_stream, signal_event,
         targeted_signal_event, test_server_state,
     };
+    use crate::data::{create_keystore, write_unlock_lease};
     use crate::exporter::Exporter;
     use axum::http::HeaderMap;
     use futures::StreamExt;
     use std::{collections::HashMap, sync::Arc};
+    use tempfile::TempDir;
     use tokio::{
         sync::{RwLock, broadcast, mpsc, watch},
         time::{Duration, timeout},
@@ -1721,6 +1768,20 @@ mod tests {
             stats_updates_tx,
             stats_updates_rx,
         }
+    }
+
+    fn setup_keystore_env() -> TempDir {
+        let tmp = TempDir::new().expect("temp dir");
+        let config_dir = tmp.path().join(".esdiag");
+        std::fs::create_dir_all(&config_dir).expect("create config dir");
+        let keystore_path = config_dir.join("secrets.yml");
+        unsafe {
+            std::env::set_var("HOME", tmp.path());
+            std::env::set_var("USERPROFILE", tmp.path());
+            std::env::set_var("ESDIAG_KEYSTORE", &keystore_path);
+            std::env::remove_var("ESDIAG_KEYSTORE_PASSWORD");
+        }
+        tmp
     }
 
     #[tokio::test]
@@ -1849,7 +1910,7 @@ mod tests {
     #[tokio::test]
     async fn keystore_timeout_status_read_publishes_locked_signal() {
         let state = test_server_state();
-        let mut events = state.subscribe_events();
+        let mut events = state.event_sender().subscribe();
 
         {
             let mut keystore_state = state.keystore_state.write().await;
@@ -1912,6 +1973,54 @@ mod tests {
 
         assert!(!state.is_keystore_unlocked_for("alice@example.com").await);
         assert!(!state.is_keystore_unlocked_for("bob@example.com").await);
+    }
+
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn user_mode_can_seed_keystore_session_from_cli_unlock_file_once() {
+        let _guard = crate::test_env_lock().lock().expect("env lock");
+        let _tmp = setup_keystore_env();
+        create_keystore("pw").expect("create keystore");
+        write_unlock_lease("pw", Duration::from_secs(300)).expect("write unlock lease");
+
+        let state = test_state(RuntimeMode::User);
+
+        assert!(state.is_keystore_unlocked_for("alice@example.com").await);
+        assert_eq!(
+            state.keystore_password_for("bob@example.com").await,
+            Some("pw".to_string())
+        );
+    }
+
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn explicit_web_lock_prevents_reseeding_from_unlock_file() {
+        let _guard = crate::test_env_lock().lock().expect("env lock");
+        let _tmp = setup_keystore_env();
+        create_keystore("pw").expect("create keystore");
+        write_unlock_lease("pw", Duration::from_secs(300)).expect("write unlock lease");
+
+        let state = test_state(RuntimeMode::User);
+        assert!(state.is_keystore_unlocked().await);
+
+        state.set_keystore_locked("manual").await;
+
+        assert!(!state.is_keystore_unlocked().await);
+        assert_eq!(state.keystore_password().await, None);
+    }
+
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn service_mode_does_not_seed_from_cli_unlock_file() {
+        let _guard = crate::test_env_lock().lock().expect("env lock");
+        let _tmp = setup_keystore_env();
+        create_keystore("pw").expect("create keystore");
+        write_unlock_lease("pw", Duration::from_secs(300)).expect("write unlock lease");
+
+        let state = test_state(RuntimeMode::Service);
+
+        assert!(!state.is_keystore_unlocked().await);
+        assert_eq!(state.keystore_password().await, None);
     }
 
     #[tokio::test]
