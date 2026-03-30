@@ -7,13 +7,22 @@
 
 The keystore flow is optional and additive. Existing `hosts.yml` entries continue to work.
 
-## Set Keystore Password
+## Set or Unlock Keystore Password
 
-Set the keystore password in your shell before keystore operations:
+Set the keystore password in your shell before non-interactive keystore operations:
 
 ```bash
 export ESDIAG_KEYSTORE_PASSWORD="change-me"
 ```
+
+Or unlock it once for future CLI runs:
+
+```bash
+esdiag keystore unlock
+esdiag keystore unlock --ttl 7d
+```
+
+`unlock` creates a local `keystore.unlock` lease file that expires after 24 hours by default. Expired leases are ignored and deleted on read when possible.
 
 ## Add Secrets
 
@@ -27,6 +36,19 @@ Add an API key secret:
 
 ```bash
 esdiag keystore add prod-es-apikey --apikey BASE64_ENCODED_KEY
+```
+
+In interactive shells, you can omit the value after `--apikey` or `--password` to enter secret material through a masked prompt instead of pasting it on the command line:
+
+```bash
+esdiag keystore add prod-es-apikey --apikey
+esdiag keystore add prod-es-basic --user elastic --password
+```
+
+Use `esdiag keystore update` to change an existing secret:
+
+```bash
+esdiag keystore update prod-es-apikey --apikey
 ```
 
 ## Reference Secrets from hosts.yml
@@ -73,4 +95,8 @@ If you do not use keystore secrets, keep legacy auth fields in `hosts.yml`.
 - `esdiag host --roles collect,send,view` assigns workflow roles to a host
 - `esdiag host --user <name> --password <value>` stores legacy basic auth fields (alias: `--username`)
 - `esdiag host --apikey <value>` stores a legacy API key field
-- `esdiag keystore add/remove <secret_id> --user/--password/--apikey` manages encrypted secret entries
+- `esdiag keystore add/update/remove <secret_id> --user/--password/--apikey` manages encrypted secret entries
+- `esdiag keystore unlock [--ttl <duration>]` creates a local unlock lease for future CLI runs
+- `esdiag keystore status` reports whether the local unlock lease is active
+- `esdiag keystore lock` removes the local unlock lease
+- `esdiag keystore password` rotates the keystore password

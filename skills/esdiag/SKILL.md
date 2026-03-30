@@ -44,13 +44,16 @@ Use `--sources <path/to/sources.yml>` when diagnostics API selection must follow
 
 ## Step 1b: Manage Encrypted Secrets (Optional)
 
-- Use `esdiag keystore add <secret_id>` to add/update encrypted credentials.
-  - Basic auth: `--user <name> --password <value>`
-  - API key auth: `--apikey <value>`
+- Use `esdiag keystore add <secret_id>` to create encrypted credentials.
+- Use `esdiag keystore update <secret_id>` to change an existing encrypted secret.
+  - Basic auth: `--user <name> --password <value>` or omit the password value in an interactive shell to get a masked prompt.
+  - API key auth: `--apikey <value>` or omit the value in an interactive shell to get a masked prompt.
 - Use `esdiag keystore remove <secret_id>` to remove encrypted credentials (optionally scoped by auth type flags).
+- Use `esdiag keystore unlock [--ttl 24h|7d|90m]` to cache keystore access for later CLI runs, `status` to inspect it, and `lock` to clear it.
+- Use `esdiag keystore password` to rotate the keystore password.
 - Use `esdiag keystore migrate` to move legacy plaintext host credentials from `hosts.yml` into keystore entries keyed by host name.
 - Set `ESDIAG_KEYSTORE_PASSWORD` for non-interactive keystore operations.
-- In interactive shells, `keystore add/remove` can prompt for keystore password when `ESDIAG_KEYSTORE_PASSWORD` is unset.
+- In interactive shells, `keystore add/update/remove/unlock/password` can prompt for the keystore password when `ESDIAG_KEYSTORE_PASSWORD` is unset.
 
 ## Step 2: Setup Output Cluster
 
