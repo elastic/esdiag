@@ -736,7 +736,6 @@ impl ServerState {
             }
         };
         if timed_out {
-            let _ = user;
             self.publish_event(signal_event(self.keystore_signal_payload().await));
         }
         if !should_try {
