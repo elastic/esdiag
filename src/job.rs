@@ -8,7 +8,10 @@
 use crate::{
     data::{CollectMode, KnownHost, ProcessMode, SendMode, Uri, Workflow},
     exporter::Exporter,
-    processor::{Collector, Identifiers, Processor},
+    processor::{
+        Collector, Identifiers, Processor,
+        api::{ApiResolver, ProcessSelection},
+    },
     receiver::Receiver,
     uploader,
 };
@@ -62,7 +65,10 @@ pub async fn run_saved_job(
         let exporter = resolve_exporter(workflow)?;
         let receiver = Arc::new(Receiver::try_from(Uri::File(archive_path.clone()))?);
         let exporter = Arc::new(exporter);
-        let processor = Processor::try_new(receiver, exporter, identifiers).await?;
+        let process_selection = explicit_process_selection(workflow)?;
+        let processor =
+            Processor::try_new_with_selection(receiver, exporter, identifiers, process_selection)
+                .await?;
         let processor = processor
             .start()
             .await
@@ -156,6 +162,35 @@ fn collect_output_dir(workflow: &Workflow) -> Result<PathBuf> {
     }
 }
 
+fn explicit_process_selection(workflow: &Workflow) -> Result<Option<ProcessSelection>> {
+    let has_explicit_choice = !workflow.process.selected.trim().is_empty()
+        || workflow.process.product != "elasticsearch"
+        || workflow.process.diagnostic_type != "standard";
+    if !has_explicit_choice {
+        return Ok(None);
+    }
+
+    let selected: Vec<String> = workflow
+        .process
+        .selected
+        .split(',')
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .collect();
+    let selected = ApiResolver::resolve_processing_selection(
+        &workflow.process.product,
+        &workflow.process.diagnostic_type,
+        &selected,
+    )?;
+
+    Ok(Some(ProcessSelection {
+        product: workflow.process.product.clone(),
+        diagnostic_type: workflow.process.diagnostic_type.clone(),
+        selected,
+    }))
+}
+
 fn resolve_exporter(workflow: &Workflow) -> Result<Exporter> {
     match workflow.send.mode {
         SendMode::Remote => {
@@ -192,7 +227,7 @@ impl Drop for TempDirCleanup {
 
 #[cfg(test)]
 mod tests {
-    use super::collect_output_dir;
+    use super::{collect_output_dir, explicit_process_selection};
     use crate::data::Workflow;
     use std::path::PathBuf;
 
@@ -205,5 +240,20 @@ mod tests {
             collect_output_dir(&workflow).expect("save dir"),
             PathBuf::from("/tmp/esdiag-saved-jobs")
         );
+    }
+
+    #[test]
+    fn explicit_process_selection_uses_saved_workflow_values() {
+        let mut workflow = Workflow::default();
+        workflow.process.product = "logstash".to_string();
+        workflow.process.diagnostic_type = "standard".to_string();
+        workflow.process.selected = "node".to_string();
+
+        let selection = explicit_process_selection(&workflow)
+            .expect("selection")
+            .expect("saved selection");
+
+        assert_eq!(selection.product, "logstash");
+        assert!(selection.selected.iter().any(|item| item == "node"));
     }
 }

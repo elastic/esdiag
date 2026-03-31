@@ -182,6 +182,7 @@ pub async fn load_saved_job(
     if let Err(err) = validate_saved_job_name(&name) {
         return (StatusCode::BAD_REQUEST, err).into_response();
     }
+    let name = name.trim().to_string();
     super::index::jobs_page_with_saved_job(state, name, headers).await
 }
 
@@ -192,6 +193,7 @@ pub async fn delete_saved_job(
     if let Err(err) = validate_saved_job_name(&name) {
         return (StatusCode::BAD_REQUEST, err).into_response();
     }
+    let name = name.trim().to_string();
 
     let _guard = saved_jobs_write_lock().lock().await;
     let name_for_delete = name.clone();
@@ -208,12 +210,12 @@ pub async fn delete_saved_job(
         Ok(Ok(Some(names))) => names,
         Ok(Ok(None)) => return (StatusCode::NOT_FOUND, "Job not found").into_response(),
         Ok(Err(err)) => {
-            tracing::error!("Failed to save jobs: {err}");
-            return (StatusCode::INTERNAL_SERVER_ERROR, "Failed to save jobs").into_response();
+            tracing::error!("Failed to delete job: {err}");
+            return (StatusCode::INTERNAL_SERVER_ERROR, "Failed to delete job").into_response();
         }
         Err(err) => {
             tracing::error!("Saved jobs delete task failed: {err}");
-            return (StatusCode::INTERNAL_SERVER_ERROR, "Failed to save jobs").into_response();
+            return (StatusCode::INTERNAL_SERVER_ERROR, "Failed to delete job").into_response();
         }
     };
 
