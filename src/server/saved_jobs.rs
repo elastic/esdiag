@@ -21,6 +21,7 @@ struct SavedJobsList {
 #[derive(Clone)]
 struct SavedJobListItem {
     name: String,
+    encoded_name: String,
     is_current: bool,
 }
 
@@ -36,11 +37,18 @@ fn render_saved_jobs_list(jobs: &[String], current_job_name: Option<&str>) -> St
             .iter()
             .map(|name| SavedJobListItem {
                 name: name.clone(),
+                encoded_name: urlencoding::encode(name).into_owned(),
                 is_current: current_job_name == Some(name.as_str()),
             })
             .collect(),
     };
-    template.render().unwrap_or_default()
+    match template.render() {
+        Ok(html) => html,
+        Err(err) => {
+            tracing::error!("Failed to render saved jobs list: {err}");
+            String::new()
+        }
+    }
 }
 
 fn patch_saved_jobs_list(jobs: &[String], current_job_name: Option<&str>) -> String {

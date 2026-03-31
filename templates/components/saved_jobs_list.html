@@ -5,7 +5,7 @@
     {% for job in jobs %}
     <li class="saved-job-item">
         <a
-            href="/jobs/saved/{{ job.name }}"
+            href="/jobs/saved/{{ job.encoded_name }}"
             class="saved-job-name{% if job.is_current %} is-current{% endif %}"
             {% if job.is_current %}aria-current="page"{% endif %}
         >{{ job.name }}</a>
