@@ -1367,11 +1367,12 @@ fn handle_job_list() -> Result<()> {
     println!("{header}");
     let separator: String = "-".repeat(80);
     println!("{separator}");
+    let use_color = std::io::stdout().is_terminal();
 
     for (name, job) in &jobs {
         let collect_target = &job.workflow.collect.known_host;
         let stale = !collect_target.is_empty() && !hosts.contains_key(collect_target);
-        let collect_display = if stale {
+        let collect_display = if stale && use_color {
             format!("\x1b[31m{collect_target}\x1b[0m")
         } else {
             collect_target.clone()

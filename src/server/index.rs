@@ -303,26 +303,32 @@ async fn build_jobs_page(
     let show_keystore_bootstrap = can_use_keystore && !keystore_exists().unwrap_or(false);
 
     // Resolve saved job if a name was provided
-    let (saved_job, job_not_found) = if let Some(ref name) = saved_job_name {
-        match load_saved_jobs()
-            .ok()
-            .and_then(|jobs| jobs.get(name).cloned())
-        {
-            Some(job) => (Some(job), false),
-            None => (None, true),
+    let (saved_job, job_not_found, job_load_error) = if let Some(ref name) = saved_job_name {
+        match load_saved_jobs() {
+            Ok(jobs) => match jobs.get(name).cloned() {
+                Some(job) => (Some(job), false, None),
+                None => (None, true, None),
+            },
+            Err(err) => {
+                tracing::error!("Failed to load saved jobs: {err}");
+                (None, false, Some("Failed to load saved jobs".to_string()))
+            }
         }
     } else {
-        (None, false)
+        (None, false, None)
     };
 
     let stale_host = saved_job.as_ref().is_some_and(|job| {
         let h = &job.workflow.collect.known_host;
         !h.is_empty() && !workflow_hosts.collect_hosts.contains(h)
     });
+    let hide_saved_job = job_not_found || job_load_error.is_some();
 
     let saved = SavedJobDefaults::from_job(saved_job.as_ref(), &send_defaults, &default_save_dir);
 
-    let message = if job_not_found {
+    let message = if let Some(err) = job_load_error {
+        err
+    } else if job_not_found {
         format!(
             "Job '{}' not found",
             saved_job_name.as_deref().unwrap_or("")
@@ -366,7 +372,7 @@ async fn build_jobs_page(
         keystore_locked,
         keystore_lock_time,
         show_keystore_bootstrap,
-        saved_job_name: if job_not_found { None } else { saved_job_name },
+        saved_job_name: if hide_saved_job { None } else { saved_job_name },
         saved_collect_mode: saved.collect_mode,
         saved_collect_source: saved.collect_source,
         saved_known_host: saved.known_host,
