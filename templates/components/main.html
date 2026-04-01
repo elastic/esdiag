@@ -485,7 +485,7 @@
     {% else if let Some(upload_id) = upload_id %}
     <div
         id="job-{{ upload_id }}"
-        data-init="$loading = true; $file_upload.job_id={{ upload_id|json }}; $message = 'Processing file upload {{ upload_id }}'; @post('/upload/process', {filterSignals: {include: /^(archive|workflow|file_upload)(\.|$)/}})"
+        data-init="$loading = true; $file_upload.job_id={{ upload_id|json }}; $message = 'Processing file upload {{ upload_id }}'; @post('/upload/process', {filterSignals: {include: /^(archive|metadata|workflow|file_upload)(\.|$)/}})"
         data-signals:_job_id="true"
         class="status-box loading"
     >

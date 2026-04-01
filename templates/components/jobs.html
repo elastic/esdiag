@@ -763,6 +763,7 @@
         </steps>
 
         <footer class="jobs-actions">
+            {% if can_use_keystore %}
             <jobs-save-controls>
                 <input
                     type="text"
@@ -781,6 +782,7 @@
             >
                 Save
             </button>
+            {% endif %}
             <button
                 id="jobs-go-button"
                 class="primary"
