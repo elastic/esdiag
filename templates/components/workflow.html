@@ -543,57 +543,6 @@
                 </script>
             </div>
 
-            <stage-divider></stage-divider>
-            <h3>Metadata</h3>
-            <input-group>
-                <label for="username" class="form-label">User</label>
-                <input
-                    type="text"
-                    id="username"
-                    name="username"
-                    data-bind:metadata.user
-                    placeholder="Username"
-                    autocomplete="none"
-                    class="form-input"
-                    data-attr:disabled="$auth.header || $processing || $loading"
-                />
-            </input-group>
-            <input-group>
-                <label for="account" class="form-label">Account</label>
-                <input
-                    type="text"
-                    id="account"
-                    name="account"
-                    data-bind:metadata.account
-                    placeholder="Account"
-                    class="form-input"
-                    data-attr:disabled="$loading || $processing"
-                />
-            </input-group>
-            <input-group>
-                <label for="case-number" class="form-label">Case Number</label>
-                <input
-                    type="text"
-                    id="case-number"
-                    name="case-number"
-                    data-bind:metadata.case_number
-                    placeholder="Case Number"
-                    class="form-input"
-                    data-attr:disabled="$loading || $processing"
-                />
-            </input-group>
-            <input-group>
-                <label for="opportunity" class="form-label">Opportunity</label>
-                <input
-                    type="text"
-                    id="opportunity"
-                    name="opportunity"
-                    data-bind:metadata.opportunity
-                    placeholder="Opportunity"
-                    class="form-input"
-                    data-attr:disabled="$loading || $processing"
-                />
-            </input-group>
             </card-body>
             <footer class="workflow-card-footer">
                 <choice-row class="footer-choice">
@@ -718,7 +667,7 @@
 
             <div data-show="$workflow.send.mode === 'remote'">
                 <input-group data-show="$workflow.process.enabled">
-                    <label for="send-remote-target" class="form-label">Remote Target</label>
+                    <label for="send-remote-target" class="form-label">Diagnostic Cluster</label>
                     <select
                         id="send-remote-target"
                         class="form-input"
@@ -792,6 +741,57 @@
             >
                 Existing local files stay in place. Choose `Remote` or use a save-capable collect source to create a new saved archive.
             </info-text>
+            <stage-divider></stage-divider>
+            <h3>Metadata</h3>
+            <input-group>
+                <label for="username" class="form-label">User</label>
+                <input
+                    type="text"
+                    id="username"
+                    name="username"
+                    data-bind:metadata.user
+                    placeholder="Username"
+                    autocomplete="none"
+                    class="form-input"
+                    data-attr:disabled="$auth.header || $processing || $loading"
+                />
+            </input-group>
+            <input-group>
+                <label for="account" class="form-label">Account</label>
+                <input
+                    type="text"
+                    id="account"
+                    name="account"
+                    data-bind:metadata.account
+                    placeholder="Account"
+                    class="form-input"
+                    data-attr:disabled="$loading || $processing"
+                />
+            </input-group>
+            <input-group>
+                <label for="case-number" class="form-label">Case Number</label>
+                <input
+                    type="text"
+                    id="case-number"
+                    name="case-number"
+                    data-bind:metadata.case_number
+                    placeholder="Case Number"
+                    class="form-input"
+                    data-attr:disabled="$loading || $processing"
+                />
+            </input-group>
+            <input-group>
+                <label for="opportunity" class="form-label">Opportunity</label>
+                <input
+                    type="text"
+                    id="opportunity"
+                    name="opportunity"
+                    data-bind:metadata.opportunity
+                    placeholder="Opportunity"
+                    class="form-input"
+                    data-attr:disabled="$loading || $processing"
+                />
+            </input-group>
             </card-body>
             <footer class="workflow-card-footer send-card-footer">
                 <button

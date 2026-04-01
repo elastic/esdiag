@@ -1190,7 +1190,8 @@ content.workflow-content {
 content.jobs-content {
     max-width: 100%;
     margin: 0;
-    padding: var(--size-l) var(--size-xl) calc(var(--size-footer) + var(--size-l));
+    padding: var(--size-l) var(--size-xl)
+        calc(var(--size-footer) + var(--size-l));
 }
 
 content-layout.jobs-layout {
@@ -1215,7 +1216,9 @@ content-layout.jobs-layout {
     position: sticky;
     top: calc(var(--size-header) + var(--size));
     width: 240px;
-    max-height: calc(100svh - var(--size-header) - var(--size-footer) - var(--size-xl));
+    max-height: calc(
+        100svh - var(--size-header) - var(--size-footer) - var(--size-xl)
+    );
     flex-shrink: 0;
     overflow: auto;
     padding-right: var(--size-l);
@@ -1374,7 +1377,8 @@ steps > ol {
 steps li {
     position: relative;
     margin: 0;
-    padding: var(--size-xs) 0 var(--size-xl) calc(var(--size-xl) + var(--size-m));
+    padding: var(--size-xs) 0 var(--size-xl)
+        calc(var(--size-xl) + var(--size-m));
 }
 
 steps li::before {
@@ -2181,7 +2185,7 @@ card.disabled:hover {
 }
 
 card.disabled,
-card.disabled * {
+card.disabled > * {
     color: color-mix(
         in srgb,
         var(--text-subdued-color) 92%,
@@ -3111,12 +3115,37 @@ header-icon:hover {
     background-color: var(--color-overlay);
 }
 
-header h1 {
+header-nav {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+}
+
+header-nav > a {
+    color: var(--text-color);
+    text-decoration: none;
+    font-weight: var(--font-weight-normal);
+    font-size: var(--font-size-s);
+    padding: 0 var(--size-s);
+}
+
+header-nav > a:hover {
+    color: var(--color-primary);
+}
+
+header-nav > a:active,
+header-nav > a[aria-selected] {
+    color: var(--color-primary);
+}
+
+body > header h1 {
     display: inline-block;
     margin: 0 var(--size-s);
     color: inherit;
-    font-size: var(--font-size-ml);
+    font-size: var(--font-size-m);
     font-weight: 200;
+    border-right: 1px solid var(--border-color);
+    padding-right: var(--size-m);
 }
 
 img#logo {

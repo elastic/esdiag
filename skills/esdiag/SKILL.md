@@ -128,12 +128,6 @@ Saved jobs persist named diagnostic configurations to `~/.esdiag/jobs.yml` so th
 - If output is not where expected, verify `[OUTPUT]` parsing and known-host name collisions with filenames.
 - If setup or ingest fails after version changes, rerun `esdiag setup` before retrying `process`.
 
-## Review Autofix Loop
-
-- When running CodeRabbit CLI review in an autofix workflow, compare against the correct base branch first.
-- After each review pass, verify each finding against the current code, fix the confirmed issues immediately, and rerun the relevant tests or focused verification before starting the next pass.
-- Commit each autofix round separately so later review passes can be compared cleanly and the progression stays easy to track.
-
 ## References
 
 - Use `references/cli.md` for command syntax and option details.
