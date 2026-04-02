@@ -90,8 +90,14 @@ impl Receive for ElasticCloudAdminReceiver {
 
         match response {
             Ok(response) => {
-                log::debug!("Elastic Cloud connection successful: {}", response.status());
-                true
+                let status = response.status();
+                if status.is_success() {
+                    log::debug!("Elastic Cloud connection successful: {}", status);
+                    true
+                } else {
+                    log::error!("Elastic Cloud connection failed: {}", status);
+                    false
+                }
             }
             Err(e) => {
                 log::error!("Elastic Cloud connection failed: {e}");
@@ -161,5 +167,53 @@ impl ReceiveRaw for ElasticCloudAdminReceiver {
 impl std::fmt::Display for ElasticCloudAdminReceiver {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "Elastic Cloud {}", self.url)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::{
+        Router,
+        http::StatusCode,
+        routing::get,
+    };
+
+    async fn spawn_status_server(status: StatusCode) -> (Url, tokio::task::JoinHandle<()>) {
+        let app = Router::new().route(
+            "/",
+            get(move || async move { (status, "test response") }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind test server");
+        let addr = listener.local_addr().expect("listener addr");
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.expect("serve test app");
+        });
+        let url = Url::parse(&format!("http://{addr}/")).expect("parse test url");
+        (url, server)
+    }
+
+    #[tokio::test]
+    async fn is_connected_returns_true_for_success_status() {
+        let (url, server) = spawn_status_server(StatusCode::OK).await;
+        let receiver =
+            ElasticCloudAdminReceiver::new(url, "test-api-key".to_string()).expect("receiver");
+
+        assert!(receiver.is_connected().await);
+
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn is_connected_returns_false_for_unauthorized_status() {
+        let (url, server) = spawn_status_server(StatusCode::UNAUTHORIZED).await;
+        let receiver =
+            ElasticCloudAdminReceiver::new(url, "test-api-key".to_string()).expect("receiver");
+
+        assert!(!receiver.is_connected().await);
+
+        server.abort();
     }
 }
