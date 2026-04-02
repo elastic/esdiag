@@ -98,15 +98,22 @@ impl Receive for ElasticCloudAdminReceiver {
             Ok(response) => {
                 let status = response.status();
                 if status.is_success() {
-                    tracing::debug!("Elastic Cloud connection successful: {}", status);
+                    tracing::debug!("Elastic Cloud Admin connection successful: {}", status);
                     true
                 } else {
-                    tracing::error!("Elastic Cloud connection failed: {}", status);
+                    tracing::error!(
+                        "Elastic Cloud Admin connection to {} failed: {}",
+                        self.url.as_str(),
+                        status
+                    );
                     false
                 }
             }
             Err(e) => {
-                tracing::error!("Elastic Cloud connection failed: {e}");
+                tracing::error!(
+                    "Elastic Cloud Admin connection to {} failed: {e}",
+                    self.url.as_str()
+                );
                 if e.is_connect() || e.is_timeout() {
                     tracing::warn!(
                         "Elastic Cloud Admin and Elastic GovCloud Admin hosts require VPN access; verify your VPN connection and retry."
@@ -185,17 +192,21 @@ impl std::fmt::Display for ElasticCloudAdminReceiver {
 mod tests {
     use super::*;
     use axum::{
+        extract::State,
         Router,
         http::StatusCode,
         routing::get,
     };
     use tokio::task::JoinHandle;
 
+    async fn status_handler(State(status): State<StatusCode>) -> (StatusCode, &'static str) {
+        (status, "test response")
+    }
+
     async fn spawn_status_server(status: StatusCode) -> (Url, JoinHandle<()>) {
-        let app = Router::new().route(
-            "/",
-            get(move || async move { (status, "test response") }),
-        );
+        let app = Router::new()
+            .route("/", get(status_handler))
+            .with_state(status);
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
             .expect("bind test server");
