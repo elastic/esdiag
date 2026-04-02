@@ -130,7 +130,7 @@ impl ElasticsearchCollector {
                             api.as_str(),
                             e
                         );
-                        return attempt;
+                        return 0;
                     }
                     if start_time.elapsed() > max_duration {
                         tracing::error!(
@@ -139,7 +139,7 @@ impl ElasticsearchCollector {
                             attempt,
                             e
                         );
-                        return attempt;
+                        return 0;
                     }
                     tracing::warn!(
                         "Attempt {} failed for {}: {}. Retrying in {:?}...",

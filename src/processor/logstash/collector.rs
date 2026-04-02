@@ -122,7 +122,7 @@ impl LogstashCollector {
                             api.as_str(),
                             e
                         );
-                        return attempt;
+                        return 0;
                     }
                     if start_time.elapsed() > max_duration {
                         tracing::error!(
