@@ -1,0 +1,22 @@
+{% if jobs.is_empty() %}
+<p class="empty-state">No saved jobs</p>
+{% else %}
+<ul class="saved-jobs-items">
+    {% for job in jobs %}
+    <li class="saved-job-item">
+        <a
+            href="/jobs/saved/{{ job.encoded_name }}"
+            class="saved-job-name{% if job.is_current %} is-current{% endif %}"
+            {% if job.is_current %}aria-current="page"{% endif %}
+        >{{ job.name }}</a>
+        <button
+            type="button"
+            class="saved-job-delete"
+            title="Delete {{ job.name }}"
+            aria-label="Delete saved job {{ job.name }}"
+            data-on:click="$pending_delete_job = {{ job.name|json }}; $show_delete_job_modal = true"
+        >&times;</button>
+    </li>
+    {% endfor %}
+</ul>
+{% endif %}

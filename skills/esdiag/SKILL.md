@@ -1,6 +1,6 @@
 ---
 name: esdiag
-description: Operate Elastic Stack Diagnostics (`esdiag`) end-to-end for host configuration, secret management, asset setup, diagnostic collection, processing, and upload-service workflows. Use when a user asks to run or troubleshoot `esdiag` commands (`host`, `keystore`, `setup`, `collect`, `process`, `serve`), wire output targets via known hosts or `ESDIAG_OUTPUT_*` environment variables, process support-diagnostics archives/directories/upload links, or expose the local web/API service.
+description: Operate Elastic Stack Diagnostics (`esdiag`) end-to-end for host configuration, secret management, asset setup, diagnostic collection, processing, saved-job management, and upload-service workflows. Use when a user asks to run or troubleshoot `esdiag` commands (`host`, `keystore`, `setup`, `collect`, `process`, `serve`, `job`), wire output targets via known hosts or `ESDIAG_OUTPUT_*` environment variables, process support-diagnostics archives/directories/upload links, manage saved jobs, or expose the local web/API service.
 ---
 
 # ESDiag
@@ -17,6 +17,7 @@ Use `--sources <path/to/sources.yml>` when diagnostics API selection must follow
 - If the task is "install templates/pipelines/assets", run `esdiag setup`.
 - If the task is "transform diagnostics into documents and send somewhere", run `esdiag process`.
 - If the task is "collect API diagnostics from a host into local files", run `esdiag collect`.
+- If the task is "save, list, run, or delete a reusable diagnostic job", run `esdiag job`.
 - If the task is "accept browser uploads or API submissions", run `esdiag serve`.
 
 ## Standard Flow
@@ -96,6 +97,20 @@ Use `--sources <path/to/sources.yml>` when diagnostics API selection must follow
 - Use metadata options (`--account`, `--case`, `--opportunity`, `--user`) when collected artifacts should carry report context.
 - Use `--sources` when the collection endpoints should come from a non-default `sources.yml`.
 - For repeated captures, use `bin/min-diag.sh watch` and process each generated directory with `esdiag process`.
+
+## Saved Jobs
+
+Saved jobs persist named diagnostic configurations to `~/.esdiag/jobs.yml` so they can be re-run without reconfiguration. Jobs are saved from the `/jobs` web UI or managed via the CLI. Requires the `keystore` feature (enabled by default).
+
+- Use `esdiag job list` to print all saved jobs as a table (name, collection target, processing level, send target).
+  - Stale host references (hosts no longer in `hosts.yml`) are highlighted in red.
+  - Prints nothing when no jobs exist.
+- Use `esdiag job run <NAME>` to execute a saved job end-to-end (collect → process → send).
+  - Resolves the collection host from `hosts.yml` and credentials from the keystore.
+  - Fails with a clear error if the job name is unknown, the jobs file is missing, or the referenced host no longer exists.
+- Use `esdiag job delete <NAME>` to remove a saved job from `jobs.yml`.
+  - Fails with a clear error if the job name is not found.
+- In the web UI (`/jobs` page, user mode only), the left panel lists saved jobs with Load and Delete actions. The Save form derives a default name from the workflow (`{host}-{action}-{destination}`) and disables saving for upload-file and service-link sources since those are not repeatable.
 
 ## Step 5: Run Upload Service (Optional)
 

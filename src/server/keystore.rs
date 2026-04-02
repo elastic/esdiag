@@ -312,8 +312,8 @@ mod tests {
         data::{KnownHost, Settings, authenticate},
         exporter::Exporter,
         server::{
-            KeystoreSessionState, RuntimeMode, RuntimeModePolicy, ServerEvent, ServerState,
-            Signals, Stats, test_server_state,
+            KeystoreSessionState, RuntimeMode, RuntimeModePolicy, ServerEvent, ServerState, Stats,
+            test_server_state,
         },
     };
     use axum::{
@@ -359,7 +359,6 @@ mod tests {
         Arc::new(ServerState {
             exporter: Arc::new(RwLock::new(Exporter::default())),
             kibana_url: Arc::new(RwLock::new(String::new())),
-            signals: Arc::new(RwLock::new(Signals::default())),
             workflow_jobs: Arc::new(RwLock::new(HashMap::new())),
             retained_bundles: Arc::new(RwLock::new(HashMap::new())),
             runtime_mode,

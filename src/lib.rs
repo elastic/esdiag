@@ -12,6 +12,9 @@ pub mod embeds;
 pub mod env;
 /// Exports data to various destinations
 pub mod exporter;
+/// Shared job runner for saved diagnostic jobs
+#[cfg(feature = "keystore")]
+pub mod job;
 /// Data transformation and processing logic
 pub mod processor;
 /// Receive data from various sources

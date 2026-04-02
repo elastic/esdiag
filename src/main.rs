@@ -12,12 +12,11 @@ use esdiag::setup;
 use esdiag::{
     client::Client,
     data::{
-        HostRole, KnownHost, KnownHostBuilder, Product, SecretAuth, Uri, add_secret,
-        clear_unlock_lease, create_keystore, default_unlock_ttl, get_password_for_secret_commands,
-        get_unlock_status, keystore_exists, parse_unlock_ttl, remove_secret,
-        resolve_secret_auth, rotate_keystore_password, update_secret,
+        HostRole, KnownHost, KnownHostBuilder, KnownHostCliUpdate, Product, SecretAuth, Settings,
+        Uri, add_secret, clear_unlock_lease, create_keystore, default_unlock_ttl,
+        get_password_for_secret_commands, get_unlock_status, keystore_exists, parse_unlock_ttl,
+        remove_secret, resolve_secret_auth, rotate_keystore_password, update_secret,
         validate_existing_keystore_password, write_unlock_lease,
-        KnownHostCliUpdate, Settings,
     },
     env::LOG_LEVEL,
     exporter::Exporter,
@@ -26,7 +25,11 @@ use esdiag::{
     uploader,
 };
 use eyre::{Result, eyre};
-use std::{io::{IsTerminal, Write}, sync::Arc, time::Duration};
+use std::{
+    io::{IsTerminal, Write},
+    sync::Arc,
+    time::Duration,
+};
 use tracing_subscriber::{EnvFilter, fmt};
 use url::Url;
 
@@ -130,7 +133,10 @@ enum Commands {
         #[arg(help = "A name to identify this host")]
         name: String,
         /// Application of this host (elasticsearch, kibana, logstash, etc.)
-        #[arg(help = "Application of this host (elasticsearch, kibana, logstash, etc.)", conflicts_with = "delete")]
+        #[arg(
+            help = "Application of this host (elasticsearch, kibana, logstash, etc.)",
+            conflicts_with = "delete"
+        )]
         app: Option<Product>,
         /// A host URL to connect to
         #[arg(help = "A host URL to connect to", conflicts_with = "delete")]
@@ -154,7 +160,12 @@ enum Commands {
         )]
         username: Option<String>,
         /// Password for authentication
-        #[arg(help = "Password for authentication", long, short, conflicts_with = "delete")]
+        #[arg(
+            help = "Password for authentication",
+            long,
+            short,
+            conflicts_with = "delete"
+        )]
         password: Option<String>,
         /// Secret identifier in the encrypted keystore
         #[arg(
@@ -164,7 +175,12 @@ enum Commands {
         )]
         secret: Option<String>,
         /// Comma-separated host roles (collect,send,view)
-        #[arg(help = "Comma-separated host roles", long, value_delimiter = ',', conflicts_with = "delete")]
+        #[arg(
+            help = "Comma-separated host roles",
+            long,
+            value_delimiter = ',',
+            conflicts_with = "delete"
+        )]
         roles: Option<Vec<HostRole>>,
         /// Save the host configuration
         #[arg(
@@ -239,6 +255,29 @@ enum Commands {
             help = "Known Elasticsearch host to import assets into; if omitted the ESDIAG_OUTPUT_URL, ESDIAG_OUTPUT_APIKEY, ESDIAG_OUTPUT_USERNAME, ESDIAG_OUTPUT_PASSWORD variables will be checked."
         )]
         host: Option<String>,
+    },
+    /// Manage saved diagnostic jobs
+    #[cfg(feature = "keystore")]
+    Job {
+        #[command(subcommand)]
+        command: JobCommands,
+    },
+}
+
+#[cfg(feature = "keystore")]
+#[derive(Debug, Subcommand)]
+enum JobCommands {
+    /// Run a saved job by name
+    Run {
+        /// Name of the saved job to run
+        name: String,
+    },
+    /// List all saved jobs
+    List,
+    /// Delete a saved job by name
+    Delete {
+        /// Name of the saved job to delete
+        name: String,
     },
 }
 
@@ -426,9 +465,8 @@ async fn run(cli: Cli) -> Result<&'static str> {
                 kibana,
             } => {
                 tracing::info!("Starting ESDiag server");
-
-                let output_uri = Uri::try_from(output)?;
-                let exporter = Exporter::try_from(output_uri)?;
+                let runtime_mode = resolve_serve_runtime_mode(mode)?;
+                let exporter = resolve_serve_exporter(output, runtime_mode)?;
 
                 let kibana_url = kibana.unwrap_or_else(|| {
                     let url = esdiag::env::get_string("ESDIAG_KIBANA_URL")
@@ -439,7 +477,6 @@ async fn run(cli: Cli) -> Result<&'static str> {
                     }
                 });
 
-                let runtime_mode = resolve_serve_runtime_mode(mode)?;
                 let (mut server, _bound_addr) =
                     Server::start([0, 0, 0, 0], port, exporter, kibana_url, runtime_mode).await?;
 
@@ -585,129 +622,122 @@ async fn run(cli: Cli) -> Result<&'static str> {
                     Err(eyre!("Host connection failed"))
                 }
             }
-            Commands::Keystore { command } => {
-                match command {
-                    KeystoreCommands::Add {
-                        secret_id,
-                        username,
-                        password,
-                        apikey,
-                    } => {
-                        let keystore_password = get_password_for_secret_commands()?;
-                        let (username, password, apikey) =
-                            resolve_secret_input(username, password, apikey)?;
-                        let path =
-                            add_secret(&secret_id, username, password, apikey, &keystore_password)?;
-                        tracing::info!("Secret '{secret_id}' saved to {path}");
-                        Ok("keystore")
+            Commands::Keystore { command } => match command {
+                KeystoreCommands::Add {
+                    secret_id,
+                    username,
+                    password,
+                    apikey,
+                } => {
+                    let keystore_password = get_password_for_secret_commands()?;
+                    let (username, password, apikey) =
+                        resolve_secret_input(username, password, apikey)?;
+                    let path =
+                        add_secret(&secret_id, username, password, apikey, &keystore_password)?;
+                    tracing::info!("Secret '{secret_id}' saved to {path}");
+                    Ok("keystore")
+                }
+                KeystoreCommands::Update {
+                    secret_id,
+                    username,
+                    password,
+                    apikey,
+                } => {
+                    let keystore_password = get_password_for_secret_commands()?;
+                    let (username, password, apikey) =
+                        resolve_secret_input(username, password, apikey)?;
+                    let path =
+                        update_secret(&secret_id, username, password, apikey, &keystore_password)?;
+                    tracing::info!("Secret '{secret_id}' updated in {path}");
+                    Ok("keystore")
+                }
+                KeystoreCommands::Remove {
+                    secret_id,
+                    username,
+                    password,
+                    apikey,
+                } => {
+                    let keystore_password = get_password_for_secret_commands()?;
+                    let expected = expected_secret_auth(username, password, apikey)?;
+                    let path = remove_secret(&secret_id, expected, &keystore_password)?;
+                    tracing::info!("Secret '{secret_id}' deleted from {path}");
+                    Ok("keystore")
+                }
+                KeystoreCommands::Unlock { ttl } => {
+                    let ttl = ttl
+                        .as_deref()
+                        .map(parse_unlock_ttl)
+                        .transpose()?
+                        .unwrap_or_else(default_unlock_ttl);
+                    let unlock_path = unlock_keystore(ttl)?;
+                    let status = get_unlock_status()?;
+                    if let Some(expires_at_epoch) = status.expires_at_epoch {
+                        tracing::info!(
+                            "Keystore unlocked via {} until {} ({})",
+                            unlock_path.display(),
+                            format_epoch(expires_at_epoch),
+                            format_remaining_duration(expires_at_epoch)
+                        );
+                    } else {
+                        tracing::info!("Keystore unlocked via {}", unlock_path.display());
                     }
-                    KeystoreCommands::Update {
-                        secret_id,
-                        username,
-                        password,
-                        apikey,
-                    } => {
-                        let keystore_password = get_password_for_secret_commands()?;
-                        let (username, password, apikey) =
-                            resolve_secret_input(username, password, apikey)?;
-                        let path = update_secret(
-                            &secret_id,
-                            username,
-                            password,
-                            apikey,
-                            &keystore_password,
-                        )?;
-                        tracing::info!("Secret '{secret_id}' updated in {path}");
-                        Ok("keystore")
+                    Ok("keystore")
+                }
+                KeystoreCommands::Lock => {
+                    if clear_unlock_lease()? {
+                        tracing::info!("Keystore unlock lease removed");
+                    } else {
+                        tracing::info!("Keystore unlock lease was already absent");
                     }
-                    KeystoreCommands::Remove {
-                        secret_id,
-                        username,
-                        password,
-                        apikey,
-                    } => {
-                        let keystore_password = get_password_for_secret_commands()?;
-                        let expected = expected_secret_auth(username, password, apikey)?;
-                        let path = remove_secret(&secret_id, expected, &keystore_password)?;
-                        tracing::info!("Secret '{secret_id}' deleted from {path}");
-                        Ok("keystore")
-                    }
-                    KeystoreCommands::Unlock { ttl } => {
-                        let ttl = ttl
-                            .as_deref()
-                            .map(parse_unlock_ttl)
-                            .transpose()?
-                            .unwrap_or_else(default_unlock_ttl);
-                        let unlock_path = unlock_keystore(ttl)?;
-                        let status = get_unlock_status()?;
+                    Ok("keystore")
+                }
+                KeystoreCommands::Status => {
+                    let status = get_unlock_status()?;
+                    tracing::info!(
+                        "Keystore: {} ({})",
+                        if status.keystore_exists {
+                            "present"
+                        } else {
+                            "absent"
+                        },
+                        status.unlock_path.display()
+                    );
+                    if status.unlock_active {
                         if let Some(expires_at_epoch) = status.expires_at_epoch {
                             tracing::info!(
-                                "Keystore unlocked via {} until {} ({})",
-                                unlock_path.display(),
+                                "CLI unlock: active until {} ({})",
                                 format_epoch(expires_at_epoch),
                                 format_remaining_duration(expires_at_epoch)
                             );
                         } else {
-                            tracing::info!("Keystore unlocked via {}", unlock_path.display());
+                            tracing::info!("CLI unlock: active");
                         }
-                        Ok("keystore")
+                    } else {
+                        tracing::info!("CLI unlock: inactive");
                     }
-                    KeystoreCommands::Lock => {
-                        if clear_unlock_lease()? {
-                            tracing::info!("Keystore unlock lease removed");
-                        } else {
-                            tracing::info!("Keystore unlock lease was already absent");
-                        }
-                        Ok("keystore")
-                    }
-                    KeystoreCommands::Status => {
-                        let status = get_unlock_status()?;
-                        tracing::info!(
-                            "Keystore: {} ({})",
-                            if status.keystore_exists {
-                                "present"
-                            } else {
-                                "absent"
-                            },
-                            status.unlock_path.display()
-                        );
-                        if status.unlock_active {
-                            if let Some(expires_at_epoch) = status.expires_at_epoch {
-                                tracing::info!(
-                                    "CLI unlock: active until {} ({})",
-                                    format_epoch(expires_at_epoch),
-                                    format_remaining_duration(expires_at_epoch)
-                                );
-                            } else {
-                                tracing::info!("CLI unlock: active");
-                            }
-                        } else {
-                            tracing::info!("CLI unlock: inactive");
-                        }
-                        Ok("keystore")
-                    }
-                    KeystoreCommands::Password => {
-                        if !keystore_exists()? {
-                            return Err(eyre!("No keystore exists to update the password."));
-                        }
-                        let current_password = get_password_for_secret_commands()?;
-                        validate_existing_keystore_password(&current_password)?;
-                        let new_password = prompt_new_keystore_password()?;
-                        let path = rotate_keystore_password(&current_password, &new_password)?;
-                        tracing::info!("Keystore password updated for {path}");
-                        Ok("keystore")
-                    }
-                    KeystoreCommands::Migrate => {
-                        let keystore_password = get_password_for_secret_commands()?;
-                        let (migrated, unchanged) =
-                            KnownHost::migrate_hosts_to_keystore(&keystore_password)?;
-                        tracing::info!(
-                            "Keystore migration complete: migrated {migrated} host(s), unchanged {unchanged} host(s)."
-                        );
-                        Ok("keystore")
-                    }
+                    Ok("keystore")
                 }
-            }
+                KeystoreCommands::Password => {
+                    if !keystore_exists()? {
+                        return Err(eyre!("No keystore exists to update the password."));
+                    }
+                    let current_password = get_password_for_secret_commands()?;
+                    validate_existing_keystore_password(&current_password)?;
+                    let new_password = prompt_new_keystore_password()?;
+                    let path = rotate_keystore_password(&current_password, &new_password)?;
+                    tracing::info!("Keystore password updated for {path}");
+                    Ok("keystore")
+                }
+                KeystoreCommands::Migrate => {
+                    let keystore_password = get_password_for_secret_commands()?;
+                    let (migrated, unchanged) =
+                        KnownHost::migrate_hosts_to_keystore(&keystore_password)?;
+                    tracing::info!(
+                        "Keystore migration complete: migrated {migrated} host(s), unchanged {unchanged} host(s)."
+                    );
+                    Ok("keystore")
+                }
+            },
             Commands::Process {
                 input,
                 output,
@@ -798,6 +828,21 @@ async fn run(cli: Cli) -> Result<&'static str> {
                     Ok("setup")
                 }
             }
+            #[cfg(feature = "keystore")]
+            Commands::Job { command } => match command {
+                JobCommands::List => {
+                    esdiag::job::handle_job_list()?;
+                    Ok("job list")
+                }
+                JobCommands::Run { name } => {
+                    esdiag::job::handle_job_run(&name).await?;
+                    Ok("job run")
+                }
+                JobCommands::Delete { name } => {
+                    esdiag::job::handle_job_delete(&name)?;
+                    Ok("job delete")
+                }
+            },
         }
     } else {
         #[cfg(all(feature = "server", feature = "desktop"))]
@@ -1315,15 +1360,24 @@ fn resolve_serve_runtime_mode(mode: Option<RuntimeMode>) -> Result<RuntimeMode> 
     }
 }
 
+#[cfg(feature = "server")]
+fn resolve_serve_exporter(output: Option<String>, runtime_mode: RuntimeMode) -> Result<Exporter> {
+    match output {
+        Some(output) => Exporter::try_from(Uri::try_from(output)?),
+        None if runtime_mode == RuntimeMode::User => Ok(Exporter::default()),
+        None => Exporter::try_from(Uri::try_from_output_env()?),
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    #[cfg(feature = "server")]
-    use super::resolve_serve_runtime_mode;
     use super::{
         Cli, Commands, KeystoreCommands, format_remaining_duration_from,
-        host_connection_uses_receiver, resolve_host_secret_auth,
-        resolve_secret_input_with_prompt, should_error_for_missing_subcommand,
+        host_connection_uses_receiver, resolve_host_secret_auth, resolve_secret_input_with_prompt,
+        should_error_for_missing_subcommand,
     };
+    #[cfg(feature = "server")]
+    use super::{resolve_serve_exporter, resolve_serve_runtime_mode};
     use clap::Parser;
     use esdiag::data::{
         ElasticCloud, HostRole, KnownHost, Product, SecretAuth, Uri, upsert_secret_auth,
@@ -1426,12 +1480,7 @@ mod tests {
     #[test]
     fn host_delete_conflicts_with_update_fields() {
         let result = Cli::try_parse_from([
-            "esdiag",
-            "host",
-            "prod-es",
-            "--delete",
-            "--secret",
-            "rotated",
+            "esdiag", "host", "prod-es", "--delete", "--secret", "rotated",
         ]);
         assert!(result.is_err(), "delete should conflict with update fields");
     }
@@ -1473,16 +1522,12 @@ mod tests {
     #[test]
     fn resolve_secret_input_uses_prompted_value_for_missing_apikey() {
         let mut prompts = Vec::new();
-        let resolved = resolve_secret_input_with_prompt(
-            None,
-            None,
-            Some(String::new()),
-            |prompt| {
+        let resolved =
+            resolve_secret_input_with_prompt(None, None, Some(String::new()), |prompt| {
                 prompts.push(prompt.to_string());
                 Ok("prompted-api-key".to_string())
-            },
-        )
-        .expect("resolve secret input");
+            })
+            .expect("resolve secret input");
 
         assert_eq!(prompts, vec!["Enter secret API key: ".to_string()]);
         assert_eq!(resolved, (None, None, Some("prompted-api-key".to_string())));
@@ -1625,6 +1670,42 @@ mod tests {
         let resolved = resolve_serve_runtime_mode(None).expect("resolve mode");
 
         assert_eq!(resolved, RuntimeMode::User);
+    }
+
+    #[cfg(feature = "server")]
+    #[test]
+    fn serve_exporter_defaults_to_stdout_in_user_mode_without_output_env() {
+        let _guard = env_lock().lock().expect("env lock");
+        unsafe {
+            std::env::remove_var("ESDIAG_OUTPUT_URL");
+            std::env::remove_var("ESDIAG_OUTPUT_APIKEY");
+            std::env::remove_var("ESDIAG_OUTPUT_USERNAME");
+            std::env::remove_var("ESDIAG_OUTPUT_PASSWORD");
+        }
+
+        let exporter =
+            resolve_serve_exporter(None, RuntimeMode::User).expect("resolve user-mode exporter");
+
+        assert_eq!(exporter.target_uri(), "stdio://stdout");
+    }
+
+    #[cfg(feature = "server")]
+    #[test]
+    fn serve_exporter_requires_output_env_in_service_mode_without_output_flag() {
+        let _guard = env_lock().lock().expect("env lock");
+        unsafe {
+            std::env::remove_var("ESDIAG_OUTPUT_URL");
+            std::env::remove_var("ESDIAG_OUTPUT_APIKEY");
+            std::env::remove_var("ESDIAG_OUTPUT_USERNAME");
+            std::env::remove_var("ESDIAG_OUTPUT_PASSWORD");
+        }
+
+        let err = match resolve_serve_exporter(None, RuntimeMode::Service) {
+            Ok(_) => panic!("service mode should still require configured output"),
+            Err(err) => err,
+        };
+
+        assert!(err.to_string().contains("ESDIAG_OUTPUT_URL is not defined"));
     }
 }
 

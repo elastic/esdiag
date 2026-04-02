@@ -174,7 +174,10 @@ mod tests {
             sanitize_download_filename("diag\r\nX-Test: injected.zip"),
             "diag__X-Test_ injected.zip"
         );
-        assert_eq!(sanitize_download_filename("\"../../etc/passwd\""), "_.._.._etc_passwd_");
+        assert_eq!(
+            sanitize_download_filename("\"../../etc/passwd\""),
+            "_.._.._etc_passwd_"
+        );
     }
 
     #[tokio::test]

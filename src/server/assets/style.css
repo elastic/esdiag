@@ -827,13 +827,11 @@ icon-auto-theme > icon-divider {
 }
 
 icon-sun {
-    color: var(--theme-sun-icon-color);
     -webkit-mask-image: var(--icon-sun);
     mask-image: var(--icon-sun);
 }
 
 icon-moon {
-    color: var(--theme-moon-icon-color);
     -webkit-mask-image: var(--icon-moon);
     mask-image: var(--icon-moon);
 }
@@ -1188,7 +1186,179 @@ content.workflow-content {
 }
 
 content.jobs-content {
-    max-width: min(1100px, calc(100vw - var(--size-xl)));
+    max-width: 100%;
+    margin: 0;
+    padding: var(--size-l) var(--size-xl)
+        calc(var(--size-footer) + var(--size-l));
+}
+
+content-layout.jobs-layout {
+    gap: var(--size-xl);
+}
+
+.jobs-main {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.jobs-main > steps {
+    flex: 1;
+    min-width: 0;
+}
+
+.jobs-nav {
+    display: flex;
+    flex-direction: column;
+    gap: var(--size-s);
+    position: sticky;
+    top: calc(var(--size-header) + var(--size));
+    width: 240px;
+    max-height: calc(
+        100svh - var(--size-header) - var(--size-footer) - var(--size-xl)
+    );
+    flex-shrink: 0;
+    overflow: auto;
+    padding-right: var(--size-l);
+    border-right: 1px solid var(--border-color);
+}
+
+.jobs-nav > header h2 {
+    margin: 0;
+    font-size: var(--font-size-m);
+}
+
+.saved-jobs-items {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.saved-job-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--size-xs);
+    min-height: 2rem;
+    padding: 0;
+    border-radius: var(--border-radius-small);
+}
+
+.saved-job-item:hover {
+    background: color-mix(
+        in srgb,
+        var(--color-primary) 10%,
+        var(--color-transparent)
+    );
+}
+
+.saved-job-name {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+    min-width: 0;
+    padding: var(--size-xs) var(--size-s);
+    color: var(--text-color);
+    text-decoration: none;
+    font-size: var(--font-size-s);
+    font-weight: var(--font-weight-medium);
+    border-radius: var(--border-radius-small);
+}
+
+.saved-job-name:hover {
+    color: var(--text-color);
+    text-decoration: none;
+}
+
+.saved-job-name.is-current {
+    background: color-mix(
+        in srgb,
+        var(--color-primary) 14%,
+        var(--background-color)
+    );
+    color: var(--color-primary);
+}
+
+.saved-job-delete {
+    flex-shrink: 0;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--color-text-muted);
+    font-size: var(--font-size-m);
+    padding: 0 var(--size-s);
+    line-height: 1;
+    opacity: 0;
+}
+
+.saved-job-item:hover .saved-job-delete {
+    opacity: 1;
+}
+
+.saved-job-delete:hover {
+    color: var(--color-danger);
+}
+
+.saved-job-delete:focus-visible {
+    opacity: 1;
+    outline: var(--focus-ring-outline);
+    outline-offset: 2px;
+}
+
+@media (hover: none), (pointer: coarse) {
+    .saved-job-delete {
+        opacity: 1;
+    }
+}
+
+.jobs-nav-actions {
+    display: flex;
+    gap: var(--size-xs);
+}
+
+.jobs-nav-actions > button {
+    width: 100%;
+    border: 1px solid var(--border-color-light);
+    border-radius: var(--border-radius-small);
+    background: var(--background-color);
+    color: var(--text-color);
+    font: inherit;
+    font-size: var(--font-size-s);
+    line-height: var(--font-size-l);
+    padding: var(--size-xs) var(--size);
+    cursor: pointer;
+    transition:
+        background-color 120ms ease,
+        border-color 120ms ease,
+        color 120ms ease;
+}
+
+.jobs-nav-actions > button:hover {
+    background: var(--color-overlay);
+}
+
+.jobs-nav-actions > button:disabled {
+    border-color: var(--border-color);
+    background: var(--form-control-disabled-color);
+    color: var(--text-subdued-color);
+    cursor: not-allowed;
+}
+
+.saved-job-message {
+    font-size: var(--font-size-s);
+    color: var(--color-warning);
+    margin: 0;
+}
+
+.empty-state {
+    color: var(--color-text-muted);
+    font-size: var(--font-size-s);
+    margin: 0;
 }
 
 steps {
@@ -1205,7 +1375,8 @@ steps > ol {
 steps li {
     position: relative;
     margin: 0;
-    padding: var(--size-xs) 0 var(--size-xl) calc(var(--size-xl) + var(--size-m));
+    padding: var(--size-xs) 0 var(--size-xl)
+        calc(var(--size-xl) + var(--size-m));
 }
 
 steps li::before {
@@ -1272,13 +1443,24 @@ content.jobs-content steps .dropzone {
     max-width: 44rem;
 }
 
-jobs-actions {
+.jobs-actions {
     display: flex;
+    align-items: center;
     gap: var(--size-s);
     margin: 0 0 var(--size-xl) calc(var(--size-xl) + var(--size-m));
+    flex-wrap: wrap;
 }
 
-jobs-actions > button {
+jobs-save-controls {
+    flex: 0 1 18rem;
+    min-width: min(100%, 14rem);
+}
+
+jobs-save-controls > .form-input {
+    width: 100%;
+}
+
+.jobs-actions > button {
     border: 1px solid var(--border-color-light);
     border-radius: var(--border-radius-small);
     background: var(--background-color);
@@ -1294,33 +1476,33 @@ jobs-actions > button {
         color 120ms ease;
 }
 
-jobs-actions > button.primary {
+.jobs-actions > button.primary {
     border-color: var(--button-primary-background);
     background: var(--button-primary-background);
     color: var(--button-text-color);
 }
 
-jobs-actions > button:hover {
+.jobs-actions > button:hover {
     background: var(--color-overlay);
 }
 
-jobs-actions > button.primary:hover {
+.jobs-actions > button.primary:hover {
     border-color: var(--button-primary-background-hover);
     background: var(--button-primary-background-hover);
 }
 
-jobs-actions > button:disabled {
+.jobs-actions > button:disabled {
     border-color: var(--border-color);
     background: var(--form-control-disabled-color);
     color: var(--text-subdued-color);
     cursor: not-allowed;
 }
 
-jobs-actions > button:disabled:hover {
+.jobs-actions > button:disabled:hover {
     background: var(--form-control-disabled-color);
 }
 
-jobs-actions > button:focus-visible {
+.jobs-actions > button:focus-visible {
     outline: var(--focus-ring-outline);
     outline-offset: 2px;
 }
@@ -2001,7 +2183,7 @@ card.disabled:hover {
 }
 
 card.disabled,
-card.disabled * {
+card.disabled > * {
     color: color-mix(
         in srgb,
         var(--text-subdued-color) 92%,
@@ -2133,6 +2315,7 @@ card-tag {
 }
 
 card-footer,
+modal > panel > footer,
 modal-footer,
 flyout-footer {
     display: flex;
@@ -2151,8 +2334,10 @@ card-footer {
 }
 
 card-footer > button,
+modal > panel > footer > button,
 modal-footer > button,
 flyout-footer > button,
+modal > panel > header > button.dismiss,
 modal-header > button.dismiss,
 flyout-header > button.dismiss {
     border: 1px solid var(--border-color-light);
@@ -2170,6 +2355,7 @@ flyout-header > button.dismiss {
         color 120ms ease;
 }
 
+modal > panel > footer > button.primary,
 modal-footer > button.primary,
 flyout-footer > button.primary {
     border-color: var(--button-primary-background);
@@ -2178,13 +2364,16 @@ flyout-footer > button.primary {
 }
 
 card-footer > button:hover,
+modal > panel > footer > button:hover,
 modal-footer > button:hover,
 flyout-footer > button:hover,
+modal > panel > header > button.dismiss:hover,
 modal-header > button.dismiss:hover,
 flyout-header > button.dismiss:hover {
     background: var(--color-overlay);
 }
 
+modal > panel > footer > button.primary:hover,
 modal-footer > button.primary:hover,
 flyout-footer > button.primary:hover {
     border-color: var(--button-primary-background-hover);
@@ -2192,14 +2381,17 @@ flyout-footer > button.primary:hover {
 }
 
 card-footer > button:focus-visible,
+modal > panel > footer > button:focus-visible,
 modal-footer > button:focus-visible,
 flyout-footer > button:focus-visible,
+modal > panel > header > button.dismiss:focus-visible,
 modal-header > button.dismiss:focus-visible,
 flyout-header > button.dismiss:focus-visible {
     outline: var(--focus-ring-outline);
     outline-offset: 2px;
 }
 
+modal,
 modal-backdrop,
 flyout-shell {
     position: fixed;
@@ -2207,6 +2399,7 @@ flyout-shell {
     z-index: 80;
 }
 
+modal,
 modal-backdrop {
     display: grid;
     place-items: center;
@@ -2221,11 +2414,13 @@ modal-backdrop {
     backdrop-filter: blur(6px);
 }
 
+modal > backdrop,
 modal-scrim {
     position: absolute;
     inset: 0;
 }
 
+modal > panel,
 modal-dialog,
 flyout-panel {
     border: 1px solid var(--border-color);
@@ -2233,6 +2428,7 @@ flyout-panel {
     box-shadow: var(--shadow-medium);
 }
 
+modal > panel,
 modal-dialog {
     position: relative;
     z-index: 1;
@@ -2244,6 +2440,7 @@ modal-dialog {
     overflow: hidden;
 }
 
+modal > panel > header,
 modal-header,
 flyout-header {
     display: flex;
@@ -2254,6 +2451,7 @@ flyout-header {
     border-bottom: 1px solid var(--border-color);
 }
 
+modal > panel > content,
 modal-body,
 flyout-body {
     display: flex;
@@ -2262,9 +2460,18 @@ flyout-body {
     padding: var(--size-l);
 }
 
+modal > panel > content,
 modal-body {
     overflow-y: auto;
     overscroll-behavior: contain;
+}
+
+modal > panel > footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--size-s);
+    padding: var(--size-l);
+    border-top: 1px solid var(--border-color);
 }
 
 flyout-scrim {
@@ -2906,12 +3113,37 @@ header-icon:hover {
     background-color: var(--color-overlay);
 }
 
-header h1 {
+header-nav {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+}
+
+header-nav > a {
+    color: var(--text-color);
+    text-decoration: none;
+    font-weight: var(--font-weight-normal);
+    font-size: var(--font-size-s);
+    padding: 0 var(--size-s);
+}
+
+header-nav > a:hover {
+    color: var(--color-primary);
+}
+
+header-nav > a:active,
+header-nav > a[aria-selected] {
+    color: var(--color-primary);
+}
+
+body > header h1 {
     display: inline-block;
     margin: 0 var(--size-s);
     color: inherit;
-    font-size: var(--font-size-ml);
+    font-size: var(--font-size-m);
     font-weight: 200;
+    border-right: 1px solid var(--border-color);
+    padding-right: var(--size-m);
 }
 
 img#logo {
@@ -2979,7 +3211,7 @@ panel.no-padding {
     margin-top: var(--size);
 }
 
-workflow-results {
+.workflow-results {
     display: block;
     width: 100%;
     margin-top: var(--size-xl);
@@ -3003,17 +3235,37 @@ content:is(.workflow-content, .jobs-content) .status-box {
     card > card-body {
         overflow: visible;
     }
+
+    content-layout.jobs-layout {
+        grid-template-columns: 1fr;
+        gap: var(--size-l);
+    }
+
+    .jobs-nav {
+        width: auto;
+        max-height: none;
+        overflow: visible;
+        padding-top: 0;
+        padding-right: 0;
+        border-right: 0;
+    }
 }
 
 .status-box {
     max-width: 800px;
     margin: var(--size-s) auto;
     padding: var(--size-m);
+    border-left: 4px solid transparent;
     border-radius: var(--border-radius);
     transition:
         background-color 0.3s ease,
+        border-color 0.3s ease,
         color 0.3s ease,
         transform 0.2s ease;
+}
+
+.status-box a {
+    color: inherit;
 }
 
 .loading {
@@ -3022,17 +3274,17 @@ content:is(.workflow-content, .jobs-content) .status-box {
     font-weight: 500;
 }
 
-.success {
+.status-success {
     background-color: color-mix(in srgb, var(--color-success) 20%, transparent);
     color: var(--color-success);
 }
 
-.error {
+.status-error {
     background-color: color-mix(in srgb, var(--color-danger) 22%, transparent);
     color: var(--color-danger);
 }
 
-.processing {
+.status-processing {
     background-color: color-mix(in srgb, var(--color-primary) 20%, transparent);
     color: var(--color-primary);
 }

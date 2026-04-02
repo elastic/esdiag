@@ -5,6 +5,7 @@
     data-signals:processing="false"
     data-signals:_file_selected="false"
     data-signals:_pending_workflow_action="''"
+    data-signals:_service_link_curl="''"
     data-signals:archive.download_token="''"
     data-signals:archive.pending_token="''"
     data-signals:archive.ready_token="''"
@@ -14,7 +15,6 @@
     data-signals:_send_secure_hosts="{{ send_secure_hosts_json }}"
     data-on:datastar-fetch-error="$loading = false; $processing = false; $message = evt.detail.error || 'Request failed'"
     data-on:datastar-fetch-retries-failed="$loading = false; $processing = false"
-    data-effect="if (!$keystore.locked && $_pending_workflow_action === 'known-host') { $_pending_workflow_action = ''; document.getElementById('known-host-button')?.click(); } else if (!$keystore.locked && $_pending_workflow_action === 'api-key') { $_pending_workflow_action = ''; document.getElementById('es-api-key-button')?.click(); } else if (!$keystore.locked && $_pending_workflow_action === 'service-link') { $_pending_workflow_action = ''; document.getElementById('service-link-button')?.click(); } else if (!$keystore.locked && $_pending_workflow_action === 'upload-process') { $_pending_workflow_action = ''; document.getElementById('workflow-upload-process-button')?.click(); } if ($workflow.collect.save && !$archive.download_token && !$loading && !($workflow.collect.mode === 'upload' && $workflow.collect.source === 'upload-file')) { $archive.download_token = crypto.randomUUID(); } if ($archive.ready_token && $archive.pending_token && $archive.ready_token === $archive.pending_token && $archive.status === 'ready') { window.esdiagStartRetainedDownload?.({ token: $archive.ready_token, anchorId: 'workflow-download-anchor' }); $archive.pending_token = ''; $archive.ready_token = ''; $archive.status = 'idle'; $archive.error = ''; } else if ($archive.ready_token && $archive.pending_token && $archive.ready_token === $archive.pending_token && $archive.status === 'error') { $message = $archive.error || 'Download failed'; $archive.pending_token = ''; $archive.ready_token = ''; $archive.status = 'idle'; }"
     data-signals:workflow.collect.mode="'upload'"
     data-signals:workflow.collect.source="'upload-file'"
     data-signals:workflow.collect.known_host="''"
@@ -31,6 +31,48 @@
     data-signals:workflow.send.local_target="'{{ initial_local_target }}'"
     data-signals:workflow.send.local_directory="'{% if configured_local_path != "" %}{{ configured_local_path }}{% else %}{{ default_save_dir }}{% endif %}'"
 >
+    <div
+        hidden
+        data-effect="
+            if (!$keystore.locked && $_pending_workflow_action) {
+                const buttonId = {
+                    'known-host': 'known-host-button',
+                    'api-key': 'es-api-key-button',
+                    'service-link': 'service-link-button',
+                    'upload-process': 'workflow-upload-process-button',
+                }[$_pending_workflow_action];
+                if (buttonId) {
+                    $_pending_workflow_action = '';
+                    document.getElementById(buttonId)?.click();
+                }
+            }
+        "
+    ></div>
+    <div
+        hidden
+        data-effect="
+            if ($workflow.collect.save && !$archive.download_token && !$loading && !($workflow.collect.mode === 'upload' && $workflow.collect.source === 'upload-file')) {
+                $archive.download_token = crypto.randomUUID();
+            }
+        "
+    ></div>
+    <div
+        hidden
+        data-effect="
+            if ($archive.ready_token && $archive.pending_token && $archive.ready_token === $archive.pending_token && $archive.status === 'ready') {
+                window.esdiagStartRetainedDownload?.({ token: $archive.ready_token, anchorId: 'workflow-download-anchor' });
+                $archive.pending_token = '';
+                $archive.ready_token = '';
+                $archive.status = 'idle';
+                $archive.error = '';
+            } else if ($archive.ready_token && $archive.pending_token && $archive.ready_token === $archive.pending_token && $archive.status === 'error') {
+                $message = $archive.error || 'Download failed';
+                $archive.pending_token = '';
+                $archive.ready_token = '';
+                $archive.status = 'idle';
+            }
+        "
+    ></div>
     <workflow-grid>
         <card class="workflow-card">
             <card-badge>Collect</card-badge>
@@ -122,7 +164,7 @@
                         class="button"
                         type="button"
                         value="Collect"
-                        data-on:click="{% if can_use_keystore %}if ($keystore.locked && (($_collect_secure_hosts.includes($workflow.collect.known_host)) || ($workflow.send.mode === 'remote' && $_send_secure_hosts.includes($workflow.send.remote_target)) || ($workflow.send.mode === 'local' && $_send_secure_hosts.includes($workflow.send.local_target)))) { $_pending_workflow_action = 'known-host'; $message = 'Unlock keystore to continue...'; @get('/keystore/modal/process'); } else { $loading = true; $message = 'Collecting from known host...'; @post('/known_host'); }{% else %}$loading = true; $message = 'Collecting from known host...'; @post('/known_host');{% endif %}"
+                        data-on:click="{% if can_use_keystore %}if ($keystore.locked && (($_collect_secure_hosts.includes($workflow.collect.known_host)) || ($workflow.send.mode === 'remote' && $_send_secure_hosts.includes($workflow.send.remote_target)) || ($workflow.send.mode === 'local' && $_send_secure_hosts.includes($workflow.send.local_target)))) { $_pending_workflow_action = 'known-host'; $message = 'Unlock keystore to continue...'; @get('/keystore/modal/process', {filterSignals: {exclude: /.*/}}); } else { $loading = true; $message = 'Collecting from known host...'; @post('/known_host', {filterSignals: {include: /^(metadata|archive|workflow)(\.|$)/}}); }{% else %}$loading = true; $message = 'Collecting from known host...'; @post('/known_host', {filterSignals: {include: /^(metadata|archive|workflow)(\.|$)/}});{% endif %}"
                         data-attr:disabled="$loading || !$workflow.collect.known_host"
                         style="display: none"
                     />
@@ -180,7 +222,7 @@
                         class="button"
                         type="button"
                         value="Collect"
-                        data-on:click="{% if can_use_keystore %}if ($keystore.locked && (($workflow.send.mode === 'remote' && $_send_secure_hosts.includes($workflow.send.remote_target)) || ($workflow.send.mode === 'local' && $_send_secure_hosts.includes($workflow.send.local_target)))) { $_pending_workflow_action = 'api-key'; $message = 'Unlock keystore to continue...'; @get('/keystore/modal/process'); } else { $loading = true; $message = 'Connecting with API key...'; @post('/api_key'); }{% else %}$loading = true; $message = 'Connecting with API key...'; @post('/api_key');{% endif %}"
+                        data-on:click="{% if can_use_keystore %}if ($keystore.locked && (($workflow.send.mode === 'remote' && $_send_secure_hosts.includes($workflow.send.remote_target)) || ($workflow.send.mode === 'local' && $_send_secure_hosts.includes($workflow.send.local_target)))) { $_pending_workflow_action = 'api-key'; $message = 'Unlock keystore to continue...'; @get('/keystore/modal/process', {filterSignals: {exclude: /.*/}}); } else { $loading = true; $message = 'Connecting with API key...'; @post('/api_key', {filterSignals: {include: /^(metadata|archive|workflow|es_api)(\.|$)/}}); }{% else %}$loading = true; $message = 'Connecting with API key...'; @post('/api_key', {filterSignals: {include: /^(metadata|archive|workflow|es_api)(\.|$)/}});{% endif %}"
                         data-attr:disabled="$loading || !$es_api.url || !$es_api.key"
                         style="display: none"
                     />
@@ -263,7 +305,7 @@
                         id="workflow-upload-process-button"
                         type="button"
                         style="display: none"
-                        data-on:click="$loading = true; $message = 'Processing diagnostic...'; @post('/upload/process', {openWhenHidden: true})"
+                        data-on:click="$loading = true; $message = 'Processing diagnostic...'; @post('/upload/process', {openWhenHidden: true, filterSignals: {include: /^(metadata|archive|workflow|file_upload)(\.|$)/}})"
                     ></button>
                 </form>
 
@@ -283,18 +325,18 @@
                             id="curl-command"
                             class="curl-textarea"
                             placeholder="Paste a curl command or case comment to auto-fill the form"
-                            data-bind:service_link._curl
+                            data-bind:_service_link_curl
                             data-on:input="{
-                            $service_link.url = parseUrl($service_link._curl),
-                            $service_link.token = parseToken($service_link._curl),
-                            $service_link.filename = parseFilename($service_link._curl)
+                            $service_link.url = parseUrl($_service_link_curl),
+                            $service_link.token = parseToken($_service_link_curl),
+                            $service_link.filename = parseFilename($_service_link_curl)
                         }"
                         ></textarea>
                         <text-link
                             id="curl-command-clear"
-                            data-show="$service_link._curl !== ''"
+                            data-show="$_service_link_curl !== ''"
                             data-on:click="{
-                            $service_link._curl = '';
+                            $_service_link_curl = '';
                             $service_link.url = '';
                             $service_link.token = '';
                             $service_link.filename = '';
@@ -311,7 +353,7 @@
                             id="service-token"
                             name="token"
                             data-bind:service_link.token
-                            data-attr:readonly="$service_link._curl !== ''"
+                            data-attr:readonly="$_service_link_curl !== ''"
                             class="form-input"
                             required
                             placeholder="Enter authentication token"
@@ -324,7 +366,7 @@
                             id="service-url"
                             name="url"
                             data-bind:service_link.url
-                            data-attr:readonly="$service_link._curl !== ''"
+                            data-attr:readonly="$_service_link_curl !== ''"
                             class="form-input"
                             required
                             placeholder="https://example.com/path/to/diagnostic.zip"
@@ -337,7 +379,7 @@
                             id="service-filename"
                             name="filename"
                             data-bind:service_link.filename
-                            data-attr:readonly="$service_link._curl !== ''"
+                            data-attr:readonly="$_service_link_curl !== ''"
                             class="form-input"
                             required
                             placeholder="diagnostic.zip"
@@ -348,7 +390,7 @@
                         class="button"
                         type="button"
                         value="Load"
-                        data-on:click="{% if can_use_keystore %}if ($keystore.locked && (($workflow.send.mode === 'remote' && $_send_secure_hosts.includes($workflow.send.remote_target)) || ($workflow.send.mode === 'local' && $_send_secure_hosts.includes($workflow.send.local_target)))) { $_pending_workflow_action = 'service-link'; $message = 'Unlock keystore to continue...'; @get('/keystore/modal/process'); } else { $loading = true; $message = 'Connecting to Elastic Upload service...'; @post('/service_link'); }{% else %}$loading = true; $message = 'Connecting to Elastic Upload service...'; @post('/service_link');{% endif %}"
+                        data-on:click="{% if can_use_keystore %}if ($keystore.locked && (($workflow.send.mode === 'remote' && $_send_secure_hosts.includes($workflow.send.remote_target)) || ($workflow.send.mode === 'local' && $_send_secure_hosts.includes($workflow.send.local_target)))) { $_pending_workflow_action = 'service-link'; $message = 'Unlock keystore to continue...'; @get('/keystore/modal/process', {filterSignals: {exclude: /.*/}}); } else { $loading = true; $message = 'Connecting to Elastic Upload service...'; @post('/service_link', {filterSignals: {include: /^(metadata|archive|workflow|service_link)(\.|$)/}}); }{% else %}$loading = true; $message = 'Connecting to Elastic Upload service...'; @post('/service_link', {filterSignals: {include: /^(metadata|archive|workflow|service_link)(\.|$)/}});{% endif %}"
                         data-attr:disabled="$loading || !$service_link.url || !$service_link.token"
                         style="display: none"
                     />
@@ -501,57 +543,6 @@
                 </script>
             </div>
 
-            <stage-divider></stage-divider>
-            <h3>Metadata</h3>
-            <input-group>
-                <label for="username" class="form-label">User</label>
-                <input
-                    type="text"
-                    id="username"
-                    name="username"
-                    data-bind:metadata.user
-                    placeholder="Username"
-                    autocomplete="none"
-                    class="form-input"
-                    data-attr:disabled="$auth.header || $processing || $loading"
-                />
-            </input-group>
-            <input-group>
-                <label for="account" class="form-label">Account</label>
-                <input
-                    type="text"
-                    id="account"
-                    name="account"
-                    data-bind:metadata.account
-                    placeholder="Account"
-                    class="form-input"
-                    data-attr:disabled="$loading || $processing"
-                />
-            </input-group>
-            <input-group>
-                <label for="case-number" class="form-label">Case Number</label>
-                <input
-                    type="text"
-                    id="case-number"
-                    name="case-number"
-                    data-bind:metadata.case_number
-                    placeholder="Case Number"
-                    class="form-input"
-                    data-attr:disabled="$loading || $processing"
-                />
-            </input-group>
-            <input-group>
-                <label for="opportunity" class="form-label">Opportunity</label>
-                <input
-                    type="text"
-                    id="opportunity"
-                    name="opportunity"
-                    data-bind:metadata.opportunity
-                    placeholder="Opportunity"
-                    class="form-input"
-                    data-attr:disabled="$loading || $processing"
-                />
-            </input-group>
             </card-body>
             <footer class="workflow-card-footer">
                 <choice-row class="footer-choice">
@@ -676,7 +667,7 @@
 
             <div data-show="$workflow.send.mode === 'remote'">
                 <input-group data-show="$workflow.process.enabled">
-                    <label for="send-remote-target" class="form-label">Remote Target</label>
+                    <label for="send-remote-target" class="form-label">Diagnostic Cluster</label>
                     <select
                         id="send-remote-target"
                         class="form-input"
@@ -750,6 +741,57 @@
             >
                 Existing local files stay in place. Choose `Remote` or use a save-capable collect source to create a new saved archive.
             </info-text>
+            <stage-divider></stage-divider>
+            <h3>Metadata</h3>
+            <input-group>
+                <label for="username" class="form-label">User</label>
+                <input
+                    type="text"
+                    id="username"
+                    name="username"
+                    data-bind:metadata.user
+                    placeholder="Username"
+                    autocomplete="none"
+                    class="form-input"
+                    data-attr:disabled="$auth.header || $processing || $loading"
+                />
+            </input-group>
+            <input-group>
+                <label for="account" class="form-label">Account</label>
+                <input
+                    type="text"
+                    id="account"
+                    name="account"
+                    data-bind:metadata.account
+                    placeholder="Account"
+                    class="form-input"
+                    data-attr:disabled="$loading || $processing"
+                />
+            </input-group>
+            <input-group>
+                <label for="case-number" class="form-label">Case Number</label>
+                <input
+                    type="text"
+                    id="case-number"
+                    name="case-number"
+                    data-bind:metadata.case_number
+                    placeholder="Case Number"
+                    class="form-input"
+                    data-attr:disabled="$loading || $processing"
+                />
+            </input-group>
+            <input-group>
+                <label for="opportunity" class="form-label">Opportunity</label>
+                <input
+                    type="text"
+                    id="opportunity"
+                    name="opportunity"
+                    data-bind:metadata.opportunity
+                    placeholder="Opportunity"
+                    class="form-input"
+                    data-attr:disabled="$loading || $processing"
+                />
+            </input-group>
             </card-body>
             <footer class="workflow-card-footer send-card-footer">
                 <button
@@ -777,7 +819,7 @@
                                             ? 'api-key'
                                             : 'known-host';
                             $message = 'Unlock keystore to continue...';
-                            @get('/keystore/modal/process');
+                            @get('/keystore/modal/process', {filterSignals: {exclude: /.*/}});
                         } else {
                         {% endif %}
                             const requestDownload = () => {
@@ -899,9 +941,9 @@
     {% if let Some(key_id) = key_id %}
     <div
         id="job-{{ key_id }}"
-        data-init="$loading = true; $workflow.collect.mode='collect'; $workflow.collect.source='api-key'; $message = 'Processing api key {{ key_id }}'; @post('/api_key/{{ key_id }}')"
+        data-init="$loading = true; $workflow.collect.mode='collect'; $workflow.collect.source='api-key'; $message = 'Processing api key {{ key_id }}'; @post('/api_key/{{ key_id }}', {filterSignals: {exclude: /.*/}})"
         data-signals:_job_id="true"
-        class="status-box loading"
+        class="status-box history-item status-processing"
     >
         <div class="spinner"></div>
         Processing api key for {{ key_id }}
@@ -909,9 +951,9 @@
     {% else if let Some(link_id) = link_id %}
     <div
         id="job-{{ link_id }}"
-        data-init="$loading = true; $workflow.collect.mode='upload'; $workflow.collect.source='service-link'; $message = 'Forwarding service link {{ link_id }}'; @post('/service_link/{{ link_id }}')"
+        data-init="$loading = true; $workflow.collect.mode='upload'; $workflow.collect.source='service-link'; $message = 'Forwarding service link {{ link_id }}'; @post('/service_link/{{ link_id }}', {filterSignals: {exclude: /.*/}})"
         data-signals:_job_id="true"
-        class="status-box loading"
+        class="status-box history-item status-processing"
     >
         <div class="spinner"></div>
         Loading service link {{ link_id }}
@@ -919,9 +961,9 @@
     {% else if let Some(upload_id) = upload_id %}
     <div
         id="job-{{ upload_id }}"
-        data-init="$loading = true; $message = 'Processing file upload {{ upload_id }}'; @post('/file_upload/{{ upload_id }}')"
+        data-init="$loading = true; $workflow.collect.mode='upload'; $workflow.collect.source='upload-file'; $file_upload.job_id={{ upload_id|json }}; $message = 'Processing file upload {{ upload_id }}'; @post('/upload/process', {filterSignals: {include: /^(metadata|archive|workflow|file_upload)(\.|$)/}})"
         data-signals:_job_id="true"
-        class="status-box loading"
+        class="status-box history-item status-processing"
     >
         <div class="spinner"></div>
         Loading file upload {{ upload_id }}
@@ -1013,6 +1055,9 @@
         });
     </script>
     {% if show_keystore_bootstrap %}
-    <div id="keystore-bootstrap-init" data-init="@get('/keystore/bootstrap-modal')"></div>
+    <div
+        id="keystore-bootstrap-init"
+        data-init="@get('/keystore/bootstrap-modal', {filterSignals: {exclude: /.*/}})"
+    ></div>
     {% endif %}
 </content>

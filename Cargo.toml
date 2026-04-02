@@ -27,7 +27,7 @@ datastar = { version = "0.3.1", features = ["axum"] }
 elasticsearch = { git = "https://github.com/VimCommando/elasticsearch-rs", rev = "2eff23f3d908c177b8ecc03c4a8af0f8080d7a80" }
 eyre = "0.6.12"
 futures = "0.3"
-indexmap = "2.13.0"
+indexmap = { version = "2.13.0", features = ["serde"] }
 json-patch = "4.1"
 mimalloc = "0.1.48"
 tracing = "0.1"

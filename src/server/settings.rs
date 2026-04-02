@@ -72,7 +72,7 @@ pub struct UpdateSettingsForm {
 pub async fn update_settings(
     State(state): State<Arc<ServerState>>,
     headers: HeaderMap,
-    datastar::axum::ReadSignals(signals): datastar::axum::ReadSignals<super::Signals>,
+    datastar::axum::ReadSignals(signals): datastar::axum::ReadSignals<super::SettingsUpdateSignals>,
 ) -> Response {
     let request_user = match state.resolve_user_email(&headers) {
         Ok((_, user)) => user,
@@ -331,7 +331,9 @@ mod tests {
     use crate::{
         data::{HostRole, KnownHost, Product, Settings, Uri, authenticate},
         exporter::Exporter,
-        server::{RuntimeMode, RuntimeModePolicy, ServerEvent, Signals, test_server_state},
+        server::{
+            RuntimeMode, RuntimeModePolicy, ServerEvent, SettingsUpdateSignals, test_server_state,
+        },
     };
     use axum::{
         extract::State,
@@ -404,7 +406,7 @@ mod tests {
         let state = test_server_state();
         let expected_target = state.exporter.read().await.target_uri();
         let mut events = state.subscribe_events();
-        let mut signals = Signals::default();
+        let mut signals = SettingsUpdateSignals::default();
         signals.settings.target = Some("secure-es".to_string());
 
         let response = update_settings(State(state), HeaderMap::new(), ReadSignals(signals)).await;
@@ -511,7 +513,7 @@ mod tests {
         let state = test_server_state();
         let expected_target = state.exporter.read().await.target_uri();
         let mut events = state.subscribe_events();
-        let mut signals = Signals::default();
+        let mut signals = SettingsUpdateSignals::default();
         signals.settings.target = Some("collector-only".to_string());
 
         let response = update_settings(State(state), HeaderMap::new(), ReadSignals(signals)).await;
@@ -583,7 +585,7 @@ mod tests {
         state_mut.runtime_mode = RuntimeMode::Service;
         state_mut.runtime_mode_policy = RuntimeModePolicy::new(RuntimeMode::Service);
 
-        let mut signals = Signals::default();
+        let mut signals = SettingsUpdateSignals::default();
         signals.settings.kibana_url = Some("https://kibana.example".to_string());
 
         let response = update_settings(State(state), HeaderMap::new(), ReadSignals(signals)).await;
@@ -607,7 +609,7 @@ mod tests {
             HeaderValue::from_static("accounts.google.com:test@example.com"),
         );
 
-        let mut signals = Signals::default();
+        let mut signals = SettingsUpdateSignals::default();
         signals.settings.kibana_url = Some("https://kibana.example".to_string());
 
         let response = update_settings(State(state.clone()), headers, ReadSignals(signals)).await;
@@ -633,7 +635,7 @@ mod tests {
 
         let state = test_server_state();
         let original_target = state.exporter.read().await.target_uri();
-        let mut signals = Signals::default();
+        let mut signals = SettingsUpdateSignals::default();
         signals.settings.target = Some(String::new());
         signals.settings.kibana_url = Some("https://new-kibana.example".to_string());
 
@@ -681,7 +683,7 @@ mod tests {
 
         let state = test_server_state();
         let mut events = state.subscribe_events();
-        let mut signals = Signals::default();
+        let mut signals = SettingsUpdateSignals::default();
         signals.settings.target = Some("secure-es".to_string());
         signals.settings.kibana_url = Some("https://new-kibana.example".to_string());
 

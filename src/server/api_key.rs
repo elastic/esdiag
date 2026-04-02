@@ -3,8 +3,8 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::{
-    Identifiers, ServerEvent, ServerState, Signals, job_feed_event, receiver_stream, signal_event,
-    template, template_event, workflow,
+    ApiKeyFormSignals, ServerEvent, ServerState, WorkflowRunSignals, job_feed_event,
+    receiver_stream, signal_event, template, template_event, workflow,
 };
 use crate::{
     data::{KnownHostBuilder, with_scoped_keystore_password},
@@ -24,7 +24,7 @@ const DOWNLOAD_REJECTION_TTL: Duration = Duration::from_secs(300);
 pub async fn form(
     State(state): State<Arc<ServerState>>,
     headers: HeaderMap,
-    ReadSignals(signals): ReadSignals<Signals>,
+    ReadSignals(signals): ReadSignals<ApiKeyFormSignals>,
 ) -> impl IntoResponse {
     // Extract authenticated user email from header
     let uri = signals.es_api.url.to_string();
@@ -91,7 +91,7 @@ async fn send_event(tx: &mpsc::Sender<ServerEvent>, event: ServerEvent) {
 
 pub(super) async fn run_api_key_form(
     state: Arc<ServerState>,
-    signals: Signals,
+    signals: ApiKeyFormSignals,
     uri: String,
     request_user: String,
     tx: mpsc::Sender<ServerEvent>,
@@ -151,7 +151,7 @@ pub(super) async fn run_api_key_form(
         }
     };
     let job = super::WorkflowJob {
-        identifiers: Identifiers::default(),
+        identifiers: signals.metadata.clone(),
         input: super::WorkflowInput::FromRemoteHost {
             source: host.get_url().to_string(),
             host,
@@ -162,11 +162,11 @@ pub(super) async fn run_api_key_form(
     let keystore_password = state.keystore_password_for(&request_user).await;
     if let Some(password) = keystore_password {
         with_scoped_keystore_password(password, async move {
-            workflow::run_job(state, signals, job_id, request_user, tx, job).await;
+            workflow::run_job(state, signals.into(), job_id, request_user, tx, job, false).await;
         })
         .await;
     } else {
-        workflow::run_job(state, signals, job_id, request_user, tx, job).await;
+        workflow::run_job(state, signals.into(), job_id, request_user, tx, job, false).await;
     }
 }
 
@@ -192,7 +192,16 @@ async fn run_api_key_id(
             return;
         }
     };
-    workflow::run_job(state, Signals::default(), job_id, request_user, tx, job).await;
+    workflow::run_job(
+        state,
+        WorkflowRunSignals::default(),
+        job_id,
+        request_user,
+        tx,
+        job,
+        true,
+    )
+    .await;
 }
 
 #[cfg(test)]
@@ -201,7 +210,7 @@ mod tests {
     use crate::{
         data::{HostRole, KnownHost, Product, Settings, Uri, authenticate},
         exporter::Exporter,
-        server::{ServerEvent, Signals, test_server_state},
+        server::{ApiKeyFormSignals, ServerEvent, test_server_state},
     };
     use std::{collections::BTreeMap, sync::Mutex};
     use tempfile::TempDir;
@@ -267,7 +276,7 @@ mod tests {
             url: Url::parse("http://localhost:9200").expect("secure output uri"),
         })
         .expect("matching exporter");
-        let mut signals = Signals::default();
+        let mut signals = ApiKeyFormSignals::default();
         signals.archive.download_token = "token-1".to_string();
         signals.es_api.url =
             Uri::try_from("http://cluster.example:9200".to_string()).expect("api url");
@@ -289,7 +298,9 @@ mod tests {
             match event {
                 ServerEvent::JobFeed(html)
                     if html.contains("output target")
-                        && html.contains("Keystore is locked. Unlock it before processing secure outputs.") =>
+                        && html.contains(
+                            "Keystore is locked. Unlock it before processing secure outputs.",
+                        ) =>
                 {
                     saw_failure = true;
                 }

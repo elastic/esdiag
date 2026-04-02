@@ -15,8 +15,24 @@
         data-signals:workflow.collect.source="'upload-file'"
         data-signals:workflow.collect.save="false"
         data-signals:_pending_workflow_action="''"
-        data-effect="if (!$keystore.locked && $_pending_workflow_action === 'api-key') { $_pending_workflow_action = ''; document.getElementById('es-api-key-button')?.click(); } else if (!$keystore.locked && $_pending_workflow_action === 'service-link') { $_pending_workflow_action = ''; document.getElementById('service-link-button')?.click(); } else if (!$keystore.locked && $_pending_workflow_action === 'upload-process') { $_pending_workflow_action = ''; document.getElementById('main-upload-process-button')?.click(); }"
+        data-signals:_service_link_curl="''"
     >
+        <div
+            hidden
+            data-effect="
+                if (!$keystore.locked && $_pending_workflow_action) {
+                    const buttonId = {
+                        'api-key': 'es-api-key-button',
+                        'service-link': 'service-link-button',
+                        'upload-process': 'main-upload-process-button',
+                    }[$_pending_workflow_action];
+                    if (buttonId) {
+                        $_pending_workflow_action = '';
+                        document.getElementById(buttonId)?.click();
+                    }
+                }
+            "
+        ></div>
         <diagnostic-form id="diagnostic-form">
             <tab-links data-signals:tab="'file-upload'">
                 <button
@@ -82,7 +98,7 @@
                         id="main-upload-process-button"
                         type="button"
                         style="display: none"
-                        data-on:click="$loading = true; $message = 'Processing diagnostic...'; @post('/upload/process', {openWhenHidden: true})"
+                        data-on:click="$loading = true; $message = 'Processing diagnostic...'; @post('/upload/process', {openWhenHidden: true, filterSignals: {include: /^(metadata|archive|workflow|file_upload)(\.|$)/}})"
                     ></button>
                     <script>
                         // File upload handling
@@ -240,18 +256,18 @@
                             id="curl-command"
                             class="curl-textarea"
                             placeholder="Paste a curl command or case comment to auto-fill the form"
-                            data-bind:service_link._curl
+                            data-bind:_service_link_curl
                             data-on:input="{
-                            $service_link.url = parseUrl($service_link._curl),
-                            $service_link.token = parseToken($service_link._curl),
-                            $service_link.filename = parseFilename($service_link._curl)
+                            $service_link.url = parseUrl($_service_link_curl),
+                            $service_link.token = parseToken($_service_link_curl),
+                            $service_link.filename = parseFilename($_service_link_curl)
                         }"
                         ></textarea>
                         <text-link
                             id="curl-command-clear"
-                            data-show="$service_link._curl !== ''"
+                            data-show="$_service_link_curl !== ''"
                             data-on:click="{
-                            $service_link._curl = '';
+                            $_service_link_curl = '';
                             $service_link.url = '';
                             $service_link.token = '';
                             $service_link.filename = '';
@@ -268,7 +284,7 @@
                             id="service-token"
                             name="token"
                             data-bind:service_link.token
-                            data-attr:readonly="$service_link._curl !== ''"
+                            data-attr:readonly="$_service_link_curl !== ''"
                             class="form-input"
                             required
                             placeholder="Enter authentication token"
@@ -281,7 +297,7 @@
                             id="service-url"
                             name="url"
                             data-bind:service_link.url
-                            data-attr:readonly="$service_link._curl !== ''"
+                            data-attr:readonly="$_service_link_curl !== ''"
                             class="form-input"
                             required
                             placeholder="https://example.com/path/to/diagnostic.zip"
@@ -294,7 +310,7 @@
                             id="service-filename"
                             name="filename"
                             data-bind:service_link.filename
-                            data-attr:readonly="$service_link._curl !== ''"
+                            data-attr:readonly="$_service_link_curl !== ''"
                             class="form-input"
                             required
                             placeholder="diagnostic.zip"
@@ -305,7 +321,7 @@
                         class="button"
                         type="button"
                         value="Process"
-                        data-on:click="{% if can_use_keystore %}if ($keystore.locked && $output.secure) { $_pending_workflow_action = 'service-link'; $message = 'Unlock keystore to continue...'; @get('/keystore/modal/process'); } else { $loading = true; $message = 'Connecting to Elastic Upload service...'; @post('/service_link'); }{% else %}$loading = true; $message = 'Connecting to Elastic Upload service...'; @post('/service_link');{% endif %}"
+                        data-on:click="{% if can_use_keystore %}if ($keystore.locked && $output.secure) { $_pending_workflow_action = 'service-link'; $message = 'Unlock keystore to continue...'; @get('/keystore/modal/process', {filterSignals: {exclude: /.*/}}); } else { $loading = true; $message = 'Connecting to Elastic Upload service...'; @post('/service_link', {filterSignals: {include: /^(metadata|archive|workflow|service_link)(\.|$)/}}); }{% else %}$loading = true; $message = 'Connecting to Elastic Upload service...'; @post('/service_link', {filterSignals: {include: /^(metadata|archive|workflow|service_link)(\.|$)/}});{% endif %}"
                         data-attr:disabled="$loading || !$service_link.url || !$service_link.token"
                     />
                     <script>
@@ -369,7 +385,7 @@
                         class="button"
                         type="button"
                         value="Process"
-                        data-on:click="{% if can_use_keystore %}if ($keystore.locked && $output.secure) { $_pending_workflow_action = 'api-key'; $message = 'Unlock keystore to continue...'; @get('/keystore/modal/process'); } else { $loading = true; $message = 'Connecting with API key...'; @post('/api_key'); }{% else %}$loading = true; $message = 'Connecting with API key...'; @post('/api_key');{% endif %}"
+                        data-on:click="{% if can_use_keystore %}if ($keystore.locked && $output.secure) { $_pending_workflow_action = 'api-key'; $message = 'Unlock keystore to continue...'; @get('/keystore/modal/process', {filterSignals: {exclude: /.*/}}); } else { $loading = true; $message = 'Connecting with API key...'; @post('/api_key', {filterSignals: {include: /^(metadata|archive|workflow|es_api)(\.|$)/}}); }{% else %}$loading = true; $message = 'Connecting with API key...'; @post('/api_key', {filterSignals: {include: /^(metadata|archive|workflow|es_api)(\.|$)/}});{% endif %}"
                         data-attr:disabled="$loading || !$es_api.url || !$es_api.key"
                     />
                 </form>
@@ -449,9 +465,9 @@
     {% if let Some(key_id) = key_id %}
     <div
         id="job-{{ key_id }}"
-        data-init="$loading = true; $tab='api-key'; $message = 'Processing api key {{ key_id }}'; @post('/api_key/{{ key_id }}')"
+        data-init="$loading = true; $tab='api-key'; $message = 'Processing api key {{ key_id }}'; @post('/api_key/{{ key_id }}', {filterSignals: {exclude: /.*/}})"
         data-signals:_job_id="true"
-        class="status-box loading"
+        class="status-box history-item status-processing"
     >
         <div class="spinner"></div>
         Processing api key for {{ key_id }}
@@ -459,9 +475,9 @@
     {% else if let Some(link_id) = link_id %}
     <div
         id="job-{{ link_id }}"
-        data-init="$loading = true; $tab='service-link'; $message = 'Forwarding service link {{ link_id }}'; @post('/service_link/{{ link_id }}')"
+        data-init="$loading = true; $tab='service-link'; $message = 'Forwarding service link {{ link_id }}'; @post('/service_link/{{ link_id }}', {filterSignals: {exclude: /.*/}})"
         data-signals:_job_id="true"
-        class="status-box loading"
+        class="status-box history-item status-processing"
     >
         <div class="spinner"></div>
         Loading service link {{ link_id }}
@@ -469,15 +485,18 @@
     {% else if let Some(upload_id) = upload_id %}
     <div
         id="job-{{ upload_id }}"
-        data-init="$loading = true; $message = 'Processing file upload {{ upload_id }}'; @post('/file_upload/{{ upload_id }}')"
+        data-init="$loading = true; $file_upload.job_id={{ upload_id|json }}; $message = 'Processing file upload {{ upload_id }}'; @post('/upload/process', {filterSignals: {include: /^(archive|metadata|workflow|file_upload)(\.|$)/}})"
         data-signals:_job_id="true"
-        class="status-box loading"
+        class="status-box history-item status-processing"
     >
         <div class="spinner"></div>
         Loading file upload {{ upload_id }}
     </div>
     {% endif %}
     {% if show_keystore_bootstrap %}
-    <div id="keystore-bootstrap-init" data-init="@get('/keystore/bootstrap-modal')"></div>
+    <div
+        id="keystore-bootstrap-init"
+        data-init="@get('/keystore/bootstrap-modal', {filterSignals: {exclude: /.*/}})"
+    ></div>
     {% endif %}
 </content>

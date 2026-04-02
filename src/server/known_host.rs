@@ -3,7 +3,7 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::{
-    Identifiers, ServerEvent, ServerState, Signals, job_feed_event, receiver_stream, signal_event,
+    KnownHostFormSignals, ServerEvent, ServerState, job_feed_event, receiver_stream, signal_event,
     template, workflow,
 };
 use crate::{
@@ -24,7 +24,7 @@ const DOWNLOAD_REJECTION_TTL: Duration = Duration::from_secs(300);
 pub async fn form(
     State(state): State<Arc<ServerState>>,
     headers: HeaderMap,
-    ReadSignals(signals): ReadSignals<Signals>,
+    ReadSignals(signals): ReadSignals<KnownHostFormSignals>,
 ) -> impl IntoResponse {
     let source = signals.workflow.collect.known_host.clone();
     let (tx, rx) = mpsc::channel(64);
@@ -59,7 +59,7 @@ async fn send_event(tx: &mpsc::Sender<ServerEvent>, event: ServerEvent) {
 
 pub(super) async fn run_known_host_form(
     state: Arc<ServerState>,
-    signals: Signals,
+    signals: KnownHostFormSignals,
     request_user: String,
     tx: mpsc::Sender<ServerEvent>,
 ) {
@@ -113,7 +113,7 @@ pub(super) async fn run_known_host_form(
     }
 
     let job = super::WorkflowJob {
-        identifiers: Identifiers::default(),
+        identifiers: signals.metadata.clone(),
         input: super::WorkflowInput::FromRemoteHost {
             source: host.get_url().to_string(),
             host,
@@ -123,10 +123,10 @@ pub(super) async fn run_known_host_form(
 
     if let Some(password) = keystore_password {
         with_scoped_keystore_password(password, async move {
-            workflow::run_job(state, signals, job_id, request_user, tx, job).await;
+            workflow::run_job(state, signals.into(), job_id, request_user, tx, job, false).await;
         })
         .await;
     } else {
-        workflow::run_job(state, signals, job_id, request_user, tx, job).await;
+        workflow::run_job(state, signals.into(), job_id, request_user, tx, job, false).await;
     }
 }

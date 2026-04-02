@@ -3,8 +3,8 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::{
-    Identifiers, ServerEvent, ServerState, Signals, job_feed_event, receiver_stream, signal_event,
-    template, template_event, workflow,
+    ServerEvent, ServerState, ServiceLinkFormSignals, WorkflowRunSignals, job_feed_event,
+    receiver_stream, signal_event, template, template_event, workflow,
 };
 use crate::{
     data::{Uri, with_scoped_keystore_password},
@@ -24,7 +24,7 @@ const DOWNLOAD_REJECTION_TTL: Duration = Duration::from_secs(300);
 pub async fn form(
     State(state): State<Arc<ServerState>>,
     headers: HeaderMap,
-    ReadSignals(signals): ReadSignals<Signals>,
+    ReadSignals(signals): ReadSignals<ServiceLinkFormSignals>,
 ) -> impl IntoResponse {
     tracing::info!(
         "Received Elastic upload service request for: {}",
@@ -94,7 +94,7 @@ async fn send_event(tx: &mpsc::Sender<ServerEvent>, event: ServerEvent) {
 
 pub(super) async fn run_service_link_form(
     state: Arc<ServerState>,
-    signals: Signals,
+    signals: ServiceLinkFormSignals,
     request_user: String,
     tx: mpsc::Sender<ServerEvent>,
 ) {
@@ -196,7 +196,7 @@ pub(super) async fn run_service_link_form(
     tracing::debug!("Tokenized URI: {}", tokenized_uri);
     let job_id = new_job_id();
     let job = super::WorkflowJob {
-        identifiers: Identifiers::default(),
+        identifiers: signals.metadata.clone(),
         input: super::WorkflowInput::FromServiceLink {
             source: signals.service_link.filename.clone(),
             uri: tokenized_uri,
@@ -205,11 +205,11 @@ pub(super) async fn run_service_link_form(
     let keystore_password = state.keystore_password_for(&request_user).await;
     if let Some(password) = keystore_password {
         with_scoped_keystore_password(password, async move {
-            workflow::run_job(state, signals, job_id, request_user, tx, job).await;
+            workflow::run_job(state, signals.into(), job_id, request_user, tx, job, false).await;
         })
         .await;
     } else {
-        workflow::run_job(state, signals, job_id, request_user, tx, job).await;
+        workflow::run_job(state, signals.into(), job_id, request_user, tx, job, false).await;
     }
 }
 
@@ -235,5 +235,14 @@ async fn run_service_link_id(
             return;
         }
     };
-    workflow::run_job(state, Signals::default(), job_id, request_user, tx, job).await;
+    workflow::run_job(
+        state,
+        WorkflowRunSignals::default(),
+        job_id,
+        request_user,
+        tx,
+        job,
+        true,
+    )
+    .await;
 }

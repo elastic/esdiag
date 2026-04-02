@@ -2,6 +2,7 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
+use super::{KnownHost, load_saved_jobs};
 use crate::env::ESDIAG_KEYSTORE_PASSWORD;
 use aes_gcm_siv::{
     Aes256GcmSiv, Nonce,
@@ -12,6 +13,8 @@ use eyre::{Result, eyre};
 use pbkdf2::pbkdf2_hmac;
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
+#[cfg(unix)]
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::{
     collections::BTreeMap,
     env,
@@ -21,8 +24,6 @@ use std::{
     path::{Path, PathBuf},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
-#[cfg(unix)]
-use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 
 const KDF_ROUNDS: u32 = 100_000;
 const KEY_SIZE: usize = 32;
@@ -206,10 +207,7 @@ fn temp_output_path(path: &Path) -> Result<PathBuf> {
         .duration_since(UNIX_EPOCH)
         .unwrap_or(Duration::from_secs(0))
         .as_nanos();
-    Ok(parent.join(format!(
-        ".{file_name}.tmp-{}-{unique}",
-        std::process::id()
-    )))
+    Ok(parent.join(format!(".{file_name}.tmp-{}-{unique}", std::process::id())))
 }
 
 fn replace_file_atomic(path: &Path, temp_path: &Path) -> Result<()> {
@@ -277,9 +275,12 @@ pub fn get_keystore_path() -> Result<PathBuf> {
 
 pub fn get_unlock_path() -> Result<PathBuf> {
     let keystore_path = get_keystore_path()?;
-    let parent = keystore_path
-        .parent()
-        .ok_or_else(|| eyre!("Keystore path '{}' has no parent directory", keystore_path.display()))?;
+    let parent = keystore_path.parent().ok_or_else(|| {
+        eyre!(
+            "Keystore path '{}' has no parent directory",
+            keystore_path.display()
+        )
+    })?;
     Ok(parent.join(UNLOCK_FILE))
 }
 
@@ -552,7 +553,10 @@ where
         .await
 }
 
-fn get_password_for_secret_commands_with_prompt<F>(interactive: bool, prompt_fn: F) -> Result<String>
+fn get_password_for_secret_commands_with_prompt<F>(
+    interactive: bool,
+    prompt_fn: F,
+) -> Result<String>
 where
     F: FnOnce(&str) -> Result<String>,
 {
@@ -633,6 +637,10 @@ pub fn remove_secret(
     keystore_password: &str,
 ) -> Result<String> {
     let mut store = read_store(keystore_password)?;
+    if !store.secrets.contains_key(secret_id) {
+        return Err(eyre!("Secret '{secret_id}' not found"));
+    }
+    ensure_secret_is_unreferenced(secret_id)?;
     let entry = store
         .secrets
         .get_mut(secret_id)
@@ -654,6 +662,72 @@ pub fn remove_secret(
 
     write_store(&store, keystore_password)?;
     Ok(get_keystore_path()?.display().to_string())
+}
+
+fn ensure_secret_is_unreferenced(secret_id: &str) -> Result<()> {
+    let hosts = KnownHost::parse_hosts_yml()?;
+    let host_references: Vec<String> = hosts
+        .iter()
+        .filter(|(_, host)| host.secret_reference() == Some(secret_id))
+        .map(|(name, _)| name.clone())
+        .collect();
+    let saved_jobs = load_saved_jobs()?;
+    let job_references: Vec<String> = saved_jobs
+        .iter()
+        .filter(|(_, job)| {
+            referenced_job_hosts(job)
+                .into_iter()
+                .filter_map(|host_name| hosts.get(host_name))
+                .any(|host| host.secret_reference() == Some(secret_id))
+        })
+        .map(|(name, _)| name.clone())
+        .collect();
+
+    if host_references.is_empty() && job_references.is_empty() {
+        return Ok(());
+    }
+
+    let mut parts = Vec::new();
+    if !host_references.is_empty() {
+        parts.push(format!("hosts: {}", host_references.join(", ")));
+    }
+    if !job_references.is_empty() {
+        parts.push(format!("saved jobs: {}", job_references.join(", ")));
+    }
+
+    Err(eyre!(
+        "Cannot remove secret '{secret_id}' because it is still referenced by {}",
+        parts.join("; ")
+    ))
+}
+
+fn referenced_job_hosts(job: &crate::data::SavedJob) -> Vec<&str> {
+    let mut hosts = Vec::new();
+    if !job.workflow.collect.known_host.trim().is_empty() {
+        hosts.push(job.workflow.collect.known_host.trim());
+    }
+
+    match job.workflow.send.mode {
+        crate::data::SendMode::Remote => {
+            let remote = job.workflow.send.remote_target.trim();
+            if is_probable_hostname(remote) {
+                hosts.push(remote);
+            }
+        }
+        crate::data::SendMode::Local => {
+            let local = job.workflow.send.local_target.trim();
+            if is_probable_hostname(local) && local != "directory" {
+                hosts.push(local);
+            }
+        }
+    }
+
+    hosts
+}
+
+fn is_probable_hostname(target: &str) -> bool {
+    let trimmed = target.trim();
+    !trimmed.is_empty() && !trimmed.contains("://")
 }
 
 pub fn get_secret(secret_id: &str, keystore_password: &str) -> Result<Option<SecretEntry>> {
@@ -826,8 +900,13 @@ fn derive_key(password: &str, salt: &[u8]) -> [u8; KEY_SIZE] {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::data::{
+        CollectMode, CollectSource, CollectStage, HostRole, KnownHostBuilder, ProcessStage,
+        Product, SavedJob, SavedJobs, SendMode, SendStage, Workflow, save_saved_jobs,
+    };
     use crate::test_env_lock;
     use tempfile::TempDir;
+    use url::Url;
 
     fn setup_env() -> (TempDir, PathBuf, PathBuf) {
         let tmp = TempDir::new().expect("temp dir");
@@ -835,10 +914,12 @@ mod tests {
         std::fs::create_dir_all(&config_dir).expect("create config dir");
         let keystore_path = config_dir.join("secrets.yml");
         let unlock_path = config_dir.join("keystore.unlock");
+        let hosts_path = config_dir.join("hosts.yml");
         unsafe {
             std::env::set_var("HOME", tmp.path());
             std::env::set_var("USERPROFILE", tmp.path());
             std::env::set_var("ESDIAG_KEYSTORE", &keystore_path);
+            std::env::set_var("ESDIAG_HOSTS", &hosts_path);
             std::env::remove_var("ESDIAG_KEYSTORE_PASSWORD");
         }
         (tmp, keystore_path, unlock_path)
@@ -866,7 +947,10 @@ mod tests {
 
         let status = get_unlock_status().expect("status");
         assert!(!status.unlock_active);
-        assert!(!unlock_path.exists(), "expired unlock file should be deleted");
+        assert!(
+            !unlock_path.exists(),
+            "expired unlock file should be deleted"
+        );
         assert!(
             get_keystore_password().is_err(),
             "expired lease should not provide password"
@@ -908,7 +992,10 @@ mod tests {
         std::fs::create_dir_all(&unlock_path).expect("create unlock directory");
 
         assert!(!clear_unlock_lease().expect("clear unlock lease"));
-        assert!(unlock_path.is_dir(), "non-file unlock path should be left alone");
+        assert!(
+            unlock_path.is_dir(),
+            "non-file unlock path should be left alone"
+        );
     }
 
     #[test]
@@ -942,9 +1029,10 @@ mod tests {
         write_unlock_lease_until("stale-pw", current_epoch_seconds() + 300).expect("write lease");
 
         let err = get_keystore_password().expect_err("stale lease should be rejected");
-        assert!(err
-            .to_string()
-            .contains("no valid unlock lease is available"));
+        assert!(
+            err.to_string()
+                .contains("no valid unlock lease is available")
+        );
         assert!(
             !unlock_path.exists(),
             "stale unlock lease should be cleared on invalid password"
@@ -991,9 +1079,10 @@ mod tests {
         write_unlock_lease_until("pw", current_epoch_seconds() + 300).expect("write lease");
 
         let err = get_keystore_password().expect_err("missing keystore should reject lease");
-        assert!(err
-            .to_string()
-            .contains("no valid unlock lease is available"));
+        assert!(
+            err.to_string()
+                .contains("no valid unlock lease is available")
+        );
         assert!(
             !unlock_path.exists(),
             "unlock lease should be cleared when keystore is absent"
@@ -1084,5 +1173,161 @@ mod tests {
         unsafe {
             std::env::remove_var("ESDIAG_KEYSTORE");
         }
+    }
+
+    fn save_secret_backed_host(secret_id: &str, host_name: &str) {
+        let host = KnownHostBuilder::new(Url::parse("https://prod.example.com:9200").expect("url"))
+            .product(Product::Elasticsearch)
+            .roles(vec![HostRole::Collect, HostRole::Send])
+            .secret(Some(secret_id.to_string()))
+            .build_with_secret_auth(SecretAuth::Basic {
+                username: "elastic".to_string(),
+                password: "pw".to_string(),
+            })
+            .expect("build host");
+        host.save(host_name).expect("save host");
+    }
+
+    #[test]
+    fn remove_secret_blocks_direct_host_reference() {
+        let _guard = test_env_lock().lock().expect("env lock");
+        let (_tmp, _keystore_path, _unlock_path) = setup_env();
+        authenticate("pw").expect("create keystore");
+        upsert_secret_auth(
+            "used-secret",
+            SecretAuth::Basic {
+                username: "elastic".to_string(),
+                password: "super-secret-password".to_string(),
+            },
+            "pw",
+        )
+        .expect("store secret");
+        save_secret_backed_host("used-secret", "prod");
+
+        let err = remove_secret("used-secret", None, "pw").expect_err("secret should be protected");
+
+        assert!(err.to_string().contains("hosts: prod"));
+        assert!(
+            get_secret("used-secret", "pw")
+                .expect("read secret")
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn remove_secret_reports_saved_job_references() {
+        let _guard = test_env_lock().lock().expect("env lock");
+        let (_tmp, _keystore_path, _unlock_path) = setup_env();
+        authenticate("pw").expect("create keystore");
+        upsert_secret_auth(
+            "used-secret",
+            SecretAuth::Basic {
+                username: "elastic".to_string(),
+                password: "super-secret-password".to_string(),
+            },
+            "pw",
+        )
+        .expect("store secret");
+        save_secret_backed_host("used-secret", "prod");
+
+        let mut jobs = SavedJobs::default();
+        jobs.insert(
+            "nightly-prod".to_string(),
+            SavedJob {
+                identifiers: Default::default(),
+                workflow: Workflow {
+                    collect: CollectStage {
+                        mode: CollectMode::Collect,
+                        source: CollectSource::KnownHost,
+                        known_host: "prod".to_string(),
+                        ..Default::default()
+                    },
+                    process: ProcessStage::default(),
+                    send: SendStage::default(),
+                },
+            },
+        );
+        save_saved_jobs(&jobs).expect("save jobs");
+
+        let err = remove_secret("used-secret", None, "pw").expect_err("secret should be protected");
+
+        assert!(err.to_string().contains("hosts: prod"));
+        assert!(err.to_string().contains("saved jobs: nightly-prod"));
+        assert!(
+            get_secret("used-secret", "pw")
+                .expect("read secret")
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn remove_secret_succeeds_when_unreferenced() {
+        let _guard = test_env_lock().lock().expect("env lock");
+        let (_tmp, _keystore_path, _unlock_path) = setup_env();
+        authenticate("pw").expect("create keystore");
+        upsert_secret_auth(
+            "unused-secret",
+            SecretAuth::ApiKey {
+                apikey: "super-secret-api-key".to_string(),
+            },
+            "pw",
+        )
+        .expect("store secret");
+
+        remove_secret("unused-secret", None, "pw").expect("remove secret");
+
+        assert!(
+            get_secret("unused-secret", "pw")
+                .expect("read secret")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn referenced_job_hosts_only_uses_active_send_mode_targets() {
+        let job = SavedJob {
+            identifiers: Default::default(),
+            workflow: Workflow {
+                collect: CollectStage {
+                    mode: CollectMode::Collect,
+                    source: CollectSource::KnownHost,
+                    known_host: "collector".to_string(),
+                    ..Default::default()
+                },
+                process: ProcessStage::default(),
+                send: SendStage {
+                    mode: SendMode::Local,
+                    remote_target: "stale-remote".to_string(),
+                    local_target: "sender".to_string(),
+                    local_directory: String::new(),
+                },
+            },
+        };
+
+        assert_eq!(referenced_job_hosts(&job), vec!["collector", "sender"]);
+    }
+
+    #[test]
+    fn referenced_job_hosts_ignores_remote_urls() {
+        let job = SavedJob {
+            identifiers: Default::default(),
+            workflow: Workflow {
+                collect: CollectStage {
+                    mode: CollectMode::Collect,
+                    source: CollectSource::KnownHost,
+                    known_host: "collector".to_string(),
+                    ..Default::default()
+                },
+                process: ProcessStage::default(),
+                send: SendStage {
+                    mode: SendMode::Remote,
+                    remote_target: "https://upload.elastic.co/g/abc123".to_string(),
+                    local_target: String::new(),
+                    local_directory: String::new(),
+                },
+            },
+        };
+
+        assert_eq!(referenced_job_hosts(&job), vec!["collector"]);
     }
 }

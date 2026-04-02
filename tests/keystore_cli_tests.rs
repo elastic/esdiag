@@ -1,4 +1,6 @@
-use esdiag::data::{Auth, HostRole, KnownHost, Product, authenticate, get_secret, get_unlock_status};
+use esdiag::data::{
+    Auth, HostRole, KnownHost, Product, authenticate, get_secret, get_unlock_status,
+};
 use std::{
     collections::BTreeMap,
     path::PathBuf,
@@ -289,7 +291,10 @@ fn keystore_update_updates_existing_secret_and_rejects_missing_secret() {
         secret.basic.as_ref().map(|basic| basic.password.as_str()),
         Some("pass-2")
     );
-    assert!(secret.apikey.is_none(), "update should replace previous auth type");
+    assert!(
+        secret.apikey.is_none(),
+        "update should replace previous auth type"
+    );
 }
 
 #[test]
@@ -311,8 +316,14 @@ fn keystore_unlock_status_and_lock_commands_manage_unlock_file() {
     let status_output = run_esdiag(&["keystore", "status"], &home, &[]);
     assert_success(&status_output, "keystore status while unlocked");
     let status = get_unlock_status().expect("unlock status while unlocked");
-    assert!(status.unlock_active, "status helper should report active unlock");
-    assert!(status.expires_at_epoch.is_some(), "status should include expiry");
+    assert!(
+        status.unlock_active,
+        "status helper should report active unlock"
+    );
+    assert!(
+        status.expires_at_epoch.is_some(),
+        "status should include expiry"
+    );
 
     let lock_output = run_esdiag(&["keystore", "lock"], &home, &[]);
     assert_success(&lock_output, "keystore lock");

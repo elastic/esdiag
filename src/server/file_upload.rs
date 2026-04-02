@@ -3,8 +3,8 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::{
-    ServerEvent, ServerState, Signals, receiver_stream, signal_event, template, template_event,
-    workflow,
+    ServerEvent, ServerState, UploadProcessSignals, receiver_stream, replace_job_event,
+    signal_event, template, workflow,
 };
 use crate::processor::new_job_id;
 use axum::{
@@ -36,7 +36,7 @@ pub async fn submit(
                     return (
                         StatusCode::BAD_REQUEST,
                         Html(format!(
-                            r#"<div id="job-{job_id}" class="status-box history-item error">
+                            r#"<div id="job-{job_id}" class="status-box history-item status-error">
                         🛑 Invalid file type, only .zip files are allowed.
                     </div>"#
                         )),
@@ -47,7 +47,7 @@ pub async fn submit(
                     return (
                         StatusCode::BAD_REQUEST,
                         Html(format!(
-                            r#"<div id="job-{job_id}" class="status-box history-item error">
+                            r#"<div id="job-{job_id}" class="status-box history-item status-error">
                             🛑 Missing file name
                         </div>"#
                         )),
@@ -57,8 +57,8 @@ pub async fn submit(
 
             let upload_file_element = format!(
                 r#"<div id="job-{job_id}"
-                    class="status-box history-item processing"
-                    data-init="$loading=false; $file_upload.job_id={job_id}; if ({can_use_keystore} && $keystore.locked && $output.secure) {{ $_pending_workflow_action = 'upload-process'; $message = 'Unlock keystore to continue...'; @get('/keystore/modal/process'); }} else {{ @post('/upload/process', {{openWhenHidden: true}}); }}"
+                    class="status-box history-item status-processing"
+                    data-init="$loading=false; $file_upload.job_id={job_id}; if ({can_use_keystore} && $keystore.locked && $output.secure) {{ $_pending_workflow_action = 'upload-process'; $message = 'Unlock keystore to continue...'; @get('/keystore/modal/process', {{filterSignals: {{exclude: /.*/}}}}); }} else {{ @post('/upload/process', {{openWhenHidden: true, filterSignals: {{include: /^(metadata|archive|workflow|file_upload)(\.|$)/}}}}); }}"
                 >
                     <div class="spinner"></div>
                     <span>Processing diagnostic</span>
@@ -101,7 +101,7 @@ pub async fn submit(
                     return (
                         StatusCode::BAD_REQUEST,
                         Html(format!(
-                            r#"<div id="job-{job_id}" class="status-box history-item error">
+                            r#"<div id="job-{job_id}" class="status-box history-item status-error">
                             🛑 Error {error_msg}
                         </div>"#
                         )),
@@ -114,7 +114,7 @@ pub async fn submit(
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Html(format!(
-                    r#"<div id="job-{job_id}" class="status-box history-item error">
+                    r#"<div id="job-{job_id}" class="status-box history-item status-error">
                         🛑 Upload Failed
                     </div>"#
                 )),
@@ -124,7 +124,7 @@ pub async fn submit(
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             Html(format!(
-                r#"<div id="job-{job_id}" class="status-box history-item error">
+                r#"<div id="job-{job_id}" class="status-box history-item status-error">
                     🛑 Upload Failed
                 </div>"#
             )),
@@ -146,7 +146,7 @@ async fn stage_upload_field(
 pub async fn process(
     State(state): State<Arc<ServerState>>,
     headers: HeaderMap,
-    ReadSignals(signals): ReadSignals<Signals>,
+    ReadSignals(signals): ReadSignals<UploadProcessSignals>,
 ) -> impl IntoResponse {
     // Use the signal job_id to override the job.id created in this function
     let job_id = signals.file_upload.job_id;
@@ -163,11 +163,14 @@ pub async fn process(
                 state.record_failure().await;
                 send_event(
                     &tx,
-                    template_event(template::JobFailed {
+                    replace_job_event(
                         job_id,
-                        error: &format!("Unauthorized request: {}", err),
-                        source: "User upload",
-                    }),
+                        template::JobFailed {
+                            job_id,
+                            error: &format!("Unauthorized request: {}", err),
+                            source: "User upload",
+                        },
+                    ),
                 )
                 .await;
                 send_terminal_signal(&tx, &state).await;
@@ -196,7 +199,7 @@ async fn send_terminal_signal(tx: &mpsc::Sender<ServerEvent>, state: &ServerStat
 
 pub(super) async fn run_upload_job(
     state: Arc<ServerState>,
-    signals: Signals,
+    signals: UploadProcessSignals,
     job_id: u64,
     request_user: String,
     tx: mpsc::Sender<ServerEvent>,
@@ -204,11 +207,14 @@ pub(super) async fn run_upload_job(
     if let Err(err) = super::ensure_active_output_ready(&state, &request_user).await {
         send_event(
             &tx,
-            template_event(template::JobFailed {
+            replace_job_event(
                 job_id,
-                error: &err,
-                source: "output target",
-            }),
+                template::JobFailed {
+                    job_id,
+                    error: &err,
+                    source: "output target",
+                },
+            ),
         )
         .await;
         send_terminal_signal(&tx, &state).await;
@@ -221,30 +227,33 @@ pub(super) async fn run_upload_job(
         None => {
             send_event(
                 &tx,
-                template_event(template::JobFailed {
+                replace_job_event(
                     job_id,
-                    error: "Failed to upload file",
-                    source: "User upload",
-                }),
+                    template::JobFailed {
+                        job_id,
+                        error: "Failed to upload file",
+                        source: "User upload",
+                    },
+                ),
             )
             .await;
             send_terminal_signal(&tx, &state).await;
             return;
         }
     };
-    workflow::run_job(state, signals, job_id, request_user, tx, job).await;
+    workflow::run_job(state, signals.into(), job_id, request_user, tx, job, true).await;
 }
 
 #[cfg(test)]
 mod tests {
     use super::{run_upload_job, send_terminal_signal};
-    use crate::server::{ServerEvent, Signals, test_server_state};
+    use crate::server::{ServerEvent, UploadProcessSignals, test_server_state};
     use tokio::sync::mpsc;
 
     #[tokio::test]
     async fn run_upload_job_missing_upload_emits_failure_and_terminal_signal() {
         let state = test_server_state();
-        let signals = Signals::default();
+        let signals = UploadProcessSignals::default();
         let (tx, mut rx) = mpsc::channel(8);
 
         run_upload_job(state, signals, 42, "Anonymous".to_string(), tx).await;
@@ -254,6 +263,11 @@ mod tests {
         while let Some(event) = rx.recv().await {
             match event {
                 ServerEvent::Template(html) if html.contains("Failed to upload file") => {
+                    saw_failure = true;
+                }
+                ServerEvent::ReplaceSelector { selector, html }
+                    if selector == "#job-42" && html.contains("Failed to upload file") =>
+                {
                     saw_failure = true;
                 }
                 ServerEvent::Signals(payload) if payload.contains(r#""processing":false"#) => {
@@ -287,7 +301,7 @@ mod tests {
     #[tokio::test]
     async fn run_upload_job_completes_when_client_disconnected() {
         let state = test_server_state();
-        let signals = Signals::default();
+        let signals = UploadProcessSignals::default();
         let (tx, rx) = mpsc::channel(1);
         drop(rx);
 

@@ -14,6 +14,8 @@ mod index;
 #[cfg(feature = "keystore")]
 mod keystore;
 mod known_host;
+#[cfg(feature = "keystore")]
+mod saved_jobs;
 mod service_link;
 mod settings;
 mod stats;
@@ -41,7 +43,7 @@ use axum::{
     response::IntoResponse,
     response::sse::Event,
     response::{Response, Sse},
-    routing::{get, patch, post},
+    routing::{delete, get, patch, post},
 };
 use bytes::Bytes;
 use clap::ValueEnum;
@@ -173,7 +175,6 @@ impl Server {
         let state = Arc::new(ServerState {
             exporter: Arc::new(RwLock::new(exporter)),
             kibana_url: Arc::new(RwLock::new(kibana_url)),
-            signals: Arc::new(RwLock::new(Signals::default())),
             stats: Arc::new(RwLock::new(Stats::default())),
             workflow_jobs: Arc::new(RwLock::new(HashMap::new())),
             retained_bundles: Arc::new(RwLock::new(HashMap::new())),
@@ -251,7 +252,11 @@ impl Server {
 
             #[cfg(feature = "keystore")]
             let app = if runtime_mode_policy.allows_local_runtime_features() {
-                app.route("/settings", get(hosts::page))
+                app.route("/jobs/saved", get(saved_jobs::list_saved_jobs))
+                    .route("/jobs/saved", post(saved_jobs::save_job))
+                    .route("/jobs/saved/{name}", get(saved_jobs::load_saved_job))
+                    .route("/jobs/saved/{name}", delete(saved_jobs::delete_saved_job))
+                    .route("/settings", get(hosts::page))
                     .route("/settings/create", post(hosts::create_host))
                     .route("/settings/update", put(hosts::update_host))
                     .route("/settings/host/{action}/{id}", post(hosts::host_action))
@@ -364,7 +369,6 @@ impl Drop for Server {
 pub struct ServerState {
     pub exporter: Arc<RwLock<Exporter>>,
     pub kibana_url: Arc<RwLock<String>>,
-    pub signals: Arc<RwLock<Signals>>,
     pub workflow_jobs: Arc<RwLock<HashMap<u64, WorkflowJob>>>,
     pub retained_bundles: Arc<RwLock<HashMap<String, RetainedBundle>>>,
     pub runtime_mode: RuntimeMode,
@@ -745,12 +749,18 @@ impl ServerState {
             Ok(Some(password)) => password,
             Ok(None) => return,
             Err(err) => {
-                tracing::warn!("Failed to inspect CLI unlock lease for web session seed: {}", err);
+                tracing::warn!(
+                    "Failed to inspect CLI unlock lease for web session seed: {}",
+                    err
+                );
                 return;
             }
         };
         if let Err(err) = crate::data::validate_existing_keystore_password(&password) {
-            tracing::warn!("Ignoring invalid CLI unlock lease for web session seed: {}", err);
+            tracing::warn!(
+                "Ignoring invalid CLI unlock lease for web session seed: {}",
+                err
+            );
             return;
         }
         self.set_keystore_unlocked_for(user, password).await;
@@ -909,7 +919,12 @@ impl ServerState {
         bundle.error = Some(error.clone());
         bundle.expires_at_epoch = expires_at_epoch;
         drop(bundles);
-        self.publish_event(Self::retained_bundle_signal(owner, token, "error", Some(&error)));
+        self.publish_event(Self::retained_bundle_signal(
+            owner,
+            token,
+            "error",
+            Some(&error),
+        ));
     }
 
     pub async fn retained_bundle(&self, token: &str) -> Option<RetainedBundle> {
@@ -1144,7 +1159,6 @@ pub(crate) fn test_server_state() -> Arc<ServerState> {
     Arc::new(ServerState {
         exporter: Arc::new(RwLock::new(Exporter::default())),
         kibana_url: Arc::new(RwLock::new(String::new())),
-        signals: Arc::new(RwLock::new(Signals::default())),
         stats: Arc::new(RwLock::new(Stats::default())),
         workflow_jobs: Arc::new(RwLock::new(HashMap::new())),
         retained_bundles: Arc::new(RwLock::new(HashMap::new())),
@@ -1206,55 +1220,106 @@ pub struct JobStats {
     pub active: u64,
 }
 
-#[derive(Deserialize)]
-pub struct Signals {
-    pub auth: Auth,
-    pub processing: bool,
-    pub loading: bool,
-    pub message: String,
+#[derive(Clone, Default, Deserialize)]
+pub struct WorkflowRunSignals {
+    #[serde(default)]
     pub metadata: Identifiers,
     #[serde(default)]
     pub archive: ArchiveSignals,
     #[serde(default)]
     pub workflow: Workflow,
-    pub file_upload: FileUpload,
-    pub service_link: ServiceLink,
-    pub es_api: EsApiKey,
-    #[serde(default)]
-    pub settings: settings::UpdateSettingsForm,
-    #[serde(default)]
-    pub keystore: KeystoreSignals,
-    pub stats: Stats,
-    #[serde(default)]
-    pub tab: Tab,
 }
 
-impl Default for Signals {
-    fn default() -> Self {
-        Signals {
-            auth: Auth { header: false },
-            processing: false,
-            loading: false,
-            message: String::new(),
-            metadata: Identifiers::default(),
-            archive: ArchiveSignals::default(),
-            workflow: Workflow::default(),
-            file_upload: FileUpload { job_id: 0 },
-            service_link: ServiceLink {
-                url: Uri::default(),
-                token: String::new(),
-                filename: String::new(),
-            },
-            es_api: EsApiKey {
-                key: String::new(),
-                url: Uri::default(),
-            },
-            settings: settings::UpdateSettingsForm::default(),
-            keystore: KeystoreSignals::default(),
-            stats: Stats::default(),
-            tab: Tab::FileUpload,
+#[derive(Clone, Default, Deserialize)]
+pub struct KnownHostFormSignals {
+    #[serde(default)]
+    pub metadata: Identifiers,
+    #[serde(default)]
+    pub archive: ArchiveSignals,
+    #[serde(default)]
+    pub workflow: Workflow,
+}
+
+impl From<KnownHostFormSignals> for WorkflowRunSignals {
+    fn from(signals: KnownHostFormSignals) -> Self {
+        Self {
+            metadata: signals.metadata,
+            archive: signals.archive,
+            workflow: signals.workflow,
         }
     }
+}
+
+#[derive(Clone, Default, Deserialize)]
+pub struct ApiKeyFormSignals {
+    #[serde(default)]
+    pub metadata: Identifiers,
+    #[serde(default)]
+    pub archive: ArchiveSignals,
+    #[serde(default)]
+    pub workflow: Workflow,
+    #[serde(default)]
+    pub es_api: EsApiKey,
+}
+
+impl From<ApiKeyFormSignals> for WorkflowRunSignals {
+    fn from(signals: ApiKeyFormSignals) -> Self {
+        Self {
+            metadata: signals.metadata,
+            archive: signals.archive,
+            workflow: signals.workflow,
+        }
+    }
+}
+
+#[derive(Clone, Default, Deserialize)]
+pub struct ServiceLinkFormSignals {
+    #[serde(default)]
+    pub metadata: Identifiers,
+    #[serde(default)]
+    pub archive: ArchiveSignals,
+    #[serde(default)]
+    pub workflow: Workflow,
+    #[serde(default)]
+    pub service_link: ServiceLink,
+}
+
+impl From<ServiceLinkFormSignals> for WorkflowRunSignals {
+    fn from(signals: ServiceLinkFormSignals) -> Self {
+        Self {
+            metadata: signals.metadata,
+            archive: signals.archive,
+            workflow: signals.workflow,
+        }
+    }
+}
+
+#[derive(Clone, Default, Deserialize)]
+pub struct UploadProcessSignals {
+    #[serde(default)]
+    pub metadata: Identifiers,
+    #[serde(default)]
+    pub archive: ArchiveSignals,
+    #[serde(default)]
+    pub workflow: Workflow,
+    #[serde(default)]
+    pub file_upload: FileUpload,
+}
+
+impl From<UploadProcessSignals> for WorkflowRunSignals {
+    fn from(signals: UploadProcessSignals) -> Self {
+        Self {
+            metadata: signals.metadata,
+            archive: signals.archive,
+            workflow: signals.workflow,
+        }
+    }
+}
+
+#[derive(Default, Deserialize)]
+pub struct SettingsUpdateSignals {
+    #[serde(default)]
+    pub settings: settings::UpdateSettingsForm,
 }
 
 #[derive(Clone, Default, Deserialize, Serialize)]
@@ -1271,111 +1336,11 @@ pub struct ArchiveSignals {
     pub error: String,
 }
 
-#[derive(Clone, Debug, Deserialize, Default)]
-pub struct KeystoreSignals {
-    #[serde(default)]
-    pub password: String,
-    #[serde(default)]
-    pub invalid: bool,
-    #[serde(default)]
-    pub confirm: bool,
-    #[serde(default = "default_keystore_locked")]
-    pub locked: bool,
-    #[serde(default)]
-    pub lock_time: i64,
-}
-
-fn default_keystore_locked() -> bool {
-    true
-}
-
-#[derive(Clone, Default, Deserialize, Serialize)]
-pub struct Workflow {
-    pub collect: CollectStage,
-    pub process: ProcessStage,
-    pub send: SendStage,
-}
-
-#[derive(Clone, Deserialize, Serialize)]
-pub struct CollectStage {
-    pub mode: CollectMode,
-    pub source: CollectSource,
-    #[serde(default)]
-    pub known_host: String,
-    #[serde(default)]
-    pub diagnostic_type: String,
-    #[serde(default)]
-    pub save: bool,
-    #[serde(default)]
-    pub save_dir: String,
-}
-
-impl Default for CollectStage {
-    fn default() -> Self {
-        Self {
-            mode: CollectMode::Collect,
-            source: CollectSource::KnownHost,
-            known_host: String::new(),
-            diagnostic_type: "standard".to_string(),
-            save: false,
-            save_dir: String::new(),
-        }
-    }
-}
-
-#[derive(Clone, Deserialize, Serialize)]
-pub struct ProcessStage {
-    pub mode: ProcessMode,
-    #[serde(default = "default_true")]
-    pub enabled: bool,
-    #[serde(default)]
-    pub product: String,
-    #[serde(default)]
-    pub diagnostic_type: String,
-    #[serde(default)]
-    pub advanced: bool,
-    #[serde(default)]
-    pub selected: String,
-}
-
-impl Default for ProcessStage {
-    fn default() -> Self {
-        Self {
-            mode: ProcessMode::Process,
-            enabled: true,
-            product: "elasticsearch".to_string(),
-            diagnostic_type: "standard".to_string(),
-            advanced: false,
-            selected: String::new(),
-        }
-    }
-}
-
-#[derive(Clone, Deserialize, Serialize)]
-pub struct SendStage {
-    pub mode: SendMode,
-    #[serde(default)]
-    pub remote_target: String,
-    #[serde(default)]
-    pub local_target: String,
-    #[serde(default)]
-    pub local_directory: String,
-}
-
-impl Default for SendStage {
-    fn default() -> Self {
-        Self {
-            mode: SendMode::Remote,
-            remote_target: String::new(),
-            local_target: String::new(),
-            local_directory: String::new(),
-        }
-    }
-}
-
-fn default_true() -> bool {
-    true
-}
+// Workflow types are defined in data::workflow and re-exported here for backwards compat
+pub use crate::data::workflow::{
+    CollectMode, CollectSource, CollectStage, ProcessMode, ProcessStage, SendMode, SendStage,
+    Workflow,
+};
 
 #[derive(Clone)]
 pub struct WorkflowJob {
@@ -1441,65 +1406,27 @@ impl WorkflowInput {
     }
 }
 
-#[derive(Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "kebab-case")]
-pub enum CollectMode {
-    Collect,
-    Upload,
-}
-
-#[derive(Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "kebab-case")]
-pub enum CollectSource {
-    KnownHost,
-    ApiKey,
-    ServiceLink,
-    UploadFile,
-}
-
-#[derive(Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "kebab-case")]
-pub enum ProcessMode {
-    Process,
-    Forward,
-}
-
-#[derive(Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "kebab-case")]
-pub enum SendMode {
-    Remote,
-    Local,
-}
-
-#[derive(Default, Deserialize, Serialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum Tab {
-    #[default]
-    FileUpload,
-    ServiceLink,
-    ApiKey,
-}
-
-#[derive(Deserialize)]
-pub struct Auth {
-    pub header: bool,
-}
-
-#[derive(Deserialize)]
+#[derive(Clone, Default, Deserialize)]
 pub struct EsApiKey {
+    #[serde(default)]
     pub key: String,
+    #[serde(default)]
     pub url: Uri,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Default, Deserialize)]
 pub struct FileUpload {
+    #[serde(default)]
     pub job_id: u64,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Default, Deserialize)]
 pub struct ServiceLink {
+    #[serde(default)]
     pub url: Uri,
+    #[serde(default)]
     pub token: String,
+    #[serde(default)]
     pub filename: String,
 }
 
@@ -1529,6 +1456,7 @@ pub enum ServerEvent {
     TargetedSignals { user: String, payload: String },
     Template(String),
     JobFeed(String),
+    ReplaceSelector { selector: String, html: String },
     AppendBody(String),
     PrependSelector { selector: String, html: String },
     ExecuteScript(String),
@@ -1553,6 +1481,14 @@ pub fn template_event(template: impl Template) -> ServerEvent {
 pub fn job_feed_event(template: impl Template) -> ServerEvent {
     let html = template.render().expect("Failed to render template");
     ServerEvent::JobFeed(html)
+}
+
+pub fn replace_job_event(job_id: u64, template: impl Template) -> ServerEvent {
+    let html = template.render().expect("Failed to render template");
+    ServerEvent::ReplaceSelector {
+        selector: format!("#job-{job_id}"),
+        html,
+    }
 }
 
 pub fn html_event(html: impl Into<String>) -> ServerEvent {
@@ -1584,6 +1520,10 @@ pub fn server_event_to_sse(event: ServerEvent) -> Result<Event, Infallible> {
         ServerEvent::JobFeed(html) => PatchElements::new(html)
             .selector("#job-feed")
             .mode(ElementPatchMode::After)
+            .write_as_axum_sse_event(),
+        ServerEvent::ReplaceSelector { selector, html } => PatchElements::new(html)
+            .selector(&selector)
+            .mode(ElementPatchMode::Outer)
             .write_as_axum_sse_event(),
         ServerEvent::AppendBody(html) => PatchElements::new(html)
             .selector("body")
@@ -1735,9 +1675,9 @@ async fn add_client_hint_headers(mut response: Response) -> Response {
 #[cfg(test)]
 mod tests {
     use super::{
-        KeystoreSessionState, RuntimeMode, RuntimeModePolicy, Server, ServerEvent, ServerState,
-        Signals, Stats, event_visible_to_user, receiver_stream, signal_event,
-        targeted_signal_event, test_server_state,
+        ApiKeyFormSignals, KeystoreSessionState, RuntimeMode, RuntimeModePolicy, Server,
+        ServerEvent, ServerState, Stats, WorkflowRunSignals, event_visible_to_user,
+        receiver_stream, replace_job_event, signal_event, targeted_signal_event, test_server_state,
     };
     use crate::data::{create_keystore, write_unlock_lease};
     use crate::exporter::Exporter;
@@ -1755,7 +1695,6 @@ mod tests {
         ServerState {
             exporter: Arc::new(RwLock::new(Exporter::default())),
             kibana_url: Arc::new(RwLock::new(String::new())),
-            signals: Arc::new(RwLock::new(Signals::default())),
             workflow_jobs: Arc::new(RwLock::new(HashMap::new())),
             retained_bundles: Arc::new(RwLock::new(HashMap::new())),
             runtime_mode: mode,
@@ -1801,39 +1740,23 @@ mod tests {
         server.shutdown().await;
     }
 
-    #[cfg(feature = "desktop")]
     #[test]
-    fn signals_deserialize_without_settings_field_in_desktop_mode() {
-        let payload = r#"{"loading":false,"processing":false,"tab":"file-upload","message":"","stats":{"jobs":{"total":0,"success":0,"failed":0},"docs":{"total":0,"errors":0}},"es_api":{"url":"","key":""},"service_link":{"token":"","url":"","filename":""},"file_upload":{"job_id":22775},"metadata":{"user":"Anonymous","account":"","case_number":"","opportunity":""},"auth":{"header":false},"theme":{"dark":true}}"#;
+    fn workflow_run_signals_deserialize_without_archive_field() {
+        let payload = r#"{"metadata":{"user":"Anonymous","account":"","case_number":"","opportunity":""},"workflow":{"collect":{"mode":"collect","source":"known-host","known_host":"esdiag-prod","diagnostic_type":"standard","save":true,"save_dir":"/Users/reno/Downloads"},"process":{"mode":"forward","enabled":false,"product":"elasticsearch","diagnostic_type":"standard","selected":""},"send":{"mode":"remote","remote_target":"b8b9a090-21fa-419f-a731-ae8676fdd835","local_target":"directory","local_directory":"Directory /tmp/output"}}}"#;
 
-        let parsed = serde_json::from_str::<Signals>(payload);
-        assert!(
-            parsed.is_ok(),
-            "desktop signals payload without settings should deserialize"
-        );
-    }
-
-    #[test]
-    fn workflow_signals_deserialize_without_tab_field() {
-        let payload = r#"{"loading":true,"processing":false,"message":"Collecting from known host...","stats":{"jobs":{"total":0,"success":0,"failed":0,"active":0},"docs":{"total":0,"errors":0}},"service_link":{"token":"","url":"","filename":""},"file_upload":{"job_id":0},"es_api":{"url":"","key":""},"workflow":{"send":{"mode":"remote","remote_target":"b8b9a090-21fa-419f-a731-ae8676fdd835","local_target":"directory","local_directory":"Directory /tmp/output"},"process":{"mode":"forward","enabled":false,"product":"elasticsearch","diagnostic_type":"standard","selected":""},"collect":{"mode":"collect","source":"known-host","known_host":"esdiag-prod","diagnostic_type":"standard","save":true,"save_dir":"/Users/reno/Downloads"}},"keystore":{"locked":false,"lock_time":1773881448},"metadata":{"user":"Anonymous","account":"","case_number":"","opportunity":""},"auth":{"header":false},"theme":{"dark":true}}"#;
-
-        let parsed = serde_json::from_str::<Signals>(payload)
-            .expect("workflow signals payload without tab should deserialize");
-        assert!(matches!(parsed.tab, super::Tab::FileUpload));
+        let parsed = serde_json::from_str::<WorkflowRunSignals>(payload)
+            .expect("workflow run payload without archive should deserialize");
         assert_eq!(parsed.workflow.collect.known_host, "esdiag-prod");
+        assert!(parsed.archive.download_token.is_empty());
     }
 
     #[test]
-    fn legacy_signals_deserialize_without_workflow_field() {
-        let payload = r#"{"loading":false,"processing":false,"tab":"file-upload","message":"","stats":{"jobs":{"total":0,"success":0,"failed":0},"docs":{"total":0,"errors":0}},"es_api":{"url":"","key":""},"service_link":{"token":"","url":"","filename":""},"file_upload":{"job_id":22775},"metadata":{"user":"Anonymous","account":"","case_number":"","opportunity":""},"auth":{"header":false}}"#;
+    fn api_key_form_signals_deserialize_without_archive_field() {
+        let payload = r#"{"metadata":{"user":"Anonymous","account":"","case_number":"","opportunity":""},"workflow":{"collect":{"mode":"collect","source":"api-key","known_host":"","diagnostic_type":"standard","save":false,"save_dir":""},"process":{"mode":"process","enabled":true,"product":"elasticsearch","diagnostic_type":"standard","selected":""},"send":{"mode":"remote","remote_target":"","local_target":"","local_directory":""}},"es_api":{"url":"","key":"secret"}}"#;
 
-        let parsed = serde_json::from_str::<Signals>(payload)
-            .expect("legacy signals payload without workflow should deserialize");
-        assert!(matches!(parsed.workflow.collect.mode, super::CollectMode::Collect));
-        assert!(matches!(
-            parsed.workflow.collect.source,
-            super::CollectSource::KnownHost
-        ));
+        let parsed = serde_json::from_str::<ApiKeyFormSignals>(payload)
+            .expect("api key payload without archive should deserialize");
+        assert_eq!(parsed.es_api.key, "secret");
         assert!(parsed.archive.download_token.is_empty());
     }
 
@@ -1867,6 +1790,26 @@ mod tests {
             &signal_event(r#"{"stats":{"jobs":{"total":1}}}"#),
             "bob@example.com"
         ));
+    }
+
+    #[test]
+    fn replace_job_event_targets_matching_job_selector() {
+        let event = replace_job_event(
+            42,
+            crate::server::template::JobFailed {
+                job_id: 42,
+                error: "boom",
+                source: "upload.zip",
+            },
+        );
+
+        match event {
+            ServerEvent::ReplaceSelector { selector, html } => {
+                assert_eq!(selector, "#job-42");
+                assert!(html.contains(r#"id="job-42""#));
+            }
+            other => panic!("expected replace selector event, got {other:?}"),
+        }
     }
 
     #[tokio::test]

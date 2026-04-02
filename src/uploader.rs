@@ -38,7 +38,15 @@ pub async fn upload_file(
     ensure_upload_exists(&client, &upload_id, api_url).await?;
 
     let file_digest = digest_file(file_path).await?;
-    upload_parts(&client, file_path, &filename, &upload_id, &file_digest, api_url).await?;
+    upload_parts(
+        &client,
+        file_path,
+        &filename,
+        &upload_id,
+        &file_digest,
+        api_url,
+    )
+    .await?;
     finalize_upload(&client, &upload_id, &file_digest, api_url).await
 }
 

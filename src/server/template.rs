@@ -86,9 +86,6 @@ pub struct Jobs {
     pub configured_local_path: String,
     pub configured_remote_target: String,
     pub default_save_dir: String,
-    pub initial_send_mode: String,
-    pub initial_local_target: String,
-    pub initial_remote_target: String,
     pub kibana_url: String,
     pub key_id: Option<u64>,
     pub link_id: Option<u64>,
@@ -107,6 +104,29 @@ pub struct Jobs {
     pub keystore_locked: bool,
     pub keystore_lock_time: i64,
     pub show_keystore_bootstrap: bool,
+    // Saved job fields
+    pub saved_job_name: Option<String>,
+    pub saved_collect_mode: String,
+    pub saved_collect_source: String,
+    pub saved_known_host: String,
+    pub saved_diagnostic_type: String,
+    pub saved_collect_save: bool,
+    pub saved_save_dir: String,
+    pub saved_process_mode: String,
+    pub saved_process_enabled: bool,
+    pub saved_process_product: String,
+    pub saved_process_diagnostic_type: String,
+    pub saved_process_selected: String,
+    pub saved_send_mode: String,
+    pub saved_remote_target: String,
+    pub saved_local_target: String,
+    pub saved_local_directory: String,
+    pub saved_user: String,
+    pub saved_account: String,
+    pub saved_case_number: String,
+    pub saved_opportunity: String,
+    pub saved_stale_host: bool,
+    pub saved_message: String,
 }
 
 #[derive(Template)]
@@ -419,11 +439,12 @@ fn output_target_label(target: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{active_output_requires_keystore, build_footer_output_context};
+    use super::{Jobs, active_output_requires_keystore, build_footer_output_context};
     use crate::{
         data::{HostRole, KnownHost, Product, Uri},
         exporter::Exporter,
     };
+    use askama::Template;
     use std::{collections::BTreeMap, path::PathBuf, sync::Mutex};
     use tempfile::TempDir;
     use url::Url;
@@ -530,5 +551,65 @@ mod tests {
             &dir_exporter.target_uri(),
             &dir_exporter
         ));
+    }
+
+    #[test]
+    fn jobs_template_does_not_seed_conflicting_workflow_root_signal() {
+        let page = Jobs {
+            auth_header: false,
+            debug: false,
+            desktop: false,
+            collect_hosts: vec![],
+            collect_secure_hosts_json: "[]".to_string(),
+            configured_local_path: String::new(),
+            configured_remote_target: String::new(),
+            default_save_dir: "/tmp".to_string(),
+            kibana_url: String::new(),
+            key_id: None,
+            link_id: None,
+            process_options_json: "{}".to_string(),
+            send_secure_hosts_json: "[]".to_string(),
+            send_local_hosts: vec![],
+            send_remote_hosts: vec![],
+            upload_id: None,
+            stats: "{}".to_string(),
+            user: "tester@example.com".to_string(),
+            user_initial: 'T',
+            version: "test".to_string(),
+            theme_dark: false,
+            runtime_mode: "user".to_string(),
+            can_use_keystore: true,
+            keystore_locked: false,
+            keystore_lock_time: 0,
+            show_keystore_bootstrap: false,
+            saved_job_name: None,
+            saved_collect_mode: "upload".to_string(),
+            saved_collect_source: "upload-file".to_string(),
+            saved_known_host: String::new(),
+            saved_diagnostic_type: "standard".to_string(),
+            saved_collect_save: false,
+            saved_save_dir: "/tmp".to_string(),
+            saved_process_mode: "process".to_string(),
+            saved_process_enabled: true,
+            saved_process_product: "elasticsearch".to_string(),
+            saved_process_diagnostic_type: "standard".to_string(),
+            saved_process_selected: String::new(),
+            saved_send_mode: "local".to_string(),
+            saved_remote_target: String::new(),
+            saved_local_target: "directory".to_string(),
+            saved_local_directory: "/tmp".to_string(),
+            saved_user: String::new(),
+            saved_account: String::new(),
+            saved_case_number: String::new(),
+            saved_opportunity: String::new(),
+            saved_stale_host: false,
+            saved_message: String::new(),
+        };
+
+        let html = page.render().expect("jobs template renders");
+        assert!(
+            !html.contains(r#"data-signals:workflow="{}""#),
+            "jobs page should not seed a top-level workflow object that overrides nested workflow signals"
+        );
     }
 }

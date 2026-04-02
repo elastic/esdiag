@@ -191,7 +191,10 @@ async fn host_update_preserves_omitted_fields_and_applies_cert_overrides() {
             secret,
             ..
         } => {
-            assert!(*accept_invalid_certs, "omitted cert flag should preserve value");
+            assert!(
+                *accept_invalid_certs,
+                "omitted cert flag should preserve value"
+            );
             assert_eq!(apikey.as_deref(), Some("legacy-key"));
             assert!(secret.is_none());
             assert_eq!(roles, &vec![HostRole::Collect, HostRole::Send]);
@@ -385,10 +388,11 @@ async fn host_update_supports_secret_rotation_and_apikey_override() {
 
     let hosts = read_hosts(&home);
     match hosts.get("prod-es").expect("saved host exists") {
-        KnownHost::ApiKey {
-            apikey, secret, ..
-        } => {
-            assert!(apikey.is_none(), "secret-backed host should not persist api key");
+        KnownHost::ApiKey { apikey, secret, .. } => {
+            assert!(
+                apikey.is_none(),
+                "secret-backed host should not persist api key"
+            );
             assert_eq!(secret.as_deref(), Some("new-secret"));
         }
         _ => panic!("expected api key host"),
@@ -409,11 +413,12 @@ async fn host_update_supports_secret_rotation_and_apikey_override() {
 
     let hosts = read_hosts(&home);
     match hosts.get("prod-es").expect("saved host exists") {
-        KnownHost::ApiKey {
-            apikey, secret, ..
-        } => {
+        KnownHost::ApiKey { apikey, secret, .. } => {
             assert_eq!(apikey.as_deref(), Some("override-key"));
-            assert!(secret.is_none(), "apikey override should clear secret reference");
+            assert!(
+                secret.is_none(),
+                "apikey override should clear secret reference"
+            );
         }
         _ => panic!("expected api key host"),
     }
@@ -502,7 +507,11 @@ fn host_delete_conflicts_and_missing_host_updates_fail() {
     );
 
     let missing_delete = run_esdiag(&["host", "missing-es", "--delete"], &home, &[]);
-    assert_failure_contains(&missing_delete, "Host 'missing-es' not found", "missing delete");
+    assert_failure_contains(
+        &missing_delete,
+        "Host 'missing-es' not found",
+        "missing delete",
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -600,7 +609,10 @@ async fn host_update_rejects_partial_basic_auth_for_existing_basic_host() {
         } => {
             assert_eq!(username.as_deref(), Some("elastic"));
             assert_eq!(password.as_deref(), Some("old-pass"));
-            assert!(secret.is_none(), "failed update should not add a secret reference");
+            assert!(
+                secret.is_none(),
+                "failed update should not add a secret reference"
+            );
         }
         _ => panic!("expected basic host"),
     }

@@ -32,7 +32,7 @@
             title="Toggle keystore"
             aria-label="Toggle keystore"
             data-on:click="
-                if ($keystore.locked) { @get('/keystore/modal'); }
+                if ($keystore.locked) { @get('/keystore/modal', {filterSignals: {exclude: /.*/}}); }
                 else if (confirm('Lock keystore and disable secret usage?')) { @post('/keystore/lock'); }
             "
         >

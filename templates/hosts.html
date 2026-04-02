@@ -10,6 +10,9 @@
     {{ clusters_panel_html|safe }}
 </content>
 {% if show_keystore_bootstrap %}
-<div id="keystore-bootstrap-init" data-init="@get('/keystore/bootstrap-modal')"></div>
+<div
+    id="keystore-bootstrap-init"
+    data-init="@get('/keystore/bootstrap-modal', {filterSignals: {exclude: /.*/}})"
+></div>
 {% endif %}
 {% endblock %}
