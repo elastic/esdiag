@@ -189,8 +189,9 @@ mod tests {
         http::StatusCode,
         routing::get,
     };
+    use tokio::task::JoinHandle;
 
-    async fn spawn_status_server(status: StatusCode) -> (Url, tokio::task::JoinHandle<()>) {
+    async fn spawn_status_server(status: StatusCode) -> (Url, JoinHandle<()>) {
         let app = Router::new().route(
             "/",
             get(move || async move { (status, "test response") }),
@@ -206,6 +207,11 @@ mod tests {
         (url, server)
     }
 
+    async fn stop_status_server(server: JoinHandle<()>) {
+        server.abort();
+        let _ = server.await;
+    }
+
     #[tokio::test]
     async fn is_connected_returns_true_for_success_status() {
         let (url, server) = spawn_status_server(StatusCode::OK).await;
@@ -214,7 +220,7 @@ mod tests {
 
         assert!(receiver.is_connected().await);
 
-        server.abort();
+        stop_status_server(server).await;
     }
 
     #[tokio::test]
@@ -225,6 +231,6 @@ mod tests {
 
         assert!(!receiver.is_connected().await);
 
-        server.abort();
+        stop_status_server(server).await;
     }
 }
