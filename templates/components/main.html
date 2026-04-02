@@ -467,7 +467,7 @@
         id="job-{{ key_id }}"
         data-init="$loading = true; $tab='api-key'; $message = 'Processing api key {{ key_id }}'; @post('/api_key/{{ key_id }}', {filterSignals: {exclude: /.*/}})"
         data-signals:_job_id="true"
-        class="status-box loading"
+        class="status-box history-item status-processing"
     >
         <div class="spinner"></div>
         Processing api key for {{ key_id }}
@@ -477,7 +477,7 @@
         id="job-{{ link_id }}"
         data-init="$loading = true; $tab='service-link'; $message = 'Forwarding service link {{ link_id }}'; @post('/service_link/{{ link_id }}', {filterSignals: {exclude: /.*/}})"
         data-signals:_job_id="true"
-        class="status-box loading"
+        class="status-box history-item status-processing"
     >
         <div class="spinner"></div>
         Loading service link {{ link_id }}
@@ -487,7 +487,7 @@
         id="job-{{ upload_id }}"
         data-init="$loading = true; $file_upload.job_id={{ upload_id|json }}; $message = 'Processing file upload {{ upload_id }}'; @post('/upload/process', {filterSignals: {include: /^(archive|metadata|workflow|file_upload)(\.|$)/}})"
         data-signals:_job_id="true"
-        class="status-box loading"
+        class="status-box history-item status-processing"
     >
         <div class="spinner"></div>
         Loading file upload {{ upload_id }}

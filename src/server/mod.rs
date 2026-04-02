@@ -1456,6 +1456,7 @@ pub enum ServerEvent {
     TargetedSignals { user: String, payload: String },
     Template(String),
     JobFeed(String),
+    ReplaceSelector { selector: String, html: String },
     AppendBody(String),
     PrependSelector { selector: String, html: String },
     ExecuteScript(String),
@@ -1480,6 +1481,14 @@ pub fn template_event(template: impl Template) -> ServerEvent {
 pub fn job_feed_event(template: impl Template) -> ServerEvent {
     let html = template.render().expect("Failed to render template");
     ServerEvent::JobFeed(html)
+}
+
+pub fn replace_job_event(job_id: u64, template: impl Template) -> ServerEvent {
+    let html = template.render().expect("Failed to render template");
+    ServerEvent::ReplaceSelector {
+        selector: format!("#job-{job_id}"),
+        html,
+    }
 }
 
 pub fn html_event(html: impl Into<String>) -> ServerEvent {
@@ -1511,6 +1520,10 @@ pub fn server_event_to_sse(event: ServerEvent) -> Result<Event, Infallible> {
         ServerEvent::JobFeed(html) => PatchElements::new(html)
             .selector("#job-feed")
             .mode(ElementPatchMode::After)
+            .write_as_axum_sse_event(),
+        ServerEvent::ReplaceSelector { selector, html } => PatchElements::new(html)
+            .selector(&selector)
+            .mode(ElementPatchMode::Outer)
             .write_as_axum_sse_event(),
         ServerEvent::AppendBody(html) => PatchElements::new(html)
             .selector("body")
@@ -1664,7 +1677,7 @@ mod tests {
     use super::{
         ApiKeyFormSignals, KeystoreSessionState, RuntimeMode, RuntimeModePolicy, Server,
         ServerEvent, ServerState, Stats, WorkflowRunSignals, event_visible_to_user,
-        receiver_stream, signal_event, targeted_signal_event, test_server_state,
+        receiver_stream, replace_job_event, signal_event, targeted_signal_event, test_server_state,
     };
     use crate::data::{create_keystore, write_unlock_lease};
     use crate::exporter::Exporter;
@@ -1777,6 +1790,26 @@ mod tests {
             &signal_event(r#"{"stats":{"jobs":{"total":1}}}"#),
             "bob@example.com"
         ));
+    }
+
+    #[test]
+    fn replace_job_event_targets_matching_job_selector() {
+        let event = replace_job_event(
+            42,
+            crate::server::template::JobFailed {
+                job_id: 42,
+                error: "boom",
+                source: "upload.zip",
+            },
+        );
+
+        match event {
+            ServerEvent::ReplaceSelector { selector, html } => {
+                assert_eq!(selector, "#job-42");
+                assert!(html.contains(r#"id="job-42""#));
+            }
+            other => panic!("expected replace selector event, got {other:?}"),
+        }
     }
 
     #[tokio::test]

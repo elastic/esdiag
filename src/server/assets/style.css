@@ -827,13 +827,11 @@ icon-auto-theme > icon-divider {
 }
 
 icon-sun {
-    color: var(--theme-sun-icon-color);
     -webkit-mask-image: var(--icon-sun);
     mask-image: var(--icon-sun);
 }
 
 icon-moon {
-    color: var(--theme-moon-icon-color);
     -webkit-mask-image: var(--icon-moon);
     mask-image: var(--icon-moon);
 }
@@ -3257,11 +3255,17 @@ content:is(.workflow-content, .jobs-content) .status-box {
     max-width: 800px;
     margin: var(--size-s) auto;
     padding: var(--size-m);
+    border-left: 4px solid transparent;
     border-radius: var(--border-radius);
     transition:
         background-color 0.3s ease,
+        border-color 0.3s ease,
         color 0.3s ease,
         transform 0.2s ease;
+}
+
+.status-box a {
+    color: inherit;
 }
 
 .loading {
@@ -3270,17 +3274,17 @@ content:is(.workflow-content, .jobs-content) .status-box {
     font-weight: 500;
 }
 
-.success {
+.status-success {
     background-color: color-mix(in srgb, var(--color-success) 20%, transparent);
     color: var(--color-success);
 }
 
-.error {
+.status-error {
     background-color: color-mix(in srgb, var(--color-danger) 22%, transparent);
     color: var(--color-danger);
 }
 
-.processing {
+.status-processing {
     background-color: color-mix(in srgb, var(--color-primary) 20%, transparent);
     color: var(--color-primary);
 }

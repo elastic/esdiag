@@ -1,7 +1,7 @@
 use super::ServerState;
 use crate::data::{
-    CollectSource, HostRole, KnownHost, SavedJob, Workflow, load_saved_jobs_async,
-    save_saved_jobs, with_saved_jobs_async,
+    CollectSource, HostRole, KnownHost, SavedJob, Workflow, load_saved_jobs_async, save_saved_jobs,
+    with_saved_jobs_async,
 };
 use crate::processor::Identifiers;
 use askama::Template;

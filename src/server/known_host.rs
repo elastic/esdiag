@@ -123,10 +123,10 @@ pub(super) async fn run_known_host_form(
 
     if let Some(password) = keystore_password {
         with_scoped_keystore_password(password, async move {
-            workflow::run_job(state, signals.into(), job_id, request_user, tx, job).await;
+            workflow::run_job(state, signals.into(), job_id, request_user, tx, job, false).await;
         })
         .await;
     } else {
-        workflow::run_job(state, signals.into(), job_id, request_user, tx, job).await;
+        workflow::run_job(state, signals.into(), job_id, request_user, tx, job, false).await;
     }
 }

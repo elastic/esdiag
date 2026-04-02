@@ -13,7 +13,6 @@
     data-signals:archive.ready_token="''"
     data-signals:archive.status="'idle'"
     data-signals:archive.error="''"
-    data-signals:workflow="{}"
     data-signals:_collect_secure_hosts="{{ collect_secure_hosts_json }}"
     data-signals:_send_secure_hosts="{{ send_secure_hosts_json }}"
     data-signals:loaded_job_name="{% if let Some(name) = saved_job_name %}{{ name|json }}{% else %}''{% endif %}"
@@ -875,7 +874,7 @@
                 id="job-{{ key_id }}"
                 data-init="$loading = true; $workflow.collect.mode='collect'; $workflow.collect.source='api-key'; $message = 'Processing api key {{ key_id }}'; @post('/api_key/{{ key_id }}', {filterSignals: {exclude: /.*/}})"
                 data-signals:_job_id="true"
-                class="status-box loading"
+                class="status-box history-item status-processing"
             >
                 <div class="spinner"></div>
                 Processing api key for {{ key_id }}
@@ -885,7 +884,7 @@
                 id="job-{{ link_id }}"
                 data-init="$loading = true; $workflow.collect.mode='upload'; $workflow.collect.source='service-link'; $message = 'Forwarding service link {{ link_id }}'; @post('/service_link/{{ link_id }}', {filterSignals: {exclude: /.*/}})"
                 data-signals:_job_id="true"
-                class="status-box loading"
+                class="status-box history-item status-processing"
             >
                 <div class="spinner"></div>
                 Loading service link {{ link_id }}
@@ -895,7 +894,7 @@
                 id="job-{{ upload_id }}"
                 data-init="$loading = true; $workflow.collect.mode='upload'; $workflow.collect.source='upload-file'; $file_upload.job_id={{ upload_id|json }}; $message = 'Processing file upload {{ upload_id }}'; @post('/upload/process', {filterSignals: {include: /^(metadata|archive|workflow|file_upload)(\.|$)/}})"
                 data-signals:_job_id="true"
-                class="status-box loading"
+                class="status-box history-item status-processing"
             >
                 <div class="spinner"></div>
                 Loading file upload {{ upload_id }}

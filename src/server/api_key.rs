@@ -162,11 +162,11 @@ pub(super) async fn run_api_key_form(
     let keystore_password = state.keystore_password_for(&request_user).await;
     if let Some(password) = keystore_password {
         with_scoped_keystore_password(password, async move {
-            workflow::run_job(state, signals.into(), job_id, request_user, tx, job).await;
+            workflow::run_job(state, signals.into(), job_id, request_user, tx, job, false).await;
         })
         .await;
     } else {
-        workflow::run_job(state, signals.into(), job_id, request_user, tx, job).await;
+        workflow::run_job(state, signals.into(), job_id, request_user, tx, job, false).await;
     }
 }
 
@@ -199,6 +199,7 @@ async fn run_api_key_id(
         request_user,
         tx,
         job,
+        true,
     )
     .await;
 }

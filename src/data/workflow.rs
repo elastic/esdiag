@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Default, Deserialize, Serialize)]
+#[serde(default)]
 pub struct Workflow {
     pub collect: CollectStage,
     pub process: ProcessStage,
@@ -116,4 +117,27 @@ pub enum ProcessMode {
 pub enum SendMode {
     Remote,
     Local,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{CollectMode, CollectSource, SendMode, Workflow};
+    use serde_json::json;
+
+    #[test]
+    fn workflow_deserializes_with_missing_process_and_send_stages() {
+        let workflow: Workflow = serde_json::from_value(json!({
+            "collect": {
+                "mode": "upload",
+                "source": "upload-file",
+                "save": false
+            }
+        }))
+        .expect("workflow should deserialize with defaults");
+
+        assert!(workflow.collect.mode == CollectMode::Upload);
+        assert!(workflow.collect.source == CollectSource::UploadFile);
+        assert!(workflow.process.enabled);
+        assert!(workflow.send.mode == SendMode::Remote);
+    }
 }

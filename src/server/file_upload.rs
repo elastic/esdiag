@@ -3,8 +3,8 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::{
-    ServerEvent, ServerState, UploadProcessSignals, receiver_stream, signal_event, template,
-    template_event, workflow,
+    ServerEvent, ServerState, UploadProcessSignals, receiver_stream, replace_job_event,
+    signal_event, template, workflow,
 };
 use crate::processor::new_job_id;
 use axum::{
@@ -36,7 +36,7 @@ pub async fn submit(
                     return (
                         StatusCode::BAD_REQUEST,
                         Html(format!(
-                            r#"<div id="job-{job_id}" class="status-box history-item error">
+                            r#"<div id="job-{job_id}" class="status-box history-item status-error">
                         🛑 Invalid file type, only .zip files are allowed.
                     </div>"#
                         )),
@@ -47,7 +47,7 @@ pub async fn submit(
                     return (
                         StatusCode::BAD_REQUEST,
                         Html(format!(
-                            r#"<div id="job-{job_id}" class="status-box history-item error">
+                            r#"<div id="job-{job_id}" class="status-box history-item status-error">
                             🛑 Missing file name
                         </div>"#
                         )),
@@ -57,7 +57,7 @@ pub async fn submit(
 
             let upload_file_element = format!(
                 r#"<div id="job-{job_id}"
-                    class="status-box history-item processing"
+                    class="status-box history-item status-processing"
                     data-init="$loading=false; $file_upload.job_id={job_id}; if ({can_use_keystore} && $keystore.locked && $output.secure) {{ $_pending_workflow_action = 'upload-process'; $message = 'Unlock keystore to continue...'; @get('/keystore/modal/process', {{filterSignals: {{exclude: /.*/}}}}); }} else {{ @post('/upload/process', {{openWhenHidden: true, filterSignals: {{include: /^(metadata|archive|workflow|file_upload)(\.|$)/}}}}); }}"
                 >
                     <div class="spinner"></div>
@@ -101,7 +101,7 @@ pub async fn submit(
                     return (
                         StatusCode::BAD_REQUEST,
                         Html(format!(
-                            r#"<div id="job-{job_id}" class="status-box history-item error">
+                            r#"<div id="job-{job_id}" class="status-box history-item status-error">
                             🛑 Error {error_msg}
                         </div>"#
                         )),
@@ -114,7 +114,7 @@ pub async fn submit(
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Html(format!(
-                    r#"<div id="job-{job_id}" class="status-box history-item error">
+                    r#"<div id="job-{job_id}" class="status-box history-item status-error">
                         🛑 Upload Failed
                     </div>"#
                 )),
@@ -124,7 +124,7 @@ pub async fn submit(
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             Html(format!(
-                r#"<div id="job-{job_id}" class="status-box history-item error">
+                r#"<div id="job-{job_id}" class="status-box history-item status-error">
                     🛑 Upload Failed
                 </div>"#
             )),
@@ -163,11 +163,14 @@ pub async fn process(
                 state.record_failure().await;
                 send_event(
                     &tx,
-                    template_event(template::JobFailed {
+                    replace_job_event(
                         job_id,
-                        error: &format!("Unauthorized request: {}", err),
-                        source: "User upload",
-                    }),
+                        template::JobFailed {
+                            job_id,
+                            error: &format!("Unauthorized request: {}", err),
+                            source: "User upload",
+                        },
+                    ),
                 )
                 .await;
                 send_terminal_signal(&tx, &state).await;
@@ -204,11 +207,14 @@ pub(super) async fn run_upload_job(
     if let Err(err) = super::ensure_active_output_ready(&state, &request_user).await {
         send_event(
             &tx,
-            template_event(template::JobFailed {
+            replace_job_event(
                 job_id,
-                error: &err,
-                source: "output target",
-            }),
+                template::JobFailed {
+                    job_id,
+                    error: &err,
+                    source: "output target",
+                },
+            ),
         )
         .await;
         send_terminal_signal(&tx, &state).await;
@@ -221,18 +227,21 @@ pub(super) async fn run_upload_job(
         None => {
             send_event(
                 &tx,
-                template_event(template::JobFailed {
+                replace_job_event(
                     job_id,
-                    error: "Failed to upload file",
-                    source: "User upload",
-                }),
+                    template::JobFailed {
+                        job_id,
+                        error: "Failed to upload file",
+                        source: "User upload",
+                    },
+                ),
             )
             .await;
             send_terminal_signal(&tx, &state).await;
             return;
         }
     };
-    workflow::run_job(state, signals.into(), job_id, request_user, tx, job).await;
+    workflow::run_job(state, signals.into(), job_id, request_user, tx, job, true).await;
 }
 
 #[cfg(test)]
@@ -254,6 +263,11 @@ mod tests {
         while let Some(event) = rx.recv().await {
             match event {
                 ServerEvent::Template(html) if html.contains("Failed to upload file") => {
+                    saw_failure = true;
+                }
+                ServerEvent::ReplaceSelector { selector, html }
+                    if selector == "#job-42" && html.contains("Failed to upload file") =>
+                {
                     saw_failure = true;
                 }
                 ServerEvent::Signals(payload) if payload.contains(r#""processing":false"#) => {

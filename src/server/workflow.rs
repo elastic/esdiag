@@ -4,7 +4,7 @@
 
 use super::{
     CollectSource, ProcessMode, SendMode, ServerEvent, ServerState, WorkflowInput, WorkflowJob,
-    WorkflowRunSignals, job_feed_event, signal_event, template, template_event,
+    WorkflowRunSignals, job_feed_event, replace_job_event, signal_event, template, template_event,
 };
 use crate::{
     data::{HostRole, Product, Uri},
@@ -40,6 +40,7 @@ struct WorkflowExecutionContext<'a> {
     identifiers: Identifiers,
     request_user: &'a str,
     tx: &'a mpsc::Sender<ServerEvent>,
+    replace_existing_entry: bool,
 }
 
 pub async fn run_job(
@@ -49,6 +50,7 @@ pub async fn run_job(
     request_user: String,
     tx: mpsc::Sender<ServerEvent>,
     job: WorkflowJob,
+    replace_existing_entry: bool,
 ) {
     let source = job.source().to_string();
     let download_token = signals.archive.download_token.trim().to_string();
@@ -68,11 +70,15 @@ pub async fn run_job(
         state.record_failure().await;
         send_event(
             &tx,
-            template_event(template::JobFailed {
+            terminal_job_event(
+                replace_existing_entry,
                 job_id,
-                error: &error.to_string(),
-                source: &source,
-            }),
+                template::JobFailed {
+                    job_id,
+                    error: &error.to_string(),
+                    source: &source,
+                },
+            ),
         )
         .await;
         send_terminal_signal(&tx, &state).await;
@@ -104,6 +110,7 @@ pub async fn run_job(
                 &source,
                 identifiers,
                 &tx,
+                replace_existing_entry,
             )
             .await
         }
@@ -117,6 +124,7 @@ pub async fn run_job(
                     identifiers,
                     request_user: &request_user,
                     tx: &tx,
+                    replace_existing_entry,
                 },
                 uri.clone(),
             )
@@ -136,6 +144,7 @@ pub async fn run_job(
                     identifiers,
                     request_user: &request_user,
                     tx: &tx,
+                    replace_existing_entry,
                 },
                 host.clone(),
                 diagnostic_type.clone(),
@@ -165,11 +174,15 @@ pub async fn run_job(
         state.record_failure().await;
         send_event(
             &tx,
-            template_event(template::JobFailed {
+            terminal_job_event(
+                replace_existing_entry,
                 job_id,
-                error: &error.to_string(),
-                source: &source,
-            }),
+                template::JobFailed {
+                    job_id,
+                    error: &error.to_string(),
+                    source: &source,
+                },
+            ),
         )
         .await;
     }
@@ -186,6 +199,7 @@ async fn execute_local_archive_job(
     source: &str,
     identifiers: Identifiers,
     tx: &mpsc::Sender<ServerEvent>,
+    replace_existing_entry: bool,
 ) -> Result<()> {
     match signals.workflow.process.mode {
         ProcessMode::Process => {
@@ -200,10 +214,22 @@ async fn execute_local_archive_job(
                 identifiers,
                 process_selection,
                 JobDescriptor { id: job_id, source },
+                replace_existing_entry,
             )
             .await
         }
-        ProcessMode::Forward => run_forward_job(state, tx, signals, job_id, source, &path).await,
+        ProcessMode::Forward => {
+            run_forward_job(
+                state,
+                tx,
+                signals,
+                job_id,
+                source,
+                &path,
+                replace_existing_entry,
+            )
+            .await
+        }
     }
 }
 
@@ -216,15 +242,18 @@ async fn execute_service_link_job(ctx: WorkflowExecutionContext<'_>, uri: Uri) -
         identifiers,
         request_user,
         tx,
+        replace_existing_entry,
     } = ctx;
 
     if signals.workflow.collect.save {
         state.record_job_started().await;
-        send_event(
-            tx,
-            job_feed_event(template::JobCollectionProcessing { job_id, source }),
-        )
-        .await;
+        if !replace_existing_entry {
+            send_event(
+                tx,
+                job_feed_event(template::JobCollectionProcessing { job_id, source }),
+            )
+            .await;
+        }
         send_event(tx, signal_event(r#"{"loading":false,"processing":true}"#)).await;
 
         let collected =
@@ -247,11 +276,14 @@ async fn execute_service_link_job(ctx: WorkflowExecutionContext<'_>, uri: Uri) -
             state.record_success(0, 0).await;
             send_event(
                 tx,
-                template_event(template::JobCollectionCompleted {
+                replace_job_event(
                     job_id,
-                    source,
-                    archive_path: &archive_filename,
-                }),
+                    template::JobCollectionCompleted {
+                        job_id,
+                        source,
+                        archive_path: &archive_filename,
+                    },
+                ),
             )
             .await;
             let handoff_job_id = new_job_id();
@@ -263,6 +295,7 @@ async fn execute_service_link_job(ctx: WorkflowExecutionContext<'_>, uri: Uri) -
                 source,
                 collected.identifiers,
                 tx,
+                false,
             )
             .await;
         }
@@ -285,12 +318,13 @@ async fn execute_service_link_job(ctx: WorkflowExecutionContext<'_>, uri: Uri) -
                 identifiers,
                 process_selection,
                 JobDescriptor { id: job_id, source },
+                false,
             )
             .await
         }
         ProcessMode::Forward => {
             let path = download_service_link_to_temp(&uri, job_id, source).await?;
-            let result = run_forward_job(state, tx, signals, job_id, source, &path).await;
+            let result = run_forward_job(state, tx, signals, job_id, source, &path, false).await;
             cleanup_local_path(&path).await;
             result
         }
@@ -309,6 +343,7 @@ async fn execute_remote_collection_job(
         identifiers,
         request_user,
         tx,
+        replace_existing_entry,
         ..
     } = ctx;
 
@@ -328,20 +363,23 @@ async fn execute_remote_collection_job(
                 id: job_id,
                 source: &source,
             },
+            replace_existing_entry,
         )
         .await;
     }
 
     if signals.workflow.collect.save {
         state.record_job_started().await;
-        send_event(
-            tx,
-            job_feed_event(template::JobCollectionProcessing {
-                job_id,
-                source: &source,
-            }),
-        )
-        .await;
+        if !replace_existing_entry {
+            send_event(
+                tx,
+                job_feed_event(template::JobCollectionProcessing {
+                    job_id,
+                    source: &source,
+                }),
+            )
+            .await;
+        }
         send_event(tx, signal_event(r#"{"loading":false,"processing":true}"#)).await;
     }
 
@@ -377,11 +415,14 @@ async fn execute_remote_collection_job(
             state.record_success(0, 0).await;
             send_event(
                 tx,
-                template_event(template::JobCollectionCompleted {
+                replace_job_event(
                     job_id,
-                    source: &source,
-                    archive_path: &archive_filename,
-                }),
+                    template::JobCollectionCompleted {
+                        job_id,
+                        source: &source,
+                        archive_path: &archive_filename,
+                    },
+                ),
             )
             .await;
             let handoff_job_id = new_job_id();
@@ -393,6 +434,7 @@ async fn execute_remote_collection_job(
                 &source,
                 collected.identifiers,
                 tx,
+                false,
             )
             .await
         } else {
@@ -404,6 +446,7 @@ async fn execute_remote_collection_job(
                 &source,
                 collected.identifiers,
                 tx,
+                replace_existing_entry,
             )
             .await
         }
@@ -426,6 +469,7 @@ async fn run_processor_job(
     identifiers: Identifiers,
     process_selection: Option<ProcessSelection>,
     job: JobDescriptor<'_>,
+    replace_existing_entry: bool,
 ) -> Result<()> {
     let processor =
         Processor::try_new_with_selection(receiver, exporter, identifiers, process_selection)
@@ -436,14 +480,20 @@ async fn run_processor_job(
         .map_err(|failed| eyre!(failed.state.error))?;
     state.record_job_started().await;
 
-    send_event(
-        tx,
-        job_feed_event(template::JobProcessing {
-            job_id: job.id,
-            source: job.source,
-        }),
-    )
-    .await;
+    if !replace_existing_entry {
+        send_event(
+            tx,
+            processing_job_event(
+                replace_existing_entry,
+                job.id,
+                template::JobProcessing {
+                    job_id: job.id,
+                    source: job.source,
+                },
+            ),
+        )
+        .await;
+    }
     send_event(tx, signal_event(r#"{"loading":false,"processing":true}"#)).await;
 
     match processor.process().await {
@@ -454,22 +504,26 @@ async fn run_processor_job(
                 .await;
             send_event(
                 tx,
-                template_event(template::JobCompleted {
-                    job_id: job.id,
-                    diagnostic_id: &report.diagnostic.metadata.id,
-                    docs_created: &report.diagnostic.docs.created,
-                    duration: &format!(
-                        "{:.3}",
-                        report.diagnostic.processing_duration as f64 / 1000.0
-                    ),
-                    source: job.source,
-                    kibana_link: report
-                        .diagnostic
-                        .kibana_link
-                        .as_ref()
-                        .unwrap_or(&"#".to_string()),
-                    product: &report.diagnostic.product.to_string(),
-                }),
+                terminal_job_event(
+                    replace_existing_entry,
+                    job.id,
+                    template::JobCompleted {
+                        job_id: job.id,
+                        diagnostic_id: &report.diagnostic.metadata.id,
+                        docs_created: &report.diagnostic.docs.created,
+                        duration: &format!(
+                            "{:.3}",
+                            report.diagnostic.processing_duration as f64 / 1000.0
+                        ),
+                        source: job.source,
+                        kibana_link: report
+                            .diagnostic
+                            .kibana_link
+                            .as_ref()
+                            .unwrap_or(&"#".to_string()),
+                        product: &report.diagnostic.product.to_string(),
+                    },
+                ),
             )
             .await;
             Ok(())
@@ -515,13 +569,20 @@ async fn run_forward_job(
     job_id: u64,
     source: &str,
     path: &Path,
+    replace_existing_entry: bool,
 ) -> Result<()> {
     if signals.workflow.send.mode == SendMode::Local {
-        send_event(
-            tx,
-            job_feed_event(template::JobForwardProcessing { job_id, source }),
-        )
-        .await;
+        if !replace_existing_entry {
+            send_event(
+                tx,
+                processing_job_event(
+                    replace_existing_entry,
+                    job_id,
+                    template::JobForwardProcessing { job_id, source },
+                ),
+            )
+            .await;
+        }
         state.record_job_started().await;
         send_event(tx, signal_event(r#"{"loading":false,"processing":true}"#)).await;
 
@@ -533,11 +594,15 @@ async fn run_forward_job(
         state.record_success(0, 0).await;
         send_event(
             tx,
-            template_event(template::JobForwardCompleted {
+            terminal_job_event(
+                replace_existing_entry,
                 job_id,
-                source,
-                destination: &destination,
-            }),
+                template::JobForwardCompleted {
+                    job_id,
+                    source,
+                    destination: &destination,
+                },
+            ),
         )
         .await;
         return Ok(());
@@ -550,11 +615,17 @@ async fn run_forward_job(
         ));
     }
 
-    send_event(
-        tx,
-        job_feed_event(template::JobForwardProcessing { job_id, source }),
-    )
-    .await;
+    if !replace_existing_entry {
+        send_event(
+            tx,
+            processing_job_event(
+                replace_existing_entry,
+                job_id,
+                template::JobForwardProcessing { job_id, source },
+            ),
+        )
+        .await;
+    }
     state.record_job_started().await;
     send_event(tx, signal_event(r#"{"loading":false,"processing":true}"#)).await;
 
@@ -563,14 +634,38 @@ async fn run_forward_job(
     let destination = format!("https://upload.elastic.co/g/{}", response.slug);
     send_event(
         tx,
-        template_event(template::JobForwardCompleted {
+        terminal_job_event(
+            replace_existing_entry,
             job_id,
-            source,
-            destination: &destination,
-        }),
+            template::JobForwardCompleted {
+                job_id,
+                source,
+                destination: &destination,
+            },
+        ),
     )
     .await;
     Ok(())
+}
+
+fn processing_job_event(
+    _replace_existing_entry: bool,
+    _job_id: u64,
+    template: impl askama::Template,
+) -> ServerEvent {
+    job_feed_event(template)
+}
+
+fn terminal_job_event(
+    replace_existing_entry: bool,
+    job_id: u64,
+    template: impl askama::Template,
+) -> ServerEvent {
+    if replace_existing_entry {
+        replace_job_event(job_id, template)
+    } else {
+        template_event(template)
+    }
 }
 
 async fn select_processed_exporter(
