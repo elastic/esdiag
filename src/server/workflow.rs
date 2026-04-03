@@ -43,6 +43,27 @@ struct WorkflowExecutionContext<'a> {
     replace_existing_entry: bool,
 }
 
+struct LocalArchiveJobContext<'a> {
+    state: Arc<ServerState>,
+    signals: &'a WorkflowRunSignals,
+    job: JobDescriptor<'a>,
+    path: PathBuf,
+    identifiers: Identifiers,
+    tx: &'a mpsc::Sender<ServerEvent>,
+    replace_existing_entry: bool,
+}
+
+struct ProcessorJobContext<'a> {
+    state: Arc<ServerState>,
+    tx: &'a mpsc::Sender<ServerEvent>,
+    receiver: Arc<Receiver>,
+    exporter: Arc<Exporter>,
+    identifiers: Identifiers,
+    process_selection: Option<ProcessSelection>,
+    job: JobDescriptor<'a>,
+    replace_existing_entry: bool,
+}
+
 pub async fn run_job(
     state: Arc<ServerState>,
     signals: WorkflowRunSignals,
@@ -102,16 +123,18 @@ pub async fn run_job(
 
     let result = match &job.input {
         WorkflowInput::LocalArchive { path, .. } => {
-            execute_local_archive_job(
-                state.clone(),
-                &signals,
-                job_id,
-                path.clone(),
-                &source,
+            execute_local_archive_job(LocalArchiveJobContext {
+                state: state.clone(),
+                signals: &signals,
+                job: JobDescriptor {
+                    id: job_id,
+                    source: &source,
+                },
+                path: path.clone(),
                 identifiers,
-                &tx,
+                tx: &tx,
                 replace_existing_entry,
-            )
+            })
             .await
         }
         WorkflowInput::FromServiceLink { uri, .. } => {
@@ -191,31 +214,32 @@ pub async fn run_job(
     job.cleanup().await;
 }
 
-async fn execute_local_archive_job(
-    state: Arc<ServerState>,
-    signals: &WorkflowRunSignals,
-    job_id: u64,
-    path: PathBuf,
-    source: &str,
-    identifiers: Identifiers,
-    tx: &mpsc::Sender<ServerEvent>,
-    replace_existing_entry: bool,
-) -> Result<()> {
+async fn execute_local_archive_job(ctx: LocalArchiveJobContext<'_>) -> Result<()> {
+    let LocalArchiveJobContext {
+        state,
+        signals,
+        job,
+        path,
+        identifiers,
+        tx,
+        replace_existing_entry,
+    } = ctx;
+
     match signals.workflow.process.mode {
         ProcessMode::Process => {
             let receiver = Arc::new(Receiver::try_from(Uri::File(path))?);
             let exporter = Arc::new(select_processed_exporter(state.clone(), signals).await?);
             let process_selection = explicit_process_selection(signals)?;
-            run_processor_job(
+            run_processor_job(ProcessorJobContext {
                 state,
                 tx,
                 receiver,
                 exporter,
                 identifiers,
                 process_selection,
-                JobDescriptor { id: job_id, source },
+                job,
                 replace_existing_entry,
-            )
+            })
             .await
         }
         ProcessMode::Forward => {
@@ -223,8 +247,8 @@ async fn execute_local_archive_job(
                 state,
                 tx,
                 signals,
-                job_id,
-                source,
+                job.id,
+                job.source,
                 &path,
                 replace_existing_entry,
             )
@@ -287,16 +311,18 @@ async fn execute_service_link_job(ctx: WorkflowExecutionContext<'_>, uri: Uri) -
             )
             .await;
             let handoff_job_id = new_job_id();
-            return execute_local_archive_job(
+            return execute_local_archive_job(LocalArchiveJobContext {
                 state,
                 signals,
-                handoff_job_id,
+                job: JobDescriptor {
+                    id: handoff_job_id,
+                    source,
+                },
                 path,
-                source,
-                collected.identifiers,
+                identifiers: collected.identifiers,
                 tx,
-                false,
-            )
+                replace_existing_entry: false,
+            })
             .await;
         }
 
@@ -310,16 +336,16 @@ async fn execute_service_link_job(ctx: WorkflowExecutionContext<'_>, uri: Uri) -
             let receiver = Arc::new(Receiver::try_from(uri)?);
             let exporter = Arc::new(select_processed_exporter(state.clone(), signals).await?);
             let process_selection = explicit_process_selection(signals)?;
-            run_processor_job(
+            run_processor_job(ProcessorJobContext {
                 state,
                 tx,
                 receiver,
                 exporter,
                 identifiers,
                 process_selection,
-                JobDescriptor { id: job_id, source },
-                false,
-            )
+                job: JobDescriptor { id: job_id, source },
+                replace_existing_entry: false,
+            })
             .await
         }
         ProcessMode::Forward => {
@@ -352,19 +378,19 @@ async fn execute_remote_collection_job(
         let receiver = Arc::new(Receiver::try_from(host)?);
         let exporter = Arc::new(select_processed_exporter(state.clone(), signals).await?);
         let process_selection = explicit_process_selection(signals)?;
-        return run_processor_job(
+        return run_processor_job(ProcessorJobContext {
             state,
             tx,
             receiver,
             exporter,
             identifiers,
             process_selection,
-            JobDescriptor {
+            job: JobDescriptor {
                 id: job_id,
                 source: &source,
             },
             replace_existing_entry,
-        )
+        })
         .await;
     }
 
@@ -426,28 +452,32 @@ async fn execute_remote_collection_job(
             )
             .await;
             let handoff_job_id = new_job_id();
-            execute_local_archive_job(
+            execute_local_archive_job(LocalArchiveJobContext {
                 state,
                 signals,
-                handoff_job_id,
+                job: JobDescriptor {
+                    id: handoff_job_id,
+                    source: &source,
+                },
                 path,
-                &source,
-                collected.identifiers,
+                identifiers: collected.identifiers,
                 tx,
-                false,
-            )
+                replace_existing_entry: false,
+            })
             .await
         } else {
-            execute_local_archive_job(
+            execute_local_archive_job(LocalArchiveJobContext {
                 state,
                 signals,
-                job_id,
+                job: JobDescriptor {
+                    id: job_id,
+                    source: &source,
+                },
                 path,
-                &source,
-                collected.identifiers,
+                identifiers: collected.identifiers,
                 tx,
                 replace_existing_entry,
-            )
+            })
             .await
         }
     } else {
@@ -461,16 +491,18 @@ async fn execute_remote_collection_job(
     result
 }
 
-async fn run_processor_job(
-    state: Arc<ServerState>,
-    tx: &mpsc::Sender<ServerEvent>,
-    receiver: Arc<Receiver>,
-    exporter: Arc<Exporter>,
-    identifiers: Identifiers,
-    process_selection: Option<ProcessSelection>,
-    job: JobDescriptor<'_>,
-    replace_existing_entry: bool,
-) -> Result<()> {
+async fn run_processor_job(ctx: ProcessorJobContext<'_>) -> Result<()> {
+    let ProcessorJobContext {
+        state,
+        tx,
+        receiver,
+        exporter,
+        identifiers,
+        process_selection,
+        job,
+        replace_existing_entry,
+    } = ctx;
+
     let processor =
         Processor::try_new_with_selection(receiver, exporter, identifiers, process_selection)
             .await?;

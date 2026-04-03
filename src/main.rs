@@ -20,7 +20,7 @@ use esdiag::{
     },
     env::LOG_LEVEL,
     exporter::Exporter,
-    processor::{CollectionResult, Collector, Identifiers, Processor},
+    processor::{CollectionResult, Collector, DiagnosticReport, Identifiers, Processor},
     receiver::Receiver,
     uploader,
 };
@@ -50,6 +50,9 @@ struct Cli {
     /// Enable debug logging
     #[arg(global = true, long)]
     debug: bool,
+    /// Enable agent-oriented low-noise CLI behavior
+    #[arg(global = true, long, short = 'a')]
+    agent: bool,
     /// Commands
     #[command(subcommand)]
     command: Option<Commands>,
@@ -91,7 +94,7 @@ enum Commands {
         #[arg(long)]
         sources: Option<String>,
         /// Diagnostic report account name
-        #[arg(help = "Diagnostic report account name", long, short)]
+        #[arg(help = "Diagnostic report account name", long)]
         account: Option<String>,
         /// Case number added to diagnostic report
         #[arg(help = "Diagnostic report case number", long, short)]
@@ -156,7 +159,7 @@ enum Commands {
         #[arg(help = "Delete the saved host configuration", long, conflicts_with_all = &["app", "url", "accept_invalid_certs", "apikey", "username", "password", "secret", "roles", "nosave"])]
         delete: bool,
         /// ApiKey for authentication
-        #[arg(help = "ApiKey, passed as http header", long, short, conflicts_with_all = &["username", "password", "delete"])]
+        #[arg(help = "ApiKey, passed as http header", long, short = 'k', conflicts_with_all = &["username", "password", "delete"])]
         apikey: Option<String>,
         /// Username for authentication
         #[arg(
@@ -220,7 +223,7 @@ enum Commands {
         output: Option<String>,
 
         /// Diagnostic report account name
-        #[arg(help = "Diagnostic report account name", long, short)]
+        #[arg(help = "Diagnostic report account name", long)]
         account: Option<String>,
 
         /// Case number added to diagnostic report
@@ -316,7 +319,7 @@ enum KeystoreCommands {
         #[arg(
             help = "ApiKey, passed as http header (prompts when omitted in interactive shells)",
             long,
-            short,
+            short = 'k',
             num_args = 0..=1,
             default_missing_value = "",
             conflicts_with_all = &["username", "password"]
@@ -348,7 +351,7 @@ enum KeystoreCommands {
         #[arg(
             help = "ApiKey, passed as http header (prompts when omitted in interactive shells)",
             long,
-            short,
+            short = 'k',
             num_args = 0..=1,
             default_missing_value = "",
             conflicts_with_all = &["username", "password"]
@@ -374,7 +377,7 @@ enum KeystoreCommands {
         #[arg(
             help = "ApiKey, passed as http header",
             long,
-            short,
+            short = 'k',
             conflicts_with_all = &["username", "password"]
         )]
         apikey: Option<String>,
@@ -406,15 +409,9 @@ fn main() -> Result<()> {
 }
 
 async fn async_main() -> Result<()> {
-    // Parse CLI early to check for debug flag
+    // Parse CLI early to configure execution mode and logging.
     let cli = Cli::parse();
-
-    // Initialize tracing subscriber with debug override if flag is set
-    let filter = if cli.debug {
-        EnvFilter::new("debug")
-    } else {
-        EnvFilter::try_from_env("LOG_LEVEL").unwrap_or_else(|_| EnvFilter::new(LOG_LEVEL))
-    };
+    let filter = resolve_tracing_filter(&cli);
     init_tracing(filter);
 
     std::panic::set_hook(Box::new(|panic| {
@@ -426,8 +423,11 @@ async fn async_main() -> Result<()> {
     clear_last_run_files()?;
 
     match run(cli).await {
-        Ok(cmd) => {
-            tracing::debug!("{cmd} complete");
+        Ok(result) => {
+            if let Some(summary) = result.summary() {
+                emit_completion_summary(&summary)?;
+            }
+            tracing::debug!("{} complete", result.name);
             Ok(())
         }
         Err(e) => {
@@ -444,14 +444,156 @@ fn init_tracing(filter: EnvFilter) {
         eprintln!("tracing log bridge already initialized: {err}");
     }
 
-    let subscriber = fmt().with_env_filter(filter).finish();
+    let subscriber = fmt()
+        .with_env_filter(filter)
+        .with_writer(std::io::stderr)
+        .finish();
     if let Err(err) = tracing::subscriber::set_global_default(subscriber) {
         eprintln!("tracing subscriber already initialized: {err}");
     }
 }
 
+#[derive(Debug)]
+struct CommandResult {
+    name: &'static str,
+    summary: Option<String>,
+    emit_summary: bool,
+}
+
+impl CommandResult {
+    fn named(name: &'static str) -> Self {
+        Self {
+            name,
+            summary: None,
+            emit_summary: true,
+        }
+    }
+
+    fn with_summary(name: &'static str, summary: String) -> Self {
+        Self {
+            name,
+            summary: Some(summary),
+            emit_summary: true,
+        }
+    }
+
+    fn summary(&self) -> Option<String> {
+        if !self.emit_summary {
+            return None;
+        }
+        Some(
+            self.summary
+                .clone()
+                .unwrap_or_else(|| format!("{} complete", self.name)),
+        )
+    }
+}
+
+fn is_agent_mode(cli: &Cli) -> bool {
+    cli.agent || std::env::var_os("CLAUDECODE").is_some()
+}
+
+fn resolve_tracing_filter(cli: &Cli) -> EnvFilter {
+    if cli.debug {
+        EnvFilter::new("debug")
+    } else if is_agent_mode(cli) {
+        EnvFilter::new("warn")
+    } else {
+        EnvFilter::try_from_env("LOG_LEVEL").unwrap_or_else(|_| EnvFilter::new(LOG_LEVEL))
+    }
+}
+
+fn write_completion_summary<W: Write>(writer: &mut W, summary: &str) -> std::io::Result<()> {
+    writeln!(writer, "{summary}")
+}
+
+fn emit_completion_summary(summary: &str) -> Result<()> {
+    let mut stderr = std::io::stderr();
+    write_completion_summary(&mut stderr, summary)?;
+    stderr.flush()?;
+    Ok(())
+}
+
+fn append_kibana_space(kibana_url: String) -> String {
+    match esdiag::env::get_string("ESDIAG_KIBANA_SPACE").ok() {
+        Some(space) => format!("{kibana_url}/s/{space}"),
+        None => kibana_url,
+    }
+}
+
+fn kibana_base_url_from_env() -> Option<String> {
+    std::env::var("ESDIAG_KIBANA_URL")
+        .ok()
+        .map(append_kibana_space)
+}
+
+fn saved_viewer_kibana_base_url(host: &KnownHost) -> Option<String> {
+    let viewer_name = host.viewer()?;
+    let viewer_name = viewer_name.to_string();
+    let viewer_host = match KnownHost::get_known(&viewer_name) {
+        Some(viewer_host) => viewer_host,
+        None => {
+            tracing::warn!(
+                "Output host viewer '{}' was not found at runtime; falling back to environment Kibana URL",
+                viewer_name
+            );
+            return None;
+        }
+    };
+
+    if !viewer_host.has_role(HostRole::View) || viewer_host.app() != &Product::Kibana {
+        tracing::warn!(
+            "Output host viewer '{}' is not a valid Kibana view target; falling back to environment Kibana URL",
+            viewer_name
+        );
+        return None;
+    }
+
+    Some(append_kibana_space(viewer_host.get_url().to_string()))
+}
+
+fn resolve_process_kibana_base_url(has_explicit_output: bool, output_uri: &Uri) -> Option<String> {
+    if has_explicit_output {
+        let output_host = match output_uri {
+            Uri::KnownHost(host)
+            | Uri::ElasticCloud(host)
+            | Uri::ElasticCloudAdmin(host)
+            | Uri::ElasticGovCloudAdmin(host) => Some(host),
+            _ => None,
+        };
+
+        if let Some(host) = output_host
+            && let Some(kibana_url) = saved_viewer_kibana_base_url(host)
+        {
+            return Some(kibana_url);
+        }
+    }
+
+    kibana_base_url_from_env()
+}
+
+fn format_process_summary(report: &DiagnosticReport, runtime_ms: u128) -> String {
+    let mut summary = format!(
+        "process complete in {:.3} seconds: {} documents for {}",
+        runtime_ms as f64 / 1000.0,
+        report.diagnostic.docs.created,
+        report.diagnostic.metadata.id
+    );
+    if let Some(kibana_link) = report.diagnostic.kibana_link.as_deref() {
+        summary.push_str(&format!("\nKibana Link: {kibana_link}"));
+    }
+    summary
+}
+
+fn format_collect_summary(result: &CollectionResult) -> String {
+    format!(
+        "Collected {} of {} files into {}",
+        result.success, result.total, result.path
+    )
+}
+
 #[tracing::instrument(skip_all)]
-async fn run(cli: Cli) -> Result<&'static str> {
+async fn run(cli: Cli) -> Result<CommandResult> {
     // If there are CLI arguments but no subcommand, avoid starting the desktop/Tauri
     // entrypoint. The desktop UI should only start when launched absolutely without arguments.
     if should_error_for_missing_subcommand(std::env::args_os().len(), cli.command.is_none()) {
@@ -477,12 +619,7 @@ async fn run(cli: Cli) -> Result<&'static str> {
                 let exporter = resolve_serve_exporter(output, runtime_mode)?;
 
                 let kibana_url = kibana.unwrap_or_else(|| {
-                    let url = esdiag::env::get_string("ESDIAG_KIBANA_URL")
-                        .unwrap_or_else(|_| "http://localhost:5601".to_string());
-                    match esdiag::env::get_string("ESDIAG_KIBANA_SPACE").ok() {
-                        Some(space) => format!("{url}/s/{space}"),
-                        None => url,
-                    }
+                    kibana_base_url_from_env().unwrap_or_else(|| "http://localhost:5601".to_string())
                 });
 
                 let (mut server, _bound_addr) =
@@ -491,7 +628,7 @@ async fn run(cli: Cli) -> Result<&'static str> {
                 wait_for_shutdown_signal().await?;
 
                 server.shutdown().await;
-                Ok("serve")
+                Ok(CommandResult::named("serve"))
             }
             Commands::Collect {
                 host,
@@ -547,13 +684,17 @@ async fn run(cli: Cli) -> Result<&'static str> {
                             identifiers,
                         )
                         .await?;
-                        collect_with_optional_upload(
-                            collector.collect(),
-                            upload_id.as_deref(),
-                            upload_collected_archive,
-                        )
-                        .await?;
-                        Ok("collect")
+                        Ok(CommandResult::with_summary(
+                            "collect",
+                            format_collect_summary(
+                                &collect_with_optional_upload(
+                                    collector.collect(),
+                                    upload_id.as_deref(),
+                                    upload_collected_archive,
+                                )
+                                .await?,
+                            ),
+                        ))
                     }
                     Uri::ElasticCloud(_) => {
                         Err(eyre!("Elastic Cloud API collection not yet implemented"))
@@ -588,7 +729,7 @@ async fn run(cli: Cli) -> Result<&'static str> {
                 if mode == HostCommandMode::Delete {
                     let hostfile = delete_host_from_cli(&name)?;
                     tracing::info!("Host {name} successfully deleted from {hostfile}");
-                    return Ok("host");
+                    return Ok(CommandResult::named("host"));
                 }
 
                 let host = match mode {
@@ -631,7 +772,7 @@ async fn run(cli: Cli) -> Result<&'static str> {
                         let hostfile = host.save(&name)?;
                         tracing::info!("Host {name} successfully saved to {hostfile}");
                     }
-                    Ok("host")
+                    Ok(CommandResult::named("host"))
                 } else {
                     Err(eyre!("Host connection failed"))
                 }
@@ -649,7 +790,7 @@ async fn run(cli: Cli) -> Result<&'static str> {
                     let path =
                         add_secret(&secret_id, username, password, apikey, &keystore_password)?;
                     tracing::info!("Secret '{secret_id}' saved to {path}");
-                    Ok("keystore")
+                    Ok(CommandResult::named("keystore"))
                 }
                 KeystoreCommands::Update {
                     secret_id,
@@ -663,7 +804,7 @@ async fn run(cli: Cli) -> Result<&'static str> {
                     let path =
                         update_secret(&secret_id, username, password, apikey, &keystore_password)?;
                     tracing::info!("Secret '{secret_id}' updated in {path}");
-                    Ok("keystore")
+                    Ok(CommandResult::named("keystore"))
                 }
                 KeystoreCommands::Remove {
                     secret_id,
@@ -675,7 +816,7 @@ async fn run(cli: Cli) -> Result<&'static str> {
                     let expected = expected_secret_auth(username, password, apikey)?;
                     let path = remove_secret(&secret_id, expected, &keystore_password)?;
                     tracing::info!("Secret '{secret_id}' deleted from {path}");
-                    Ok("keystore")
+                    Ok(CommandResult::named("keystore"))
                 }
                 KeystoreCommands::Unlock { ttl } => {
                     let ttl = ttl
@@ -695,7 +836,7 @@ async fn run(cli: Cli) -> Result<&'static str> {
                     } else {
                         tracing::info!("Keystore unlocked via {}", unlock_path.display());
                     }
-                    Ok("keystore")
+                    Ok(CommandResult::named("keystore"))
                 }
                 KeystoreCommands::Lock => {
                     if clear_unlock_lease()? {
@@ -703,7 +844,7 @@ async fn run(cli: Cli) -> Result<&'static str> {
                     } else {
                         tracing::info!("Keystore unlock lease was already absent");
                     }
-                    Ok("keystore")
+                    Ok(CommandResult::named("keystore"))
                 }
                 KeystoreCommands::Status => {
                     let status = get_unlock_status()?;
@@ -729,7 +870,7 @@ async fn run(cli: Cli) -> Result<&'static str> {
                     } else {
                         tracing::info!("CLI unlock: inactive");
                     }
-                    Ok("keystore")
+                    Ok(CommandResult::named("keystore"))
                 }
                 KeystoreCommands::Password => {
                     if !keystore_exists()? {
@@ -740,7 +881,7 @@ async fn run(cli: Cli) -> Result<&'static str> {
                     let new_password = prompt_new_keystore_password()?;
                     let path = rotate_keystore_password(&current_password, &new_password)?;
                     tracing::info!("Keystore password updated for {path}");
-                    Ok("keystore")
+                    Ok(CommandResult::named("keystore"))
                 }
                 KeystoreCommands::Migrate => {
                     let keystore_password = get_password_for_secret_commands()?;
@@ -749,7 +890,7 @@ async fn run(cli: Cli) -> Result<&'static str> {
                     tracing::info!(
                         "Keystore migration complete: migrated {migrated} host(s), unchanged {unchanged} host(s)."
                     );
-                    Ok("keystore")
+                    Ok(CommandResult::named("keystore"))
                 }
             },
             Commands::Process {
@@ -776,6 +917,7 @@ async fn run(cli: Cli) -> Result<&'static str> {
                     let product = detect_sources_product_for_process(&input_uri, &receiver).await?;
                     esdiag::processor::init_sources(sources_product_key(&product)?, sources)?;
                 }
+                let kibana_base_url = resolve_process_kibana_base_url(has_explicit_output, &output_uri);
                 let receiver = Arc::new(receiver);
                 let exporter = Arc::new(Exporter::try_from(output_uri)?);
 
@@ -789,13 +931,11 @@ async fn run(cli: Cli) -> Result<&'static str> {
                     }
                 };
 
-                match processor.process().await {
+                match processor.process_with_kibana_base(kibana_base_url).await {
                     Ok(processor) => {
-                        tracing::info!(
-                            "Process complete in {:.3} seconds",
-                            processor.state.runtime as f64 / 1000.0
-                        );
-                        Ok("process")
+                        let summary =
+                            format_process_summary(&processor.state.report, processor.state.runtime);
+                        Ok(CommandResult::with_summary("process", summary))
                     }
                     Err(processor) => {
                         tracing::info!(
@@ -819,7 +959,7 @@ async fn run(cli: Cli) -> Result<&'static str> {
                 );
                 let response = uploader::upload_file(&file_path, &upload_id, &api_url).await?;
                 tracing::info!("Upload complete for slug {}", response.slug);
-                Ok("upload")
+                Ok(CommandResult::named("upload"))
             }
             #[cfg(feature = "setup")]
             Commands::Setup { host } => {
@@ -828,7 +968,7 @@ async fn run(cli: Cli) -> Result<&'static str> {
                     let client = Client::try_from(uri)?;
                     tracing::info!("Setting up assets in {client}");
                     setup::assets(&client).await?;
-                    Ok("setup")
+                    Ok(CommandResult::named("setup"))
                 } else {
                     tracing::debug!("Setting up assets with environment variables");
                     let es_uri = Uri::try_from_output_env()?;
@@ -839,22 +979,22 @@ async fn run(cli: Cli) -> Result<&'static str> {
                     let kb_client = Client::try_from(kb_uri)?;
                     tracing::info!("Setting up Kibana assets in {kb_client}");
                     setup::assets(&kb_client).await?;
-                    Ok("setup")
+                    Ok(CommandResult::named("setup"))
                 }
             }
             #[cfg(feature = "keystore")]
             Commands::Job { command } => match command {
                 JobCommands::List => {
                     esdiag::job::handle_job_list()?;
-                    Ok("job list")
+                    Ok(CommandResult::named("job list"))
                 }
                 JobCommands::Run { name } => {
                     esdiag::job::handle_job_run(&name).await?;
-                    Ok("job run")
+                    Ok(CommandResult::named("job run"))
                 }
                 JobCommands::Delete { name } => {
                     esdiag::job::handle_job_delete(&name)?;
-                    Ok("job delete")
+                    Ok(CommandResult::named("job delete"))
                 }
             },
         }
@@ -950,7 +1090,11 @@ async fn run(cli: Cli) -> Result<&'static str> {
                 .run(tauri::generate_context!())
                 .expect("error while running tauri application");
 
-            Ok("tauri")
+            Ok(CommandResult {
+                name: "tauri",
+                summary: None,
+                emit_summary: false,
+            })
         }
         #[cfg(not(all(feature = "server", feature = "desktop")))]
         {
@@ -1428,23 +1572,29 @@ fn resolve_serve_exporter(output: Option<String>, runtime_mode: RuntimeMode) -> 
 #[cfg(test)]
 mod tests {
     use super::{
-        Cli, Commands, KeystoreCommands, collect_with_optional_upload,
-        format_remaining_duration_from, host_connection_uses_receiver, resolve_host_secret_auth,
-        resolve_secret_input_with_prompt, should_error_for_missing_subcommand,
-        upload_collected_archive,
+        Cli, Commands, KeystoreCommands, append_kibana_space, format_remaining_duration_from,
+        format_collect_summary, host_connection_uses_receiver, is_agent_mode,
+        resolve_host_secret_auth,
+        resolve_process_kibana_base_url, resolve_secret_input_with_prompt,
+        resolve_tracing_filter, should_error_for_missing_subcommand, write_completion_summary,
+        collect_with_optional_upload, upload_collected_archive,
     };
     #[cfg(feature = "server")]
     use super::{resolve_serve_exporter, resolve_serve_runtime_mode};
     use clap::Parser;
     use esdiag::data::{
-        ElasticCloud, HostRole, KnownHost, Product, SecretAuth, Uri, upsert_secret_auth,
+        ElasticCloud, HostRole, KnownHost, KnownHostBuilder, Product, SecretAuth, Uri,
+        upsert_secret_auth,
     };
     use esdiag::processor::CollectionResult;
     #[cfg(feature = "server")]
     use esdiag::server::RuntimeMode;
-    use std::sync::{
-        Mutex, OnceLock,
-        atomic::{AtomicUsize, Ordering},
+    use std::{
+        collections::BTreeMap,
+        sync::{
+            Mutex, OnceLock,
+            atomic::{AtomicUsize, Ordering},
+        },
     };
     use tempfile::TempDir;
     use url::Url;
@@ -1480,6 +1630,15 @@ mod tests {
     #[test]
     fn args_with_subcommand_does_not_error() {
         assert!(!should_error_for_missing_subcommand(2, false));
+    }
+
+    #[test]
+    fn agent_flag_parses_long_and_short_forms() {
+        let cli = Cli::parse_from(["esdiag", "--agent", "keystore", "status"]);
+        assert!(cli.agent, "long --agent should enable agent mode");
+
+        let cli = Cli::parse_from(["esdiag", "-a", "keystore", "status"]);
+        assert!(cli.agent, "short -a should enable agent mode");
     }
 
     #[test]
@@ -1781,6 +1940,158 @@ mod tests {
             }
             _ => panic!("expected upload command"),
         }
+    }
+
+    #[test]
+    fn agent_mode_auto_enables_from_claudecode_env() {
+        let _guard = env_lock().lock().expect("env lock");
+        unsafe {
+            std::env::set_var("CLAUDECODE", "1");
+        }
+
+        let cli = Cli::parse_from(["esdiag", "keystore", "status"]);
+        assert!(is_agent_mode(&cli));
+
+        unsafe {
+            std::env::remove_var("CLAUDECODE");
+        }
+    }
+
+    #[test]
+    fn debug_overrides_agent_warn_filter() {
+        let cli = Cli {
+            debug: true,
+            agent: true,
+            command: None,
+        };
+
+        assert_eq!(resolve_tracing_filter(&cli).to_string(), "debug");
+    }
+
+    #[test]
+    fn agent_mode_uses_warn_filter_without_debug() {
+        let cli = Cli {
+            debug: false,
+            agent: true,
+            command: None,
+        };
+
+        assert_eq!(resolve_tracing_filter(&cli).to_string(), "warn");
+    }
+
+    #[test]
+    fn process_kibana_base_url_prefers_saved_viewer_host() {
+        let _guard = env_lock().lock().expect("env lock");
+        let _tmp = setup_env();
+        let mut hosts = BTreeMap::new();
+        hosts.insert(
+            "send-host".to_string(),
+            KnownHostBuilder::new(Url::parse("https://es.example:9200").expect("es url"))
+                .product(Product::Elasticsearch)
+                .roles(vec![HostRole::Send])
+                .viewer(Some("viewer-host".to_string()))
+                .build()
+                .expect("send host"),
+        );
+        hosts.insert(
+            "viewer-host".to_string(),
+            KnownHostBuilder::new(Url::parse("https://kb.example:5601").expect("kb url"))
+                .product(Product::Kibana)
+                .roles(vec![HostRole::View])
+                .build()
+                .expect("viewer host"),
+        );
+        KnownHost::write_hosts_yml(&hosts).expect("write hosts");
+
+        unsafe {
+            std::env::set_var("ESDIAG_KIBANA_URL", "https://env-kb.example:5601");
+            std::env::remove_var("ESDIAG_KIBANA_SPACE");
+        }
+
+        let output_uri = Uri::try_from("send-host").expect("known host uri");
+        let resolved = resolve_process_kibana_base_url(true, &output_uri);
+
+        assert_eq!(resolved.as_deref(), Some("https://kb.example:5601/"));
+
+        unsafe {
+            std::env::remove_var("ESDIAG_KIBANA_URL");
+        }
+    }
+
+    #[test]
+    fn process_kibana_base_url_falls_back_to_env() {
+        let _guard = env_lock().lock().expect("env lock");
+        let _tmp = setup_env();
+        unsafe {
+            std::env::set_var("ESDIAG_KIBANA_URL", "https://env-kb.example:5601");
+            std::env::set_var("ESDIAG_KIBANA_SPACE", "ops");
+        }
+
+        let resolved = resolve_process_kibana_base_url(false, &Uri::Stream);
+
+        assert_eq!(resolved.as_deref(), Some("https://env-kb.example:5601/s/ops"));
+
+        unsafe {
+            std::env::remove_var("ESDIAG_KIBANA_URL");
+            std::env::remove_var("ESDIAG_KIBANA_SPACE");
+        }
+    }
+
+    #[test]
+    fn process_kibana_base_url_is_none_without_viewer_or_env() {
+        let _guard = env_lock().lock().expect("env lock");
+        let _tmp = setup_env();
+        unsafe {
+            std::env::remove_var("ESDIAG_KIBANA_URL");
+            std::env::remove_var("ESDIAG_KIBANA_SPACE");
+        }
+
+        let resolved = resolve_process_kibana_base_url(false, &Uri::Stream);
+
+        assert!(resolved.is_none());
+    }
+
+    #[test]
+    fn append_kibana_space_uses_env_space_when_present() {
+        let _guard = env_lock().lock().expect("env lock");
+        unsafe {
+            std::env::set_var("ESDIAG_KIBANA_SPACE", "ops");
+        }
+
+        assert_eq!(
+            append_kibana_space("https://kb.example:5601".to_string()),
+            "https://kb.example:5601/s/ops"
+        );
+
+        unsafe {
+            std::env::remove_var("ESDIAG_KIBANA_SPACE");
+        }
+    }
+
+    #[test]
+    fn write_completion_summary_writes_to_provided_writer() {
+        let mut buffer = Vec::new();
+
+        write_completion_summary(&mut buffer, "process complete").expect("write summary");
+
+        assert_eq!(
+            String::from_utf8(buffer).expect("utf8"),
+            "process complete\n"
+        );
+    }
+
+    #[test]
+    fn collect_summary_uses_collected_counts_and_path() {
+        let summary = format_collect_summary(&CollectionResult {
+            path: "target/esdiag-20260403-220233.zip".to_string(),
+            success: 21,
+            total: 21,
+        });
+
+        assert_eq!(
+            summary,
+            "Collected 21 of 21 files into target/esdiag-20260403-220233.zip"
+        );
     }
 
     #[test]

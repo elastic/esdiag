@@ -108,9 +108,7 @@
         aria-label="Saved jobs"
     >
         <div hidden data-effect="if (!$_job_name_dirty) { $job_name = $_suggested_job_name || ''; }"></div>
-        <header>
             <h2>Saved Jobs</h2>
-        </header>
         <div
             id="saved-jobs-list"
             data-init="@get('/jobs/saved', {filterSignals: {include: /^loaded_job_name$/}})"
@@ -132,62 +130,6 @@
     <main class="jobs-main">
         <steps aria-label="Diagnostic job steps">
             <ol>
-                <li>
-                <h2>Diagnostic Identifiers</h2>
-                <info-text class="margin-after">
-                    Set the identifiers that will be attached to the diagnostic job.
-                </info-text>
-                <input-group>
-                    <label for="username" class="form-label">User</label>
-                    <input
-                        type="text"
-                        id="username"
-                        name="username"
-                        data-bind:metadata.user
-                        placeholder="Username"
-                        autocomplete="none"
-                        class="form-input"
-                        data-attr:disabled="$auth.header || $processing || $loading"
-                    />
-                </input-group>
-                <input-group>
-                    <label for="account" class="form-label">Account</label>
-                    <input
-                        type="text"
-                        id="account"
-                        name="account"
-                        data-bind:metadata.account
-                        placeholder="Account"
-                        class="form-input"
-                        data-attr:disabled="$loading || $processing"
-                    />
-                </input-group>
-                <input-group>
-                    <label for="case-number" class="form-label">Case Number</label>
-                    <input
-                        type="text"
-                        id="case-number"
-                        name="case-number"
-                        data-bind:metadata.case_number
-                        placeholder="Case Number"
-                        class="form-input"
-                        data-attr:disabled="$loading || $processing"
-                    />
-                </input-group>
-                <input-group>
-                    <label for="opportunity" class="form-label">Opportunity</label>
-                    <input
-                        type="text"
-                        id="opportunity"
-                        name="opportunity"
-                        data-bind:metadata.opportunity
-                        placeholder="Opportunity"
-                        class="form-input"
-                        data-attr:disabled="$loading || $processing"
-                    />
-                </input-group>
-                </li>
-
                 <li>
                 <h2>Diagnostic Bundle</h2>
                 <info-text class="margin-after">
@@ -651,6 +593,62 @@
                 <div data-show="!$workflow.process.enabled" style="display: none">
                     <info-text>Forward preserves the raw diagnostic archive without processing it into documents.</info-text>
                 </div>
+                </li>
+
+                <li>
+                <h2>Diagnostic Identifiers</h2>
+                <info-text class="margin-after">
+                    Set the identifiers that will be attached to the diagnostic job.
+                </info-text>
+                <input-group>
+                    <label for="username" class="form-label">User</label>
+                    <input
+                        type="text"
+                        id="username"
+                        name="username"
+                        data-bind:metadata.user
+                        placeholder="Username"
+                        autocomplete="none"
+                        class="form-input"
+                        data-attr:disabled="$auth.header || $processing || $loading"
+                    />
+                </input-group>
+                <input-group>
+                    <label for="account" class="form-label">Account</label>
+                    <input
+                        type="text"
+                        id="account"
+                        name="account"
+                        data-bind:metadata.account
+                        placeholder="Account"
+                        class="form-input"
+                        data-attr:disabled="$loading || $processing"
+                    />
+                </input-group>
+                <input-group>
+                    <label for="case-number" class="form-label">Case Number</label>
+                    <input
+                        type="text"
+                        id="case-number"
+                        name="case-number"
+                        data-bind:metadata.case_number
+                        placeholder="Case Number"
+                        class="form-input"
+                        data-attr:disabled="$loading || $processing"
+                    />
+                </input-group>
+                <input-group>
+                    <label for="opportunity" class="form-label">Opportunity</label>
+                    <input
+                        type="text"
+                        id="opportunity"
+                        name="opportunity"
+                        data-bind:metadata.opportunity
+                        placeholder="Opportunity"
+                        class="form-input"
+                        data-attr:disabled="$loading || $processing"
+                    />
+                </input-group>
                 </li>
 
                 <li>

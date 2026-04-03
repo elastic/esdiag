@@ -275,7 +275,15 @@ impl Processor<Ready> {
 /// The actively `Processing` state.
 impl Processor<Processing> {
     #[tracing::instrument(skip_all)]
-    pub async fn process(mut self) -> Result<Processor<Completed>, Processor<Failed>> {
+    pub async fn process(self) -> Result<Processor<Completed>, Processor<Failed>> {
+        self.process_with_kibana_base(None).await
+    }
+
+    #[tracing::instrument(skip_all)]
+    pub async fn process_with_kibana_base(
+        mut self,
+        kibana_base_url: Option<String>,
+    ) -> Result<Processor<Completed>, Processor<Failed>> {
         tracing::debug!("Processing with async progress updates");
 
         let mut report = self.state.report;
@@ -334,28 +342,12 @@ impl Processor<Processing> {
             report.diagnostic.metadata.id,
         );
 
-        if let Ok(kibana_url) = std::env::var("ESDIAG_KIBANA_URL") {
-            let kibana_url = match std::env::var("ESDIAG_KIBANA_SPACE").ok() {
-                Some(space) => format!("{kibana_url}/s/{space}"),
-                None => kibana_url,
-            };
-            let url_safe_id = urlencoding::encode(&report.diagnostic.metadata.id);
-            let days_since_collection = (std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_millis() as u64
-                - report.diagnostic.metadata.collection_date)
-                / (1000 * 60 * 60 * 24);
-            let time_filter = match days_since_collection {
-                x if x < 90 => "from:now-90d,to:now",
-                x if (90..365).contains(&x) => "from:now-1y,to:now",
-                x => &format!("from:now-{}d,to:now", x + 1),
-            };
-            let kibana_link = format!(
-                "{}/app/dashboards#/view/elasticsearch-cluster-report?_g=(filters:!(('$state':(store:globalState),meta:(disabled:!f,index:'4319ebc4-df81-4b18-b8bd-6aaa55a1fd13',key:diagnostic.id,negate:!f,params:(query:'{}'),type:phrase),query:(match_phrase:(diagnostic.id:'{}')))),refreshInterval:(pause:!t,value:60000),time:({}))",
-                kibana_url, url_safe_id, url_safe_id, time_filter
+        if let Some(kibana_url) = kibana_base_url.as_deref() {
+            let kibana_link = build_kibana_link(
+                kibana_url,
+                &report.diagnostic.metadata.id,
+                report.diagnostic.metadata.collection_date,
             );
-            tracing::info!("{}", kibana_link);
             report.add_kibana_link(kibana_link);
         }
         tracing::debug!("{:?}", self.state.identifiers);
@@ -377,6 +369,25 @@ impl Processor<Processing> {
             },
         })
     }
+}
+
+fn build_kibana_link(kibana_url: &str, diagnostic_id: &str, collection_date: u64) -> String {
+    let url_safe_id = urlencoding::encode(diagnostic_id);
+    let days_since_collection = (std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64
+        - collection_date)
+        / (1000 * 60 * 60 * 24);
+    let time_filter = match days_since_collection {
+        x if x < 90 => "from:now-90d,to:now".to_string(),
+        x if (90..365).contains(&x) => "from:now-1y,to:now".to_string(),
+        x => format!("from:now-{}d,to:now", x + 1),
+    };
+    format!(
+        "{}/app/dashboards#/view/elasticsearch-cluster-report?_g=(filters:!(('$state':(store:globalState),meta:(disabled:!f,index:'4319ebc4-df81-4b18-b8bd-6aaa55a1fd13',key:diagnostic.id,negate:!f,params:(query:'{}'),type:phrase),query:(match_phrase:(diagnostic.id:'{}')))),refreshInterval:(pause:!t,value:60000),time:({}))",
+        kibana_url, url_safe_id, url_safe_id, time_filter
+    )
 }
 
 impl std::fmt::Display for Processor<Failed> {
@@ -540,4 +551,18 @@ pub fn new_job_id() -> u64 {
         .unwrap()
         .as_millis() as u64
         % 100000
+}
+
+#[cfg(test)]
+mod tests {
+    use super::build_kibana_link;
+
+    #[test]
+    fn build_kibana_link_embeds_diagnostic_id_and_dashboard_path() {
+        let link = build_kibana_link("https://kb.example:5601", "diag-123", 1_700_000_000_000);
+
+        assert!(link.starts_with("https://kb.example:5601/app/dashboards#/view/"));
+        assert!(link.contains("diagnostic.id:'diag-123'"));
+        assert!(link.contains("time:("));
+    }
 }
