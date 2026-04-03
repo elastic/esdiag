@@ -18,7 +18,7 @@ mod kubernetes_platform;
 /// Processors for Logstash diagnostics
 mod logstash;
 
-pub use collector::Collector;
+pub use collector::{CollectionResult, Collector};
 pub use diagnostic::{
     DataSource, DiagnosticManifest, DiagnosticReport, Manifest, SourceContext,
     data_source::init_sources,

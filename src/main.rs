@@ -20,13 +20,15 @@ use esdiag::{
     },
     env::LOG_LEVEL,
     exporter::Exporter,
-    processor::{Collector, Identifiers, Processor},
+    processor::{CollectionResult, Collector, Identifiers, Processor},
     receiver::Receiver,
     uploader,
 };
 use eyre::{Result, eyre};
 use std::{
+    future::Future,
     io::{IsTerminal, Write},
+    path::PathBuf,
     sync::Arc,
     time::Duration,
 };
@@ -98,8 +100,14 @@ enum Commands {
         #[arg(help = "Diagnostic report opportunity", long, short)]
         opportunity: Option<String>,
         /// Diagnostic report user
-        #[arg(help = "Diagnostic report user", long, short)]
+        #[arg(help = "Diagnostic report user", long = "user", short, value_name = "USER")]
         user: Option<String>,
+        /// Elastic Upload Service upload id or URL for immediate upload after collection
+        #[arg(
+            help = "Elastic Upload Service upload id or URL for immediate upload after collection",
+            long = "upload"
+        )]
+        upload_id: Option<String>,
     },
     /// Start a web server to receive diagnostic bundle uploads
     #[cfg(feature = "server")]
@@ -496,6 +504,7 @@ async fn run(cli: Cli) -> Result<&'static str> {
                 case,
                 opportunity,
                 user,
+                upload_id,
             } => {
                 let known_host = Uri::try_from(host)?;
                 let output = Uri::try_from(output)?;
@@ -538,7 +547,12 @@ async fn run(cli: Cli) -> Result<&'static str> {
                             identifiers,
                         )
                         .await?;
-                        collector.collect().await?;
+                        collect_with_optional_upload(
+                            collector.collect(),
+                            upload_id.as_deref(),
+                            upload_collected_archive,
+                        )
+                        .await?;
                         Ok("collect")
                     }
                     Uri::ElasticCloud(_) => {
@@ -948,6 +962,35 @@ async fn run(cli: Cli) -> Result<&'static str> {
             ))
         }
     }
+}
+
+async fn collect_with_optional_upload<CollectFut, UploadFn, UploadFut>(
+    collect_future: CollectFut,
+    upload_id: Option<&str>,
+    mut upload_fn: UploadFn,
+) -> Result<CollectionResult>
+where
+    CollectFut: Future<Output = Result<CollectionResult>>,
+    UploadFn: FnMut(PathBuf, String) -> UploadFut,
+    UploadFut: Future<Output = Result<()>>,
+{
+    let result = collect_future.await?;
+    if let Some(upload_id) = upload_id {
+        upload_fn(PathBuf::from(&result.path), upload_id.to_string()).await?;
+    }
+    Ok(result)
+}
+
+async fn upload_collected_archive(file_path: PathBuf, upload_id: String) -> Result<()> {
+    tracing::info!(
+        "Uploading collected archive {} to {}",
+        file_path.display(),
+        upload_id
+    );
+    let response =
+        uploader::upload_file(&file_path, &upload_id, uploader::DEFAULT_UPLOAD_API_URL).await?;
+    tracing::info!("Upload complete for slug {}", response.slug);
+    Ok(())
 }
 
 fn sources_product_key(product: &Product) -> Result<&'static str> {
@@ -1372,9 +1415,9 @@ fn resolve_serve_exporter(output: Option<String>, runtime_mode: RuntimeMode) -> 
 #[cfg(test)]
 mod tests {
     use super::{
-        Cli, Commands, KeystoreCommands, format_remaining_duration_from,
-        host_connection_uses_receiver, resolve_host_secret_auth, resolve_secret_input_with_prompt,
-        should_error_for_missing_subcommand,
+        Cli, Commands, KeystoreCommands, collect_with_optional_upload,
+        format_remaining_duration_from, host_connection_uses_receiver, resolve_host_secret_auth,
+        resolve_secret_input_with_prompt, should_error_for_missing_subcommand,
     };
     #[cfg(feature = "server")]
     use super::{resolve_serve_exporter, resolve_serve_runtime_mode};
@@ -1382,9 +1425,13 @@ mod tests {
     use esdiag::data::{
         ElasticCloud, HostRole, KnownHost, Product, SecretAuth, Uri, upsert_secret_auth,
     };
+    use esdiag::processor::CollectionResult;
     #[cfg(feature = "server")]
     use esdiag::server::RuntimeMode;
-    use std::sync::{Mutex, OnceLock};
+    use std::sync::{
+        Mutex, OnceLock,
+        atomic::{AtomicUsize, Ordering},
+    };
     use tempfile::TempDir;
     use url::Url;
 
@@ -1538,6 +1585,155 @@ mod tests {
         assert_eq!(
             format_remaining_duration_from(1_700_000_000, 1_700_003_660),
             "1h 1m remaining"
+        );
+    }
+
+    #[test]
+    fn collect_command_parses_upload_id() {
+        let cli = Cli::parse_from([
+            "esdiag", "collect", "prod-es", "diag-dir", "--upload", "abc123",
+        ]);
+        match cli.command.expect("command") {
+            Commands::Collect {
+                host,
+                output,
+                upload_id,
+                user,
+                ..
+            } => {
+                assert_eq!(host, "prod-es");
+                assert_eq!(output, "diag-dir");
+                assert_eq!(upload_id, Some("abc123".to_string()));
+                assert_eq!(user, None);
+            }
+            _ => panic!("expected collect command"),
+        }
+    }
+
+    #[test]
+    fn collect_command_keeps_user_short_option() {
+        let cli = Cli::parse_from([
+            "esdiag", "collect", "prod-es", "diag-dir", "-u", "elastic", "--upload", "abc123",
+        ]);
+        match cli.command.expect("command") {
+            Commands::Collect {
+                upload_id,
+                user,
+                ..
+            } => {
+                assert_eq!(user, Some("elastic".to_string()));
+                assert_eq!(upload_id, Some("abc123".to_string()));
+            }
+            _ => panic!("expected collect command"),
+        }
+    }
+
+    #[tokio::test]
+    async fn collect_with_optional_upload_uses_resolved_runtime_archive_path() {
+        let upload_calls = AtomicUsize::new(0);
+        let result = collect_with_optional_upload(
+            std::future::ready(Ok(CollectionResult {
+                path: "/tmp/runtime-generated-esdiag.zip".to_string(),
+                success: 1,
+                total: 1,
+            })),
+            Some("https://upload.elastic.co/g/abc123"),
+            |path, upload_id| {
+                upload_calls.fetch_add(1, Ordering::SeqCst);
+                assert_eq!(
+                    path,
+                    std::path::PathBuf::from("/tmp/runtime-generated-esdiag.zip")
+                );
+                assert_eq!(upload_id, "https://upload.elastic.co/g/abc123".to_string());
+                std::future::ready(Ok(()))
+            },
+        )
+        .await
+        .expect("collect with upload succeeds");
+
+        assert_eq!(result.path, "/tmp/runtime-generated-esdiag.zip");
+        assert_eq!(upload_calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn collect_with_optional_upload_skips_upload_when_collect_fails() {
+        let upload_calls = AtomicUsize::new(0);
+        let result = collect_with_optional_upload(
+            std::future::ready(Err(eyre::eyre!("collect failed"))),
+            Some("abc123"),
+            |_path, _upload_id| {
+                upload_calls.fetch_add(1, Ordering::SeqCst);
+                std::future::ready(Ok(()))
+            },
+        )
+        .await;
+
+        let err = match result {
+            Ok(_) => panic!("collect failure should be returned"),
+            Err(err) => err,
+        };
+        assert!(err.to_string().contains("collect failed"));
+        assert_eq!(upload_calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn collect_with_optional_upload_skips_upload_when_no_upload_id_is_provided() {
+        let upload_calls = AtomicUsize::new(0);
+        let result = collect_with_optional_upload(
+            std::future::ready(Ok(CollectionResult {
+                path: "/tmp/collect-only-esdiag.zip".to_string(),
+                success: 1,
+                total: 1,
+            })),
+            None,
+            |_path, _upload_id| {
+                upload_calls.fetch_add(1, Ordering::SeqCst);
+                std::future::ready(Ok(()))
+            },
+        )
+        .await
+        .expect("collect without upload id succeeds");
+
+        assert_eq!(result.path, "/tmp/collect-only-esdiag.zip");
+        assert_eq!(upload_calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn collect_with_optional_upload_returns_upload_error_and_keeps_archive() {
+        let file = tempfile::Builder::new()
+            .prefix("diag-")
+            .suffix(".zip")
+            .tempfile()
+            .expect("temp file");
+        let path = file.path().to_path_buf();
+        let upload_calls = AtomicUsize::new(0);
+
+        let result = collect_with_optional_upload(
+            std::future::ready(Ok(CollectionResult {
+                path: path.display().to_string(),
+                success: 1,
+                total: 1,
+            })),
+            Some("abc123"),
+            |upload_path, upload_id| {
+                upload_calls.fetch_add(1, Ordering::SeqCst);
+                assert_eq!(upload_path, path);
+                assert_eq!(upload_id, "abc123".to_string());
+                assert!(upload_path.exists(), "collected archive should still exist");
+                std::future::ready(Err(eyre::eyre!("upload failed")))
+            },
+        )
+        .await;
+
+        let err = match result {
+            Ok(_) => panic!("upload failure should be returned"),
+            Err(err) => err,
+        };
+        assert!(err.to_string().contains("upload failed"));
+        assert_eq!(upload_calls.load(Ordering::SeqCst), 1);
+        assert!(
+            path.exists(),
+            "upload failure should preserve collected archive"
         );
     }
 

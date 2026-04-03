@@ -478,6 +478,7 @@ Options:
   -c, --case <CASE>                Diagnostic report case number
   -o, --opportunity <OPPORTUNITY>  Diagnostic report opportunity
   -u, --user <USER>                Diagnostic report user
+      --upload <UPLOAD_ID>         Elastic Upload Service upload id or URL for immediate upload after collection
   -h, --help                       Print help
 ```
 
@@ -487,6 +488,7 @@ Options:
 - the host must carry the `collect` role
 - `<OUTPUT>` must already exist
 - `esdiag` creates a diagnostic directory or archive structure within that output directory
+- `--upload` uploads the exact collected archive after a successful collect run; the archive still remains on disk locally
 
 ### Collection level
 
@@ -510,6 +512,12 @@ Options:
 - `--opportunity`
 - `--user`
 
+### Upload handoff
+
+- `--upload` accepts an Elastic Upload Service upload id or URL
+- upload starts only after collection succeeds
+- upload uses the runtime-resolved archive path, so you do not need to know the generated filename ahead of time
+
 ### Examples
 
 ```sh
@@ -518,6 +526,9 @@ esdiag collect prod-es ~/diag-output
 
 # Collect a minimal diagnostic with an explicit API subset
 esdiag collect prod-es ~/diag-output --type minimal --include nodes,cluster_health
+
+# Collect and immediately upload the resulting archive
+esdiag collect prod-es ~/diag-output --upload abc123
 ```
 
 ## `serve`

@@ -405,18 +405,29 @@ The `esdiag collect` command pulls the minimum required diagnostics from an Elas
 
 Authentication must be setup in advance with the `esdiag host` command or `hosts.yml` file. Direct access to the clsuter is required, this cannot be done through any Elastic Cloud API.
 
-```
+```text
 Collect a diagnostic bundle from a known host's API endpoints, writes output to a directory
 
-Usage: esdiag collect <HOST> <OUTPUT>
+Usage: esdiag collect [OPTIONS] <HOST> <OUTPUT>
 
 Arguments:
-  <HOST>    The Elasticsearch host to collect diagnostics from
+  <HOST>    The Elastic Stack host to collect diagnostics from
   <OUTPUT>  An existing directory to create a diagnostic directory and files in
 
 Options:
-  -h, --help  Print help
+      --type <TYPE>                Diagnostic type (minimal, light, standard, support) [default: standard]
+      --include <INCLUDE>          Comma-separated list of APIs to include
+      --exclude <EXCLUDE>          Comma-separated list of APIs to exclude
+      --sources <SOURCES>          Override the embedded sources.yml for the detected Elasticsearch or Logstash workflow. The file must match the active product or the command fails before collection
+  -a, --account <ACCOUNT>          Diagnostic report account name
+  -c, --case <CASE>                Diagnostic report case number
+  -o, --opportunity <OPPORTUNITY>  Diagnostic report opportunity
+  -u, --user <USER>                Diagnostic report user
+      --upload <UPLOAD_ID>         Elastic Upload Service upload id or URL for immediate upload after collection
+  -h, --help                       Print help
 ```
+
+When `--upload` is provided, `esdiag collect` still writes the archive locally first and then uploads that exact collected archive to Elastic Upload Service.
 
 ### Debugging
 
