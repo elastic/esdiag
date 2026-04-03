@@ -982,13 +982,26 @@ where
 }
 
 async fn upload_collected_archive(file_path: PathBuf, upload_id: String) -> Result<()> {
+    if !file_path.exists() {
+        return Err(eyre!(
+            "Collected archive not found at {}",
+            file_path.display()
+        ));
+    }
+
     tracing::info!(
         "Uploading collected archive {} to {}",
         file_path.display(),
         upload_id
     );
-    let response =
-        uploader::upload_file(&file_path, &upload_id, uploader::DEFAULT_UPLOAD_API_URL).await?;
+    let response = uploader::upload_file(&file_path, &upload_id, uploader::DEFAULT_UPLOAD_API_URL)
+        .await
+        .inspect_err(|_| {
+            tracing::warn!(
+                "Upload failed; collected archive remains available at {}",
+                file_path.display()
+            );
+        })?;
     tracing::info!("Upload complete for slug {}", response.slug);
     Ok(())
 }
@@ -1418,6 +1431,7 @@ mod tests {
         Cli, Commands, KeystoreCommands, collect_with_optional_upload,
         format_remaining_duration_from, host_connection_uses_receiver, resolve_host_secret_auth,
         resolve_secret_input_with_prompt, should_error_for_missing_subcommand,
+        upload_collected_archive,
     };
     #[cfg(feature = "server")]
     use super::{resolve_serve_exporter, resolve_serve_runtime_mode};
@@ -1734,6 +1748,21 @@ mod tests {
         assert!(
             path.exists(),
             "upload failure should preserve collected archive"
+        );
+    }
+
+    #[tokio::test]
+    async fn upload_collected_archive_returns_clear_error_when_file_is_missing() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let missing_path = temp_dir.path().join("missing-diag.zip");
+
+        let err = upload_collected_archive(missing_path.clone(), "abc123".to_string())
+            .await
+            .expect_err("missing archive should fail");
+
+        assert!(
+            err.to_string()
+                .contains(&format!("Collected archive not found at {}", missing_path.display()))
         );
     }
 
