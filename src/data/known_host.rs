@@ -59,6 +59,14 @@ fn roles_is_default_collect(roles: &[HostRole]) -> bool {
     roles.len() == 1 && roles[0] == HostRole::Collect
 }
 
+fn default_false() -> bool {
+    false
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 pub enum ElasticCloud {
     ElasticGovCloudAdmin,
@@ -311,6 +319,7 @@ impl KnownHostCliUpdate {
 pub enum KnownHost {
     /// A host using API key authentication
     ApiKey {
+        #[serde(default = "default_false", skip_serializing_if = "is_false")]
         accept_invalid_certs: bool,
         #[serde(skip_serializing_if = "Option::is_none")]
         apikey: Option<String>,
@@ -330,6 +339,7 @@ pub enum KnownHost {
     },
     /// A host using basic username/password authentication
     Basic {
+        #[serde(default = "default_false", skip_serializing_if = "is_false")]
         accept_invalid_certs: bool,
         app: Product,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -350,7 +360,7 @@ pub enum KnownHost {
     /// A host with no authentication
     #[serde(alias = "None")]
     NoAuth {
-        #[serde(default)]
+        #[serde(default = "default_false", skip_serializing_if = "is_false")]
         accept_invalid_certs: bool,
         app: Product,
         #[serde(
@@ -1584,6 +1594,56 @@ mod tests {
         assert!(
             !merged.accept_invalid_certs(),
             "explicit false should clear accept_invalid_certs"
+        );
+    }
+
+    #[test]
+    fn write_hosts_yml_omits_false_accept_invalid_certs() {
+        let _guard = env_lock().lock().expect("env lock");
+        let (_tmp, hosts_path, _keystore) = setup_env();
+        let mut hosts = BTreeMap::new();
+        hosts.insert(
+            "prod-es".to_string(),
+            KnownHost::NoAuth {
+                accept_invalid_certs: false,
+                app: Product::Elasticsearch,
+                roles: vec![HostRole::Collect],
+                viewer: None,
+                url: Url::parse("http://localhost:9200").expect("url"),
+            },
+        );
+
+        KnownHost::write_hosts_yml(&hosts).expect("write hosts");
+        let raw_hosts = std::fs::read_to_string(&hosts_path).expect("read hosts file");
+
+        assert!(
+            !raw_hosts.contains("accept_invalid_certs"),
+            "false accept_invalid_certs should be omitted from hosts.yml"
+        );
+    }
+
+    #[test]
+    fn write_hosts_yml_keeps_true_accept_invalid_certs() {
+        let _guard = env_lock().lock().expect("env lock");
+        let (_tmp, hosts_path, _keystore) = setup_env();
+        let mut hosts = BTreeMap::new();
+        hosts.insert(
+            "prod-es".to_string(),
+            KnownHost::NoAuth {
+                accept_invalid_certs: true,
+                app: Product::Elasticsearch,
+                roles: vec![HostRole::Collect],
+                viewer: None,
+                url: Url::parse("http://localhost:9200").expect("url"),
+            },
+        );
+
+        KnownHost::write_hosts_yml(&hosts).expect("write hosts");
+        let raw_hosts = std::fs::read_to_string(&hosts_path).expect("read hosts file");
+
+        assert!(
+            raw_hosts.contains("accept_invalid_certs: true"),
+            "true accept_invalid_certs should remain in hosts.yml"
         );
     }
 
