@@ -15,7 +15,7 @@ use super::{
 use crate::{
     data::Product,
     exporter::ArchiveExporter,
-    receiver::{ElasticsearchRequestError, Receiver},
+    receiver::{ElasticCloudAdminRequestError, ElasticsearchRequestError, Receiver},
 };
 use eyre::{Result, WrapErr};
 use std::path::PathBuf;
@@ -205,12 +205,13 @@ impl ElasticsearchCollector {
                     return Ok(0);
                 }
             },
-            Receiver::ElasticCloudAdmin(_) => {
-                tracing::debug!(
-                    "ElasticCloudAdmin receiver not fully supported for raw by path yet"
-                );
-                return Ok(0);
-            }
+            Receiver::ElasticCloudAdmin(r) => match r.get_version().await {
+                Ok(v) => v,
+                Err(e) => {
+                    tracing::debug!("Cannot collect raw API without version: {}", e);
+                    return Ok(0);
+                }
+            },
             _ => return Ok(0),
         };
 
@@ -309,6 +310,9 @@ fn should_retry_elasticsearch_error(error: &eyre::Report) -> bool {
     if let Some(request_error) = error.downcast_ref::<ElasticsearchRequestError>() {
         return request_error.status.as_u16() == 429 || request_error.status.is_server_error();
     }
+    if let Some(request_error) = error.downcast_ref::<ElasticCloudAdminRequestError>() {
+        return request_error.status.as_u16() == 429 || request_error.status.is_server_error();
+    }
     true
 }
 
@@ -335,6 +339,12 @@ mod tests {
         assert!(!should_retry_elasticsearch_error(&unauthorized));
         assert!(!should_retry_elasticsearch_error(&forbidden));
         assert!(!should_retry_elasticsearch_error(&not_found));
+
+        let cloud_admin_not_found = eyre::Report::from(ElasticCloudAdminRequestError {
+            status: StatusCode::NOT_FOUND,
+            body: "missing".to_string(),
+        });
+        assert!(!should_retry_elasticsearch_error(&cloud_admin_not_found));
     }
 
     #[test]
@@ -347,10 +357,15 @@ mod tests {
             status: StatusCode::BAD_GATEWAY,
             body: "gateway".to_string(),
         });
+        let cloud_admin_server_error = eyre::Report::from(ElasticCloudAdminRequestError {
+            status: StatusCode::BAD_GATEWAY,
+            body: "gateway".to_string(),
+        });
         let transport = eyre::eyre!("connection reset");
 
         assert!(should_retry_elasticsearch_error(&rate_limited));
         assert!(should_retry_elasticsearch_error(&server_error));
+        assert!(should_retry_elasticsearch_error(&cloud_admin_server_error));
         assert!(should_retry_elasticsearch_error(&transport));
     }
 }

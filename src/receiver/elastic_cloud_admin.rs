@@ -7,10 +7,11 @@ use super::super::processor::{
 };
 use super::{Receive, ReceiveRaw};
 use crate::data::{Auth, KnownHost};
-use eyre::Result;
+use eyre::{Result, eyre};
 use reqwest::header::{ACCEPT, ACCEPT_ENCODING, AUTHORIZATION};
 use reqwest::{Client, ClientBuilder, header::HeaderMap};
 use serde::de::DeserializeOwned;
+use serde_json::Value;
 use url::Url;
 
 use std::sync::Arc;
@@ -20,6 +21,20 @@ use tokio::sync::OnceCell;
 const ELASTIC_CLOUD_ADMIN_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 const ELASTIC_CLOUD_ADMIN_REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 
+#[derive(Debug)]
+pub struct ElasticCloudAdminRequestError {
+    pub status: reqwest::StatusCode,
+    pub body: String,
+}
+
+impl std::fmt::Display for ElasticCloudAdminRequestError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "http {} - {}", self.status, self.body)
+    }
+}
+
+impl std::error::Error for ElasticCloudAdminRequestError {}
+
 #[derive(Clone)]
 pub struct ElasticCloudAdminReceiver {
     client: Client,
@@ -28,6 +43,25 @@ pub struct ElasticCloudAdminReceiver {
 }
 
 impl ElasticCloudAdminReceiver {
+    fn format_error_body(body: &str) -> String {
+        serde_json::from_str::<Value>(body)
+            .map(|value| value.to_string())
+            .unwrap_or_else(|_| body.to_string())
+    }
+
+    fn proxy_url(&self, path: &str) -> Result<Url> {
+        let base_path = self.url.path().trim_end_matches('/');
+        let relative_path = path.trim_start_matches('/');
+        let proxy_path = if relative_path.is_empty() {
+            format!("{base_path}/")
+        } else {
+            format!("{base_path}/{relative_path}")
+        };
+        self.url
+            .join(&proxy_path)
+            .map_err(|err| eyre!("Failed to resolve Elastic Cloud Admin URL: {err}"))
+    }
+
     pub fn new(url: Url, api_key: String) -> Result<Self> {
         let mut default_headers = HeaderMap::new();
         default_headers.append("X-Management-Request", "true".parse().unwrap());
@@ -53,19 +87,50 @@ impl ElasticCloudAdminReceiver {
         self.version
             .get_or_try_init(|| async {
                 tracing::debug!("Fetching version from {}", self.url);
-                let url = self.url.join(&format!("{}/", self.url.path()))?;
+                let url = self.proxy_url("/")?;
                 let response = self.client.get(url).send().await?;
-                let bytes = response.bytes().await?;
-                let cluster: serde_json::Value = serde_json::from_slice(&bytes)?;
+                let status = response.status();
+                let body = response.text().await?;
+                if !status.is_success() {
+                    return Err(ElasticCloudAdminRequestError {
+                        status,
+                        body: Self::format_error_body(&body),
+                    }
+                    .into());
+                }
+                let cluster: serde_json::Value = serde_json::from_str(&body)?;
                 let version_str = cluster
                     .get("version")
                     .and_then(|v| v.get("number"))
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| eyre::eyre!("No version found in root response"))?;
                 semver::Version::parse(version_str)
-                    .map_err(|e| eyre::eyre!("Failed to parse version: {}", e))
+                    .map_err(|e| eyre!("Failed to parse version: {}", e))
             })
             .await
+    }
+
+    pub async fn get_raw_by_path(&self, path: &str, extension: &str) -> Result<String> {
+        tracing::debug!("Getting raw Elastic Cloud Admin API path: {}", path);
+
+        let accept = if extension == ".txt" {
+            "text/plain"
+        } else {
+            "application/json"
+        };
+        let url = self.proxy_url(path)?;
+        let response = self.client.get(url).header(ACCEPT, accept).send().await?;
+        let status = response.status();
+        let body = response.text().await?;
+        if !status.is_success() {
+            return Err(ElasticCloudAdminRequestError {
+                status,
+                body: Self::format_error_body(&body),
+            }
+            .into());
+        }
+
+        Ok(body)
     }
 }
 
@@ -134,19 +199,20 @@ impl Receive for ElasticCloudAdminReceiver {
     {
         let ctx = SourceContext::new("elasticsearch", self.get_version().await.ok().cloned());
         let source_path = T::resolve_source_request_path(&ctx)?;
-        // Prepend the API proxy base path
-        let path = match source_path.as_str() {
-            "/" => format!("{}/", self.url.path()),
-            _ => format!("{}/{}", self.url.path(), source_path),
-        };
-        let url = self.url.join(&path)?;
+        let url = self.proxy_url(&source_path)?;
         tracing::debug!("Getting API: {}", url);
         let response = self.client.get(url).send().await?;
+        let status = response.status();
+        let body = response.text().await?;
+        if !status.is_success() {
+            return Err(ElasticCloudAdminRequestError {
+                status,
+                body: Self::format_error_body(&body),
+            }
+            .into());
+        }
 
-        tracing::debug!("Get Response: {:?}", response);
-
-        let bytes = response.bytes().await?;
-        serde_json::from_slice(&bytes).map_err(Into::into)
+        serde_json::from_str(&body).map_err(Into::into)
     }
 
     async fn try_get_manifest(&self) -> Result<DiagnosticManifest> {
@@ -168,17 +234,7 @@ impl ReceiveRaw for ElasticCloudAdminReceiver {
     {
         let ctx = SourceContext::new("elasticsearch", self.get_version().await.ok().cloned());
         let source_path = T::resolve_source_request_path(&ctx)?;
-        // Prepend the API proxy base path
-        let path = match source_path.as_str() {
-            "/" => format!("{}/", self.url.path()),
-            _ => format!("{}/{}", self.url.path(), source_path),
-        };
-        let url = self.url.join(&path)?;
-        tracing::debug!("Getting API: {}", url);
-        let response = self.client.get(url).send().await?;
-
-        // Return raw text
-        response.text().await.map_err(Into::into)
+        self.get_raw_by_path(&source_path, ".json").await
     }
 }
 
@@ -192,11 +248,15 @@ impl std::fmt::Display for ElasticCloudAdminReceiver {
 mod tests {
     use super::*;
     use axum::{
+        extract::Request,
         extract::State,
         Router,
         http::StatusCode,
+        middleware::{self, Next},
         routing::get,
     };
+    use reqwest::header::ACCEPT;
+    use std::sync::{Arc, Mutex};
     use tokio::task::JoinHandle;
 
     async fn status_handler(State(status): State<StatusCode>) -> (StatusCode, &'static str) {
@@ -223,6 +283,20 @@ mod tests {
         let _ = server.await;
     }
 
+    async fn capture_accept_header(
+        State(last_accept): State<Arc<Mutex<Option<String>>>>,
+        request: Request,
+        next: Next,
+    ) -> impl axum::response::IntoResponse {
+        let header = request
+            .headers()
+            .get(ACCEPT)
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_string);
+        *last_accept.lock().expect("accept lock") = header;
+        next.run(request).await
+    }
+
     #[tokio::test]
     async fn is_connected_returns_true_for_success_status() {
         let (url, server) = spawn_status_server(StatusCode::OK).await;
@@ -243,5 +317,99 @@ mod tests {
         assert!(!receiver.is_connected().await);
 
         stop_status_server(server).await;
+    }
+
+    #[tokio::test]
+    async fn get_raw_by_path_uses_proxy_base_path_and_accept_header() {
+        async fn text_handler() -> &'static str {
+            "hot threads"
+        }
+
+        let last_accept = Arc::new(Mutex::new(None));
+        let app = Router::new()
+            .route(
+                "/api/v1/deployments/test/elasticsearch/main-elasticsearch/proxy/_nodes/hot_threads",
+                get(text_handler),
+            )
+            .layer(middleware::from_fn_with_state(
+                last_accept.clone(),
+                capture_accept_header,
+            ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind test server");
+        let addr = listener.local_addr().expect("listener addr");
+        let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app)
+                .with_graceful_shutdown(async {
+                    let _ = shutdown_rx.await;
+                })
+                .await
+                .expect("serve test app");
+        });
+        let url = Url::parse(&format!(
+            "http://{addr}/api/v1/deployments/test/elasticsearch/main-elasticsearch/proxy/"
+        ))
+        .expect("parse test url");
+        let receiver =
+            ElasticCloudAdminReceiver::new(url, "test-api-key".to_string()).expect("receiver");
+
+        let body = receiver
+            .get_raw_by_path("/_nodes/hot_threads", ".txt")
+            .await
+            .expect("raw response");
+
+        assert_eq!(body, "hot threads");
+        assert_eq!(
+            last_accept.lock().expect("accept lock").as_deref(),
+            Some("text/plain")
+        );
+
+        stop_status_server(server, shutdown_tx).await;
+    }
+
+    #[tokio::test]
+    async fn get_raw_by_path_returns_request_error_for_http_failures() {
+        async fn not_found_handler() -> (StatusCode, &'static str) {
+            (StatusCode::NOT_FOUND, r#"{"error":"missing"}"#)
+        }
+
+        let app = Router::new().route(
+            "/api/v1/deployments/test/elasticsearch/main-elasticsearch/proxy/_cluster/missing",
+            get(not_found_handler),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind test server");
+        let addr = listener.local_addr().expect("listener addr");
+        let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app)
+                .with_graceful_shutdown(async {
+                    let _ = shutdown_rx.await;
+                })
+                .await
+                .expect("serve test app");
+        });
+        let url = Url::parse(&format!(
+            "http://{addr}/api/v1/deployments/test/elasticsearch/main-elasticsearch/proxy/"
+        ))
+        .expect("parse test url");
+        let receiver =
+            ElasticCloudAdminReceiver::new(url, "test-api-key".to_string()).expect("receiver");
+
+        let err = receiver
+            .get_raw_by_path("/_cluster/missing", ".json")
+            .await
+            .expect_err("should fail");
+        let request_error = err
+            .downcast_ref::<ElasticCloudAdminRequestError>()
+            .expect("request error");
+
+        assert_eq!(request_error.status, StatusCode::NOT_FOUND);
+        assert_eq!(request_error.body, r#"{"error":"missing"}"#);
+
+        stop_status_server(server, shutdown_tx).await;
     }
 }

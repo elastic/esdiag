@@ -18,6 +18,7 @@ mod logstash;
 mod upload_service;
 
 pub use elasticsearch::{ElasticsearchReceiver, ElasticsearchRequestError};
+pub use elastic_cloud_admin::{ElasticCloudAdminReceiver, ElasticCloudAdminRequestError};
 pub use kibana::{KibanaReceiver, KibanaRequestError};
 pub use logstash::{LogstashReceiver, LogstashRequestError};
 
@@ -27,7 +28,6 @@ use super::{
 };
 use archive::{ArchiveBytesReceiver, ArchiveFileReceiver};
 use directory::DirectoryReceiver;
-use elastic_cloud_admin::ElasticCloudAdminReceiver;
 use eyre::{Result, eyre};
 use futures::stream::BoxStream;
 use serde::de::DeserializeOwned;
@@ -169,8 +169,11 @@ impl Receiver {
             Receiver::Elasticsearch(receiver) => receiver.get_raw_by_path(path, extension).await,
             Receiver::Kibana(receiver) => receiver.get_raw_by_path(path, extension).await,
             Receiver::Logstash(receiver) => receiver.get_raw_by_path(path, extension).await,
+            Receiver::ElasticCloudAdmin(receiver) => {
+                receiver.get_raw_by_path(path, extension).await
+            }
             _ => Err(eyre!(
-                "Raw data by path is only supported for Elasticsearch, Kibana, or Logstash receivers"
+                "Raw data by path is only supported for Elasticsearch, Elastic Cloud Admin, Kibana, or Logstash receivers"
             )),
         }
     }
