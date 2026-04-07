@@ -63,7 +63,7 @@ body {
     min-height: 100svh;
 }
 
-form {
+.jobs-main form {
     max-width: 400px;
 }
 

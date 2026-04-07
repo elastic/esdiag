@@ -276,7 +276,7 @@ impl Processor<Ready> {
 impl Processor<Processing> {
     #[tracing::instrument(skip_all)]
     pub async fn process(self) -> Result<Processor<Completed>, Processor<Failed>> {
-        self.process_with_kibana_base(None).await
+        self.process_with_kibana_base(kibana_base_url_from_env()).await
     }
 
     #[tracing::instrument(skip_all)]
@@ -369,6 +369,19 @@ impl Processor<Processing> {
             },
         })
     }
+}
+
+fn append_kibana_space(kibana_url: String) -> String {
+    match crate::env::get_string("ESDIAG_KIBANA_SPACE").ok() {
+        Some(space) => format!("{kibana_url}/s/{space}"),
+        None => kibana_url,
+    }
+}
+
+fn kibana_base_url_from_env() -> Option<String> {
+    crate::env::get_string("ESDIAG_KIBANA_URL")
+        .ok()
+        .map(append_kibana_space)
 }
 
 fn build_kibana_link(kibana_url: &str, diagnostic_id: &str, collection_date: u64) -> String {
@@ -556,8 +569,12 @@ pub fn new_job_id() -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use super::build_kibana_link;
+    use super::{build_kibana_link, kibana_base_url_from_env};
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn env_lock() -> &'static std::sync::Mutex<()> {
+        crate::test_env_lock()
+    }
 
     #[test]
     fn build_kibana_link_embeds_diagnostic_id_and_dashboard_path() {
@@ -578,5 +595,24 @@ mod tests {
         let link = build_kibana_link("https://kb.example:5601", "diag-123", future_collection_date);
 
         assert!(link.contains("from:now-90d,to:now"));
+    }
+
+    #[test]
+    fn kibana_base_url_from_env_applies_space_suffix() {
+        let _guard = env_lock().lock().expect("env lock");
+        unsafe {
+            std::env::set_var("ESDIAG_KIBANA_URL", "https://env-kb.example:5601");
+            std::env::set_var("ESDIAG_KIBANA_SPACE", "ops");
+        }
+
+        assert_eq!(
+            kibana_base_url_from_env().as_deref(),
+            Some("https://env-kb.example:5601/s/ops")
+        );
+
+        unsafe {
+            std::env::remove_var("ESDIAG_KIBANA_URL");
+            std::env::remove_var("ESDIAG_KIBANA_SPACE");
+        }
     }
 }

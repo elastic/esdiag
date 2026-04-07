@@ -55,7 +55,7 @@ Commands:
 
 Shared host auth/update options:
 - `--accept-invalid-certs <true|false>`
-- `-a, --apikey <APIKEY>`
+- `-k, --apikey <APIKEY>`
 - `-u, --username <USERNAME>`
 - `-p, --password <PASSWORD>`
 - `--secret <SECRET>`

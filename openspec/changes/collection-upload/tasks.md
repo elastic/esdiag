@@ -1,6 +1,6 @@
 ## 1. CLI Surface
 
-- [x] 1.1 Extend the `collect` subcommand parser to accept an optional `--upload` / `-u` argument for an Elastic Upload Service upload id or URL.
+- [x] 1.1 Extend the `collect` subcommand parser to accept an optional `--upload` argument for an Elastic Upload Service upload id or URL.
 - [x] 1.2 Update `collect` help text and any user-facing CLI documentation to describe the new convenience workflow and that the archive is still written locally before upload.
 - [x] 1.3 Add or update CLI parsing tests covering `collect` with and without the new `--upload` argument.
 
