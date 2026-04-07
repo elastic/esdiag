@@ -1,6 +1,6 @@
 use super::{ServerState, get_theme_dark, template};
 use crate::data::{
-    ElasticCloud, HostRole, KnownHost, Product, SecretAuth, Settings, keystore_exists,
+    HostRole, KnownHost, KnownHostBuilder, Product, SecretAuth, Settings, keystore_exists,
     list_secret_names, remove_secret, resolve_secret_auth, upsert_secret_auth,
 };
 use askama::Template;
@@ -839,31 +839,16 @@ fn host_row_from_known_host(name: String, host: KnownHost) -> template::HostsTab
         username: String::new(),
         password: String::new(),
     };
-    match host {
-        KnownHost::ApiKey {
-            cloud_id,
-            secret,
-            apikey,
-            ..
-        } => {
-            row.auth = "apikey".to_string();
-            row.cloud_id = cloud_id.map(|v| v.to_string()).unwrap_or_default();
-            row.secret = secret.unwrap_or_default();
-            row.apikey = apikey.unwrap_or_default();
-        }
-        KnownHost::Basic {
-            secret,
-            username,
-            password,
-            ..
-        } => {
-            row.auth = "basic".to_string();
-            row.secret = secret.unwrap_or_default();
-            row.username = username.unwrap_or_default();
-            row.password = password.unwrap_or_default();
-        }
-        KnownHost::NoAuth { .. } => {}
-    }
+    row.auth = host_auth_value(&host).to_string();
+    row.cloud_id = host
+        .cloud_id
+        .as_ref()
+        .map(std::string::ToString::to_string)
+        .unwrap_or_default();
+    row.secret = host.secret.clone().unwrap_or_default();
+    row.apikey = host.legacy_apikey.clone().unwrap_or_default();
+    row.username = host.legacy_username.clone().unwrap_or_default();
+    row.password = host.legacy_password.clone().unwrap_or_default();
     row
 }
 
@@ -905,30 +890,25 @@ fn diagnostic_cluster_row(
 }
 
 fn host_auth_value(host: &KnownHost) -> &'static str {
-    match host {
-        KnownHost::ApiKey { .. } => "apikey",
-        KnownHost::Basic { .. } => "basic",
-        KnownHost::NoAuth { .. } => "none",
+    if host.secret.is_some() {
+        "secret"
+    } else if host.legacy_apikey.is_some() {
+        "apikey"
+    } else if host.legacy_username.is_some() || host.legacy_password.is_some() {
+        "basic"
+    } else {
+        "none"
     }
 }
 
 fn host_secret_value(host: &KnownHost) -> String {
-    match host {
-        KnownHost::ApiKey { secret, .. } | KnownHost::Basic { secret, .. } => {
-            secret.clone().unwrap_or_default()
-        }
-        KnownHost::NoAuth { .. } => String::new(),
-    }
+    host.secret.clone().unwrap_or_default()
 }
 
 fn host_has_plaintext_auth(host: &KnownHost) -> bool {
-    match host {
-        KnownHost::ApiKey { apikey, .. } => apikey.is_some(),
-        KnownHost::Basic {
-            username, password, ..
-        } => username.is_some() || password.is_some(),
-        KnownHost::NoAuth { .. } => false,
-    }
+    host.legacy_apikey.is_some()
+        || host.legacy_username.is_some()
+        || host.legacy_password.is_some()
 }
 
 fn read_secret_rows(
@@ -1259,41 +1239,26 @@ async fn apply_upsert_host(
     let roles = parse_roles(&form.roles)?;
     let viewer = to_opt(form.viewer);
     let secret = to_opt(form.secret);
-    let apikey = to_opt(form.apikey);
-    let username = to_opt(form.username);
-    let password = to_opt(form.password);
+    let _apikey = to_opt(form.apikey);
+    let _username = to_opt(form.username);
+    let _password = to_opt(form.password);
     let accept_invalid_certs = form.accept_invalid_certs.is_some();
     let auth = infer_auth_from_secret_selection(state, user, &secret, form.auth.trim()).await?;
 
-    let cloud_id = ElasticCloud::try_from(&url).ok();
+    let mut builder = KnownHostBuilder::new(url)
+        .product(app)
+        .accept_invalid_certs(accept_invalid_certs)
+        .roles(roles)
+        .viewer(viewer);
     let host = match auth.as_str() {
-        "none" => KnownHost::NoAuth {
-            accept_invalid_certs,
-            app,
-            roles,
-            viewer,
-            url,
-        },
-        "apikey" => KnownHost::ApiKey {
-            accept_invalid_certs,
-            apikey,
-            app,
-            cloud_id,
-            roles,
-            secret,
-            viewer,
-            url,
-        },
-        "basic" => KnownHost::Basic {
-            accept_invalid_certs,
-            app,
-            password,
-            roles,
-            secret,
-            viewer,
-            url,
-            username,
-        },
+        "none" => builder.build().map_err(to_message)?,
+        "apikey" | "basic" | "secret" => {
+            let secret_id = secret.ok_or_else(|| {
+                "Saved authenticated hosts require a secret reference.".to_string()
+            })?;
+            builder = builder.secret(Some(secret_id));
+            builder.build().map_err(to_message)?
+        }
         _ => return Err("Auth type must be one of: none, apikey, basic.".to_string()),
     };
 
@@ -1347,65 +1312,40 @@ async fn apply_upsert_cluster(
     let auth = infer_auth_from_secret_selection(state, user, &secret, form.auth.trim()).await?;
 
     let kibana_name = format!("{name}-kb");
-    let elasticsearch_host = match auth.as_str() {
-        "none" => KnownHost::NoAuth {
-            accept_invalid_certs,
-            app: Product::Elasticsearch,
-            roles: vec![HostRole::Send],
-            viewer: Some(kibana_name.clone()),
-            url: elasticsearch_url,
-        },
-        "apikey" => KnownHost::ApiKey {
-            accept_invalid_certs,
-            apikey: None,
-            app: Product::Elasticsearch,
-            cloud_id: ElasticCloud::try_from(&elasticsearch_url).ok(),
-            roles: vec![HostRole::Send],
-            secret: secret.clone(),
-            viewer: Some(kibana_name.clone()),
-            url: elasticsearch_url,
-        },
-        "basic" => KnownHost::Basic {
-            accept_invalid_certs,
-            app: Product::Elasticsearch,
-            password: None,
-            roles: vec![HostRole::Send],
-            secret: secret.clone(),
-            viewer: Some(kibana_name.clone()),
-            url: elasticsearch_url,
-            username: None,
-        },
-        _ => return Err("Auth type must be one of: none, apikey, basic.".to_string()),
+    let elasticsearch_host = {
+        let mut builder = KnownHostBuilder::new(elasticsearch_url)
+            .product(Product::Elasticsearch)
+            .accept_invalid_certs(accept_invalid_certs)
+            .roles(vec![HostRole::Send])
+            .viewer(Some(kibana_name.clone()));
+        match auth.as_str() {
+            "none" => builder.build().map_err(to_message)?,
+            "apikey" | "basic" | "secret" => {
+                let secret_id = secret.clone().ok_or_else(|| {
+                    "Saved authenticated clusters require a secret reference.".to_string()
+                })?;
+                builder = builder.secret(Some(secret_id));
+                builder.build().map_err(to_message)?
+            }
+            _ => return Err("Auth type must be one of: none, apikey, basic.".to_string()),
+        }
     };
-    let kibana_host = match auth.as_str() {
-        "none" => KnownHost::NoAuth {
-            accept_invalid_certs,
-            app: Product::Kibana,
-            roles: vec![HostRole::View],
-            viewer: None,
-            url: kibana_url,
-        },
-        "apikey" => KnownHost::ApiKey {
-            accept_invalid_certs,
-            apikey: None,
-            app: Product::Kibana,
-            cloud_id: ElasticCloud::try_from(&kibana_url).ok(),
-            roles: vec![HostRole::View],
-            secret: secret.clone(),
-            viewer: None,
-            url: kibana_url,
-        },
-        "basic" => KnownHost::Basic {
-            accept_invalid_certs,
-            app: Product::Kibana,
-            password: None,
-            roles: vec![HostRole::View],
-            secret: secret.clone(),
-            viewer: None,
-            url: kibana_url,
-            username: None,
-        },
-        _ => unreachable!(),
+    let kibana_host = {
+        let mut builder = KnownHostBuilder::new(kibana_url)
+            .product(Product::Kibana)
+            .accept_invalid_certs(accept_invalid_certs)
+            .roles(vec![HostRole::View]);
+        match auth.as_str() {
+            "none" => builder.build().map_err(to_message)?,
+            "apikey" | "basic" | "secret" => {
+                let secret_id = secret.clone().ok_or_else(|| {
+                    "Saved authenticated clusters require a secret reference.".to_string()
+                })?;
+                builder = builder.secret(Some(secret_id));
+                builder.build().map_err(to_message)?
+            }
+            _ => unreachable!(),
+        }
     };
 
     let mut hosts: BTreeMap<String, KnownHost> =
@@ -2037,13 +1977,13 @@ mod tests {
         let mut hosts = BTreeMap::new();
         hosts.insert(
             "old-host".to_string(),
-            KnownHost::NoAuth {
-                accept_invalid_certs: false,
-                app: Product::Elasticsearch,
-                roles: vec![HostRole::Send],
-                viewer: None,
-                url: Url::parse("http://localhost:9200").expect("url"),
-            },
+            KnownHost::new_no_auth(
+                Product::Elasticsearch,
+                Url::parse("http://localhost:9200").expect("url"),
+                vec![HostRole::Send],
+                None,
+                false,
+            ),
         );
         KnownHost::write_hosts_yml(&hosts).expect("write hosts");
 
@@ -2145,12 +2085,9 @@ mod tests {
         .expect("save host");
 
         let saved_hosts = KnownHost::parse_hosts_yml().expect("reload hosts");
-        match saved_hosts.get("with-secret").expect("saved host") {
-            KnownHost::ApiKey { secret, .. } => {
-                assert_eq!(secret.as_deref(), Some("api-secret"));
-            }
-            _ => panic!("expected ApiKey host"),
-        }
+        let saved = saved_hosts.get("with-secret").expect("saved host");
+        assert_eq!(saved.secret.as_deref(), Some("api-secret"));
+        assert!(saved.legacy_apikey.is_none());
     }
 
     #[tokio::test]
@@ -2221,39 +2158,37 @@ mod tests {
         let mut hosts = BTreeMap::new();
         hosts.insert(
             "collector".to_string(),
-            KnownHost::NoAuth {
-                accept_invalid_certs: false,
-                app: Product::Elasticsearch,
-                roles: vec![HostRole::Collect],
-                viewer: None,
-                url: Url::parse("http://collector:9200").expect("url"),
-            },
+            KnownHost::new_no_auth(
+                Product::Elasticsearch,
+                Url::parse("http://collector:9200").expect("url"),
+                vec![HostRole::Collect],
+                None,
+                false,
+            ),
         );
         hosts.insert(
             "prod".to_string(),
-            KnownHost::ApiKey {
-                accept_invalid_certs: true,
-                apikey: None,
-                app: Product::Elasticsearch,
-                cloud_id: None,
-                roles: vec![HostRole::Send],
-                secret: Some("diag-secret".to_string()),
-                viewer: Some("prod-kb".to_string()),
-                url: Url::parse("https://prod-es:9200").expect("url"),
-            },
+            KnownHost::new_legacy_apikey(
+                Product::Elasticsearch,
+                Url::parse("https://prod-es:9200").expect("url"),
+                vec![HostRole::Send],
+                Some("prod-kb".to_string()),
+                true,
+                Some("diag-secret".to_string()),
+                None,
+            ),
         );
         hosts.insert(
             "prod-kb".to_string(),
-            KnownHost::ApiKey {
-                accept_invalid_certs: true,
-                apikey: None,
-                app: Product::Kibana,
-                cloud_id: None,
-                roles: vec![HostRole::View],
-                secret: Some("diag-secret".to_string()),
-                viewer: None,
-                url: Url::parse("https://prod-kb:5601").expect("url"),
-            },
+            KnownHost::new_legacy_apikey(
+                Product::Kibana,
+                Url::parse("https://prod-kb:5601").expect("url"),
+                vec![HostRole::View],
+                None,
+                true,
+                Some("diag-secret".to_string()),
+                None,
+            ),
         );
         KnownHost::write_hosts_yml(&hosts).expect("write hosts");
 
@@ -2262,7 +2197,7 @@ mod tests {
         assert_eq!(host_rows[0].name, "collector");
         assert_eq!(cluster_rows.len(), 1);
         assert_eq!(cluster_rows[0].name, "prod");
-        assert_eq!(cluster_rows[0].auth, "apikey");
+        assert_eq!(cluster_rows[0].auth, "secret");
         assert_eq!(cluster_rows[0].secret, "diag-secret");
         assert!(cluster_rows[0].accept_invalid_certs);
         assert_eq!(cluster_rows[0].elasticsearch_url, "https://prod-es:9200/");
@@ -2277,23 +2212,23 @@ mod tests {
         let mut hosts = BTreeMap::new();
         hosts.insert(
             "old-cluster".to_string(),
-            KnownHost::NoAuth {
-                accept_invalid_certs: false,
-                app: Product::Elasticsearch,
-                roles: vec![HostRole::Send],
-                viewer: Some("old-cluster-kb".to_string()),
-                url: Url::parse("http://old-es:9200").expect("url"),
-            },
+            KnownHost::new_no_auth(
+                Product::Elasticsearch,
+                Url::parse("http://old-es:9200").expect("url"),
+                vec![HostRole::Send],
+                Some("old-cluster-kb".to_string()),
+                false,
+            ),
         );
         hosts.insert(
             "old-cluster-kb".to_string(),
-            KnownHost::NoAuth {
-                accept_invalid_certs: false,
-                app: Product::Kibana,
-                roles: vec![HostRole::View],
-                viewer: None,
-                url: Url::parse("http://old-kb:5601").expect("url"),
-            },
+            KnownHost::new_no_auth(
+                Product::Kibana,
+                Url::parse("http://old-kb:5601").expect("url"),
+                vec![HostRole::View],
+                None,
+                false,
+            ),
         );
         KnownHost::write_hosts_yml(&hosts).expect("write hosts");
 

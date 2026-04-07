@@ -383,16 +383,15 @@ mod tests {
         let mut hosts = BTreeMap::new();
         hosts.insert(
             "secure-es".to_string(),
-            KnownHost::ApiKey {
-                accept_invalid_certs: false,
-                apikey: None,
-                app: Product::Elasticsearch,
-                cloud_id: None,
-                roles: vec![HostRole::Send],
-                secret: Some("secure-es".to_string()),
-                viewer: None,
-                url: Url::parse("http://localhost:9200").expect("url"),
-            },
+            KnownHost::new_legacy_apikey(
+                Product::Elasticsearch,
+                Url::parse("http://localhost:9200").expect("url"),
+                vec![HostRole::Send],
+                None,
+                false,
+                Some("secure-es".to_string()),
+                None,
+            ),
         );
         write_hosts(hosts);
 
@@ -457,13 +456,13 @@ mod tests {
         let mut hosts = BTreeMap::new();
         hosts.insert(
             "saved-host".to_string(),
-            KnownHost::NoAuth {
-                accept_invalid_certs: false,
-                app: Product::Elasticsearch,
-                roles: vec![HostRole::Send],
-                viewer: None,
-                url: Url::parse("http://localhost:9200").expect("url"),
-            },
+            KnownHost::new_no_auth(
+                Product::Elasticsearch,
+                Url::parse("http://localhost:9200").expect("url"),
+                vec![HostRole::Send],
+                None,
+                false,
+            ),
         );
         write_hosts(hosts);
         Settings::default().save().expect("save settings");
@@ -493,13 +492,13 @@ mod tests {
         let mut hosts = BTreeMap::new();
         hosts.insert(
             "collector-only".to_string(),
-            KnownHost::NoAuth {
-                accept_invalid_certs: false,
-                app: Product::Elasticsearch,
-                roles: vec![HostRole::Collect],
-                viewer: None,
-                url: Url::parse("http://localhost:9200").expect("url"),
-            },
+            KnownHost::new_no_auth(
+                Product::Elasticsearch,
+                Url::parse("http://localhost:9200").expect("url"),
+                vec![HostRole::Collect],
+                None,
+                false,
+            ),
         );
         write_hosts(hosts);
 
@@ -661,16 +660,15 @@ mod tests {
         let mut hosts = BTreeMap::new();
         hosts.insert(
             "secure-es".to_string(),
-            KnownHost::ApiKey {
-                accept_invalid_certs: false,
-                apikey: None,
-                app: Product::Elasticsearch,
-                cloud_id: None,
-                roles: vec![HostRole::Send],
-                secret: Some("secure-es".to_string()),
-                viewer: None,
-                url: Url::parse("http://localhost:9200").expect("url"),
-            },
+            KnownHost::new_legacy_apikey(
+                Product::Elasticsearch,
+                Url::parse("http://localhost:9200").expect("url"),
+                vec![HostRole::Send],
+                None,
+                false,
+                Some("secure-es".to_string()),
+                None,
+            ),
         );
         write_hosts(hosts);
 

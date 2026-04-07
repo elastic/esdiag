@@ -120,15 +120,11 @@ impl TryFrom<KnownHost> for Uri {
     type Error = eyre::Report;
 
     fn try_from(host: KnownHost) -> Result<Self> {
-        let host_uri = match host {
-            KnownHost::ApiKey { ref cloud_id, .. } => match cloud_id {
-                Some(ElasticCloud::ElasticCloud) => Uri::ElasticCloud(host),
-                Some(ElasticCloud::ElasticCloudAdmin) => Uri::ElasticCloudAdmin(host),
-                Some(ElasticCloud::ElasticGovCloudAdmin) => Uri::ElasticGovCloudAdmin(host),
-                None => Uri::KnownHost(host),
-            },
-            KnownHost::Basic { .. } => Uri::KnownHost(host),
-            KnownHost::NoAuth { .. } => Uri::KnownHost(host),
+        let host_uri = match host.cloud_id() {
+            Some(ElasticCloud::ElasticCloud) => Uri::ElasticCloud(host),
+            Some(ElasticCloud::ElasticCloudAdmin) => Uri::ElasticCloudAdmin(host),
+            Some(ElasticCloud::ElasticGovCloudAdmin) => Uri::ElasticGovCloudAdmin(host),
+            None => Uri::KnownHost(host),
         };
         Ok(host_uri)
     }

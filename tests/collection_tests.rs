@@ -194,7 +194,8 @@ fn find_diag_zip(path: &Path) -> Option<std::path::PathBuf> {
         let entry = entry.unwrap();
         let file_name = entry.file_name();
         let file_name = file_name.to_string_lossy();
-        let valid_prefix = file_name.starts_with("api-diagnostics-");
+        let valid_prefix = file_name.starts_with("api-diagnostics-")
+            || file_name.contains("-api-diagnostics-");
         if entry.file_type().unwrap().is_file() && valid_prefix && file_name.ends_with(".zip") {
             return Some(entry.path());
         }

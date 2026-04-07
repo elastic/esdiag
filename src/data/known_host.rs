@@ -7,7 +7,7 @@ use crate::data::{
     Auth, Product, SecretAuth, get_keystore_password, resolve_secret_auth as resolve_secret_by_id,
 };
 use eyre::{Result, eyre};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer};
 use serde_yaml;
 use std::{
     collections::BTreeMap,
@@ -67,7 +67,7 @@ fn is_false(value: &bool) -> bool {
     !*value
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ElasticCloud {
     ElasticGovCloudAdmin,
     ElasticCloudAdmin,
@@ -211,50 +211,22 @@ impl KnownHostBuilder {
 
     pub fn build(mut self) -> Result<KnownHost> {
         self.update_cloud_api_path();
-        match (self.apikey, self.username, self.password, self.secret) {
-            (Some(apikey), None, None, secret) => Ok(KnownHost::ApiKey {
-                accept_invalid_certs: self.accept_invalid_certs,
-                apikey: Some(apikey),
-                app: self.product,
-                cloud_id: self.cloud_id,
-                roles: self.roles,
-                secret,
-                url: self.url,
-                viewer: self.viewer,
-            }),
-            (None, Some(username), Some(password), secret) => Ok(KnownHost::Basic {
-                accept_invalid_certs: self.accept_invalid_certs,
-                app: self.product,
-                password: Some(password),
-                roles: self.roles,
-                secret,
-                url: self.url,
-                username: Some(username),
-                viewer: self.viewer,
-            }),
-            (None, None, None, None) => Ok(KnownHost::NoAuth {
-                accept_invalid_certs: self.accept_invalid_certs,
-                app: self.product,
-                roles: self.roles,
-                url: self.url,
-                viewer: self.viewer,
-            }),
-            // Allow hosts to persist only a secret reference.
-            (None, None, None, Some(secret)) => Ok(KnownHost::Basic {
-                accept_invalid_certs: self.accept_invalid_certs,
-                app: self.product,
-                password: None,
-                roles: self.roles,
-                secret: Some(secret),
-                url: self.url,
-                username: None,
-                viewer: self.viewer,
-            }),
-            _ => Err(eyre!("Invalid KnownHost configuration")),
-        }
+        KnownHost::from_parts(KnownHostParts {
+            accept_invalid_certs: self.accept_invalid_certs,
+            app: self.product,
+            cloud_id: self.cloud_id,
+            roles: self.roles,
+            secret: self.secret,
+            viewer: self.viewer,
+            url: self.url,
+            legacy_apikey: self.apikey,
+            legacy_username: self.username,
+            legacy_password: self.password,
+            preserve_legacy_serialization: false,
+        })
     }
 
-    pub fn build_with_secret_auth(mut self, secret_auth: SecretAuth) -> Result<KnownHost> {
+    pub fn build_with_secret_auth(mut self, _secret_auth: SecretAuth) -> Result<KnownHost> {
         self.update_cloud_api_path();
 
         if self.apikey.is_some() || self.username.is_some() || self.password.is_some() {
@@ -268,28 +240,19 @@ impl KnownHostBuilder {
             .take()
             .ok_or_else(|| eyre!("Invalid KnownHost configuration: missing secret reference"))?;
 
-        match secret_auth {
-            SecretAuth::ApiKey { .. } => Ok(KnownHost::ApiKey {
-                accept_invalid_certs: self.accept_invalid_certs,
-                apikey: None,
-                app: self.product,
-                cloud_id: self.cloud_id,
-                roles: self.roles,
-                secret: Some(secret),
-                url: self.url,
-                viewer: self.viewer,
-            }),
-            SecretAuth::Basic { .. } => Ok(KnownHost::Basic {
-                accept_invalid_certs: self.accept_invalid_certs,
-                app: self.product,
-                password: None,
-                roles: self.roles,
-                secret: Some(secret),
-                url: self.url,
-                username: None,
-                viewer: self.viewer,
-            }),
-        }
+        KnownHost::from_parts(KnownHostParts {
+            accept_invalid_certs: self.accept_invalid_certs,
+            app: self.product,
+            cloud_id: self.cloud_id,
+            roles: self.roles,
+            secret: Some(secret),
+            viewer: self.viewer,
+            url: self.url,
+            legacy_apikey: None,
+            legacy_username: None,
+            legacy_password: None,
+            preserve_legacy_serialization: false,
+        })
     }
 }
 
@@ -314,89 +277,479 @@ impl KnownHostCliUpdate {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct KnownHost {
+    pub accept_invalid_certs: bool,
+    pub app: Product,
+    pub cloud_id: Option<ElasticCloud>,
+    pub roles: Vec<HostRole>,
+    pub secret: Option<String>,
+    pub viewer: Option<String>,
+    pub url: Url,
+    pub legacy_apikey: Option<String>,
+    pub legacy_username: Option<String>,
+    pub legacy_password: Option<String>,
+    preserve_legacy_serialization: bool,
+}
+
+#[derive(Serialize)]
+struct FlatKnownHostRef<'a> {
+    #[serde(default = "default_false", skip_serializing_if = "is_false")]
+    accept_invalid_certs: bool,
+    app: &'a Product,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cloud_id: &'a Option<ElasticCloud>,
+    #[serde(
+        default = "default_collect_roles",
+        skip_serializing_if = "roles_is_default_collect"
+    )]
+    roles: &'a Vec<HostRole>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    secret: &'a Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    viewer: &'a Option<String>,
+    url: &'a Url,
+}
+
+#[derive(Serialize)]
 #[serde(tag = "auth")]
-pub enum KnownHost {
-    /// A host using API key authentication
+enum LegacyKnownHostRef<'a> {
     ApiKey {
         #[serde(default = "default_false", skip_serializing_if = "is_false")]
         accept_invalid_certs: bool,
         #[serde(skip_serializing_if = "Option::is_none")]
-        apikey: Option<String>,
-        app: Product,
+        apikey: &'a Option<String>,
+        app: &'a Product,
         #[serde(skip_serializing_if = "Option::is_none")]
-        cloud_id: Option<ElasticCloud>,
+        cloud_id: &'a Option<ElasticCloud>,
         #[serde(
             default = "default_collect_roles",
             skip_serializing_if = "roles_is_default_collect"
         )]
-        roles: Vec<HostRole>,
+        roles: &'a Vec<HostRole>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        secret: Option<String>,
+        secret: &'a Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        viewer: Option<String>,
-        url: Url,
+        viewer: &'a Option<String>,
+        url: &'a Url,
     },
-    /// A host using basic username/password authentication
     Basic {
         #[serde(default = "default_false", skip_serializing_if = "is_false")]
         accept_invalid_certs: bool,
-        app: Product,
+        app: &'a Product,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        password: Option<String>,
+        password: &'a Option<String>,
         #[serde(
             default = "default_collect_roles",
             skip_serializing_if = "roles_is_default_collect"
         )]
+        roles: &'a Vec<HostRole>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        secret: &'a Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        viewer: &'a Option<String>,
+        url: &'a Url,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        username: &'a Option<String>,
+    },
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum KnownHostWire {
+    Legacy(LegacyKnownHostWire),
+    Flat(FlatKnownHostWire),
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FlatKnownHostWire {
+    #[serde(default = "default_false")]
+    accept_invalid_certs: bool,
+    app: Product,
+    #[serde(default)]
+    cloud_id: Option<ElasticCloud>,
+    #[serde(default = "default_collect_roles")]
+    roles: Vec<HostRole>,
+    #[serde(default)]
+    secret: Option<String>,
+    #[serde(default)]
+    viewer: Option<String>,
+    url: Url,
+    #[serde(default)]
+    apikey: Option<String>,
+    #[serde(default)]
+    username: Option<String>,
+    #[serde(default)]
+    password: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "auth", deny_unknown_fields)]
+enum LegacyKnownHostWire {
+    ApiKey {
+        #[serde(default = "default_false")]
+        accept_invalid_certs: bool,
+        #[serde(default)]
+        apikey: Option<String>,
+        app: Product,
+        #[serde(default)]
+        cloud_id: Option<ElasticCloud>,
+        #[serde(default = "default_collect_roles")]
         roles: Vec<HostRole>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[serde(default)]
         secret: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[serde(default)]
         viewer: Option<String>,
         url: Url,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        username: Option<String>,
     },
-    /// A host with no authentication
-    #[serde(alias = "None")]
-    NoAuth {
-        #[serde(default = "default_false", skip_serializing_if = "is_false")]
+    Basic {
+        #[serde(default = "default_false")]
         accept_invalid_certs: bool,
         app: Product,
-        #[serde(
-            default = "default_collect_roles",
-            skip_serializing_if = "roles_is_default_collect"
-        )]
+        #[serde(default)]
+        password: Option<String>,
+        #[serde(default = "default_collect_roles")]
         roles: Vec<HostRole>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[serde(default)]
+        secret: Option<String>,
+        #[serde(default)]
+        viewer: Option<String>,
+        url: Url,
+        #[serde(default)]
+        username: Option<String>,
+    },
+    #[serde(alias = "None")]
+    NoAuth {
+        #[serde(default = "default_false")]
+        accept_invalid_certs: bool,
+        app: Product,
+        #[serde(default = "default_collect_roles")]
+        roles: Vec<HostRole>,
+        #[serde(default)]
         viewer: Option<String>,
         url: Url,
     },
 }
 
-impl KnownHost {
-    pub fn app(&self) -> &Product {
-        match self {
-            Self::ApiKey { app, .. } => app,
-            Self::Basic { app, .. } => app,
-            Self::NoAuth { app, .. } => app,
+struct KnownHostParts {
+    accept_invalid_certs: bool,
+    app: Product,
+    cloud_id: Option<ElasticCloud>,
+    roles: Vec<HostRole>,
+    secret: Option<String>,
+    viewer: Option<String>,
+    url: Url,
+    legacy_apikey: Option<String>,
+    legacy_username: Option<String>,
+    legacy_password: Option<String>,
+    preserve_legacy_serialization: bool,
+}
+
+impl Serialize for KnownHost {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        if self.should_serialize_as_legacy() {
+            if self.legacy_apikey.is_some() {
+                return LegacyKnownHostRef::ApiKey {
+                    accept_invalid_certs: self.accept_invalid_certs,
+                    apikey: &self.legacy_apikey,
+                    app: &self.app,
+                    cloud_id: &self.cloud_id,
+                    roles: &self.roles,
+                    secret: &self.secret,
+                    viewer: &self.viewer,
+                    url: &self.url,
+                }
+                .serialize(serializer);
+            }
+            return LegacyKnownHostRef::Basic {
+                accept_invalid_certs: self.accept_invalid_certs,
+                app: &self.app,
+                password: &self.legacy_password,
+                roles: &self.roles,
+                secret: &self.secret,
+                viewer: &self.viewer,
+                url: &self.url,
+                username: &self.legacy_username,
+            }
+            .serialize(serializer);
         }
+
+        FlatKnownHostRef {
+            accept_invalid_certs: self.accept_invalid_certs,
+            app: &self.app,
+            cloud_id: &self.cloud_id,
+            roles: &self.roles,
+            secret: &self.secret,
+            viewer: &self.viewer,
+            url: &self.url,
+        }
+        .serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for KnownHost {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let wire = KnownHostWire::deserialize(deserializer)?;
+        let host = match wire {
+            KnownHostWire::Legacy(legacy) => Self::from_legacy_wire(legacy),
+            KnownHostWire::Flat(flat) => Self::from_flat_wire(flat),
+        };
+        host.map_err(serde::de::Error::custom)
+    }
+}
+
+impl KnownHost {
+    fn from_parts(parts: KnownHostParts) -> Result<Self> {
+        let KnownHostParts {
+            accept_invalid_certs,
+            app,
+            cloud_id,
+            roles,
+            secret,
+            viewer,
+            url,
+            legacy_apikey,
+            legacy_username,
+            legacy_password,
+            preserve_legacy_serialization,
+        } = parts;
+        match (&legacy_apikey, &legacy_username, &legacy_password) {
+            (Some(_), None, None) => {}
+            (None, Some(_), Some(_)) | (None, None, None) => {}
+            (Some(_), _, _) => {
+                return Err(eyre!(
+                    "Invalid KnownHost configuration: API key auth cannot be combined with username or password"
+                ));
+            }
+            (None, Some(_), None) | (None, None, Some(_)) => {
+                return Err(eyre!(
+                    "Invalid KnownHost configuration: basic auth requires both username and password"
+                ));
+            }
+        }
+
+        Ok(Self {
+            accept_invalid_certs,
+            app,
+            cloud_id: cloud_id.or_else(|| ElasticCloud::try_from(&url).ok()),
+            roles,
+            secret,
+            viewer,
+            url,
+            legacy_apikey,
+            legacy_username,
+            legacy_password,
+            preserve_legacy_serialization,
+        })
+    }
+
+    fn from_flat_wire(wire: FlatKnownHostWire) -> Result<Self> {
+        Self::from_parts(KnownHostParts {
+            accept_invalid_certs: wire.accept_invalid_certs,
+            app: wire.app,
+            cloud_id: wire.cloud_id,
+            roles: wire.roles,
+            secret: wire.secret.clone(),
+            viewer: wire.viewer,
+            url: wire.url,
+            legacy_apikey: wire.apikey,
+            legacy_username: wire.username,
+            legacy_password: wire.password,
+            preserve_legacy_serialization: wire.secret.is_none(),
+        })
+    }
+
+    fn from_legacy_wire(wire: LegacyKnownHostWire) -> Result<Self> {
+        match wire {
+            LegacyKnownHostWire::ApiKey {
+                accept_invalid_certs,
+                apikey,
+                app,
+                cloud_id,
+                roles,
+                secret,
+                viewer,
+                url,
+            } => Self::from_parts(KnownHostParts {
+                accept_invalid_certs,
+                app,
+                cloud_id,
+                roles,
+                secret: secret.clone(),
+                viewer,
+                url,
+                legacy_apikey: apikey,
+                legacy_username: None,
+                legacy_password: None,
+                preserve_legacy_serialization: secret.is_none(),
+            }),
+            LegacyKnownHostWire::Basic {
+                accept_invalid_certs,
+                app,
+                password,
+                roles,
+                secret,
+                viewer,
+                url,
+                username,
+            } => Self::from_parts(KnownHostParts {
+                accept_invalid_certs,
+                app,
+                cloud_id: None,
+                roles,
+                secret: secret.clone(),
+                viewer,
+                url,
+                legacy_apikey: None,
+                legacy_username: username,
+                legacy_password: password,
+                preserve_legacy_serialization: secret.is_none(),
+            }),
+            LegacyKnownHostWire::NoAuth {
+                accept_invalid_certs,
+                app,
+                roles,
+                viewer,
+                url,
+            } => Self::from_parts(KnownHostParts {
+                accept_invalid_certs,
+                app,
+                cloud_id: None,
+                roles,
+                secret: None,
+                viewer,
+                url,
+                legacy_apikey: None,
+                legacy_username: None,
+                legacy_password: None,
+                preserve_legacy_serialization: false,
+            }),
+        }
+    }
+
+    fn should_serialize_as_legacy(&self) -> bool {
+        self.preserve_legacy_serialization
+            && self.secret.is_none()
+            && self.has_legacy_plaintext_auth()
+    }
+
+    fn has_legacy_plaintext_auth(&self) -> bool {
+        self.legacy_apikey.is_some()
+            || self.legacy_username.is_some()
+            || self.legacy_password.is_some()
+    }
+
+    fn clear_legacy_plaintext_auth(&mut self) {
+        self.legacy_apikey = None;
+        self.legacy_username = None;
+        self.legacy_password = None;
+    }
+
+    fn auth_label(&self) -> &'static str {
+        if self.secret.is_some() {
+            "secret"
+        } else if self.legacy_apikey.is_some() {
+            "apikey"
+        } else if self.legacy_username.is_some() || self.legacy_password.is_some() {
+            "basic"
+        } else {
+            "none"
+        }
+    }
+
+    pub fn new_no_auth(
+        app: Product,
+        url: Url,
+        roles: Vec<HostRole>,
+        viewer: Option<String>,
+        accept_invalid_certs: bool,
+    ) -> Self {
+        Self::from_parts(KnownHostParts {
+            accept_invalid_certs,
+            app,
+            cloud_id: ElasticCloud::try_from(&url).ok(),
+            roles,
+            secret: None,
+            viewer,
+            url,
+            legacy_apikey: None,
+            legacy_username: None,
+            legacy_password: None,
+            preserve_legacy_serialization: false,
+        })
+        .expect("valid no-auth host")
+    }
+
+    pub fn new_legacy_apikey(
+        app: Product,
+        url: Url,
+        roles: Vec<HostRole>,
+        viewer: Option<String>,
+        accept_invalid_certs: bool,
+        secret: Option<String>,
+        apikey: Option<String>,
+    ) -> Self {
+        Self::from_parts(KnownHostParts {
+            accept_invalid_certs,
+            app,
+            cloud_id: ElasticCloud::try_from(&url).ok(),
+            roles,
+            secret: secret.clone(),
+            viewer,
+            url,
+            legacy_apikey: apikey,
+            legacy_username: None,
+            legacy_password: None,
+            preserve_legacy_serialization: secret.is_none(),
+        })
+        .expect("valid legacy api key host")
+    }
+
+    pub fn new_legacy_basic(
+        app: Product,
+        url: Url,
+        roles: Vec<HostRole>,
+        viewer: Option<String>,
+        accept_invalid_certs: bool,
+        secret: Option<String>,
+        credentials: Option<(String, String)>,
+    ) -> Self {
+        let (legacy_username, legacy_password) = credentials
+            .map(|(username, password)| (Some(username), Some(password)))
+            .unwrap_or((None, None));
+        Self::from_parts(KnownHostParts {
+            accept_invalid_certs,
+            app,
+            cloud_id: ElasticCloud::try_from(&url).ok(),
+            roles,
+            secret: secret.clone(),
+            viewer,
+            url,
+            legacy_apikey: None,
+            legacy_username,
+            legacy_password,
+            preserve_legacy_serialization: secret.is_none(),
+        })
+        .expect("valid legacy basic host")
+    }
+
+    pub fn app(&self) -> &Product {
+        &self.app
     }
 
     pub fn get_url(&self) -> Url {
-        match self {
-            Self::ApiKey { url, .. } => url.clone(),
-            Self::Basic { url, .. } => url.clone(),
-            Self::NoAuth { url, .. } => url.clone(),
-        }
+        self.url.clone()
     }
 
     pub fn roles(&self) -> &[HostRole] {
-        match self {
-            Self::ApiKey { roles, .. } => roles,
-            Self::Basic { roles, .. } => roles,
-            Self::NoAuth { roles, .. } => roles,
-        }
+        &self.roles
     }
 
     pub fn has_role(&self, role: HostRole) -> bool {
@@ -404,64 +757,33 @@ impl KnownHost {
     }
 
     pub fn viewer(&self) -> Option<&str> {
-        match self {
-            Self::ApiKey { viewer, .. } => viewer.as_deref(),
-            Self::Basic { viewer, .. } => viewer.as_deref(),
-            Self::NoAuth { viewer, .. } => viewer.as_deref(),
-        }
+        self.viewer.as_deref()
     }
 
     pub fn accept_invalid_certs(&self) -> bool {
-        match self {
-            Self::ApiKey {
-                accept_invalid_certs,
-                ..
-            } => *accept_invalid_certs,
-            Self::Basic {
-                accept_invalid_certs,
-                ..
-            } => *accept_invalid_certs,
-            Self::NoAuth {
-                accept_invalid_certs,
-                ..
-            } => *accept_invalid_certs,
-        }
+        self.accept_invalid_certs
+    }
+
+    pub fn cloud_id(&self) -> Option<&ElasticCloud> {
+        self.cloud_id.as_ref()
     }
 
     pub fn requires_keystore_secret(&self) -> bool {
-        matches!(
-            self,
-            Self::ApiKey {
-                secret: Some(_),
-                ..
-            } | Self::Basic {
-                secret: Some(_),
-                ..
-            }
-        )
+        self.secret.is_some()
     }
 
     pub fn secret_reference(&self) -> Option<&str> {
-        match self {
-            Self::ApiKey { secret, .. } => secret.as_deref(),
-            Self::Basic { secret, .. } => secret.as_deref(),
-            Self::NoAuth { .. } => None,
-        }
+        self.secret.as_deref()
     }
 
     pub fn get_auth(&self) -> Result<Auth> {
-        match self {
-            Self::ApiKey { apikey, secret, .. } => {
-                resolve_auth_with_precedence(secret, apikey.clone(), None)
-            }
-            Self::Basic {
-                username,
-                password,
-                secret,
-                ..
-            } => resolve_auth_with_precedence(secret, None, username.clone().zip(password.clone())),
-            Self::NoAuth { .. } => Ok(Auth::None),
-        }
+        resolve_auth_with_precedence(
+            &self.secret,
+            self.legacy_apikey.clone(),
+            self.legacy_username
+                .clone()
+                .zip(self.legacy_password.clone()),
+        )
     }
 
     pub fn save(mut self, name: &str) -> Result<String> {
@@ -474,18 +796,15 @@ impl KnownHost {
             }
         };
         self.normalize_and_validate_roles(name)?;
-        self.strip_plaintext_when_secret_present();
-        match self {
-            Self::ApiKey { .. } => {
-                hosts.insert(name.to_owned(), self);
-            }
-            Self::Basic { .. } => {
-                hosts.insert(name.to_owned(), self);
-            }
-            Self::NoAuth { .. } => {
-                hosts.insert(name.to_owned(), self);
-            }
+        if self.secret.is_some() {
+            self.clear_legacy_plaintext_auth();
+        } else if self.has_legacy_plaintext_auth() {
+            return Err(eyre!(
+                "Host '{name}' requires a secret reference before it can be saved. Use `--secret <id>` to persist auth, or `--nosave` for transient validation."
+            ));
         }
+        self.preserve_legacy_serialization = false;
+        hosts.insert(name.to_owned(), self);
         KnownHost::write_hosts_yml(&hosts)
     }
 
@@ -506,43 +825,37 @@ impl KnownHost {
             .unwrap_or_else(|| self.accept_invalid_certs());
 
         if let Some(secret_id) = &update.secret {
-            let secret_auth = secret_auth.ok_or_else(|| {
+            let _secret_auth = secret_auth.ok_or_else(|| {
                 eyre!("Invalid KnownHost configuration: missing secret auth for secret update")
             })?;
-            return match secret_auth {
-                SecretAuth::ApiKey { .. } => Ok(Self::ApiKey {
-                    accept_invalid_certs,
-                    apikey: None,
-                    app,
-                    cloud_id: ElasticCloud::try_from(&url).ok(),
-                    roles,
-                    secret: Some(secret_id.clone()),
-                    viewer,
-                    url,
-                }),
-                SecretAuth::Basic { .. } => Ok(Self::Basic {
-                    accept_invalid_certs,
-                    app,
-                    password: None,
-                    roles,
-                    secret: Some(secret_id.clone()),
-                    url,
-                    username: None,
-                    viewer,
-                }),
-            };
+            return Self::from_parts(KnownHostParts {
+                accept_invalid_certs,
+                app,
+                cloud_id: ElasticCloud::try_from(&url).ok(),
+                roles,
+                secret: Some(secret_id.clone()),
+                viewer,
+                url,
+                legacy_apikey: None,
+                legacy_username: None,
+                legacy_password: None,
+                preserve_legacy_serialization: false,
+            });
         }
 
         if let Some(apikey) = &update.apikey {
-            return Ok(Self::ApiKey {
+            return Self::from_parts(KnownHostParts {
                 accept_invalid_certs,
-                apikey: Some(apikey.clone()),
                 app,
                 cloud_id: ElasticCloud::try_from(&url).ok(),
                 roles,
                 secret: None,
                 viewer,
                 url,
+                legacy_apikey: Some(apikey.clone()),
+                legacy_username: None,
+                legacy_password: None,
+                preserve_legacy_serialization: false,
             });
         }
 
@@ -554,15 +867,18 @@ impl KnownHost {
                     "Invalid Basic auth update: either provide a secret reference or both username and password"
                 ));
             }
-            return Ok(Self::Basic {
+            return Self::from_parts(KnownHostParts {
                 accept_invalid_certs,
                 app,
-                password,
+                cloud_id: ElasticCloud::try_from(&url).ok(),
                 roles,
                 secret: None,
-                url,
-                username,
                 viewer,
+                url,
+                legacy_apikey: None,
+                legacy_username: username,
+                legacy_password: password,
+                preserve_legacy_serialization: false,
             });
         }
 
@@ -570,28 +886,6 @@ impl KnownHost {
         merged.set_roles(roles);
         merged.set_accept_invalid_certs(accept_invalid_certs);
         Ok(merged)
-    }
-
-    fn strip_plaintext_when_secret_present(&mut self) {
-        match self {
-            Self::ApiKey { apikey, secret, .. } => {
-                if secret.is_some() {
-                    *apikey = None;
-                }
-            }
-            Self::Basic {
-                username,
-                password,
-                secret,
-                ..
-            } => {
-                if secret.is_some() {
-                    *username = None;
-                    *password = None;
-                }
-            }
-            Self::NoAuth { .. } => {}
-        }
     }
 
     pub fn get_known(host: &String) -> Option<Self> {
@@ -623,33 +917,13 @@ impl KnownHost {
     }
 
     pub fn has_legacy_secret(&self) -> bool {
-        match self {
-            Self::ApiKey { apikey, .. } => apikey.is_some(),
-            Self::Basic {
-                username, password, ..
-            } => username.is_some() || password.is_some(),
-            Self::NoAuth { .. } => false,
-        }
+        self.has_legacy_plaintext_auth()
     }
 
     pub fn set_secret_reference(&mut self, secret_id: String) {
-        match self {
-            Self::ApiKey { apikey, secret, .. } => {
-                *apikey = None;
-                *secret = Some(secret_id);
-            }
-            Self::Basic {
-                username,
-                password,
-                secret,
-                ..
-            } => {
-                *username = None;
-                *password = None;
-                *secret = Some(secret_id);
-            }
-            Self::NoAuth { .. } => {}
-        }
+        self.secret = Some(secret_id);
+        self.clear_legacy_plaintext_auth();
+        self.preserve_legacy_serialization = false;
     }
 
     pub fn migrate_hosts_to_keystore(keystore_password: &str) -> Result<(usize, usize)> {
@@ -710,21 +984,15 @@ impl KnownHost {
     }
 
     fn legacy_auth(&self) -> Option<SecretAuth> {
-        match self {
-            Self::ApiKey {
-                apikey: Some(apikey),
-                ..
-            } => Some(SecretAuth::ApiKey {
-                apikey: apikey.clone(),
-            }),
-            Self::Basic {
-                username: Some(username),
-                password: Some(password),
-                ..
-            } => Some(SecretAuth::Basic {
-                username: username.clone(),
-                password: password.clone(),
-            }),
+        match (
+            self.legacy_apikey.clone(),
+            self.legacy_username.clone(),
+            self.legacy_password.clone(),
+        ) {
+            (Some(apikey), None, None) => Some(SecretAuth::ApiKey { apikey }),
+            (None, Some(username), Some(password)) => {
+                Some(SecretAuth::Basic { username, password })
+            }
             _ => None,
         }
     }
@@ -737,12 +1005,18 @@ impl KnownHost {
     }
 
     pub fn from_url(url: &Url) -> Self {
-        KnownHost::NoAuth {
+        KnownHost {
             accept_invalid_certs: false,
             app: Product::Elasticsearch,
+            cloud_id: ElasticCloud::try_from(url).ok(),
             roles: default_collect_roles(),
+            secret: None,
             viewer: None,
             url: url.clone(),
+            legacy_apikey: None,
+            legacy_username: None,
+            legacy_password: None,
+            preserve_legacy_serialization: false,
         }
     }
 
@@ -813,46 +1087,16 @@ impl KnownHost {
     }
 
     fn set_accept_invalid_certs(&mut self, accept_invalid_certs: bool) {
-        match self {
-            Self::ApiKey {
-                accept_invalid_certs: current,
-                ..
-            } => *current = accept_invalid_certs,
-            Self::Basic {
-                accept_invalid_certs: current,
-                ..
-            } => *current = accept_invalid_certs,
-            Self::NoAuth {
-                accept_invalid_certs: current,
-                ..
-            } => *current = accept_invalid_certs,
-        }
+        self.accept_invalid_certs = accept_invalid_certs;
     }
 
     fn set_roles(&mut self, roles: Vec<HostRole>) {
-        match self {
-            Self::ApiKey {
-                roles: current_roles,
-                ..
-            } => *current_roles = roles,
-            Self::Basic {
-                roles: current_roles,
-                ..
-            } => *current_roles = roles,
-            Self::NoAuth {
-                roles: current_roles,
-                ..
-            } => *current_roles = roles,
-        }
+        self.roles = roles;
     }
 
     fn normalize_and_validate_roles(&mut self, host_name: &str) -> Result<()> {
         let app = self.app().clone();
-        let roles = match self {
-            Self::ApiKey { roles, .. } => roles,
-            Self::Basic { roles, .. } => roles,
-            Self::NoAuth { roles, .. } => roles,
-        };
+        let roles = &mut self.roles;
 
         if roles.is_empty() {
             roles.push(HostRole::Collect);
@@ -887,25 +1131,24 @@ impl KnownHost {
 
 impl Display for KnownHost {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::ApiKey {
-                app, cloud_id, url, ..
-            } => {
-                let cloud_id = match cloud_id {
-                    Some(id) => id.to_string(),
-                    None => "None".to_string(),
-                };
-                write!(fmt, "KnownHost ApiKey: {} {} {}", app, url, cloud_id,)
+        match self.auth_label() {
+            "apikey" => {
+                let cloud_id = self
+                    .cloud_id
+                    .as_ref()
+                    .map(std::string::ToString::to_string)
+                    .unwrap_or_else(|| "None".to_string());
+                write!(fmt, "KnownHost ApiKey: {} {} {}", self.app, self.url, cloud_id)
             }
-            Self::Basic {
-                app, url, username, ..
-            } => {
-                let username = username
+            "basic" => {
+                let username = self
+                    .legacy_username
                     .clone()
                     .unwrap_or_else(|| "<secret-auth>".to_string());
-                write!(fmt, "KnownHost Basic: {} {}@ {}", app, username, url,)
+                write!(fmt, "KnownHost Basic: {} {}@ {}", self.app, username, self.url)
             }
-            Self::NoAuth { app, url, .. } => write!(fmt, "KnownHost NoAuth: {} {}", app, url),
+            "secret" => write!(fmt, "KnownHost Secret: {} {}", self.app, self.url),
+            _ => write!(fmt, "KnownHost NoAuth: {} {}", self.app, self.url),
         }
     }
 }
@@ -984,11 +1227,7 @@ impl FromStr for KnownHost {
 
 impl From<KnownHost> for Url {
     fn from(host: KnownHost) -> Url {
-        match host {
-            KnownHost::ApiKey { url, .. } => url.clone(),
-            KnownHost::Basic { url, .. } => url.clone(),
-            KnownHost::NoAuth { url, .. } => url.clone(),
-        }
+        host.url
     }
 }
 
@@ -1026,13 +1265,13 @@ mod tests {
         let mut hosts = BTreeMap::new();
         hosts.insert(
             "default-role".to_string(),
-            KnownHost::NoAuth {
-                accept_invalid_certs: false,
-                app: Product::Elasticsearch,
-                roles: Vec::new(),
-                viewer: None,
-                url: Url::parse("http://localhost:9200").expect("url"),
-            },
+            KnownHost::new_no_auth(
+                Product::Elasticsearch,
+                Url::parse("http://localhost:9200").expect("url"),
+                Vec::new(),
+                None,
+                false,
+            ),
         );
         write_hosts(hosts);
 
@@ -1048,13 +1287,13 @@ mod tests {
         let mut hosts = BTreeMap::new();
         hosts.insert(
             "kb-invalid-send".to_string(),
-            KnownHost::NoAuth {
-                accept_invalid_certs: false,
-                app: Product::Kibana,
-                roles: vec![HostRole::Send],
-                viewer: None,
-                url: Url::parse("http://localhost:5601").expect("url"),
-            },
+            KnownHost::new_no_auth(
+                Product::Kibana,
+                Url::parse("http://localhost:5601").expect("url"),
+                vec![HostRole::Send],
+                None,
+                false,
+            ),
         );
         let err = KnownHost::write_hosts_yml(&hosts).expect_err("expected invalid role error");
         assert!(err.to_string().contains("role 'send' is only valid"));
@@ -1068,33 +1307,33 @@ mod tests {
         let mut hosts = BTreeMap::new();
         hosts.insert(
             "collect-only".to_string(),
-            KnownHost::NoAuth {
-                accept_invalid_certs: false,
-                app: Product::Elasticsearch,
-                roles: vec![HostRole::Collect],
-                viewer: None,
-                url: Url::parse("http://localhost:9200").expect("url"),
-            },
+            KnownHost::new_no_auth(
+                Product::Elasticsearch,
+                Url::parse("http://localhost:9200").expect("url"),
+                vec![HostRole::Collect],
+                None,
+                false,
+            ),
         );
         hosts.insert(
             "collect-send".to_string(),
-            KnownHost::NoAuth {
-                accept_invalid_certs: false,
-                app: Product::Elasticsearch,
-                roles: vec![HostRole::Collect, HostRole::Send],
-                viewer: None,
-                url: Url::parse("http://localhost:9201").expect("url"),
-            },
+            KnownHost::new_no_auth(
+                Product::Elasticsearch,
+                Url::parse("http://localhost:9201").expect("url"),
+                vec![HostRole::Collect, HostRole::Send],
+                None,
+                false,
+            ),
         );
         hosts.insert(
             "view-host".to_string(),
-            KnownHost::NoAuth {
-                accept_invalid_certs: false,
-                app: Product::Kibana,
-                roles: vec![HostRole::View],
-                viewer: None,
-                url: Url::parse("http://localhost:5601").expect("url"),
-            },
+            KnownHost::new_no_auth(
+                Product::Kibana,
+                Url::parse("http://localhost:5601").expect("url"),
+                vec![HostRole::View],
+                None,
+                false,
+            ),
         );
         write_hosts(hosts);
 
@@ -1117,23 +1356,23 @@ mod tests {
         let mut hosts = BTreeMap::new();
         hosts.insert(
             "source".to_string(),
-            KnownHost::NoAuth {
-                accept_invalid_certs: false,
-                app: Product::Elasticsearch,
-                roles: vec![HostRole::Collect],
-                viewer: Some("viewer-host".to_string()),
-                url: Url::parse("http://localhost:9200").expect("url"),
-            },
+            KnownHost::new_no_auth(
+                Product::Elasticsearch,
+                Url::parse("http://localhost:9200").expect("url"),
+                vec![HostRole::Collect],
+                Some("viewer-host".to_string()),
+                false,
+            ),
         );
         hosts.insert(
             "viewer-host".to_string(),
-            KnownHost::NoAuth {
-                accept_invalid_certs: false,
-                app: Product::Kibana,
-                roles: vec![HostRole::View],
-                viewer: None,
-                url: Url::parse("http://localhost:5601").expect("url"),
-            },
+            KnownHost::new_no_auth(
+                Product::Kibana,
+                Url::parse("http://localhost:5601").expect("url"),
+                vec![HostRole::View],
+                None,
+                false,
+            ),
         );
         let err = KnownHost::write_hosts_yml(&hosts).expect_err("expected viewer validation error");
         assert!(err.to_string().contains("required role 'send'"));
@@ -1146,23 +1385,23 @@ mod tests {
         let mut hosts = BTreeMap::new();
         hosts.insert(
             "source".to_string(),
-            KnownHost::NoAuth {
-                accept_invalid_certs: false,
-                app: Product::Elasticsearch,
-                roles: vec![HostRole::Send],
-                viewer: Some("viewer-host".to_string()),
-                url: Url::parse("http://localhost:9200").expect("url"),
-            },
+            KnownHost::new_no_auth(
+                Product::Elasticsearch,
+                Url::parse("http://localhost:9200").expect("url"),
+                vec![HostRole::Send],
+                Some("viewer-host".to_string()),
+                false,
+            ),
         );
         hosts.insert(
             "viewer-host".to_string(),
-            KnownHost::NoAuth {
-                accept_invalid_certs: false,
-                app: Product::Kibana,
-                roles: vec![HostRole::Collect],
-                viewer: None,
-                url: Url::parse("http://localhost:5601").expect("url"),
-            },
+            KnownHost::new_no_auth(
+                Product::Kibana,
+                Url::parse("http://localhost:5601").expect("url"),
+                vec![HostRole::Collect],
+                None,
+                false,
+            ),
         );
         let err = KnownHost::write_hosts_yml(&hosts).expect_err("expected viewer role error");
         assert!(err.to_string().contains("must include role 'view'"));
@@ -1175,23 +1414,23 @@ mod tests {
         let mut hosts = BTreeMap::new();
         hosts.insert(
             "source".to_string(),
-            KnownHost::NoAuth {
-                accept_invalid_certs: false,
-                app: Product::Elasticsearch,
-                roles: vec![HostRole::Send],
-                viewer: Some("viewer-host".to_string()),
-                url: Url::parse("http://localhost:9200").expect("url"),
-            },
+            KnownHost::new_no_auth(
+                Product::Elasticsearch,
+                Url::parse("http://localhost:9200").expect("url"),
+                vec![HostRole::Send],
+                Some("viewer-host".to_string()),
+                false,
+            ),
         );
         hosts.insert(
             "viewer-host".to_string(),
-            KnownHost::NoAuth {
-                accept_invalid_certs: false,
-                app: Product::Kibana,
-                roles: vec![HostRole::View],
-                viewer: None,
-                url: Url::parse("http://localhost:5601").expect("url"),
-            },
+            KnownHost::new_no_auth(
+                Product::Kibana,
+                Url::parse("http://localhost:5601").expect("url"),
+                vec![HostRole::View],
+                None,
+                false,
+            ),
         );
         KnownHost::write_hosts_yml(&hosts).expect("viewer validation should pass");
     }
@@ -1207,16 +1446,15 @@ mod tests {
         let mut hosts = BTreeMap::new();
         hosts.insert(
             "legacy-es".to_string(),
-            KnownHost::ApiKey {
-                accept_invalid_certs: false,
-                apikey: Some("legacy-key".to_string()),
-                app: Product::Elasticsearch,
-                cloud_id: None,
-                roles: default_collect_roles(),
-                secret: None,
-                viewer: None,
-                url: Url::parse("http://localhost:9200").expect("url"),
-            },
+            KnownHost::new_legacy_apikey(
+                Product::Elasticsearch,
+                Url::parse("http://localhost:9200").expect("url"),
+                default_collect_roles(),
+                None,
+                false,
+                None,
+                Some("legacy-key".to_string()),
+            ),
         );
         write_hosts(hosts);
 
@@ -1239,16 +1477,15 @@ mod tests {
         let mut hosts = BTreeMap::new();
         hosts.insert(
             "secret-only".to_string(),
-            KnownHost::Basic {
-                accept_invalid_certs: false,
-                app: Product::Elasticsearch,
-                password: None,
-                roles: default_collect_roles(),
-                secret: Some("missing-secret".to_string()),
-                viewer: None,
-                url: Url::parse("http://localhost:9200").expect("url"),
-                username: None,
-            },
+            KnownHost::new_legacy_basic(
+                Product::Elasticsearch,
+                Url::parse("http://localhost:9200").expect("url"),
+                default_collect_roles(),
+                None,
+                false,
+                Some("missing-secret".to_string()),
+                None,
+            ),
         );
         write_hosts(hosts);
 
@@ -1280,16 +1517,15 @@ mod tests {
         let mut hosts = BTreeMap::new();
         hosts.insert(
             "prod-es".to_string(),
-            KnownHost::Basic {
-                accept_invalid_certs: false,
-                app: Product::Elasticsearch,
-                password: None,
-                roles: default_collect_roles(),
-                secret: Some("lease-secret".to_string()),
-                viewer: None,
-                url: Url::parse("http://localhost:9200").expect("url"),
-                username: None,
-            },
+            KnownHost::new_legacy_basic(
+                Product::Elasticsearch,
+                Url::parse("http://localhost:9200").expect("url"),
+                default_collect_roles(),
+                None,
+                false,
+                Some("lease-secret".to_string()),
+                None,
+            ),
         );
         write_hosts(hosts);
 
@@ -1318,16 +1554,15 @@ mod tests {
         let mut hosts = BTreeMap::new();
         hosts.insert(
             "prod-es".to_string(),
-            KnownHost::Basic {
-                accept_invalid_certs: false,
-                app: Product::Elasticsearch,
-                password: Some("legacy-pass".to_string()),
-                roles: default_collect_roles(),
-                secret: Some("custom-secret".to_string()),
-                viewer: None,
-                url: Url::parse("http://localhost:9200").expect("url"),
-                username: Some("legacy-user".to_string()),
-            },
+            KnownHost::new_legacy_basic(
+                Product::Elasticsearch,
+                Url::parse("http://localhost:9200").expect("url"),
+                default_collect_roles(),
+                None,
+                false,
+                Some("custom-secret".to_string()),
+                Some(("legacy-user".to_string(), "legacy-pass".to_string())),
+            ),
         );
         write_hosts(hosts);
 
@@ -1356,29 +1591,27 @@ mod tests {
         let mut hosts = BTreeMap::new();
         hosts.insert(
             "prod-es".to_string(),
-            KnownHost::Basic {
-                accept_invalid_certs: false,
-                app: Product::Elasticsearch,
-                password: Some("legacy-pass".to_string()),
-                roles: default_collect_roles(),
-                secret: None,
-                viewer: None,
-                url: Url::parse("http://localhost:9200").expect("url"),
-                username: Some("legacy-user".to_string()),
-            },
+            KnownHost::new_legacy_basic(
+                Product::Elasticsearch,
+                Url::parse("http://localhost:9200").expect("url"),
+                default_collect_roles(),
+                None,
+                false,
+                None,
+                Some(("legacy-user".to_string(), "legacy-pass".to_string())),
+            ),
         );
         hosts.insert(
             "legacy-only".to_string(),
-            KnownHost::Basic {
-                accept_invalid_certs: false,
-                app: Product::Elasticsearch,
-                password: Some("legacy-only-pass".to_string()),
-                roles: default_collect_roles(),
-                secret: None,
-                viewer: None,
-                url: Url::parse("http://localhost:9201").expect("url"),
-                username: Some("legacy-only-user".to_string()),
-            },
+            KnownHost::new_legacy_basic(
+                Product::Elasticsearch,
+                Url::parse("http://localhost:9201").expect("url"),
+                default_collect_roles(),
+                None,
+                false,
+                None,
+                Some(("legacy-only-user".to_string(), "legacy-only-pass".to_string())),
+            ),
         );
         write_hosts(hosts);
 
@@ -1406,29 +1639,27 @@ mod tests {
         let mut hosts = BTreeMap::new();
         hosts.insert(
             "es-prod".to_string(),
-            KnownHost::ApiKey {
-                accept_invalid_certs: false,
-                apikey: Some("apikey-1".to_string()),
-                app: Product::Elasticsearch,
-                cloud_id: None,
-                roles: default_collect_roles(),
-                secret: None,
-                viewer: None,
-                url: Url::parse("http://localhost:9200").expect("url"),
-            },
+            KnownHost::new_legacy_apikey(
+                Product::Elasticsearch,
+                Url::parse("http://localhost:9200").expect("url"),
+                default_collect_roles(),
+                None,
+                false,
+                None,
+                Some("apikey-1".to_string()),
+            ),
         );
         hosts.insert(
             "kb-prod".to_string(),
-            KnownHost::Basic {
-                accept_invalid_certs: false,
-                app: Product::Kibana,
-                password: Some("pass-1".to_string()),
-                roles: default_collect_roles(),
-                secret: None,
-                viewer: None,
-                url: Url::parse("http://localhost:5601").expect("url"),
-                username: Some("elastic".to_string()),
-            },
+            KnownHost::new_legacy_basic(
+                Product::Kibana,
+                Url::parse("http://localhost:5601").expect("url"),
+                default_collect_roles(),
+                None,
+                false,
+                None,
+                Some(("elastic".to_string(), "pass-1".to_string())),
+            ),
         );
         write_hosts(hosts);
 
@@ -1440,26 +1671,22 @@ mod tests {
         let migrated_hosts = KnownHost::parse_hosts_yml().expect("re-read migrated hosts");
         let raw_hosts = std::fs::read_to_string(&hosts_path).expect("read hosts file");
 
-        match migrated_hosts.get("es-prod").expect("migrated es host") {
-            KnownHost::ApiKey { apikey, secret, .. } => {
-                assert!(apikey.is_none(), "plaintext api key should be removed");
-                assert_eq!(secret.as_deref(), Some("es-prod"));
-            }
-            other => panic!("expected ApiKey host after migration, got {other}"),
-        }
-        match migrated_hosts.get("kb-prod").expect("migrated kb host") {
-            KnownHost::Basic {
-                username,
-                password,
-                secret,
-                ..
-            } => {
-                assert!(username.is_none(), "plaintext username should be removed");
-                assert!(password.is_none(), "plaintext password should be removed");
-                assert_eq!(secret.as_deref(), Some("kb-prod"));
-            }
-            other => panic!("expected Basic host after migration, got {other}"),
-        }
+        let migrated_es = migrated_hosts.get("es-prod").expect("migrated es host");
+        assert!(
+            migrated_es.legacy_apikey.is_none(),
+            "plaintext api key should be removed"
+        );
+        assert_eq!(migrated_es.secret.as_deref(), Some("es-prod"));
+        let migrated_kb = migrated_hosts.get("kb-prod").expect("migrated kb host");
+        assert!(
+            migrated_kb.legacy_username.is_none(),
+            "plaintext username should be removed"
+        );
+        assert!(
+            migrated_kb.legacy_password.is_none(),
+            "plaintext password should be removed"
+        );
+        assert_eq!(migrated_kb.secret.as_deref(), Some("kb-prod"));
         assert!(!raw_hosts.contains("apikey: apikey-1"));
         assert!(!raw_hosts.contains("username: elastic"));
         assert!(!raw_hosts.contains("password: pass-1"));
@@ -1501,16 +1728,15 @@ mod tests {
 
     #[test]
     fn merge_cli_update_preserves_omitted_fields() {
-        let host = KnownHost::ApiKey {
-            accept_invalid_certs: true,
-            apikey: Some("legacy-key".to_string()),
-            app: Product::Elasticsearch,
-            cloud_id: None,
-            roles: vec![HostRole::Collect],
-            secret: None,
-            viewer: None,
-            url: Url::parse("http://localhost:9200").expect("url"),
-        };
+        let host = KnownHost::new_legacy_apikey(
+            Product::Elasticsearch,
+            Url::parse("http://localhost:9200").expect("url"),
+            vec![HostRole::Collect],
+            None,
+            true,
+            None,
+            Some("legacy-key".to_string()),
+        );
         let update = KnownHostCliUpdate {
             roles: Some(vec![HostRole::Collect, HostRole::Send]),
             ..KnownHostCliUpdate::default()
@@ -1520,38 +1746,26 @@ mod tests {
             .merge_cli_update(&update, None)
             .expect("merge should succeed");
 
-        match merged {
-            KnownHost::ApiKey {
-                accept_invalid_certs,
-                apikey,
-                roles,
-                secret,
-                ..
-            } => {
-                assert!(
-                    accept_invalid_certs,
-                    "certificate setting should be preserved"
-                );
-                assert_eq!(apikey.as_deref(), Some("legacy-key"));
-                assert_eq!(secret, None);
-                assert_eq!(roles, vec![HostRole::Collect, HostRole::Send]);
-            }
-            _ => panic!("expected api key host after merge"),
-        }
+        assert!(
+            merged.accept_invalid_certs,
+            "certificate setting should be preserved"
+        );
+        assert_eq!(merged.legacy_apikey.as_deref(), Some("legacy-key"));
+        assert_eq!(merged.secret, None);
+        assert_eq!(merged.roles, vec![HostRole::Collect, HostRole::Send]);
     }
 
     #[test]
     fn merge_cli_update_switches_secret_host_to_apikey() {
-        let host = KnownHost::Basic {
-            accept_invalid_certs: false,
-            app: Product::Elasticsearch,
-            password: None,
-            roles: vec![HostRole::Collect],
-            secret: Some("old-secret".to_string()),
-            viewer: None,
-            url: Url::parse("http://localhost:9200").expect("url"),
-            username: None,
-        };
+        let host = KnownHost::new_legacy_basic(
+            Product::Elasticsearch,
+            Url::parse("http://localhost:9200").expect("url"),
+            vec![HostRole::Collect],
+            None,
+            false,
+            Some("old-secret".to_string()),
+            None,
+        );
         let update = KnownHostCliUpdate {
             apikey: Some("new-key".to_string()),
             ..KnownHostCliUpdate::default()
@@ -1561,27 +1775,21 @@ mod tests {
             .merge_cli_update(&update, None)
             .expect("merge should succeed");
 
-        match merged {
-            KnownHost::ApiKey { apikey, secret, .. } => {
-                assert_eq!(apikey.as_deref(), Some("new-key"));
-                assert!(secret.is_none(), "secret reference should be cleared");
-            }
-            _ => panic!("expected api key host after merge"),
-        }
+        assert_eq!(merged.legacy_apikey.as_deref(), Some("new-key"));
+        assert!(merged.secret.is_none(), "secret reference should be cleared");
     }
 
     #[test]
     fn merge_cli_update_applies_explicit_false_for_accept_invalid_certs() {
-        let host = KnownHost::ApiKey {
-            accept_invalid_certs: true,
-            apikey: Some("legacy-key".to_string()),
-            app: Product::Elasticsearch,
-            cloud_id: None,
-            roles: vec![HostRole::Collect],
-            secret: None,
-            viewer: None,
-            url: Url::parse("http://localhost:9200").expect("url"),
-        };
+        let host = KnownHost::new_legacy_apikey(
+            Product::Elasticsearch,
+            Url::parse("http://localhost:9200").expect("url"),
+            vec![HostRole::Collect],
+            None,
+            true,
+            None,
+            Some("legacy-key".to_string()),
+        );
         let update = KnownHostCliUpdate {
             accept_invalid_certs: Some(false),
             ..KnownHostCliUpdate::default()
@@ -1604,13 +1812,13 @@ mod tests {
         let mut hosts = BTreeMap::new();
         hosts.insert(
             "prod-es".to_string(),
-            KnownHost::NoAuth {
-                accept_invalid_certs: false,
-                app: Product::Elasticsearch,
-                roles: vec![HostRole::Collect],
-                viewer: None,
-                url: Url::parse("http://localhost:9200").expect("url"),
-            },
+            KnownHost::new_no_auth(
+                Product::Elasticsearch,
+                Url::parse("http://localhost:9200").expect("url"),
+                vec![HostRole::Collect],
+                None,
+                false,
+            ),
         );
 
         KnownHost::write_hosts_yml(&hosts).expect("write hosts");
@@ -1629,13 +1837,13 @@ mod tests {
         let mut hosts = BTreeMap::new();
         hosts.insert(
             "prod-es".to_string(),
-            KnownHost::NoAuth {
-                accept_invalid_certs: true,
-                app: Product::Elasticsearch,
-                roles: vec![HostRole::Collect],
-                viewer: None,
-                url: Url::parse("http://localhost:9200").expect("url"),
-            },
+            KnownHost::new_no_auth(
+                Product::Elasticsearch,
+                Url::parse("http://localhost:9200").expect("url"),
+                vec![HostRole::Collect],
+                None,
+                true,
+            ),
         );
 
         KnownHost::write_hosts_yml(&hosts).expect("write hosts");
@@ -1649,13 +1857,13 @@ mod tests {
 
     #[test]
     fn merge_cli_update_rejects_partial_basic_auth_without_secret() {
-        let host = KnownHost::NoAuth {
-            accept_invalid_certs: false,
-            app: Product::Elasticsearch,
-            roles: vec![HostRole::Collect],
-            viewer: None,
-            url: Url::parse("http://localhost:9200").expect("url"),
-        };
+        let host = KnownHost::new_no_auth(
+            Product::Elasticsearch,
+            Url::parse("http://localhost:9200").expect("url"),
+            vec![HostRole::Collect],
+            None,
+            false,
+        );
         let update = KnownHostCliUpdate {
             username: Some("elastic".to_string()),
             ..KnownHostCliUpdate::default()
@@ -1675,16 +1883,15 @@ mod tests {
 
     #[test]
     fn merge_cli_update_rejects_partial_basic_auth_for_existing_basic_host() {
-        let host = KnownHost::Basic {
-            accept_invalid_certs: false,
-            app: Product::Elasticsearch,
-            password: Some("old-pass".to_string()),
-            roles: vec![HostRole::Collect],
-            secret: None,
-            viewer: None,
-            url: Url::parse("http://localhost:9200").expect("url"),
-            username: Some("old-user".to_string()),
-        };
+        let host = KnownHost::new_legacy_basic(
+            Product::Elasticsearch,
+            Url::parse("http://localhost:9200").expect("url"),
+            vec![HostRole::Collect],
+            None,
+            false,
+            None,
+            Some(("old-user".to_string(), "old-pass".to_string())),
+        );
         let update = KnownHostCliUpdate {
             username: Some("new-user".to_string()),
             ..KnownHostCliUpdate::default()
@@ -1710,13 +1917,13 @@ mod tests {
         let mut hosts = BTreeMap::new();
         hosts.insert(
             "prod-es".to_string(),
-            KnownHost::NoAuth {
-                accept_invalid_certs: false,
-                app: Product::Elasticsearch,
-                roles: vec![HostRole::Collect],
-                viewer: None,
-                url: Url::parse("http://localhost:9200").expect("url"),
-            },
+            KnownHost::new_no_auth(
+                Product::Elasticsearch,
+                Url::parse("http://localhost:9200").expect("url"),
+                vec![HostRole::Collect],
+                None,
+                false,
+            ),
         );
         write_hosts(hosts);
 

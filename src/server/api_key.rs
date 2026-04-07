@@ -248,16 +248,15 @@ mod tests {
         let mut hosts = BTreeMap::new();
         hosts.insert(
             "secure-es".to_string(),
-            KnownHost::ApiKey {
-                accept_invalid_certs: false,
-                apikey: None,
-                app: Product::Elasticsearch,
-                cloud_id: None,
-                roles: vec![HostRole::Send],
-                secret: Some("secure-es".to_string()),
-                viewer: None,
-                url: Url::parse("http://localhost:9200").expect("url"),
-            },
+            KnownHost::new_legacy_apikey(
+                Product::Elasticsearch,
+                Url::parse("http://localhost:9200").expect("url"),
+                vec![HostRole::Send],
+                None,
+                false,
+                Some("secure-es".to_string()),
+                None,
+            ),
         );
         KnownHost::write_hosts_yml(&hosts).expect("write hosts");
         Settings {
@@ -268,13 +267,13 @@ mod tests {
         .expect("save settings");
 
         let state = test_server_state();
-        *state.exporter.write().await = Exporter::try_from(KnownHost::NoAuth {
-            accept_invalid_certs: false,
-            app: Product::Elasticsearch,
-            roles: vec![HostRole::Send],
-            viewer: None,
-            url: Url::parse("http://localhost:9200").expect("secure output uri"),
-        })
+        *state.exporter.write().await = Exporter::try_from(KnownHost::new_no_auth(
+            Product::Elasticsearch,
+            Url::parse("http://localhost:9200").expect("secure output uri"),
+            vec![HostRole::Send],
+            None,
+            false,
+        ))
         .expect("matching exporter");
         let mut signals = ApiKeyFormSignals::default();
         signals.archive.download_token = "token-1".to_string();

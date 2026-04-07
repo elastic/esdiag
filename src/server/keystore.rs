@@ -649,16 +649,15 @@ mod tests {
         let mut hosts = BTreeMap::new();
         hosts.insert(
             "legacy".to_string(),
-            KnownHost::ApiKey {
-                accept_invalid_certs: false,
-                apikey: Some("plaintext-api-key".to_string()),
-                app: crate::data::Product::Elasticsearch,
-                cloud_id: None,
-                roles: vec![crate::data::HostRole::Send],
-                secret: None,
-                viewer: None,
-                url: Url::parse("http://localhost:9200").expect("url"),
-            },
+            KnownHost::new_legacy_apikey(
+                crate::data::Product::Elasticsearch,
+                Url::parse("http://localhost:9200").expect("url"),
+                vec![crate::data::HostRole::Send],
+                None,
+                false,
+                None,
+                Some("plaintext-api-key".to_string()),
+            ),
         );
         write_hosts(hosts);
 
@@ -772,16 +771,15 @@ mod tests {
         let mut hosts = BTreeMap::new();
         hosts.insert(
             "legacy".to_string(),
-            KnownHost::ApiKey {
-                accept_invalid_certs: false,
-                apikey: Some("plaintext-api-key".to_string()),
-                app: crate::data::Product::Elasticsearch,
-                cloud_id: None,
-                roles: vec![crate::data::HostRole::Send],
-                secret: None,
-                viewer: None,
-                url: Url::parse("http://localhost:9200").expect("url"),
-            },
+            KnownHost::new_legacy_apikey(
+                crate::data::Product::Elasticsearch,
+                Url::parse("http://localhost:9200").expect("url"),
+                vec![crate::data::HostRole::Send],
+                None,
+                false,
+                None,
+                Some("plaintext-api-key".to_string()),
+            ),
         );
         write_hosts(hosts);
 
@@ -809,16 +807,15 @@ mod tests {
         let mut hosts = BTreeMap::new();
         hosts.insert(
             "legacy-es".to_string(),
-            KnownHost::ApiKey {
-                accept_invalid_certs: false,
-                apikey: Some("plaintext-api-key".to_string()),
-                app: crate::data::Product::Elasticsearch,
-                cloud_id: None,
-                roles: vec![crate::data::HostRole::Send],
-                secret: None,
-                viewer: None,
-                url: Url::parse("http://localhost:9200").expect("url"),
-            },
+            KnownHost::new_legacy_apikey(
+                crate::data::Product::Elasticsearch,
+                Url::parse("http://localhost:9200").expect("url"),
+                vec![crate::data::HostRole::Send],
+                None,
+                false,
+                None,
+                Some("plaintext-api-key".to_string()),
+            ),
         );
         write_hosts(hosts);
 
@@ -842,13 +839,12 @@ mod tests {
         );
 
         let migrated_hosts = KnownHost::parse_hosts_yml().expect("reload migrated hosts");
-        match migrated_hosts.get("legacy-es").expect("migrated host") {
-            KnownHost::ApiKey { apikey, secret, .. } => {
-                assert!(apikey.is_none(), "plaintext apikey should be scrubbed");
-                assert_eq!(secret.as_deref(), Some("legacy-es"));
-            }
-            _ => panic!("expected migrated api key host"),
-        }
+        let migrated = migrated_hosts.get("legacy-es").expect("migrated host");
+        assert!(
+            migrated.legacy_apikey.is_none(),
+            "plaintext apikey should be scrubbed"
+        );
+        assert_eq!(migrated.secret.as_deref(), Some("legacy-es"));
     }
 
     #[tokio::test]
@@ -905,23 +901,22 @@ mod tests {
         let _guard = env_lock().lock().expect("env lock");
         let (_tmp, _hosts_path, _keystore_path) = setup_env();
 
-        let noauth_host = KnownHost::NoAuth {
-            accept_invalid_certs: false,
-            app: crate::data::Product::Elasticsearch,
-            roles: vec![crate::data::HostRole::Send],
-            viewer: None,
-            url: Url::parse("http://localhost:9200").expect("url"),
-        };
-        let secure_host = KnownHost::Basic {
-            accept_invalid_certs: false,
-            app: crate::data::Product::Elasticsearch,
-            password: None,
-            roles: vec![crate::data::HostRole::Send],
-            secret: Some("secure".to_string()),
-            viewer: None,
-            url: Url::parse("https://secure.example.com:9200").expect("url"),
-            username: None,
-        };
+        let noauth_host = KnownHost::new_no_auth(
+            crate::data::Product::Elasticsearch,
+            Url::parse("http://localhost:9200").expect("url"),
+            vec![crate::data::HostRole::Send],
+            None,
+            false,
+        );
+        let secure_host = KnownHost::new_legacy_basic(
+            crate::data::Product::Elasticsearch,
+            Url::parse("https://secure.example.com:9200").expect("url"),
+            vec![crate::data::HostRole::Send],
+            None,
+            false,
+            Some("secure".to_string()),
+            None,
+        );
 
         let mut hosts = BTreeMap::new();
         hosts.insert("noauth".to_string(), noauth_host.clone());
@@ -946,13 +941,13 @@ mod tests {
 
         settings.active_target = Some("secure".to_string());
         settings.save().expect("save secure settings");
-        *state.exporter.write().await = crate::exporter::Exporter::try_from(KnownHost::NoAuth {
-            accept_invalid_certs: false,
-            app: crate::data::Product::Elasticsearch,
-            roles: vec![crate::data::HostRole::Send],
-            viewer: None,
-            url: Url::parse("https://secure.example.com:9200").expect("secure url"),
-        })
+        *state.exporter.write().await = crate::exporter::Exporter::try_from(KnownHost::new_no_auth(
+            crate::data::Product::Elasticsearch,
+            Url::parse("https://secure.example.com:9200").expect("secure url"),
+            vec![crate::data::HostRole::Send],
+            None,
+            false,
+        ))
         .expect("secure exporter");
         assert!(
             ensure_unlocked_for_active_output(&state)
@@ -970,13 +965,13 @@ mod tests {
     #[tokio::test]
     async fn service_mode_non_secure_output_bypasses_keystore_preflight() {
         let state = test_service_state();
-        *state.exporter.write().await = crate::exporter::Exporter::try_from(KnownHost::NoAuth {
-            accept_invalid_certs: false,
-            app: crate::data::Product::Elasticsearch,
-            roles: vec![crate::data::HostRole::Send],
-            viewer: None,
-            url: Url::parse("http://localhost:9200").expect("url"),
-        })
+        *state.exporter.write().await = crate::exporter::Exporter::try_from(KnownHost::new_no_auth(
+            crate::data::Product::Elasticsearch,
+            Url::parse("http://localhost:9200").expect("url"),
+            vec![crate::data::HostRole::Send],
+            None,
+            false,
+        ))
         .expect("noauth exporter");
 
         assert!(
@@ -998,16 +993,16 @@ mod tests {
         }
 
         let state = test_service_state();
-        *state.exporter.write().await = crate::exporter::Exporter::try_from(KnownHost::ApiKey {
-            accept_invalid_certs: false,
-            apikey: Some("secret".to_string()),
-            app: crate::data::Product::Elasticsearch,
-            cloud_id: None,
-            roles: vec![crate::data::HostRole::Send],
-            secret: None,
-            viewer: None,
-            url: Url::parse("https://secure.example.com:9200").expect("url"),
-        })
+        *state.exporter.write().await =
+            crate::exporter::Exporter::try_from(KnownHost::new_legacy_apikey(
+                crate::data::Product::Elasticsearch,
+                Url::parse("https://secure.example.com:9200").expect("url"),
+                vec![crate::data::HostRole::Send],
+                None,
+                false,
+                None,
+                Some("secret".to_string()),
+            ))
         .expect("secure exporter");
 
         let result = ensure_unlocked_for_active_output(&state).await;

@@ -1,4 +1,5 @@
 #![cfg(all(feature = "server", feature = "keystore"))]
+#![allow(clippy::await_holding_lock)]
 
 use esdiag::{
     data::{authenticate, get_unlock_path, get_unlock_status, read_unlock_lease, write_unlock_lease},

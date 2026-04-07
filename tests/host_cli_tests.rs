@@ -1,5 +1,5 @@
 use axum::{Json, Router, routing::get};
-use esdiag::data::{HostRole, KnownHost, Settings};
+use esdiag::data::{HostRole, KnownHost, Product, Settings};
 use std::{
     collections::BTreeMap,
     path::PathBuf,
@@ -151,6 +151,21 @@ async fn host_update_preserves_omitted_fields_and_applies_cert_overrides() {
     let (url, shutdown_tx) = start_mock_elasticsearch().await;
     let home = setup_home();
     let home_path = home.path().to_path_buf();
+    let secret_env = vec![("ESDIAG_KEYSTORE_PASSWORD".to_string(), "pw".to_string())];
+
+    let add_secret = run_esdiag_async(
+        vec![
+            "keystore".to_string(),
+            "add".to_string(),
+            "prod-secret".to_string(),
+            "--apikey".to_string(),
+            "legacy-key".to_string(),
+        ],
+        home_path.clone(),
+        secret_env.clone(),
+    )
+    .await;
+    assert_success(&add_secret, "add host secret");
 
     let create = run_esdiag_async(
         vec![
@@ -158,13 +173,13 @@ async fn host_update_preserves_omitted_fields_and_applies_cert_overrides() {
             "prod-es".to_string(),
             "elasticsearch".to_string(),
             url.clone(),
-            "--apikey".to_string(),
-            "legacy-key".to_string(),
+            "--secret".to_string(),
+            "prod-secret".to_string(),
             "--accept-invalid-certs".to_string(),
             "true".to_string(),
         ],
         home_path.clone(),
-        vec![],
+        secret_env.clone(),
     )
     .await;
     assert_success(&create, "create host");
@@ -177,30 +192,20 @@ async fn host_update_preserves_omitted_fields_and_applies_cert_overrides() {
             "collect,send".to_string(),
         ],
         home_path.clone(),
-        vec![],
+        secret_env.clone(),
     )
     .await;
     assert_success(&update_roles, "update roles");
 
     let hosts = read_hosts(&home);
-    match hosts.get("prod-es").expect("saved host exists") {
-        KnownHost::ApiKey {
-            accept_invalid_certs,
-            apikey,
-            roles,
-            secret,
-            ..
-        } => {
-            assert!(
-                *accept_invalid_certs,
-                "omitted cert flag should preserve value"
-            );
-            assert_eq!(apikey.as_deref(), Some("legacy-key"));
-            assert!(secret.is_none());
-            assert_eq!(roles, &vec![HostRole::Collect, HostRole::Send]);
-        }
-        _ => panic!("expected api key host"),
-    }
+    let host = hosts.get("prod-es").expect("saved host exists");
+    assert!(
+        host.accept_invalid_certs,
+        "omitted cert flag should preserve value"
+    );
+    assert!(host.legacy_apikey.is_none());
+    assert_eq!(host.secret.as_deref(), Some("prod-secret"));
+    assert_eq!(host.roles, vec![HostRole::Collect, HostRole::Send]);
 
     let disable_certs = run_esdiag_async(
         vec![
@@ -210,7 +215,7 @@ async fn host_update_preserves_omitted_fields_and_applies_cert_overrides() {
             "false".to_string(),
         ],
         home_path.clone(),
-        vec![],
+        secret_env.clone(),
     )
     .await;
     assert_success(&disable_certs, "disable accept invalid certs");
@@ -232,7 +237,7 @@ async fn host_update_preserves_omitted_fields_and_applies_cert_overrides() {
             "true".to_string(),
         ],
         home_path,
-        vec![],
+        secret_env,
     )
     .await;
     assert_success(&enable_certs, "enable accept invalid certs");
@@ -284,16 +289,13 @@ async fn host_update_applies_cert_overrides_for_noauth_hosts() {
     assert_success(&disable_certs, "disable noauth cert override");
 
     let hosts = read_hosts(&home);
-    match hosts.get("plain-es").expect("saved host exists") {
-        KnownHost::NoAuth {
-            accept_invalid_certs,
-            ..
-        } => assert!(
-            !accept_invalid_certs,
-            "explicit false should clear accept_invalid_certs for noauth hosts"
-        ),
-        _ => panic!("expected noauth host"),
-    }
+    assert!(
+        !hosts
+            .get("plain-es")
+            .expect("saved host exists")
+            .accept_invalid_certs,
+        "explicit false should clear accept_invalid_certs for noauth hosts"
+    );
 
     let enable_certs = run_esdiag_async(
         vec![
@@ -309,22 +311,19 @@ async fn host_update_applies_cert_overrides_for_noauth_hosts() {
     assert_success(&enable_certs, "enable noauth cert override");
 
     let hosts = read_hosts(&home);
-    match hosts.get("plain-es").expect("saved host exists") {
-        KnownHost::NoAuth {
-            accept_invalid_certs,
-            ..
-        } => assert!(
-            *accept_invalid_certs,
-            "explicit true should set accept_invalid_certs for noauth hosts"
-        ),
-        _ => panic!("expected noauth host"),
-    }
+    assert!(
+        hosts
+            .get("plain-es")
+            .expect("saved host exists")
+            .accept_invalid_certs,
+        "explicit true should set accept_invalid_certs for noauth hosts"
+    );
 
     let _ = shutdown_tx.send(());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn host_update_supports_secret_rotation_and_apikey_override() {
+async fn host_update_supports_secret_rotation_and_rejects_persisted_apikey_override() {
     let (url, shutdown_tx) = start_mock_elasticsearch().await;
     let home = setup_home();
     let home_path = home.path().to_path_buf();
@@ -387,16 +386,12 @@ async fn host_update_supports_secret_rotation_and_apikey_override() {
     assert_success(&rotate_secret, "rotate secret");
 
     let hosts = read_hosts(&home);
-    match hosts.get("prod-es").expect("saved host exists") {
-        KnownHost::ApiKey { apikey, secret, .. } => {
-            assert!(
-                apikey.is_none(),
-                "secret-backed host should not persist api key"
-            );
-            assert_eq!(secret.as_deref(), Some("new-secret"));
-        }
-        _ => panic!("expected api key host"),
-    }
+    let host = hosts.get("prod-es").expect("saved host exists");
+    assert!(
+        host.legacy_apikey.is_none(),
+        "secret-backed host should not persist api key"
+    );
+    assert_eq!(host.secret.as_deref(), Some("new-secret"));
 
     let override_apikey = run_esdiag_async(
         vec![
@@ -409,19 +404,16 @@ async fn host_update_supports_secret_rotation_and_apikey_override() {
         vec![],
     )
     .await;
-    assert_success(&override_apikey, "override apikey");
+    assert_failure_contains(
+        &override_apikey,
+        "requires a secret reference before it can be saved",
+        "persisted apikey override",
+    );
 
     let hosts = read_hosts(&home);
-    match hosts.get("prod-es").expect("saved host exists") {
-        KnownHost::ApiKey { apikey, secret, .. } => {
-            assert_eq!(apikey.as_deref(), Some("override-key"));
-            assert!(
-                secret.is_none(),
-                "apikey override should clear secret reference"
-            );
-        }
-        _ => panic!("expected api key host"),
-    }
+    let host = hosts.get("prod-es").expect("saved host exists");
+    assert!(host.legacy_apikey.is_none());
+    assert_eq!(host.secret.as_deref(), Some("new-secret"));
 
     let _ = shutdown_tx.send(());
 }
@@ -552,7 +544,9 @@ async fn host_update_rejects_partial_basic_auth_without_secret() {
 
     let hosts = read_hosts(&home);
     assert!(
-        matches!(hosts.get("plain-es"), Some(KnownHost::NoAuth { .. })),
+        hosts
+            .get("plain-es")
+            .is_some_and(|host| host.secret.is_none() && host.legacy_apikey.is_none() && host.legacy_username.is_none() && host.legacy_password.is_none()),
         "failed update should leave the saved host unchanged"
     );
 
@@ -564,23 +558,22 @@ async fn host_update_rejects_partial_basic_auth_for_existing_basic_host() {
     let (url, shutdown_tx) = start_mock_elasticsearch().await;
     let home = setup_home();
     let home_path = home.path().to_path_buf();
-
-    let create = run_esdiag_async(
-        vec![
-            "host".to_string(),
-            "basic-es".to_string(),
-            "elasticsearch".to_string(),
-            url,
-            "--user".to_string(),
-            "elastic".to_string(),
-            "--password".to_string(),
-            "old-pass".to_string(),
-        ],
-        home_path.clone(),
-        vec![],
-    )
-    .await;
-    assert_success(&create, "create basic host");
+    let mut hosts = BTreeMap::new();
+    hosts.insert(
+        "basic-es".to_string(),
+        KnownHost::new_legacy_basic(
+            Product::Elasticsearch,
+            url::Url::parse(&url).expect("url"),
+            vec![HostRole::Collect],
+            None,
+            false,
+            None,
+            Some(("elastic".to_string(), "old-pass".to_string())),
+        ),
+    );
+    let hosts_path = home.path().join(".esdiag").join("hosts.yml");
+    let content = serde_yaml::to_string(&hosts).expect("serialize hosts");
+    std::fs::write(&hosts_path, content).expect("write hosts");
 
     let update = run_esdiag_async(
         vec![
@@ -600,22 +593,13 @@ async fn host_update_rejects_partial_basic_auth_for_existing_basic_host() {
     );
 
     let hosts = read_hosts(&home);
-    match hosts.get("basic-es").expect("saved host exists") {
-        KnownHost::Basic {
-            username,
-            password,
-            secret,
-            ..
-        } => {
-            assert_eq!(username.as_deref(), Some("elastic"));
-            assert_eq!(password.as_deref(), Some("old-pass"));
-            assert!(
-                secret.is_none(),
-                "failed update should not add a secret reference"
-            );
-        }
-        _ => panic!("expected basic host"),
-    }
+    let host = hosts.get("basic-es").expect("saved host exists");
+    assert_eq!(host.legacy_username.as_deref(), Some("elastic"));
+    assert_eq!(host.legacy_password.as_deref(), Some("old-pass"));
+    assert!(
+        host.secret.is_none(),
+        "failed update should not add a secret reference"
+    );
 
     let _ = shutdown_tx.send(());
 }

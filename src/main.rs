@@ -795,7 +795,10 @@ async fn run(cli: Cli) -> Result<CommandResult> {
                     let path =
                         add_secret(&secret_id, username, password, apikey, &keystore_password)?;
                     tracing::info!("Secret '{secret_id}' saved to {path}");
-                    Ok(CommandResult::named("keystore"))
+                    Ok(CommandResult::with_summary(
+                        "keystore",
+                        format_keystore_secret_summary("saved", &secret_id, &path),
+                    ))
                 }
                 KeystoreCommands::Update {
                     secret_id,
@@ -809,7 +812,10 @@ async fn run(cli: Cli) -> Result<CommandResult> {
                     let path =
                         update_secret(&secret_id, username, password, apikey, &keystore_password)?;
                     tracing::info!("Secret '{secret_id}' updated in {path}");
-                    Ok(CommandResult::named("keystore"))
+                    Ok(CommandResult::with_summary(
+                        "keystore",
+                        format_keystore_secret_summary("updated", &secret_id, &path),
+                    ))
                 }
                 KeystoreCommands::Remove {
                     secret_id,
@@ -821,7 +827,10 @@ async fn run(cli: Cli) -> Result<CommandResult> {
                     let expected = expected_secret_auth(username, password, apikey)?;
                     let path = remove_secret(&secret_id, expected, &keystore_password)?;
                     tracing::info!("Secret '{secret_id}' deleted from {path}");
-                    Ok(CommandResult::named("keystore"))
+                    Ok(CommandResult::with_summary(
+                        "keystore",
+                        format_keystore_secret_summary("deleted", &secret_id, &path),
+                    ))
                 }
                 KeystoreCommands::Unlock { ttl } => {
                     let ttl = ttl
@@ -841,19 +850,33 @@ async fn run(cli: Cli) -> Result<CommandResult> {
                     } else {
                         tracing::info!("Keystore unlocked via {}", unlock_path.display());
                     }
-                    Ok(CommandResult::named("keystore"))
+                    let lock_status = format_keystore_lock_status(&status);
+                    let rendered_lock_status =
+                        colorize_keystore_lock_status(&lock_status, std::io::stderr().is_terminal());
+                    Ok(CommandResult::with_summary("keystore", rendered_lock_status))
                 }
                 KeystoreCommands::Lock => {
+                    let lock_status = format_keystore_lock_status(&esdiag::data::UnlockStatus {
+                        keystore_exists: keystore_exists()?,
+                        unlock_active: false,
+                        expires_at_epoch: None,
+                        unlock_path: esdiag::data::get_unlock_path()?,
+                    });
+                    let rendered_lock_status =
+                        colorize_keystore_lock_status(&lock_status, std::io::stderr().is_terminal());
                     if clear_unlock_lease()? {
                         tracing::info!("Keystore unlock lease removed");
                     } else {
                         tracing::info!("Keystore unlock lease was already absent");
                     }
-                    Ok(CommandResult::named("keystore"))
+                    Ok(CommandResult::with_summary("keystore", rendered_lock_status))
                 }
                 KeystoreCommands::Status => {
                     let status = get_unlock_status()?;
                     let keystore_path = get_keystore_path()?;
+                    let lock_status = format_keystore_lock_status(&status);
+                    let rendered_lock_status =
+                        colorize_keystore_lock_status(&lock_status, std::io::stderr().is_terminal());
                     tracing::info!(
                         "Keystore: {} ({})",
                         if status.keystore_exists {
@@ -863,8 +886,11 @@ async fn run(cli: Cli) -> Result<CommandResult> {
                         },
                         keystore_path.display()
                     );
-                    tracing::info!("{}", format_keystore_lock_status(&status));
-                    Ok(CommandResult::named("keystore"))
+                    tracing::info!("{rendered_lock_status}");
+                    Ok(CommandResult::with_summary(
+                        "keystore",
+                        rendered_lock_status,
+                    ))
                 }
                 KeystoreCommands::Password => {
                     if !keystore_exists()? {
@@ -875,7 +901,10 @@ async fn run(cli: Cli) -> Result<CommandResult> {
                     let new_password = prompt_new_keystore_password()?;
                     let path = rotate_keystore_password(&current_password, &new_password)?;
                     tracing::info!("Keystore password updated for {path}");
-                    Ok(CommandResult::named("keystore"))
+                    Ok(CommandResult::with_summary(
+                        "keystore",
+                        format_keystore_password_summary(&path),
+                    ))
                 }
                 KeystoreCommands::Migrate => {
                     let keystore_password = get_password_for_secret_commands()?;
@@ -884,7 +913,10 @@ async fn run(cli: Cli) -> Result<CommandResult> {
                     tracing::info!(
                         "Keystore migration complete: migrated {migrated} host(s), unchanged {unchanged} host(s)."
                     );
-                    Ok(CommandResult::named("keystore"))
+                    Ok(CommandResult::with_summary(
+                        "keystore",
+                        format_keystore_migrate_summary(migrated, unchanged),
+                    ))
                 }
             },
             Commands::Process {
@@ -1470,6 +1502,32 @@ fn format_keystore_lock_status_at(
     "Keystore: locked".to_string()
 }
 
+fn colorize_keystore_lock_status(status: &str, colorize: bool) -> String {
+    if !colorize {
+        return status.to_string();
+    }
+
+    if status.contains("Keystore: unlocked") {
+        return status.replacen("unlocked", "\x1b[32munlocked\x1b[0m", 1);
+    }
+    if status.contains("Keystore: locked") {
+        return status.replacen("locked", "\x1b[31mlocked\x1b[0m", 1);
+    }
+    status.to_string()
+}
+
+fn format_keystore_secret_summary(action: &str, secret_id: &str, path: &str) -> String {
+    format!("Secret '{secret_id}' {action} in {path}")
+}
+
+fn format_keystore_password_summary(path: &str) -> String {
+    format!("Keystore password updated for {path}")
+}
+
+fn format_keystore_migrate_summary(migrated: usize, unchanged: usize) -> String {
+    format!("Keystore migration complete: migrated {migrated} host(s), unchanged {unchanged} host(s).")
+}
+
 fn ensure_host_role(host: &KnownHost, role: HostRole, context: &str) -> Result<()> {
     if host.has_role(role.clone()) {
         Ok(())
@@ -1588,8 +1646,12 @@ fn resolve_serve_exporter(output: Option<String>, runtime_mode: RuntimeMode) -> 
 #[cfg(test)]
 mod tests {
     use super::{
-        Cli, Commands, KeystoreCommands, append_kibana_space, collect_with_optional_upload,
+        Cli, CommandResult, Commands, KeystoreCommands, append_kibana_space,
+        colorize_keystore_lock_status,
+        collect_with_optional_upload,
         format_collect_summary, format_keystore_lock_status, format_keystore_lock_status_at,
+        format_keystore_migrate_summary, format_keystore_password_summary,
+        format_keystore_secret_summary,
         format_process_summary, format_remaining_duration_from, host_connection_uses_receiver,
         is_agent_mode, resolve_host_secret_auth, resolve_process_kibana_base_url,
         resolve_secret_input_with_prompt, resolve_tracing_filter,
@@ -1599,7 +1661,7 @@ mod tests {
     use super::{resolve_serve_exporter, resolve_serve_runtime_mode};
     use clap::Parser;
     use esdiag::data::{
-        ElasticCloud, HostRole, KnownHost, KnownHostBuilder, Product, SecretAuth, UnlockStatus, Uri,
+        HostRole, KnownHost, KnownHostBuilder, Product, SecretAuth, UnlockStatus, Uri,
         upsert_secret_auth,
     };
     use esdiag::processor::{CollectionResult, DiagnosticManifest};
@@ -1802,6 +1864,30 @@ mod tests {
         assert_eq!(
             format_keystore_lock_status_at(1_700_000_000, &status),
             "Keystore: unlocked until 2023-11-14T23:14:20+00:00 (1h 1m remaining)"
+        );
+    }
+
+    #[test]
+    fn keystore_status_colorizes_locked_state_when_enabled() {
+        assert_eq!(
+            colorize_keystore_lock_status("Keystore: locked", true),
+            "Keystore: \u{1b}[31mlocked\u{1b}[0m"
+        );
+    }
+
+    #[test]
+    fn keystore_status_colorizes_unlocked_state_when_enabled() {
+        assert_eq!(
+            colorize_keystore_lock_status("Keystore: unlocked until later", true),
+            "Keystore: \u{1b}[32munlocked\u{1b}[0m until later"
+        );
+    }
+
+    #[test]
+    fn keystore_status_leaves_plain_text_when_color_disabled() {
+        assert_eq!(
+            colorize_keystore_lock_status("Keystore: locked", false),
+            "Keystore: locked"
         );
     }
 
@@ -2124,6 +2210,70 @@ mod tests {
     }
 
     #[test]
+    fn keystore_status_uses_lock_status_as_stderr_summary() {
+        let result = CommandResult::with_summary("keystore", "Keystore: locked".to_string());
+
+        assert_eq!(result.summary().as_deref(), Some("Keystore: locked"));
+    }
+
+    #[test]
+    fn keystore_lock_uses_locked_stderr_summary() {
+        let result = CommandResult::with_summary(
+            "keystore",
+            colorize_keystore_lock_status("Keystore: locked", false),
+        );
+
+        assert_eq!(result.summary().as_deref(), Some("Keystore: locked"));
+    }
+
+    #[test]
+    fn keystore_unlock_uses_unlocked_stderr_summary() {
+        let result = CommandResult::with_summary(
+            "keystore",
+            colorize_keystore_lock_status("Keystore: unlocked until later", false),
+        );
+
+        assert_eq!(
+            result.summary().as_deref(),
+            Some("Keystore: unlocked until later")
+        );
+    }
+
+    #[test]
+    fn keystore_secret_summary_is_useful() {
+        assert_eq!(
+            format_keystore_secret_summary("saved", "prod-es", "/tmp/secrets.yml"),
+            "Secret 'prod-es' saved in /tmp/secrets.yml"
+        );
+    }
+
+    #[test]
+    fn keystore_password_summary_is_useful() {
+        assert_eq!(
+            format_keystore_password_summary("/tmp/secrets.yml"),
+            "Keystore password updated for /tmp/secrets.yml"
+        );
+    }
+
+    #[test]
+    fn keystore_migrate_summary_is_useful() {
+        assert_eq!(
+            format_keystore_migrate_summary(2, 3),
+            "Keystore migration complete: migrated 2 host(s), unchanged 3 host(s)."
+        );
+    }
+
+    #[test]
+    fn keystore_subcommands_do_not_fall_back_to_generic_summary() {
+        let result = CommandResult::with_summary(
+            "keystore",
+            format_keystore_secret_summary("saved", "prod-es", "/tmp/secrets.yml"),
+        );
+
+        assert_ne!(result.summary().as_deref(), Some("keystore complete"));
+    }
+
+    #[test]
     fn collect_summary_uses_collected_counts_and_path() {
         let summary = format_collect_summary(&CollectionResult {
             path: "target/esdiag-20260403-220233.zip".to_string(),
@@ -2169,32 +2319,31 @@ mod tests {
 
     #[test]
     fn elastic_cloud_admin_hosts_validate_via_receiver() {
-        let uri = Uri::ElasticCloudAdmin(KnownHost::ApiKey {
-            accept_invalid_certs: false,
-            apikey: None,
-            app: Product::Elasticsearch,
-            cloud_id: Some(ElasticCloud::ElasticCloudAdmin),
-            roles: vec![HostRole::Collect],
-            secret: Some("ada-admin".to_string()),
-            viewer: None,
-            url: Url::parse(
+        let uri = Uri::ElasticCloudAdmin(KnownHost::new_legacy_apikey(
+            Product::Elasticsearch,
+            Url::parse(
                 "https://admin.found.no/api/v1/deployments/test/elasticsearch/main-elasticsearch/proxy",
             )
             .expect("valid url"),
-        });
+            vec![HostRole::Collect],
+            None,
+            false,
+            Some("ada-admin".to_string()),
+            None,
+        ));
 
         assert!(host_connection_uses_receiver(&uri));
     }
 
     #[test]
     fn standard_known_hosts_validate_via_client() {
-        let uri = Uri::KnownHost(KnownHost::NoAuth {
-            accept_invalid_certs: false,
-            app: Product::Elasticsearch,
-            roles: vec![HostRole::Collect],
-            viewer: None,
-            url: Url::parse("http://localhost:9200").expect("valid url"),
-        });
+        let uri = Uri::KnownHost(KnownHost::new_no_auth(
+            Product::Elasticsearch,
+            Url::parse("http://localhost:9200").expect("valid url"),
+            vec![HostRole::Collect],
+            None,
+            false,
+        ));
 
         assert!(!host_connection_uses_receiver(&uri));
     }

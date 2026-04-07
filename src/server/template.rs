@@ -467,26 +467,25 @@ mod tests {
         let mut hosts = BTreeMap::new();
         hosts.insert(
             "localhost".to_string(),
-            KnownHost::NoAuth {
-                accept_invalid_certs: false,
-                app: Product::Elasticsearch,
-                roles: vec![HostRole::Send],
-                viewer: None,
-                url: Url::parse("http://localhost:9200").expect("url"),
-            },
+            KnownHost::new_no_auth(
+                Product::Elasticsearch,
+                Url::parse("http://localhost:9200").expect("url"),
+                vec![HostRole::Send],
+                None,
+                false,
+            ),
         );
         hosts.insert(
             "secure-prod".to_string(),
-            KnownHost::ApiKey {
-                accept_invalid_certs: false,
-                apikey: None,
-                app: Product::Elasticsearch,
-                cloud_id: None,
-                roles: vec![HostRole::Send],
-                secret: Some("secure-prod".to_string()),
-                viewer: None,
-                url: Url::parse("https://secure.example.com:9200").expect("url"),
-            },
+            KnownHost::new_legacy_apikey(
+                Product::Elasticsearch,
+                Url::parse("https://secure.example.com:9200").expect("url"),
+                vec![HostRole::Send],
+                None,
+                false,
+                Some("secure-prod".to_string()),
+                None,
+            ),
         );
         KnownHost::write_hosts_yml(&hosts).expect("write hosts");
         tmp
@@ -521,13 +520,13 @@ mod tests {
         let _tmp = setup_hosts();
         let send_hosts = vec!["localhost".to_string(), "secure-prod".to_string()];
 
-        let secure_exporter = Exporter::try_from(KnownHost::NoAuth {
-            accept_invalid_certs: false,
-            app: Product::Elasticsearch,
-            roles: vec![HostRole::Send],
-            viewer: None,
-            url: Url::parse("https://secure.example.com:9200").expect("secure url"),
-        })
+        let secure_exporter = Exporter::try_from(KnownHost::new_no_auth(
+            Product::Elasticsearch,
+            Url::parse("https://secure.example.com:9200").expect("secure url"),
+            vec![HostRole::Send],
+            None,
+            false,
+        ))
         .expect("secure exporter");
         let hosts_by_name = KnownHost::parse_hosts_yml().unwrap_or_default();
         assert!(active_output_requires_keystore(

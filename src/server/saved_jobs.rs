@@ -257,13 +257,13 @@ mod tests {
         let mut hosts = BTreeMap::new();
         hosts.insert(
             "elasticsearch-local".to_string(),
-            KnownHost::NoAuth {
-                accept_invalid_certs: false,
-                app: Product::Elasticsearch,
-                roles: vec![HostRole::Collect],
-                viewer: None,
-                url: Url::parse("http://localhost:9200").expect("url"),
-            },
+            KnownHost::new_no_auth(
+                Product::Elasticsearch,
+                Url::parse("http://localhost:9200").expect("url"),
+                vec![HostRole::Collect],
+                None,
+                false,
+            ),
         );
         KnownHost::write_hosts_yml(&hosts).expect("write hosts");
 
@@ -283,13 +283,13 @@ mod tests {
         let mut hosts = BTreeMap::new();
         hosts.insert(
             "send-only".to_string(),
-            KnownHost::NoAuth {
-                accept_invalid_certs: false,
-                app: Product::Elasticsearch,
-                roles: vec![HostRole::Send],
-                viewer: None,
-                url: Url::parse("http://localhost:9200").expect("url"),
-            },
+            KnownHost::new_no_auth(
+                Product::Elasticsearch,
+                Url::parse("http://localhost:9200").expect("url"),
+                vec![HostRole::Send],
+                None,
+                false,
+            ),
         );
         KnownHost::write_hosts_yml(&hosts).expect("write hosts");
 
