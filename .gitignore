@@ -6,6 +6,7 @@
 .claude/
 .codex/
 .claude/
+.cursor/
 esdiag.spdx.json
 /tauri-dist
 /frontend-dist/
