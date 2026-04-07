@@ -3189,7 +3189,6 @@ panel.no-padding {
 
 button,
 .button {
-    margin-top: var(--size);
     padding: var(--size) var(--size-m);
     border: none;
     border-radius: var(--border-radius-small);
@@ -3752,6 +3751,7 @@ footer-right {
     background: transparent;
     color: inherit;
     cursor: pointer;
+    padding: 0;
 }
 
 .theme-toggle-button:focus-visible {
