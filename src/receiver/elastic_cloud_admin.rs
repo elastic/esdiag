@@ -264,7 +264,7 @@ mod tests {
         (status, "test response")
     }
 
-    async fn spawn_status_server(status: StatusCode) -> (Url, JoinHandle<()>) {
+    async fn spawn_status_server(status: StatusCode) -> (Url, JoinHandle<()>, oneshot::Sender<()>) {
         let app = Router::new()
             .route("/", get(status_handler))
             .with_state(status);
@@ -272,16 +272,22 @@ mod tests {
             .await
             .expect("bind test server");
         let addr = listener.local_addr().expect("listener addr");
+        let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
         let server = tokio::spawn(async move {
-            axum::serve(listener, app).await.expect("serve test app");
+            axum::serve(listener, app)
+                .with_graceful_shutdown(async {
+                    let _ = shutdown_rx.await;
+                })
+                .await
+                .expect("serve test app");
         });
         let url = Url::parse(&format!("http://{addr}/")).expect("parse test url");
-        (url, server)
+        (url, server, shutdown_tx)
     }
 
-    async fn stop_status_server(server: JoinHandle<()>) {
-        server.abort();
-        let _ = server.await;
+    async fn stop_status_server(server: JoinHandle<()>, shutdown_tx: oneshot::Sender<()>) {
+        let _ = shutdown_tx.send(());
+        server.await.expect("test server should exit cleanly");
     }
 
     async fn stop_status_server_with_shutdown(
@@ -289,7 +295,7 @@ mod tests {
         shutdown_tx: oneshot::Sender<()>,
     ) {
         let _ = shutdown_tx.send(());
-        let _ = server.await;
+        server.await.expect("test server should exit cleanly");
     }
 
     async fn capture_accept_header(
@@ -308,24 +314,24 @@ mod tests {
 
     #[tokio::test]
     async fn is_connected_returns_true_for_success_status() {
-        let (url, server) = spawn_status_server(StatusCode::OK).await;
+        let (url, server, shutdown_tx) = spawn_status_server(StatusCode::OK).await;
         let receiver =
             ElasticCloudAdminReceiver::new(url, "test-api-key".to_string()).expect("receiver");
 
         assert!(receiver.is_connected().await);
 
-        stop_status_server(server).await;
+        stop_status_server(server, shutdown_tx).await;
     }
 
     #[tokio::test]
     async fn is_connected_returns_false_for_unauthorized_status() {
-        let (url, server) = spawn_status_server(StatusCode::UNAUTHORIZED).await;
+        let (url, server, shutdown_tx) = spawn_status_server(StatusCode::UNAUTHORIZED).await;
         let receiver =
             ElasticCloudAdminReceiver::new(url, "test-api-key".to_string()).expect("receiver");
 
         assert!(!receiver.is_connected().await);
 
-        stop_status_server(server).await;
+        stop_status_server(server, shutdown_tx).await;
     }
 
     #[tokio::test]
