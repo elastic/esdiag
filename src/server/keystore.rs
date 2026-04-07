@@ -20,6 +20,7 @@ use std::sync::Arc;
 pub struct KeystoreRateLimit {
     pub failed_attempts: u32,
     pub blocked_until_epoch: Option<i64>,
+    last_lock_transition_epoch: Option<i64>,
     /// Tracks the last observed unlock state so we can detect transitions
     /// (e.g. lease expiry or CLI lock) and publish SSE signals to the browser.
     last_seen_unlocked: Option<bool>,
@@ -37,6 +38,24 @@ impl KeystoreRateLimit {
 }
 
 impl ServerState {
+    fn observe_keystore_lock_state(&self) -> (bool, i64, bool) {
+        let unlocked = matches!(crate::data::read_unlock_lease(), Ok(Some(_)));
+        let now = now_epoch_seconds();
+        let mut rate_limit = self.keystore_rate_limit.lock().expect("rate limit lock");
+        let previous = rate_limit.last_seen_unlocked;
+        let transitioned_to_locked = previous == Some(true) && !unlocked;
+        if previous != Some(unlocked) {
+            rate_limit.last_seen_unlocked = Some(unlocked);
+            rate_limit.last_lock_transition_epoch = Some(now);
+        }
+        let lock_time = *rate_limit.last_lock_transition_epoch.get_or_insert(now);
+        (!unlocked, lock_time, transitioned_to_locked)
+    }
+
+    fn render_keystore_signal_payload(locked: bool, lock_time: i64) -> String {
+        format!(r#"{{"keystore":{{"locked":{},"lock_time":{}}}}}"#, locked, lock_time)
+    }
+
     pub(crate) fn can_use_keystore_session(&self) -> bool {
         self.runtime_mode_policy.allows_local_runtime_features()
             && !self.runtime_mode_policy.requires_iap_headers()
@@ -46,18 +65,14 @@ impl ServerState {
         if !self.can_use_keystore_session() {
             return (true, 0);
         }
-        let unlocked = matches!(crate::data::read_unlock_lease(), Ok(Some(_)));
-        let transitioned_to_locked = {
-            let mut rate_limit = self.keystore_rate_limit.lock().expect("rate limit lock");
-            let was_unlocked = rate_limit.last_seen_unlocked.unwrap_or(false);
-            rate_limit.last_seen_unlocked = Some(unlocked);
-            was_unlocked && !unlocked
-        };
+        let (locked, lock_time, transitioned_to_locked) = self.observe_keystore_lock_state();
         if transitioned_to_locked {
             tracing::info!("Keystore lease expired or was cleared externally");
-            self.publish_event(signal_event(self.keystore_signal_payload().await));
+            self.publish_event(signal_event(Self::render_keystore_signal_payload(
+                locked, lock_time,
+            )));
         }
-        (!unlocked, now_epoch_seconds())
+        (locked, lock_time)
     }
 
     pub async fn is_keystore_unlocked(&self) -> bool {
@@ -89,6 +104,7 @@ impl ServerState {
             rate_limit.failed_attempts = 0;
             rate_limit.blocked_until_epoch = None;
             rate_limit.last_seen_unlocked = Some(true);
+            rate_limit.last_lock_transition_epoch = Some(now_epoch_seconds());
         }
         self.publish_event(signal_event(self.keystore_signal_payload().await));
         tracing::info!("Keystore authentication succeeded for the local user session");
@@ -104,6 +120,7 @@ impl ServerState {
         {
             let mut rate_limit = self.keystore_rate_limit.lock().expect("rate limit lock");
             rate_limit.last_seen_unlocked = Some(false);
+            rate_limit.last_lock_transition_epoch = Some(now_epoch_seconds());
         }
         self.publish_event(signal_event(self.keystore_signal_payload().await));
         tracing::info!("Keystore locked for the local user session: {reason}");
@@ -132,12 +149,8 @@ impl ServerState {
         if !self.can_use_keystore_session() {
             return r#"{"keystore":{"locked":true,"lock_time":0}}"#.to_string();
         }
-        let locked = !matches!(crate::data::read_unlock_lease(), Ok(Some(_)));
-        format!(
-            r#"{{"keystore":{{"locked":{},"lock_time":{}}}}}"#,
-            locked,
-            now_epoch_seconds()
-        )
+        let (locked, lock_time, _) = self.observe_keystore_lock_state();
+        Self::render_keystore_signal_payload(locked, lock_time)
     }
 
     pub async fn keystore_blocked_until(&self) -> Option<i64> {
@@ -865,6 +878,24 @@ mod tests {
             .into_response();
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
         assert!(state.keystore_status().await.0, "repeat lock stays locked");
+    }
+
+    #[tokio::test]
+    async fn keystore_lock_time_stays_stable_without_state_transition() {
+        let _guard = env_lock().lock().expect("env lock");
+        let (_tmp, _hosts_path, _keystore_path) = setup_env();
+        let state = test_server_state();
+
+        let first_status = state.keystore_status().await;
+        let first_signal = state.keystore_signal_payload().await;
+
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+
+        let second_status = state.keystore_status().await;
+        let second_signal = state.keystore_signal_payload().await;
+
+        assert_eq!(first_status, second_status);
+        assert_eq!(first_signal, second_signal);
     }
 
     #[tokio::test]

@@ -1239,9 +1239,6 @@ async fn apply_upsert_host(
     let roles = parse_roles(&form.roles)?;
     let viewer = to_opt(form.viewer);
     let secret = to_opt(form.secret);
-    let _apikey = to_opt(form.apikey);
-    let _username = to_opt(form.username);
-    let _password = to_opt(form.password);
     let accept_invalid_certs = form.accept_invalid_certs.is_some();
     let auth = infer_auth_from_secret_selection(state, user, &secret, form.auth.trim()).await?;
 
