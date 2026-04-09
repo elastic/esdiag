@@ -60,3 +60,11 @@ pub fn get_kibana_space() -> Option<String> {
         Err(_) => Some(ESDIAG_KIBANA_DEFAULT_SPACE.to_string()),
     }
 }
+
+pub fn append_kibana_space(kibana_url: &str) -> String {
+    let kibana_url = kibana_url.trim_end_matches('/');
+    match get_kibana_space() {
+        Some(space) => format!("{kibana_url}/s/{space}"),
+        None => kibana_url.to_string(),
+    }
+}

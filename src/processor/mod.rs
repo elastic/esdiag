@@ -275,15 +275,7 @@ impl Processor<Ready> {
 /// The actively `Processing` state.
 impl Processor<Processing> {
     #[tracing::instrument(skip_all)]
-    pub async fn process(self) -> Result<Processor<Completed>, Processor<Failed>> {
-        self.process_with_kibana_base(kibana_base_url_from_env()).await
-    }
-
-    #[tracing::instrument(skip_all)]
-    pub async fn process_with_kibana_base(
-        mut self,
-        kibana_base_url: Option<String>,
-    ) -> Result<Processor<Completed>, Processor<Failed>> {
+    pub async fn process(mut self) -> Result<Processor<Completed>, Processor<Failed>> {
         tracing::debug!("Processing with async progress updates");
 
         let mut report = self.state.report;
@@ -342,12 +334,10 @@ impl Processor<Processing> {
             report.diagnostic.metadata.id,
         );
 
-        if let Some(kibana_url) = kibana_base_url.as_deref() {
-            let kibana_link = build_kibana_link(
-                kibana_url,
-                &report.diagnostic.metadata.id,
-                report.diagnostic.metadata.collection_date,
-            );
+        if let Some(kibana_link) = self.exporter.kibana_link(
+            &report.diagnostic.metadata.id,
+            report.diagnostic.metadata.collection_date,
+        ) {
             report.add_kibana_link(kibana_link);
         }
         tracing::debug!("{:?}", self.state.identifiers);
@@ -369,40 +359,6 @@ impl Processor<Processing> {
             },
         })
     }
-}
-
-fn append_kibana_space(kibana_url: String) -> String {
-    let kibana_url = kibana_url.trim_end_matches('/').to_string();
-    match crate::env::get_kibana_space() {
-        Some(space) => format!("{kibana_url}/s/{space}"),
-        None => kibana_url,
-    }
-}
-
-fn kibana_base_url_from_env() -> Option<String> {
-    crate::env::get_string("ESDIAG_KIBANA_URL")
-        .ok()
-        .map(append_kibana_space)
-}
-
-fn build_kibana_link(kibana_url: &str, diagnostic_id: &str, collection_date: u64) -> String {
-    let url_safe_id = urlencoding::encode(diagnostic_id);
-    let now_ms = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_millis() as u64;
-    let days_since_collection = now_ms
-        .saturating_sub(collection_date)
-        / (1000 * 60 * 60 * 24);
-    let time_filter = match days_since_collection {
-        x if x < 90 => "from:now-90d,to:now".to_string(),
-        x if (90..365).contains(&x) => "from:now-1y,to:now".to_string(),
-        x => format!("from:now-{}d,to:now", x + 1),
-    };
-    format!(
-        "{}/app/dashboards#/view/elasticsearch-cluster-report?_g=(filters:!(('$state':(store:globalState),meta:(disabled:!f,index:'4319ebc4-df81-4b18-b8bd-6aaa55a1fd13',key:diagnostic.id,negate:!f,params:(query:'{}'),type:phrase),query:(match_phrase:(diagnostic.id:'{}')))),refreshInterval:(pause:!t,value:60000),time:({}))",
-        kibana_url, url_safe_id, url_safe_id, time_filter
-    )
 }
 
 impl std::fmt::Display for Processor<Failed> {
@@ -566,89 +522,4 @@ pub fn new_job_id() -> u64 {
         .unwrap()
         .as_millis() as u64
         % 100000
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{append_kibana_space, build_kibana_link, kibana_base_url_from_env};
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    fn env_lock() -> &'static std::sync::Mutex<()> {
-        crate::test_env_lock()
-    }
-
-    #[test]
-    fn build_kibana_link_embeds_diagnostic_id_and_dashboard_path() {
-        let link = build_kibana_link("https://kb.example:5601", "diag-123", 1_700_000_000_000);
-
-        assert!(link.starts_with("https://kb.example:5601/app/dashboards#/view/"));
-        assert!(link.contains("diagnostic.id:'diag-123'"));
-        assert!(link.contains("time:("));
-    }
-
-    #[test]
-    fn build_kibana_link_clamps_future_collection_dates() {
-        let future_collection_date = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_millis() as u64
-            + 86_400_000;
-        let link = build_kibana_link("https://kb.example:5601", "diag-123", future_collection_date);
-
-        assert!(link.contains("from:now-90d,to:now"));
-    }
-
-    #[test]
-    fn kibana_base_url_from_env_applies_space_suffix() {
-        let _guard = env_lock().lock().expect("env lock");
-        unsafe {
-            std::env::set_var("ESDIAG_KIBANA_URL", "https://env-kb.example:5601");
-            std::env::set_var("ESDIAG_KIBANA_SPACE", "ops");
-        }
-
-        assert_eq!(
-            kibana_base_url_from_env().as_deref(),
-            Some("https://env-kb.example:5601/s/ops")
-        );
-
-        unsafe {
-            std::env::remove_var("ESDIAG_KIBANA_URL");
-            std::env::remove_var("ESDIAG_KIBANA_SPACE");
-        }
-    }
-
-    #[test]
-    fn kibana_base_url_from_env_defaults_to_esdiag_space() {
-        let _guard = env_lock().lock().expect("env lock");
-        unsafe {
-            std::env::set_var("ESDIAG_KIBANA_URL", "https://env-kb.example:5601");
-            std::env::remove_var("ESDIAG_KIBANA_SPACE");
-        }
-
-        assert_eq!(
-            kibana_base_url_from_env().as_deref(),
-            Some("https://env-kb.example:5601/s/esdiag")
-        );
-
-        unsafe {
-            std::env::remove_var("ESDIAG_KIBANA_URL");
-        }
-    }
-
-    #[test]
-    fn append_kibana_space_skips_suffix_when_space_is_explicitly_empty() {
-        let _guard = env_lock().lock().expect("env lock");
-        unsafe {
-            std::env::set_var("ESDIAG_KIBANA_SPACE", "");
-        }
-
-        assert_eq!(
-            append_kibana_space("https://kb.example:5601/".to_string()),
-            "https://kb.example:5601"
-        );
-
-        unsafe {
-            std::env::remove_var("ESDIAG_KIBANA_SPACE");
-        }
-    }
 }

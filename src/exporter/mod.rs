@@ -265,6 +265,21 @@ impl Exporter {
         }
     }
 
+    pub fn kibana_base_url(&self) -> Option<String> {
+        match self {
+            Exporter::Elasticsearch(exporter) => exporter.kibana_base_url(),
+            Exporter::Archive(_)
+            | Exporter::Directory(_)
+            | Exporter::File(_)
+            | Exporter::Stream(_) => kibana_base_url_from_env(),
+        }
+    }
+
+    pub fn kibana_link(&self, diagnostic_id: &str, collection_date: u64) -> Option<String> {
+        self.kibana_base_url()
+            .map(|kibana_url| build_kibana_link(&kibana_url, diagnostic_id, collection_date))
+    }
+
     pub async fn save_report(&self, report: &DiagnosticReport) -> Result<()> {
         match self {
             Exporter::Archive(_) => Err(eyre!("save report not supported for archive exporter")),
@@ -356,11 +371,81 @@ impl TryFrom<KnownHost> for Exporter {
     }
 }
 
+fn saved_viewer_kibana_base_url(host: &KnownHost) -> Option<String> {
+    let viewer_name = host.viewer()?;
+    let viewer_name = viewer_name.to_string();
+    let viewer_host = match KnownHost::get_known(&viewer_name) {
+        Some(viewer_host) => viewer_host,
+        None => {
+            tracing::warn!(
+                "Output host viewer '{}' was not found at runtime; falling back to environment Kibana URL",
+                viewer_name
+            );
+            return None;
+        }
+    };
+
+    if !viewer_host.has_role(crate::data::HostRole::View) || viewer_host.app() != &Product::Kibana {
+        tracing::warn!(
+            "Output host viewer '{}' is not a valid Kibana view target; falling back to environment Kibana URL",
+            viewer_name
+        );
+        return None;
+    }
+
+    Some(crate::env::append_kibana_space(
+        &viewer_host.get_url().to_string(),
+    ))
+}
+
+fn kibana_base_url_from_env() -> Option<String> {
+    crate::env::get_string("ESDIAG_KIBANA_URL")
+        .ok()
+        .map(|url| crate::env::append_kibana_space(&url))
+}
+
+fn build_kibana_link(kibana_url: &str, diagnostic_id: &str, collection_date: u64) -> String {
+    let url_safe_id = urlencoding::encode(diagnostic_id);
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64;
+    let days_since_collection = now_ms
+        .saturating_sub(collection_date)
+        / (1000 * 60 * 60 * 24);
+    let time_filter = match days_since_collection {
+        x if x < 90 => "from:now-90d,to:now".to_string(),
+        x if (90..365).contains(&x) => "from:now-1y,to:now".to_string(),
+        x => format!("from:now-{}d,to:now", x + 1),
+    };
+    format!(
+        "{}/app/dashboards#/view/elasticsearch-cluster-report?_g=(filters:!(('$state':(store:globalState),meta:(disabled:!f,index:'4319ebc4-df81-4b18-b8bd-6aaa55a1fd13',key:diagnostic.id,negate:!f,params:(query:'{}'),type:phrase),query:(match_phrase:(diagnostic.id:'{}')))),refreshInterval:(pause:!t,value:60000),time:({}))",
+        kibana_url, url_safe_id, url_safe_id, time_filter
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::{Exporter, format_directory_label};
-    use crate::data::Uri;
-    use std::path::PathBuf;
+    use crate::data::{HostRole, KnownHost, KnownHostBuilder, Product, Uri};
+    use std::{collections::BTreeMap, path::PathBuf, sync::Mutex};
+    use tempfile::TempDir;
+    use url::Url;
+
+    fn env_lock() -> &'static Mutex<()> {
+        crate::test_env_lock()
+    }
+
+    fn setup_env() -> TempDir {
+        let tmp = TempDir::new().expect("temp dir");
+        let hosts = tmp.path().join("hosts.yml");
+        let keystore = tmp.path().join("secrets.yml");
+        unsafe {
+            std::env::set_var("ESDIAG_HOSTS", &hosts);
+            std::env::set_var("ESDIAG_KEYSTORE", &keystore);
+        }
+        tmp
+    }
 
     #[test]
     fn format_directory_label_preserves_existing_trailing_separator() {
@@ -391,5 +476,97 @@ mod tests {
         let stream = Exporter::default();
         assert_eq!(stream.target_uri(), "stdio://stdout");
         assert_eq!(stream.target_label(), "stdout: -");
+    }
+
+    #[test]
+    fn kibana_link_prefers_saved_viewer_host() {
+        let _guard = env_lock().lock().expect("env lock");
+        let _tmp = setup_env();
+
+        let mut hosts = BTreeMap::new();
+        hosts.insert(
+            "send-host".to_string(),
+            KnownHostBuilder::new(Url::parse("https://es.example:9200").expect("es url"))
+                .product(Product::Elasticsearch)
+                .roles(vec![HostRole::Send])
+                .viewer(Some("viewer-host".to_string()))
+                .build()
+                .expect("send host"),
+        );
+        hosts.insert(
+            "viewer-host".to_string(),
+            KnownHostBuilder::new(Url::parse("https://kb.example:5601").expect("kb url"))
+                .product(Product::Kibana)
+                .roles(vec![HostRole::View])
+                .build()
+                .expect("viewer host"),
+        );
+        KnownHost::write_hosts_yml(&hosts).expect("write hosts");
+        unsafe {
+            std::env::set_var("ESDIAG_KIBANA_URL", "https://env-kb.example:5601");
+            std::env::remove_var("ESDIAG_KIBANA_SPACE");
+        }
+
+        let exporter = Exporter::try_from(Uri::try_from("send-host").expect("host uri"))
+            .expect("exporter");
+        let kibana_link = exporter
+            .kibana_link("diag-123", 1_700_000_000_000)
+            .expect("kibana link");
+
+        assert!(kibana_link.starts_with(
+            "https://kb.example:5601/s/esdiag/app/dashboards#/view/"
+        ));
+
+        unsafe {
+            std::env::remove_var("ESDIAG_KIBANA_URL");
+        }
+    }
+
+    #[test]
+    fn kibana_link_falls_back_to_env_for_non_host_outputs() {
+        let _guard = env_lock().lock().expect("env lock");
+        let _tmp = setup_env();
+        unsafe {
+            std::env::set_var("ESDIAG_KIBANA_URL", "https://env-kb.example:5601");
+            std::env::set_var("ESDIAG_KIBANA_SPACE", "ops");
+        }
+
+        let exporter = Exporter::default();
+        let kibana_link = exporter
+            .kibana_link("diag-123", 1_700_000_000_000)
+            .expect("kibana link");
+
+        assert!(kibana_link.starts_with(
+            "https://env-kb.example:5601/s/ops/app/dashboards#/view/"
+        ));
+
+        unsafe {
+            std::env::remove_var("ESDIAG_KIBANA_URL");
+            std::env::remove_var("ESDIAG_KIBANA_SPACE");
+        }
+    }
+
+    #[test]
+    fn kibana_link_omits_space_when_explicitly_empty() {
+        let _guard = env_lock().lock().expect("env lock");
+        let _tmp = setup_env();
+        unsafe {
+            std::env::set_var("ESDIAG_KIBANA_URL", "https://env-kb.example:5601");
+            std::env::set_var("ESDIAG_KIBANA_SPACE", "");
+        }
+
+        let exporter = Exporter::default();
+        let kibana_link = exporter
+            .kibana_link("diag-123", 1_700_000_000_000)
+            .expect("kibana link");
+
+        assert!(kibana_link.starts_with(
+            "https://env-kb.example:5601/app/dashboards#/view/"
+        ));
+
+        unsafe {
+            std::env::remove_var("ESDIAG_KIBANA_URL");
+            std::env::remove_var("ESDIAG_KIBANA_SPACE");
+        }
     }
 }

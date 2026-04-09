@@ -76,6 +76,7 @@ pub struct ElasticsearchExporter {
     tx_limit: Arc<Semaphore>,
     docs_tx: Option<mpsc::Sender<usize>>,
     requires_secret: bool,
+    kibana_base_url: Option<String>,
     url: Url,
 }
 
@@ -107,6 +108,7 @@ impl ElasticsearchExporter {
         Ok(Self {
             client,
             tx_limit: Arc::new(Semaphore::new(limit)),
+            kibana_base_url: super::kibana_base_url_from_env(),
             url,
             docs_tx: None,
             requires_secret,
@@ -115,6 +117,10 @@ impl ElasticsearchExporter {
 
     pub fn requires_secret(&self) -> bool {
         self.requires_secret
+    }
+
+    pub fn kibana_base_url(&self) -> Option<String> {
+        self.kibana_base_url.clone()
     }
 
     /// Request to an arbitrary path on the Elasticsearch client
@@ -152,6 +158,8 @@ impl TryFrom<KnownHost> for ElasticsearchExporter {
     type Error = eyre::Report;
 
     fn try_from(host: KnownHost) -> Result<Self> {
+        let kibana_base_url =
+            super::saved_viewer_kibana_base_url(&host).or_else(super::kibana_base_url_from_env);
         let requires_secret = !matches!(host.get_auth()?, Auth::None);
         let url = host.get_url();
         let client = ElasticsearchClient::try_from(host)?;
@@ -165,6 +173,7 @@ impl TryFrom<KnownHost> for ElasticsearchExporter {
         Ok(Self {
             client,
             tx_limit: Arc::new(Semaphore::new(limit)),
+            kibana_base_url,
             url,
             docs_tx: None,
             requires_secret,

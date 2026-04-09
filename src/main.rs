@@ -565,65 +565,6 @@ fn emit_completion_summary(summary: &str) -> Result<()> {
     Ok(())
 }
 
-fn append_kibana_space(kibana_url: String) -> String {
-    let kibana_url = kibana_url.trim_end_matches('/').to_string();
-    match esdiag::env::get_kibana_space() {
-        Some(space) => format!("{kibana_url}/s/{space}"),
-        None => kibana_url,
-    }
-}
-
-fn kibana_base_url_from_env() -> Option<String> {
-    std::env::var("ESDIAG_KIBANA_URL")
-        .ok()
-        .map(append_kibana_space)
-}
-
-fn saved_viewer_kibana_base_url(host: &KnownHost) -> Option<String> {
-    let viewer_name = host.viewer()?;
-    let viewer_name = viewer_name.to_string();
-    let viewer_host = match KnownHost::get_known(&viewer_name) {
-        Some(viewer_host) => viewer_host,
-        None => {
-            tracing::warn!(
-                "Output host viewer '{}' was not found at runtime; falling back to environment Kibana URL",
-                viewer_name
-            );
-            return None;
-        }
-    };
-
-    if !viewer_host.has_role(HostRole::View) || viewer_host.app() != &Product::Kibana {
-        tracing::warn!(
-            "Output host viewer '{}' is not a valid Kibana view target; falling back to environment Kibana URL",
-            viewer_name
-        );
-        return None;
-    }
-
-    Some(append_kibana_space(viewer_host.get_url().to_string()))
-}
-
-fn resolve_process_kibana_base_url(has_explicit_output: bool, output_uri: &Uri) -> Option<String> {
-    if has_explicit_output {
-        let output_host = match output_uri {
-            Uri::KnownHost(host)
-            | Uri::ElasticCloud(host)
-            | Uri::ElasticCloudAdmin(host)
-            | Uri::ElasticGovCloudAdmin(host) => Some(host),
-            _ => None,
-        };
-
-        if let Some(host) = output_host
-            && let Some(kibana_url) = saved_viewer_kibana_base_url(host)
-        {
-            return Some(kibana_url);
-        }
-    }
-
-    kibana_base_url_from_env()
-}
-
 fn format_process_summary(report: &DiagnosticReport, runtime_ms: u128) -> String {
     let mut summary = format!(
         "process complete in {:.3} seconds: {} documents for {}",
@@ -671,7 +612,9 @@ async fn run(cli: Cli) -> Result<CommandResult> {
                 let exporter = resolve_serve_exporter(output, runtime_mode)?;
 
                 let kibana_url = kibana.unwrap_or_else(|| {
-                    kibana_base_url_from_env().unwrap_or_else(|| "http://localhost:5601".to_string())
+                    esdiag::env::get_string("ESDIAG_KIBANA_URL")
+                        .map(|url| esdiag::env::append_kibana_space(&url))
+                        .unwrap_or_else(|_| "http://localhost:5601".to_string())
                 });
 
                 let (mut server, _bound_addr) =
@@ -976,7 +919,6 @@ async fn run(cli: Cli) -> Result<CommandResult> {
                     let product = detect_sources_product_for_process(&input_uri, &receiver).await?;
                     esdiag::processor::init_sources(sources_product_key(&product)?, sources)?;
                 }
-                let kibana_base_url = resolve_process_kibana_base_url(has_explicit_output, &output_uri);
                 let receiver = Arc::new(receiver);
                 let exporter = Arc::new(Exporter::try_from(output_uri)?);
 
@@ -990,7 +932,7 @@ async fn run(cli: Cli) -> Result<CommandResult> {
                     }
                 };
 
-                match processor.process_with_kibana_base(kibana_base_url).await {
+                match processor.process().await {
                     Ok(processor) => {
                         let summary =
                             format_process_summary(&processor.state.report, processor.state.runtime);
@@ -1093,10 +1035,7 @@ async fn run(cli: Cli) -> Result<CommandResult> {
                         let kibana_url = settings.kibana_url.unwrap_or_else(|| {
                             let url = esdiag::env::get_string("ESDIAG_KIBANA_URL")
                                 .unwrap_or_else(|_| "http://localhost:5601".to_string());
-                            match esdiag::env::get_kibana_space() {
-                                Some(space) => format!("{url}/s/{space}"),
-                                None => url,
-                            }
+                            esdiag::env::append_kibana_space(&url)
                         });
 
                         let (mut server, bound_addr) = match Server::start(
@@ -1677,29 +1616,24 @@ fn resolve_serve_exporter(output: Option<String>, runtime_mode: RuntimeMode) -> 
 #[cfg(test)]
 mod tests {
     use super::{
-        Cli, CommandResult, Commands, HostCommands, KeystoreCommands, append_kibana_space,
+        Cli, CommandResult, Commands, HostCommands, KeystoreCommands,
         colorize_keystore_lock_status, collect_with_optional_upload, format_collect_summary,
         format_keystore_lock_status, format_keystore_lock_status_at,
         format_keystore_migrate_summary, format_keystore_password_summary,
         format_keystore_secret_summary, format_process_summary, format_remaining_duration_from,
         host_connection_uses_receiver, is_agent_mode, resolve_host_secret_auth,
-        resolve_process_kibana_base_url, resolve_secret_input_with_prompt,
-        resolve_tracing_filter, should_error_for_missing_subcommand, upload_collected_archive,
-        write_completion_summary,
+        resolve_secret_input_with_prompt, resolve_tracing_filter,
+        should_error_for_missing_subcommand, upload_collected_archive, write_completion_summary,
     };
     #[cfg(feature = "server")]
     use super::{resolve_serve_exporter, resolve_serve_runtime_mode};
     use clap::Parser;
-    use esdiag::data::{
-        HostRole, KnownHost, KnownHostBuilder, Product, SecretAuth, UnlockStatus, Uri,
-        upsert_secret_auth,
-    };
+    use esdiag::data::{HostRole, KnownHost, Product, SecretAuth, UnlockStatus, Uri, upsert_secret_auth};
     use esdiag::processor::{CollectionResult, DiagnosticManifest};
     use esdiag::processor::diagnostic::DiagnosticReportBuilder;
     #[cfg(feature = "server")]
     use esdiag::server::RuntimeMode;
     use std::{
-        collections::BTreeMap,
         sync::{
             Mutex, OnceLock,
             atomic::{AtomicUsize, Ordering},
@@ -2149,125 +2083,6 @@ mod tests {
         };
 
         assert_eq!(resolve_tracing_filter(&cli).to_string(), "warn");
-    }
-
-    #[test]
-    fn process_kibana_base_url_prefers_saved_viewer_host() {
-        let _guard = env_lock().lock().expect("env lock");
-        let _tmp = setup_env();
-        let mut hosts = BTreeMap::new();
-        hosts.insert(
-            "send-host".to_string(),
-            KnownHostBuilder::new(Url::parse("https://es.example:9200").expect("es url"))
-                .product(Product::Elasticsearch)
-                .roles(vec![HostRole::Send])
-                .viewer(Some("viewer-host".to_string()))
-                .build()
-                .expect("send host"),
-        );
-        hosts.insert(
-            "viewer-host".to_string(),
-            KnownHostBuilder::new(Url::parse("https://kb.example:5601").expect("kb url"))
-                .product(Product::Kibana)
-                .roles(vec![HostRole::View])
-                .build()
-                .expect("viewer host"),
-        );
-        KnownHost::write_hosts_yml(&hosts).expect("write hosts");
-
-        unsafe {
-            std::env::set_var("ESDIAG_KIBANA_URL", "https://env-kb.example:5601");
-            std::env::remove_var("ESDIAG_KIBANA_SPACE");
-        }
-
-        let output_uri = Uri::try_from("send-host").expect("known host uri");
-        let resolved = resolve_process_kibana_base_url(true, &output_uri);
-
-        assert_eq!(resolved.as_deref(), Some("https://kb.example:5601/s/esdiag"));
-
-        unsafe {
-            std::env::remove_var("ESDIAG_KIBANA_URL");
-        }
-    }
-
-    #[test]
-    fn process_kibana_base_url_falls_back_to_env() {
-        let _guard = env_lock().lock().expect("env lock");
-        let _tmp = setup_env();
-        unsafe {
-            std::env::set_var("ESDIAG_KIBANA_URL", "https://env-kb.example:5601");
-            std::env::set_var("ESDIAG_KIBANA_SPACE", "ops");
-        }
-
-        let resolved = resolve_process_kibana_base_url(false, &Uri::Stream);
-
-        assert_eq!(resolved.as_deref(), Some("https://env-kb.example:5601/s/ops"));
-
-        unsafe {
-            std::env::remove_var("ESDIAG_KIBANA_URL");
-            std::env::remove_var("ESDIAG_KIBANA_SPACE");
-        }
-    }
-
-    #[test]
-    fn process_kibana_base_url_is_none_without_viewer_or_env() {
-        let _guard = env_lock().lock().expect("env lock");
-        let _tmp = setup_env();
-        unsafe {
-            std::env::remove_var("ESDIAG_KIBANA_URL");
-            std::env::remove_var("ESDIAG_KIBANA_SPACE");
-        }
-
-        let resolved = resolve_process_kibana_base_url(false, &Uri::Stream);
-
-        assert!(resolved.is_none());
-    }
-
-    #[test]
-    fn append_kibana_space_uses_env_space_when_present() {
-        let _guard = env_lock().lock().expect("env lock");
-        unsafe {
-            std::env::set_var("ESDIAG_KIBANA_SPACE", "ops");
-        }
-
-        assert_eq!(
-            append_kibana_space("https://kb.example:5601".to_string()),
-            "https://kb.example:5601/s/ops"
-        );
-
-        unsafe {
-            std::env::remove_var("ESDIAG_KIBANA_SPACE");
-        }
-    }
-
-    #[test]
-    fn append_kibana_space_defaults_to_esdiag_space() {
-        let _guard = env_lock().lock().expect("env lock");
-        unsafe {
-            std::env::remove_var("ESDIAG_KIBANA_SPACE");
-        }
-
-        assert_eq!(
-            append_kibana_space("https://kb.example:5601".to_string()),
-            "https://kb.example:5601/s/esdiag"
-        );
-    }
-
-    #[test]
-    fn append_kibana_space_skips_suffix_when_space_is_explicitly_empty() {
-        let _guard = env_lock().lock().expect("env lock");
-        unsafe {
-            std::env::set_var("ESDIAG_KIBANA_SPACE", "");
-        }
-
-        assert_eq!(
-            append_kibana_space("https://kb.example:5601".to_string()),
-            "https://kb.example:5601"
-        );
-
-        unsafe {
-            std::env::remove_var("ESDIAG_KIBANA_SPACE");
-        }
     }
 
     #[test]
