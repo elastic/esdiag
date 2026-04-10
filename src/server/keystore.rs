@@ -26,6 +26,14 @@ pub struct KeystoreRateLimit {
     last_seen_unlocked: Option<bool>,
 }
 
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct KeystorePageState {
+    pub can_use_keystore: bool,
+    pub locked: bool,
+    pub lock_time: i64,
+    pub show_bootstrap: bool,
+}
+
 impl KeystoreRateLimit {
     fn current_backoff_seconds(&self) -> u64 {
         if self.failed_attempts <= 3 {
@@ -38,6 +46,27 @@ impl KeystoreRateLimit {
 }
 
 impl ServerState {
+    pub(crate) async fn keystore_page_state(&self) -> KeystorePageState {
+        #[cfg(feature = "keystore")]
+        {
+            if !self.can_use_keystore_session() {
+                return KeystorePageState::default();
+            }
+
+            let (locked, lock_time) = self.keystore_status().await;
+            KeystorePageState {
+                can_use_keystore: true,
+                locked,
+                lock_time,
+                show_bootstrap: !keystore_exists().unwrap_or(false),
+            }
+        }
+        #[cfg(not(feature = "keystore"))]
+        {
+            KeystorePageState::default()
+        }
+    }
+
     fn observe_keystore_lock_state(&self) -> (bool, i64, bool) {
         let unlocked = matches!(crate::data::read_unlock_lease(), Ok(Some(_)));
         let now = now_epoch_seconds();

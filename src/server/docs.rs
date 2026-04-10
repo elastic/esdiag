@@ -65,38 +65,6 @@ pub struct TocEntry {
     pub is_dir: bool,
 }
 
-fn can_use_keystore(state: &crate::server::ServerState) -> bool {
-    #[cfg(feature = "keystore")]
-    {
-        state.runtime_mode_policy.allows_local_runtime_features()
-    }
-    #[cfg(not(feature = "keystore"))]
-    {
-        let _ = state;
-        false
-    }
-}
-
-async fn docs_keystore_state(
-    state: &std::sync::Arc<crate::server::ServerState>,
-) -> (bool, bool, i64) {
-    #[cfg(feature = "keystore")]
-    {
-        let can_use_keystore = can_use_keystore(state);
-        if !can_use_keystore {
-            return (false, false, 0);
-        }
-
-        let (keystore_locked, keystore_lock_time) = state.keystore_status().await;
-        (true, keystore_locked, keystore_lock_time)
-    }
-    #[cfg(not(feature = "keystore"))]
-    {
-        let _ = state;
-        (false, false, 0)
-    }
-}
-
 pub async fn handler_index(
     headers: HeaderMap,
     state: axum::extract::State<std::sync::Arc<crate::server::ServerState>>,
@@ -190,8 +158,7 @@ pub async fn handler(
                     .next()
                     .unwrap_or('_')
                     .to_ascii_uppercase();
-                let (can_use_keystore, keystore_locked, keystore_lock_time) =
-                    docs_keystore_state(&state).await;
+                let keystore_state = state.keystore_page_state().await;
 
                 let template = DocsTemplate {
                     nav_root_items,
@@ -208,9 +175,9 @@ pub async fn handler(
                     version: env!("CARGO_PKG_VERSION").to_string(),
                     theme_dark: crate::server::get_theme_dark(&headers),
                     runtime_mode: state.runtime_mode.to_string(),
-                    can_use_keystore,
-                    keystore_locked,
-                    keystore_lock_time,
+                    can_use_keystore: keystore_state.can_use_keystore,
+                    keystore_locked: keystore_state.locked,
+                    keystore_lock_time: keystore_state.lock_time,
                 };
 
                 match template.render() {

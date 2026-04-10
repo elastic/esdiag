@@ -15,9 +15,6 @@ use axum::{
 use serde::{Deserialize, Deserializer, Serialize, de};
 use std::{path::PathBuf, str::FromStr, sync::Arc};
 
-#[cfg(feature = "keystore")]
-use crate::data::keystore_exists;
-
 #[allow(dead_code)] // Needed when deserializing signals to modify selected tab in Web UI
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -59,42 +56,6 @@ where
     match opt.as_deref() {
         None | Some("") => Ok(None),
         Some(s) => FromStr::from_str(s).map_err(de::Error::custom).map(Some),
-    }
-}
-
-fn can_use_keystore(state: &ServerState) -> bool {
-    #[cfg(feature = "keystore")]
-    {
-        state.runtime_mode_policy.allows_local_runtime_features()
-    }
-    #[cfg(not(feature = "keystore"))]
-    {
-        let _ = state;
-        false
-    }
-}
-
-async fn keystore_page_state(state: &Arc<ServerState>) -> (bool, bool, i64, bool) {
-    #[cfg(feature = "keystore")]
-    {
-        let can_use_keystore = can_use_keystore(state);
-        if !can_use_keystore {
-            return (false, false, 0, false);
-        }
-
-        let (keystore_locked, keystore_lock_time) = state.keystore_status().await;
-        let show_keystore_bootstrap = !keystore_exists().unwrap_or(false);
-        (
-            true,
-            keystore_locked,
-            keystore_lock_time,
-            show_keystore_bootstrap,
-        )
-    }
-    #[cfg(not(feature = "keystore"))]
-    {
-        let _ = state;
-        (false, false, 0, false)
     }
 }
 
@@ -151,8 +112,7 @@ pub async fn handler(
     } else {
         false
     };
-    let (can_use_keystore, keystore_locked, keystore_lock_time, show_keystore_bootstrap) =
-        keystore_page_state(&state).await;
+    let keystore_state = state.keystore_page_state().await;
     let page = template::Index {
         auth_header,
         debug: tracing::enabled!(tracing::Level::DEBUG),
@@ -167,11 +127,11 @@ pub async fn handler(
         version: env!("CARGO_PKG_VERSION").to_string(),
         theme_dark,
         runtime_mode: state.runtime_mode.to_string(),
-        can_use_keystore,
+        can_use_keystore: keystore_state.can_use_keystore,
         output_secure,
-        keystore_locked,
-        keystore_lock_time,
-        show_keystore_bootstrap,
+        keystore_locked: keystore_state.locked,
+        keystore_lock_time: keystore_state.lock_time,
+        show_keystore_bootstrap: keystore_state.show_bootstrap,
     };
 
     let html = match page.render() {
@@ -220,8 +180,7 @@ pub async fn workflow_page(
             .unwrap_or_else(|_| "{}".to_string());
     let theme_dark = get_theme_dark(&headers);
     let kibana_url = { state.kibana_url.read().await.clone() };
-    let (can_use_keystore, keystore_locked, keystore_lock_time, show_keystore_bootstrap) =
-        keystore_page_state(&state).await;
+    let keystore_state = state.keystore_page_state().await;
     let page = template::Workflow {
         auth_header,
         debug: tracing::enabled!(tracing::Level::DEBUG),
@@ -250,10 +209,10 @@ pub async fn workflow_page(
         version: env!("CARGO_PKG_VERSION").to_string(),
         theme_dark,
         runtime_mode: state.runtime_mode.to_string(),
-        can_use_keystore,
-        keystore_locked,
-        keystore_lock_time,
-        show_keystore_bootstrap,
+        can_use_keystore: keystore_state.can_use_keystore,
+        keystore_locked: keystore_state.locked,
+        keystore_lock_time: keystore_state.lock_time,
+        show_keystore_bootstrap: keystore_state.show_bootstrap,
     };
 
     let html = match page.render() {
@@ -321,8 +280,7 @@ async fn build_jobs_page(
             .unwrap_or_else(|_| "{}".to_string());
     let theme_dark = get_theme_dark(&headers);
     let kibana_url = { state.kibana_url.read().await.clone() };
-    let (can_use_keystore, keystore_locked, keystore_lock_time, show_keystore_bootstrap) =
-        keystore_page_state(&state).await;
+    let keystore_state = state.keystore_page_state().await;
 
     // Resolve saved job if a name was provided
     let (saved_job, job_not_found, job_load_error) = if let Some(ref name) = saved_job_name {
@@ -390,10 +348,10 @@ async fn build_jobs_page(
         version: env!("CARGO_PKG_VERSION").to_string(),
         theme_dark,
         runtime_mode: state.runtime_mode.to_string(),
-        can_use_keystore,
-        keystore_locked,
-        keystore_lock_time,
-        show_keystore_bootstrap,
+        can_use_keystore: keystore_state.can_use_keystore,
+        keystore_locked: keystore_state.locked,
+        keystore_lock_time: keystore_state.lock_time,
+        show_keystore_bootstrap: keystore_state.show_bootstrap,
         saved_job_name: if hide_saved_job { None } else { saved_job_name },
         saved_collect_mode: saved.collect_mode,
         saved_collect_source: saved.collect_source,
