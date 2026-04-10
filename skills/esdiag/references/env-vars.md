@@ -19,7 +19,7 @@ Use these variables when configuring `esdiag` without saved hosts, or to supply 
 | `ESDIAG_OUTPUT_USERNAME` | Basic auth username for output cluster |
 | `ESDIAG_OUTPUT_PASSWORD` | Basic auth password for output cluster |
 | `ESDIAG_KIBANA_URL` | Kibana URL — required for Kibana asset setup when `[HOST]` is omitted from `setup`, and to generate dashboard links in `serve` |
-| `ESDIAG_KIBANA_SPACE` | Kibana space ID to use when constructing dashboard links (omit for the default space) |
+| `ESDIAG_KIBANA_SPACE` | Kibana space ID to use when constructing dashboard links. Defaults to `esdiag` when unset; set it to an empty value to omit the `/s/<space>` suffix |
 
 ## Keystore
 

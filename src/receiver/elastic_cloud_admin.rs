@@ -234,7 +234,8 @@ impl ReceiveRaw for ElasticCloudAdminReceiver {
     {
         let ctx = SourceContext::new("elasticsearch", self.get_version().await.ok().cloned());
         let source_path = T::resolve_source_request_path(&ctx)?;
-        self.get_raw_by_path(&source_path, ".json").await
+        let extension = T::resolve_source_extension(&ctx)?;
+        self.get_raw_by_path(&source_path, &extension).await
     }
 }
 
