@@ -13,5 +13,5 @@
 ## 3. Verification
 
 - [x] 3.1 Add CLI regression tests for explicit `--agent`, `CLAUDECODE` auto-enable, warn-level suppression of info-only completion output, and final `STDERR` summaries while preserving streamed `STDOUT`.
-- [ ] 3.2 Run `cargo clippy`.
-- [ ] 3.3 Run `cargo test`.
+- [x] 3.2 Run `cargo clippy`.
+- [x] 3.3 Run `cargo test`.

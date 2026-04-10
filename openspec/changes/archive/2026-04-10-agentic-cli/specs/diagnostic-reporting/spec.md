@@ -16,8 +16,8 @@ The system SHALL determine the Kibana base URL for final processed-diagnostic re
 - **WHEN** final processing reporting builds the Kibana link
 - **THEN** the link uses `ESDIAG_KIBANA_URL` as its base URL
 
-#### Scenario: No Kibana link is reported when no source is available
+#### Scenario: Default Kibana URL is used when no override source is available
 - **GIVEN** a processed diagnostic completes without a resolved saved viewer host
-- **AND** `ESDIAG_KIBANA_URL` is not set
+- **AND** `ESDIAG_KIBANA_URL` is not explicitly set
 - **WHEN** final processing reporting completes
-- **THEN** no Kibana link is added to the final report output
+- **THEN** the link uses the default Kibana base URL

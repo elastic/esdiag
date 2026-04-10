@@ -27,3 +27,25 @@ The processing pipeline SHALL handle missing enrichment metadata (such as node i
 - **AND** the node ID for that task is not found in the node lookup table
 - **THEN** the system SHALL log an error or warning message
 - **AND** the system SHALL continue to process and export the task document without node metadata
+
+### Requirement: Viewer-Aware Kibana Link Selection
+The system SHALL determine the Kibana base URL for final processed-diagnostic reporting by first resolving the explicit output target's saved viewer host, and SHALL fall back to `ESDIAG_KIBANA_URL` when no saved viewer host is available. If `ESDIAG_KIBANA_SPACE` is present, the system SHALL append the configured space path to the selected Kibana base URL before constructing the final Kibana link.
+
+#### Scenario: Saved viewer host overrides environment Kibana URL
+- **GIVEN** a processed diagnostic is sent to a saved Elasticsearch host with role `send`
+- **AND** that saved host references a saved Kibana viewer host
+- **AND** `ESDIAG_KIBANA_URL` is also set
+- **WHEN** final processing reporting builds the Kibana link
+- **THEN** the link uses the saved viewer host URL as its base URL
+
+#### Scenario: Environment fallback is used when no saved viewer host exists
+- **GIVEN** a processed diagnostic completes without a resolved saved viewer host
+- **AND** `ESDIAG_KIBANA_URL` is set
+- **WHEN** final processing reporting builds the Kibana link
+- **THEN** the link uses `ESDIAG_KIBANA_URL` as its base URL
+
+#### Scenario: Default Kibana URL is used when no override source is available
+- **GIVEN** a processed diagnostic completes without a resolved saved viewer host
+- **AND** `ESDIAG_KIBANA_URL` is not explicitly set
+- **WHEN** final processing reporting completes
+- **THEN** the link uses the default Kibana base URL

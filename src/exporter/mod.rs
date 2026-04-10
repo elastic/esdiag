@@ -569,4 +569,24 @@ mod tests {
             std::env::remove_var("ESDIAG_KIBANA_SPACE");
         }
     }
+
+    #[test]
+    fn kibana_link_falls_back_to_default_kibana_url_when_no_override_exists() {
+        let _guard = env_lock().lock().expect("env lock");
+        let _tmp = setup_env();
+        unsafe {
+            std::env::remove_var("ESDIAG_KIBANA_URL");
+            std::env::remove_var("ESDIAG_KIBANA_SPACE");
+        }
+
+        let exporter = Exporter::default();
+
+        let kibana_link = exporter
+            .kibana_link("diag-123", 1_700_000_000_000)
+            .expect("default kibana link");
+
+        assert!(kibana_link.starts_with(
+            "http://localhost:5601/s/esdiag/app/dashboards#/view/"
+        ));
+    }
 }
