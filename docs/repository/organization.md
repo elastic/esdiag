@@ -25,7 +25,7 @@ Top-Level Layout
 └── tests/
 ```
 
-- `.agents/`: Shared agent skills for the repository
+- `.agents/`: Shared agent skills for the repository.
 - `.github/`: GitHub automation such as Actions workflows and issue templates.
 - `.gitignore`: Root ignore rules for generated files, local artifacts, and other untracked content that should not be committed.
 - `assets/`: Elastic Stack assets installed into target environments, such as configuration and setup content used by `esdiag setup`.

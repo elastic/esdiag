@@ -2,10 +2,10 @@
 
 ## Key Paths
 
-- `.agents/skills/esdiag`: skill for using this projects main binary
+- `.agents/skills/esdiag/`: skill for using this project's main binary
 - `assets/`: Elastic cluster setup assets, used by `src/setup.rs`
 - `bin/`: mostly build helper scripts
-- `bin/esdiag-control`: user quick-start contianer deployment script
+- `bin/esdiag-control`: user quick-start container deployment script
 - `docs/`: user and maintainer docs
 - `openspec/`: specs and changes
 - `src/`: Rust code
@@ -25,6 +25,6 @@ For deeper repository structure see `docs/repository/organization.md`
 ## Design Patterns
 
 - Prefer Rust typestate for multi-stage workflows.
-- Prefer Datastar server PatchElements instead of Javascript DOM manipulation.
+- Prefer Datastar server PatchElements instead of JavaScript DOM manipulation.
 - Prefer Datastar signals over Askama conditionals for HTML element state.
 - Prefer semantic HTML and CSS in `templates/`.
