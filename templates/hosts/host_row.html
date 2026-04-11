@@ -41,12 +41,21 @@
     <td>
         <form-input>
             <input
-                type="url"
+                type="text"
                 data-bind:hosts.rows.{{ row_id }}.draft.url
                 data-on:keydown="if (evt.key === 'Enter') { evt.preventDefault(); @post('/settings/host/update/{{ row_id }}', {filterSignals: {include: /^hosts\.rows\.{{ row_id }}(\.|$)/}}); }"
                 required
             />
         </form-input>
+        <choice-row>
+            <input
+                type="checkbox"
+                {% if host.url_template %}checked{% endif %}
+                data-attr:checked="$hosts.rows.{{ row_id }}.draft.url_template || null"
+                data-on:change="$hosts.rows.{{ row_id }}.draft.url_template = evt.target.checked"
+            />
+            <label>Template</label>
+        </choice-row>
     </td>
     <td>
         <button type="button" {% if keystore_locked %}disabled{% endif %} title="Save host" aria-label="Save host {{ host.name }}" data-on:click="@post('/settings/host/update/{{ row_id }}', {filterSignals: {include: /^hosts\.rows\.{{ row_id }}(\.|$)/}})">
@@ -66,7 +75,7 @@
     <td class="host-product-column">{{ host.app }}</td>
     <td>{% if host.secret.is_empty() %}-none-{% else %}{{ host.secret }}{% endif %}</td>
     <td>{% if host.accept_invalid_certs %}<span class="certificate-status-insecure">Insecure</span>{% else %}Secure{% endif %}</td>
-    <td>{{ host.url }}</td>
+    <td>{% if host.url_template %}Template: {% endif %}{{ host.url }}</td>
     <td>
         <button type="button" {% if keystore_locked %}disabled{% endif %} title="Edit host" aria-label="Edit host {{ host.name }}" data-on:click="@post('/settings/host/read/{{ row_id }}')">
             <icon-pencil></icon-pencil>

@@ -28,6 +28,7 @@ pub struct HostUpsertForm {
     pub auth: String,
     pub app: String,
     pub url: String,
+    pub url_template: Option<String>,
     pub roles: String,
     pub viewer: Option<String>,
     pub secret: Option<String>,
@@ -47,6 +48,8 @@ pub struct HostRecordPayload {
     pub auth: String,
     pub app: String,
     pub url: String,
+    #[serde(default)]
+    pub url_template: bool,
     pub roles: String,
     #[serde(default)]
     pub viewer: Option<String>,
@@ -120,6 +123,8 @@ struct HostDraftSignal {
     auth: String,
     app: String,
     url: String,
+    #[serde(default)]
+    url_template: bool,
     roles: String,
     #[serde(default)]
     viewer: Option<String>,
@@ -607,6 +612,7 @@ pub async fn create_host(State(state): State<Arc<ServerState>>, Json(payload): J
         auth: payload.auth,
         app: payload.app,
         url: payload.url,
+        url_template: payload.url_template.then_some("true".to_string()),
         roles: payload.roles,
         viewer: payload.viewer,
         secret: payload.secret,
@@ -625,6 +631,7 @@ pub async fn update_host(State(state): State<Arc<ServerState>>, Json(payload): J
         auth: payload.auth,
         app: payload.app,
         url: payload.url,
+        url_template: payload.url_template.then_some("true".to_string()),
         roles: payload.roles,
         viewer: payload.viewer,
         secret: payload.secret,
@@ -712,7 +719,8 @@ fn host_row_from_known_host(name: String, host: KnownHost) -> template::HostsTab
         name,
         auth: "none".to_string(),
         app: host.app().to_string(),
-        url: host.get_url().to_string(),
+        url: host.transport_display(),
+        url_template: host.is_template(),
         roles: host
             .roles()
             .iter()
@@ -1086,7 +1094,11 @@ async fn apply_upsert_host(state: &Arc<ServerState>, form: HostUpsertForm) -> Re
         return Err("Host name is required.".to_string());
     }
 
-    let url = Url::parse(form.url.trim()).map_err(|err| format!("Invalid URL: {err}"))?;
+    let target = form.url.trim();
+    if target.is_empty() {
+        return Err("Host URL or URL template is required.".to_string());
+    }
+    let use_url_template = form.url_template.is_some();
     let app = parse_product(form.app.trim())?;
     let roles = parse_roles(&form.roles)?;
     let viewer = to_opt(form.viewer);
@@ -1094,8 +1106,13 @@ async fn apply_upsert_host(state: &Arc<ServerState>, form: HostUpsertForm) -> Re
     let accept_invalid_certs = form.accept_invalid_certs.is_some();
     let auth = infer_auth_from_secret_selection(state, &secret, form.auth.trim()).await?;
 
-    let mut builder = KnownHostBuilder::new(url)
-        .product(app)
+    let mut builder = if use_url_template {
+        KnownHostBuilder::new_template(target.to_string())
+    } else {
+        let url = Url::parse(target).map_err(|err| format!("Invalid URL: {err}"))?;
+        KnownHostBuilder::new(url)
+    }
+    .product(app)
         .accept_invalid_certs(accept_invalid_certs)
         .roles(roles)
         .viewer(viewer);
@@ -1302,6 +1319,7 @@ fn blank_host_row() -> template::HostsTableRow {
         auth: "none".to_string(),
         app: "Elasticsearch".to_string(),
         url: String::new(),
+        url_template: false,
         roles: "collect".to_string(),
         viewer: String::new(),
         accept_invalid_certs: false,
@@ -1364,6 +1382,7 @@ fn host_draft(host: &template::HostsTableRow, original_name: Option<&str>) -> Ho
         auth: host.auth.clone(),
         app: host.app.clone(),
         url: host.url.clone(),
+        url_template: host.url_template,
         roles: host.roles.clone(),
         viewer: Some(host.viewer.clone()),
         secret: Some(host.secret.clone()),
@@ -1402,6 +1421,7 @@ fn host_draft_from_signals(signals: Option<&HostsUiSignals>, row_id: usize) -> O
         auth: draft.auth,
         app: draft.app,
         url: draft.url,
+        url_template: draft.url_template.then_some("true".to_string()),
         roles: draft.roles,
         viewer: draft.viewer,
         secret: draft.secret,
@@ -1760,6 +1780,7 @@ mod tests {
                 auth: "none".to_string(),
                 app: "Elasticsearch".to_string(),
                 url: "http://localhost:9200".to_string(),
+                url_template: None,
                 roles: "send".to_string(),
                 viewer: None,
                 secret: None,
@@ -1800,6 +1821,7 @@ mod tests {
                 auth: String::new(),
                 app: "Elasticsearch".to_string(),
                 url: "http://localhost:9200".to_string(),
+                url_template: None,
                 roles: "collect".to_string(),
                 viewer: None,
                 secret: Some("api-secret".to_string()),
@@ -1813,6 +1835,58 @@ mod tests {
         let saved = saved_hosts.get("with-secret").expect("saved host");
         assert_eq!(saved.secret.as_deref(), Some("api-secret"));
         assert!(saved.legacy_apikey.is_none());
+    }
+
+    #[tokio::test]
+    async fn host_upsert_persists_template_hosts_and_rejects_invalid_templates() {
+        let _guard = env_lock().lock().expect("env lock");
+        let _tmp = setup_env();
+        let state = test_server_state();
+
+        apply_upsert_host(
+            &state,
+            HostUpsertForm {
+                original_name: None,
+                name: "elastic-cloud".to_string(),
+                auth: "none".to_string(),
+                app: "Elasticsearch".to_string(),
+                url: "https://cloud.elastic.co/api/v1/deployments/{id}/{product}".to_string(),
+                url_template: Some("true".to_string()),
+                roles: "collect".to_string(),
+                viewer: None,
+                secret: None,
+                accept_invalid_certs: None,
+            },
+        )
+        .await
+        .expect("save template host");
+
+        let saved_hosts = KnownHost::parse_hosts_yml().expect("reload hosts");
+        let saved = saved_hosts.get("elastic-cloud").expect("saved template host");
+        assert!(saved.url.is_none(), "template host should not persist a concrete url");
+        assert_eq!(
+            saved.url_template.as_deref(),
+            Some("https://cloud.elastic.co/api/v1/deployments/{id}/{product}")
+        );
+
+        let err = apply_upsert_host(
+            &state,
+            HostUpsertForm {
+                original_name: None,
+                name: "bad-template".to_string(),
+                auth: "none".to_string(),
+                app: "Elasticsearch".to_string(),
+                url: "https://cloud.elastic.co/api/v1/deployments/{unsupported}".to_string(),
+                url_template: Some("true".to_string()),
+                roles: "collect".to_string(),
+                viewer: None,
+                secret: None,
+                accept_invalid_certs: None,
+            },
+        )
+        .await
+        .expect_err("unsupported placeholders should be rejected");
+        assert!(err.contains("Unsupported `url_template` placeholder"));
     }
 
     #[tokio::test]

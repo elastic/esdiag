@@ -122,7 +122,9 @@ async fn start_mock_elasticsearch() -> (String, tokio::sync::oneshot::Sender<()>
         }))
     }
 
-    let app = Router::new().route("/", get(root_handler));
+    let app = Router::new()
+        .route("/", get(root_handler))
+        .route("/{*path}", get(root_handler));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
         .expect("bind mock elasticsearch");
@@ -180,8 +182,9 @@ async fn host_update_preserves_omitted_fields_and_applies_cert_overrides() {
             "host".to_string(),
             "add".to_string(),
             "prod-es".to_string(),
-            "elasticsearch".to_string(),
             url.clone(),
+            "--app".to_string(),
+            "elasticsearch".to_string(),
             "--secret".to_string(),
             "prod-secret".to_string(),
             "--accept-invalid-certs".to_string(),
@@ -268,8 +271,9 @@ async fn host_update_applies_cert_overrides_for_noauth_hosts() {
             "host".to_string(),
             "add".to_string(),
             "plain-es".to_string(),
-            "elasticsearch".to_string(),
             url,
+            "--app".to_string(),
+            "elasticsearch".to_string(),
             "--accept-invalid-certs".to_string(),
             "true".to_string(),
         ],
@@ -362,8 +366,9 @@ async fn host_update_supports_secret_rotation_and_rejects_persisted_apikey_overr
             "host".to_string(),
             "add".to_string(),
             "prod-es".to_string(),
-            "elasticsearch".to_string(),
             url.clone(),
+            "--app".to_string(),
+            "elasticsearch".to_string(),
             "--secret".to_string(),
             "old-secret".to_string(),
         ],
@@ -432,8 +437,9 @@ async fn host_remove_deletes_saved_host_and_updates_settings() {
             "host".to_string(),
             "add".to_string(),
             "prod-es".to_string(),
-            "elasticsearch".to_string(),
             url.clone(),
+            "--app".to_string(),
+            "elasticsearch".to_string(),
         ],
         home_path.clone(),
         vec![],
@@ -446,8 +452,9 @@ async fn host_remove_deletes_saved_host_and_updates_settings() {
             "host".to_string(),
             "add".to_string(),
             "other-es".to_string(),
-            "elasticsearch".to_string(),
             url,
+            "--app".to_string(),
+            "elasticsearch".to_string(),
         ],
         home_path.clone(),
         vec![],
@@ -510,8 +517,9 @@ async fn host_update_rejects_partial_basic_auth_without_secret() {
             "host".to_string(),
             "add".to_string(),
             "plain-es".to_string(),
-            "elasticsearch".to_string(),
             url,
+            "--app".to_string(),
+            "elasticsearch".to_string(),
         ],
         home_path.clone(),
         vec![],
@@ -608,8 +616,9 @@ async fn host_remove_succeeds_even_if_settings_cleanup_fails() {
             "host".to_string(),
             "add".to_string(),
             "prod-es".to_string(),
-            "elasticsearch".to_string(),
             url,
+            "--app".to_string(),
+            "elasticsearch".to_string(),
         ],
         home_path.clone(),
         vec![],
@@ -660,8 +669,9 @@ async fn host_add_rejects_duplicate_names() {
             "host".to_string(),
             "add".to_string(),
             "prod-es".to_string(),
-            "elasticsearch".to_string(),
             url.clone(),
+            "--app".to_string(),
+            "elasticsearch".to_string(),
         ],
         home_path.clone(),
         vec![],
@@ -674,8 +684,9 @@ async fn host_add_rejects_duplicate_names() {
             "host".to_string(),
             "add".to_string(),
             "prod-es".to_string(),
-            "elasticsearch".to_string(),
             url,
+            "--app".to_string(),
+            "elasticsearch".to_string(),
         ],
         home_path,
         vec![],
@@ -705,8 +716,9 @@ async fn host_list_prints_empty_state_and_saved_rows() {
             "host".to_string(),
             "add".to_string(),
             "prod-es".to_string(),
-            "elasticsearch".to_string(),
             url,
+            "--app".to_string(),
+            "elasticsearch".to_string(),
         ],
         home_path,
         vec![],
@@ -744,8 +756,9 @@ async fn host_auth_tests_saved_host_without_mutating_it() {
             "host".to_string(),
             "add".to_string(),
             "prod-es".to_string(),
-            "elasticsearch".to_string(),
             url,
+            "--app".to_string(),
+            "elasticsearch".to_string(),
         ],
         home_path.clone(),
         vec![],
@@ -805,8 +818,9 @@ async fn host_subcommands_emit_meaningful_agent_summaries() {
             "host".to_string(),
             "add".to_string(),
             "prod-es".to_string(),
-            "elasticsearch".to_string(),
             url.clone(),
+            "--app".to_string(),
+            "elasticsearch".to_string(),
         ],
         home_path.clone(),
         vec![],
@@ -876,6 +890,160 @@ async fn host_subcommands_emit_meaningful_agent_summaries() {
         "agent host remove should not emit a generic completion summary:\n{}",
         String::from_utf8_lossy(&remove.stderr)
     );
+
+    let _ = shutdown_tx.send(());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn host_add_infers_app_from_concrete_url_and_requires_app_for_ambiguous_targets() {
+    let (url, shutdown_tx) = start_mock_elasticsearch().await;
+    let home = setup_home();
+    let home_path = home.path().to_path_buf();
+    let inferred_url = format!("{url}/api/v1/deployments/test/elasticsearch");
+
+    let inferred = run_esdiag_async(
+        vec![
+            "host".to_string(),
+            "add".to_string(),
+            "prod-es".to_string(),
+            inferred_url,
+        ],
+        home_path.clone(),
+        vec![],
+    )
+    .await;
+    assert_success(&inferred, "infer app from elasticsearch url");
+
+    let hosts = read_hosts(&home);
+    assert_eq!(
+        hosts.get("prod-es").expect("saved host exists").app.to_string(),
+        "Elasticsearch"
+    );
+
+    let ambiguous = run_esdiag_async(
+        vec![
+            "host".to_string(),
+            "add".to_string(),
+            "ambiguous".to_string(),
+            "https://example.internal".to_string(),
+        ],
+        home_path,
+        vec![],
+    )
+    .await;
+    assert_failure_contains(
+        &ambiguous,
+        "does not determine the app",
+        "ambiguous host add",
+    );
+
+    let _ = shutdown_tx.send(());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn template_hosts_auth_materialize_and_preserve_transport_on_update() {
+    let (url, shutdown_tx) = start_mock_elasticsearch().await;
+    let home = setup_home();
+    let home_path = home.path().to_path_buf();
+    let template = format!("{url}/deployments/{{id}}/{{product}}");
+
+    let add_template = run_esdiag_async(
+        vec![
+            "host".to_string(),
+            "add".to_string(),
+            "elastic-cloud".to_string(),
+            template,
+            "--url-template".to_string(),
+        ],
+        home_path.clone(),
+        vec![],
+    )
+    .await;
+    assert_success(&add_template, "add template host");
+
+    let bare_auth = run_esdiag_async(
+        vec![
+            "host".to_string(),
+            "auth".to_string(),
+            "elastic-cloud".to_string(),
+        ],
+        home_path.clone(),
+        vec![],
+    )
+    .await;
+    assert_stderr_contains(
+        &bare_auth,
+        "requires an `id` plus an optional `product`",
+        "template auth guidance",
+    );
+
+    let resolved_auth = run_esdiag_async(
+        vec![
+            "host".to_string(),
+            "auth".to_string(),
+            "elastic-cloud://cluster-1".to_string(),
+        ],
+        home_path.clone(),
+        vec![],
+    )
+    .await;
+    assert_stderr_contains(
+        &resolved_auth,
+        "Host elastic-cloud://cluster-1: 200 OK",
+        "resolved template auth",
+    );
+
+    let materialize = run_esdiag_async(
+        vec![
+            "host".to_string(),
+            "add".to_string(),
+            "netopsco".to_string(),
+            "elastic-cloud://cluster-1/elasticsearch".to_string(),
+            "--roles".to_string(),
+            "collect,send".to_string(),
+        ],
+        home_path.clone(),
+        vec![],
+    )
+    .await;
+    assert_success(&materialize, "materialize template host");
+
+    let update_template = run_esdiag_async(
+        vec![
+            "host".to_string(),
+            "update".to_string(),
+            "elastic-cloud".to_string(),
+            "--accept-invalid-certs".to_string(),
+            "true".to_string(),
+        ],
+        home_path,
+        vec![],
+    )
+    .await;
+    assert_success(&update_template, "update template host");
+
+    let hosts = read_hosts(&home);
+    let template_host = hosts.get("elastic-cloud").expect("template host exists");
+    assert_eq!(
+        template_host.url_template.as_deref(),
+        Some(&format!("{url}/deployments/{{id}}/{{product}}")[..])
+    );
+    assert!(template_host.url.is_none(), "template host should stay unresolved");
+    assert!(
+        template_host.accept_invalid_certs,
+        "template update should preserve url_template while applying overrides"
+    );
+
+    let materialized = hosts.get("netopsco").expect("materialized host exists");
+    assert!(
+        materialized.url_template.is_none(),
+        "materialized host should persist a concrete url"
+    );
+    assert_eq!(
+        materialized.url.as_ref().map(|url| url.as_str()),
+        Some(&format!("{url}/deployments/cluster-1/elasticsearch")[..])
+    );
+    assert_eq!(materialized.roles, vec![HostRole::Collect, HostRole::Send]);
 
     let _ = shutdown_tx.send(());
 }

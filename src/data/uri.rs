@@ -118,8 +118,13 @@ impl TryFrom<KnownHost> for Uri {
     type Error = eyre::Report;
 
     fn try_from(host: KnownHost) -> Result<Self> {
+        if host.is_template() {
+            return Err(eyre!(
+                "Template-backed hosts must be resolved into a concrete URL before runtime use"
+            ));
+        }
         let host_uri = match host.cloud_id() {
-            Some(ElasticCloud::ElasticCloud) => Uri::ElasticCloud(host),
+            Some(ElasticCloud::ElasticCloud) => Uri::KnownHost(host),
             Some(ElasticCloud::ElasticCloudAdmin) => Uri::ElasticCloudAdmin(host),
             Some(ElasticCloud::ElasticGovCloudAdmin) => Uri::ElasticGovCloudAdmin(host),
             None => Uri::KnownHost(host),
@@ -137,7 +142,14 @@ impl TryFrom<&str> for Uri {
             return Ok(Uri::Stream);
         }
 
+        if let Some(host) = KnownHost::resolve_template_reference(uri)? {
+            return host.try_into();
+        }
+
         if let Ok(host) = KnownHost::from_str(uri) {
+            if host.is_template() {
+                return Err(eyre!(KnownHost::template_guidance(uri)));
+            }
             return host.try_into();
         }
         tracing::debug!("No known host for {uri}");

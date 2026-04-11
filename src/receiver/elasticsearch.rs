@@ -151,7 +151,7 @@ impl Receive for ElasticsearchReceiver {
             .client
             .send(
                 http::Method::Get,
-                "",
+                "/",
                 http::headers::HeaderMap::new(),
                 Option::<&String>::None,
                 Option::<&String>::None,

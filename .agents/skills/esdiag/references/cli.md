@@ -2,7 +2,88 @@
 
 Use this file for command behavior that is easy to misremember. For complete and version-accurate syntax, run `esdiag --help` and `esdiag <command> --help`.
 
-## `process`
+## Top-level
+
+```text
+Usage: esdiag [OPTIONS] <COMMAND>
+
+Commands:
+  collect
+  serve
+  host
+  process
+  setup
+  help
+
+Options:
+      --debug
+      --sources <SOURCES>
+  -h, --help
+  -V, --version
+```
+
+## collect
+
+```text
+Usage: esdiag collect [OPTIONS] <HOST> <OUTPUT>
+```
+
+- `<HOST>`: known Elasticsearch host to collect from.
+- `<OUTPUT>`: existing directory where a diagnostic directory is created.
+- Common options:
+  - `--type <TYPE>` (`minimal`, `light`, `standard`, `support`; default `standard`)
+  - `--include <INCLUDE>` (comma-separated APIs)
+  - `--exclude <EXCLUDE>` (comma-separated APIs)
+  - `-a, --account <ACCOUNT>`
+  - `-c, --case <CASE>`
+  - `-o, --opportunity <OPPORTUNITY>`
+  - `-u, --user <USER>`
+- Use `esdiag collect --help` for the full version-specific option list.
+
+## host
+
+```text
+Usage: esdiag host <COMMAND>
+```
+
+Commands:
+- `add <NAME> <TARGET> [--app <APP>]`
+- `update <NAME>`
+- `remove <NAME>`
+- `list`
+- `auth <TARGET>`
+
+Shared host auth/update options:
+- `--accept-invalid-certs <true|false>`
+- `-k, --apikey <APIKEY>`
+- `-u, --username <USERNAME>`
+- `-p, --password <PASSWORD>`
+- `--secret <SECRET>`
+- `--roles <ROLES>`
+- `--app <APP>` when `<TARGET>` is ambiguous
+- `--url-template` to persist `<TARGET>` as a reusable template
+
+Host target modes:
+- Concrete URL: `esdiag host add prod-es http://localhost:9200 --app elasticsearch`
+- Template definition: `esdiag host add elastic-cloud "https://cloud.elastic.co/api/v1/deployments/{id}/{product}/main-{product}/proxy" --url-template`
+- Materialize from template: `esdiag host add prod-es elastic-cloud://1234/elasticsearch`
+
+Template reference examples:
+- Elastic Cloud Hosted: `elastic-cloud://1234/kibana`
+- ECE-style template:
+  `esdiag keystore add ece_admin --apikey`
+  `esdiag host add ece "https://coord.example.com:12443/api/v1/clusters/elasticsearch/{id}/{product}/_proxy" --url-template --secret ece_admin`
+
+Notes:
+- Supported placeholders are `{id}` and `{product}`.
+- Bare template auth gives guidance: `esdiag host auth elastic-cloud`
+- Omitted `product` defaults to `elasticsearch`: `elastic-cloud://1234`
+
+## process
+
+```text
+Usage: esdiag process [OPTIONS] <INPUT> [OUTPUT]
+```
 
 Input resolution (in order):
 1. `.zip` archive path

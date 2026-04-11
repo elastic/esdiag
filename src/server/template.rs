@@ -226,6 +226,7 @@ pub struct HostsTableRow {
     pub auth: String,
     pub app: String,
     pub url: String,
+    pub url_template: bool,
     pub roles: String,
     pub viewer: String,
     pub accept_invalid_certs: bool,
