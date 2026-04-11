@@ -163,3 +163,10 @@ published release notes, maintenance branches, and tagged history.
 - Fixed pasted diagnostic URLs with trailing periods so archive uploads do not
   fail on invalid zip paths (#177).
 - Fixed ECK diagnostic path handling for correctly structured archives (#179).
+
+[Unreleased]: https://github.com/elastic/esdiag/compare/0.14.2...preview
+[0.14]: https://github.com/elastic/esdiag/compare/0.13.0...0.14.2
+[0.13]: https://github.com/elastic/esdiag/compare/0.12.0...0.13.0
+[0.12]: https://github.com/elastic/esdiag/compare/0.11.1...0.12.0
+[0.11]: https://github.com/elastic/esdiag/compare/0.10.2...0.11.1
+[0.10.1]: https://github.com/elastic/esdiag/compare/0.10.0...0.10.2
