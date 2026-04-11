@@ -8,6 +8,7 @@ Top-Level Layout
 
 ```text
 .
+├── .agents/
 ├── .github/
 ├── .gitignore
 ├── assets/
@@ -19,12 +20,12 @@ Top-Level Layout
 ├── icons/
 ├── openspec/
 ├── packaging/
-├── skills/
 ├── src/
 ├── templates/
 └── tests/
 ```
 
+- `.agents/`: Shared agent skills for the repository.
 - `.github/`: GitHub automation such as Actions workflows and issue templates.
 - `.gitignore`: Root ignore rules for generated files, local artifacts, and other untracked content that should not be committed.
 - `assets/`: Elastic Stack assets installed into target environments, such as configuration and setup content used by `esdiag setup`.
@@ -36,7 +37,6 @@ Top-Level Layout
 - `icons/`: Application icons used for desktop packaging and distribution.
 - `openspec/`: OpenSpec change proposals, archived changes, and repository specification artifacts.
 - `packaging/`: Packaging inputs and metadata for desktop distribution targets such as Flatpak and Windows.
-- `skills/`: Project-specific agent skills checked into the repository.
 - `src/`: Rust application and library source code.
 - `templates/`: Askama HTML templates that power the web UI.
 - `tests/`: Integration-style tests, CLI tests, runtime tests, and test fixtures.
