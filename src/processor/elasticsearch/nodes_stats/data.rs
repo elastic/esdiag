@@ -4,6 +4,7 @@
 
 use super::super::super::diagnostic::data_source::StreamingDataSource;
 use super::super::DataSource;
+use super::super::nodes::NodeDocument;
 use crate::data::option_map_as_vec_entries;
 use eyre::Result;
 use serde::{Deserialize, Serialize};
@@ -126,7 +127,7 @@ pub struct NodeStats {
     ip: Option<Box<RawValue>>,
     jvm: Box<RawValue>,
     name: Box<RawValue>,
-    os: OsStats,
+    os: NodeOs,
     process: Box<RawValue>,
     repositories: Option<Box<RawValue>>,
     pub roles: HashSet<String>,
@@ -159,12 +160,26 @@ struct LoadPercent {
 }
 
 #[derive(Deserialize, Serialize)]
-pub struct OsStats {
+pub struct NodeOs {
     timestamp: usize,
     cpu: CpuStats,
     mem: Box<RawValue>,
     swap: Option<Box<RawValue>>,
     cgroup: Option<Box<RawValue>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    refresh_interval_in_millis: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pretty_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    arch: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    available_processors: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    allocated_processors: Option<usize>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -185,6 +200,22 @@ impl NodeStats {
             (self.os.cpu.load_average.five * 100.0) as usize / processors;
         self.os.cpu.load_percent.fifteen =
             (self.os.cpu.load_average.fifteen * 100.0) as usize / processors;
+    }
+
+    pub fn enrich_from_lookup(&mut self, node: &NodeDocument) {
+        self.os.enrich_from_lookup(node);
+    }
+}
+
+impl NodeOs {
+    fn enrich_from_lookup(&mut self, node: &NodeDocument) {
+        self.refresh_interval_in_millis = Some(node.os.refresh_interval_in_millis);
+        self.name = node.os.name.clone();
+        self.pretty_name = node.os.pretty_name.clone();
+        self.arch = node.os.arch.clone();
+        self.version = node.os.version.clone();
+        self.available_processors = Some(node.os.available_processors);
+        self.allocated_processors = Some(node.os.allocated_processors);
     }
 }
 

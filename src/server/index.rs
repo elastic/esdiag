@@ -170,7 +170,6 @@ pub async fn workflow_page(
         .unwrap_or('_')
         .to_ascii_uppercase();
 
-    let allows_local_runtime_features = state.runtime_mode_policy.allows_local_runtime_features();
     let exporter = { state.exporter.read().await.clone() };
     let send_defaults = classify_configured_exporter(&exporter);
     let workflow_hosts = workflow_host_options(&state);
@@ -270,7 +269,6 @@ async fn build_jobs_page(
         .unwrap_or('_')
         .to_ascii_uppercase();
 
-    let allows_local_runtime_features = state.runtime_mode_policy.allows_local_runtime_features();
     let exporter = { state.exporter.read().await.clone() };
     let send_defaults = classify_configured_exporter(&exporter);
     let workflow_hosts = workflow_host_options(&state);
