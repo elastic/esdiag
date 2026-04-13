@@ -52,6 +52,9 @@ async fn process_node(
         .map(|node| node.os.allocated_processors)
         .unwrap_or(1);
     node_stats.calculate_stats(allocated_processors);
+    if let Some(node) = node_metadata {
+        node_stats.enrich_from_lookup(node);
+    }
 
     // Extract transport actions
     if let Some(transport_raw) = node_stats.transport.take() {

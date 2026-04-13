@@ -1,12 +1,17 @@
-.env*
+# Rust build outputs
 /target
 /output
-/assets/kibana/esdiag-dashboards*.ndjson
-.opencode/
-.claude/
-.codex/
-.claude/
-.cursor/
-esdiag.spdx.json
-/tauri-dist
+/tauri-dist/
 /frontend-dist/
+
+# Agent skills and commands
+/*/skills/
+/*/command*/
+.cursor
+.wolf
+
+# Environment variable files
+.env*
+
+# SPDX license file
+esdiag.spdx.json
