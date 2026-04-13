@@ -1,8 +1,9 @@
 use serde_json::Value;
 use std::fs;
+use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use tempfile::tempdir;
+use tempfile::{tempdir, TempDir};
 
 fn archive_fixtures() -> Vec<PathBuf> {
     let archives_dir = Path::new("tests/archives");
@@ -23,7 +24,19 @@ fn archive_fixtures() -> Vec<PathBuf> {
     archives
 }
 
-fn process_archive(archive: &Path) -> PathBuf {
+struct ProcessedArchive {
+    output: TempDir,
+}
+
+impl Deref for ProcessedArchive {
+    type Target = Path;
+
+    fn deref(&self) -> &Self::Target {
+        self.output.path()
+    }
+}
+
+fn process_archive(archive: &Path) -> ProcessedArchive {
     let home = tempdir().expect("temp HOME");
     let output = tempdir().expect("temp output");
 
@@ -46,7 +59,7 @@ fn process_archive(archive: &Path) -> PathBuf {
         String::from_utf8_lossy(&process.stderr)
     );
 
-    output.keep()
+    ProcessedArchive { output }
 }
 
 fn first_doc(output_dir: &Path, file_name: &str) -> Value {
