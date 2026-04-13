@@ -29,6 +29,8 @@ Releases
 - Before releasing, bring `preview` up to date with `main` so stable fixes already merged to `main` are included in the release candidate.
 - Open a PR from `preview` to `main`.
 - Merge that PR with a merge commit to preserve a clear release boundary.
+- After the `preview` -> `main` PR merges, fast-forward `preview` to the new `main` tip so both long-lived branches point to the same commit before new preview-only work resumes.
+- Do not rebase `preview` after a release PR merge, and do not create a follow-up sync merge commit unless branch protections leave no other option.
 - Tag the release from `main` and create the new `0.x` maintenance branch from that release point.
 
 Hotfixes
