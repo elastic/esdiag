@@ -92,9 +92,7 @@ impl SecretEntry {
 
     pub fn resolve_auth(&self) -> Option<SecretAuth> {
         if let Some(apikey) = &self.apikey {
-            return Some(SecretAuth::ApiKey {
-                apikey: apikey.clone(),
-            });
+            return Some(SecretAuth::ApiKey { apikey: apikey.clone() });
         }
         self.basic.as_ref().map(|basic| SecretAuth::Basic {
             username: basic.username.clone(),
@@ -323,12 +321,9 @@ pub fn get_keystore_path() -> Result<PathBuf> {
 
 pub fn get_unlock_path() -> Result<PathBuf> {
     let keystore_path = get_keystore_path()?;
-    let parent = keystore_path.parent().ok_or_else(|| {
-        eyre!(
-            "Keystore path '{}' has no parent directory",
-            keystore_path.display()
-        )
-    })?;
+    let parent = keystore_path
+        .parent()
+        .ok_or_else(|| eyre!("Keystore path '{}' has no parent directory", keystore_path.display()))?;
     Ok(parent.join(UNLOCK_FILE))
 }
 
@@ -343,9 +338,9 @@ pub fn parse_unlock_ttl(input: &str) -> Result<Duration> {
         ));
     }
     let (value, suffix) = input.split_at(input.len() - 1);
-    let value: u64 = value.parse().map_err(|_| {
-        eyre!("Invalid unlock TTL '{input}'. Use an integer followed by m, h, or d.")
-    })?;
+    let value: u64 = value
+        .parse()
+        .map_err(|_| eyre!("Invalid unlock TTL '{input}'. Use an integer followed by m, h, or d."))?;
     let seconds = match suffix {
         "m" => value.saturating_mul(60),
         "h" => value.saturating_mul(60 * 60),
@@ -365,11 +360,7 @@ pub fn parse_unlock_ttl(input: &str) -> Result<Duration> {
     Ok(Duration::from_secs(seconds))
 }
 
-fn parse_secret_auth(
-    username: Option<String>,
-    password: Option<String>,
-    apikey: Option<String>,
-) -> Result<SecretAuth> {
+fn parse_secret_auth(username: Option<String>, password: Option<String>, apikey: Option<String>) -> Result<SecretAuth> {
     match (apikey, username, password) {
         (Some(apikey), None, None) => Ok(SecretAuth::ApiKey { apikey }),
         (None, Some(username), Some(password)) => Ok(SecretAuth::Basic { username, password }),
@@ -447,10 +438,7 @@ fn encrypt_unlock_lease(data: &UnlockLeaseData) -> Result<EncryptedUnlockLease> 
 
 fn decrypt_unlock_lease(encrypted: EncryptedUnlockLease) -> Result<UnlockLeaseData> {
     if !matches!(encrypted.version, 1 | ENCRYPTED_ENVELOPE_VERSION) {
-        return Err(eyre!(
-            "Unsupported unlock lease version {}",
-            encrypted.version
-        ));
+        return Err(eyre!("Unsupported unlock lease version {}", encrypted.version));
     }
     let salt = base64::engine::general_purpose::STANDARD.decode(encrypted.salt)?;
     let nonce = base64::engine::general_purpose::STANDARD.decode(encrypted.nonce)?;
@@ -482,12 +470,7 @@ fn remove_unlock_file_best_effort(path: &Path, reason: &str) {
         return;
     }
     if let Err(err) = std::fs::remove_file(path) {
-        tracing::warn!(
-            "Failed to delete {} unlock lease '{}': {}",
-            reason,
-            path.display(),
-            err
-        );
+        tracing::warn!("Failed to delete {} unlock lease '{}': {}", reason, path.display(), err);
     }
 }
 
@@ -623,15 +606,10 @@ pub async fn with_scoped_keystore_password<F>(keystore_password: String, future:
 where
     F: Future,
 {
-    SCOPED_KEYSTORE_PASSWORD
-        .scope(keystore_password, future)
-        .await
+    SCOPED_KEYSTORE_PASSWORD.scope(keystore_password, future).await
 }
 
-fn get_password_for_secret_commands_with_prompt<F>(
-    interactive: bool,
-    prompt_fn: F,
-) -> Result<String>
+fn get_password_for_secret_commands_with_prompt<F>(interactive: bool, prompt_fn: F) -> Result<String>
 where
     F: FnOnce(&str) -> Result<String>,
 {
@@ -706,11 +684,7 @@ pub fn update_secret(
     Ok(get_keystore_path()?.display().to_string())
 }
 
-pub fn remove_secret(
-    secret_id: &str,
-    expected: Option<SecretAuth>,
-    keystore_password: &str,
-) -> Result<String> {
+pub fn remove_secret(secret_id: &str, expected: Option<SecretAuth>, keystore_password: &str) -> Result<String> {
     let mut store = read_store(keystore_password)?;
     if !store.secrets.contains_key(secret_id) {
         return Err(eyre!("Secret '{secret_id}' not found"));
@@ -810,11 +784,7 @@ pub fn get_secret(secret_id: &str, keystore_password: &str) -> Result<Option<Sec
     Ok(store.secrets.get(secret_id).cloned())
 }
 
-pub fn upsert_secret_auth(
-    secret_id: &str,
-    auth: SecretAuth,
-    keystore_password: &str,
-) -> Result<()> {
+pub fn upsert_secret_auth(secret_id: &str, auth: SecretAuth, keystore_password: &str) -> Result<()> {
     let mut store = read_store(keystore_password)?;
     let entry = store
         .secrets
@@ -833,10 +803,7 @@ where
     let mut updated = 0_usize;
 
     for (secret_id, auth) in entries {
-        let entry = store
-            .secrets
-            .entry(secret_id)
-            .or_insert_with(SecretEntry::default);
+        let entry = store.secrets.entry(secret_id).or_insert_with(SecretEntry::default);
         entry.upsert_auth(auth);
         updated += 1;
     }
@@ -849,10 +816,7 @@ where
 
 pub fn resolve_secret_auth(secret_id: &str, keystore_password: &str) -> Result<Option<SecretAuth>> {
     let store = read_store(keystore_password)?;
-    Ok(store
-        .secrets
-        .get(secret_id)
-        .and_then(SecretEntry::resolve_auth))
+    Ok(store.secrets.get(secret_id).and_then(SecretEntry::resolve_auth))
 }
 
 pub fn authenticate(keystore_password: &str) -> Result<()> {
@@ -865,10 +829,7 @@ pub fn authenticate(keystore_password: &str) -> Result<()> {
 
 pub fn validate_existing_keystore_password(keystore_password: &str) -> Result<()> {
     if !keystore_exists()? {
-        return Err(eyre!(
-            "No keystore exists at {}",
-            get_keystore_path()?.display()
-        ));
+        return Err(eyre!("No keystore exists at {}", get_keystore_path()?.display()));
     }
     read_store(keystore_password).map(|_| ())
 }
@@ -984,8 +945,8 @@ fn derive_key(password: &str, salt: &[u8], params: &KdfParams) -> Result<[u8; KE
 mod tests {
     use super::*;
     use crate::data::{
-        CollectMode, CollectSource, CollectStage, HostRole, KnownHostBuilder, ProcessStage,
-        Product, SavedJob, SavedJobs, SendMode, SendStage, Workflow, save_saved_jobs,
+        CollectMode, CollectSource, CollectStage, HostRole, KnownHostBuilder, ProcessStage, Product, SavedJob,
+        SavedJobs, SendMode, SendStage, Workflow, save_saved_jobs,
     };
     use crate::test_env_lock;
     use tempfile::TempDir;
@@ -1030,10 +991,7 @@ mod tests {
 
         let status = get_unlock_status().expect("status");
         assert!(!status.unlock_active);
-        assert!(
-            !unlock_path.exists(),
-            "expired unlock file should be deleted"
-        );
+        assert!(!unlock_path.exists(), "expired unlock file should be deleted");
         assert!(
             get_keystore_password().is_err(),
             "expired lease should not provide password"
@@ -1046,14 +1004,7 @@ mod tests {
         let (_tmp, _keystore_path, _unlock_path) = setup_env();
 
         create_keystore("pw").expect("create keystore");
-        add_secret(
-            "api-secret",
-            None,
-            None,
-            Some("secret-key".to_string()),
-            "pw",
-        )
-        .expect("add secret");
+        add_secret("api-secret", None, None, Some("secret-key".to_string()), "pw").expect("add secret");
         write_unlock_lease_until("pw", current_epoch_seconds() + 300).expect("write unlock lease");
 
         rotate_keystore_password("pw", "new-pw").expect("rotate password");
@@ -1062,10 +1013,7 @@ mod tests {
             .expect("read secret")
             .expect("secret exists");
         assert_eq!(secret.apikey.as_deref(), Some("secret-key"));
-        assert_eq!(
-            get_keystore_password().expect("unlock lease password"),
-            "new-pw"
-        );
+        assert_eq!(get_keystore_password().expect("unlock lease password"), "new-pw");
     }
 
     #[test]
@@ -1075,10 +1023,7 @@ mod tests {
         std::fs::create_dir_all(&unlock_path).expect("create unlock directory");
 
         assert!(!clear_unlock_lease().expect("clear unlock lease"));
-        assert!(
-            unlock_path.is_dir(),
-            "non-file unlock path should be left alone"
-        );
+        assert!(unlock_path.is_dir(), "non-file unlock path should be left alone");
     }
 
     #[test]
@@ -1089,10 +1034,7 @@ mod tests {
         write_unlock_lease_until("stale-pw", current_epoch_seconds() + 300).expect("write lease");
 
         let prompted = get_password_for_secret_commands_with_prompt(true, |prompt| {
-            assert_eq!(
-                prompt,
-                "Enter keystore password (ESDIAG_KEYSTORE_PASSWORD): "
-            );
+            assert_eq!(prompt, "Enter keystore password (ESDIAG_KEYSTORE_PASSWORD): ");
             Ok("prompted-pw".to_string())
         })
         .expect("prompted fallback");
@@ -1112,10 +1054,7 @@ mod tests {
         write_unlock_lease_until("stale-pw", current_epoch_seconds() + 300).expect("write lease");
 
         let err = get_keystore_password().expect_err("stale lease should be rejected");
-        assert!(
-            err.to_string()
-                .contains("no valid unlock lease is available")
-        );
+        assert!(err.to_string().contains("no valid unlock lease is available"));
         assert!(
             !unlock_path.exists(),
             "stale unlock lease should be cleared on invalid password"
@@ -1162,10 +1101,7 @@ mod tests {
         write_unlock_lease_until("pw", current_epoch_seconds() + 300).expect("write lease");
 
         let err = get_keystore_password().expect_err("missing keystore should reject lease");
-        assert!(
-            err.to_string()
-                .contains("no valid unlock lease is available")
-        );
+        assert!(err.to_string().contains("no valid unlock lease is available"));
         assert!(
             !unlock_path.exists(),
             "unlock lease should be cleared when keystore is absent"
@@ -1179,10 +1115,7 @@ mod tests {
         write_unlock_lease_until("pw", current_epoch_seconds() + 300).expect("write lease");
 
         let prompted = get_password_for_secret_commands_with_prompt(true, |prompt| {
-            assert_eq!(
-                prompt,
-                "Enter keystore password (ESDIAG_KEYSTORE_PASSWORD): "
-            );
+            assert_eq!(prompt, "Enter keystore password (ESDIAG_KEYSTORE_PASSWORD): ");
             Ok("prompted-pw".to_string())
         })
         .expect("prompted fallback");
@@ -1342,11 +1275,7 @@ ciphertext: ""
         let err = remove_secret("used-secret", None, "pw").expect_err("secret should be protected");
 
         assert!(err.to_string().contains("hosts: prod"));
-        assert!(
-            get_secret("used-secret", "pw")
-                .expect("read secret")
-                .is_some()
-        );
+        assert!(get_secret("used-secret", "pw").expect("read secret").is_some());
     }
 
     #[test]
@@ -1388,11 +1317,7 @@ ciphertext: ""
 
         assert!(err.to_string().contains("hosts: prod"));
         assert!(err.to_string().contains("saved jobs: nightly-prod"));
-        assert!(
-            get_secret("used-secret", "pw")
-                .expect("read secret")
-                .is_some()
-        );
+        assert!(get_secret("used-secret", "pw").expect("read secret").is_some());
     }
 
     #[test]
@@ -1411,11 +1336,7 @@ ciphertext: ""
 
         remove_secret("unused-secret", None, "pw").expect("remove secret");
 
-        assert!(
-            get_secret("unused-secret", "pw")
-                .expect("read secret")
-                .is_none()
-        );
+        assert!(get_secret("unused-secret", "pw").expect("read secret").is_none());
     }
 
     #[test]

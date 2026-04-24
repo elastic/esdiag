@@ -32,10 +32,7 @@ pub async fn service_link(
     Query(params): Query<ServiceLinkQueryParams>,
     Json(payload): Json<UploadServiceRequest>,
 ) -> impl IntoResponse {
-    tracing::info!(
-        "Received JSON elastic uploader request for: {}",
-        payload.url
-    );
+    tracing::info!("Received JSON elastic uploader request for: {}", payload.url);
 
     let job_id = new_job_id();
 
@@ -308,10 +305,7 @@ pub async fn api_key(
         );
     }
 
-    let host = match KnownHostBuilder::new(url)
-        .apikey(Some(payload.apikey))
-        .build()
-    {
+    let host = match KnownHostBuilder::new(url).apikey(Some(payload.apikey)).build() {
         Ok(host) => host,
         Err(e) => {
             tracing::error!("Failed to build host: {}", e);
@@ -420,10 +414,7 @@ pub async fn api_key(
                     "took": completed.state.runtime
                 });
 
-                tracing::info!(
-                    "Job completed successfully: {}",
-                    report.diagnostic.metadata.id
-                );
+                tracing::info!("Job completed successfully: {}", report.diagnostic.metadata.id);
                 (StatusCode::OK, Json(response))
             }
             Err(failed) => {
@@ -446,9 +437,7 @@ pub async fn api_key(
         tracing::debug!("[fsm][api.api_key] queued(in state): job_id={job_id}");
         let mut metadata = payload.metadata;
         metadata.user = Some(request_user);
-        state
-            .push_key(job_id, metadata, host, "standard".to_string())
-            .await;
+        state.push_key(job_id, metadata, host, "standard".to_string()).await;
 
         // Respond with a JSON success
         (StatusCode::CREATED, Json(json!({"key_id": job_id})))

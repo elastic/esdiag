@@ -20,29 +20,25 @@ mod uri;
 pub mod workflow;
 
 pub use auth::{Auth, AuthType};
-pub use keystore::{
-    BasicSecret, SecretAuth, SecretEntry, UnlockLease, UnlockStatus, add_secret, authenticate,
-    clear_unlock_lease, create_keystore, default_unlock_ttl, get_keystore_password,
-    get_keystore_path, get_password_for_secret_commands, get_password_from_unlock_file, get_secret,
-    get_unlock_path, get_unlock_status, keystore_exists, list_secret_names, parse_unlock_ttl,
-    read_unlock_lease, remove_secret, resolve_secret_auth, rotate_keystore_password, update_secret,
-    upsert_secret_auth, validate_existing_keystore_password, with_scoped_keystore_password,
-    write_unlock_lease,
-};
 pub(crate) use keystore::list_secret_entries;
-pub use known_host::{ElasticCloud, HostRole, KnownHost, KnownHostBuilder, KnownHostCliUpdate};
+pub use keystore::{
+    BasicSecret, SecretAuth, SecretEntry, UnlockLease, UnlockStatus, add_secret, authenticate, clear_unlock_lease,
+    create_keystore, default_unlock_ttl, get_keystore_password, get_keystore_path, get_password_for_secret_commands,
+    get_password_from_unlock_file, get_secret, get_unlock_path, get_unlock_status, keystore_exists, list_secret_names,
+    parse_unlock_ttl, read_unlock_lease, remove_secret, resolve_secret_auth, rotate_keystore_password, update_secret,
+    upsert_secret_auth, validate_existing_keystore_password, with_scoped_keystore_password, write_unlock_lease,
+};
 #[cfg(test)]
 pub(crate) use known_host::write_hosts_yml_for_tests;
+pub use known_host::{ElasticCloud, HostRole, KnownHost, KnownHostBuilder, KnownHostCliUpdate};
 pub use product::Product;
 pub use saved_jobs::{
-    SavedJob, SavedJobs, load_saved_jobs, load_saved_jobs_async, save_saved_jobs,
-    with_saved_jobs_async,
+    SavedJob, SavedJobs, load_saved_jobs, load_saved_jobs_async, save_saved_jobs, with_saved_jobs_async,
 };
 pub use settings::Settings;
 pub use uri::Uri;
 pub use workflow::{
-    CollectMode, CollectSource, CollectStage, ProcessMode, ProcessStage, SendMode, SendStage,
-    Workflow,
+    CollectMode, CollectSource, CollectStage, ProcessMode, ProcessStage, SendMode, SendStage, Workflow,
 };
 
 use crate::env;
@@ -57,10 +53,7 @@ pub fn save_file<T: Serialize>(filename: &str, content: &T) -> Result<()> {
         .join(env::get_string("ESDIAG_HOME")?)
         .join("last_run")
         .join(filename);
-    let mut file = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(home_file)?;
+    let mut file = OpenOptions::new().create(true).append(true).open(home_file)?;
     let body = serde_json::to_string(&content)?;
     file.write_all(body.as_bytes())?;
     file.write_all(b"\n")?;
@@ -136,9 +129,7 @@ where
     deserializer.deserialize_map(MapVisitor(std::marker::PhantomData))
 }
 
-pub fn option_map_as_vec_entries<'de, D, T>(
-    deserializer: D,
-) -> Result<Option<Vec<(String, T)>>, D::Error>
+pub fn option_map_as_vec_entries<'de, D, T>(deserializer: D) -> Result<Option<Vec<(String, T)>>, D::Error>
 where
     D: Deserializer<'de>,
     T: Deserialize<'de>,

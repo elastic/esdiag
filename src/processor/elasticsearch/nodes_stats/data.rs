@@ -252,11 +252,7 @@ pub type IngestPipelines = Vec<(String, IngestPipeline)>;
 #[derive(Deserialize, Serialize)]
 pub struct Ingest {
     total: Box<RawValue>,
-    #[serde(
-        default,
-        deserialize_with = "option_map_as_vec_entries",
-        skip_serializing
-    )]
+    #[serde(default, deserialize_with = "option_map_as_vec_entries", skip_serializing)]
     pub pipelines: Option<Vec<(String, IngestPipeline)>>,
 }
 

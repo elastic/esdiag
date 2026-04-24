@@ -22,11 +22,7 @@ impl DocumentExporter<Lookups, LogstashMetadata> for Node {
         docs.append(&mut pipeline_docs);
 
         let metadata_doc = metadata.for_data_stream(&data_stream).as_meta_doc();
-        let node_doc = json!(LogstashNodeDoc::new(
-            self,
-            metadata_doc,
-            lookups.plugin_count
-        ));
+        let node_doc = json!(LogstashNodeDoc::new(self, metadata_doc, lookups.plugin_count));
         docs.push(node_doc);
 
         let mut summary = ProcessorSummary::new(data_stream.clone());
@@ -61,20 +57,13 @@ impl LogstashNodeDoc {
         Self {
             metadata,
             node: node_with_metadata,
-            plugins: Count {
-                count: plugin_count,
-            },
-            pipelines: Count {
-                count: pipeline_count,
-            },
+            plugins: Count { count: plugin_count },
+            pipelines: Count { count: pipeline_count },
         }
     }
 }
 
-fn generate_pipeline_docs(
-    metadata: &LogstashMetadata,
-    pipelines: HashMap<String, Pipeline>,
-) -> Vec<Value> {
+fn generate_pipeline_docs(metadata: &LogstashMetadata, pipelines: HashMap<String, Pipeline>) -> Vec<Value> {
     let metadata = metadata
         .for_data_stream("settings-logstash.pipeline-esdiag")
         .as_meta_doc();

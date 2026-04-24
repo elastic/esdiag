@@ -34,10 +34,9 @@ const UPLOAD_FILENAME: &str = "elasticsearch-api-diagnostics-9.1.3.zip";
 /// Returns real upload credentials from environment variables for `#[ignore]`d
 /// network tests. Panics with a helpful message if the variables are unset.
 fn upload_credentials() -> (String, String) {
-    let token = std::env::var("ESDIAG_TEST_UPLOAD_TOKEN")
-        .expect("set ESDIAG_TEST_UPLOAD_TOKEN to run ignored network tests");
-    let url = std::env::var("ESDIAG_TEST_UPLOAD_URL")
-        .expect("set ESDIAG_TEST_UPLOAD_URL to run ignored network tests");
+    let token =
+        std::env::var("ESDIAG_TEST_UPLOAD_TOKEN").expect("set ESDIAG_TEST_UPLOAD_TOKEN to run ignored network tests");
+    let url = std::env::var("ESDIAG_TEST_UPLOAD_URL").expect("set ESDIAG_TEST_UPLOAD_URL to run ignored network tests");
     (token, url)
 }
 
@@ -56,10 +55,7 @@ struct MockState {
 /// Returns the zip bytes when the `Authorization` header matches the expected
 /// token, mirroring the authentication contract of the real Elastic Upload
 /// Service.
-async fn mock_upload_handler(
-    State(state): State<MockState>,
-    headers: axum::http::HeaderMap,
-) -> Response {
+async fn mock_upload_handler(State(state): State<MockState>, headers: axum::http::HeaderMap) -> Response {
     let auth_ok = headers
         .get("Authorization")
         .and_then(|v| v.to_str().ok())
@@ -85,22 +81,15 @@ async fn mock_upload_handler(
 ///
 /// Returns the bound address and a shutdown sender. Drop or send on the sender
 /// to stop the server.
-async fn start_mock_upload_server(
-    zip_bytes: Bytes,
-    token: &str,
-) -> (SocketAddr, oneshot::Sender<()>) {
+async fn start_mock_upload_server(zip_bytes: Bytes, token: &str) -> (SocketAddr, oneshot::Sender<()>) {
     let state = MockState {
         zip_bytes: Arc::new(zip_bytes),
         token: Arc::new(token.to_string()),
     };
 
-    let app = Router::new()
-        .fallback(mock_upload_handler)
-        .with_state(state);
+    let app = Router::new().fallback(mock_upload_handler).with_state(state);
 
-    let listener = TcpListener::bind("127.0.0.1:0")
-        .await
-        .expect("bind mock server");
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind mock server");
     let addr = listener.local_addr().expect("mock server addr");
 
     let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
@@ -117,26 +106,15 @@ async fn start_mock_upload_server(
 }
 
 async fn start_esdiag_server() -> (Server, Client, String) {
-    let (server, bound_addr) = Server::start(
-        [127, 0, 0, 1],
-        0,
-        Exporter::default(),
-        String::new(),
-        RuntimeMode::User,
-    )
-    .await
-    .expect("start esdiag server");
+    let (server, bound_addr) = Server::start([127, 0, 0, 1], 0, Exporter::default(), String::new(), RuntimeMode::User)
+        .await
+        .expect("start esdiag server");
 
     let client = Client::new();
     let base = format!("http://127.0.0.1:{}", bound_addr.port());
 
     for _ in 0..40 {
-        if client
-            .get(format!("{base}/favicon.ico"))
-            .send()
-            .await
-            .is_ok()
-        {
+        if client.get(format!("{base}/favicon.ico")).send().await.is_ok() {
             return (server, client, base);
         }
         sleep(Duration::from_millis(25)).await;
@@ -155,9 +133,7 @@ async fn start_esdiag_server() -> (Server, Client, String) {
 /// since an empty zip will parse as a valid archive but contain no diagnostic files.
 fn empty_zip_bytes() -> Bytes {
     let mut buf = Cursor::new(Vec::<u8>::new());
-    zip::ZipWriter::new(&mut buf)
-        .finish()
-        .expect("write empty zip");
+    zip::ZipWriter::new(&mut buf).finish().expect("write empty zip");
     Bytes::from(buf.into_inner())
 }
 
@@ -183,18 +159,14 @@ async fn service_link_wait_for_completion_processes_synchronously() {
     // Credentials are embedded as `token:<value>@host` — the convention expected
     // by UploadServiceDownloader::try_from, which extracts the password as the
     // Authorization header value and strips credentials before sending the GET.
-    let mock_url = Url::parse(&format!(
-        "http://token:{mock_token}@{mock_addr}/d/mock-diagnostic"
-    ))
-    .expect("valid mock URL");
+    let mock_url =
+        Url::parse(&format!("http://token:{mock_token}@{mock_addr}/d/mock-diagnostic")).expect("valid mock URL");
 
     // Construct Uri::ServiceLink directly so the upload service receiver path
     // is exercised without going through the HTTP endpoint's domain validation.
     let uri = Uri::ServiceLink(mock_url);
 
-    let receiver = Arc::new(
-        Receiver::try_from(uri).expect("receiver should be created from mock upload service"),
-    );
+    let receiver = Arc::new(Receiver::try_from(uri).expect("receiver should be created from mock upload service"));
 
     let exporter = Arc::new(Exporter::default());
     let identifiers = Identifiers::new(
@@ -224,10 +196,7 @@ async fn service_link_wait_for_completion_processes_synchronously() {
         !completed.state.report.diagnostic.metadata.id.is_empty(),
         "diagnostic_id should be populated after processing"
     );
-    assert!(
-        completed.state.runtime > 0,
-        "processing runtime should be positive"
-    );
+    assert!(completed.state.runtime > 0, "processing runtime should be positive");
 
     let _ = shutdown_tx.send(());
 }
@@ -305,10 +274,8 @@ async fn receiver_fails_when_download_returns_non_zip_bytes() {
     let mock_token = "mock-token";
     let (mock_addr, shutdown_tx) = start_mock_upload_server(bad_bytes, mock_token).await;
 
-    let mock_url = Url::parse(&format!(
-        "http://token:{mock_token}@{mock_addr}/d/mock-diagnostic"
-    ))
-    .expect("valid mock URL");
+    let mock_url =
+        Url::parse(&format!("http://token:{mock_token}@{mock_addr}/d/mock-diagnostic")).expect("valid mock URL");
     let uri = Uri::ServiceLink(mock_url);
 
     let result = Receiver::try_from(uri);
@@ -328,15 +295,11 @@ async fn processor_fails_when_zip_contains_no_diagnostic_files() {
     let mock_token = "mock-token";
     let (mock_addr, shutdown_tx) = start_mock_upload_server(empty_zip_bytes(), mock_token).await;
 
-    let mock_url = Url::parse(&format!(
-        "http://token:{mock_token}@{mock_addr}/d/mock-diagnostic"
-    ))
-    .expect("valid mock URL");
+    let mock_url =
+        Url::parse(&format!("http://token:{mock_token}@{mock_addr}/d/mock-diagnostic")).expect("valid mock URL");
     let uri = Uri::ServiceLink(mock_url);
 
-    let receiver = Arc::new(
-        Receiver::try_from(uri).expect("receiver should be created from a valid (empty) zip"),
-    );
+    let receiver = Arc::new(Receiver::try_from(uri).expect("receiver should be created from a valid (empty) zip"));
 
     let exporter = Arc::new(Exporter::default());
     let identifiers = Identifiers::new(
@@ -351,20 +314,14 @@ async fn processor_fails_when_zip_contains_no_diagnostic_files() {
     // start, or process — all of which the handler maps to a 500 error response.
     let error_occurred = match Processor::try_new(receiver, exporter, identifiers).await {
         Err(_) => true,
-        Ok(processor) => {
-            match processor
-                .start()
+        Ok(processor) => match processor.start().await.map_err(|f| f.state.error.to_string()) {
+            Err(_) => true,
+            Ok(processing) => processing
+                .process()
                 .await
                 .map_err(|f| f.state.error.to_string())
-            {
-                Err(_) => true,
-                Ok(processing) => processing
-                    .process()
-                    .await
-                    .map_err(|f| f.state.error.to_string())
-                    .is_err(),
-            }
-        }
+                .is_err(),
+        },
     };
 
     assert!(
@@ -414,9 +371,7 @@ async fn service_link_endpoint_returns_diagnostic_when_wait_for_completion() {
     let body: serde_json::Value = response.json().await.expect("response should be JSON");
 
     assert!(
-        body["diagnostic_id"]
-            .as_str()
-            .is_some_and(|s| !s.is_empty()),
+        body["diagnostic_id"].as_str().is_some_and(|s| !s.is_empty()),
         "response should contain non-empty diagnostic_id, got: {body}"
     );
     assert!(

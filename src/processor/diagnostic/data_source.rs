@@ -73,11 +73,7 @@ pub trait DataSource {
         let name = Self::name();
         let aliases = Self::aliases();
         let (_, source_conf) = get_source(ctx.product, &name, &aliases)?;
-        Ok(source_conf
-            .extension
-            .as_deref()
-            .unwrap_or(".json")
-            .to_string())
+        Ok(source_conf.extension.as_deref().unwrap_or(".json").to_string())
     }
 
     fn candidate_source_file_paths(ctx: &SourceContext) -> Result<Vec<String>> {
@@ -106,10 +102,7 @@ pub fn source_product_key(product: &Product) -> Result<&'static str> {
         Product::Elasticsearch => Ok("elasticsearch"),
         Product::Kibana => Ok("kibana"),
         Product::Logstash => Ok("logstash"),
-        _ => Err(eyre!(
-            "sources.yml overrides are not supported for product {}",
-            product
-        )),
+        _ => Err(eyre!("sources.yml overrides are not supported for product {}", product)),
     }
 }
 
@@ -197,11 +190,7 @@ fn parse_sources_content(label: &str, content: &str) -> Result<HashMap<String, S
     serde_yaml::from_str(content).map_err(|e| eyre!("Failed to parse {}: {}", label, e))
 }
 
-fn validate_sources_product(
-    product: &str,
-    sources: &HashMap<String, Source>,
-    label: &str,
-) -> Result<()> {
+fn validate_sources_product(product: &str, sources: &HashMap<String, Source>, label: &str) -> Result<()> {
     let required = required_source_keys(product);
     let missing: Vec<&str> = required
         .iter()
@@ -228,13 +217,11 @@ fn load_embedded_sources(
 
     for product in ["elasticsearch", "kibana", "logstash"] {
         let (label, content) = if override_product == Some(product) {
-            let path =
-                override_path.ok_or_else(|| eyre!("Override path missing for {}", product))?;
+            let path = override_path.ok_or_else(|| eyre!("Override path missing for {}", product))?;
             (
                 format!("override sources file at {}", path),
-                std::fs::read_to_string(path).map_err(|e| {
-                    eyre!("Failed to read override sources file at {}: {}", path, e)
-                })?,
+                std::fs::read_to_string(path)
+                    .map_err(|e| eyre!("Failed to read override sources file at {}: {}", path, e))?,
             )
         } else {
             (
@@ -252,9 +239,7 @@ fn load_embedded_sources(
 }
 
 pub fn get_sources() -> &'static HashMap<&'static str, HashMap<String, Source>> {
-    SOURCES.get_or_init(|| {
-        load_embedded_sources(None, None).expect("Valid embedded sources.yml files")
-    })
+    SOURCES.get_or_init(|| load_embedded_sources(None, None).expect("Valid embedded sources.yml files"))
 }
 
 pub fn init_sources(product: &str, override_path: String) -> Result<()> {
@@ -282,10 +267,7 @@ pub fn get_source<'a>(
             return Ok((*alias, source));
         }
     }
-    Err(DataSourceError::MissingSource(
-        product.to_string(),
-        name.to_string(),
-    ))
+    Err(DataSourceError::MissingSource(product.to_string(), name.to_string()))
 }
 
 pub fn get_product_sources(product: &str) -> Option<&'static HashMap<String, Source>> {
@@ -408,14 +390,8 @@ mod tests {
 
         assert_eq!(alias.get_url(&v_0_9).unwrap(), "/_cat/aliases?v");
         assert_eq!(alias.get_url(&v_5_0).unwrap(), "/_cat/aliases?v");
-        assert_eq!(
-            alias.get_url(&v_5_1_1).unwrap(),
-            "/_cat/aliases?v&s=alias,index"
-        );
-        assert_eq!(
-            alias.get_url(&v_6_0).unwrap(),
-            "/_cat/aliases?v&s=alias,index"
-        );
+        assert_eq!(alias.get_url(&v_5_1_1).unwrap(), "/_cat/aliases?v&s=alias,index");
+        assert_eq!(alias.get_url(&v_6_0).unwrap(), "/_cat/aliases?v&s=alias,index");
     }
 
     #[test]
@@ -427,10 +403,7 @@ mod tests {
         let ilm = es_sources.get("ilm_explain").unwrap();
 
         let v_8 = Version::parse("8.0.0-SNAPSHOT").unwrap();
-        assert_eq!(
-            ilm.get_url(&v_8).unwrap(),
-            "/*/_ilm/explain?human&expand_wildcards=all"
-        );
+        assert_eq!(ilm.get_url(&v_8).unwrap(), "/*/_ilm/explain?human&expand_wildcards=all");
     }
 
     #[test]
@@ -464,9 +437,7 @@ mod tests {
         assert!(health.get_url(&v_8_15).is_err());
         assert_eq!(health.get_url(&v_8_16).unwrap(), "/_health_report");
 
-        let hot_threads_human = logstash_sources
-            .get("logstash_nodes_hot_threads_human")
-            .unwrap();
+        let hot_threads_human = logstash_sources.get("logstash_nodes_hot_threads_human").unwrap();
         assert_eq!(
             hot_threads_human.get_file_path("logstash_nodes_hot_threads_human"),
             "logstash_nodes_hot_threads_human.txt"
@@ -490,11 +461,9 @@ logstash_version:
         )
         .expect("write override");
 
-        let products = super::load_embedded_sources(
-            Some("logstash"),
-            Some(override_path.to_str().expect("override path")),
-        )
-        .expect("load sources");
+        let products =
+            super::load_embedded_sources(Some("logstash"), Some(override_path.to_str().expect("override path")))
+                .expect("load sources");
 
         let es_sources = products.get("elasticsearch").unwrap();
         let logstash_sources = products.get("logstash").unwrap();
@@ -539,9 +508,7 @@ version:
         let kibana_sources = sources.get("kibana").unwrap();
         let alerts = kibana_sources.get("kibana_alerts").unwrap();
 
-        let resolved = alerts
-            .resolve_version(&Version::parse("8.19.0").unwrap())
-            .unwrap();
+        let resolved = alerts.resolve_version(&Version::parse("8.19.0").unwrap()).unwrap();
 
         assert_eq!(resolved.url, "/api/alerts/_find");
         assert!(resolved.spaceaware);

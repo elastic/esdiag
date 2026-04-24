@@ -65,9 +65,7 @@ impl DataStream {
                         "reporting" => self.dataset = words[1].to_string(),
                         "elastic"
                             if words.len() > 3
-                                && (words[4] == "anonymization"
-                                    || words[4] == "knowledge"
-                                    || words[4] == "attack") =>
+                                && (words[4] == "anonymization" || words[4] == "knowledge" || words[4] == "attack") =>
                         {
                             self.dataset = words[1..6].join("-");
                             self.namespace = words[6..].join("-");

@@ -56,16 +56,9 @@ impl LogstashDiagnostic {
             .is_none_or(|selected| selected.contains(key))
     }
 
-    async fn process_datasource<T>(
-        &mut self,
-        summary_tx: mpsc::Sender<ProcessorSummary>,
-    ) -> Result<()>
+    async fn process_datasource<T>(&mut self, summary_tx: mpsc::Sender<ProcessorSummary>) -> Result<()>
     where
-        T: DataSource
-            + DocumentExporter<Lookups, LogstashMetadata>
-            + DeserializeOwned
-            + Send
-            + Sync,
+        T: DataSource + DocumentExporter<Lookups, LogstashMetadata> + DeserializeOwned + Send + Sync,
     {
         let data = self.receiver.get::<T>().await?;
         let summary = data
@@ -105,8 +98,7 @@ impl DiagnosticProcessor for LogstashDiagnostic {
                 receiver,
                 exporter,
                 metadata,
-                selected_processors: process_selection
-                    .map(|selection| selection.selected.into_iter().collect()),
+                selected_processors: process_selection.map(|selection| selection.selected.into_iter().collect()),
             }),
             report,
         ))
@@ -122,12 +114,10 @@ impl DiagnosticProcessor for LogstashDiagnostic {
             self.process_datasource::<Node>(summary_tx.clone()).await?;
         }
         if self.should_process("node_stats") {
-            self.process_datasource::<NodeStats>(summary_tx.clone())
-                .await?;
+            self.process_datasource::<NodeStats>(summary_tx.clone()).await?;
         }
         if self.should_process("plugins") {
-            self.process_datasource::<Plugins>(summary_tx.clone())
-                .await?;
+            self.process_datasource::<Plugins>(summary_tx.clone()).await?;
         }
         Ok(())
     }

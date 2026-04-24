@@ -24,11 +24,7 @@ pub struct KibanaCollector {
 }
 
 impl KibanaCollector {
-    pub async fn new(
-        receiver: Receiver,
-        exporter: ArchiveExporter,
-        options: CollectOptions,
-    ) -> Result<Self> {
+    pub async fn new(receiver: Receiver, exporter: ArchiveExporter, options: CollectOptions) -> Result<Self> {
         let timestamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
         let collection_name = options
             .identifiers
@@ -48,11 +44,8 @@ impl KibanaCollector {
     pub async fn collect(&self) -> Result<CollectionResult> {
         let collect_result: Result<CollectionResult> = async {
             let diag_type = DiagnosticType::from_str(&self.options.r#type)?;
-            let apis = ApiResolver::resolve_kb(
-                &diag_type,
-                self.options.include.as_ref(),
-                self.options.exclude.as_ref(),
-            )?;
+            let apis =
+                ApiResolver::resolve_kb(&diag_type, self.options.include.as_ref(), self.options.exclude.as_ref())?;
 
             let mut result = CollectionResult {
                 path: self.exporter.to_string(),
@@ -80,9 +73,7 @@ impl KibanaCollector {
             (Ok(result), Ok(())) => Ok(result),
             (Err(err), Ok(())) => Err(err),
             (Ok(_), Err(finalize_err)) => Err(finalize_err),
-            (Err(err), Err(finalize_err)) => {
-                Err(err).wrap_err(format!("Failed to finalize archive: {}", finalize_err))
-            }
+            (Err(err), Err(finalize_err)) => Err(err).wrap_err(format!("Failed to finalize archive: {}", finalize_err)),
         }
     }
 
@@ -97,11 +88,7 @@ impl KibanaCollector {
                 Ok(success) => return success,
                 Err(e) => {
                     if !should_retry_kibana_error(&e) {
-                        tracing::warn!(
-                            "Skipping non-retriable failure for {}: {}",
-                            api.as_str(),
-                            e
-                        );
+                        tracing::warn!("Skipping non-retriable failure for {}: {}", api.as_str(), e);
                         return 0;
                     }
                     if start_time.elapsed() > max_duration {
@@ -133,11 +120,7 @@ impl KibanaCollector {
             Receiver::Kibana(receiver) => receiver,
             _ => return Err(eyre!("KibanaCollector requires a Kibana receiver")),
         };
-        let source_conf = match crate::processor::diagnostic::data_source::get_source(
-            "kibana",
-            api.as_str(),
-            &[],
-        ) {
+        let source_conf = match crate::processor::diagnostic::data_source::get_source("kibana", api.as_str(), &[]) {
             Ok((_, conf)) => conf,
             Err(e) => {
                 tracing::debug!("Skipping {} collection: {}", api.as_str(), e);
@@ -149,12 +132,7 @@ impl KibanaCollector {
         let resolved = match source_conf.resolve_version(version) {
             Ok(resolved) => resolved,
             Err(e) => {
-                tracing::debug!(
-                    "Skipping {} collection on version {}: {}",
-                    api.as_str(),
-                    version,
-                    e
-                );
+                tracing::debug!("Skipping {} collection on version {}: {}", api.as_str(), version, e);
                 return Ok(0);
             }
         };
@@ -208,21 +186,13 @@ impl KibanaCollector {
 
         if let Some(paginate_field) = paginate_field {
             return self
-                .save_paginated_endpoint(
-                    receiver,
-                    &base_file_path,
-                    base_url,
-                    space,
-                    extension,
-                    paginate_field,
-                )
+                .save_paginated_endpoint(receiver, &base_file_path, base_url, space, extension, paginate_field)
                 .await;
         }
 
         let request_path = with_space_prefix(base_url, space);
         let content = receiver.get_raw_by_path(&request_path, extension).await?;
-        self.save_content(&base_file_path, content, space, None)
-            .await
+        self.save_content(&base_file_path, content, space, None).await
     }
 
     async fn save_paginated_endpoint(
@@ -241,20 +211,13 @@ impl KibanaCollector {
         let mut saved = 0;
 
         loop {
-            let request_path = with_pagination_query(
-                &with_space_prefix(base_url, space),
-                paginate_field,
-                page,
-                PAGE_SIZE,
-            );
+            let request_path =
+                with_pagination_query(&with_space_prefix(base_url, space), paginate_field, page, PAGE_SIZE);
             let content = receiver.get_raw_by_path(&request_path, extension).await?;
-            total_pages =
-                total_pages.max(parse_total_pages(&content, paginate_field, page).unwrap_or(page));
+            total_pages = total_pages.max(parse_total_pages(&content, paginate_field, page).unwrap_or(page));
 
             let page_scope = (total_pages > 1).then_some(page);
-            saved += self
-                .save_content(base_file_path, content, space, page_scope)
-                .await?;
+            saved += self.save_content(base_file_path, content, space, page_scope).await?;
 
             if page >= total_pages {
                 break;
@@ -293,8 +256,7 @@ impl KibanaCollector {
             _ => return Err(eyre!("Kibana manifest requires a Kibana receiver")),
         };
 
-        let collected_api_names: Vec<String> =
-            apis.iter().map(|api| api.as_str().to_string()).collect();
+        let collected_api_names: Vec<String> = apis.iter().map(|api| api.as_str().to_string()).collect();
         let manifest = DiagnosticManifest::new(
             chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
             Some(format!("esdiag-{}", env!("CARGO_PKG_VERSION"))),
@@ -325,12 +287,7 @@ fn with_space_prefix(path: &str, space: Option<&str>) -> String {
     }
 }
 
-fn with_pagination_query(
-    path: &str,
-    paginate_field: &str,
-    page: usize,
-    page_size: usize,
-) -> String {
+fn with_pagination_query(path: &str, paginate_field: &str, page: usize, page_size: usize) -> String {
     let mut request_path = path.to_string();
     let separator = if request_path.contains('?') { '&' } else { '?' };
     request_path.push(separator);

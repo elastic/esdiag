@@ -9,10 +9,24 @@ use std::time::Duration;
 use tokio::time::sleep;
 
 async fn start_server(mode: RuntimeMode) -> (Server, Client, String) {
-    let (server, bound_addr) =
-        Server::start([127, 0, 0, 1], 0, Exporter::default(), String::new(), mode)
-            .await
-            .expect("start local server");
+    let default_web_features = match mode {
+        RuntimeMode::User => Some("advanced"),
+        RuntimeMode::Service => Some(""),
+    };
+    start_server_with_features(mode, default_web_features).await
+}
+
+async fn start_server_with_features(mode: RuntimeMode, web_features: Option<&str>) -> (Server, Client, String) {
+    let (server, bound_addr) = Server::start_with_web_features(
+        [127, 0, 0, 1],
+        0,
+        Exporter::default(),
+        String::new(),
+        mode,
+        web_features,
+    )
+        .await
+        .expect("start local server");
 
     let client = Client::new();
     let base = format!("http://127.0.0.1:{}", bound_addr.port());
@@ -40,10 +54,7 @@ async fn service_mode_requires_iap_header_for_web_access() {
 
     let authorized = client
         .get(format!("{base}/"))
-        .header(
-            "X-Goog-Authenticated-User-Email",
-            "accounts.google.com:ops@example.com",
-        )
+        .header("X-Goog-Authenticated-User-Email", "accounts.google.com:ops@example.com")
         .send()
         .await
         .expect("service mode authorized request");
@@ -55,30 +66,121 @@ async fn service_mode_requires_iap_header_for_web_access() {
 }
 
 #[tokio::test]
-async fn service_mode_does_not_mount_workflow_or_jobs_routes() {
+async fn service_mode_does_not_mount_advanced_or_jobs_routes() {
     let (mut server, client, base) = start_server(RuntimeMode::Service).await;
 
-    let workflow_response = client
-        .get(format!("{base}/workflow"))
-        .header(
-            "X-Goog-Authenticated-User-Email",
-            "accounts.google.com:ops@example.com",
-        )
+    let advanced_response = client
+        .get(format!("{base}/advanced"))
+        .header("X-Goog-Authenticated-User-Email", "accounts.google.com:ops@example.com")
         .send()
         .await
-        .expect("service mode workflow request");
-    assert_eq!(workflow_response.status(), reqwest::StatusCode::NOT_FOUND);
+        .expect("service mode advanced request");
+    assert_eq!(advanced_response.status(), reqwest::StatusCode::NOT_FOUND);
 
     let jobs_response = client
         .get(format!("{base}/jobs"))
-        .header(
-            "X-Goog-Authenticated-User-Email",
-            "accounts.google.com:ops@example.com",
-        )
+        .header("X-Goog-Authenticated-User-Email", "accounts.google.com:ops@example.com")
         .send()
         .await
         .expect("service mode jobs request");
     assert_eq!(jobs_response.status(), reqwest::StatusCode::NOT_FOUND);
+
+    server.shutdown().await;
+}
+
+#[tokio::test]
+async fn user_mode_default_nav_exposes_advanced_not_job_builder() {
+    let (mut server, client, base) = start_server(RuntimeMode::User).await;
+
+    let response = client.get(format!("{base}/")).send().await.expect("user mode request");
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let body = response.text().await.expect("user mode body");
+
+    assert!(body.contains("<header-nav>"));
+    assert!(body.contains(">Process</a>"));
+    assert!(body.contains("href=\"/advanced\""));
+    assert!(body.contains(">Advanced</a>"));
+    assert!(!body.contains("href=\"/jobs\""));
+    assert!(!body.contains(">Job Builder</a>"));
+
+    let advanced = client.get(format!("{base}/advanced")).send().await.expect("advanced route");
+    assert_eq!(advanced.status(), reqwest::StatusCode::OK);
+
+    let workflow = client.get(format!("{base}/workflow")).send().await.expect("workflow route");
+    assert_eq!(workflow.status(), reqwest::StatusCode::NOT_FOUND);
+
+    let jobs = client.get(format!("{base}/jobs")).send().await.expect("jobs route");
+    assert_eq!(jobs.status(), reqwest::StatusCode::NOT_FOUND);
+
+    server.shutdown().await;
+}
+
+#[cfg(feature = "keystore")]
+#[tokio::test]
+async fn explicit_job_builder_feature_mounts_jobs_and_omits_advanced() {
+    let (mut server, client, base) = start_server_with_features(RuntimeMode::User, Some("job-builder")).await;
+
+    let response = client.get(format!("{base}/")).send().await.expect("user mode request");
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let body = response.text().await.expect("user mode body");
+
+    assert!(body.contains("<header-nav>"));
+    assert!(body.contains(">Process</a>"));
+    assert!(!body.contains("href=\"/advanced\""));
+    assert!(body.contains("href=\"/jobs\""));
+    assert!(body.contains(">Job Builder</a>"));
+
+    let advanced = client.get(format!("{base}/advanced")).send().await.expect("advanced route");
+    assert_eq!(advanced.status(), reqwest::StatusCode::NOT_FOUND);
+
+    let jobs = client.get(format!("{base}/jobs")).send().await.expect("jobs route");
+    assert_eq!(jobs.status(), reqwest::StatusCode::OK);
+
+    server.shutdown().await;
+}
+
+#[cfg(feature = "keystore")]
+#[tokio::test]
+async fn explicit_advanced_and_job_builder_features_mount_both_pages() {
+    let (mut server, client, base) =
+        start_server_with_features(RuntimeMode::User, Some("advanced,job-builder")).await;
+
+    let response = client.get(format!("{base}/")).send().await.expect("user mode request");
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let body = response.text().await.expect("user mode body");
+
+    assert!(body.contains("<header-nav>"));
+    assert!(body.contains(">Process</a>"));
+    assert!(body.contains("href=\"/advanced\""));
+    assert!(body.contains("href=\"/jobs\""));
+
+    let advanced = client.get(format!("{base}/advanced")).send().await.expect("advanced route");
+    assert_eq!(advanced.status(), reqwest::StatusCode::OK);
+
+    let jobs = client.get(format!("{base}/jobs")).send().await.expect("jobs route");
+    assert_eq!(jobs.status(), reqwest::StatusCode::OK);
+
+    server.shutdown().await;
+}
+
+#[tokio::test]
+async fn empty_web_features_omit_optional_nav_and_routes() {
+    let (mut server, client, base) = start_server_with_features(RuntimeMode::User, Some("")).await;
+
+    let response = client.get(format!("{base}/")).send().await.expect("user mode request");
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let body = response.text().await.expect("user mode body");
+
+    assert!(!body.contains("<header-nav>"));
+    assert!(!body.contains(">Process</a>"));
+    assert!(!body.contains("href=\"/advanced\""));
+    assert!(!body.contains("href=\"/jobs\""));
+
+    let advanced = client.get(format!("{base}/advanced")).send().await.expect("advanced route");
+    assert_eq!(advanced.status(), reqwest::StatusCode::NOT_FOUND);
+
+    let jobs = client.get(format!("{base}/jobs")).send().await.expect("jobs route");
+    assert_eq!(jobs.status(), reqwest::StatusCode::NOT_FOUND);
 
     server.shutdown().await;
 }
@@ -100,10 +202,7 @@ async fn service_mode_requires_iap_header_for_settings_update() {
         .post(format!("{base}/api/settings/update"))
         .body(r#"{"settings":{"kibana_url":"https://kibana.example"}}"#)
         .header("content-type", "application/json")
-        .header(
-            "X-Goog-Authenticated-User-Email",
-            "accounts.google.com:ops@example.com",
-        )
+        .header("X-Goog-Authenticated-User-Email", "accounts.google.com:ops@example.com")
         .send()
         .await
         .expect("service mode settings update with header");
@@ -126,10 +225,7 @@ async fn service_mode_does_not_mount_keystore_routes() {
 
     let response = client
         .post(format!("{base}/keystore/unlock"))
-        .header(
-            "X-Goog-Authenticated-User-Email",
-            "accounts.google.com:ops@example.com",
-        )
+        .header("X-Goog-Authenticated-User-Email", "accounts.google.com:ops@example.com")
         .form(&[("password", "pw")])
         .send()
         .await
@@ -138,10 +234,7 @@ async fn service_mode_does_not_mount_keystore_routes() {
 
     let response = client
         .get(format!("{base}/keystore/modal"))
-        .header(
-            "X-Goog-Authenticated-User-Email",
-            "accounts.google.com:ops@example.com",
-        )
+        .header("X-Goog-Authenticated-User-Email", "accounts.google.com:ops@example.com")
         .send()
         .await
         .expect("service mode keystore modal request");
@@ -192,11 +285,7 @@ async fn user_mode_does_not_mount_keystore_routes_when_feature_disabled() {
 async fn user_mode_allows_anonymous_web_access() {
     let (mut server, client, base) = start_server(RuntimeMode::User).await;
 
-    let response = client
-        .get(format!("{base}/"))
-        .send()
-        .await
-        .expect("user mode request");
+    let response = client.get(format!("{base}/")).send().await.expect("user mode request");
     assert_eq!(response.status(), reqwest::StatusCode::OK);
     let body = response.text().await.expect("user mode body");
     assert!(body.contains("Anonymous"));
@@ -211,7 +300,7 @@ async fn user_mode_workflow_shows_known_host_collect_and_local_save_defaults() {
     let (mut server, client, base) = start_server(RuntimeMode::User).await;
 
     let response = client
-        .get(format!("{base}/workflow"))
+        .get(format!("{base}/advanced"))
         .send()
         .await
         .expect("user mode request");
@@ -234,16 +323,16 @@ async fn user_mode_workflow_shows_known_host_collect_and_local_save_defaults() {
 }
 
 #[tokio::test]
-async fn workflow_page_shows_process_controls_and_forward_remote_input() {
+async fn advanced_page_shows_process_controls_and_forward_remote_input() {
     let (mut server, client, base) = start_server(RuntimeMode::User).await;
 
     let response = client
-        .get(format!("{base}/workflow"))
+        .get(format!("{base}/advanced"))
         .send()
         .await
-        .expect("workflow page");
+        .expect("advanced page");
     assert_eq!(response.status(), reqwest::StatusCode::OK);
-    let body = response.text().await.expect("workflow page body");
+    let body = response.text().await.expect("advanced page body");
 
     assert!(body.contains("id=\"process-product\""));
     assert!(body.contains("id=\"process-type\""));
@@ -260,21 +349,19 @@ async fn workflow_page_shows_process_controls_and_forward_remote_input() {
 }
 
 #[tokio::test]
-async fn workflow_page_embeds_send_target_disable_and_auto_save_rules() {
+async fn advanced_page_embeds_send_target_disable_and_auto_save_rules() {
     let (mut server, client, base) = start_server(RuntimeMode::User).await;
 
     let response = client
-        .get(format!("{base}/workflow"))
+        .get(format!("{base}/advanced"))
         .send()
         .await
-        .expect("workflow page");
+        .expect("advanced page");
     assert_eq!(response.status(), reqwest::StatusCode::OK);
-    let body = response.text().await.expect("workflow page body");
+    let body = response.text().await.expect("advanced page body");
 
     assert!(body.contains("data-bind:workflow.process.enabled"));
-    assert!(
-        body.contains("$workflow.process.mode = $workflow.process.enabled ? 'process' : 'forward'")
-    );
+    assert!(body.contains("$workflow.process.mode = $workflow.process.enabled ? 'process' : 'forward'"));
     assert!(body.contains("$workflow.send.mode = 'local'"));
     assert!(body.contains("Download the archive from&nbsp;<strong>Collect</strong>."));
     assert!(body.contains("$workflow.collect.source === 'known-host'"));
@@ -293,18 +380,20 @@ async fn user_mode_workflow_exposes_browser_download_binding_and_local_directory
     let (mut server, client, base) = start_server(RuntimeMode::User).await;
 
     let response = client
-        .get(format!("{base}/workflow"))
+        .get(format!("{base}/advanced"))
         .send()
         .await
-        .expect("workflow page");
+        .expect("advanced page");
     assert_eq!(response.status(), reqwest::StatusCode::OK);
-    let body = response.text().await.expect("workflow page body");
+    let body = response.text().await.expect("advanced page body");
 
     assert!(body.contains("data-signals:archive.download_token=\"''\""));
     assert!(body.contains("id=\"workflow-download-anchor\""));
     assert!(body.contains("data-on:change=\"if (evt.target.checked)"));
     assert!(body.contains("crypto.randomUUID()"));
-    assert!(body.contains("data-attr:href=\"$archive.download_token ? `/workflow/download/${$archive.download_token}` : null\""));
+    assert!(body.contains(
+        "data-attr:href=\"$archive.download_token ? `/advanced/download/${$archive.download_token}` : null\""
+    ));
     assert!(body.contains("/Downloads"));
 
     server.shutdown().await;

@@ -3,15 +3,19 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::{ServerState, get_theme_dark, template};
-use crate::data::{HostRole, KnownHost, Product, SavedJob, Settings, load_saved_jobs_async};
+use crate::data::{HostRole, KnownHost, Product, Settings};
+#[cfg(feature = "keystore")]
+use crate::data::{SavedJob, load_saved_jobs_async};
 use crate::exporter::Exporter;
 use crate::processor::api::ApiResolver;
 use askama::Template;
 use axum::{
     extract::{Query, State},
     http::{HeaderMap, StatusCode},
-    response::{Html, IntoResponse, Response},
+    response::{Html, IntoResponse},
 };
+#[cfg(feature = "keystore")]
+use axum::response::Response;
 use serde::{Deserialize, Deserializer, Serialize, de};
 use std::{path::PathBuf, str::FromStr, sync::Arc};
 
@@ -70,20 +74,13 @@ pub async fn handler(
             tracing::warn!("Authentication header validation failed: {err}");
             return (
                 StatusCode::UNAUTHORIZED,
-                Html(format!(
-                    "<html><body><h1>Unauthorized</h1><p>{}</p></body></html>",
-                    err
-                )),
+                Html(format!("<html><body><h1>Unauthorized</h1><p>{}</p></body></html>", err)),
             )
                 .into_response();
         }
     };
-    let user_initial = user_email
-        .chars()
-        .next()
-        .unwrap_or('_')
-        .to_ascii_uppercase();
-    let allows_local_runtime_features = state.runtime_mode_policy.allows_local_runtime_features();
+    let user_initial = user_email.chars().next().unwrap_or('_').to_ascii_uppercase();
+    let allows_local_runtime_features = state.server_policy.allows_local_runtime_features();
     let theme_dark = get_theme_dark(&headers);
     let kibana_url = { state.kibana_url.read().await.clone() };
     let output_secure = if allows_local_runtime_features {
@@ -94,21 +91,10 @@ pub async fn handler(
             .map(|(name, _)| name.clone())
             .collect();
         let exporter = state.exporter.read().await.clone();
-        let preferred_target = Settings::load()
-            .ok()
-            .and_then(|settings| settings.active_target);
-        let (_output_options, selected_output, _label) = template::build_footer_output_context(
-            &hosts_by_name,
-            &send_hosts,
-            &exporter,
-            preferred_target.as_deref(),
-        );
-        template::active_output_requires_keystore(
-            &hosts_by_name,
-            &send_hosts,
-            &selected_output,
-            &exporter,
-        )
+        let preferred_target = Settings::load().ok().and_then(|settings| settings.active_target);
+        let (_output_options, selected_output, _label) =
+            template::build_footer_output_context(&hosts_by_name, &send_hosts, &exporter, preferred_target.as_deref());
+        template::active_output_requires_keystore(&hosts_by_name, &send_hosts, &selected_output, &exporter)
     } else {
         false
     };
@@ -127,6 +113,8 @@ pub async fn handler(
         version: env!("CARGO_PKG_VERSION").to_string(),
         theme_dark,
         runtime_mode: state.runtime_mode.to_string(),
+        show_advanced: state.server_policy.allows_advanced(),
+        show_job_builder: state.server_policy.allows_job_builder(),
         can_use_keystore: keystore_state.can_use_keystore,
         output_secure,
         keystore_locked: keystore_state.locked,
@@ -136,16 +124,13 @@ pub async fn handler(
 
     let html = match page.render() {
         Ok(html) => html,
-        Err(err) => format!(
-            "<html><body><h1>Internal Server Error</h1><p>{}</p></body></html>",
-            err
-        ),
+        Err(err) => format!("<html><body><h1>Internal Server Error</h1><p>{}</p></body></html>", err),
     };
 
     Html(html).into_response()
 }
 
-pub async fn workflow_page(
+pub async fn advanced_page(
     State(state): State<Arc<ServerState>>,
     Query(params): Query<Params>,
     headers: HeaderMap,
@@ -156,31 +141,23 @@ pub async fn workflow_page(
             tracing::warn!("Authentication header validation failed: {err}");
             return (
                 StatusCode::UNAUTHORIZED,
-                Html(format!(
-                    "<html><body><h1>Unauthorized</h1><p>{}</p></body></html>",
-                    err
-                )),
+                Html(format!("<html><body><h1>Unauthorized</h1><p>{}</p></body></html>", err)),
             )
                 .into_response();
         }
     };
-    let user_initial = user_email
-        .chars()
-        .next()
-        .unwrap_or('_')
-        .to_ascii_uppercase();
+    let user_initial = user_email.chars().next().unwrap_or('_').to_ascii_uppercase();
 
     let exporter = { state.exporter.read().await.clone() };
     let send_defaults = classify_configured_exporter(&exporter);
     let workflow_hosts = workflow_host_options(&state);
     let default_save_dir = default_downloads_dir().display().to_string();
-    let process_options_json =
-        serde_json::to_string(&ApiResolver::processing_catalog().unwrap_or_default())
-            .unwrap_or_else(|_| "{}".to_string());
+    let process_options_json = serde_json::to_string(&ApiResolver::processing_catalog().unwrap_or_default())
+        .unwrap_or_else(|_| "{}".to_string());
     let theme_dark = get_theme_dark(&headers);
     let kibana_url = { state.kibana_url.read().await.clone() };
     let keystore_state = state.keystore_page_state().await;
-    let page = template::Workflow {
+    let page = template::Advanced {
         auth_header,
         debug: tracing::enabled!(tracing::Level::DEBUG),
         desktop: cfg!(feature = "desktop"),
@@ -208,6 +185,8 @@ pub async fn workflow_page(
         version: env!("CARGO_PKG_VERSION").to_string(),
         theme_dark,
         runtime_mode: state.runtime_mode.to_string(),
+        show_advanced: state.server_policy.allows_advanced(),
+        show_job_builder: state.server_policy.allows_job_builder(),
         can_use_keystore: keystore_state.can_use_keystore,
         keystore_locked: keystore_state.locked,
         keystore_lock_time: keystore_state.lock_time,
@@ -216,15 +195,13 @@ pub async fn workflow_page(
 
     let html = match page.render() {
         Ok(html) => html,
-        Err(err) => format!(
-            "<html><body><h1>Internal Server Error</h1><p>{}</p></body></html>",
-            err
-        ),
+        Err(err) => format!("<html><body><h1>Internal Server Error</h1><p>{}</p></body></html>", err),
     };
 
     Html(html).into_response()
 }
 
+#[cfg(feature = "keystore")]
 pub async fn jobs_page(
     State(state): State<Arc<ServerState>>,
     Query(params): Query<Params>,
@@ -233,16 +210,12 @@ pub async fn jobs_page(
     build_jobs_page(state, None, Some(params), headers).await
 }
 
-pub async fn jobs_page_with_saved_job(
-    state: Arc<ServerState>,
-    name: String,
-    headers: HeaderMap,
-) -> Response {
-    build_jobs_page(state, Some(name), None, headers)
-        .await
-        .into_response()
+#[cfg(feature = "keystore")]
+pub async fn jobs_page_with_saved_job(state: Arc<ServerState>, name: String, headers: HeaderMap) -> Response {
+    build_jobs_page(state, Some(name), None, headers).await.into_response()
 }
 
+#[cfg(feature = "keystore")]
 async fn build_jobs_page(
     state: Arc<ServerState>,
     saved_job_name: Option<String>,
@@ -255,27 +228,19 @@ async fn build_jobs_page(
             tracing::warn!("Authentication header validation failed: {err}");
             return (
                 StatusCode::UNAUTHORIZED,
-                Html(format!(
-                    "<html><body><h1>Unauthorized</h1><p>{}</p></body></html>",
-                    err
-                )),
+                Html(format!("<html><body><h1>Unauthorized</h1><p>{}</p></body></html>", err)),
             )
                 .into_response();
         }
     };
-    let user_initial = user_email
-        .chars()
-        .next()
-        .unwrap_or('_')
-        .to_ascii_uppercase();
+    let user_initial = user_email.chars().next().unwrap_or('_').to_ascii_uppercase();
 
     let exporter = { state.exporter.read().await.clone() };
     let send_defaults = classify_configured_exporter(&exporter);
     let workflow_hosts = workflow_host_options(&state);
     let default_save_dir = default_downloads_dir().display().to_string();
-    let process_options_json =
-        serde_json::to_string(&ApiResolver::processing_catalog().unwrap_or_default())
-            .unwrap_or_else(|_| "{}".to_string());
+    let process_options_json = serde_json::to_string(&ApiResolver::processing_catalog().unwrap_or_default())
+        .unwrap_or_else(|_| "{}".to_string());
     let theme_dark = get_theme_dark(&headers);
     let kibana_url = { state.kibana_url.read().await.clone() };
     let keystore_state = state.keystore_page_state().await;
@@ -307,10 +272,7 @@ async fn build_jobs_page(
     let message = if let Some(err) = job_load_error {
         err
     } else if job_not_found {
-        format!(
-            "Job '{}' not found",
-            saved_job_name.as_deref().unwrap_or("")
-        )
+        format!("Job '{}' not found", saved_job_name.as_deref().unwrap_or(""))
     } else if stale_host {
         format!(
             "Warning: host '{}' referenced by job '{}' is no longer configured",
@@ -346,6 +308,8 @@ async fn build_jobs_page(
         version: env!("CARGO_PKG_VERSION").to_string(),
         theme_dark,
         runtime_mode: state.runtime_mode.to_string(),
+        show_advanced: state.server_policy.allows_advanced(),
+        show_job_builder: state.server_policy.allows_job_builder(),
         can_use_keystore: keystore_state.can_use_keystore,
         keystore_locked: keystore_state.locked,
         keystore_lock_time: keystore_state.lock_time,
@@ -376,15 +340,13 @@ async fn build_jobs_page(
 
     let html = match page.render() {
         Ok(html) => html,
-        Err(err) => format!(
-            "<html><body><h1>Internal Server Error</h1><p>{}</p></body></html>",
-            err
-        ),
+        Err(err) => format!("<html><body><h1>Internal Server Error</h1><p>{}</p></body></html>", err),
     };
 
     Html(html).into_response()
 }
 
+#[cfg(feature = "keystore")]
 struct SavedJobDefaults {
     collect_mode: String,
     collect_source: String,
@@ -407,12 +369,9 @@ struct SavedJobDefaults {
     opportunity: String,
 }
 
+#[cfg(feature = "keystore")]
 impl SavedJobDefaults {
-    fn from_job(
-        job: Option<&SavedJob>,
-        send_defaults: &SendDefaults,
-        default_save_dir: &str,
-    ) -> Self {
+    fn from_job(job: Option<&SavedJob>, send_defaults: &SendDefaults, default_save_dir: &str) -> Self {
         if let Some(job) = job {
             Self {
                 collect_mode: serde_json::to_string(&job.workflow.collect.mode)
@@ -513,7 +472,7 @@ fn classify_configured_exporter(exporter: &Exporter) -> SendDefaults {
 }
 
 fn workflow_host_options(state: &Arc<ServerState>) -> WorkflowHostOptions {
-    if !state.runtime_mode_policy.allows_host_management() {
+    if !state.server_policy.allows_host_management() {
         return WorkflowHostOptions {
             collect_hosts: Vec::new(),
             collect_secure_hosts: Vec::new(),
@@ -645,16 +604,8 @@ mod tests {
         assert!(options.send_remote_hosts.contains(&"es-local".to_string()));
         assert_eq!(options.send_local_hosts, vec!["es-local".to_string()]);
         assert!(options.collect_hosts.contains(&"kb-collect".to_string()));
-        assert!(
-            !options
-                .send_remote_hosts
-                .contains(&"kb-collect".to_string())
-        );
+        assert!(!options.send_remote_hosts.contains(&"kb-collect".to_string()));
         assert!(!options.send_local_hosts.contains(&"kb-collect".to_string()));
-        assert!(
-            !options
-                .send_secure_hosts
-                .contains(&"kb-collect".to_string())
-        );
+        assert!(!options.send_secure_hosts.contains(&"kb-collect".to_string()));
     }
 }

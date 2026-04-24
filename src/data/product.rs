@@ -5,13 +5,14 @@
 use serde::{Deserialize, Deserializer, Serialize};
 use std::str::FromStr;
 
-#[derive(Debug, PartialEq, Hash, Clone, Eq, Serialize)]
+#[derive(Debug, Default, PartialEq, Hash, Clone, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Product {
     Agent,
     ECE,
     ECK,
     ElasticCloudHosted,
+    #[default]
     Elasticsearch,
     Kibana,
     KubernetesPlatform,
@@ -62,13 +63,6 @@ impl<'de> Deserialize<'de> for Product {
         let s: String = Deserialize::deserialize(deserializer)?;
 
         // Normalize the string to lowercase to match
-        Product::from_str(&s.to_lowercase())
-            .map_err(|e| serde::de::Error::custom(format!("Unknown product: {}", e)))
-    }
-}
-
-impl Default for Product {
-    fn default() -> Self {
-        Self::Elasticsearch
+        Product::from_str(&s.to_lowercase()).map_err(|e| serde::de::Error::custom(format!("Unknown product: {}", e)))
     }
 }

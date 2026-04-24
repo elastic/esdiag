@@ -23,18 +23,15 @@ impl LogstashClient {
 
         match auth {
             Auth::Basic(username, password) => {
-                let credentials = base64::engine::general_purpose::STANDARD
-                    .encode(format!("{}:{}", username, password));
+                let credentials =
+                    base64::engine::general_purpose::STANDARD.encode(format!("{}:{}", username, password));
                 headers.append(
                     reqwest::header::AUTHORIZATION,
                     format!("Basic {}", credentials).parse()?,
                 );
             }
             Auth::Apikey(apikey) => {
-                headers.append(
-                    reqwest::header::AUTHORIZATION,
-                    format!("ApiKey {}", apikey).parse()?,
-                );
+                headers.append(reqwest::header::AUTHORIZATION, format!("ApiKey {}", apikey).parse()?);
             }
             Auth::None => {}
         }
@@ -68,10 +65,7 @@ impl LogstashClient {
                     .query(&query)
                     .headers(headers)
             }
-            None => self
-                .client
-                .request(method, self.url.join(path)?)
-                .headers(headers),
+            None => self.client.request(method, self.url.join(path)?).headers(headers),
         };
 
         let response = match body {

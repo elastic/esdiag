@@ -31,14 +31,8 @@ fn run_esdiag(args: &[&str], home: &TempDir, extra_env: &[(&str, &str)]) -> Outp
     cmd.args(args)
         .env("HOME", home.path())
         .env("USERPROFILE", home.path())
-        .env(
-            "ESDIAG_HOSTS",
-            home.path().join(".esdiag").join("hosts.yml"),
-        )
-        .env(
-            "ESDIAG_KEYSTORE",
-            home.path().join(".esdiag").join("secrets.yml"),
-        )
+        .env("ESDIAG_HOSTS", home.path().join(".esdiag").join("hosts.yml"))
+        .env("ESDIAG_KEYSTORE", home.path().join(".esdiag").join("secrets.yml"))
         .env("LOG_LEVEL", "debug");
     for (key, value) in extra_env {
         cmd.env(key, value);
@@ -81,14 +75,8 @@ fn keystore_add_command_stores_secret_that_reads_back_with_values() {
         .expect("secret should exist");
     let raw_keystore = std::fs::read_to_string(&keystore_path).expect("read keystore");
 
-    assert_eq!(
-        secret.basic.as_ref().map(|b| b.username.as_str()),
-        Some("elastic")
-    );
-    assert_eq!(
-        secret.basic.as_ref().map(|b| b.password.as_str()),
-        Some("pass-1")
-    );
+    assert_eq!(secret.basic.as_ref().map(|b| b.username.as_str()), Some("elastic"));
+    assert_eq!(secret.basic.as_ref().map(|b| b.password.as_str()), Some("pass-1"));
     assert!(secret.apikey.is_none());
     assert!(!raw_keystore.contains("elastic"));
     assert!(!raw_keystore.contains("pass-1"));
@@ -121,21 +109,14 @@ fn keystore_migrate_command_scrubs_plaintext_hosts_and_preserves_reads() {
     );
     std::fs::write(&hosts_path, plaintext_hosts).expect("write plaintext hosts");
 
-    let migrate_output = run_esdiag(
-        &["keystore", "migrate"],
-        &home,
-        &[("ESDIAG_KEYSTORE_PASSWORD", "pw")],
-    );
+    let migrate_output = run_esdiag(&["keystore", "migrate"], &home, &[("ESDIAG_KEYSTORE_PASSWORD", "pw")]);
     assert_success(&migrate_output, "keystore migrate");
 
     let migrated_hosts = KnownHost::parse_hosts_yml().expect("read migrated hosts");
     let raw_hosts = std::fs::read_to_string(&hosts_path).expect("read hosts");
 
     let es_host = migrated_hosts.get("es-prod").expect("es host exists");
-    assert!(
-        es_host.legacy_apikey.is_none(),
-        "plaintext api key should be removed"
-    );
+    assert!(es_host.legacy_apikey.is_none(), "plaintext api key should be removed");
     assert_eq!(es_host.secret.as_deref(), Some("es-prod"));
 
     let kb_host = migrated_hosts.get("kb-prod").expect("kb host exists");
@@ -161,14 +142,8 @@ fn keystore_migrate_command_scrubs_plaintext_hosts_and_preserves_reads() {
     let kb_secret = get_secret("kb-prod", "pw")
         .expect("read kb secret")
         .expect("kb secret exists");
-    assert_eq!(
-        kb_secret.basic.as_ref().map(|b| b.username.as_str()),
-        Some("elastic")
-    );
-    assert_eq!(
-        kb_secret.basic.as_ref().map(|b| b.password.as_str()),
-        Some("pass-1")
-    );
+    assert_eq!(kb_secret.basic.as_ref().map(|b| b.username.as_str()), Some("elastic"));
+    assert_eq!(kb_secret.basic.as_ref().map(|b| b.password.as_str()), Some("pass-1"));
 
     let es_auth = migrated_hosts
         .get("es-prod")
@@ -273,10 +248,7 @@ fn keystore_update_updates_existing_secret_and_rejects_missing_secret() {
         secret.basic.as_ref().map(|basic| basic.password.as_str()),
         Some("pass-2")
     );
-    assert!(
-        secret.apikey.is_none(),
-        "update should replace previous auth type"
-    );
+    assert!(secret.apikey.is_none(), "update should replace previous auth type");
 }
 
 #[test]
@@ -298,14 +270,8 @@ fn keystore_unlock_status_and_lock_commands_manage_unlock_file() {
     let status_output = run_esdiag(&["keystore", "status"], &home, &[]);
     assert_success(&status_output, "keystore status while unlocked");
     let status = get_unlock_status().expect("unlock status while unlocked");
-    assert!(
-        status.unlock_active,
-        "status helper should report active unlock"
-    );
-    assert!(
-        status.expires_at_epoch.is_some(),
-        "status should include expiry"
-    );
+    assert!(status.unlock_active, "status helper should report active unlock");
+    assert!(status.expires_at_epoch.is_some(), "status should include expiry");
 
     let lock_output = run_esdiag(&["keystore", "lock"], &home, &[]);
     assert_success(&lock_output, "keystore lock");

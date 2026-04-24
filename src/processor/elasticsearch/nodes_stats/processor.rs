@@ -9,9 +9,7 @@ mod ingest_pipelines;
 mod transport_actions;
 
 use super::super::super::{Exporter, ProcessorSummary};
-use super::super::{
-    DocumentExporter, ElasticsearchMetadata, Lookups, SharedCacheStats, metadata::MetadataRawValue,
-};
+use super::super::{DocumentExporter, ElasticsearchMetadata, Lookups, SharedCacheStats, metadata::MetadataRawValue};
 use super::NodesStats;
 use crate::processor::StreamingDocumentExporter;
 use futures::stream::{BoxStream, StreamExt};
@@ -39,18 +37,12 @@ struct NodeProcessingContext<'a> {
     processors_tx: &'a mpsc::Sender<ingest_pipelines::IngestDoc>,
 }
 
-async fn process_node(
-    node_id: String,
-    mut node_stats: super::data::NodeStats,
-    ctx: &NodeProcessingContext<'_>,
-) {
+async fn process_node(node_id: String, mut node_stats: super::data::NodeStats, ctx: &NodeProcessingContext<'_>) {
     let lookup_node = &ctx.lookups.node;
     let lookup_shared_cache = &ctx.lookups.shared_cache;
 
     let node_metadata = lookup_node.by_id(&node_id);
-    let allocated_processors = node_metadata
-        .map(|node| node.os.allocated_processors)
-        .unwrap_or(1);
+    let allocated_processors = node_metadata.map(|node| node.os.allocated_processors).unwrap_or(1);
     node_stats.calculate_stats(allocated_processors);
     if let Some(node) = node_metadata {
         node_stats.enrich_from_lookup(node);
@@ -65,20 +57,11 @@ async fn process_node(
                 .unwrap_or(Value::Null);
             let mut extracted_actions = true;
             if !actions.is_null()
-                && let Err(e) = transport_actions::extract(
-                    ctx.actions_tx,
-                    actions,
-                    ctx.actions_metadata,
-                    node_metadata,
-                )
-                .await
+                && let Err(e) =
+                    transport_actions::extract(ctx.actions_tx, actions, ctx.actions_metadata, node_metadata).await
             {
                 extracted_actions = false;
-                tracing::error!(
-                    "Error extracting transport stats for node {}: {}",
-                    node_id,
-                    e
-                );
+                tracing::error!("Error extracting transport stats for node {}: {}", node_id, e);
             }
             if extracted_actions {
                 match serde_json::value::RawValue::from_string(transport_val.to_string()) {
@@ -109,13 +92,8 @@ async fn process_node(
         }
         let mut extracted_clients = true;
         if !clients.is_null()
-            && let Err(e) = http_clients::extract(
-                ctx.http_clients_tx,
-                clients,
-                ctx.http_clients_metadata,
-                node_metadata,
-            )
-            .await
+            && let Err(e) =
+                http_clients::extract(ctx.http_clients_tx, clients, ctx.http_clients_metadata, node_metadata).await
         {
             extracted_clients = false;
             tracing::error!("Error extracting HTTP clients stats: {}", e);
@@ -233,43 +211,31 @@ impl StreamingDocumentExporter<Lookups, ElasticsearchMetadata> for NodesStats {
 
         let (nodes_stats_tx, nodes_stats_rx) = mpsc::channel::<NodeStatsDoc>(BUFFER_SIZE);
         let node_stats_metadata = metadata.for_data_stream(&data_stream);
-        let nodes_stats_processor =
-            tokio::spawn(exporter.clone().document_channel::<NodeStatsDoc>(
-                nodes_stats_rx,
-                "metrics-node-esdiag".to_string(),
-                batch_size,
-            ));
+        let nodes_stats_processor = tokio::spawn(exporter.clone().document_channel::<NodeStatsDoc>(
+            nodes_stats_rx,
+            "metrics-node-esdiag".to_string(),
+            batch_size,
+        ));
 
-        let (actions_tx, actions_rx) =
-            mpsc::channel::<transport_actions::TransportActionDoc>(BUFFER_SIZE);
+        let (actions_tx, actions_rx) = mpsc::channel::<transport_actions::TransportActionDoc>(BUFFER_SIZE);
         let actions_data_stream = "metrics-node.transport.actions-esdiag".to_string();
         let actions_metadata = metadata.for_data_stream(&actions_data_stream);
         let actions_processor = tokio::spawn(
             exporter
                 .clone()
-                .document_channel::<transport_actions::TransportActionDoc>(
-                    actions_rx,
-                    actions_data_stream,
-                    batch_size,
-                ),
+                .document_channel::<transport_actions::TransportActionDoc>(actions_rx, actions_data_stream, batch_size),
         );
 
-        let (http_clients_tx, http_clients_rx) =
-            mpsc::channel::<http_clients::HttpClientDoc>(BUFFER_SIZE);
+        let (http_clients_tx, http_clients_rx) = mpsc::channel::<http_clients::HttpClientDoc>(BUFFER_SIZE);
         let http_clients_data_stream = "metrics-node.http.clients-esdiag".to_string();
         let http_clients_metadata = metadata.for_data_stream(&http_clients_data_stream);
-        let http_clients_processor = tokio::spawn(
-            exporter
-                .clone()
-                .document_channel::<http_clients::HttpClientDoc>(
-                    http_clients_rx,
-                    http_clients_data_stream,
-                    batch_size,
-                ),
-        );
+        let http_clients_processor = tokio::spawn(exporter.clone().document_channel::<http_clients::HttpClientDoc>(
+            http_clients_rx,
+            http_clients_data_stream,
+            batch_size,
+        ));
 
-        let (applier_tx, applier_rx) =
-            mpsc::channel::<cluster_applier_stats::ClusterApplierDoc>(BUFFER_SIZE);
+        let (applier_tx, applier_rx) = mpsc::channel::<cluster_applier_stats::ClusterApplierDoc>(BUFFER_SIZE);
         let applier_data_stream = "metrics-node.discovery.cluster_applier-esdiag".to_string();
         let applier_metadata = metadata.for_data_stream(&applier_data_stream);
         let applier_processor = tokio::spawn(
@@ -282,8 +248,7 @@ impl StreamingDocumentExporter<Lookups, ElasticsearchMetadata> for NodesStats {
                 ),
         );
 
-        let (adaptive_tx, adaptive_rx) =
-            mpsc::channel::<adaptive_selections::AdaptiveSelectionDoc>(BUFFER_SIZE);
+        let (adaptive_tx, adaptive_rx) = mpsc::channel::<adaptive_selections::AdaptiveSelectionDoc>(BUFFER_SIZE);
         let adaptive_data_stream = "metrics-node.discovery.cluster_adaptive-esdiag".to_string();
         let adaptive_metadata = metadata.for_data_stream(&adaptive_data_stream);
         let adaptive_processor = tokio::spawn(
@@ -296,8 +261,7 @@ impl StreamingDocumentExporter<Lookups, ElasticsearchMetadata> for NodesStats {
                 ),
         );
 
-        let (pipelines_tx, pipelines_rx) =
-            mpsc::channel::<ingest_pipelines::IngestPipelineDoc>(BUFFER_SIZE);
+        let (pipelines_tx, pipelines_rx) = mpsc::channel::<ingest_pipelines::IngestPipelineDoc>(BUFFER_SIZE);
         let pipelines_data_stream = "metrics-ingest.pipeline-esdiag".to_string();
         let pipelines_processor = tokio::spawn(
             exporter
@@ -309,18 +273,13 @@ impl StreamingDocumentExporter<Lookups, ElasticsearchMetadata> for NodesStats {
                 ),
         );
 
-        let (processors_tx, processors_rx) =
-            mpsc::channel::<ingest_pipelines::IngestDoc>(BUFFER_SIZE);
+        let (processors_tx, processors_rx) = mpsc::channel::<ingest_pipelines::IngestDoc>(BUFFER_SIZE);
         let processors_data_stream = "metrics-ingest.processors-esdiag".to_string();
-        let processors_processor = tokio::spawn(
-            exporter
-                .clone()
-                .document_channel::<ingest_pipelines::IngestDoc>(
-                    processors_rx,
-                    processors_data_stream,
-                    batch_size,
-                ),
-        );
+        let processors_processor = tokio::spawn(exporter.clone().document_channel::<ingest_pipelines::IngestDoc>(
+            processors_rx,
+            processors_data_stream,
+            batch_size,
+        ));
 
         while let Some(result) = stream.next().await {
             match result {

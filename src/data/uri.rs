@@ -56,8 +56,7 @@ impl Uri {
     /// - `ESDIAG_OUTPUT_PASSWORD` (optional): Password for authentication.
     pub fn try_from_output_env() -> Result<Self> {
         tracing::debug!("Creating URI from ESDIAG_OUTPUT_URL");
-        let url = std::env::var("ESDIAG_OUTPUT_URL")
-            .map_err(|_| eyre!("ESDIAG_OUTPUT_URL is not defined"))?;
+        let url = std::env::var("ESDIAG_OUTPUT_URL").map_err(|_| eyre!("ESDIAG_OUTPUT_URL is not defined"))?;
         tracing::debug!("output: Env {}", url);
         let (apikey, username, password) = try_get_auth_env()?;
         let host = KnownHostBuilder::new(Url::parse(&url)?)
@@ -75,8 +74,7 @@ impl Uri {
     /// - `ESDIAG_OUTPUT_PASSWORD` (optional): Password for authentication.
     pub fn try_from_kibana_env() -> Result<Self> {
         tracing::debug!("Creating URI from ESDIAG_KIBANA_URL");
-        let url = std::env::var("ESDIAG_KIBANA_URL")
-            .map_err(|_| eyre!("ESDIAG_KIBANA_URL is not defined"))?;
+        let url = std::env::var("ESDIAG_KIBANA_URL").map_err(|_| eyre!("ESDIAG_KIBANA_URL is not defined"))?;
         tracing::debug!("kibana: Env {}", url);
         let (apikey, username, password) = try_get_auth_env()?;
         let host = KnownHostBuilder::new(Url::parse(&url)?)
@@ -146,9 +144,7 @@ impl TryFrom<&str> for Uri {
 
         if let Ok(url) = Url::parse(uri) {
             if url.scheme() == "file" {
-                let path = url
-                    .to_file_path()
-                    .map_err(|_| eyre!("Invalid file URI: {uri}"))?;
+                let path = url.to_file_path().map_err(|_| eyre!("Invalid file URI: {uri}"))?;
                 if uri.ends_with('/') {
                     return Ok(Uri::Directory(path));
                 }

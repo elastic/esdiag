@@ -107,9 +107,7 @@ impl DiagnosticManifest {
     pub fn collection_date_in_millis(&self) -> u64 {
         if let Ok(date) = DateTime::parse_from_rfc3339(&self.collection_date) {
             date.timestamp_millis() as u64
-        } else if let Ok(date) =
-            DateTime::parse_from_str(&self.collection_date, "%Y-%m-%dT%H:%M:%S%.3f%z")
-        {
+        } else if let Ok(date) = DateTime::parse_from_str(&self.collection_date, "%Y-%m-%dT%H:%M:%S%.3f%z") {
             date.timestamp_millis() as u64
         } else {
             tracing::warn!("Failed to parse collection date: {}", &self.collection_date);

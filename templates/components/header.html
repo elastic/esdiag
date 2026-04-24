@@ -4,11 +4,15 @@
             <img id="logo" src="/esdiag.svg" alt="Elastic Stack Diagnostics Logo" />
             <h1>Elastic Stack Diagnostics</h1>
         </a>
-        {% if runtime_mode == "user" %}
+        {% if show_advanced || show_job_builder %}
         <header-nav>
-            <a href="/" data-attr:aria-selected="window.location.pathname == '/'">Home</a>
-            <a href="/workflow" data-attr:aria-selected="window.location.pathname == '/workflow'">Advanced</a>
+            <a href="/" data-attr:aria-selected="window.location.pathname == '/'">Process</a>
+            {% if show_advanced %}
+            <a href="/advanced" data-attr:aria-selected="window.location.pathname == '/advanced'">Advanced</a>
+            {% endif %}
+            {% if show_job_builder %}
             <a href="/jobs" data-attr:aria-selected="window.location.pathname == '/jobs'">Job Builder</a>
+            {% endif %}
         </header-nav>
         {% endif %}
     </div>

@@ -28,23 +28,19 @@ fn default_str(name: &str) -> Option<&str> {
 }
 
 pub fn get_int(name: &str) -> std::io::Result<usize> {
-    let env = std::env::var(name)
-        .ok()
-        .and_then(|s| s.parse::<usize>().ok());
+    let env = std::env::var(name).ok().and_then(|s| s.parse::<usize>().ok());
     let default = default_int(name);
 
-    env.or(default).ok_or_else(|| {
-        std::io::Error::new(std::io::ErrorKind::NotFound, format!("{} not found", name))
-    })
+    env.or(default)
+        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, format!("{} not found", name)))
 }
 
 pub fn get_string(name: &str) -> std::io::Result<String> {
     let env = std::env::var(name).ok();
     let default = default_str(name);
 
-    env.or(default.map(|s| s.to_string())).ok_or_else(|| {
-        std::io::Error::new(std::io::ErrorKind::NotFound, format!("{} not found", name))
-    })
+    env.or(default.map(|s| s.to_string()))
+        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, format!("{} not found", name)))
 }
 
 pub fn get_kibana_space() -> Option<String> {
@@ -65,25 +61,25 @@ pub fn append_kibana_space(kibana_url: &str) -> String {
     let kibana_url = kibana_url.trim_end_matches('/');
     match get_kibana_space() {
         Some(space) => {
-            if let Ok(mut url) = url::Url::parse(kibana_url) {
-                if let Some(existing_segments) = url.path_segments() {
-                    let mut segments = existing_segments
-                        .filter(|segment| !segment.is_empty())
-                        .map(str::to_string)
-                        .collect::<Vec<_>>();
-                    if segments.first().map(String::as_str) == Some("s") {
-                        if let Some(current_space) = segments.get_mut(1) {
-                            *current_space = space;
-                        } else {
-                            segments.push(space);
-                        }
+            if let Ok(mut url) = url::Url::parse(kibana_url)
+                && let Some(existing_segments) = url.path_segments()
+            {
+                let mut segments = existing_segments
+                    .filter(|segment| !segment.is_empty())
+                    .map(str::to_string)
+                    .collect::<Vec<_>>();
+                if segments.first().map(String::as_str) == Some("s") {
+                    if let Some(current_space) = segments.get_mut(1) {
+                        *current_space = space;
                     } else {
-                        segments.insert(0, space);
-                        segments.insert(0, "s".to_string());
+                        segments.push(space);
                     }
-                    url.set_path(&format!("/{}", segments.join("/")));
-                    return url.to_string();
+                } else {
+                    segments.insert(0, space);
+                    segments.insert(0, "s".to_string());
                 }
+                url.set_path(&format!("/{}", segments.join("/")));
+                return url.to_string();
             }
             format!("{kibana_url}/s/{space}")
         }

@@ -12,14 +12,8 @@ fn run_esdiag(args: &[&str], home: &TempDir, extra_env: &[(&str, &str)]) -> Outp
     cmd.args(args)
         .env("HOME", home.path())
         .env("USERPROFILE", home.path())
-        .env(
-            "ESDIAG_HOSTS",
-            home.path().join(".esdiag").join("hosts.yml"),
-        )
-        .env(
-            "ESDIAG_KEYSTORE",
-            home.path().join(".esdiag").join("secrets.yml"),
-        )
+        .env("ESDIAG_HOSTS", home.path().join(".esdiag").join("hosts.yml"))
+        .env("ESDIAG_KEYSTORE", home.path().join(".esdiag").join("secrets.yml"))
         .env("LOG_LEVEL", "debug");
 
     for (key, value) in extra_env {

@@ -55,8 +55,8 @@ pub use {
 };
 
 use super::{
-    DataSource, DiagnosticManifest, DiagnosticProcessor, DiagnosticReport, DocumentExporter,
-    Metadata, ProcessorSummary,
+    DataSource, DiagnosticManifest, DiagnosticProcessor, DiagnosticReport, DocumentExporter, Metadata,
+    ProcessorSummary,
     api::ProcessSelection,
     diagnostic::{DiagnosticReportBuilder, Lookup},
     elasticsearch::health_report::HealthReport,
@@ -107,10 +107,7 @@ impl ElasticsearchDiagnostic {
             .is_none_or(|selected| selected.contains(key))
     }
 
-    async fn process_cluster_settings(
-        &self,
-        summary_tx: mpsc::Sender<ProcessorSummary>,
-    ) -> Result<()> {
+    async fn process_cluster_settings(&self, summary_tx: mpsc::Sender<ProcessorSummary>) -> Result<()> {
         let summary = match self.receiver.get::<ClusterSettingsDefaults>().await {
             Ok(settings) => settings
                 .documents_export(&self.exporter, &self.lookups, &self.metadata)
@@ -146,11 +143,7 @@ impl ElasticsearchDiagnostic {
 
     async fn process_datasource<T>(&self, summary_tx: mpsc::Sender<ProcessorSummary>) -> Result<()>
     where
-        T: DataSource
-            + DocumentExporter<Lookups, ElasticsearchMetadata>
-            + DeserializeOwned
-            + Send
-            + Sync,
+        T: DataSource + DocumentExporter<Lookups, ElasticsearchMetadata> + DeserializeOwned + Send + Sync,
     {
         match self.receiver.get::<T>().await {
             Ok(data) => {
@@ -174,10 +167,7 @@ impl ElasticsearchDiagnostic {
         }
     }
 
-    async fn process_streaming_datasource<T>(
-        &self,
-        summary_tx: mpsc::Sender<ProcessorSummary>,
-    ) -> Result<()>
+    async fn process_streaming_datasource<T>(&self, summary_tx: mpsc::Sender<ProcessorSummary>) -> Result<()>
     where
         T: DataSource
             + StreamingDataSource
@@ -190,14 +180,9 @@ impl ElasticsearchDiagnostic {
     {
         match self.receiver.get_stream::<T>().await {
             Ok(stream) => {
-                let summary = T::documents_export_stream(
-                    stream,
-                    &self.exporter,
-                    &self.lookups,
-                    &self.metadata,
-                )
-                .await
-                .was_parsed();
+                let summary = T::documents_export_stream(stream, &self.exporter, &self.lookups, &self.metadata)
+                    .await
+                    .was_parsed();
                 summary_tx.send(summary).await.map_err(|err| {
                     tracing::error!("Failed to send summary: {}", err);
                     eyre!(err)
@@ -236,8 +221,7 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
             }
         };
         tracing::debug!("ElasticsearchDiagnostic::try_new resolved display name");
-        let metadata =
-            ElasticsearchMetadata::try_new(manifest, cluster.with_display_name(display_name))?;
+        let metadata = ElasticsearchMetadata::try_new(manifest, cluster.with_display_name(display_name))?;
         tracing::debug!("ElasticsearchDiagnostic::try_new built metadata");
 
         let mut report = DiagnosticReportBuilder::from(metadata.diagnostic.clone())
@@ -257,20 +241,13 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
             mapping_stats: match receiver.get_stream::<MappingStats>().await {
                 Ok(stream) => Lookup::<MappingSummary>::from_stream(stream).await,
                 Err(e) => {
-                    tracing::debug!(
-                        "Streaming mappings failed: {}, falling back to full load",
-                        e
-                    );
+                    tracing::debug!("Streaming mappings failed: {}, falling back to full load", e);
                     Lookup::from(receiver.get::<MappingStats>().await)
                 }
             },
         };
         tracing::debug!("ElasticsearchDiagnostic::try_new built lookups");
-        let license = receiver
-            .get::<Licenses>()
-            .await
-            .map(|licenses| licenses.license)
-            .ok();
+        let license = receiver.get::<Licenses>().await.map(|licenses| licenses.license).ok();
 
         report.add_license(license);
         report.add_lookup("alias", &lookups.alias);
@@ -287,8 +264,7 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
                 lookups,
                 metadata,
                 receiver,
-                selected_processors: process_selection
-                    .map(|selection| selection.selected.into_iter().collect()),
+                selected_processors: process_selection.map(|selection| selection.selected.into_iter().collect()),
             }),
             report,
         ))
@@ -329,37 +305,29 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
 
         // Future 3: Everything else
         let thread3 = async move {
-            if diag.should_process("cluster_settings")
-                || diag.should_process("cluster_settings_defaults")
-            {
+            if diag.should_process("cluster_settings") || diag.should_process("cluster_settings_defaults") {
                 diag.process_cluster_settings(summary_tx.clone()).await?;
             }
             if diag.should_process("health_report") {
-                diag.process_datasource::<HealthReport>(summary_tx.clone())
-                    .await?;
+                diag.process_datasource::<HealthReport>(summary_tx.clone()).await?;
             }
             if diag.should_process("ilm_policies") {
-                diag.process_datasource::<IlmPolicies>(summary_tx.clone())
-                    .await?;
+                diag.process_datasource::<IlmPolicies>(summary_tx.clone()).await?;
             }
             if diag.should_process("indices_settings") {
-                diag.process_datasource::<IndicesSettings>(summary_tx.clone())
-                    .await?;
+                diag.process_datasource::<IndicesSettings>(summary_tx.clone()).await?;
             }
             if diag.should_process("nodes") {
                 diag.process_datasource::<Nodes>(summary_tx.clone()).await?;
             }
             if diag.should_process("pending_tasks") {
-                diag.process_datasource::<PendingTasks>(summary_tx.clone())
-                    .await?;
+                diag.process_datasource::<PendingTasks>(summary_tx.clone()).await?;
             }
             if diag.should_process("slm_policies") {
-                diag.process_datasource::<SlmPolicies>(summary_tx.clone())
-                    .await?;
+                diag.process_datasource::<SlmPolicies>(summary_tx.clone()).await?;
             }
             if diag.should_process("repositories") {
-                diag.process_datasource::<Repositories>(summary_tx.clone())
-                    .await?;
+                diag.process_datasource::<Repositories>(summary_tx.clone()).await?;
             }
             if diag.should_process("snapshot") {
                 diag.process_streaming_datasource::<Snapshots>(summary_tx.clone())

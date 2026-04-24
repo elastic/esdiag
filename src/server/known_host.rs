@@ -3,8 +3,7 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::{
-    KnownHostFormSignals, ServerEvent, ServerState, job_feed_event, receiver_stream, signal_event,
-    template, workflow,
+    KnownHostFormSignals, ServerEvent, ServerState, job_feed_event, receiver_stream, signal_event, template, workflow,
 };
 use crate::{data::KnownHost, processor::new_job_id};
 use axum::{
@@ -106,12 +105,7 @@ pub(super) async fn run_known_host_form(
     if host.requires_keystore_secret() && keystore_password.is_none() {
         let error_message = saved_host_secret_error_message();
         state
-            .reject_retained_bundle(
-                &download_token,
-                &request_user,
-                error_message,
-                DOWNLOAD_REJECTION_TTL,
-            )
+            .reject_retained_bundle(&download_token, &request_user, error_message, DOWNLOAD_REJECTION_TTL)
             .await;
         state.record_failure().await;
         send_event(
@@ -140,8 +134,7 @@ pub(super) async fn run_known_host_form(
     {
         if let Some(password) = keystore_password {
             with_scoped_keystore_password(password, async move {
-                workflow::run_job(state, signals.into(), job_id, request_user, tx, job, false)
-                    .await;
+                workflow::run_job(state, signals.into(), job_id, request_user, tx, job, false).await;
             })
             .await;
         } else {

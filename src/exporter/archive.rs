@@ -23,9 +23,7 @@ impl ArchiveExporter {
             Self::Directory(exporter) => Ok(Self::Directory(
                 exporter.collection_directory(archive_name.to_string())?,
             )),
-            Self::Zip(exporter) => Ok(Self::Zip(
-                exporter.with_filename(format!("{archive_name}.zip"))?,
-            )),
+            Self::Zip(exporter) => Ok(Self::Zip(exporter.with_filename(format!("{archive_name}.zip"))?)),
         }
     }
 
@@ -116,9 +114,7 @@ impl ZipArchiveExporter {
         let entry = normalize_archive_path(path.as_path())?;
         let writer = Arc::clone(&self.writer);
         tokio::task::spawn_blocking(move || -> Result<()> {
-            let mut writer_guard = writer
-                .lock()
-                .map_err(|_| eyre!("Failed to acquire zip writer lock"))?;
+            let mut writer_guard = writer.lock().map_err(|_| eyre!("Failed to acquire zip writer lock"))?;
             let writer = writer_guard
                 .as_mut()
                 .ok_or_else(|| eyre!("Zip output is not initialized"))?;
@@ -192,10 +188,7 @@ fn normalize_archive_path(path: &Path) -> Result<String> {
                         ));
                     }
                     if part.ends_with(':') {
-                        return Err(eyre!(
-                            "Archive path cannot contain drive prefixes: {}",
-                            path.display()
-                        ));
+                        return Err(eyre!("Archive path cannot contain drive prefixes: {}", path.display()));
                     }
                     parts.push(part.to_string());
                 }
@@ -247,8 +240,7 @@ mod tests {
 
     #[test]
     fn normalize_archive_path_uses_forward_slashes() {
-        let normalized =
-            normalize_archive_path(Path::new(r"api\stats\nodes.json")).expect("normalize path");
+        let normalized = normalize_archive_path(Path::new(r"api\stats\nodes.json")).expect("normalize path");
         assert_eq!(normalized, "api/stats/nodes.json");
     }
 
@@ -260,8 +252,7 @@ mod tests {
 
     #[test]
     fn validate_relative_output_path_rejects_parent_components() {
-        let err =
-            validate_relative_output_path(Path::new("../api/stats.json")).expect_err("reject path");
+        let err = validate_relative_output_path(Path::new("../api/stats.json")).expect_err("reject path");
         assert!(err.to_string().contains("relative"));
     }
 
@@ -280,26 +271,20 @@ mod tests {
     #[tokio::test]
     async fn zip_archive_exporter_writes_entries() {
         let dir = tempdir().expect("temp dir");
-        let exporter =
-            ZipArchiveExporter::new(dir.path().to_path_buf()).expect("create zip exporter");
+        let exporter = ZipArchiveExporter::new(dir.path().to_path_buf()).expect("create zip exporter");
         let exporter = exporter
             .with_filename("diagnostic.zip".to_string())
             .expect("initialize filename");
 
         exporter
-            .save(
-                PathBuf::from("cluster/health.json"),
-                "{\"ok\":true}".to_string(),
-            )
+            .save(PathBuf::from("cluster/health.json"), "{\"ok\":true}".to_string())
             .await
             .expect("save entry");
         exporter.finalize().expect("finalize archive");
 
         let file = File::open(dir.path().join("diagnostic.zip")).expect("open archive");
         let mut archive = ZipArchive::new(file).expect("read archive");
-        let mut entry = archive
-            .by_name("cluster/health.json")
-            .expect("entry exists");
+        let mut entry = archive.by_name("cluster/health.json").expect("entry exists");
         let mut body = String::new();
         entry.read_to_string(&mut body).expect("read entry");
         assert_eq!(body, "{\"ok\":true}");

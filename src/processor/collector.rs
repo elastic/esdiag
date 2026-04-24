@@ -2,9 +2,7 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use super::{
-    elasticsearch::ElasticsearchCollector, kibana::KibanaCollector, logstash::LogstashCollector,
-};
+use super::{elasticsearch::ElasticsearchCollector, kibana::KibanaCollector, logstash::LogstashCollector};
 use crate::{data::Product, exporter::Exporter, processor::Identifiers, receiver::Receiver};
 use eyre::{Result, eyre};
 
@@ -42,13 +40,9 @@ impl Collector {
         };
 
         match (options.product.clone(), receiver) {
-            (
-                Product::Elasticsearch,
-                receiver @ (Receiver::Elasticsearch(_) | Receiver::ElasticCloudAdmin(_)),
-            ) => {
+            (Product::Elasticsearch, receiver @ (Receiver::Elasticsearch(_) | Receiver::ElasticCloudAdmin(_))) => {
                 let collect_exporter = exporter.into_collect_exporter()?;
-                let collector =
-                    ElasticsearchCollector::new(receiver, collect_exporter, options).await?;
+                let collector = ElasticsearchCollector::new(receiver, collect_exporter, options).await?;
                 Ok(Self::Elasticsearch(collector))
             }
             (Product::Logstash, receiver @ Receiver::Logstash(_)) => {
@@ -61,12 +55,8 @@ impl Collector {
                 let collector = KibanaCollector::new(receiver, collect_exporter, options).await?;
                 Ok(Self::Kibana(collector))
             }
-            (Product::Logstash, _) => Err(eyre!(
-                "Collect for Logstash requires a standard known-host endpoint"
-            )),
-            (Product::Kibana, _) => Err(eyre!(
-                "Collect for Kibana requires a standard known-host endpoint"
-            )),
+            (Product::Logstash, _) => Err(eyre!("Collect for Logstash requires a standard known-host endpoint")),
+            (Product::Kibana, _) => Err(eyre!("Collect for Kibana requires a standard known-host endpoint")),
             _ => Err(eyre!(
                 "Collect is only implemented for Elasticsearch, Kibana, and Logstash hosts"
             )),

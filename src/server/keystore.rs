@@ -1,11 +1,6 @@
-use super::{
-    ServerState, append_body_event, execute_script_event, html_event, now_epoch_seconds,
-    signal_event,
-};
+use super::{ServerState, append_body_event, execute_script_event, html_event, now_epoch_seconds, signal_event};
 use crate::data::{HostRole, KnownHost, Settings, authenticate, keystore_exists};
-use crate::server::template::{
-    self, KeystoreBootstrapModal, KeystoreProcessUnlockModal, KeystoreUnlockModal,
-};
+use crate::server::template::{self, KeystoreBootstrapModal, KeystoreProcessUnlockModal, KeystoreUnlockModal};
 use askama::Template;
 use axum::{
     extract::{Form, State},
@@ -86,8 +81,7 @@ impl ServerState {
     }
 
     pub(crate) fn can_use_keystore_session(&self) -> bool {
-        self.runtime_mode_policy.allows_local_runtime_features()
-            && !self.runtime_mode_policy.requires_iap_headers()
+        self.server_policy.allows_local_runtime_features() && !self.server_policy.requires_iap_headers()
     }
 
     pub async fn keystore_status(&self) -> (bool, i64) {
@@ -97,9 +91,7 @@ impl ServerState {
         let (locked, lock_time, transitioned_to_locked) = self.observe_keystore_lock_state();
         if transitioned_to_locked {
             tracing::info!("Keystore lease expired or was cleared externally");
-            self.publish_event(signal_event(Self::render_keystore_signal_payload(
-                locked, lock_time,
-            )));
+            self.publish_event(signal_event(Self::render_keystore_signal_payload(locked, lock_time)));
         }
         (locked, lock_time)
     }
@@ -117,14 +109,10 @@ impl ServerState {
 
     pub async fn set_keystore_unlocked(&self, password: String) {
         if !self.can_use_keystore_session() {
-            tracing::warn!(
-                "Ignoring keystore unlock because keystore is unavailable in this runtime mode"
-            );
+            tracing::warn!("Ignoring keystore unlock because keystore is unavailable in this runtime mode");
             return;
         }
-        if let Err(err) =
-            crate::data::write_unlock_lease(&password, crate::data::default_unlock_ttl())
-        {
+        if let Err(err) = crate::data::write_unlock_lease(&password, crate::data::default_unlock_ttl()) {
             tracing::error!("Failed to write keystore unlock lease: {}", err);
             return;
         }
@@ -164,8 +152,7 @@ impl ServerState {
             rate_limit.failed_attempts = rate_limit.failed_attempts.saturating_add(1);
             let block_seconds = rate_limit.current_backoff_seconds();
             if block_seconds > 0 {
-                rate_limit.blocked_until_epoch =
-                    Some(now_epoch_seconds() + block_seconds as i64);
+                rate_limit.blocked_until_epoch = Some(now_epoch_seconds() + block_seconds as i64);
             }
             rate_limit.blocked_until_epoch
         };
@@ -282,10 +269,7 @@ fn migration_needed() -> bool {
     match KnownHost::parse_hosts_yml() {
         Ok(hosts) => hosts.values().any(KnownHost::has_legacy_secret),
         Err(err) => {
-            tracing::warn!(
-                "Unable to inspect hosts.yml for plaintext secret migration: {}",
-                err
-            );
+            tracing::warn!("Unable to inspect hosts.yml for plaintext secret migration: {}", err);
             false
         }
     }
@@ -342,10 +326,7 @@ pub async fn get_bootstrap_modal(State(state): State<Arc<ServerState>>) -> Respo
     axum::http::StatusCode::NO_CONTENT.into_response()
 }
 
-pub async fn bootstrap(
-    State(state): State<Arc<ServerState>>,
-    Form(form): Form<KeystoreForm>,
-) -> Response {
+pub async fn bootstrap(State(state): State<Arc<ServerState>>, Form(form): Form<KeystoreForm>) -> Response {
     if keystore_exists().unwrap_or(false) {
         return axum::http::StatusCode::NO_CONTENT.into_response();
     }
@@ -363,9 +344,7 @@ pub async fn bootstrap(
         state.publish_event(signal_event(
             r#"{"message":"Keystore password must be at least 6 characters."}"#,
         ));
-        state.publish_event(signal_event(
-            r#"{"keystore":{"password":"","invalid":true}}"#,
-        ));
+        state.publish_event(signal_event(r#"{"keystore":{"password":"","invalid":true}}"#));
         return axum::http::StatusCode::BAD_REQUEST.into_response();
     }
 
@@ -400,10 +379,7 @@ pub async fn bootstrap(
     axum::http::StatusCode::NO_CONTENT.into_response()
 }
 
-pub async fn unlock(
-    State(state): State<Arc<ServerState>>,
-    Form(form): Form<KeystoreForm>,
-) -> Response {
+pub async fn unlock(State(state): State<Arc<ServerState>>, Form(form): Form<KeystoreForm>) -> Response {
     if !keystore_exists().unwrap_or(false) {
         return missing_keystore_response(&state).await;
     }
@@ -414,21 +390,15 @@ pub async fn unlock(
 
     let password = form.password.trim().to_string();
     if password.is_empty() {
-        state.publish_event(signal_event(
-            r#"{"message":"Keystore password is required."}"#,
-        ));
-        state.publish_event(signal_event(
-            r#"{"keystore":{"password":"","invalid":true}}"#,
-        ));
+        state.publish_event(signal_event(r#"{"message":"Keystore password is required."}"#));
+        state.publish_event(signal_event(r#"{"keystore":{"password":"","invalid":true}}"#));
         return axum::http::StatusCode::BAD_REQUEST.into_response();
     }
 
     match authenticate(&password) {
         Ok(_) => {
             state.set_keystore_unlocked(password).await;
-            state.publish_event(signal_event(
-                r#"{"keystore":{"password":"","invalid":false}}"#,
-            ));
+            state.publish_event(signal_event(r#"{"keystore":{"password":"","invalid":false}}"#));
             state.publish_event(execute_script_event(
                 "if (window.location.pathname === '/settings') { window.location.reload(); }",
             ));
@@ -442,12 +412,8 @@ pub async fn unlock(
         }
         Err(err) => {
             state.record_keystore_failed_attempt().await;
-            state.publish_event(signal_event(
-                r#"{"message":"Invalid keystore password. Try again."}"#,
-            ));
-            state.publish_event(signal_event(
-                r#"{"keystore":{"password":"","invalid":true}}"#,
-            ));
+            state.publish_event(signal_event(r#"{"message":"Invalid keystore password. Try again."}"#));
+            state.publish_event(signal_event(r#"{"keystore":{"password":"","invalid":true}}"#));
             tracing::warn!("Keystore unlock failed: {}", err);
             axum::http::StatusCode::UNAUTHORIZED.into_response()
         }
@@ -462,10 +428,8 @@ pub async fn lock(State(state): State<Arc<ServerState>>) -> impl IntoResponse {
     axum::http::StatusCode::NO_CONTENT
 }
 
-pub async fn ensure_unlocked_for_active_output(
-    state: &Arc<ServerState>,
-) -> Result<(), String> {
-    if !cfg!(feature = "keystore") || !state.runtime_mode_policy.allows_local_runtime_features() {
+pub async fn ensure_unlocked_for_active_output(state: &Arc<ServerState>) -> Result<(), String> {
+    if !cfg!(feature = "keystore") || !state.server_policy.allows_local_runtime_features() {
         // When the keystore is unavailable, the active exporter can still be valid if its
         // credentials were provided directly by the runtime environment instead of local
         // keystore-backed settings. In that mode there is nothing to unlock here.
@@ -479,22 +443,11 @@ pub async fn ensure_unlocked_for_active_output(
         .filter(|(_, h)| h.has_role(HostRole::Send))
         .map(|(name, _)| name.clone())
         .collect();
-    let preferred_target = Settings::load()
-        .ok()
-        .and_then(|settings| settings.active_target);
-    let (_output_options, selected_output, _exporter_label) = template::build_footer_output_context(
-        &hosts_by_name,
-        &send_hosts,
-        &exporter,
-        preferred_target.as_deref(),
-    );
+    let preferred_target = Settings::load().ok().and_then(|settings| settings.active_target);
+    let (_output_options, selected_output, _exporter_label) =
+        template::build_footer_output_context(&hosts_by_name, &send_hosts, &exporter, preferred_target.as_deref());
 
-    if !template::active_output_requires_keystore(
-        &hosts_by_name,
-        &send_hosts,
-        &selected_output,
-        &exporter,
-    ) {
+    if !template::active_output_requires_keystore(&hosts_by_name, &send_hosts, &selected_output, &exporter) {
         return Ok(());
     }
 
@@ -509,17 +462,15 @@ pub async fn ensure_unlocked_for_active_output(
 #[cfg(test)]
 #[allow(clippy::await_holding_lock)]
 mod tests {
-    use super::{
-        KeystoreForm, bootstrap, ensure_unlocked_for_active_output, get_process_unlock_modal,
-        get_unlock_modal, lock, unlock,
-    };
     use super::KeystoreRateLimit;
+    use super::{
+        KeystoreForm, bootstrap, ensure_unlocked_for_active_output, get_process_unlock_modal, get_unlock_modal, lock,
+        unlock,
+    };
     use crate::{
         data::{KnownHost, Settings, authenticate},
         exporter::Exporter,
-        server::{
-            RuntimeMode, RuntimeModePolicy, ServerEvent, ServerState, Stats, test_server_state,
-        },
+        server::{RuntimeMode, ServerPolicy, ServerEvent, ServerState, Stats, test_server_state},
     };
     use axum::{
         extract::{Form, State},
@@ -567,7 +518,7 @@ mod tests {
             workflow_jobs: Arc::new(RwLock::new(HashMap::new())),
             retained_bundles: Arc::new(RwLock::new(HashMap::new())),
             runtime_mode,
-            runtime_mode_policy: RuntimeModePolicy::new(runtime_mode),
+            server_policy: ServerPolicy::new(runtime_mode).expect("test server policy"),
             keystore_rate_limit: Arc::new(std::sync::Mutex::new(KeystoreRateLimit::default())),
             stats: Arc::new(RwLock::new(Stats::default())),
             shutdown: watch::channel(false).1,
@@ -618,10 +569,7 @@ mod tests {
         )
         .await;
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
-        assert!(
-            !state.keystore_status().await.0,
-            "repeat unlock should remain unlocked"
-        );
+        assert!(!state.keystore_status().await.0, "repeat unlock should remain unlocked");
     }
 
     #[tokio::test]
@@ -641,10 +589,7 @@ mod tests {
         .await;
 
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
-        assert!(
-            state.keystore_status().await.0,
-            "state should remain locked"
-        );
+        assert!(state.keystore_status().await.0, "state should remain locked");
     }
 
     #[tokio::test]
@@ -771,10 +716,7 @@ mod tests {
         let mut events = state.subscribe_events();
         let response = get_unlock_modal(State(state)).await;
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
-        assert!(
-            hosts_path.is_file(),
-            "hosts file should be created when inspected"
-        );
+        assert!(hosts_path.is_file(), "hosts file should be created when inspected");
 
         let event = events.recv().await.expect("bootstrap modal event");
         match event {
@@ -857,17 +799,11 @@ mod tests {
         assert!(keystore_path.is_file(), "keystore should be created");
 
         let unlock_path = crate::data::get_unlock_path().expect("unlock path");
-        assert!(
-            unlock_path.exists(),
-            "bootstrap should write unlock lease file"
-        );
+        assert!(unlock_path.exists(), "bootstrap should write unlock lease file");
 
         let migrated_hosts = KnownHost::parse_hosts_yml().expect("reload migrated hosts");
         let migrated = migrated_hosts.get("legacy-es").expect("migrated host");
-        assert!(
-            migrated.legacy_apikey.is_none(),
-            "plaintext apikey should be scrubbed"
-        );
+        assert!(migrated.legacy_apikey.is_none(), "plaintext apikey should be scrubbed");
         assert_eq!(migrated.secret.as_deref(), Some("legacy-es"));
     }
 
@@ -878,15 +814,11 @@ mod tests {
         let state = test_server_state();
         state.set_keystore_unlocked("pw".to_string()).await;
 
-        let response = lock(State(state.clone()))
-            .await
-            .into_response();
+        let response = lock(State(state.clone())).await.into_response();
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
         assert!(state.keystore_status().await.0, "lock should relock state");
 
-        let response = lock(State(state.clone()))
-            .await
-            .into_response();
+        let response = lock(State(state.clone())).await.into_response();
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
         assert!(state.keystore_status().await.0, "repeat lock stays locked");
     }
@@ -928,13 +860,11 @@ mod tests {
         let unlock_path = crate::data::get_unlock_path().expect("unlock path");
         assert!(unlock_path.exists(), "unlock file should be written on disk");
 
-        let lease =
-            crate::data::read_unlock_lease().expect("read lease").expect("lease should exist");
+        let lease = crate::data::read_unlock_lease()
+            .expect("read lease")
+            .expect("lease should exist");
         let now = chrono::Utc::now().timestamp();
-        assert!(
-            lease.expires_at_epoch > now,
-            "lease should expire in the future"
-        );
+        assert!(lease.expires_at_epoch > now, "lease should expire in the future");
     }
 
     #[tokio::test]
@@ -971,12 +901,9 @@ mod tests {
         settings.save().expect("save settings");
 
         let state = test_server_state();
-        *state.exporter.write().await =
-            crate::exporter::Exporter::try_from(noauth_host).expect("noauth exporter");
+        *state.exporter.write().await = crate::exporter::Exporter::try_from(noauth_host).expect("noauth exporter");
         assert!(
-            ensure_unlocked_for_active_output(&state)
-                .await
-                .is_ok(),
+            ensure_unlocked_for_active_output(&state).await.is_ok(),
             "NoAuth output should bypass keystore preflight"
         );
 
@@ -991,9 +918,7 @@ mod tests {
         ))
         .expect("secure exporter");
         assert!(
-            ensure_unlocked_for_active_output(&state)
-                .await
-                .is_err(),
+            ensure_unlocked_for_active_output(&state).await.is_err(),
             "secure output should require unlock"
         );
 
@@ -1016,16 +941,13 @@ mod tests {
         .expect("noauth exporter");
 
         assert!(
-            ensure_unlocked_for_active_output(&state)
-                .await
-                .is_ok(),
+            ensure_unlocked_for_active_output(&state).await.is_ok(),
             "service mode should allow non-secure outputs without keystore access"
         );
     }
 
     #[tokio::test]
-    async fn service_mode_secure_output_bypasses_unlock_and_does_not_touch_local_runtime_features()
-    {
+    async fn service_mode_secure_output_bypasses_unlock_and_does_not_touch_local_runtime_features() {
         let _guard = env_lock().lock().expect("env lock");
         let (tmp, hosts_path, _keystore_path) = setup_env();
         let settings_path = tmp.path().join(".esdiag").join("settings.yml");
@@ -1034,16 +956,15 @@ mod tests {
         }
 
         let state = test_service_state();
-        *state.exporter.write().await =
-            crate::exporter::Exporter::try_from(KnownHost::new_legacy_apikey(
-                crate::data::Product::Elasticsearch,
-                Url::parse("https://secure.example.com:9200").expect("url"),
-                vec![crate::data::HostRole::Send],
-                None,
-                false,
-                None,
-                Some("secret".to_string()),
-            ))
+        *state.exporter.write().await = crate::exporter::Exporter::try_from(KnownHost::new_legacy_apikey(
+            crate::data::Product::Elasticsearch,
+            Url::parse("https://secure.example.com:9200").expect("url"),
+            vec![crate::data::HostRole::Send],
+            None,
+            false,
+            None,
+            Some("secret".to_string()),
+        ))
         .expect("secure exporter");
 
         let result = ensure_unlocked_for_active_output(&state).await;

@@ -5,9 +5,7 @@
 use super::{
     DiagnosticProcessor, ProcessorSummary,
     api::ProcessSelection,
-    diagnostic::{
-        DiagnosticManifest, DiagnosticMetadata, DiagnosticReport, DiagnosticReportBuilder, Lookup,
-    },
+    diagnostic::{DiagnosticManifest, DiagnosticMetadata, DiagnosticReport, DiagnosticReportBuilder, Lookup},
 };
 use crate::{data::Product, exporter::Exporter, receiver::Receiver};
 use eyre::Result;
@@ -54,9 +52,7 @@ impl DiagnosticProcessor for ElasticCloudKubernetesDiagnostic {
 
     async fn process(self, _summary_tx: mpsc::Sender<ProcessorSummary>) -> Result<()> {
         self.receiver.is_connected().await;
-        tracing::warn!(
-            "Elastic Cloud Kubernetes diagnostics only process included Elasticsearch bundles"
-        );
+        tracing::warn!("Elastic Cloud Kubernetes diagnostics only process included Elasticsearch bundles");
         Ok(())
     }
 
@@ -65,11 +61,7 @@ impl DiagnosticProcessor for ElasticCloudKubernetesDiagnostic {
     }
 
     fn origin(&self) -> (String, String, String) {
-        (
-            "eck".to_string(),
-            "".to_string(),
-            "orchestration".to_string(),
-        )
+        ("eck".to_string(), "".to_string(), "orchestration".to_string())
     }
 }
 

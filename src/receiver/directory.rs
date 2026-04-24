@@ -41,10 +41,7 @@ impl TryFrom<PathBuf> for DirectoryReceiver {
             }
             false => {
                 tracing::debug!("Directory is invalid: {}", path.display());
-                Err(eyre!(
-                    "Directory input must be a directory: {}",
-                    path.display()
-                ))
+                Err(eyre!("Directory input must be a directory: {}", path.display()))
             }
         }
     }
@@ -93,10 +90,7 @@ impl Receive for DirectoryReceiver {
 
         match last_open_error {
             Some(e) => Err(e.into()),
-            None => Err(eyre!(
-                "No candidate source files available for {}",
-                T::name()
-            )),
+            None => Err(eyre!("No candidate source files available for {}", T::name())),
         }
     }
 
@@ -169,10 +163,7 @@ impl ReceiveRaw for DirectoryReceiver {
 
         match last_open_error {
             Some(e) => Err(e.into()),
-            None => Err(eyre!(
-                "No candidate source files available for {}",
-                T::name()
-            )),
+            None => Err(eyre!("No candidate source files available for {}", T::name())),
         }
     }
 }

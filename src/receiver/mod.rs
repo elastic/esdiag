@@ -17,8 +17,8 @@ mod logstash;
 /// Get file from https://upload.elastic.co/
 mod upload_service;
 
-pub use elasticsearch::{ElasticsearchReceiver, ElasticsearchRequestError};
 pub use elastic_cloud_admin::{ElasticCloudAdminReceiver, ElasticCloudAdminRequestError};
+pub use elasticsearch::{ElasticsearchReceiver, ElasticsearchRequestError};
 pub use kibana::{KibanaReceiver, KibanaRequestError};
 pub use logstash::{LogstashReceiver, LogstashRequestError};
 
@@ -47,9 +47,7 @@ pub trait Receive {
         Err(eyre!("Streaming is not supported for this receiver"))
     }
     async fn try_get_manifest(&self) -> Result<DiagnosticManifest> {
-        Err(eyre!(
-            "Manifest synthesis is not supported for this receiver"
-        ))
+        Err(eyre!("Manifest synthesis is not supported for this receiver"))
     }
 }
 
@@ -169,9 +167,7 @@ impl Receiver {
             Receiver::Elasticsearch(receiver) => receiver.get_raw_by_path(path, extension).await,
             Receiver::Kibana(receiver) => receiver.get_raw_by_path(path, extension).await,
             Receiver::Logstash(receiver) => receiver.get_raw_by_path(path, extension).await,
-            Receiver::ElasticCloudAdmin(receiver) => {
-                receiver.get_raw_by_path(path, extension).await
-            }
+            Receiver::ElasticCloudAdmin(receiver) => receiver.get_raw_by_path(path, extension).await,
             _ => Err(eyre!(
                 "Raw data by path is only supported for Elasticsearch, Elastic Cloud Admin, Kibana, or Logstash receivers"
             )),
@@ -263,10 +259,7 @@ impl Receiver {
                 self.set_source_product_from_manifest(&manifest.product)?;
                 Ok(manifest)
             }
-            Err(e) => Err(eyre!(
-                "Failed to identify product from diagnostic manifest: {}",
-                e
-            )),
+            Err(e) => Err(eyre!("Failed to identify product from diagnostic manifest: {}", e)),
         }
     }
 
@@ -285,8 +278,7 @@ impl Receiver {
     }
 
     fn set_source_product_from_manifest(&self, product: &Product) -> Result<()> {
-        let Ok(product) = crate::processor::diagnostic::data_source::source_product_key(product)
-        else {
+        let Ok(product) = crate::processor::diagnostic::data_source::source_product_key(product) else {
             return Ok(());
         };
 
@@ -312,21 +304,14 @@ impl TryFrom<Uri> for Receiver {
             }
             Uri::File(file) => Receiver::ArchiveFile(ArchiveFileReceiver::try_from(file)?),
             Uri::KnownHost(host) => match host.app() {
-                Product::Elasticsearch => {
-                    Receiver::Elasticsearch(ElasticsearchReceiver::try_from(host)?)
-                }
+                Product::Elasticsearch => Receiver::Elasticsearch(ElasticsearchReceiver::try_from(host)?),
                 Product::Logstash => Receiver::Logstash(LogstashReceiver::try_from(host)?),
                 Product::Kibana => Receiver::Kibana(KibanaReceiver::try_from(host)?),
                 _ => {
-                    return Err(eyre!(
-                        "Unsupported known-host receiver product: {}",
-                        host.app()
-                    ));
+                    return Err(eyre!("Unsupported known-host receiver product: {}", host.app()));
                 }
             },
-            Uri::ServiceLink(url) => {
-                Receiver::ArchiveBytes(UploadServiceDownloader::try_from(url)?.download()?)
-            }
+            Uri::ServiceLink(url) => Receiver::ArchiveBytes(UploadServiceDownloader::try_from(url)?.download()?),
             _ => return Err(eyre!("Unsupported URI: {uri}")),
         };
         Ok(receiver)
@@ -344,9 +329,7 @@ impl TryFrom<KnownHost> for Receiver {
 impl TryFrom<bytes::Bytes> for Receiver {
     type Error = eyre::Report;
     fn try_from(bytes: bytes::Bytes) -> std::result::Result<Self, Self::Error> {
-        Ok(Receiver::ArchiveBytes(ArchiveBytesReceiver::try_from(
-            bytes,
-        )?))
+        Ok(Receiver::ArchiveBytes(ArchiveBytesReceiver::try_from(bytes)?))
     }
 }
 

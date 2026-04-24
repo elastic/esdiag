@@ -7,10 +7,9 @@ use super::super::{
     collector::{CollectOptions, CollectionResult, default_collect_archive_name},
 };
 use super::{
-    AliasList, Cluster, ClusterSettings, DataSource, DataStreams, DiagnosticManifest, HealthReport,
-    IlmExplain, IlmPolicies, IndicesSettings, IndicesStats, Licenses, MappingStats, Nodes,
-    NodesStats, PendingTasks, Repositories, SearchableSnapshotsCacheStats,
-    SearchableSnapshotsStats, SlmPolicies, Snapshots, Tasks,
+    AliasList, Cluster, ClusterSettings, DataSource, DataStreams, DiagnosticManifest, HealthReport, IlmExplain,
+    IlmPolicies, IndicesSettings, IndicesStats, Licenses, MappingStats, Nodes, NodesStats, PendingTasks, Repositories,
+    SearchableSnapshotsCacheStats, SearchableSnapshotsStats, SlmPolicies, Snapshots, Tasks,
 };
 use crate::{
     data::Product,
@@ -32,11 +31,7 @@ pub struct ElasticsearchCollector {
 }
 
 impl ElasticsearchCollector {
-    pub async fn new(
-        receiver: Receiver,
-        exporter: ArchiveExporter,
-        options: CollectOptions,
-    ) -> Result<Self> {
+    pub async fn new(receiver: Receiver, exporter: ArchiveExporter, options: CollectOptions) -> Result<Self> {
         let timestamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
         let collection_name = options
             .identifiers
@@ -56,11 +51,8 @@ impl ElasticsearchCollector {
     pub async fn collect(&self) -> Result<CollectionResult> {
         let collect_result: Result<CollectionResult> = async {
             let diag_type = DiagnosticType::from_str(&self.options.r#type)?;
-            let apis = ApiResolver::resolve_es(
-                &diag_type,
-                self.options.include.as_ref(),
-                self.options.exclude.as_ref(),
-            )?;
+            let apis =
+                ApiResolver::resolve_es(&diag_type, self.options.include.as_ref(), self.options.exclude.as_ref())?;
 
             let api_names: Vec<&str> = apis.iter().map(|a| a.as_str()).collect();
             tracing::debug!("Resolved APIs for collection: {:?}", api_names);
@@ -108,9 +100,7 @@ impl ElasticsearchCollector {
             (Ok(result), Ok(())) => Ok(result),
             (Err(err), Ok(())) => Err(err),
             (Ok(_), Err(finalize_err)) => Err(finalize_err),
-            (Err(err), Err(finalize_err)) => {
-                Err(err).wrap_err(format!("Failed to finalize archive: {}", finalize_err))
-            }
+            (Err(err), Err(finalize_err)) => Err(err).wrap_err(format!("Failed to finalize archive: {}", finalize_err)),
         }
     }
 
@@ -125,11 +115,7 @@ impl ElasticsearchCollector {
                 Ok(success) => return success,
                 Err(e) => {
                     if !should_retry_elasticsearch_error(&e) {
-                        tracing::warn!(
-                            "Skipping non-retriable failure for {}: {}",
-                            api.as_str(),
-                            e
-                        );
+                        tracing::warn!("Skipping non-retriable failure for {}: {}", api.as_str(), e);
                         return 0;
                     }
                     if start_time.elapsed() > max_duration {
@@ -173,12 +159,8 @@ impl ElasticsearchCollector {
             ElasticsearchApi::NodesStats => self.save::<NodesStats>().await,
             ElasticsearchApi::PendingTasks => self.save::<PendingTasks>().await,
             ElasticsearchApi::Repositories => self.save::<Repositories>().await,
-            ElasticsearchApi::SearchableSnapshotsCacheStats => {
-                self.save::<SearchableSnapshotsCacheStats>().await
-            }
-            ElasticsearchApi::SearchableSnapshotsStats => {
-                self.save::<SearchableSnapshotsStats>().await
-            }
+            ElasticsearchApi::SearchableSnapshotsCacheStats => self.save::<SearchableSnapshotsCacheStats>().await,
+            ElasticsearchApi::SearchableSnapshotsStats => self.save::<SearchableSnapshotsStats>().await,
             ElasticsearchApi::Snapshots => self.save::<Snapshots>().await,
             ElasticsearchApi::SlmPolicies => self.save::<SlmPolicies>().await,
             ElasticsearchApi::Tasks => self.save::<Tasks>().await,
@@ -187,15 +169,13 @@ impl ElasticsearchCollector {
     }
 
     async fn save_raw(&self, name: &str) -> Result<usize> {
-        let source_conf =
-            match crate::processor::diagnostic::data_source::get_source("elasticsearch", name, &[])
-            {
-                Ok((_, conf)) => conf,
-                Err(e) => {
-                    tracing::debug!("Skipping {} collection: {}", name, e);
-                    return Ok(0);
-                }
-            };
+        let source_conf = match crate::processor::diagnostic::data_source::get_source("elasticsearch", name, &[]) {
+            Ok((_, conf)) => conf,
+            Err(e) => {
+                tracing::debug!("Skipping {} collection: {}", name, e);
+                return Ok(0);
+            }
+        };
 
         let version = match &self.receiver {
             Receiver::Elasticsearch(r) => match r.get_version().await {
@@ -254,9 +234,7 @@ impl ElasticsearchCollector {
         let content = match self.receiver.get_raw::<T>().await {
             Ok(c) => c,
             Err(e) => {
-                if let Some(ds_err) =
-                    e.downcast_ref::<crate::processor::diagnostic::data_source::DataSourceError>()
-                {
+                if let Some(ds_err) = e.downcast_ref::<crate::processor::diagnostic::data_source::DataSourceError>() {
                     tracing::debug!("Skipping {} collection: {}", T::name(), ds_err);
                     return Ok(0);
                 }
@@ -280,8 +258,7 @@ impl ElasticsearchCollector {
 
     async fn save_diagnostic_manifest(&self, apis: &[ElasticsearchApi]) -> Result<usize> {
         let cluster = self.receiver.get::<Cluster>().await?;
-        let collected_api_names: Vec<String> =
-            apis.iter().map(|a| a.as_str().to_string()).collect();
+        let collected_api_names: Vec<String> = apis.iter().map(|a| a.as_str().to_string()).collect();
 
         let manifest = DiagnosticManifest::new(
             chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
