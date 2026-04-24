@@ -25,10 +25,20 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+#[cfg(not(debug_assertions))]
 const KDF_ROUNDS: u32 = 100_000;
+#[cfg(debug_assertions)]
+const KDF_ROUNDS: u32 = 1_000;
+#[cfg(not(debug_assertions))]
+const MIN_KDF_ROUNDS: u32 = 100_000;
+#[cfg(debug_assertions)]
+const MIN_KDF_ROUNDS: u32 = 1_000;
+const MAX_KDF_ROUNDS: u32 = 1_000_000;
+const KDF_ALGORITHM: &str = "pbkdf2-sha256";
 const KEY_SIZE: usize = 32;
 const SALT_SIZE: usize = 16;
 const NONCE_SIZE: usize = 12;
+const ENCRYPTED_ENVELOPE_VERSION: u8 = 2;
 const KEYSTORE_FILE: &str = "secrets.yml";
 const UNLOCK_FILE: &str = "keystore.unlock";
 const DEFAULT_UNLOCK_TTL_SECS: u64 = 24 * 60 * 60;
@@ -119,6 +129,8 @@ impl Default for KeystoreData {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct EncryptedKeystore {
     version: u8,
+    #[serde(default)]
+    kdf: KdfParams,
     salt: String,
     nonce: String,
     ciphertext: String,
@@ -134,9 +146,45 @@ struct UnlockLeaseData {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct EncryptedUnlockLease {
     version: u8,
+    #[serde(default)]
+    kdf: KdfParams,
     salt: String,
     nonce: String,
     ciphertext: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct KdfParams {
+    #[serde(default = "default_kdf_algorithm")]
+    algorithm: String,
+    #[serde(default = "default_kdf_rounds")]
+    rounds: u32,
+}
+
+impl KdfParams {
+    fn current() -> Self {
+        Self {
+            algorithm: KDF_ALGORITHM.to_string(),
+            rounds: KDF_ROUNDS,
+        }
+    }
+}
+
+impl Default for KdfParams {
+    fn default() -> Self {
+        Self {
+            algorithm: KDF_ALGORITHM.to_string(),
+            rounds: KDF_ROUNDS,
+        }
+    }
+}
+
+fn default_kdf_algorithm() -> String {
+    KDF_ALGORITHM.to_string()
+}
+
+fn default_kdf_rounds() -> u32 {
+    KDF_ROUNDS
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -338,23 +386,50 @@ fn unlock_context_material() -> Result<String> {
     ))
 }
 
-fn derive_context_key(context: &str, salt: &[u8]) -> [u8; KEY_SIZE] {
+fn validate_kdf_params(params: &KdfParams) -> Result<()> {
+    if params.algorithm != KDF_ALGORITHM {
+        return Err(eyre!("Unsupported KDF algorithm '{}'", params.algorithm));
+    }
+    if params.rounds == 0 {
+        return Err(eyre!("KDF rounds must be greater than zero"));
+    }
+    if params.rounds < MIN_KDF_ROUNDS {
+        return Err(eyre!(
+            "KDF rounds {} are below the minimum readable value {}",
+            params.rounds,
+            MIN_KDF_ROUNDS
+        ));
+    }
+    if params.rounds > MAX_KDF_ROUNDS {
+        return Err(eyre!(
+            "KDF rounds {} exceed the maximum supported value {}",
+            params.rounds,
+            MAX_KDF_ROUNDS
+        ));
+    }
+    Ok(())
+}
+
+fn derive_context_key(context: &str, salt: &[u8], params: &KdfParams) -> Result<[u8; KEY_SIZE]> {
+    validate_kdf_params(params)?;
     let mut key = [0_u8; KEY_SIZE];
-    pbkdf2_hmac::<Sha256>(context.as_bytes(), salt, KDF_ROUNDS, &mut key);
-    key
+    pbkdf2_hmac::<Sha256>(context.as_bytes(), salt, params.rounds, &mut key);
+    Ok(key)
 }
 
 fn encrypt_unlock_lease(data: &UnlockLeaseData) -> Result<EncryptedUnlockLease> {
     let salt = rand::random::<[u8; SALT_SIZE]>();
     let nonce = rand::random::<[u8; NONCE_SIZE]>();
-    let key = derive_context_key(&unlock_context_material()?, &salt);
+    let kdf = KdfParams::current();
+    let key = derive_context_key(&unlock_context_material()?, &salt, &kdf)?;
     let plaintext = serde_yaml::to_string(data)?;
     let cipher = Aes256GcmSiv::new_from_slice(&key)?;
     let ciphertext = cipher
         .encrypt(Nonce::from_slice(&nonce), plaintext.as_bytes())
         .map_err(|_| eyre!("Failed to encrypt unlock lease"))?;
     Ok(EncryptedUnlockLease {
-        version: 1,
+        version: ENCRYPTED_ENVELOPE_VERSION,
+        kdf,
         salt: base64::engine::general_purpose::STANDARD.encode(salt),
         nonce: base64::engine::general_purpose::STANDARD.encode(nonce),
         ciphertext: base64::engine::general_purpose::STANDARD.encode(ciphertext),
@@ -362,7 +437,7 @@ fn encrypt_unlock_lease(data: &UnlockLeaseData) -> Result<EncryptedUnlockLease> 
 }
 
 fn decrypt_unlock_lease(encrypted: EncryptedUnlockLease) -> Result<UnlockLeaseData> {
-    if encrypted.version != 1 {
+    if !matches!(encrypted.version, 1 | ENCRYPTED_ENVELOPE_VERSION) {
         return Err(eyre!("Unsupported unlock lease version {}", encrypted.version));
     }
     let salt = base64::engine::general_purpose::STANDARD.decode(encrypted.salt)?;
@@ -382,7 +457,7 @@ fn decrypt_unlock_lease(encrypted: EncryptedUnlockLease) -> Result<UnlockLeaseDa
             NONCE_SIZE
         ));
     }
-    let key = derive_context_key(&unlock_context_material()?, &salt);
+    let key = derive_context_key(&unlock_context_material()?, &salt, &encrypted.kdf)?;
     let cipher = Aes256GcmSiv::new_from_slice(&key)?;
     let plaintext = cipher
         .decrypt(Nonce::from_slice(&nonce), ciphertext.as_ref())
@@ -786,6 +861,11 @@ pub fn list_secret_names(keystore_password: &str) -> Result<Vec<String>> {
     Ok(names)
 }
 
+pub(crate) fn list_secret_entries(keystore_password: &str) -> Result<Vec<(String, SecretEntry)>> {
+    let store = read_store(keystore_password)?;
+    Ok(store.secrets.into_iter().collect())
+}
+
 pub fn keystore_exists() -> Result<bool> {
     Ok(get_keystore_path()?.is_file())
 }
@@ -799,7 +879,7 @@ fn read_store(keystore_password: &str) -> Result<KeystoreData> {
     let file = File::open(path)?;
     let reader = BufReader::new(file);
     let encrypted: EncryptedKeystore = serde_yaml::from_reader(reader)?;
-    if encrypted.version != 1 {
+    if !matches!(encrypted.version, 1 | ENCRYPTED_ENVELOPE_VERSION) {
         return Err(eyre!("Unsupported keystore version {}", encrypted.version));
     }
 
@@ -821,7 +901,7 @@ fn read_store(keystore_password: &str) -> Result<KeystoreData> {
         ));
     }
 
-    let key = derive_key(keystore_password, &salt);
+    let key = derive_key(keystore_password, &salt, &encrypted.kdf)?;
     let cipher = Aes256GcmSiv::new_from_slice(&key)?;
     let plaintext = cipher
         .decrypt(Nonce::from_slice(&nonce), ciphertext.as_ref())
@@ -832,7 +912,8 @@ fn read_store(keystore_password: &str) -> Result<KeystoreData> {
 fn write_store(store: &KeystoreData, keystore_password: &str) -> Result<()> {
     let salt = rand::random::<[u8; SALT_SIZE]>();
     let nonce = rand::random::<[u8; NONCE_SIZE]>();
-    let key = derive_key(keystore_password, &salt);
+    let kdf = KdfParams::current();
+    let key = derive_key(keystore_password, &salt, &kdf)?;
     let plaintext = serde_yaml::to_string(store)?;
 
     let cipher = Aes256GcmSiv::new_from_slice(&key)?;
@@ -841,7 +922,8 @@ fn write_store(store: &KeystoreData, keystore_password: &str) -> Result<()> {
         .map_err(|_| eyre!("Failed to encrypt keystore"))?;
 
     let envelope = EncryptedKeystore {
-        version: 1,
+        version: ENCRYPTED_ENVELOPE_VERSION,
+        kdf,
         salt: base64::engine::general_purpose::STANDARD.encode(salt),
         nonce: base64::engine::general_purpose::STANDARD.encode(nonce),
         ciphertext: base64::engine::general_purpose::STANDARD.encode(ciphertext),
@@ -852,10 +934,11 @@ fn write_store(store: &KeystoreData, keystore_password: &str) -> Result<()> {
     Ok(())
 }
 
-fn derive_key(password: &str, salt: &[u8]) -> [u8; KEY_SIZE] {
+fn derive_key(password: &str, salt: &[u8], params: &KdfParams) -> Result<[u8; KEY_SIZE]> {
+    validate_kdf_params(params)?;
     let mut key = [0_u8; KEY_SIZE];
-    pbkdf2_hmac::<Sha256>(password.as_bytes(), salt, KDF_ROUNDS, &mut key);
-    key
+    pbkdf2_hmac::<Sha256>(password.as_bytes(), salt, params.rounds, &mut key);
+    Ok(key)
 }
 
 #[cfg(test)]
@@ -1066,6 +1149,58 @@ mod tests {
 
         let status = get_unlock_status().expect("unlock status");
         assert_eq!(status.expires_at_epoch, Some(i64::MAX));
+    }
+
+    #[test]
+    fn encrypted_envelopes_persist_current_kdf_params() {
+        let _guard = test_env_lock().lock().expect("env lock");
+        let (_tmp, keystore_path, unlock_path) = setup_env();
+
+        create_keystore("pw").expect("create keystore");
+        write_unlock_lease("pw", Duration::from_secs(300)).expect("write unlock lease");
+
+        let keystore_file = File::open(keystore_path).expect("open keystore");
+        let keystore: EncryptedKeystore =
+            serde_yaml::from_reader(BufReader::new(keystore_file)).expect("keystore envelope");
+        assert_eq!(keystore.version, ENCRYPTED_ENVELOPE_VERSION);
+        assert_eq!(keystore.kdf, KdfParams::current());
+
+        let unlock_file = File::open(unlock_path).expect("open unlock lease");
+        let unlock: EncryptedUnlockLease =
+            serde_yaml::from_reader(BufReader::new(unlock_file)).expect("unlock envelope");
+        assert_eq!(unlock.version, ENCRYPTED_ENVELOPE_VERSION);
+        assert_eq!(unlock.kdf, KdfParams::current());
+    }
+
+    #[test]
+    fn encrypted_envelopes_default_missing_kdf_to_current_rounds() {
+        let keystore: EncryptedKeystore = serde_yaml::from_str(
+            r#"
+version: 1
+salt: ""
+nonce: ""
+ciphertext: ""
+"#,
+        )
+        .expect("keystore envelope with defaulted KDF params");
+
+        assert_eq!(keystore.kdf.algorithm, KDF_ALGORITHM);
+        assert_eq!(keystore.kdf.rounds, KDF_ROUNDS);
+    }
+
+    #[test]
+    fn kdf_params_reject_unsupported_round_counts() {
+        let too_low = KdfParams {
+            algorithm: KDF_ALGORITHM.to_string(),
+            rounds: MIN_KDF_ROUNDS - 1,
+        };
+        assert!(validate_kdf_params(&too_low).is_err());
+
+        let too_high = KdfParams {
+            algorithm: KDF_ALGORITHM.to_string(),
+            rounds: MAX_KDF_ROUNDS + 1,
+        };
+        assert!(validate_kdf_params(&too_high).is_err());
     }
 
     #[test]
