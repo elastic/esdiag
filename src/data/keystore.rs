@@ -29,6 +29,11 @@ use std::{
 const KDF_ROUNDS: u32 = 100_000;
 #[cfg(debug_assertions)]
 const KDF_ROUNDS: u32 = 1_000;
+#[cfg(not(debug_assertions))]
+const MIN_KDF_ROUNDS: u32 = 100_000;
+#[cfg(debug_assertions)]
+const MIN_KDF_ROUNDS: u32 = 1_000;
+const MAX_KDF_ROUNDS: u32 = 1_000_000;
 const LEGACY_KDF_ROUNDS: u32 = 100_000;
 const KDF_ALGORITHM: &str = "pbkdf2-sha256";
 const KEY_SIZE: usize = 32;
@@ -399,6 +404,20 @@ fn validate_kdf_params(params: &KdfParams) -> Result<()> {
     }
     if params.rounds == 0 {
         return Err(eyre!("KDF rounds must be greater than zero"));
+    }
+    if params.rounds < MIN_KDF_ROUNDS {
+        return Err(eyre!(
+            "KDF rounds {} are below the minimum supported value {}",
+            params.rounds,
+            MIN_KDF_ROUNDS
+        ));
+    }
+    if params.rounds > MAX_KDF_ROUNDS {
+        return Err(eyre!(
+            "KDF rounds {} exceed the maximum supported value {}",
+            params.rounds,
+            MAX_KDF_ROUNDS
+        ));
     }
     Ok(())
 }
@@ -1235,6 +1254,21 @@ ciphertext: ""
 
         assert_eq!(keystore.kdf.algorithm, KDF_ALGORITHM);
         assert_eq!(keystore.kdf.rounds, LEGACY_KDF_ROUNDS);
+    }
+
+    #[test]
+    fn kdf_params_reject_unsupported_round_counts() {
+        let too_low = KdfParams {
+            algorithm: KDF_ALGORITHM.to_string(),
+            rounds: MIN_KDF_ROUNDS - 1,
+        };
+        assert!(validate_kdf_params(&too_low).is_err());
+
+        let too_high = KdfParams {
+            algorithm: KDF_ALGORITHM.to_string(),
+            rounds: MAX_KDF_ROUNDS + 1,
+        };
+        assert!(validate_kdf_params(&too_high).is_err());
     }
 
     #[test]
