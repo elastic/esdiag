@@ -31,6 +31,8 @@ pub struct DocsTemplate {
     pub stats: String,
     pub theme_dark: bool,
     pub runtime_mode: String,
+    pub show_advanced: bool,
+    pub show_job_builder: bool,
     pub can_use_keystore: bool,
     pub keystore_locked: bool,
     pub keystore_lock_time: i64,
@@ -170,6 +172,8 @@ pub async fn handler(
                     version: env!("CARGO_PKG_VERSION").to_string(),
                     theme_dark: crate::server::get_theme_dark(&headers),
                     runtime_mode: state.runtime_mode.to_string(),
+                    show_advanced: state.server_policy.allows_advanced(),
+                    show_job_builder: state.server_policy.allows_job_builder(),
                     can_use_keystore: keystore_state.can_use_keystore,
                     keystore_locked: keystore_state.locked,
                     keystore_lock_time: keystore_state.lock_time,
@@ -392,7 +396,7 @@ fn inject_heading_ids(html: &str) -> String {
 #[allow(clippy::await_holding_lock)]
 mod tests {
     use super::handler_index;
-    use crate::server::{RuntimeMode, RuntimeModePolicy, test_server_state};
+    use crate::server::{RuntimeMode, ServerPolicy, test_server_state};
     use axum::{
         extract::State,
         http::{HeaderMap, HeaderValue, StatusCode},
@@ -427,7 +431,7 @@ mod tests {
         let mut state = test_server_state();
         let state_mut = Arc::get_mut(&mut state).expect("unique state");
         state_mut.runtime_mode = RuntimeMode::Service;
-        state_mut.runtime_mode_policy = RuntimeModePolicy::new(RuntimeMode::Service);
+        state_mut.server_policy = ServerPolicy::new(RuntimeMode::Service).expect("test server policy");
 
         let mut headers = HeaderMap::new();
         headers.insert(

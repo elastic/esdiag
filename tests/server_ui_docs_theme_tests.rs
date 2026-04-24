@@ -121,7 +121,7 @@ async fn index_embeds_processing_option_catalog() {
     let (mut server, client, base) = start_server().await;
 
     let response = client
-        .get(format!("{base}/workflow"))
+        .get(format!("{base}/advanced"))
         .send()
         .await
         .expect("workflow response");

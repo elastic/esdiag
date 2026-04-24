@@ -21,7 +21,7 @@ use uuid::Uuid;
 
 pub async fn submit(State(state): State<Arc<ServerState>>, mut multipart: Multipart) -> impl IntoResponse {
     let job_id = new_job_id();
-    let can_use_keystore = cfg!(feature = "keystore") && state.runtime_mode_policy.allows_local_runtime_features();
+    let can_use_keystore = cfg!(feature = "keystore") && state.server_policy.allows_local_runtime_features();
 
     // Process the multipart form
     if let Ok(Some(field)) = multipart.next_field().await {

@@ -14,8 +14,8 @@ use serde::Deserialize;
 use std::sync::Arc;
 
 pub async fn get_modal(State(state): State<Arc<ServerState>>) -> impl IntoResponse {
-    let can_update_exporter = state.runtime_mode_policy.allows_exporter_updates();
-    let allows_local_runtime_features = state.runtime_mode_policy.allows_local_runtime_features();
+    let can_update_exporter = state.server_policy.allows_exporter_updates();
+    let allows_local_runtime_features = state.server_policy.allows_local_runtime_features();
     let settings = if allows_local_runtime_features {
         Settings::load().unwrap_or_default()
     } else {
@@ -76,14 +76,14 @@ pub async fn update_settings(
 ) -> Response {
     match state.resolve_user_email(&headers) {
         Ok(_) => {}
-        Err(err) if state.runtime_mode_policy.requires_iap_headers() => {
+        Err(err) if state.server_policy.requires_iap_headers() => {
             tracing::warn!("Settings update denied: {}", err);
             return StatusCode::UNAUTHORIZED.into_response();
         }
         Err(_) => {}
     }
 
-    if !state.runtime_mode_policy.allows_local_runtime_features() {
+    if !state.server_policy.allows_local_runtime_features() {
         let form = signals.settings;
         if let Some(kibana) = form.kibana_url {
             *state.kibana_url.write().await = kibana;
@@ -140,7 +140,7 @@ pub async fn update_settings(
     let mut validated_exporter = None;
 
     // 3. Validate and update the active Exporter in ServerState (user mode only)
-    if state.runtime_mode_policy.allows_exporter_updates() {
+    if state.server_policy.allows_exporter_updates() {
         #[cfg(feature = "keystore")]
         let keystore_password = state.keystore_password().await;
         #[cfg(not(feature = "keystore"))]
@@ -321,7 +321,7 @@ mod tests {
     use crate::{
         data::{HostRole, KnownHost, Product, Settings, Uri, authenticate},
         exporter::Exporter,
-        server::{RuntimeMode, RuntimeModePolicy, ServerEvent, SettingsUpdateSignals, test_server_state},
+        server::{RuntimeMode, ServerPolicy, ServerEvent, SettingsUpdateSignals, test_server_state},
     };
     use axum::{
         extract::State,
@@ -540,7 +540,7 @@ mod tests {
         let mut state = test_server_state();
         let state_mut = Arc::get_mut(&mut state).expect("unique state");
         state_mut.runtime_mode = RuntimeMode::Service;
-        state_mut.runtime_mode_policy = RuntimeModePolicy::new(RuntimeMode::Service);
+        state_mut.server_policy = ServerPolicy::new(RuntimeMode::Service).expect("test server policy");
         let mut events = state.subscribe_events();
 
         let response = get_modal(State(state)).await.into_response();
@@ -565,7 +565,7 @@ mod tests {
         let mut state = test_server_state();
         let state_mut = Arc::get_mut(&mut state).expect("unique state");
         state_mut.runtime_mode = RuntimeMode::Service;
-        state_mut.runtime_mode_policy = RuntimeModePolicy::new(RuntimeMode::Service);
+        state_mut.server_policy = ServerPolicy::new(RuntimeMode::Service).expect("test server policy");
 
         let mut signals = SettingsUpdateSignals::default();
         signals.settings.kibana_url = Some("https://kibana.example".to_string());
@@ -583,7 +583,7 @@ mod tests {
         let mut state = test_server_state();
         let state_mut = Arc::get_mut(&mut state).expect("unique state");
         state_mut.runtime_mode = RuntimeMode::Service;
-        state_mut.runtime_mode_policy = RuntimeModePolicy::new(RuntimeMode::Service);
+        state_mut.server_policy = ServerPolicy::new(RuntimeMode::Service).expect("test server policy");
 
         let mut headers = HeaderMap::new();
         headers.insert(

@@ -76,7 +76,7 @@ pub async fn handler(
         }
     };
     let user_initial = user_email.chars().next().unwrap_or('_').to_ascii_uppercase();
-    let allows_local_runtime_features = state.runtime_mode_policy.allows_local_runtime_features();
+    let allows_local_runtime_features = state.server_policy.allows_local_runtime_features();
     let theme_dark = get_theme_dark(&headers);
     let kibana_url = { state.kibana_url.read().await.clone() };
     let output_secure = if allows_local_runtime_features {
@@ -109,6 +109,8 @@ pub async fn handler(
         version: env!("CARGO_PKG_VERSION").to_string(),
         theme_dark,
         runtime_mode: state.runtime_mode.to_string(),
+        show_advanced: state.server_policy.allows_advanced(),
+        show_job_builder: state.server_policy.allows_job_builder(),
         can_use_keystore: keystore_state.can_use_keystore,
         output_secure,
         keystore_locked: keystore_state.locked,
@@ -124,7 +126,7 @@ pub async fn handler(
     Html(html).into_response()
 }
 
-pub async fn workflow_page(
+pub async fn advanced_page(
     State(state): State<Arc<ServerState>>,
     Query(params): Query<Params>,
     headers: HeaderMap,
@@ -151,7 +153,7 @@ pub async fn workflow_page(
     let theme_dark = get_theme_dark(&headers);
     let kibana_url = { state.kibana_url.read().await.clone() };
     let keystore_state = state.keystore_page_state().await;
-    let page = template::Workflow {
+    let page = template::Advanced {
         auth_header,
         debug: tracing::enabled!(tracing::Level::DEBUG),
         desktop: cfg!(feature = "desktop"),
@@ -179,6 +181,8 @@ pub async fn workflow_page(
         version: env!("CARGO_PKG_VERSION").to_string(),
         theme_dark,
         runtime_mode: state.runtime_mode.to_string(),
+        show_advanced: state.server_policy.allows_advanced(),
+        show_job_builder: state.server_policy.allows_job_builder(),
         can_use_keystore: keystore_state.can_use_keystore,
         keystore_locked: keystore_state.locked,
         keystore_lock_time: keystore_state.lock_time,
@@ -297,6 +301,8 @@ async fn build_jobs_page(
         version: env!("CARGO_PKG_VERSION").to_string(),
         theme_dark,
         runtime_mode: state.runtime_mode.to_string(),
+        show_advanced: state.server_policy.allows_advanced(),
+        show_job_builder: state.server_policy.allows_job_builder(),
         can_use_keystore: keystore_state.can_use_keystore,
         keystore_locked: keystore_state.locked,
         keystore_lock_time: keystore_state.lock_time,
@@ -457,7 +463,7 @@ fn classify_configured_exporter(exporter: &Exporter) -> SendDefaults {
 }
 
 fn workflow_host_options(state: &Arc<ServerState>) -> WorkflowHostOptions {
-    if !state.runtime_mode_policy.allows_host_management() {
+    if !state.server_policy.allows_host_management() {
         return WorkflowHostOptions {
             collect_hosts: Vec::new(),
             collect_secure_hosts: Vec::new(),

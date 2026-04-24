@@ -70,7 +70,7 @@ src/
 - `src/exporter/`: Output adapters that write processed data to Elasticsearch, files, directories, archives, or stdout.
 - `src/processor/`: Diagnostic collection and transformation pipeline that turns raw inputs into normalized reports and exported documents.
 - `src/receiver/`: Input adapters that read diagnostics from local archives, directories, remote services, and upload links.
-- `src/server/`: Axum-based HTTP server and web UI runtime for uploads, settings, docs, workflow pages, and related browser-facing features.
+- `src/server/`: Axum-based HTTP server and web UI runtime for uploads, settings, docs, Advanced page, and related browser-facing features.
 
 ### Root Files
 

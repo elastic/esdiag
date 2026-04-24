@@ -34,6 +34,8 @@ pub struct Index {
     pub version: String,
     pub theme_dark: bool,
     pub runtime_mode: String,
+    pub show_advanced: bool,
+    pub show_job_builder: bool,
     pub can_use_keystore: bool,
     pub output_secure: bool,
     pub keystore_locked: bool,
@@ -42,8 +44,8 @@ pub struct Index {
 }
 
 #[derive(Template)]
-#[template(path = "workflow.html")]
-pub struct Workflow {
+#[template(path = "advanced.html")]
+pub struct Advanced {
     pub auth_header: bool,
     pub debug: bool,
     pub desktop: bool,
@@ -69,6 +71,8 @@ pub struct Workflow {
     pub version: String,
     pub theme_dark: bool,
     pub runtime_mode: String,
+    pub show_advanced: bool,
+    pub show_job_builder: bool,
     pub can_use_keystore: bool,
     pub keystore_locked: bool,
     pub keystore_lock_time: i64,
@@ -100,6 +104,8 @@ pub struct Jobs {
     pub version: String,
     pub theme_dark: bool,
     pub runtime_mode: String,
+    pub show_advanced: bool,
+    pub show_job_builder: bool,
     pub can_use_keystore: bool,
     pub keystore_locked: bool,
     pub keystore_lock_time: i64,
@@ -257,6 +263,8 @@ pub struct HostsPage {
     pub version: String,
     pub theme_dark: bool,
     pub runtime_mode: String,
+    pub show_advanced: bool,
+    pub show_job_builder: bool,
     pub can_use_keystore: bool,
     pub keystore_locked: bool,
     pub keystore_lock_time: i64,
@@ -568,6 +576,8 @@ mod tests {
             version: "test".to_string(),
             theme_dark: false,
             runtime_mode: "user".to_string(),
+            show_advanced: true,
+            show_job_builder: true,
             can_use_keystore: true,
             keystore_locked: false,
             keystore_lock_time: 0,

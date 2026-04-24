@@ -542,6 +542,9 @@ Options:
 
           [possible values: service, user]
 
+      --web-features <FEATURES>
+          Optional comma-separated web feature allowlist (advanced, job-builder)
+
       --kibana <KIBANA>
           Kibana URL to display in the web interface. If not provided, will use the ESDIAG_KIBANA_URL environment variable.
 
@@ -557,6 +560,19 @@ Options:
 - `service`
 
 If omitted, `serve` checks `ESDIAG_MODE`. Invalid values fail clearly.
+
+### Web features
+
+`--web-features <FEATURES>` controls optional web UI surfaces for local testing and release gating. If omitted, `serve` checks `ESDIAG_WEB_FEATURES`. If both are omitted, user mode enables `advanced` by default and service mode enables no optional web features. Desktop-hosted user mode uses the same default as `serve --mode user`.
+
+Valid feature names:
+
+- `advanced`: enables the Advanced page at `/advanced`
+- `job-builder`: enables the Job Builder page at `/jobs` and its saved-job web routes
+
+The feature list is authoritative when set. For example, `--web-features job-builder` enables Job Builder and disables Advanced; use `--web-features advanced,job-builder` to enable both. An empty value disables all optional web features. Unknown values fail startup and list the known feature names.
+
+The Job Builder flag only controls web UI routes. CLI saved-job commands such as `esdiag job list`, `esdiag job run`, and `esdiag job delete` remain available when the web UI is disabled.
 
 ### Kibana URL behavior
 
