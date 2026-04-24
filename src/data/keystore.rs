@@ -29,9 +29,11 @@ use std::{
 const KDF_ROUNDS: u32 = 100_000;
 #[cfg(debug_assertions)]
 const KDF_ROUNDS: u32 = 1_000;
+#[cfg(not(debug_assertions))]
+const MIN_KDF_ROUNDS: u32 = 100_000;
+#[cfg(debug_assertions)]
 const MIN_KDF_ROUNDS: u32 = 1_000;
 const MAX_KDF_ROUNDS: u32 = 1_000_000;
-const DEFAULT_KDF_ROUNDS: u32 = 100_000;
 const KDF_ALGORITHM: &str = "pbkdf2-sha256";
 const KEY_SIZE: usize = 32;
 const SALT_SIZE: usize = 16;
@@ -173,7 +175,7 @@ impl Default for KdfParams {
     fn default() -> Self {
         Self {
             algorithm: KDF_ALGORITHM.to_string(),
-            rounds: DEFAULT_KDF_ROUNDS,
+            rounds: KDF_ROUNDS,
         }
     }
 }
@@ -183,7 +185,7 @@ fn default_kdf_algorithm() -> String {
 }
 
 fn default_kdf_rounds() -> u32 {
-    DEFAULT_KDF_ROUNDS
+    KDF_ROUNDS
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -394,10 +396,7 @@ fn unlock_context_material() -> Result<String> {
 
 fn validate_kdf_params(params: &KdfParams) -> Result<()> {
     if params.algorithm != KDF_ALGORITHM {
-        return Err(eyre!(
-            "Unsupported KDF algorithm '{}'",
-            params.algorithm
-        ));
+        return Err(eyre!("Unsupported KDF algorithm '{}'", params.algorithm));
     }
     if params.rounds == 0 {
         return Err(eyre!("KDF rounds must be greater than zero"));
@@ -1238,7 +1237,7 @@ mod tests {
     }
 
     #[test]
-    fn encrypted_envelopes_default_missing_kdf_to_default_rounds() {
+    fn encrypted_envelopes_default_missing_kdf_to_current_rounds() {
         let keystore: EncryptedKeystore = serde_yaml::from_str(
             r#"
 version: 1
@@ -1250,7 +1249,7 @@ ciphertext: ""
         .expect("keystore envelope with defaulted KDF params");
 
         assert_eq!(keystore.kdf.algorithm, KDF_ALGORITHM);
-        assert_eq!(keystore.kdf.rounds, DEFAULT_KDF_ROUNDS);
+        assert_eq!(keystore.kdf.rounds, KDF_ROUNDS);
     }
 
     #[test]
