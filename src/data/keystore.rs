@@ -31,7 +31,7 @@ const KDF_ROUNDS: u32 = 100_000;
 const KDF_ROUNDS: u32 = 1_000;
 const MIN_KDF_ROUNDS: u32 = 1_000;
 const MAX_KDF_ROUNDS: u32 = 1_000_000;
-const LEGACY_KDF_ROUNDS: u32 = 100_000;
+const DEFAULT_KDF_ROUNDS: u32 = 100_000;
 const KDF_ALGORITHM: &str = "pbkdf2-sha256";
 const KEY_SIZE: usize = 32;
 const SALT_SIZE: usize = 16;
@@ -156,7 +156,7 @@ struct EncryptedUnlockLease {
 struct KdfParams {
     #[serde(default = "default_kdf_algorithm")]
     algorithm: String,
-    #[serde(default = "legacy_kdf_rounds")]
+    #[serde(default = "default_kdf_rounds")]
     rounds: u32,
 }
 
@@ -173,7 +173,7 @@ impl Default for KdfParams {
     fn default() -> Self {
         Self {
             algorithm: KDF_ALGORITHM.to_string(),
-            rounds: LEGACY_KDF_ROUNDS,
+            rounds: DEFAULT_KDF_ROUNDS,
         }
     }
 }
@@ -182,8 +182,8 @@ fn default_kdf_algorithm() -> String {
     KDF_ALGORITHM.to_string()
 }
 
-fn legacy_kdf_rounds() -> u32 {
-    LEGACY_KDF_ROUNDS
+fn default_kdf_rounds() -> u32 {
+    DEFAULT_KDF_ROUNDS
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1238,7 +1238,7 @@ mod tests {
     }
 
     #[test]
-    fn encrypted_envelopes_default_missing_kdf_to_legacy_rounds() {
+    fn encrypted_envelopes_default_missing_kdf_to_default_rounds() {
         let keystore: EncryptedKeystore = serde_yaml::from_str(
             r#"
 version: 1
@@ -1247,10 +1247,10 @@ nonce: ""
 ciphertext: ""
 "#,
         )
-        .expect("legacy keystore envelope");
+        .expect("keystore envelope with defaulted KDF params");
 
         assert_eq!(keystore.kdf.algorithm, KDF_ALGORITHM);
-        assert_eq!(keystore.kdf.rounds, LEGACY_KDF_ROUNDS);
+        assert_eq!(keystore.kdf.rounds, DEFAULT_KDF_ROUNDS);
     }
 
     #[test]
