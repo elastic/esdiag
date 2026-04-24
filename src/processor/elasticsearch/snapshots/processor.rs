@@ -75,10 +75,7 @@ impl StreamingDocumentExporter<Lookups, ElasticsearchMetadata> for Snapshots {
             match result {
                 Ok(snapshot) => {
                     if tx
-                        .send(SnapshotLogDocument::from_snapshot(
-                            snapshot,
-                            metadata_doc.clone(),
-                        ))
+                        .send(SnapshotLogDocument::from_snapshot(snapshot, metadata_doc.clone()))
                         .await
                         .is_err()
                     {
@@ -175,13 +172,8 @@ mod tests {
             snapshot: "daily-2026.03.01".to_string(),
             repository: Some("repo-a".to_string()),
             state: Some("SUCCESS".to_string()),
-            indices: Some(
-                RawValue::from_string("[\"logs-1\"]".to_string()).expect("raw indices array"),
-            ),
-            data_streams: Some(
-                RawValue::from_string("[\"logs-app\"]".to_string())
-                    .expect("raw data_streams array"),
-            ),
+            indices: Some(RawValue::from_string("[\"logs-1\"]".to_string()).expect("raw indices array")),
+            data_streams: Some(RawValue::from_string("[\"logs-app\"]".to_string()).expect("raw data_streams array")),
             start_time: Some("2026-03-01T01:00:00.000Z".to_string()),
             start_time_in_millis: Some(1709254800000),
             end_time: Some("2026-03-01T01:10:00.000Z".to_string()),

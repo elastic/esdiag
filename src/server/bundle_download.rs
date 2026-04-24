@@ -55,11 +55,7 @@ pub async fn download_retained_bundle(
     };
 
     if bundle.owner != request_user {
-        return (
-            StatusCode::FORBIDDEN,
-            "Download does not belong to this user",
-        )
-            .into_response();
+        return (StatusCode::FORBIDDEN, "Download does not belong to this user").into_response();
     }
 
     if let Some(error) = bundle.error {
@@ -79,11 +75,7 @@ pub async fn download_retained_bundle(
         Ok(file) => file,
         Err(err) => {
             state.discard_retained_bundle(&token).await;
-            return (
-                StatusCode::NOT_FOUND,
-                format!("Download is no longer available: {err}"),
-            )
-                .into_response();
+            return (StatusCode::NOT_FOUND, format!("Download is no longer available: {err}")).into_response();
         }
     };
 
@@ -92,11 +84,7 @@ pub async fn download_retained_bundle(
         .await;
     state.schedule_retained_bundle_cleanup(token, RETAINED_BUNDLE_POST_DOWNLOAD_TTL);
 
-    let safe_filename = sanitize_download_filename(
-        &bundle
-            .filename
-            .unwrap_or_else(|| "diagnostic.zip".to_string()),
-    );
+    let safe_filename = sanitize_download_filename(&bundle.filename.unwrap_or_else(|| "diagnostic.zip".to_string()));
     let disposition = format!("attachment; filename=\"{safe_filename}\"");
 
     let stream: BoxStream<'static, Result<Bytes, std::io::Error>> = try_stream! {
@@ -118,8 +106,7 @@ pub async fn download_retained_bundle(
         .insert(CONTENT_TYPE, HeaderValue::from_static("application/zip"));
     response.headers_mut().insert(
         CONTENT_DISPOSITION,
-        HeaderValue::from_str(&disposition)
-            .unwrap_or_else(|_| HeaderValue::from_static("attachment")),
+        HeaderValue::from_str(&disposition).unwrap_or_else(|_| HeaderValue::from_static("attachment")),
     );
     response
 }
@@ -174,10 +161,7 @@ mod tests {
             sanitize_download_filename("diag\r\nX-Test: injected.zip"),
             "diag__X-Test_ injected.zip"
         );
-        assert_eq!(
-            sanitize_download_filename("\"../../etc/passwd\""),
-            "_.._.._etc_passwd_"
-        );
+        assert_eq!(sanitize_download_filename("\"../../etc/passwd\""), "_.._.._etc_passwd_");
     }
 
     #[tokio::test]
@@ -190,9 +174,7 @@ mod tests {
             .await
             .expect("create cleanup dir");
         let path = cleanup_dir.join("expired.zip");
-        tokio::fs::write(&path, b"expired")
-            .await
-            .expect("write expired bundle");
+        tokio::fs::write(&path, b"expired").await.expect("write expired bundle");
         state.retained_bundles.write().await.insert(
             token.clone(),
             RetainedBundle {
@@ -206,10 +188,9 @@ mod tests {
             },
         );
 
-        let response =
-            download_retained_bundle(State(state.clone()), Path(token.clone()), HeaderMap::new())
-                .await
-                .into_response();
+        let response = download_retained_bundle(State(state.clone()), Path(token.clone()), HeaderMap::new())
+            .await
+            .into_response();
 
         assert_eq!(response.status(), StatusCode::GONE);
         assert!(state.retained_bundle(&token).await.is_none());

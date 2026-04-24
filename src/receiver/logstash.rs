@@ -48,10 +48,7 @@ impl LogstashReceiver {
         self.version
             .get_or_try_init(|| async {
                 tracing::debug!("Fetching Logstash version from {}", self.url);
-                let response = self
-                    .client
-                    .request(Method::GET, &HashMap::new(), "/", None)
-                    .await?;
+                let response = self.client.request(Method::GET, &HashMap::new(), "/", None).await?;
                 let status = response.status();
                 let body = response.text().await?;
                 if !status.is_success() {
@@ -66,8 +63,7 @@ impl LogstashReceiver {
                     .get("version")
                     .and_then(|version| version.as_str())
                     .ok_or_else(|| eyre!("No version found in Logstash root response"))?;
-                semver::Version::parse(version_str)
-                    .map_err(|e| eyre!("Failed to parse Logstash version: {}", e))
+                semver::Version::parse(version_str).map_err(|e| eyre!("Failed to parse Logstash version: {}", e))
             })
             .await
     }
@@ -81,10 +77,7 @@ impl LogstashReceiver {
             "application/json"
         };
         let headers = HashMap::from([("Accept".to_string(), accept.to_string())]);
-        let response = self
-            .client
-            .request(Method::GET, &headers, path, None)
-            .await?;
+        let response = self.client.request(Method::GET, &headers, path, None).await?;
         let status = response.status();
         let body = response.text().await?;
         if !status.is_success() {
@@ -135,10 +128,7 @@ impl Receive for LogstashReceiver {
         let path = T::resolve_source_request_path(&ctx)?;
         tracing::debug!("Getting Logstash API: {}", &path);
 
-        let response = self
-            .client
-            .request(Method::GET, &HashMap::new(), &path, None)
-            .await?;
+        let response = self.client.request(Method::GET, &HashMap::new(), &path, None).await?;
 
         match response.status() {
             reqwest::StatusCode::OK => response.json::<T>().await.map_err(Into::into),
@@ -160,9 +150,7 @@ impl Receive for LogstashReceiver {
         T: super::super::processor::StreamingDataSource + DeserializeOwned,
         T::Item: DeserializeOwned + Send + 'static,
     {
-        Err(eyre!(
-            "Streaming is not yet implemented for Logstash receiver"
-        ))
+        Err(eyre!("Streaming is not yet implemented for Logstash receiver"))
     }
 
     async fn try_get_manifest(&self) -> Result<DiagnosticManifest> {

@@ -4,8 +4,8 @@
 
 use super::super::metadata::MetadataRawValue;
 use super::super::{
-    Alias, DataStreamDocument, DocumentExporter, ElasticsearchMetadata, Exporter, IlmStats, Lookup,
-    Lookups, MappingSummary, NodeDocument, ProcessorSummary, StreamingDocumentExporter,
+    Alias, DataStreamDocument, DocumentExporter, ElasticsearchMetadata, Exporter, IlmStats, Lookup, Lookups,
+    MappingSummary, NodeDocument, ProcessorSummary, StreamingDocumentExporter,
     indices_settings::{IndexSettings, IndexSettingsDocument, StoreSettings},
 };
 use super::{IndicesStats, data::*};
@@ -24,11 +24,7 @@ struct IndexProcessingContext<'a> {
     shard_tx: &'a mpsc::Sender<ShardStatsDocument>,
 }
 
-async fn process_index(
-    index_name: String,
-    mut index_stats: IndexStats,
-    ctx: &IndexProcessingContext<'_>,
-) {
+async fn process_index(index_name: String, mut index_stats: IndexStats, ctx: &IndexProcessingContext<'_>) {
     let shards_stats = index_stats.shards.take();
     let index_settings = ctx
         .lookups
@@ -42,8 +38,7 @@ async fn process_index(
         });
 
     let index_settings = index_settings.map(|settings| {
-        IndexSettingsDocument::from(settings)
-            .ilm(ctx.lookups.ilm_explain.by_name(&index_name).cloned())
+        IndexSettingsDocument::from(settings).ilm(ctx.lookups.ilm_explain.by_name(&index_name).cloned())
     });
 
     let write_phase_sec = match EnrichedIndexStats::try_from(index_stats) {
@@ -55,8 +50,7 @@ async fn process_index(
                     index_settings.clone(),
                     ctx.lookups.mapping_stats.by_name(&index_name).cloned(),
                 );
-            let index_document =
-                IndexStatsDocument::new(stats, ctx.index_metadata.clone()).calculate();
+            let index_document = IndexStatsDocument::new(stats, ctx.index_metadata.clone()).calculate();
             let write_phase_sec = index_document.index.write_phase_sec;
             if (ctx.index_tx.send(index_document).await).is_err() {
                 tracing::warn!("Index channel closed unexpectedly");
@@ -69,8 +63,7 @@ async fn process_index(
         }
     };
 
-    let index_settings =
-        index_settings.map(|s: IndexSettingsDocument| s.write_phase(write_phase_sec));
+    let index_settings = index_settings.map(|s: IndexSettingsDocument| s.write_phase(write_phase_sec));
 
     if let Some(shards) = shards_stats {
         match extract_shard_documents(
@@ -124,20 +117,18 @@ impl StreamingDocumentExporter<Lookups, ElasticsearchMetadata> for IndicesStats 
         const BUFFER_SIZE: usize = 5000;
 
         let (index_tx, index_rx) = mpsc::channel::<IndexStatsDocument>(BUFFER_SIZE);
-        let index_processor =
-            tokio::spawn(exporter.clone().document_channel::<IndexStatsDocument>(
-                index_rx,
-                data_stream_name.clone(),
-                batch_size,
-            ));
+        let index_processor = tokio::spawn(exporter.clone().document_channel::<IndexStatsDocument>(
+            index_rx,
+            data_stream_name.clone(),
+            batch_size,
+        ));
 
         let (shard_tx, shard_rx) = mpsc::channel::<ShardStatsDocument>(BUFFER_SIZE);
-        let shard_processor =
-            tokio::spawn(exporter.clone().document_channel::<ShardStatsDocument>(
-                shard_rx,
-                "metrics-shard-esdiag".to_string(),
-                batch_size,
-            ));
+        let shard_processor = tokio::spawn(exporter.clone().document_channel::<ShardStatsDocument>(
+            shard_rx,
+            "metrics-shard-esdiag".to_string(),
+            batch_size,
+        ));
 
         while let Some(result) = stream.next().await {
             match result {
@@ -185,29 +176,27 @@ fn extract_shard_documents(
         .flat_map(|(number, mut shard_stats)| {
             shard_stats
                 .drain(..)
-                .filter_map(
-                    |shard_entry| match EnrichedShardStats::try_from(shard_entry) {
-                        Ok(stats) => {
-                            let enriched_stats = stats.with_id(number);
-                            let node = lookup_node.by_id(&enriched_stats.routing.node).cloned();
-                            Some(
-                                ShardStatsDocument::new(enriched_stats, shard_metadata.clone())
-                                    .index_settings(index_settings.clone())
-                                    .node(node)
-                                    .calculate(),
-                            )
-                        }
-                        Err(err) => {
-                            tracing::warn!(
-                                "Failed to parse shard stats for index {}, shard {}: {}",
-                                &index_name,
-                                number,
-                                err
-                            );
-                            None
-                        }
-                    },
-                )
+                .filter_map(|shard_entry| match EnrichedShardStats::try_from(shard_entry) {
+                    Ok(stats) => {
+                        let enriched_stats = stats.with_id(number);
+                        let node = lookup_node.by_id(&enriched_stats.routing.node).cloned();
+                        Some(
+                            ShardStatsDocument::new(enriched_stats, shard_metadata.clone())
+                                .index_settings(index_settings.clone())
+                                .node(node)
+                                .calculate(),
+                        )
+                    }
+                    Err(err) => {
+                        tracing::warn!(
+                            "Failed to parse shard stats for index {}, shard {}: {}",
+                            &index_name,
+                            number,
+                            err
+                        );
+                        None
+                    }
+                })
                 .collect::<Vec<ShardStatsDocument>>()
         })
         .collect();
@@ -229,12 +218,7 @@ impl IndexStatsDocument {
     }
 
     fn calculate(mut self) -> Self {
-        let is_write_alias = self
-            .index
-            .alias
-            .as_ref()
-            .map(|a| a.is_write_index)
-            .unwrap_or(false);
+        let is_write_alias = self.index.alias.as_ref().map(|a| a.is_write_index).unwrap_or(false);
 
         let is_write_data_stream = self
             .index
@@ -248,11 +232,11 @@ impl IndexStatsDocument {
         let age = self.index.age.unwrap_or(0);
         let since_rollover = self.index.since_rollover;
 
-        let is_before_rollover = self.index.ilm.as_ref().is_some_and(|ilm| {
-            ilm.action
-                .as_ref()
-                .is_some_and(|action| action == "rollover")
-        });
+        let is_before_rollover = self
+            .index
+            .ilm
+            .as_ref()
+            .is_some_and(|ilm| ilm.action.as_ref().is_some_and(|action| action == "rollover"));
 
         let write_phase_sec = if let Some(rollover) = since_rollover {
             match age > rollover {
@@ -273,8 +257,7 @@ impl IndexStatsDocument {
             };
 
             docs.avg_size = Some(doc_avg_size);
-            docs.deleted_percent =
-                Some(docs.deleted as f64 / (docs.count as f64 + docs.deleted as f64));
+            docs.deleted_percent = Some(docs.deleted as f64 / (docs.count as f64 + docs.deleted as f64));
             docs.per_gb = Some(match self.index.total.store.size_in_bytes {
                 0 => 0,
                 1..1_073_741_824 if doc_avg_size > 0 => 1_073_741_824 / doc_avg_size,
@@ -285,38 +268,30 @@ impl IndexStatsDocument {
         self.index.primaries.indexing.est_bytes_per_day = match self.index.write_phase_sec {
             None => None,
             Some(0) => Some(0),
-            Some(seconds) => Some(
-                (self.index.primaries.store.size_in_bytes as f64 * (86_400.0 / seconds as f64))
-                    as u64,
-            ),
+            Some(seconds) => {
+                Some((self.index.primaries.store.size_in_bytes as f64 * (86_400.0 / seconds as f64)) as u64)
+            }
         };
 
         self.index.total.indexing.est_bytes_per_day = match self.index.write_phase_sec {
             None => None,
             Some(0) => Some(0),
-            Some(seconds) => Some(
-                (self.index.total.store.size_in_bytes as f64 * (86_400.0 / seconds as f64)) as u64,
-            ),
+            Some(seconds) => Some((self.index.total.store.size_in_bytes as f64 * (86_400.0 / seconds as f64)) as u64),
         };
 
         self.index.primaries.bulk.est_bytes_per_day = match self.index.write_phase_sec {
             None => None,
             Some(0) => Some(0),
-            Some(seconds) => Some(
-                (self.index.primaries.bulk.total_size_in_bytes as f64 * (86_400.0 / seconds as f64))
-                    as u64,
-            ),
+            Some(seconds) => {
+                Some((self.index.primaries.bulk.total_size_in_bytes as f64 * (86_400.0 / seconds as f64)) as u64)
+            }
         };
 
-        self.index.primaries.indexing.index_time_per_shard_in_millis = Some(
-            self.index.primaries.indexing.index_time_in_millis
-                / self.index.primaries.shard_stats.total_count,
-        );
+        self.index.primaries.indexing.index_time_per_shard_in_millis =
+            Some(self.index.primaries.indexing.index_time_in_millis / self.index.primaries.shard_stats.total_count);
 
-        self.index.total.indexing.index_time_per_shard_in_millis = Some(
-            self.index.total.indexing.index_time_in_millis
-                / self.index.total.shard_stats.total_count,
-        );
+        self.index.total.indexing.index_time_per_shard_in_millis =
+            Some(self.index.total.indexing.index_time_in_millis / self.index.total.shard_stats.total_count);
 
         self
     }
@@ -401,11 +376,7 @@ impl EnrichedIndexStats {
                 since_rollover: settings
                     .ilm
                     .and_then(|ilm| ilm.lifecycle_date_millis)
-                    .and_then(|lifecycle_date| {
-                        settings
-                            .age
-                            .map(|age| age + settings.creation_date - lifecycle_date)
-                    }),
+                    .and_then(|lifecycle_date| settings.age.map(|age| age + settings.creation_date - lifecycle_date)),
                 source: settings.source,
                 store: settings.store,
                 total: self.total,
@@ -533,17 +504,9 @@ impl ShardStatsDocument {
 
     pub fn calculate(mut self) -> Self {
         let stats = &mut self.shard.stats;
-        let write_phase_sec = &self
-            .index
-            .as_ref()
-            .map(|i| i.write_phase_sec.unwrap_or(0))
-            .unwrap_or(0);
+        let write_phase_sec = &self.index.as_ref().map(|i| i.write_phase_sec.unwrap_or(0)).unwrap_or(0);
 
-        let index_time_in_millis = &stats
-            .indexing
-            .as_ref()
-            .map(|i| i.index_time_in_millis)
-            .unwrap_or(0);
+        let index_time_in_millis = &stats.indexing.as_ref().map(|i| i.index_time_in_millis).unwrap_or(0);
         let index_total = &stats.indexing.as_ref().map(|i| i.index_total).unwrap_or(0);
         let total_size = &stats.store.as_ref().map(|s| s.size_in_bytes).unwrap_or(0);
 
@@ -587,8 +550,7 @@ impl ShardStatsDocument {
                 1..1_073_741_824 if avg_doc_size > 0 => 1_073_741_824 / avg_doc_size,
                 size => (docs.count as f32 / (*size as f32 / 1_073_741_824.0)) as u64,
             });
-            docs.deleted_percent =
-                Some(docs.deleted as f32 / (docs.count as f32 + docs.deleted as f32));
+            docs.deleted_percent = Some(docs.deleted as f32 / (docs.count as f32 + docs.deleted as f32));
             docs.avg_size = Some(avg_doc_size);
         }
 

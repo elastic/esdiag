@@ -47,11 +47,7 @@ impl TryFrom<PathBuf> for FileExporter {
             }
         }
 
-        let file = OpenOptions::new()
-            .create(true)
-            .truncate(true)
-            .write(true)
-            .open(&path)?;
+        let file = OpenOptions::new().create(true).truncate(true).write(true).open(&path)?;
 
         Ok(Self {
             file: file.try_clone().expect("Failed to clone file"),
@@ -123,11 +119,7 @@ impl Export for FileExporter {
 
     /// Transmits a single batch of documents in an async task
     /// Returns a one-shot channel for the BatchResponse
-    async fn batch_tx<T>(
-        &self,
-        index: String,
-        docs: Vec<T>,
-    ) -> Result<oneshot::Receiver<BatchResponse>>
+    async fn batch_tx<T>(&self, index: String, docs: Vec<T>) -> Result<oneshot::Receiver<BatchResponse>>
     where
         T: Serialize + Sized + Send + Sync + 'static,
     {

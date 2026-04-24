@@ -3,8 +3,8 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::{
-    ServerEvent, ServerState, ServiceLinkFormSignals, WorkflowRunSignals, job_feed_event,
-    receiver_stream, signal_event, template, template_event, workflow,
+    ServerEvent, ServerState, ServiceLinkFormSignals, WorkflowRunSignals, job_feed_event, receiver_stream,
+    signal_event, template, template_event, workflow,
 };
 use crate::{data::Uri, processor::new_job_id};
 use axum::{
@@ -101,12 +101,7 @@ pub(super) async fn run_service_link_form(
     let download_token = signals.archive.download_token.clone();
     if let Err(err) = super::ensure_active_output_ready(&state).await {
         state
-            .reject_retained_bundle(
-                &download_token,
-                &request_user,
-                err.clone(),
-                DOWNLOAD_REJECTION_TTL,
-            )
+            .reject_retained_bundle(&download_token, &request_user, err.clone(), DOWNLOAD_REJECTION_TTL)
             .await;
         send_event(
             &tx,
@@ -207,8 +202,7 @@ pub(super) async fn run_service_link_form(
         let keystore_password = state.keystore_password().await;
         if let Some(password) = keystore_password {
             with_scoped_keystore_password(password, async move {
-                workflow::run_job(state, signals.into(), job_id, request_user, tx, job, false)
-                    .await;
+                workflow::run_job(state, signals.into(), job_id, request_user, tx, job, false).await;
             })
             .await;
         } else {

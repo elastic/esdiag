@@ -149,15 +149,10 @@ pub async fn handler(
                 let (auth_header, user_email) = match state.resolve_user_email(&headers) {
                     Ok(result) => result,
                     Err(err) => {
-                        return (StatusCode::UNAUTHORIZED, format!("Unauthorized: {err}"))
-                            .into_response();
+                        return (StatusCode::UNAUTHORIZED, format!("Unauthorized: {err}")).into_response();
                     }
                 };
-                let user_initial = user_email
-                    .chars()
-                    .next()
-                    .unwrap_or('_')
-                    .to_ascii_uppercase();
+                let user_initial = user_email.chars().next().unwrap_or('_').to_ascii_uppercase();
                 let keystore_state = state.keystore_page_state().await;
 
                 let template = DocsTemplate {
@@ -289,14 +284,8 @@ fn generate_toc() -> Vec<TocEntry> {
         });
 
         for file in files {
-            let remainder = file
-                .strip_prefix(&format!("{section}/"))
-                .unwrap_or(file.as_str());
-            let title = remainder
-                .split('/')
-                .map(format_title)
-                .collect::<Vec<_>>()
-                .join(" / ");
+            let remainder = file.strip_prefix(&format!("{section}/")).unwrap_or(file.as_str());
+            let title = remainder.split('/').map(format_title).collect::<Vec<_>>().join(" / ");
 
             entries.push(TocEntry {
                 title,
@@ -337,9 +326,8 @@ fn slugify(s: &str) -> String {
 
 fn extract_existing_ids(html: &str) -> HashSet<String> {
     static ID_ATTR_RE: OnceLock<Regex> = OnceLock::new();
-    let re = ID_ATTR_RE.get_or_init(|| {
-        Regex::new(r#"(?i)\bid\s*=\s*"([^"]+)""#).expect("id attribute regex should compile")
-    });
+    let re = ID_ATTR_RE
+        .get_or_init(|| Regex::new(r#"(?i)\bid\s*=\s*"([^"]+)""#).expect("id attribute regex should compile"));
     re.captures_iter(html)
         .filter_map(|caps| caps.get(1).map(|m| m.as_str().to_string()))
         .collect()
@@ -370,13 +358,10 @@ fn next_unique_id(base: &str, used_ids: &mut HashSet<String>) -> String {
 fn inject_heading_ids(html: &str) -> String {
     static HEADING_RE: OnceLock<Regex> = OnceLock::new();
     static HAS_ID_RE: OnceLock<Regex> = OnceLock::new();
-    let heading_re = HEADING_RE.get_or_init(|| {
-        Regex::new(r#"(?is)<h([1-3])([^>]*)>(.*?)</h([1-3])>"#)
-            .expect("heading regex should compile")
-    });
-    let has_id_re = HAS_ID_RE.get_or_init(|| {
-        Regex::new(r#"(?i)\bid\s*="#).expect("heading id presence regex should compile")
-    });
+    let heading_re = HEADING_RE
+        .get_or_init(|| Regex::new(r#"(?is)<h([1-3])([^>]*)>(.*?)</h([1-3])>"#).expect("heading regex should compile"));
+    let has_id_re =
+        HAS_ID_RE.get_or_init(|| Regex::new(r#"(?i)\bid\s*="#).expect("heading id presence regex should compile"));
 
     let mut used_ids = extract_existing_ids(html);
     heading_re
@@ -387,15 +372,11 @@ fn inject_heading_ids(html: &str) -> String {
             let closing_level = caps.get(4).map_or(level, |m| m.as_str());
 
             if closing_level != level {
-                return caps
-                    .get(0)
-                    .map_or_else(String::new, |m| m.as_str().to_string());
+                return caps.get(0).map_or_else(String::new, |m| m.as_str().to_string());
             }
 
             if has_id_re.is_match(attrs) {
-                return caps
-                    .get(0)
-                    .map_or_else(String::new, |m| m.as_str().to_string());
+                return caps.get(0).map_or_else(String::new, |m| m.as_str().to_string());
             }
 
             let label_text = strip_html_tags(content);
@@ -457,10 +438,7 @@ mod tests {
         let response = handler_index(headers, State(state)).await.into_response();
 
         assert_eq!(response.status(), StatusCode::OK);
-        assert!(
-            !hosts_path.exists(),
-            "service mode docs should not create hosts.yml"
-        );
+        assert!(!hosts_path.exists(), "service mode docs should not create hosts.yml");
         assert!(
             !settings_path.exists(),
             "service mode docs should not create settings.yml"

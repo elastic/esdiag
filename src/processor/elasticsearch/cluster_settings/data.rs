@@ -87,11 +87,7 @@ mod tests {
                 "serverless.project_type": "elasticsearch_search"
             }
         }"#;
-        let settings: ClusterSettingsDefaults =
-            serde_json::from_str(json).expect("cluster settings defaults parse");
-        assert_eq!(
-            settings.get_display_name().as_deref(),
-            Some("search-12345678")
-        );
+        let settings: ClusterSettingsDefaults = serde_json::from_str(json).expect("cluster settings defaults parse");
+        assert_eq!(settings.get_display_name().as_deref(), Some("search-12345678"));
     }
 }

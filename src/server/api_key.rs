@@ -3,8 +3,8 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::{
-    ApiKeyFormSignals, ServerEvent, ServerState, WorkflowRunSignals, job_feed_event,
-    receiver_stream, signal_event, template, template_event, workflow,
+    ApiKeyFormSignals, ServerEvent, ServerState, WorkflowRunSignals, job_feed_event, receiver_stream, signal_event,
+    template, template_event, workflow,
 };
 use crate::{data::KnownHostBuilder, processor::new_job_id};
 use axum::{
@@ -99,12 +99,7 @@ pub(super) async fn run_api_key_form(
     let download_token = signals.archive.download_token.clone();
     if let Err(err) = super::ensure_active_output_ready(&state).await {
         state
-            .reject_retained_bundle(
-                &download_token,
-                &request_user,
-                err.clone(),
-                DOWNLOAD_REJECTION_TTL,
-            )
+            .reject_retained_bundle(&download_token, &request_user, err.clone(), DOWNLOAD_REJECTION_TTL)
             .await;
         state.record_failure().await;
         send_event(
@@ -164,8 +159,7 @@ pub(super) async fn run_api_key_form(
         let keystore_password = state.keystore_password().await;
         if let Some(password) = keystore_password {
             with_scoped_keystore_password(password, async move {
-                workflow::run_job(state, signals.into(), job_id, request_user, tx, job, false)
-                    .await;
+                workflow::run_job(state, signals.into(), job_id, request_user, tx, job, false).await;
             })
             .await;
         } else {
@@ -178,12 +172,7 @@ pub(super) async fn run_api_key_form(
     }
 }
 
-async fn run_api_key_id(
-    state: Arc<ServerState>,
-    job_id: u64,
-    request_user: String,
-    tx: mpsc::Sender<ServerEvent>,
-) {
+async fn run_api_key_id(state: Arc<ServerState>, job_id: u64, request_user: String, tx: mpsc::Sender<ServerEvent>) {
     let job = match state.pop_workflow_job(job_id).await {
         Some(job) => job,
         None => {
@@ -285,8 +274,7 @@ mod tests {
         .expect("matching exporter");
         let mut signals = ApiKeyFormSignals::default();
         signals.archive.download_token = "token-1".to_string();
-        signals.es_api.url =
-            Uri::try_from("http://cluster.example:9200".to_string()).expect("api url");
+        signals.es_api.url = Uri::try_from("http://cluster.example:9200".to_string()).expect("api url");
         signals.es_api.key = "api-key".to_string();
         let (tx, mut rx) = mpsc::channel(8);
 
@@ -305,15 +293,12 @@ mod tests {
             match event {
                 ServerEvent::JobFeed(html)
                     if html.contains("output target")
-                        && html.contains(
-                            "Keystore is locked. Unlock it before processing secure outputs.",
-                        ) =>
+                        && html.contains("Keystore is locked. Unlock it before processing secure outputs.") =>
                 {
                     saw_failure = true;
                 }
                 ServerEvent::Signals(payload)
-                    if payload.contains(r#""loading":false"#)
-                        && payload.contains(r#""processing":false"#) =>
+                    if payload.contains(r#""loading":false"#) && payload.contains(r#""processing":false"#) =>
                 {
                     saw_terminal = true;
                 }

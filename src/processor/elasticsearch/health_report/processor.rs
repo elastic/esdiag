@@ -17,18 +17,11 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for HealthReport {
         metadata: &ElasticsearchMetadata,
     ) -> ProcessorSummary {
         tracing::debug!("processing pending tasks");
-        let metadata_indicator = metadata
-            .for_data_stream("health-indicator-esdiag")
-            .as_meta_doc();
-        let metadata_impact = metadata
-            .for_data_stream("health-impact-esdiag")
-            .as_meta_doc();
-        let metadata_diagnosis = metadata
-            .for_data_stream("health-diagnosis-esdiag")
-            .as_meta_doc();
+        let metadata_indicator = metadata.for_data_stream("health-indicator-esdiag").as_meta_doc();
+        let metadata_impact = metadata.for_data_stream("health-impact-esdiag").as_meta_doc();
+        let metadata_diagnosis = metadata.for_data_stream("health-diagnosis-esdiag").as_meta_doc();
 
-        let mut indicators: Vec<(String, HealthIndicator)> =
-            self.indicators.into_par_iter().collect();
+        let mut indicators: Vec<(String, HealthIndicator)> = self.indicators.into_par_iter().collect();
 
         let health_docs: Vec<Value> = indicators
             .par_drain(..)
@@ -76,10 +69,7 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for HealthReport {
 
         tracing::debug!("Health report docs: {}", health_docs.len());
         let mut summary = ProcessorSummary::new("health-indicator-esdiag".to_string());
-        match exporter
-            .send("health-indicator-esdiag".to_string(), health_docs)
-            .await
-        {
+        match exporter.send("health-indicator-esdiag".to_string(), health_docs).await {
             Ok(batch) => summary.add_batch(batch),
             Err(err) => tracing::error!("Failed to send health report: {}", err),
         }

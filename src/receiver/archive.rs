@@ -42,22 +42,20 @@ where
                 return;
             }
         };
-        let filename =
-            match resolve_archive_path(subdir.as_ref(), &mut *archive_guard, &source_path) {
-                Ok(f) => f,
-                Err(e) => {
-                    let _ = tx.blocking_send(Err(eyre::eyre!(e)));
-                    return;
-                }
-            };
+        let filename = match resolve_archive_path(subdir.as_ref(), &mut *archive_guard, &source_path) {
+            Ok(f) => f,
+            Err(e) => {
+                let _ = tx.blocking_send(Err(eyre::eyre!(e)));
+                return;
+            }
+        };
 
         tracing::debug!("Streaming from archive: {}", filename);
         let stream_result = match archive_guard.by_name(&filename) {
             Ok(file) => {
                 let reader = BufReader::new(file);
                 let mut deserializer = serde_json::Deserializer::from_reader(reader);
-                T::deserialize_stream(&mut deserializer, tx.clone())
-                    .map_err(|e| eyre::eyre!(e.to_string()))
+                T::deserialize_stream(&mut deserializer, tx.clone()).map_err(|e| eyre::eyre!(e.to_string()))
             }
             Err(e) => Err(eyre::eyre!(e)),
         };
@@ -72,9 +70,7 @@ where
         if let Err(e) = handle.await
             && e.is_panic()
         {
-            let _ = tx_err
-                .send(Err(eyre::eyre!("Streaming task panicked")))
-                .await;
+            let _ = tx_err.send(Err(eyre::eyre!("Streaming task panicked"))).await;
         }
     });
 
@@ -112,9 +108,7 @@ pub fn resolve_archive_path<A: Read + Seek>(
     let path = if let Some(dir) = subdir {
         let mut workdir = PathBuf::from(archive.by_index(0)?.name().to_string());
         trim_to_working_directory(&mut workdir);
-        let path = normalize_archive_separators(
-            workdir.join(dir).join(filename).to_string_lossy().as_ref(),
-        );
+        let path = normalize_archive_separators(workdir.join(dir).join(filename).to_string_lossy().as_ref());
         if archive.by_name(&path).is_ok() {
             return Ok(path);
         } else {
@@ -146,8 +140,7 @@ mod tests {
         {
             let mut zip = ZipWriter::new(Cursor::new(&mut buf));
 
-            zip.start_file("version.json", SimpleFileOptions::default())
-                .unwrap();
+            zip.start_file("version.json", SimpleFileOptions::default()).unwrap();
             zip.write_all(br#"{"version": "2.4.0"}"#).unwrap();
 
             // Add a file with double slash path (legacy ECK bundle format)
@@ -230,8 +223,7 @@ mod tests {
             let mut zip = ZipWriter::new(Cursor::new(&mut buf));
 
             // Add a root level file
-            zip.start_file("file.json", SimpleFileOptions::default())
-                .unwrap();
+            zip.start_file("file.json", SimpleFileOptions::default()).unwrap();
             zip.write_all(br#"{"test": true}"#).unwrap();
 
             zip.finish().unwrap();

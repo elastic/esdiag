@@ -13,14 +13,8 @@ fn run_esdiag(args: &[&str], home: &TempDir, extra_env: &[(&str, &str)]) -> Outp
     cmd.args(args)
         .env("HOME", home.path())
         .env("USERPROFILE", home.path())
-        .env(
-            "ESDIAG_HOSTS",
-            home.path().join(".esdiag").join("hosts.yml"),
-        )
-        .env(
-            "ESDIAG_KEYSTORE",
-            home.path().join(".esdiag").join("secrets.yml"),
-        )
+        .env("ESDIAG_HOSTS", home.path().join(".esdiag").join("hosts.yml"))
+        .env("ESDIAG_KEYSTORE", home.path().join(".esdiag").join("secrets.yml"))
         .env("LOG_LEVEL", "debug");
     for (key, value) in extra_env {
         cmd.env(key, value);
@@ -28,11 +22,7 @@ fn run_esdiag(args: &[&str], home: &TempDir, extra_env: &[(&str, &str)]) -> Outp
     cmd.output().expect("run esdiag")
 }
 
-async fn run_esdiag_async(
-    args: Vec<String>,
-    home: PathBuf,
-    extra_env: Vec<(String, String)>,
-) -> Output {
+async fn run_esdiag_async(args: Vec<String>, home: PathBuf, extra_env: Vec<(String, String)>) -> Output {
     tokio::task::spawn_blocking(move || {
         let mut cmd = Command::new(env!("CARGO_BIN_EXE_esdiag"));
         cmd.args(&args)
@@ -219,10 +209,7 @@ async fn host_update_preserves_omitted_fields_and_applies_cert_overrides() {
 
     let hosts = read_hosts(&home);
     let host = hosts.get("prod-es").expect("saved host exists");
-    assert!(
-        host.accept_invalid_certs,
-        "omitted cert flag should preserve value"
-    );
+    assert!(host.accept_invalid_certs, "omitted cert flag should preserve value");
     assert!(host.legacy_apikey.is_none());
     assert_eq!(host.secret.as_deref(), Some("prod-secret"));
     assert_eq!(host.roles, vec![HostRole::Collect, HostRole::Send]);
@@ -243,10 +230,7 @@ async fn host_update_preserves_omitted_fields_and_applies_cert_overrides() {
 
     let hosts = read_hosts(&home);
     assert!(
-        !hosts
-            .get("prod-es")
-            .expect("saved host exists")
-            .accept_invalid_certs(),
+        !hosts.get("prod-es").expect("saved host exists").accept_invalid_certs(),
         "explicit false should clear accept_invalid_certs"
     );
 
@@ -266,10 +250,7 @@ async fn host_update_preserves_omitted_fields_and_applies_cert_overrides() {
 
     let hosts = read_hosts(&home);
     assert!(
-        hosts
-            .get("prod-es")
-            .expect("saved host exists")
-            .accept_invalid_certs(),
+        hosts.get("prod-es").expect("saved host exists").accept_invalid_certs(),
         "explicit true should set accept_invalid_certs"
     );
 
@@ -314,10 +295,7 @@ async fn host_update_applies_cert_overrides_for_noauth_hosts() {
 
     let hosts = read_hosts(&home);
     assert!(
-        !hosts
-            .get("plain-es")
-            .expect("saved host exists")
-            .accept_invalid_certs,
+        !hosts.get("plain-es").expect("saved host exists").accept_invalid_certs,
         "explicit false should clear accept_invalid_certs for noauth hosts"
     );
 
@@ -337,10 +315,7 @@ async fn host_update_applies_cert_overrides_for_noauth_hosts() {
 
     let hosts = read_hosts(&home);
     assert!(
-        hosts
-            .get("plain-es")
-            .expect("saved host exists")
-            .accept_invalid_certs,
+        hosts.get("plain-es").expect("saved host exists").accept_invalid_certs,
         "explicit true should set accept_invalid_certs for noauth hosts"
     );
 
@@ -489,11 +464,7 @@ async fn host_remove_deletes_saved_host_and_updates_settings() {
     );
 
     let delete = run_esdiag_async(
-        vec![
-            "host".to_string(),
-            "remove".to_string(),
-            "prod-es".to_string(),
-        ],
+        vec!["host".to_string(), "remove".to_string(), "prod-es".to_string()],
         home_path,
         vec![],
     )
@@ -514,34 +485,18 @@ async fn host_remove_deletes_saved_host_and_updates_settings() {
 fn host_add_guardrails_and_missing_host_updates_fail() {
     let home = setup_home();
 
-    let incomplete_add = run_esdiag(
-        &["host", "add", "prod-es", "--secret", "rotated"],
-        &home,
-        &[],
-    );
+    let incomplete_add = run_esdiag(&["host", "add", "prod-es", "--secret", "rotated"], &home, &[]);
     assert_failure_contains(
         &incomplete_add,
         "required arguments were not provided",
         "incomplete add",
     );
 
-    let missing_update = run_esdiag(
-        &["host", "update", "missing-es", "--secret", "rotated"],
-        &home,
-        &[],
-    );
-    assert_failure_contains(
-        &missing_update,
-        "Host 'missing-es' not found",
-        "missing host update",
-    );
+    let missing_update = run_esdiag(&["host", "update", "missing-es", "--secret", "rotated"], &home, &[]);
+    assert_failure_contains(&missing_update, "Host 'missing-es' not found", "missing host update");
 
     let missing_delete = run_esdiag(&["host", "remove", "missing-es"], &home, &[]);
-    assert_failure_contains(
-        &missing_delete,
-        "Host 'missing-es' not found",
-        "missing delete",
-    );
+    assert_failure_contains(&missing_delete, "Host 'missing-es' not found", "missing delete");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -584,9 +539,10 @@ async fn host_update_rejects_partial_basic_auth_without_secret() {
 
     let hosts = read_hosts(&home);
     assert!(
-        hosts
-            .get("plain-es")
-            .is_some_and(|host| host.secret.is_none() && host.legacy_apikey.is_none() && host.legacy_username.is_none() && host.legacy_password.is_none()),
+        hosts.get("plain-es").is_some_and(|host| host.secret.is_none()
+            && host.legacy_apikey.is_none()
+            && host.legacy_username.is_none()
+            && host.legacy_password.is_none()),
         "failed update should leave the saved host unchanged"
     );
 
@@ -636,10 +592,7 @@ async fn host_update_rejects_partial_basic_auth_for_existing_basic_host() {
     let host = hosts.get("basic-es").expect("saved host exists");
     assert_eq!(host.legacy_username.as_deref(), Some("elastic"));
     assert_eq!(host.legacy_password.as_deref(), Some("old-pass"));
-    assert!(
-        host.secret.is_none(),
-        "failed update should not add a secret reference"
-    );
+    assert!(host.secret.is_none(), "failed update should not add a secret reference");
 
     let _ = shutdown_tx.send(());
 }
@@ -678,11 +631,7 @@ async fn host_remove_succeeds_even_if_settings_cleanup_fails() {
     .expect("write invalid settings");
 
     let delete = run_esdiag_async(
-        vec![
-            "host".to_string(),
-            "remove".to_string(),
-            "prod-es".to_string(),
-        ],
+        vec!["host".to_string(), "remove".to_string(), "prod-es".to_string()],
         home_path,
         vec![],
     )
@@ -769,18 +718,9 @@ async fn host_list_prints_empty_state_and_saved_rows() {
     assert_success(&populated_list, "populated host list");
     let stdout = String::from_utf8_lossy(&populated_list.stdout);
     let stderr = String::from_utf8_lossy(&populated_list.stderr);
-    assert!(
-        stdout.contains("name"),
-        "expected header in list output:\n{stdout}"
-    );
-    assert!(
-        stdout.contains("app"),
-        "expected header in list output:\n{stdout}"
-    );
-    assert!(
-        stdout.contains("secret"),
-        "expected header in list output:\n{stdout}"
-    );
+    assert!(stdout.contains("name"), "expected header in list output:\n{stdout}");
+    assert!(stdout.contains("app"), "expected header in list output:\n{stdout}");
+    assert!(stdout.contains("secret"), "expected header in list output:\n{stdout}");
     assert!(
         stdout.contains("prod-es"),
         "expected saved host row in list output:\n{stdout}"
@@ -816,11 +756,7 @@ async fn host_auth_tests_saved_host_without_mutating_it() {
     let before = std::fs::read_to_string(&hosts_path).expect("read hosts before auth");
 
     let auth = run_esdiag_async(
-        vec![
-            "host".to_string(),
-            "auth".to_string(),
-            "prod-es".to_string(),
-        ],
+        vec!["host".to_string(), "auth".to_string(), "prod-es".to_string()],
         home_path,
         vec![],
     )
@@ -847,11 +783,7 @@ fn host_auth_missing_host_and_legacy_syntax_fail() {
     let home = setup_home();
 
     let missing_auth = run_esdiag(&["host", "auth", "missing-es"], &home, &[]);
-    assert_failure_contains(
-        &missing_auth,
-        "Host 'missing-es' not found",
-        "missing auth host",
-    );
+    assert_failure_contains(&missing_auth, "Host 'missing-es' not found", "missing auth host");
 
     let legacy = run_esdiag(&["host", "prod-es", "--secret", "rotated"], &home, &[]);
     assert_failure_contains(

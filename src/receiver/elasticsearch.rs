@@ -3,8 +3,7 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::super::processor::{
-    DataSource, DiagnosticManifest, ElasticsearchCluster, ManifestBuilder, SourceContext,
-    StreamingDataSource,
+    DataSource, DiagnosticManifest, ElasticsearchCluster, ManifestBuilder, SourceContext, StreamingDataSource,
 };
 use super::{Receive, ReceiveRaw};
 use crate::data::KnownHost;
@@ -84,8 +83,7 @@ impl ElasticsearchReceiver {
                     .get("version")
                     .and_then(|version| version.get("number").and_then(|number| number.as_str()))
                     .ok_or_else(|| eyre!("No version found in root response"))?;
-                semver::Version::parse(version_str)
-                    .map_err(|e| eyre!("Failed to parse version: {}", e))
+                semver::Version::parse(version_str).map_err(|e| eyre!("Failed to parse version: {}", e))
             })
             .await
     }
@@ -163,10 +161,7 @@ impl Receive for ElasticsearchReceiver {
 
         match response {
             Ok(response) => {
-                tracing::debug!(
-                    "Elasticsearch client connection successful: {}",
-                    response.status_code()
-                );
+                tracing::debug!("Elasticsearch client connection successful: {}", response.status_code());
                 true
             }
             Err(e) => {
@@ -224,9 +219,7 @@ impl Receive for ElasticsearchReceiver {
         // TODO: Implement proper streaming from Elasticsearch response body
         // The elasticsearch-rs client currently doesn't easily expose a streaming response body
         // compatible with serde_json::Deserializer.
-        Err(eyre!(
-            "Streaming is not yet implemented for Elasticsearch receiver"
-        ))
+        Err(eyre!("Streaming is not yet implemented for Elasticsearch receiver"))
     }
 
     async fn try_get_manifest(&self) -> Result<DiagnosticManifest> {

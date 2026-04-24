@@ -33,11 +33,7 @@ trait Export {
     async fn batch_send<T>(&self, index: String, docs: Vec<T>) -> Result<BatchResponse>
     where
         T: Serialize + Sized + Send + Sync;
-    async fn batch_tx<T>(
-        &self,
-        index: String,
-        docs: Vec<T>,
-    ) -> Result<oneshot::Receiver<BatchResponse>>
+    async fn batch_tx<T>(&self, index: String, docs: Vec<T>) -> Result<oneshot::Receiver<BatchResponse>>
     where
         T: Serialize + Sized + Send + Sync + 'static;
     async fn save_report(&self, report: &DiagnosticReport) -> Result<()>;
@@ -70,12 +66,8 @@ pub enum Exporter {
 impl Exporter {
     pub fn for_collect(uri: Uri) -> Result<Self> {
         match uri {
-            Uri::Directory(path) | Uri::File(path) => {
-                Ok(Self::Directory(DirectoryExporter::try_from(path)?))
-            }
-            _ => Err(eyre!(
-                "Collect requires a local directory output when --zip is not set"
-            )),
+            Uri::Directory(path) | Uri::File(path) => Ok(Self::Directory(DirectoryExporter::try_from(path)?)),
+            _ => Err(eyre!("Collect requires a local directory output when --zip is not set")),
         }
     }
 
@@ -153,11 +145,7 @@ impl Exporter {
     }
 
     #[tracing::instrument(skip_all, fields(index = %index))]
-    pub async fn send<T>(
-        &self,
-        index: String,
-        docs: Vec<T>,
-    ) -> Result<crate::processor::BatchResponse>
+    pub async fn send<T>(&self, index: String, docs: Vec<T>) -> Result<crate::processor::BatchResponse>
     where
         T: Serialize + Sized + Send + Sync,
     {
@@ -183,11 +171,7 @@ impl Exporter {
         }
     }
 
-    pub async fn tx<T>(
-        &self,
-        index: String,
-        docs: Vec<T>,
-    ) -> Result<oneshot::Receiver<crate::processor::BatchResponse>>
+    pub async fn tx<T>(&self, index: String, docs: Vec<T>) -> Result<oneshot::Receiver<crate::processor::BatchResponse>>
     where
         T: Serialize + Sized + Send + Sync + 'static,
     {
@@ -231,12 +215,8 @@ impl Exporter {
 
     pub fn target_uri(&self) -> String {
         match self {
-            Exporter::Archive(exporter) => {
-                path_to_file_uri(Path::new(&exporter.to_string()), false)
-            }
-            Exporter::Directory(exporter) => {
-                path_to_file_uri(Path::new(&exporter.to_string()), true)
-            }
+            Exporter::Archive(exporter) => path_to_file_uri(Path::new(&exporter.to_string()), false),
+            Exporter::Directory(exporter) => path_to_file_uri(Path::new(&exporter.to_string()), true),
             Exporter::Elasticsearch(exporter) => exporter.to_string(),
             Exporter::File(exporter) => path_to_file_uri(Path::new(&exporter.to_string()), false),
             Exporter::Stream(_) => "stdio://stdout".to_string(),
@@ -258,20 +238,16 @@ impl Exporter {
     pub fn requires_secret(&self) -> bool {
         match self {
             Exporter::Elasticsearch(exporter) => exporter.requires_secret(),
-            Exporter::Archive(_)
-            | Exporter::Directory(_)
-            | Exporter::File(_)
-            | Exporter::Stream(_) => false,
+            Exporter::Archive(_) | Exporter::Directory(_) | Exporter::File(_) | Exporter::Stream(_) => false,
         }
     }
 
     pub fn kibana_base_url(&self) -> Option<String> {
         match self {
             Exporter::Elasticsearch(exporter) => exporter.kibana_base_url(),
-            Exporter::Archive(_)
-            | Exporter::Directory(_)
-            | Exporter::File(_)
-            | Exporter::Stream(_) => kibana_base_url_from_env(),
+            Exporter::Archive(_) | Exporter::Directory(_) | Exporter::File(_) | Exporter::Stream(_) => {
+                kibana_base_url_from_env()
+            }
         }
     }
 
@@ -313,9 +289,7 @@ impl TryFrom<Uri> for Exporter {
         match uri {
             Uri::Directory(dir) => Ok(Exporter::Directory(DirectoryExporter::try_from(dir)?)),
             Uri::File(file) => Ok(Exporter::File(FileExporter::try_from(file)?)),
-            Uri::KnownHost(host) => Ok(Exporter::Elasticsearch(ElasticsearchExporter::try_from(
-                host,
-            )?)),
+            Uri::KnownHost(host) => Ok(Exporter::Elasticsearch(ElasticsearchExporter::try_from(host)?)),
             Uri::Stream => Ok(Exporter::Stream(StreamExporter::new())),
             _ => Err(eyre!("Unsupported URI")),
         }
@@ -363,9 +337,7 @@ impl TryFrom<KnownHost> for Exporter {
     type Error = eyre::Report;
     fn try_from(host: KnownHost) -> std::result::Result<Self, Self::Error> {
         match host.app() {
-            Product::Elasticsearch => Ok(Exporter::Elasticsearch(ElasticsearchExporter::try_from(
-                host,
-            )?)),
+            Product::Elasticsearch => Ok(Exporter::Elasticsearch(ElasticsearchExporter::try_from(host)?)),
             _ => Err(eyre!("Unsupported product")),
         }
     }
@@ -393,9 +365,7 @@ fn saved_viewer_kibana_base_url(host: &KnownHost) -> Option<String> {
         return None;
     }
 
-    Some(crate::env::append_kibana_space(
-        &viewer_host.get_url().to_string(),
-    ))
+    Some(crate::env::append_kibana_space(viewer_host.get_url().as_ref()))
 }
 
 fn kibana_base_url_from_env() -> Option<String> {
@@ -410,9 +380,7 @@ fn build_kibana_link(kibana_url: &str, diagnostic_id: &str, collection_date: u64
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_millis() as u64;
-    let days_since_collection = now_ms
-        .saturating_sub(collection_date)
-        / (1000 * 60 * 60 * 24);
+    let days_since_collection = now_ms.saturating_sub(collection_date) / (1000 * 60 * 60 * 24);
     let time_filter = match days_since_collection {
         x if x < 90 => "from:now-90d,to:now".to_string(),
         x if (90..365).contains(&x) => "from:now-1y,to:now".to_string(),
@@ -463,13 +431,11 @@ mod tests {
 
     #[test]
     fn target_uri_uses_canonical_machine_values() {
-        let directory = Exporter::try_from(Uri::Directory(PathBuf::from("/tmp/out")))
-            .expect("directory exporter");
+        let directory = Exporter::try_from(Uri::Directory(PathBuf::from("/tmp/out"))).expect("directory exporter");
         assert_eq!(directory.target_uri(), "file:///tmp/out/");
         assert_eq!(directory.target_label(), "dir: /tmp/out/");
 
-        let file = Exporter::try_from(Uri::File(PathBuf::from("/tmp/out/report.ndjson")))
-            .expect("file exporter");
+        let file = Exporter::try_from(Uri::File(PathBuf::from("/tmp/out/report.ndjson"))).expect("file exporter");
         assert_eq!(file.target_uri(), "file:///tmp/out/report.ndjson");
         assert_eq!(file.target_label(), "file: /tmp/out/report.ndjson");
 
@@ -507,15 +473,12 @@ mod tests {
             std::env::remove_var("ESDIAG_KIBANA_SPACE");
         }
 
-        let exporter = Exporter::try_from(Uri::try_from("send-host").expect("host uri"))
-            .expect("exporter");
+        let exporter = Exporter::try_from(Uri::try_from("send-host").expect("host uri")).expect("exporter");
         let kibana_link = exporter
             .kibana_link("diag-123", 1_700_000_000_000)
             .expect("kibana link");
 
-        assert!(kibana_link.starts_with(
-            "https://kb.example:5601/s/esdiag/app/dashboards#/view/"
-        ));
+        assert!(kibana_link.starts_with("https://kb.example:5601/s/esdiag/app/dashboards#/view/"));
 
         unsafe {
             std::env::remove_var("ESDIAG_KIBANA_URL");
@@ -536,9 +499,7 @@ mod tests {
             .kibana_link("diag-123", 1_700_000_000_000)
             .expect("kibana link");
 
-        assert!(kibana_link.starts_with(
-            "https://env-kb.example:5601/s/ops/app/dashboards#/view/"
-        ));
+        assert!(kibana_link.starts_with("https://env-kb.example:5601/s/ops/app/dashboards#/view/"));
 
         unsafe {
             std::env::remove_var("ESDIAG_KIBANA_URL");
@@ -560,9 +521,7 @@ mod tests {
             .kibana_link("diag-123", 1_700_000_000_000)
             .expect("kibana link");
 
-        assert!(kibana_link.starts_with(
-            "https://env-kb.example:5601/app/dashboards#/view/"
-        ));
+        assert!(kibana_link.starts_with("https://env-kb.example:5601/app/dashboards#/view/"));
 
         unsafe {
             std::env::remove_var("ESDIAG_KIBANA_URL");
@@ -585,8 +544,6 @@ mod tests {
             .kibana_link("diag-123", 1_700_000_000_000)
             .expect("default kibana link");
 
-        assert!(kibana_link.starts_with(
-            "http://localhost:5601/s/esdiag/app/dashboards#/view/"
-        ));
+        assert!(kibana_link.starts_with("http://localhost:5601/s/esdiag/app/dashboards#/view/"));
     }
 }

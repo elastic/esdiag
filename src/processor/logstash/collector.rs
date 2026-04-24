@@ -26,11 +26,7 @@ pub struct LogstashCollector {
 }
 
 impl LogstashCollector {
-    pub async fn new(
-        receiver: Receiver,
-        exporter: ArchiveExporter,
-        options: CollectOptions,
-    ) -> Result<Self> {
+    pub async fn new(receiver: Receiver, exporter: ArchiveExporter, options: CollectOptions) -> Result<Self> {
         let timestamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
         let collection_name = options
             .identifiers
@@ -50,11 +46,8 @@ impl LogstashCollector {
     pub async fn collect(&self) -> Result<CollectionResult> {
         let collect_result: Result<CollectionResult> = async {
             let diag_type = DiagnosticType::from_str(&self.options.r#type)?;
-            let apis = ApiResolver::resolve_ls(
-                &diag_type,
-                self.options.include.as_ref(),
-                self.options.exclude.as_ref(),
-            )?;
+            let apis =
+                ApiResolver::resolve_ls(&diag_type, self.options.include.as_ref(), self.options.exclude.as_ref())?;
 
             let api_names: Vec<&str> = apis.iter().map(|a| a.as_str()).collect();
             tracing::debug!("Resolved Logstash APIs for collection: {:?}", api_names);
@@ -100,9 +93,7 @@ impl LogstashCollector {
             (Ok(result), Ok(())) => Ok(result),
             (Err(err), Ok(())) => Err(err),
             (Ok(_), Err(finalize_err)) => Err(finalize_err),
-            (Err(err), Err(finalize_err)) => {
-                Err(err).wrap_err(format!("Failed to finalize archive: {}", finalize_err))
-            }
+            (Err(err), Err(finalize_err)) => Err(err).wrap_err(format!("Failed to finalize archive: {}", finalize_err)),
         }
     }
 
@@ -157,14 +148,13 @@ impl LogstashCollector {
     }
 
     async fn save_raw(&self, name: &str) -> Result<usize> {
-        let source_conf =
-            match crate::processor::diagnostic::data_source::get_source("logstash", name, &[]) {
-                Ok((_, conf)) => conf,
-                Err(e) => {
-                    tracing::debug!("Skipping {} collection: {}", name, e);
-                    return Ok(0);
-                }
-            };
+        let source_conf = match crate::processor::diagnostic::data_source::get_source("logstash", name, &[]) {
+            Ok((_, conf)) => conf,
+            Err(e) => {
+                tracing::debug!("Skipping {} collection: {}", name, e);
+                return Ok(0);
+            }
+        };
 
         let version = match &self.receiver {
             Receiver::Logstash(r) => match r.get_version().await {
@@ -216,9 +206,7 @@ impl LogstashCollector {
         let content = match self.receiver.get_raw::<T>().await {
             Ok(c) => c,
             Err(e) => {
-                if let Some(ds_err) =
-                    e.downcast_ref::<crate::processor::diagnostic::data_source::DataSourceError>()
-                {
+                if let Some(ds_err) = e.downcast_ref::<crate::processor::diagnostic::data_source::DataSourceError>() {
                     tracing::debug!("Skipping {} collection: {}", T::name(), ds_err);
                     return Ok(0);
                 }
@@ -250,11 +238,7 @@ impl LogstashCollector {
                 LogstashApi::Node => Some(api.as_str().to_string()),
                 LogstashApi::NodeStats => Some(api.as_str().to_string()),
                 LogstashApi::Raw(name, _) => {
-                    match crate::processor::diagnostic::data_source::get_source(
-                        "logstash",
-                        name,
-                        &[],
-                    ) {
+                    match crate::processor::diagnostic::data_source::get_source("logstash", name, &[]) {
                         Ok((_, source_conf)) => {
                             if source_conf.get_url(&parsed_version).is_ok() {
                                 Some(api.as_str().to_string())

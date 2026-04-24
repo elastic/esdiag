@@ -9,10 +9,9 @@ use std::time::Duration;
 use tokio::time::sleep;
 
 async fn start_server(mode: RuntimeMode) -> (Server, Client, String) {
-    let (server, bound_addr) =
-        Server::start([127, 0, 0, 1], 0, Exporter::default(), String::new(), mode)
-            .await
-            .expect("start local server");
+    let (server, bound_addr) = Server::start([127, 0, 0, 1], 0, Exporter::default(), String::new(), mode)
+        .await
+        .expect("start local server");
 
     let client = Client::new();
     let base = format!("http://127.0.0.1:{}", bound_addr.port());
@@ -40,10 +39,7 @@ async fn service_mode_requires_iap_header_for_web_access() {
 
     let authorized = client
         .get(format!("{base}/"))
-        .header(
-            "X-Goog-Authenticated-User-Email",
-            "accounts.google.com:ops@example.com",
-        )
+        .header("X-Goog-Authenticated-User-Email", "accounts.google.com:ops@example.com")
         .send()
         .await
         .expect("service mode authorized request");
@@ -60,10 +56,7 @@ async fn service_mode_does_not_mount_workflow_or_jobs_routes() {
 
     let workflow_response = client
         .get(format!("{base}/workflow"))
-        .header(
-            "X-Goog-Authenticated-User-Email",
-            "accounts.google.com:ops@example.com",
-        )
+        .header("X-Goog-Authenticated-User-Email", "accounts.google.com:ops@example.com")
         .send()
         .await
         .expect("service mode workflow request");
@@ -71,10 +64,7 @@ async fn service_mode_does_not_mount_workflow_or_jobs_routes() {
 
     let jobs_response = client
         .get(format!("{base}/jobs"))
-        .header(
-            "X-Goog-Authenticated-User-Email",
-            "accounts.google.com:ops@example.com",
-        )
+        .header("X-Goog-Authenticated-User-Email", "accounts.google.com:ops@example.com")
         .send()
         .await
         .expect("service mode jobs request");
@@ -100,10 +90,7 @@ async fn service_mode_requires_iap_header_for_settings_update() {
         .post(format!("{base}/api/settings/update"))
         .body(r#"{"settings":{"kibana_url":"https://kibana.example"}}"#)
         .header("content-type", "application/json")
-        .header(
-            "X-Goog-Authenticated-User-Email",
-            "accounts.google.com:ops@example.com",
-        )
+        .header("X-Goog-Authenticated-User-Email", "accounts.google.com:ops@example.com")
         .send()
         .await
         .expect("service mode settings update with header");
@@ -126,10 +113,7 @@ async fn service_mode_does_not_mount_keystore_routes() {
 
     let response = client
         .post(format!("{base}/keystore/unlock"))
-        .header(
-            "X-Goog-Authenticated-User-Email",
-            "accounts.google.com:ops@example.com",
-        )
+        .header("X-Goog-Authenticated-User-Email", "accounts.google.com:ops@example.com")
         .form(&[("password", "pw")])
         .send()
         .await
@@ -138,10 +122,7 @@ async fn service_mode_does_not_mount_keystore_routes() {
 
     let response = client
         .get(format!("{base}/keystore/modal"))
-        .header(
-            "X-Goog-Authenticated-User-Email",
-            "accounts.google.com:ops@example.com",
-        )
+        .header("X-Goog-Authenticated-User-Email", "accounts.google.com:ops@example.com")
         .send()
         .await
         .expect("service mode keystore modal request");
@@ -192,11 +173,7 @@ async fn user_mode_does_not_mount_keystore_routes_when_feature_disabled() {
 async fn user_mode_allows_anonymous_web_access() {
     let (mut server, client, base) = start_server(RuntimeMode::User).await;
 
-    let response = client
-        .get(format!("{base}/"))
-        .send()
-        .await
-        .expect("user mode request");
+    let response = client.get(format!("{base}/")).send().await.expect("user mode request");
     assert_eq!(response.status(), reqwest::StatusCode::OK);
     let body = response.text().await.expect("user mode body");
     assert!(body.contains("Anonymous"));
@@ -272,9 +249,7 @@ async fn workflow_page_embeds_send_target_disable_and_auto_save_rules() {
     let body = response.text().await.expect("workflow page body");
 
     assert!(body.contains("data-bind:workflow.process.enabled"));
-    assert!(
-        body.contains("$workflow.process.mode = $workflow.process.enabled ? 'process' : 'forward'")
-    );
+    assert!(body.contains("$workflow.process.mode = $workflow.process.enabled ? 'process' : 'forward'"));
     assert!(body.contains("$workflow.send.mode = 'local'"));
     assert!(body.contains("Download the archive from&nbsp;<strong>Collect</strong>."));
     assert!(body.contains("$workflow.collect.source === 'known-host'"));
@@ -304,7 +279,9 @@ async fn user_mode_workflow_exposes_browser_download_binding_and_local_directory
     assert!(body.contains("id=\"workflow-download-anchor\""));
     assert!(body.contains("data-on:change=\"if (evt.target.checked)"));
     assert!(body.contains("crypto.randomUUID()"));
-    assert!(body.contains("data-attr:href=\"$archive.download_token ? `/workflow/download/${$archive.download_token}` : null\""));
+    assert!(body.contains(
+        "data-attr:href=\"$archive.download_token ? `/workflow/download/${$archive.download_token}` : null\""
+    ));
     assert!(body.contains("/Downloads"));
 
     server.shutdown().await;

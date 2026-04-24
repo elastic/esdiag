@@ -9,15 +9,9 @@ use std::time::Duration;
 use tokio::time::sleep;
 
 async fn start_server() -> (Server, Client, String) {
-    let (server, bound_addr) = Server::start(
-        [127, 0, 0, 1],
-        0,
-        Exporter::default(),
-        String::new(),
-        RuntimeMode::User,
-    )
-    .await
-    .expect("start local server");
+    let (server, bound_addr) = Server::start([127, 0, 0, 1], 0, Exporter::default(), String::new(), RuntimeMode::User)
+        .await
+        .expect("start local server");
     let client = Client::new();
     let base = format!("http://127.0.0.1:{}", bound_addr.port());
 
@@ -81,10 +75,7 @@ async fn test_client_hint_headers_and_theme_resolution() {
         .expect("index response with cookie");
     assert!(cookie_override.status().is_success());
     let cookie_override_body = cookie_override.text().await.expect("cookie body");
-    assert!(
-        !cookie_override_body
-            .contains("id=\"dark-mode\" type=\"checkbox\" data-bind:theme.dark checked")
-    );
+    assert!(!cookie_override_body.contains("id=\"dark-mode\" type=\"checkbox\" data-bind:theme.dark checked"));
 
     server.shutdown().await;
 }

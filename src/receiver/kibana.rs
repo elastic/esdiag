@@ -117,10 +117,7 @@ impl KibanaReceiver {
             headers.insert("Accept".to_string(), "application/json".to_string());
         }
 
-        let response = self
-            .client
-            .request(Method::GET, &headers, path, None)
-            .await?;
+        let response = self.client.request(Method::GET, &headers, path, None).await?;
         let status = response.status();
         let body = response.text().await?;
         if !status.is_success() {
@@ -159,10 +156,7 @@ impl Receive for KibanaReceiver {
     {
         let ctx = SourceContext::new("kibana", Some(self.get_version().await?.clone()));
         let path = T::resolve_source_request_path(&ctx)?;
-        let response = self
-            .client
-            .request(Method::GET, &HashMap::new(), &path, None)
-            .await?;
+        let response = self.client.request(Method::GET, &HashMap::new(), &path, None).await?;
         let status = response.status();
         let body = response.text().await?;
 
@@ -183,9 +177,7 @@ impl Receive for KibanaReceiver {
         T: StreamingDataSource + DeserializeOwned,
         T::Item: DeserializeOwned + Send + 'static,
     {
-        Err(eyre!(
-            "Streaming is not yet implemented for Kibana receiver"
-        ))
+        Err(eyre!("Streaming is not yet implemented for Kibana receiver"))
     }
 
     async fn try_get_manifest(&self) -> Result<DiagnosticManifest> {

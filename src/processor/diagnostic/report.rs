@@ -246,17 +246,12 @@ impl DiagnosticReport {
     pub fn add_processor_summary(&mut self, summary: ProcessorSummary) {
         if !summary.source.parsed {
             self.diagnostic.processor.errors += 1;
-            self.diagnostic
-                .processor
-                .failures
-                .push(summary.index.clone());
+            self.diagnostic.processor.failures.push(summary.index.clone());
         }
         self.diagnostic.docs.created += summary.docs;
         self.diagnostic.docs.errors += summary.doc_errors;
         self.diagnostic.docs.total += summary.docs + summary.doc_errors;
-        self.diagnostic
-            .processor
-            .push(summary.processor.clone(), summary);
+        self.diagnostic.processor.push(summary.processor.clone(), summary);
     }
 
     pub fn add_lookup<T>(&mut self, name: &str, lookup: &Lookup<T>)
@@ -486,9 +481,7 @@ impl TryFrom<String> for Origin {
     type Error = Report;
 
     fn try_from(receiver: String) -> Result<Self> {
-        let (r#type, path) = receiver
-            .split_once(' ')
-            .ok_or_eyre("Invalid receiver string")?;
+        let (r#type, path) = receiver.split_once(' ').ok_or_eyre("Invalid receiver string")?;
         Ok(Self {
             r#type: r#type.to_string(),
             path: path.to_string(),
@@ -511,10 +504,9 @@ mod tests {
             runner: "test".to_string(),
             uuid: "test".to_string(),
         };
-        let mut report = DiagnosticReport::try_from(
-            DiagnosticReportBuilder::from(metadata).receiver("file path".to_string()),
-        )
-        .unwrap();
+        let mut report =
+            DiagnosticReport::try_from(DiagnosticReportBuilder::from(metadata).receiver("file path".to_string()))
+                .unwrap();
 
         let mut lookup = Lookup::<String>::new();
         lookup.parsed = true;
@@ -536,10 +528,9 @@ mod tests {
             runner: "test".to_string(),
             uuid: "test".to_string(),
         };
-        let mut report = DiagnosticReport::try_from(
-            DiagnosticReportBuilder::from(metadata).receiver("file path".to_string()),
-        )
-        .unwrap();
+        let mut report =
+            DiagnosticReport::try_from(DiagnosticReportBuilder::from(metadata).receiver("file path".to_string()))
+                .unwrap();
 
         let lookup = Lookup::<String>::new(); // parsed is false by default
 

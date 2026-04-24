@@ -3,9 +3,7 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::keystore::upsert_secret_auth_batch;
-use crate::data::{
-    Auth, Product, SecretAuth, get_keystore_password, resolve_secret_auth as resolve_secret_by_id,
-};
+use crate::data::{Auth, Product, SecretAuth, get_keystore_password, resolve_secret_auth as resolve_secret_by_id};
 use eyre::{Result, eyre};
 #[cfg(test)]
 use serde::ser::SerializeMap;
@@ -217,9 +215,7 @@ impl KnownHostBuilder {
         };
         // Only modify the path if we have new segments
         if !new_segments.is_empty() {
-            let mut path_segments = url
-                .path_segments_mut()
-                .expect("Failed to get path segments");
+            let mut path_segments = url.path_segments_mut().expect("Failed to get path segments");
             path_segments.clear().extend(new_segments);
         }
 
@@ -321,10 +317,7 @@ struct FlatKnownHostRef<'a> {
     app: &'a Product,
     #[serde(skip_serializing_if = "Option::is_none")]
     cloud_id: &'a Option<ElasticCloud>,
-    #[serde(
-        default = "default_collect_roles",
-        skip_serializing_if = "roles_is_default_collect"
-    )]
+    #[serde(default = "default_collect_roles", skip_serializing_if = "roles_is_default_collect")]
     roles: &'a Vec<HostRole>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     secret: &'a Option<String>,
@@ -345,10 +338,7 @@ enum LegacyKnownHostRef<'a> {
         app: &'a Product,
         #[serde(skip_serializing_if = "Option::is_none")]
         cloud_id: &'a Option<ElasticCloud>,
-        #[serde(
-            default = "default_collect_roles",
-            skip_serializing_if = "roles_is_default_collect"
-        )]
+        #[serde(default = "default_collect_roles", skip_serializing_if = "roles_is_default_collect")]
         roles: &'a Vec<HostRole>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         secret: &'a Option<String>,
@@ -362,10 +352,7 @@ enum LegacyKnownHostRef<'a> {
         app: &'a Product,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         password: &'a Option<String>,
-        #[serde(
-            default = "default_collect_roles",
-            skip_serializing_if = "roles_is_default_collect"
-        )]
+        #[serde(default = "default_collect_roles", skip_serializing_if = "roles_is_default_collect")]
         roles: &'a Vec<HostRole>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         secret: &'a Option<String>,
@@ -624,9 +611,7 @@ impl KnownHost {
     }
 
     fn has_legacy_plaintext_auth(&self) -> bool {
-        self.legacy_apikey.is_some()
-            || self.legacy_username.is_some()
-            || self.legacy_password.is_some()
+        self.legacy_apikey.is_some() || self.legacy_username.is_some() || self.legacy_password.is_some()
     }
 
     fn clear_legacy_plaintext_auth(&mut self) {
@@ -760,9 +745,7 @@ impl KnownHost {
         resolve_auth_with_precedence(
             &self.secret,
             self.legacy_apikey.clone(),
-            self.legacy_username
-                .clone()
-                .zip(self.legacy_password.clone()),
+            self.legacy_username.clone().zip(self.legacy_password.clone()),
         )
     }
 
@@ -787,26 +770,18 @@ impl KnownHost {
         KnownHost::write_hosts_yml(&hosts)
     }
 
-    pub fn merge_cli_update(
-        &self,
-        update: &KnownHostCliUpdate,
-        secret_auth: Option<SecretAuth>,
-    ) -> Result<Self> {
+    pub fn merge_cli_update(&self, update: &KnownHostCliUpdate, secret_auth: Option<SecretAuth>) -> Result<Self> {
         let app = self.app().clone();
         let url = self.get_url();
         let viewer = self.viewer().map(str::to_string);
-        let roles = update
-            .roles
-            .clone()
-            .unwrap_or_else(|| self.roles().to_vec());
+        let roles = update.roles.clone().unwrap_or_else(|| self.roles().to_vec());
         let accept_invalid_certs = update
             .accept_invalid_certs
             .unwrap_or_else(|| self.accept_invalid_certs());
 
         if let Some(secret_id) = &update.secret {
-            let _secret_auth = secret_auth.ok_or_else(|| {
-                eyre!("Invalid KnownHost configuration: missing secret auth for secret update")
-            })?;
+            let _secret_auth = secret_auth
+                .ok_or_else(|| eyre!("Invalid KnownHost configuration: missing secret auth for secret update"))?;
             return Self::from_parts(KnownHostParts {
                 accept_invalid_certs,
                 app,
@@ -875,11 +850,7 @@ impl KnownHost {
         };
         tracing::debug!(
             "Known hosts: {}",
-            hosts
-                .clone()
-                .into_keys()
-                .collect::<Vec<String>>()
-                .join(", ")
+            hosts.clone().into_keys().collect::<Vec<String>>().join(", ")
         );
         hosts.get(host).cloned()
     }
@@ -968,9 +939,7 @@ impl KnownHost {
             self.legacy_password.clone(),
         ) {
             (Some(apikey), None, None) => Some(SecretAuth::ApiKey { apikey }),
-            (None, Some(username), Some(password)) => {
-                Some(SecretAuth::Basic { username, password })
-            }
+            (None, Some(username), Some(password)) => Some(SecretAuth::Basic { username, password }),
             _ => None,
         }
     }
@@ -1097,11 +1066,7 @@ impl KnownHost {
         validate_viewer_links(&hosts)?;
         tracing::debug!(
             "Writing hosts: {} to {:?}",
-            hosts
-                .clone()
-                .into_keys()
-                .collect::<Vec<String>>()
-                .join(", "),
+            hosts.clone().into_keys().collect::<Vec<String>>().join(", "),
             path
         );
         let file = File::create(&path)?;
@@ -1143,9 +1108,7 @@ impl KnownHost {
                     ));
                 }
                 HostRole::View => {
-                    return Err(eyre!(
-                        "Host '{host_name}' role 'view' is only valid for Kibana hosts"
-                    ));
+                    return Err(eyre!("Host '{host_name}' role 'view' is only valid for Kibana hosts"));
                 }
             }
         }
@@ -1253,14 +1216,10 @@ fn validate_viewer_links(hosts: &BTreeMap<String, KnownHost>) -> Result<()> {
                 ));
             }
             let Some(viewer_host) = hosts.get(viewer_name) else {
-                return Err(eyre!(
-                    "Host '{name}' references unknown viewer host '{viewer_name}'"
-                ));
+                return Err(eyre!("Host '{name}' references unknown viewer host '{viewer_name}'"));
             };
             if !viewer_host.has_role(HostRole::View) {
-                return Err(eyre!(
-                    "Host '{name}' viewer '{viewer_name}' must include role 'view'"
-                ));
+                return Err(eyre!("Host '{name}' viewer '{viewer_name}' must include role 'view'"));
             }
         }
     }
@@ -1292,8 +1251,8 @@ fn resolve_auth_with_precedence(
 }
 
 fn resolve_explicit_secret(secret_id: &str) -> Result<Auth> {
-    let keystore_password = get_keystore_password()
-        .map_err(|err| eyre!("Host references secret '{secret_id}' but {err}"))?;
+    let keystore_password =
+        get_keystore_password().map_err(|err| eyre!("Host references secret '{secret_id}' but {err}"))?;
     let secret = resolve_secret_by_id(secret_id, &keystore_password)?
         .ok_or_else(|| eyre!("Secret '{secret_id}' was not found in keystore"))?;
     secret_auth_to_auth(secret)
@@ -1432,10 +1391,7 @@ mod tests {
         let send = KnownHost::list_by_role(HostRole::Send).expect("send list");
         let view = KnownHost::list_by_role(HostRole::View).expect("view list");
 
-        assert_eq!(
-            collect,
-            vec!["collect-only".to_string(), "collect-send".to_string()]
-        );
+        assert_eq!(collect, vec!["collect-only".to_string(), "collect-send".to_string()]);
         assert_eq!(send, vec!["collect-send".to_string()]);
         assert_eq!(view, vec!["view-host".to_string()]);
     }
@@ -1708,9 +1664,7 @@ mod tests {
 
         let prod_host = KnownHost::get_known(&"prod-es".to_string()).expect("host");
         let prod_auth = prod_host.get_auth().expect("auth");
-        assert!(
-            matches!(prod_auth, Auth::Basic(user, pass) if user == "legacy-user" && pass == "legacy-pass")
-        );
+        assert!(matches!(prod_auth, Auth::Basic(user, pass) if user == "legacy-user" && pass == "legacy-pass"));
 
         let fallback_host = KnownHost::get_known(&"legacy-only".to_string()).expect("host");
         let fallback_auth = fallback_host.get_auth().expect("auth");
@@ -1754,8 +1708,7 @@ mod tests {
         );
         write_hosts(hosts);
 
-        let (migrated, unchanged) =
-            KnownHost::migrate_hosts_to_keystore("pw").expect("migrate should succeed");
+        let (migrated, unchanged) = KnownHost::migrate_hosts_to_keystore("pw").expect("migrate should succeed");
         assert_eq!(migrated, 2);
         assert_eq!(unchanged, 0);
 
@@ -1806,14 +1759,8 @@ mod tests {
         let kb_secret = get_secret("kb-prod", "pw")
             .expect("get secret")
             .expect("kb secret exists");
-        assert_eq!(
-            kb_secret.basic.as_ref().map(|b| b.username.as_str()),
-            Some("elastic")
-        );
-        assert_eq!(
-            kb_secret.basic.as_ref().map(|b| b.password.as_str()),
-            Some("pass-1")
-        );
+        assert_eq!(kb_secret.basic.as_ref().map(|b| b.username.as_str()), Some("elastic"));
+        assert_eq!(kb_secret.basic.as_ref().map(|b| b.password.as_str()), Some("pass-1"));
 
         let migrated_es_auth = migrated_hosts
             .get("es-prod")
@@ -1827,9 +1774,7 @@ mod tests {
             .expect("migrated kb host")
             .get_auth()
             .expect("read migrated kb auth");
-        assert!(
-            matches!(migrated_kb_auth, Auth::Basic(user, pass) if user == "elastic" && pass == "pass-1")
-        );
+        assert!(matches!(migrated_kb_auth, Auth::Basic(user, pass) if user == "elastic" && pass == "pass-1"));
     }
 
     #[test]
@@ -1848,14 +1793,9 @@ mod tests {
             ..KnownHostCliUpdate::default()
         };
 
-        let merged = host
-            .merge_cli_update(&update, None)
-            .expect("merge should succeed");
+        let merged = host.merge_cli_update(&update, None).expect("merge should succeed");
 
-        assert!(
-            merged.accept_invalid_certs,
-            "certificate setting should be preserved"
-        );
+        assert!(merged.accept_invalid_certs, "certificate setting should be preserved");
         assert_eq!(merged.legacy_apikey.as_deref(), Some("legacy-key"));
         assert_eq!(merged.secret, None);
         assert_eq!(merged.roles, vec![HostRole::Collect, HostRole::Send]);
@@ -1877,9 +1817,7 @@ mod tests {
             ..KnownHostCliUpdate::default()
         };
 
-        let merged = host
-            .merge_cli_update(&update, None)
-            .expect("merge should succeed");
+        let merged = host.merge_cli_update(&update, None).expect("merge should succeed");
 
         assert_eq!(merged.legacy_apikey.as_deref(), Some("new-key"));
         assert!(merged.secret.is_none(), "secret reference should be cleared");
@@ -1901,9 +1839,7 @@ mod tests {
             ..KnownHostCliUpdate::default()
         };
 
-        let merged = host
-            .merge_cli_update(&update, None)
-            .expect("merge should succeed");
+        let merged = host.merge_cli_update(&update, None).expect("merge should succeed");
 
         assert!(
             !merged.accept_invalid_certs(),

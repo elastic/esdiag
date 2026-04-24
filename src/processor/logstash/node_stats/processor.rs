@@ -55,10 +55,7 @@ impl NodeStatsDoc {
     }
 }
 
-fn generate_pipeline_docs(
-    metadata: &LogstashMetadata,
-    pipelines: HashMap<String, PipelineStats>,
-) -> Vec<Value> {
+fn generate_pipeline_docs(metadata: &LogstashMetadata, pipelines: HashMap<String, PipelineStats>) -> Vec<Value> {
     let pipeline_metadata_doc = metadata
         .for_data_stream("metrics-logstash.pipeline-esdiag")
         .as_meta_doc();
@@ -129,9 +126,7 @@ impl PluginDoc {
 }
 
 fn generate_plugin_docs(metadata: &LogstashMetadata, plugins: PipelinePlugins) -> Vec<Value> {
-    let plugin_metadata_doc = metadata
-        .for_data_stream("metrics-logstash.plugin-esdiag")
-        .as_meta_doc();
+    let plugin_metadata_doc = metadata.for_data_stream("metrics-logstash.plugin-esdiag").as_meta_doc();
 
     let mut docs: Vec<Value> = Vec::new();
 

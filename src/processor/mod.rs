@@ -133,11 +133,7 @@ fn spawn_sub_processors(
 impl Processor<Ready> {
     /// Try creating a processor with the receiver, exporter and identifiers.
     /// Will attempt to build a manifest from a call to the receiver.
-    pub async fn try_new(
-        receiver: Arc<Receiver>,
-        exporter: Arc<Exporter>,
-        identifiers: Identifiers,
-    ) -> Result<Self> {
+    pub async fn try_new(receiver: Arc<Receiver>, exporter: Arc<Exporter>, identifiers: Identifiers) -> Result<Self> {
         Self::try_new_with_selection(receiver, exporter, identifiers, None).await
     }
 
@@ -392,10 +388,7 @@ impl Diagnostic {
         process_selection: Option<ProcessSelection>,
     ) -> Result<(Self, DiagnosticReport)> {
         tracing::info!("Processing {} diagnostic", manifest.product);
-        tracing::trace!(
-            "Diagnostic Manifest: {}",
-            serde_json::to_string(&manifest).unwrap()
-        );
+        tracing::trace!("Diagnostic Manifest: {}", serde_json::to_string(&manifest).unwrap());
         if let Some(selection) = &process_selection
             && product_key(&manifest.product) != selection.product
         {
@@ -407,39 +400,23 @@ impl Diagnostic {
         }
         match manifest.product {
             Product::Elasticsearch => {
-                let (diagnostic, report) = ElasticsearchDiagnostic::try_new(
-                    receiver,
-                    exporter,
-                    manifest,
-                    process_selection,
-                )
-                .await?;
+                let (diagnostic, report) =
+                    ElasticsearchDiagnostic::try_new(receiver, exporter, manifest, process_selection).await?;
                 Ok((Self::Elasticsearch(diagnostic), report))
             }
             Product::ECK => {
-                let (diagnostic, report) = ElasticCloudKubernetesDiagnostic::try_new(
-                    receiver,
-                    exporter,
-                    manifest,
-                    process_selection,
-                )
-                .await?;
+                let (diagnostic, report) =
+                    ElasticCloudKubernetesDiagnostic::try_new(receiver, exporter, manifest, process_selection).await?;
                 Ok((Self::ElasticCloudKubernetes(diagnostic), report))
             }
             Product::KubernetesPlatform => {
-                let (diagnostic, report) = KubernetesPlatformDiagnostic::try_new(
-                    receiver,
-                    exporter,
-                    manifest,
-                    process_selection,
-                )
-                .await?;
+                let (diagnostic, report) =
+                    KubernetesPlatformDiagnostic::try_new(receiver, exporter, manifest, process_selection).await?;
                 Ok((Self::KubernetesPlatform(diagnostic), report))
             }
             Product::Logstash => {
                 let (diagnostic, report) =
-                    LogstashDiagnostic::try_new(receiver, exporter, manifest, process_selection)
-                        .await?;
+                    LogstashDiagnostic::try_new(receiver, exporter, manifest, process_selection).await?;
                 Ok((Self::Logstash(diagnostic), report))
             }
             Product::Kibana => Err(eyre!("Kibana processing is not yet implemented")),
@@ -469,12 +446,7 @@ impl Diagnostic {
 }
 
 trait DocumentExporter<T, U> {
-    async fn documents_export(
-        self,
-        exporter: &Exporter,
-        lookups: &T,
-        metadata: &U,
-    ) -> ProcessorSummary;
+    async fn documents_export(self, exporter: &Exporter, lookups: &T, metadata: &U) -> ProcessorSummary;
 }
 
 trait StreamingDocumentExporter<T, U>: StreamingDataSource {

@@ -9,12 +9,7 @@ use serde::Serialize;
 use serde_json::{Value, json};
 
 impl DocumentExporter<Lookups, LogstashMetadata> for Plugins {
-    async fn documents_export(
-        self,
-        exporter: &Exporter,
-        _: &Lookups,
-        metadata: &LogstashMetadata,
-    ) -> ProcessorSummary {
+    async fn documents_export(self, exporter: &Exporter, _: &Lookups, metadata: &LogstashMetadata) -> ProcessorSummary {
         let data_stream = "settings-logstash.plugin-esdiag".to_string();
         let metadata_doc = metadata.for_data_stream(&data_stream).as_meta_doc();
         let docs: Vec<Value> = self

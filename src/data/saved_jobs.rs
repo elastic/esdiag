@@ -71,10 +71,7 @@ where
 
 fn get_jobs_path() -> Result<PathBuf> {
     let hosts_path = super::KnownHost::get_hosts_path();
-    let esdiag_dir = hosts_path
-        .parent()
-        .unwrap_or(std::path::Path::new("."))
-        .to_path_buf();
+    let esdiag_dir = hosts_path.parent().unwrap_or(std::path::Path::new(".")).to_path_buf();
     if !esdiag_dir.exists() {
         fs::create_dir_all(&esdiag_dir)?;
     }

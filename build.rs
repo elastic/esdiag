@@ -56,13 +56,9 @@ fn main() {
                 .expect("failed to execute cargo about. Is cargo-about installed?");
 
             if output_about.status.success() {
-                std::fs::write(notice_path, output_about.stdout)
-                    .expect("failed to write NOTICE.txt");
+                std::fs::write(notice_path, output_about.stdout).expect("failed to write NOTICE.txt");
             } else {
-                panic!(
-                    "cargo about failed: {}",
-                    String::from_utf8_lossy(&output_about.stderr)
-                );
+                panic!("cargo about failed: {}", String::from_utf8_lossy(&output_about.stderr));
             }
         }
 
@@ -73,13 +69,9 @@ fn main() {
                 .expect("failed to execute cargo sbom. Is cargo-sbom installed?");
 
             if output_sbom.status.success() {
-                std::fs::write(sbom_path, output_sbom.stdout)
-                    .expect("failed to write esdiag.spdx.json");
+                std::fs::write(sbom_path, output_sbom.stdout).expect("failed to write esdiag.spdx.json");
             } else {
-                panic!(
-                    "cargo sbom failed: {}",
-                    String::from_utf8_lossy(&output_sbom.stderr)
-                );
+                panic!("cargo sbom failed: {}", String::from_utf8_lossy(&output_sbom.stderr));
             }
         }
     }

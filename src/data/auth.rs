@@ -16,12 +16,7 @@ pub enum Auth {
 }
 
 impl Auth {
-    pub fn new(
-        r#type: &AuthType,
-        username: Option<String>,
-        password: Option<String>,
-        apikey: Option<String>,
-    ) -> Self {
+    pub fn new(r#type: &AuthType, username: Option<String>, password: Option<String>, apikey: Option<String>) -> Self {
         match (r#type, username, password, apikey) {
             (AuthType::Apikey, _, _, Some(apikey)) => Self::Apikey(apikey),
             (AuthType::Basic, Some(username), Some(password), _) => Self::Basic(username, password),

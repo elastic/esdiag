@@ -224,10 +224,7 @@ impl Server {
                 .route("/prism-json5.js", get(assets::prism_json5))
                 .route("/prism-rust.js", get(assets::prism_rust))
                 .route("/prism.css", get(assets::prism_css))
-                .route(
-                    "/documentation-outline.js",
-                    get(assets::documentation_outline),
-                )
+                .route("/documentation-outline.js", get(assets::documentation_outline))
                 .route("/theme-borealis.css", get(assets::theme_borealis))
                 .route("/theme", post(theme::set_theme))
                 .route(
@@ -261,25 +258,16 @@ impl Server {
                     .route("/settings/create", post(hosts::create_host))
                     .route("/settings/update", put(hosts::update_host))
                     .route("/settings/host/{action}/{id}", post(hosts::host_action))
-                    .route(
-                        "/settings/cluster/{action}/{id}",
-                        post(hosts::cluster_action),
-                    )
+                    .route("/settings/cluster/{action}/{id}", post(hosts::cluster_action))
                     .route("/settings/host/upsert", post(hosts::upsert_host))
                     .route("/settings/host/delete", post(hosts::delete_host))
                     .route("/settings/secret/{action}/{id}", post(hosts::secret_action))
                     .route("/settings/secret/upsert", post(hosts::upsert_secret))
                     .route("/settings/secret/delete", post(hosts::delete_secret))
-                    .route(
-                        "/keystore/bootstrap-modal",
-                        get(keystore::get_bootstrap_modal),
-                    )
+                    .route("/keystore/bootstrap-modal", get(keystore::get_bootstrap_modal))
                     .route("/keystore/bootstrap", post(keystore::bootstrap))
                     .route("/keystore/modal", get(keystore::get_unlock_modal))
-                    .route(
-                        "/keystore/modal/process",
-                        get(keystore::get_process_unlock_modal),
-                    )
+                    .route("/keystore/modal/process", get(keystore::get_process_unlock_modal))
                     .route("/keystore/unlock", post(keystore::unlock))
                     .route("/keystore/lock", post(keystore::lock))
                     .route("/keystore/status", get(keystore::status))
@@ -319,11 +307,7 @@ impl Server {
             .listening()
             .await
             .ok_or_else(|| eyre::eyre!("Server failed to bind"))?;
-        tracing::info!(
-            "Starting {}-mode server on port {}",
-            runtime_mode,
-            bound_addr.port()
-        );
+        tracing::info!("Starting {}-mode server on port {}", runtime_mode, bound_addr.port());
         tracing::debug!(
             "Runtime mode policy => requires_iap_headers={}, allows_local_runtime_features={}, allows_exporter_updates={}, allows_host_management={}",
             runtime_mode_policy.requires_iap_headers(),
@@ -403,12 +387,7 @@ pub(crate) fn now_epoch_seconds() -> i64 {
 }
 
 impl ServerState {
-    fn retained_bundle_signal(
-        owner: &str,
-        token: &str,
-        status: &str,
-        error: Option<&str>,
-    ) -> ServerEvent {
+    fn retained_bundle_signal(owner: &str, token: &str, status: &str, error: Option<&str>) -> ServerEvent {
         targeted_signal_event(
             owner,
             serde_json::json!({
@@ -556,12 +535,7 @@ impl ServerState {
                 expires_at_epoch,
             },
         );
-        self.publish_event(Self::retained_bundle_signal(
-            &owner_event,
-            &token,
-            "ready",
-            None,
-        ));
+        self.publish_event(Self::retained_bundle_signal(&owner_event, &token, "ready", None));
         token
     }
 
@@ -586,13 +560,7 @@ impl ServerState {
         bundle.expires_at_epoch = expires_at_epoch;
     }
 
-    pub async fn reject_retained_bundle(
-        &self,
-        token: &str,
-        owner: &str,
-        error: impl Into<String>,
-        ttl: Duration,
-    ) {
+    pub async fn reject_retained_bundle(&self, token: &str, owner: &str, error: impl Into<String>, ttl: Duration) {
         if token.trim().is_empty() {
             return;
         }
@@ -613,12 +581,7 @@ impl ServerState {
         bundle.error = Some(error.clone());
         bundle.expires_at_epoch = expires_at_epoch;
         drop(bundles);
-        self.publish_event(Self::retained_bundle_signal(
-            owner,
-            token,
-            "error",
-            Some(&error),
-        ));
+        self.publish_event(Self::retained_bundle_signal(owner, token, "error", Some(&error)));
     }
 
     pub async fn retained_bundle(&self, token: &str) -> Option<RetainedBundle> {
@@ -645,21 +608,13 @@ impl ServerState {
         if let Some(path) = path
             && let Err(err) = tokio::fs::remove_file(&path).await
         {
-            tracing::debug!(
-                "Failed to remove retained bundle {}: {}",
-                path.display(),
-                err
-            );
+            tracing::debug!("Failed to remove retained bundle {}: {}", path.display(), err);
         }
         if let Some(path) = cleanup_path
             && let Err(err) = tokio::fs::remove_dir_all(&path).await
             && err.kind() != std::io::ErrorKind::NotFound
         {
-            tracing::debug!(
-                "Failed to remove retained bundle directory {}: {}",
-                path.display(),
-                err
-            );
+            tracing::debug!("Failed to remove retained bundle directory {}: {}", path.display(), err);
         }
     }
 
@@ -722,21 +677,13 @@ impl ServerState {
             id,
             WorkflowJob {
                 identifiers,
-                input: WorkflowInput::FromServiceLink {
-                    source: filename,
-                    uri,
-                },
+                input: WorkflowInput::FromServiceLink { source: filename, uri },
             },
         )
         .await
     }
 
-    pub async fn push_upload(
-        &self,
-        id: u64,
-        filename: String,
-        path: PathBuf,
-    ) -> Option<WorkflowJob> {
+    pub async fn push_upload(&self, id: u64, filename: String, path: PathBuf) -> Option<WorkflowJob> {
         tracing::debug!("Pushing file upload id: {id}");
         self.push_workflow_job(
             id,
@@ -780,9 +727,7 @@ impl ServerState {
     }
 }
 
-pub async fn ensure_active_output_ready(
-    state: &Arc<ServerState>,
-) -> Result<(), String> {
+pub async fn ensure_active_output_ready(state: &Arc<ServerState>) -> Result<(), String> {
     #[cfg(feature = "keystore")]
     {
         keystore::ensure_unlocked_for_active_output(state).await
@@ -794,11 +739,7 @@ pub async fn ensure_active_output_ready(
     }
 }
 
-async fn require_authenticated_user(
-    State(state): State<Arc<ServerState>>,
-    request: Request,
-    next: Next,
-) -> Response {
+async fn require_authenticated_user(State(state): State<Arc<ServerState>>, request: Request, next: Next) -> Response {
     let method = request.method().clone();
     let path = request.uri().path().to_string();
     let path_is_routable_without_iap = method == axum::http::Method::OPTIONS
@@ -823,12 +764,7 @@ async fn require_authenticated_user(
         && !path_is_routable_without_iap
         && let Err(err) = state.resolve_user_email(request.headers())
     {
-        tracing::warn!(
-            "Rejected unauthenticated request for {} {}: {}",
-            method,
-            path,
-            err
-        );
+        tracing::warn!("Rejected unauthenticated request for {} {}: {}", method, path, err);
         return axum::http::StatusCode::UNAUTHORIZED.into_response();
     }
 
@@ -865,10 +801,7 @@ pub struct Stats {
 impl Default for Stats {
     fn default() -> Self {
         Stats {
-            docs: DocStats {
-                total: 0,
-                errors: 0,
-            },
+            docs: DocStats { total: 0, errors: 0 },
             jobs: JobStats {
                 total: 0,
                 success: 0,
@@ -1022,8 +955,7 @@ pub struct ArchiveSignals {
 
 // Workflow types are defined in data::workflow and re-exported here for backwards compat
 pub use crate::data::workflow::{
-    CollectMode, CollectSource, CollectStage, ProcessMode, ProcessStage, SendMode, SendStage,
-    Workflow,
+    CollectMode, CollectSource, CollectStage, ProcessMode, ProcessStage, SendMode, SendStage, Workflow,
 };
 
 #[derive(Clone)]
@@ -1197,9 +1129,7 @@ pub fn execute_script_event(script: impl Into<String>) -> ServerEvent {
 pub fn server_event_to_sse(event: ServerEvent) -> Result<Event, Infallible> {
     let sse_event = match event {
         ServerEvent::Signals(payload) => PatchSignals::new(payload).write_as_axum_sse_event(),
-        ServerEvent::TargetedSignals { payload, .. } => {
-            PatchSignals::new(payload).write_as_axum_sse_event()
-        }
+        ServerEvent::TargetedSignals { payload, .. } => PatchSignals::new(payload).write_as_axum_sse_event(),
         ServerEvent::Template(html) => PatchElements::new(html).write_as_axum_sse_event(),
         ServerEvent::JobFeed(html) => PatchElements::new(html)
             .selector("#job-feed")
@@ -1217,21 +1147,15 @@ pub fn server_event_to_sse(event: ServerEvent) -> Result<Event, Infallible> {
             .selector(&selector)
             .mode(ElementPatchMode::Prepend)
             .write_as_axum_sse_event(),
-        ServerEvent::ExecuteScript(script) => {
-            datastar::prelude::ExecuteScript::new(&script).write_as_axum_sse_event()
-        }
+        ServerEvent::ExecuteScript(script) => datastar::prelude::ExecuteScript::new(&script).write_as_axum_sse_event(),
     };
 
     Ok(sse_event)
 }
 
-pub fn receiver_stream(
-    rx: mpsc::Receiver<ServerEvent>,
-) -> impl futures::Stream<Item = Result<Event, Infallible>> {
+pub fn receiver_stream(rx: mpsc::Receiver<ServerEvent>) -> impl futures::Stream<Item = Result<Event, Infallible>> {
     stream::unfold(rx, |mut rx| async move {
-        rx.recv()
-            .await
-            .map(|event| (server_event_to_sse(event), rx))
+        rx.recv().await.map(|event| (server_event_to_sse(event), rx))
     })
 }
 
@@ -1295,9 +1219,7 @@ async fn events(
 
 fn event_visible_to_user(event: &ServerEvent, user: &str) -> bool {
     match event {
-        ServerEvent::TargetedSignals {
-            user: target_user, ..
-        } => target_user == user,
+        ServerEvent::TargetedSignals { user: target_user, .. } => target_user == user,
         _ => true,
     }
 }
@@ -1335,22 +1257,13 @@ async fn add_client_hint_headers(mut response: Response) -> Response {
     let headers = response.headers_mut();
     headers.insert(
         ACCEPT_CH,
-        SEC_CH_PREFERS_COLOR_SCHEME
-            .parse()
-            .expect("valid Accept-CH value"),
+        SEC_CH_PREFERS_COLOR_SCHEME.parse().expect("valid Accept-CH value"),
     );
     headers.insert(
         CRITICAL_CH,
-        SEC_CH_PREFERS_COLOR_SCHEME
-            .parse()
-            .expect("valid Critical-CH value"),
+        SEC_CH_PREFERS_COLOR_SCHEME.parse().expect("valid Critical-CH value"),
     );
-    headers.append(
-        VARY,
-        SEC_CH_PREFERS_COLOR_SCHEME
-            .parse()
-            .expect("valid Vary value"),
-    );
+    headers.append(VARY, SEC_CH_PREFERS_COLOR_SCHEME.parse().expect("valid Vary value"));
     headers.append(VARY, "Cookie".parse().expect("valid Vary value"));
 
     response
@@ -1359,9 +1272,9 @@ async fn add_client_hint_headers(mut response: Response) -> Response {
 #[cfg(test)]
 mod tests {
     use super::{
-        ApiKeyFormSignals, RuntimeMode, RuntimeModePolicy, Server,
-        ServerEvent, ServerState, Stats, WorkflowRunSignals, event_visible_to_user,
-        receiver_stream, replace_job_event, signal_event, targeted_signal_event, test_server_state,
+        ApiKeyFormSignals, RuntimeMode, RuntimeModePolicy, Server, ServerEvent, ServerState, Stats, WorkflowRunSignals,
+        event_visible_to_user, receiver_stream, replace_job_event, signal_event, targeted_signal_event,
+        test_server_state,
     };
     #[cfg(feature = "keystore")]
     use crate::data::{create_keystore, write_unlock_lease};
@@ -1410,15 +1323,10 @@ mod tests {
 
     #[tokio::test]
     async fn start_with_ephemeral_port_binds_and_reports_socket() {
-        let (mut server, bound_addr) = Server::start(
-            [127, 0, 0, 1],
-            0,
-            Exporter::default(),
-            String::new(),
-            RuntimeMode::User,
-        )
-        .await
-        .expect("server should bind on ephemeral port");
+        let (mut server, bound_addr) =
+            Server::start([127, 0, 0, 1], 0, Exporter::default(), String::new(), RuntimeMode::User)
+                .await
+                .expect("server should bind on ephemeral port");
 
         assert!(bound_addr.ip().is_loopback());
         assert!(bound_addr.port() > 0);
@@ -1500,23 +1408,14 @@ mod tests {
 
     #[tokio::test]
     async fn events_stream_terminates_on_server_shutdown() {
-        let (mut server, bound_addr) = Server::start(
-            [127, 0, 0, 1],
-            0,
-            Exporter::default(),
-            String::new(),
-            RuntimeMode::User,
-        )
-        .await
-        .expect("server should bind");
+        let (mut server, bound_addr) =
+            Server::start([127, 0, 0, 1], 0, Exporter::default(), String::new(), RuntimeMode::User)
+                .await
+                .expect("server should bind");
         let url = format!("http://{}/events", bound_addr);
 
         let client = reqwest::Client::new();
-        let mut response = client
-            .patch(url)
-            .send()
-            .await
-            .expect("events request should succeed");
+        let mut response = client.patch(url).send().await.expect("events request should succeed");
         assert!(response.status().is_success());
 
         let first = timeout(Duration::from_secs(2), response.chunk())
@@ -1540,18 +1439,10 @@ mod tests {
     async fn service_mode_keystore_session_remains_disabled() {
         let state = test_state(RuntimeMode::Service);
 
-        state
-            .set_keystore_unlocked("pw".to_string())
-            .await;
+        state.set_keystore_unlocked("pw".to_string()).await;
 
-        assert_eq!(
-            state.keystore_status().await,
-            (true, 0)
-        );
-        assert_eq!(
-            state.keystore_status().await,
-            (true, 0)
-        );
+        assert_eq!(state.keystore_status().await, (true, 0));
+        assert_eq!(state.keystore_status().await, (true, 0));
         assert_eq!(state.keystore_password().await, None);
         assert_eq!(state.keystore_password().await, None);
     }
@@ -1565,20 +1456,13 @@ mod tests {
 
         let state = Arc::new(test_state(RuntimeMode::User));
 
-        state
-            .set_keystore_unlocked("pw".to_string())
-            .await;
+        state.set_keystore_unlocked("pw".to_string()).await;
 
         assert!(state.is_keystore_unlocked().await);
         assert!(state.is_keystore_unlocked().await);
-        assert_eq!(
-            state.keystore_password().await,
-            Some("pw".to_string())
-        );
+        assert_eq!(state.keystore_password().await, Some("pw".to_string()));
 
-        state
-            .set_keystore_locked("test")
-            .await;
+        state.set_keystore_locked("test").await;
 
         assert!(!state.is_keystore_unlocked().await);
         assert!(!state.is_keystore_unlocked().await);
@@ -1596,10 +1480,7 @@ mod tests {
         let state = Arc::new(test_state(RuntimeMode::User));
 
         assert!(state.is_keystore_unlocked().await);
-        assert_eq!(
-            state.keystore_password().await,
-            Some("pw".to_string())
-        );
+        assert_eq!(state.keystore_password().await, Some("pw".to_string()));
     }
 
     #[cfg(feature = "keystore")]
@@ -1655,9 +1536,7 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert(
             "X-Goog-Authenticated-User-Email",
-            "accounts.google.com:ops@example.com"
-                .parse()
-                .expect("valid header"),
+            "accounts.google.com:ops@example.com".parse().expect("valid header"),
         );
         let (_, user) = state
             .resolve_user_email(&headers)

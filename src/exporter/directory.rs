@@ -28,11 +28,7 @@ fn create_writer(path: &Path, index: &str) -> Result<Arc<RwLock<BufWriter<File>>
     Ok(Arc::new(RwLock::new(BufWriter::new(file))))
 }
 
-async fn get_writer(
-    writers: Arc<RwLock<Writers>>,
-    path: &Path,
-    index: &str,
-) -> Result<Arc<RwLock<BufWriter<File>>>> {
+async fn get_writer(writers: Arc<RwLock<Writers>>, path: &Path, index: &str) -> Result<Arc<RwLock<BufWriter<File>>>> {
     let mut writers = writers.write().await;
     if let Some(writer) = writers.get(index) {
         Ok(writer.clone())
@@ -160,11 +156,7 @@ impl Export for DirectoryExporter {
 
     /// Transmits a single batch of documents in an async task
     /// Returns a one-shot channel for the BatchResponse
-    async fn batch_tx<T>(
-        &self,
-        index: String,
-        docs: Vec<T>,
-    ) -> Result<oneshot::Receiver<BatchResponse>>
+    async fn batch_tx<T>(&self, index: String, docs: Vec<T>) -> Result<oneshot::Receiver<BatchResponse>>
     where
         T: Serialize + Sized + Send + Sync + 'static,
     {

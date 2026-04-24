@@ -24,10 +24,7 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for Nodes {
         let lookup_node = &lookups.node;
         let metadata = metadata.for_data_stream(&data_stream);
 
-        let node_doc = NodeDoc {
-            metadata,
-            node: None,
-        };
+        let node_doc = NodeDoc { metadata, node: None };
 
         let node_docs: Vec<Value> = nodes
             .par_drain()
@@ -35,11 +32,7 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for Nodes {
                 let mut node_doc = match serde_json::to_value(node_doc.clone().with_node(node)) {
                     Ok(doc) => doc,
                     Err(err) => {
-                        tracing::error!(
-                            "Failed to serialize node document for {}: {}",
-                            node_id,
-                            err
-                        );
+                        tracing::error!("Failed to serialize node document for {}: {}", node_id, err);
                         return None;
                     }
                 };
