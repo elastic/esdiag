@@ -20,6 +20,7 @@ mod uri;
 pub mod workflow;
 
 pub use auth::{Auth, AuthType};
+pub(crate) use keystore::list_secret_entries;
 pub use keystore::{
     BasicSecret, SecretAuth, SecretEntry, UnlockLease, UnlockStatus, add_secret, authenticate, clear_unlock_lease,
     create_keystore, default_unlock_ttl, get_keystore_password, get_keystore_path, get_password_for_secret_commands,

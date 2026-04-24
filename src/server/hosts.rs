@@ -1,6 +1,6 @@
 use super::{ServerState, get_theme_dark, template};
 use crate::data::{
-    HostRole, KnownHost, KnownHostBuilder, Product, SecretAuth, Settings, keystore_exists, list_secret_names,
+    HostRole, KnownHost, KnownHostBuilder, Product, SecretAuth, Settings, keystore_exists, list_secret_entries,
     remove_secret, resolve_secret_auth, upsert_secret_auth,
 };
 use askama::Template;
@@ -792,18 +792,21 @@ fn host_has_plaintext_auth(host: &KnownHost) -> bool {
 }
 
 fn read_secret_rows(keystore_password: &str) -> Result<(Vec<template::SecretTableRow>, Vec<String>), String> {
-    let secret_ids = list_secret_names(keystore_password).map_err(to_message)?;
-    let mut rows = Vec::new();
+    let entries = list_secret_entries(keystore_password).map_err(to_message)?;
+    let mut rows = Vec::with_capacity(entries.len());
+    let mut secret_ids = Vec::with_capacity(entries.len());
 
-    for secret_id in &secret_ids {
-        let auth = resolve_secret_auth(secret_id, keystore_password).map_err(to_message)?;
-        let (auth_type, username) = match auth {
-            Some(SecretAuth::ApiKey { .. }) => ("ApiKey", String::new()),
-            Some(SecretAuth::Basic { username, .. }) => ("Basic", username),
-            None => ("Unknown", String::new()),
+    for (secret_id, entry) in entries {
+        let (auth_type, username) = if entry.apikey.is_some() {
+            ("ApiKey", String::new())
+        } else if let Some(basic) = entry.basic.as_ref() {
+            ("Basic", basic.username.clone())
+        } else {
+            ("Unknown", String::new())
         };
+        secret_ids.push(secret_id.clone());
         rows.push(template::SecretTableRow {
-            secret_id: secret_id.clone(),
+            secret_id,
             auth_type: auth_type.to_string(),
             username,
         });
