@@ -5,15 +5,53 @@ use esdiag::{
     server::{RuntimeMode, Server},
 };
 use reqwest::Client;
-use std::time::Duration;
+use std::{
+    sync::{Mutex, OnceLock},
+    time::Duration,
+};
 use tokio::time::sleep;
 
 async fn start_server(mode: RuntimeMode) -> (Server, Client, String) {
+    let _env_guard = match mode {
+        RuntimeMode::User => Some(WebFeaturesEnvGuard::unset_web_features()),
+        RuntimeMode::Service => None,
+    };
     let default_web_features = match mode {
         RuntimeMode::User => None,
         RuntimeMode::Service => Some(""),
     };
     start_server_with_features(mode, default_web_features).await
+}
+
+struct WebFeaturesEnvGuard {
+    previous: Option<String>,
+    _guard: std::sync::MutexGuard<'static, ()>,
+}
+
+impl WebFeaturesEnvGuard {
+    fn unset_web_features() -> Self {
+        let guard = web_features_env_lock().lock().expect("web features env lock");
+        let previous = std::env::var("ESDIAG_WEB_FEATURES").ok();
+        unsafe { std::env::remove_var("ESDIAG_WEB_FEATURES") };
+        Self {
+            previous,
+            _guard: guard,
+        }
+    }
+}
+
+impl Drop for WebFeaturesEnvGuard {
+    fn drop(&mut self) {
+        match self.previous.take() {
+            Some(value) => unsafe { std::env::set_var("ESDIAG_WEB_FEATURES", value) },
+            None => unsafe { std::env::remove_var("ESDIAG_WEB_FEATURES") },
+        }
+    }
+}
+
+fn web_features_env_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
 }
 
 async fn start_server_with_features(mode: RuntimeMode, web_features: Option<&str>) -> (Server, Client, String) {
