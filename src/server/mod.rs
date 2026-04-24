@@ -30,7 +30,7 @@ use crate::{
 };
 use askama::Template;
 #[cfg(feature = "keystore")]
-use axum::routing::put;
+use axum::routing::{delete, put};
 use axum::{
     Router,
     extract::{DefaultBodyLimit, Request, State},
@@ -43,7 +43,7 @@ use axum::{
     response::IntoResponse,
     response::sse::Event,
     response::{Response, Sse},
-    routing::{delete, get, patch, post},
+    routing::{get, patch, post},
 };
 use bytes::Bytes;
 use clap::ValueEnum;
@@ -495,6 +495,22 @@ pub struct ServerState {
     event_tx: broadcast::Sender<ServerEvent>,
     stats_updates_tx: watch::Sender<u64>,
     stats_updates_rx: watch::Receiver<u64>,
+}
+
+#[cfg(not(feature = "keystore"))]
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct KeystorePageState {
+    pub can_use_keystore: bool,
+    pub locked: bool,
+    pub lock_time: i64,
+    pub show_bootstrap: bool,
+}
+
+#[cfg(not(feature = "keystore"))]
+impl ServerState {
+    pub(crate) async fn keystore_page_state(&self) -> KeystorePageState {
+        KeystorePageState::default()
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -1411,6 +1427,7 @@ mod tests {
     use axum::http::HeaderMap;
     use futures::StreamExt;
     use std::{collections::HashMap, sync::Arc};
+    #[cfg(feature = "keystore")]
     use tempfile::TempDir;
     use tokio::{
         sync::{RwLock, broadcast, mpsc, watch},
@@ -1584,6 +1601,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "keystore")]
     fn service_mode_blocks_explicit_local_web_features() {
         let policy = ServerPolicy::with_web_features(RuntimeMode::Service, Some("advanced,job-builder"))
             .expect("explicit web features");
@@ -1593,6 +1611,16 @@ mod tests {
         assert!(policy.requires_iap_headers());
     }
 
+    #[test]
+    #[cfg(not(feature = "keystore"))]
+    fn service_mode_rejects_unsupported_job_builder_feature() {
+        let err = ServerPolicy::with_web_features(RuntimeMode::Service, Some("advanced,job-builder"))
+            .expect_err("job-builder should fail without keystore support");
+
+        assert!(err.to_string().contains("requires a build with keystore support"));
+    }
+
+    #[cfg(feature = "keystore")]
     fn setup_keystore_env() -> TempDir {
         let tmp = TempDir::new().expect("temp dir");
         let config_dir = tmp.path().join(".esdiag");
@@ -1609,10 +1637,16 @@ mod tests {
 
     #[tokio::test]
     async fn start_with_ephemeral_port_binds_and_reports_socket() {
-        let (mut server, bound_addr) =
-            Server::start([127, 0, 0, 1], 0, Exporter::default(), String::new(), RuntimeMode::User)
-                .await
-                .expect("server should bind on ephemeral port");
+        let (mut server, bound_addr) = Server::start_with_web_features(
+            [127, 0, 0, 1],
+            0,
+            Exporter::default(),
+            String::new(),
+            RuntimeMode::User,
+            Some("advanced"),
+        )
+        .await
+        .expect("server should bind on ephemeral port");
 
         assert!(bound_addr.ip().is_loopback());
         assert!(bound_addr.port() > 0);
@@ -1694,10 +1728,16 @@ mod tests {
 
     #[tokio::test]
     async fn events_stream_terminates_on_server_shutdown() {
-        let (mut server, bound_addr) =
-            Server::start([127, 0, 0, 1], 0, Exporter::default(), String::new(), RuntimeMode::User)
-                .await
-                .expect("server should bind");
+        let (mut server, bound_addr) = Server::start_with_web_features(
+            [127, 0, 0, 1],
+            0,
+            Exporter::default(),
+            String::new(),
+            RuntimeMode::User,
+            Some("advanced"),
+        )
+        .await
+        .expect("server should bind");
         let url = format!("http://{}/events", bound_addr);
 
         let client = reqwest::Client::new();

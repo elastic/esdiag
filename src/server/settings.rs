@@ -245,8 +245,10 @@ async fn secure_host_unlock_required_response(
     err_msg: String,
 ) -> Response {
     #[cfg(feature = "keystore")]
-    let _ = headers;
-    let _ = keystore::get_unlock_modal(State(state.clone())).await;
+    {
+        let _ = headers;
+        let _ = keystore::get_unlock_modal(State(state.clone())).await;
+    }
     #[cfg(not(feature = "keystore"))]
     let _ = headers;
     settings_error_response(state, prior_active_target, err_msg).await
@@ -363,6 +365,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg(feature = "keystore")]
     async fn secure_saved_host_selection_prompts_unlock_when_locked() {
         let _guard = env_lock().lock().expect("env lock");
         let (_tmp, _hosts_path, _keystore_path) = setup_env();

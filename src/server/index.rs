@@ -3,15 +3,19 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::{ServerState, get_theme_dark, template};
-use crate::data::{HostRole, KnownHost, Product, SavedJob, Settings, load_saved_jobs_async};
+use crate::data::{HostRole, KnownHost, Product, Settings};
+#[cfg(feature = "keystore")]
+use crate::data::{SavedJob, load_saved_jobs_async};
 use crate::exporter::Exporter;
 use crate::processor::api::ApiResolver;
 use askama::Template;
 use axum::{
     extract::{Query, State},
     http::{HeaderMap, StatusCode},
-    response::{Html, IntoResponse, Response},
+    response::{Html, IntoResponse},
 };
+#[cfg(feature = "keystore")]
+use axum::response::Response;
 use serde::{Deserialize, Deserializer, Serialize, de};
 use std::{path::PathBuf, str::FromStr, sync::Arc};
 
@@ -197,6 +201,7 @@ pub async fn advanced_page(
     Html(html).into_response()
 }
 
+#[cfg(feature = "keystore")]
 pub async fn jobs_page(
     State(state): State<Arc<ServerState>>,
     Query(params): Query<Params>,
@@ -205,10 +210,12 @@ pub async fn jobs_page(
     build_jobs_page(state, None, Some(params), headers).await
 }
 
+#[cfg(feature = "keystore")]
 pub async fn jobs_page_with_saved_job(state: Arc<ServerState>, name: String, headers: HeaderMap) -> Response {
     build_jobs_page(state, Some(name), None, headers).await.into_response()
 }
 
+#[cfg(feature = "keystore")]
 async fn build_jobs_page(
     state: Arc<ServerState>,
     saved_job_name: Option<String>,
@@ -339,6 +346,7 @@ async fn build_jobs_page(
     Html(html).into_response()
 }
 
+#[cfg(feature = "keystore")]
 struct SavedJobDefaults {
     collect_mode: String,
     collect_source: String,
@@ -361,6 +369,7 @@ struct SavedJobDefaults {
     opportunity: String,
 }
 
+#[cfg(feature = "keystore")]
 impl SavedJobDefaults {
     fn from_job(job: Option<&SavedJob>, send_defaults: &SendDefaults, default_save_dir: &str) -> Self {
         if let Some(job) = job {

@@ -201,7 +201,7 @@ async fn run_api_key_id(state: Arc<ServerState>, job_id: u64, request_user: Stri
     .await;
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "keystore"))]
 mod tests {
     use super::run_api_key_form;
     use crate::{
