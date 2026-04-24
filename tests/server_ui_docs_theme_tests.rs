@@ -9,9 +9,16 @@ use std::time::Duration;
 use tokio::time::sleep;
 
 async fn start_server() -> (Server, Client, String) {
-    let (server, bound_addr) = Server::start([127, 0, 0, 1], 0, Exporter::default(), String::new(), RuntimeMode::User)
-        .await
-        .expect("start local server");
+    let (server, bound_addr) = Server::start_with_web_features(
+        [127, 0, 0, 1],
+        0,
+        Exporter::default(),
+        String::new(),
+        RuntimeMode::User,
+        Some("advanced"),
+    )
+    .await
+    .expect("start local server");
     let client = Client::new();
     let base = format!("http://127.0.0.1:{}", bound_addr.port());
 
@@ -121,12 +128,12 @@ async fn index_embeds_processing_option_catalog() {
     let (mut server, client, base) = start_server().await;
 
     let response = client
-        .get(format!("{base}/workflow"))
+        .get(format!("{base}/advanced"))
         .send()
         .await
-        .expect("workflow response");
+        .expect("advanced response");
     assert!(response.status().is_success());
-    let body = response.text().await.expect("workflow body");
+    let body = response.text().await.expect("advanced body");
 
     assert!(body.contains("const PROCESS_OPTIONS ="));
     assert!(body.contains("\"elasticsearch\""));

@@ -30,7 +30,7 @@ use crate::{
 };
 use askama::Template;
 #[cfg(feature = "keystore")]
-use axum::routing::put;
+use axum::routing::{delete, put};
 use axum::{
     Router,
     extract::{DefaultBodyLimit, Request, State},
@@ -43,7 +43,7 @@ use axum::{
     response::IntoResponse,
     response::sse::Event,
     response::{Response, Sse},
-    routing::{delete, get, patch, post},
+    routing::{get, patch, post},
 };
 use bytes::Bytes;
 use clap::ValueEnum;
@@ -53,7 +53,7 @@ use eyre::eyre;
 use futures::stream;
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use std::{collections::HashMap, convert::Infallible, net::SocketAddr, path::PathBuf, sync::Arc};
+use std::{collections::{HashMap, HashSet}, convert::Infallible, net::SocketAddr, path::PathBuf, sync::Arc};
 use tokio::sync::{RwLock, broadcast, mpsc, watch};
 use uuid::Uuid;
 
@@ -89,14 +89,42 @@ impl std::fmt::Display for RuntimeMode {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
-pub struct RuntimeModePolicy {
+#[derive(Clone, Debug)]
+pub struct ServerPolicy {
     mode: RuntimeMode,
+    web_features: WebFeatureSet,
 }
 
-impl RuntimeModePolicy {
-    pub fn new(mode: RuntimeMode) -> Self {
-        Self { mode }
+impl ServerPolicy {
+    pub fn defaults(mode: RuntimeMode) -> Self {
+        Self {
+            mode,
+            web_features: WebFeatureSet::defaults_for(mode),
+        }
+    }
+
+    pub fn new(mode: RuntimeMode) -> Result<Self> {
+        Self::with_web_features(mode, None)
+    }
+
+    pub fn with_web_features(mode: RuntimeMode, web_features: Option<&str>) -> Result<Self> {
+        let web_features = match web_features {
+            Some(value) => WebFeatureSet::parse(value)?,
+            None => match std::env::var("ESDIAG_WEB_FEATURES") {
+                Ok(value) => WebFeatureSet::parse(&value)?,
+                Err(std::env::VarError::NotPresent) => WebFeatureSet::defaults_for(mode),
+                Err(err) => return Err(err.into()),
+            },
+        };
+
+        #[cfg(not(feature = "keystore"))]
+        if web_features.contains(WebFeature::JobBuilder) {
+            return Err(eyre!(
+                "Web feature 'job-builder' requires a build with keystore support; supported feature names in this build: advanced"
+            ));
+        }
+
+        Ok(Self { mode, web_features })
     }
 
     pub fn mode(&self) -> RuntimeMode {
@@ -117,6 +145,89 @@ impl RuntimeModePolicy {
 
     pub fn allows_host_management(&self) -> bool {
         self.mode == RuntimeMode::User
+    }
+
+    pub fn allows_advanced(&self) -> bool {
+        self.allows_local_runtime_features() && self.web_features.contains(WebFeature::Advanced)
+    }
+
+    pub fn allows_job_builder(&self) -> bool {
+        cfg!(feature = "keystore")
+            && self.allows_local_runtime_features()
+            && self.web_features.contains(WebFeature::JobBuilder)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum WebFeature {
+    Advanced,
+    JobBuilder,
+}
+
+impl WebFeature {
+    const ALL: [Self; 2] = [Self::Advanced, Self::JobBuilder];
+
+    fn parse(value: &str) -> Result<Self> {
+        match value {
+            "advanced" => Ok(Self::Advanced),
+            "job-builder" => Ok(Self::JobBuilder),
+            other => Err(eyre!(
+                "Invalid web feature '{other}', expected one of: {}",
+                Self::known_values()
+            )),
+        }
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Advanced => "advanced",
+            Self::JobBuilder => "job-builder",
+        }
+    }
+
+    fn known_values() -> String {
+        Self::ALL
+            .iter()
+            .map(|feature| feature.as_str())
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct WebFeatureSet {
+    features: HashSet<WebFeature>,
+}
+
+impl WebFeatureSet {
+    fn parse(value: &str) -> Result<Self> {
+        let mut features = HashSet::new();
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            return Ok(Self { features });
+        }
+
+        for token in trimmed.split(',') {
+            let token = token.trim();
+            if token.is_empty() {
+                continue;
+            }
+            features.insert(WebFeature::parse(token)?);
+        }
+
+        Ok(Self { features })
+    }
+
+    fn defaults_for(mode: RuntimeMode) -> Self {
+        let mut features = HashSet::new();
+        if mode == RuntimeMode::User {
+            features.insert(WebFeature::Advanced);
+        }
+        Self { features }
+    }
+
+    fn contains(&self, feature: WebFeature) -> bool {
+        self.features.contains(&feature)
     }
 }
 
@@ -157,9 +268,20 @@ impl Server {
     pub async fn start(
         bind_addr: [u8; 4],
         port: u16,
+        exporter: Exporter,
+        kibana_url: String,
+        runtime_mode: RuntimeMode,
+    ) -> Result<(Self, std::net::SocketAddr)> {
+        Self::start_with_web_features(bind_addr, port, exporter, kibana_url, runtime_mode, None).await
+    }
+
+    pub async fn start_with_web_features(
+        bind_addr: [u8; 4],
+        port: u16,
         mut exporter: Exporter,
         kibana_url: String,
         runtime_mode: RuntimeMode,
+        web_features: Option<&str>,
     ) -> Result<(Self, std::net::SocketAddr)> {
         let (_, rx) = mpsc::channel::<(Identifiers, Bytes)>(1);
         let rx = Arc::new(RwLock::new(rx));
@@ -169,7 +291,8 @@ impl Server {
         let (stats_updates_tx, stats_updates_rx) = watch::channel(0u64);
 
         let (event_tx, _event_rx) = broadcast::channel::<ServerEvent>(256);
-        let runtime_mode_policy = RuntimeModePolicy::new(runtime_mode);
+        let server_policy = ServerPolicy::with_web_features(runtime_mode, web_features)?;
+        let route_policy = server_policy.clone();
 
         // Create shared state
         let state = Arc::new(ServerState {
@@ -183,7 +306,7 @@ impl Server {
             stats_updates_tx,
             stats_updates_rx,
             runtime_mode,
-            runtime_mode_policy,
+            server_policy: server_policy.clone(),
             #[cfg(feature = "keystore")]
             keystore_rate_limit: Arc::new(std::sync::Mutex::new(keystore::KeystoreRateLimit::default())),
         });
@@ -228,7 +351,7 @@ impl Server {
                 .route("/theme-borealis.css", get(assets::theme_borealis))
                 .route("/theme", post(theme::set_theme))
                 .route(
-                    "/workflow/download/{token}",
+                    "/advanced/download/{token}",
                     get(bundle_download::download_retained_bundle),
                 )
                 .route("/docs/{*path}", get(docs::handler))
@@ -237,9 +360,8 @@ impl Server {
                 .route("/upload/submit", post(file_upload::submit))
                 .route("/events", patch(events));
 
-            let app = if runtime_mode_policy.allows_local_runtime_features() {
-                app.route("/workflow", get(index::workflow_page))
-                    .route("/jobs", get(index::jobs_page))
+            let app = if route_policy.allows_advanced() {
+                app.route("/advanced", get(index::advanced_page))
             } else {
                 app
             };
@@ -249,12 +371,19 @@ impl Server {
                 .route("/api/settings/update", post(settings::update_settings));
 
             #[cfg(feature = "keystore")]
-            let app = if runtime_mode_policy.allows_local_runtime_features() {
-                app.route("/jobs/saved", get(saved_jobs::list_saved_jobs))
+            let app = if route_policy.allows_job_builder() {
+                app.route("/jobs", get(index::jobs_page))
+                    .route("/jobs/saved", get(saved_jobs::list_saved_jobs))
                     .route("/jobs/saved", post(saved_jobs::save_job))
                     .route("/jobs/saved/{name}", get(saved_jobs::load_saved_job))
                     .route("/jobs/saved/{name}", delete(saved_jobs::delete_saved_job))
-                    .route("/settings", get(hosts::page))
+            } else {
+                app
+            };
+
+            #[cfg(feature = "keystore")]
+            let app = if route_policy.allows_local_runtime_features() {
+                app.route("/settings", get(hosts::page))
                     .route("/settings/create", post(hosts::create_host))
                     .route("/settings/update", put(hosts::update_host))
                     .route("/settings/host/{action}/{id}", post(hosts::host_action))
@@ -275,7 +404,7 @@ impl Server {
                 app
             };
 
-            let app = if runtime_mode_policy.requires_iap_headers() {
+            let app = if route_policy.requires_iap_headers() {
                 app.layer(middleware::from_fn_with_state(
                     state.clone(),
                     require_authenticated_user,
@@ -309,11 +438,11 @@ impl Server {
             .ok_or_else(|| eyre::eyre!("Server failed to bind"))?;
         tracing::info!("Starting {}-mode server on port {}", runtime_mode, bound_addr.port());
         tracing::debug!(
-            "Runtime mode policy => requires_iap_headers={}, allows_local_runtime_features={}, allows_exporter_updates={}, allows_host_management={}",
-            runtime_mode_policy.requires_iap_headers(),
-            runtime_mode_policy.allows_local_runtime_features(),
-            runtime_mode_policy.allows_exporter_updates(),
-            runtime_mode_policy.allows_host_management()
+            "Server policy => requires_iap_headers={}, allows_local_runtime_features={}, allows_exporter_updates={}, allows_host_management={}",
+            server_policy.requires_iap_headers(),
+            server_policy.allows_local_runtime_features(),
+            server_policy.allows_exporter_updates(),
+            server_policy.allows_host_management()
         );
 
         Ok((
@@ -358,7 +487,7 @@ pub struct ServerState {
     pub workflow_jobs: Arc<RwLock<HashMap<u64, WorkflowJob>>>,
     pub retained_bundles: Arc<RwLock<HashMap<String, RetainedBundle>>>,
     pub runtime_mode: RuntimeMode,
-    pub runtime_mode_policy: RuntimeModePolicy,
+    pub server_policy: ServerPolicy,
     #[cfg(feature = "keystore")]
     pub keystore_rate_limit: Arc<std::sync::Mutex<keystore::KeystoreRateLimit>>,
     stats: Arc<RwLock<Stats>>,
@@ -366,6 +495,22 @@ pub struct ServerState {
     event_tx: broadcast::Sender<ServerEvent>,
     stats_updates_tx: watch::Sender<u64>,
     stats_updates_rx: watch::Receiver<u64>,
+}
+
+#[cfg(not(feature = "keystore"))]
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct KeystorePageState {
+    pub can_use_keystore: bool,
+    pub locked: bool,
+    pub lock_time: i64,
+    pub show_bootstrap: bool,
+}
+
+#[cfg(not(feature = "keystore"))]
+impl ServerState {
+    pub(crate) async fn keystore_page_state(&self) -> KeystorePageState {
+        KeystorePageState::default()
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -409,7 +554,7 @@ impl ServerState {
     }
 
     pub fn resolve_user_email(&self, headers: &HeaderMap) -> Result<(bool, String)> {
-        if self.runtime_mode_policy.requires_iap_headers() {
+        if self.server_policy.requires_iap_headers() {
             let raw = headers
                 .get(IAP_USER_EMAIL_HEADER)
                 .ok_or_else(|| eyre!("Missing required header: {}", IAP_USER_EMAIL_HEADER))?
@@ -760,7 +905,7 @@ async fn require_authenticated_user(State(state): State<Arc<ServerState>>, reque
                 | "/style.css"
                 | "/theme-borealis.css"
         );
-    if state.runtime_mode_policy.requires_iap_headers()
+    if state.server_policy.requires_iap_headers()
         && !path_is_routable_without_iap
         && let Err(err) = state.resolve_user_email(request.headers())
     {
@@ -782,7 +927,7 @@ pub(crate) fn test_server_state() -> Arc<ServerState> {
         workflow_jobs: Arc::new(RwLock::new(HashMap::new())),
         retained_bundles: Arc::new(RwLock::new(HashMap::new())),
         runtime_mode,
-        runtime_mode_policy: RuntimeModePolicy::new(runtime_mode),
+        server_policy: ServerPolicy::defaults(runtime_mode),
         #[cfg(feature = "keystore")]
         keystore_rate_limit: Arc::new(std::sync::Mutex::new(keystore::KeystoreRateLimit::default())),
         shutdown: watch::channel(false).1,
@@ -1272,7 +1417,7 @@ async fn add_client_hint_headers(mut response: Response) -> Response {
 #[cfg(test)]
 mod tests {
     use super::{
-        ApiKeyFormSignals, RuntimeMode, RuntimeModePolicy, Server, ServerEvent, ServerState, Stats, WorkflowRunSignals,
+        ApiKeyFormSignals, RuntimeMode, Server, ServerEvent, ServerPolicy, ServerState, Stats, WorkflowRunSignals,
         event_visible_to_user, receiver_stream, replace_job_event, signal_event, targeted_signal_event,
         test_server_state,
     };
@@ -1282,6 +1427,7 @@ mod tests {
     use axum::http::HeaderMap;
     use futures::StreamExt;
     use std::{collections::HashMap, sync::Arc};
+    #[cfg(feature = "keystore")]
     use tempfile::TempDir;
     use tokio::{
         sync::{RwLock, broadcast, mpsc, watch},
@@ -1296,7 +1442,10 @@ mod tests {
             workflow_jobs: Arc::new(RwLock::new(HashMap::new())),
             retained_bundles: Arc::new(RwLock::new(HashMap::new())),
             runtime_mode: mode,
-            runtime_mode_policy: RuntimeModePolicy::new(mode),
+            server_policy: ServerPolicy {
+                mode,
+                web_features: super::WebFeatureSet::defaults_for(mode),
+            },
             #[cfg(feature = "keystore")]
             keystore_rate_limit: Arc::new(std::sync::Mutex::new(super::keystore::KeystoreRateLimit::default())),
             stats: Arc::new(RwLock::new(Stats::default())),
@@ -1307,6 +1456,171 @@ mod tests {
         }
     }
 
+    struct WebFeaturesEnvGuard {
+        previous: Option<String>,
+        _guard: std::sync::MutexGuard<'static, ()>,
+    }
+
+    impl Drop for WebFeaturesEnvGuard {
+        fn drop(&mut self) {
+            match self.previous.take() {
+                Some(value) => unsafe { std::env::set_var("ESDIAG_WEB_FEATURES", value) },
+                None => unsafe { std::env::remove_var("ESDIAG_WEB_FEATURES") },
+            }
+        }
+    }
+
+    fn with_web_features_env<T>(value: Option<&str>, test: impl FnOnce() -> T) -> T {
+        let env_guard = WebFeaturesEnvGuard {
+            _guard: crate::test_env_lock().lock().expect("web features env lock"),
+            previous: std::env::var("ESDIAG_WEB_FEATURES").ok(),
+        };
+        match value {
+            Some(value) => unsafe { std::env::set_var("ESDIAG_WEB_FEATURES", value) },
+            None => unsafe { std::env::remove_var("ESDIAG_WEB_FEATURES") },
+        }
+
+        let result = test();
+        drop(env_guard);
+        result
+    }
+
+    #[test]
+    fn web_feature_defaults_enable_only_advanced_for_user_mode() {
+        let policy = ServerPolicy {
+            mode: RuntimeMode::User,
+            web_features: super::WebFeatureSet::defaults_for(RuntimeMode::User),
+        };
+
+        assert!(policy.allows_advanced());
+        assert!(!policy.allows_job_builder());
+    }
+
+    #[test]
+    fn web_feature_defaults_disable_optional_features_for_service_mode() {
+        let policy = ServerPolicy {
+            mode: RuntimeMode::Service,
+            web_features: super::WebFeatureSet::defaults_for(RuntimeMode::Service),
+        };
+
+        assert!(!policy.allows_advanced());
+        assert!(!policy.allows_job_builder());
+    }
+
+    #[test]
+    fn explicit_web_features_are_authoritative() {
+        #[cfg(feature = "keystore")]
+        {
+            let policy =
+                ServerPolicy::with_web_features(RuntimeMode::User, Some("job-builder")).expect("explicit web features");
+
+            assert!(!policy.allows_advanced());
+            assert!(policy.allows_job_builder());
+        }
+
+        #[cfg(not(feature = "keystore"))]
+        {
+            let err = ServerPolicy::with_web_features(RuntimeMode::User, Some("job-builder"))
+                .expect_err("job-builder should require keystore support");
+
+            assert!(err.to_string().contains("requires a build with keystore support"));
+        }
+    }
+
+    #[test]
+    fn env_web_features_are_used_when_cli_value_is_absent() {
+        with_web_features_env(Some("job-builder"), || {
+            #[cfg(feature = "keystore")]
+            {
+                let policy = ServerPolicy::with_web_features(RuntimeMode::User, None).expect("env web features");
+
+                assert!(!policy.allows_advanced());
+                assert!(policy.allows_job_builder());
+            }
+
+            #[cfg(not(feature = "keystore"))]
+            {
+                let err = ServerPolicy::with_web_features(RuntimeMode::User, None)
+                    .expect_err("job-builder env should require keystore support");
+
+                assert!(err.to_string().contains("requires a build with keystore support"));
+            }
+        });
+    }
+
+    #[test]
+    fn empty_env_web_features_disable_optional_features() {
+        with_web_features_env(Some(""), || {
+            let policy = ServerPolicy::with_web_features(RuntimeMode::User, None).expect("empty env web features");
+
+            assert!(!policy.allows_advanced());
+            assert!(!policy.allows_job_builder());
+        });
+    }
+
+    #[test]
+    fn explicit_web_features_override_env_value() {
+        with_web_features_env(Some("job-builder"), || {
+            let policy =
+                ServerPolicy::with_web_features(RuntimeMode::User, Some("advanced")).expect("cli overrides env");
+
+            assert!(policy.allows_advanced());
+            assert!(!policy.allows_job_builder());
+        });
+    }
+
+    #[test]
+    fn empty_web_features_disable_optional_features() {
+        let policy = ServerPolicy::with_web_features(RuntimeMode::User, Some("  ")).expect("empty web features");
+
+        assert!(!policy.allows_advanced());
+        assert!(!policy.allows_job_builder());
+    }
+
+    #[test]
+    fn unknown_web_feature_error_lists_known_values() {
+        let err = ServerPolicy::with_web_features(RuntimeMode::User, Some("advanced,unknown-feature"))
+            .expect_err("unknown feature should fail");
+
+        let message = err.to_string();
+        assert!(message.contains("unknown-feature"));
+        assert!(message.contains("advanced"));
+        assert!(message.contains("job-builder"));
+    }
+
+    #[test]
+    #[cfg(not(feature = "keystore"))]
+    fn job_builder_feature_requires_keystore_support() {
+        let err = ServerPolicy::with_web_features(RuntimeMode::User, Some("advanced,job-builder"))
+            .expect_err("job-builder should fail without keystore support");
+
+        let message = err.to_string();
+        assert!(message.contains("job-builder"));
+        assert!(message.contains("requires a build with keystore support"));
+        assert!(message.contains("advanced"));
+    }
+
+    #[test]
+    #[cfg(feature = "keystore")]
+    fn service_mode_blocks_explicit_local_web_features() {
+        let policy = ServerPolicy::with_web_features(RuntimeMode::Service, Some("advanced,job-builder"))
+            .expect("explicit web features");
+
+        assert!(!policy.allows_advanced());
+        assert!(!policy.allows_job_builder());
+        assert!(policy.requires_iap_headers());
+    }
+
+    #[test]
+    #[cfg(not(feature = "keystore"))]
+    fn service_mode_rejects_unsupported_job_builder_feature() {
+        let err = ServerPolicy::with_web_features(RuntimeMode::Service, Some("advanced,job-builder"))
+            .expect_err("job-builder should fail without keystore support");
+
+        assert!(err.to_string().contains("requires a build with keystore support"));
+    }
+
+    #[cfg(feature = "keystore")]
     fn setup_keystore_env() -> TempDir {
         let tmp = TempDir::new().expect("temp dir");
         let config_dir = tmp.path().join(".esdiag");
@@ -1323,10 +1637,16 @@ mod tests {
 
     #[tokio::test]
     async fn start_with_ephemeral_port_binds_and_reports_socket() {
-        let (mut server, bound_addr) =
-            Server::start([127, 0, 0, 1], 0, Exporter::default(), String::new(), RuntimeMode::User)
-                .await
-                .expect("server should bind on ephemeral port");
+        let (mut server, bound_addr) = Server::start_with_web_features(
+            [127, 0, 0, 1],
+            0,
+            Exporter::default(),
+            String::new(),
+            RuntimeMode::User,
+            Some("advanced"),
+        )
+        .await
+        .expect("server should bind on ephemeral port");
 
         assert!(bound_addr.ip().is_loopback());
         assert!(bound_addr.port() > 0);
@@ -1408,10 +1728,16 @@ mod tests {
 
     #[tokio::test]
     async fn events_stream_terminates_on_server_shutdown() {
-        let (mut server, bound_addr) =
-            Server::start([127, 0, 0, 1], 0, Exporter::default(), String::new(), RuntimeMode::User)
-                .await
-                .expect("server should bind");
+        let (mut server, bound_addr) = Server::start_with_web_features(
+            [127, 0, 0, 1],
+            0,
+            Exporter::default(),
+            String::new(),
+            RuntimeMode::User,
+            Some("advanced"),
+        )
+        .await
+        .expect("server should bind");
         let url = format!("http://{}/events", bound_addr);
 
         let client = reqwest::Client::new();

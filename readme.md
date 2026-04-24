@@ -370,6 +370,10 @@ Arguments:
 Options:
   -p, --port <PORT>
           The port to bind the server to [default: 2501]
+      --mode <MODE>
+          Web runtime mode: user or service
+      --web-features <FEATURES>
+          Optional comma-separated web feature allowlist (advanced, job-builder)
   -h, --help
           Print help
 ```
@@ -382,6 +386,9 @@ esdiag serve localhost
 
 # Start a server on port 8080
 esdiag serve --port 8080 localhost
+
+# Enable both Advanced and Job Builder web pages
+esdiag serve --web-features advanced,job-builder localhost
 ```
 
 You can access the web interface at http://localhost:2501 (or your specified port) or use curl to upload a file:

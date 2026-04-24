@@ -117,6 +117,9 @@ enum Commands {
         /// Web runtime mode for the server
         #[arg(long, value_enum, help = "Web runtime mode: user or service")]
         mode: Option<RuntimeMode>,
+        /// Optional comma-separated web feature allowlist (advanced, job-builder)
+        #[arg(long, value_name = "FEATURES")]
+        web_features: Option<String>,
         /// Kibana URL to display in the web interface
         #[arg(
             long,
@@ -576,6 +579,7 @@ async fn run(cli: Cli) -> Result<CommandResult> {
                 port,
                 output,
                 mode,
+                web_features,
                 kibana,
             } => {
                 tracing::info!("Starting ESDiag server");
@@ -588,8 +592,15 @@ async fn run(cli: Cli) -> Result<CommandResult> {
                         .unwrap_or_else(|_| "http://localhost:5601".to_string())
                 });
 
-                let (mut server, _bound_addr) =
-                    Server::start([0, 0, 0, 0], port, exporter, kibana_url, runtime_mode).await?;
+                let (mut server, _bound_addr) = Server::start_with_web_features(
+                    [0, 0, 0, 0],
+                    port,
+                    exporter,
+                    kibana_url,
+                    runtime_mode,
+                    web_features.as_deref(),
+                )
+                .await?;
 
                 wait_for_shutdown_signal().await?;
 
@@ -2158,6 +2169,19 @@ mod tests {
         let resolved = resolve_serve_runtime_mode(None).expect("resolve mode");
 
         assert_eq!(resolved, RuntimeMode::User);
+    }
+
+    #[cfg(feature = "server")]
+    #[test]
+    fn serve_parses_web_features_flag() {
+        let cli = Cli::parse_from(["esdiag", "serve", "--web-features", "advanced,job-builder"]);
+
+        match cli.command {
+            Some(Commands::Serve { web_features, .. }) => {
+                assert_eq!(web_features.as_deref(), Some("advanced,job-builder"));
+            }
+            other => panic!("expected serve command, got {other:?}"),
+        }
     }
 
     #[cfg(feature = "server")]

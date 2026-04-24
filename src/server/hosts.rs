@@ -172,7 +172,7 @@ pub async fn page(State(state): State<Arc<ServerState>>, headers: HeaderMap) -> 
 
     let user_initial = user_email.chars().next().unwrap_or('_').to_ascii_uppercase();
     let (keystore_locked, keystore_lock_time) = state.keystore_status().await;
-    let can_use_keystore = cfg!(feature = "keystore") && state.runtime_mode_policy.allows_local_runtime_features();
+    let can_use_keystore = cfg!(feature = "keystore") && state.server_policy.allows_local_runtime_features();
     let show_keystore_bootstrap = can_use_keystore && !keystore_exists().unwrap_or(false);
 
     let (hosts, clusters) = read_host_and_cluster_rows();
@@ -211,6 +211,8 @@ pub async fn page(State(state): State<Arc<ServerState>>, headers: HeaderMap) -> 
         version: env!("CARGO_PKG_VERSION").to_string(),
         theme_dark: get_theme_dark(&headers),
         runtime_mode: state.runtime_mode.to_string(),
+        show_advanced: state.server_policy.allows_advanced(),
+        show_job_builder: state.server_policy.allows_job_builder(),
         can_use_keystore,
         keystore_locked,
         keystore_lock_time,

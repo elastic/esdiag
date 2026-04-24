@@ -973,7 +973,7 @@
     <a
         id="workflow-download-anchor"
         href=""
-        data-attr:href="$archive.download_token ? `/workflow/download/${$archive.download_token}` : null"
+        data-attr:href="$archive.download_token ? `/advanced/download/${$archive.download_token}` : null"
         aria-hidden="true"
         tabindex="-1"
         style="position: fixed; left: -9999px; width: 1px; height: 1px; opacity: 0; pointer-events: none"
@@ -983,7 +983,7 @@
         const clickRetainedDownloadAnchor = (anchorId, token) => {
             const anchor = document.getElementById(anchorId);
             if (!anchor || !token) return;
-            anchor.href = `/workflow/download/${token}`;
+            anchor.href = `/advanced/download/${token}`;
             anchor.click();
         };
 

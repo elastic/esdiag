@@ -665,7 +665,7 @@ async fn select_processed_exporter(state: Arc<ServerState>, signals: &WorkflowRu
         SendMode::Local => {
             let target = signals.workflow.send.local_target.trim();
             if target == "directory" {
-                if !state.runtime_mode_policy.allows_local_runtime_features() {
+                if !state.server_policy.allows_local_runtime_features() {
                     return Err(eyre!("Service mode does not allow local directory output"));
                 }
                 let directory = signals.workflow.send.local_directory.trim();
@@ -686,7 +686,7 @@ async fn select_processed_exporter(state: Arc<ServerState>, signals: &WorkflowRu
 
 async fn validate_workflow_request(state: &ServerState, signals: &WorkflowRunSignals, job: &WorkflowJob) -> Result<()> {
     if signals.workflow.collect.source == CollectSource::KnownHost
-        && !state.runtime_mode_policy.allows_host_management()
+        && !state.server_policy.allows_host_management()
     {
         return Err(eyre!(
             "Service mode requires explicit endpoint and API key instead of saved known hosts"
@@ -722,7 +722,7 @@ async fn validate_workflow_request(state: &ServerState, signals: &WorkflowRunSig
         let target = signals.workflow.send.local_target.trim();
         if signals.workflow.process.mode == ProcessMode::Process
             && target == "directory"
-            && !state.runtime_mode_policy.allows_local_runtime_features()
+            && !state.server_policy.allows_local_runtime_features()
         {
             return Err(eyre!("Service mode does not allow local directory output"));
         }
@@ -985,7 +985,7 @@ mod tests {
         data::{HostRole, KnownHostBuilder, Product, Uri},
         exporter::Exporter,
         server::{
-            CollectSource, ProcessMode, RetainedBundle, RuntimeMode, RuntimeModePolicy, SendMode, ServerEvent,
+            CollectSource, ProcessMode, RetainedBundle, RuntimeMode, ServerPolicy, SendMode, ServerEvent,
             ServerState, Stats, WorkflowInput, WorkflowJob, WorkflowRunSignals,
         },
     };
@@ -1003,7 +1003,7 @@ mod tests {
             workflow_jobs: Arc::new(RwLock::new(HashMap::new())),
             retained_bundles: Arc::new(RwLock::new(HashMap::<String, RetainedBundle>::new())),
             runtime_mode: mode,
-            runtime_mode_policy: RuntimeModePolicy::new(mode),
+            server_policy: ServerPolicy::defaults(mode),
             #[cfg(feature = "keystore")]
             keystore_rate_limit: Arc::new(std::sync::Mutex::new(
                 crate::server::keystore::KeystoreRateLimit::default(),

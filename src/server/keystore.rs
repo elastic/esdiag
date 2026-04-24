@@ -81,7 +81,7 @@ impl ServerState {
     }
 
     pub(crate) fn can_use_keystore_session(&self) -> bool {
-        self.runtime_mode_policy.allows_local_runtime_features() && !self.runtime_mode_policy.requires_iap_headers()
+        self.server_policy.allows_local_runtime_features() && !self.server_policy.requires_iap_headers()
     }
 
     pub async fn keystore_status(&self) -> (bool, i64) {
@@ -429,7 +429,7 @@ pub async fn lock(State(state): State<Arc<ServerState>>) -> impl IntoResponse {
 }
 
 pub async fn ensure_unlocked_for_active_output(state: &Arc<ServerState>) -> Result<(), String> {
-    if !cfg!(feature = "keystore") || !state.runtime_mode_policy.allows_local_runtime_features() {
+    if !cfg!(feature = "keystore") || !state.server_policy.allows_local_runtime_features() {
         // When the keystore is unavailable, the active exporter can still be valid if its
         // credentials were provided directly by the runtime environment instead of local
         // keystore-backed settings. In that mode there is nothing to unlock here.
@@ -470,7 +470,7 @@ mod tests {
     use crate::{
         data::{KnownHost, Settings, authenticate},
         exporter::Exporter,
-        server::{RuntimeMode, RuntimeModePolicy, ServerEvent, ServerState, Stats, test_server_state},
+        server::{RuntimeMode, ServerPolicy, ServerEvent, ServerState, Stats, test_server_state},
     };
     use axum::{
         extract::{Form, State},
@@ -518,7 +518,7 @@ mod tests {
             workflow_jobs: Arc::new(RwLock::new(HashMap::new())),
             retained_bundles: Arc::new(RwLock::new(HashMap::new())),
             runtime_mode,
-            runtime_mode_policy: RuntimeModePolicy::new(runtime_mode),
+            server_policy: ServerPolicy::new(runtime_mode).expect("test server policy"),
             keystore_rate_limit: Arc::new(std::sync::Mutex::new(KeystoreRateLimit::default())),
             stats: Arc::new(RwLock::new(Stats::default())),
             shutdown: watch::channel(false).1,

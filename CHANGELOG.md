@@ -23,17 +23,19 @@ published release notes, maintenance branches, and tagged history.
 - Added host secrets and role targeting on the upstream branch.
 - Added Logstash API collection support (#274).
 - Added Kibana API collection support (#275).
-- Added a staged diagnostic workflow.
-- Added a jobs workflow for collection and processing.
+- Added an Advanced page for staged diagnostic workflows.
+- Added a Job Builder page for collection and processing.
 - Added saved jobs so named configurations can be persisted, listed, and re-run.
 - Added collect-to-upload handoff support.
 - Added a file-based keystore unlock lease workflow shared by the CLI and web UI.
+- Added runtime web feature gating with `--web-features` and `ESDIAG_WEB_FEATURES`.
 
 ### Changed
 
 - Refined workflow card controls.
 - Polished workflow bundle delivery.
-- Refined workflow navigation and jobs UI.
+- Refined Advanced navigation and jobs UI.
+- Renamed the unreleased web workflow route to `/advanced` and defaulted Job Builder web UI behind the `job-builder` feature.
 - Finalized explicit host lifecycle commands.
 - Improved saved host authentication persistence.
 - Improved agentic CLI summaries and viewer-aware Kibana links.
