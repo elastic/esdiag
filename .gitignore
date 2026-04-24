@@ -6,6 +6,9 @@
 
 # Agent skills and commands
 /*/skills/
+# Include repo-specific skills
+!/.agents/skills/
+!/.agents/skills/**
 /*/command*/
 .cursor
 .wolf
