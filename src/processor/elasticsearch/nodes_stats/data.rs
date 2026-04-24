@@ -185,7 +185,7 @@ pub struct NodeOs {
 #[derive(Deserialize, Serialize)]
 pub struct CpuStats {
     percent: usize,
-    load_average: LoadAverage,
+    load_average: Option<LoadAverage>,
     #[serde(skip_deserializing)]
     load_percent: LoadPercent,
 }
@@ -195,11 +195,11 @@ impl NodeStats {
         self.fs.total.used_in_bytes = self.fs.total.total_in_bytes - self.fs.total.free_in_bytes;
         self.fs.total.used_percent =
             (self.fs.total.used_in_bytes * 100) / self.fs.total.total_in_bytes;
-        self.os.cpu.load_percent.one = (self.os.cpu.load_average.one * 100.0) as usize / processors;
-        self.os.cpu.load_percent.five =
-            (self.os.cpu.load_average.five * 100.0) as usize / processors;
-        self.os.cpu.load_percent.fifteen =
-            (self.os.cpu.load_average.fifteen * 100.0) as usize / processors;
+        if let Some(load_average) = &self.os.cpu.load_average {
+            self.os.cpu.load_percent.one = (load_average.one * 100.0) as usize / processors;
+            self.os.cpu.load_percent.five = (load_average.five * 100.0) as usize / processors;
+            self.os.cpu.load_percent.fifteen = (load_average.fifteen * 100.0) as usize / processors;
+        }
     }
 
     pub fn enrich_from_lookup(&mut self, node: &NodeDocument) {
