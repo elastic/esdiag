@@ -431,7 +431,7 @@ mod tests {
         let mut state = test_server_state();
         let state_mut = Arc::get_mut(&mut state).expect("unique state");
         state_mut.runtime_mode = RuntimeMode::Service;
-        state_mut.server_policy = ServerPolicy::new(RuntimeMode::Service).expect("test server policy");
+        state_mut.server_policy = ServerPolicy::defaults(RuntimeMode::Service);
 
         let mut headers = HeaderMap::new();
         headers.insert(

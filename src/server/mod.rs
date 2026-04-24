@@ -53,7 +53,7 @@ use eyre::eyre;
 use futures::stream;
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use std::{collections::HashMap, collections::HashSet, convert::Infallible, net::SocketAddr, path::PathBuf, sync::Arc};
+use std::{collections::{HashMap, HashSet}, convert::Infallible, net::SocketAddr, path::PathBuf, sync::Arc};
 use tokio::sync::{RwLock, broadcast, mpsc, watch};
 use uuid::Uuid;
 
@@ -96,6 +96,13 @@ pub struct ServerPolicy {
 }
 
 impl ServerPolicy {
+    pub fn defaults(mode: RuntimeMode) -> Self {
+        Self {
+            mode,
+            web_features: WebFeatureSet::defaults_for(mode),
+        }
+    }
+
     pub fn new(mode: RuntimeMode) -> Result<Self> {
         Self::with_web_features(mode, None)
     }
