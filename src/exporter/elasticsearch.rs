@@ -61,9 +61,7 @@ impl RetryConfig {
 }
 
 fn backoff_ms(attempt: u16, config: &RetryConfig) -> u64 {
-    let base = config
-        .initial_ms
-        .saturating_mul(1u64 << u32::from(attempt).min(30));
+    let base = config.initial_ms.saturating_mul(1u64 << u32::from(attempt).min(30));
     let jitter = 0.75 + rand::random::<f64>() * 0.5;
     let jittered = (base as f64 * jitter) as u64;
     jittered.min(config.max_ms)
@@ -124,12 +122,7 @@ impl ElasticsearchExporter {
     }
 
     /// Request to an arbitrary path on the Elasticsearch client
-    pub async fn request(
-        &self,
-        method: &str,
-        path: &str,
-        value: Option<&Value>,
-    ) -> Result<Response> {
+    pub async fn request(&self, method: &str, path: &str, value: Option<&Value>) -> Result<Response> {
         let method = match method {
             "POST" => Method::Post,
             "PUT" => Method::Put,
@@ -158,8 +151,7 @@ impl TryFrom<KnownHost> for ElasticsearchExporter {
     type Error = eyre::Report;
 
     fn try_from(host: KnownHost) -> Result<Self> {
-        let kibana_base_url =
-            super::saved_viewer_kibana_base_url(&host).or_else(super::kibana_base_url_from_env);
+        let kibana_base_url = super::saved_viewer_kibana_base_url(&host).or_else(super::kibana_base_url_from_env);
         let requires_secret = !matches!(host.get_auth()?, Auth::None);
         let url = host.get_url();
         let client = ElasticsearchClient::try_from(host)?;
@@ -232,28 +224,15 @@ impl Export for ElasticsearchExporter {
         for attempt in 0..=config.max_retries {
             let batch: Vec<BulkOperation<Arc<Value>>> = values
                 .iter()
-                .map(|doc| {
-                    BulkOperation::create(Arc::clone(doc))
-                        .pipeline("esdiag")
-                        .into()
-                })
+                .map(|doc| BulkOperation::create(Arc::clone(doc)).pipeline("esdiag").into())
                 .collect();
 
             let response = timeout(
                 Self::request_timeout(),
-                self.client
-                    .bulk(BulkParts::Index(&index))
-                    .body(batch)
-                    .send(),
+                self.client.bulk(BulkParts::Index(&index)).body(batch).send(),
             )
             .await
-            .map_err(|_| {
-                eyre!(
-                    "Timed out sending bulk request to {} for index {}",
-                    self.url,
-                    index
-                )
-            })?;
+            .map_err(|_| eyre!("Timed out sending bulk request to {} for index {}", self.url, index))?;
 
             match parse_response(index.clone(), response, retries).await {
                 Ok(batch_response) => return Ok(batch_response),
@@ -290,11 +269,7 @@ impl Export for ElasticsearchExporter {
 
     /// Transmits a single batch of documents with semaphore-based connection limiting.
     /// Returns a one-shot channel for the BatchResponse.
-    async fn batch_tx<T>(
-        &self,
-        index: String,
-        docs: Vec<T>,
-    ) -> Result<oneshot::Receiver<BatchResponse>>
+    async fn batch_tx<T>(&self, index: String, docs: Vec<T>) -> Result<oneshot::Receiver<BatchResponse>>
     where
         T: Serialize + Sized + Send + Sync + 'static,
     {
@@ -306,10 +281,7 @@ impl Export for ElasticsearchExporter {
 
         tokio::spawn(async move {
             // Acquire semaphore permit inside task - blocks if at limit (backpressure)
-            let _permit = semaphore
-                .acquire()
-                .await
-                .expect("Failed to acquire semaphore permit");
+            let _permit = semaphore.acquire().await.expect("Failed to acquire semaphore permit");
 
             match exporter.batch_send(index, docs).await {
                 Ok(batch_response) => {
@@ -353,10 +325,7 @@ impl Export for ElasticsearchExporter {
                     let body = res.json::<Value>().await?;
                     match status_code {
                         200 | 201 => {
-                            tracing::info!(
-                                "metrics-diagnostic-esdiag, created diagnostic report {}",
-                                diagnostic_id
-                            );
+                            tracing::info!("metrics-diagnostic-esdiag, created diagnostic report {}", diagnostic_id);
                             tracing::trace!("response body: {body}");
                             Ok(())
                         }
@@ -390,15 +359,8 @@ async fn parse_response(
     if status_code == 429 {
         return Err(ExporterError::RateLimited);
     }
-    let body: Value = response
-        .json()
-        .await
-        .map_err(|e| ExporterError::Fatal(e.into()))?;
-    let mut items: Vec<Value> = body
-        .get("items")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
+    let body: Value = response.json().await.map_err(|e| ExporterError::Fatal(e.into()))?;
+    let mut items: Vec<Value> = body.get("items").and_then(Value::as_array).cloned().unwrap_or_default();
     let item_count = items.len();
 
     let error_items: Vec<Value> = items
@@ -411,9 +373,7 @@ async fn parse_response(
     let error_count = error_items.len();
     let doc_count = item_count - error_count;
 
-    if (status_code != 200 && tracing::enabled!(tracing::Level::DEBUG))
-        || (tracing::enabled!(tracing::Level::TRACE))
-    {
+    if (status_code != 200 && tracing::enabled!(tracing::Level::DEBUG)) || (tracing::enabled!(tracing::Level::TRACE)) {
         data::save_file(
             "responses.ndjson",
             &serde_json::json!({
@@ -429,41 +389,21 @@ async fn parse_response(
 
     match status_code {
         200 if error_count == 0 => tracing::debug!("{}, created {} docs", index, doc_count),
-        200 => tracing::warn!(
-            "{}, created {} docs with {} errors",
-            index,
-            doc_count,
-            error_count
-        ),
+        200 => tracing::warn!("{}, created {} docs with {} errors", index, doc_count, error_count),
         400 => {
-            return Err(ExporterError::Fatal(eyre!(
-                "{} - http 400 bad request",
-                index
-            )));
+            return Err(ExporterError::Fatal(eyre!("{} - http 400 bad request", index)));
         }
         401 => {
-            return Err(ExporterError::Fatal(eyre!(
-                "{} - http 401 unauthorized",
-                index
-            )));
+            return Err(ExporterError::Fatal(eyre!("{} - http 401 unauthorized", index)));
         }
         403 => {
-            return Err(ExporterError::Fatal(eyre!(
-                "{} - http 403 forbidden",
-                index
-            )));
+            return Err(ExporterError::Fatal(eyre!("{} - http 403 forbidden", index)));
         }
         404 => {
-            return Err(ExporterError::Fatal(eyre!(
-                "{} - http 404 not found",
-                index
-            )));
+            return Err(ExporterError::Fatal(eyre!("{} - http 404 not found", index)));
         }
         413 => {
-            return Err(ExporterError::Fatal(eyre!(
-                "{} - http 413 request too large",
-                index
-            )));
+            return Err(ExporterError::Fatal(eyre!("{} - http 413 request too large", index)));
         }
         500..=599 => {
             return Err(ExporterError::Fatal(eyre!(
@@ -553,9 +493,7 @@ mod tests {
             statuses: Arc::new(status_sequence),
         };
 
-        let app = Router::new()
-            .route("/{*path}", post(bulk_handler))
-            .with_state(state);
+        let app = Router::new().route("/{*path}", post(bulk_handler)).with_state(state);
 
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();

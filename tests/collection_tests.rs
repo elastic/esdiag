@@ -30,13 +30,7 @@ fn test_collect_minimal() {
     // This test expects a known host named "elasticsearch-local" to be configured in ~/.esdiag/hosts.yml
     // You can create this with: `esdiag host add elasticsearch-local elasticsearch http://localhost:9200`
     let status = Command::new(env!("CARGO_BIN_EXE_esdiag"))
-        .args([
-            "collect",
-            "elasticsearch-local",
-            out_dir,
-            "--type",
-            "minimal",
-        ])
+        .args(["collect", "elasticsearch-local", out_dir, "--type", "minimal"])
         .status()
         .expect("Failed to execute process");
 
@@ -51,8 +45,7 @@ fn test_collect_minimal() {
 
     // The script `bin/min-diag.sh` collected a lot more, but our Rust `Minimal` currently just does `cluster` and `nodes` and `cluster_settings`.
     // Let's verify the manifest contains the correct collected_apis
-    let manifest_content =
-        fs::read_to_string(extracted.path.join("diagnostic_manifest.json")).unwrap();
+    let manifest_content = fs::read_to_string(extracted.path.join("diagnostic_manifest.json")).unwrap();
     let manifest: Value = serde_json::from_str(&manifest_content).unwrap();
 
     let apis = manifest["collected_apis"].as_array().unwrap();
@@ -81,8 +74,7 @@ fn find_diag_dir(path: &Path) -> Option<std::path::PathBuf> {
         let entry = entry.ok()?;
         let name = entry.file_name();
         let name = name.to_string_lossy();
-        let valid_prefix =
-            name.starts_with("api-diagnostics-") || name.starts_with("api-diagnostics");
+        let valid_prefix = name.starts_with("api-diagnostics-") || name.starts_with("api-diagnostics");
         if entry.file_type().ok()?.is_dir() && valid_prefix {
             return Some(entry.path());
         }
@@ -134,13 +126,7 @@ fn test_collect_support_all_endpoints() {
     // This test expects a known host named "elasticsearch-local" to be configured in ~/.esdiag/hosts.yml
     // You can create this with: `esdiag host add elasticsearch-local elasticsearch http://localhost:9200`
     let status = Command::new(env!("CARGO_BIN_EXE_esdiag"))
-        .args([
-            "collect",
-            "elasticsearch-local",
-            out_dir,
-            "--type",
-            "support",
-        ])
+        .args(["collect", "elasticsearch-local", out_dir, "--type", "support"])
         .status()
         .expect("Failed to execute process");
 
@@ -163,13 +149,7 @@ fn test_collect_zip_writes_archive() {
     let out_dir = dir.path().to_str().unwrap();
 
     let status = Command::new(env!("CARGO_BIN_EXE_esdiag"))
-        .args([
-            "collect",
-            "elasticsearch-local",
-            out_dir,
-            "--type",
-            "minimal",
-        ])
+        .args(["collect", "elasticsearch-local", out_dir, "--type", "minimal"])
         .status()
         .expect("Failed to execute process");
 
@@ -199,8 +179,7 @@ fn find_diag_zip(path: &Path) -> Option<std::path::PathBuf> {
         let entry = entry.unwrap();
         let file_name = entry.file_name();
         let file_name = file_name.to_string_lossy();
-        let valid_prefix = file_name.starts_with("api-diagnostics-")
-            || file_name.contains("-api-diagnostics-");
+        let valid_prefix = file_name.starts_with("api-diagnostics-") || file_name.contains("-api-diagnostics-");
         if entry.file_type().unwrap().is_file() && valid_prefix && file_name.ends_with(".zip") {
             return Some(entry.path());
         }
@@ -216,12 +195,7 @@ fn file_set(root: &Path) -> BTreeSet<String> {
             if entry.file_type().unwrap().is_dir() {
                 visit(&path, root, out);
             } else if entry.file_type().unwrap().is_file() {
-                out.insert(
-                    path.strip_prefix(root)
-                        .unwrap()
-                        .to_string_lossy()
-                        .to_string(),
-                );
+                out.insert(path.strip_prefix(root).unwrap().to_string_lossy().to_string());
             }
         }
     }
@@ -273,17 +247,13 @@ fn test_collect_zip_matches_directory_file_set_light_and_support() {
 
         let file = fs::File::open(zip_path_b).expect("zip exists");
         let mut archive = ZipArchive::new(file).expect("zip is valid");
-        archive
-            .extract(&extract_out)
-            .expect("zip extraction succeeds");
+        archive.extract(&extract_out).expect("zip extraction succeeds");
 
         let file = fs::File::open(zip_path_a).expect("zip exists");
         let mut archive = ZipArchive::new(file).expect("zip is valid");
         let extract_a = base.join("extract-a");
         fs::create_dir_all(&extract_a).unwrap();
-        archive
-            .extract(&extract_a)
-            .expect("zip extraction succeeds");
+        archive.extract(&extract_a).expect("zip extraction succeeds");
 
         let dir_set = file_set(&extract_a);
         let zip_set = file_set(&extract_out);
@@ -299,13 +269,7 @@ fn test_collect_support_zip_repeated_has_no_duplicate_entry_errors() {
 
     for _ in 0..3 {
         let output = Command::new(env!("CARGO_BIN_EXE_esdiag"))
-            .args([
-                "collect",
-                "elasticsearch-local",
-                out_dir,
-                "--type",
-                "support",
-            ])
+            .args(["collect", "elasticsearch-local", out_dir, "--type", "support"])
             .output()
             .expect("Failed to execute support zip collect");
         assert!(output.status.success());
@@ -347,11 +311,7 @@ fn test_process_zip_accepts_output_directory_with_dot() {
     let dotted_out = dir.path().join("out.v1.ndjson");
 
     let status = Command::new(env!("CARGO_BIN_EXE_esdiag"))
-        .args([
-            "process",
-            "elasticsearch-local",
-            dotted_out.to_str().unwrap(),
-        ])
+        .args(["process", "elasticsearch-local", dotted_out.to_str().unwrap()])
         .status()
         .expect("Failed to execute process with dotted output file");
 
@@ -449,12 +409,10 @@ fn test_collect_no_auth_with_ephemeral_container() {
 
     let image = elastic_image();
     let port = portpicker::pick_unused_port().expect("free port");
-    let _container =
-        RunningEsContainer::start(&runtime, &image, port, SecurityMode::Disabled, None)
-            .expect("start insecure elasticsearch container");
+    let _container = RunningEsContainer::start(&runtime, &image, port, SecurityMode::Disabled, None)
+        .expect("start insecure elasticsearch container");
 
-    wait_for_es(port, SecurityMode::Disabled, None)
-        .expect("insecure Elasticsearch should be ready");
+    wait_for_es(port, SecurityMode::Disabled, None).expect("insecure Elasticsearch should be ready");
 
     let test_home = tempdir().expect("temp home");
     let host_name = "it-noauth";
@@ -488,12 +446,7 @@ fn test_collect_no_auth_with_ephemeral_container() {
         &[],
     );
     assert_success(&collect, "collect no-auth");
-    assert_has_diagnostic_manifest(
-        collect_out.path(),
-        test_home.path(),
-        "collect no-auth",
-        &collect,
-    );
+    assert_has_diagnostic_manifest(collect_out.path(), test_home.path(), "collect no-auth", &collect);
 }
 
 #[test]
@@ -510,17 +463,10 @@ fn test_collect_with_plaintext_and_keystore_auth_modes() {
     let image = elastic_image();
     let port = portpicker::pick_unused_port().expect("free port");
     let elastic_password = "esdiag-it-pass";
-    let _container = RunningEsContainer::start(
-        &runtime,
-        &image,
-        port,
-        SecurityMode::Enabled,
-        Some(elastic_password),
-    )
-    .expect("start secure elasticsearch container");
+    let _container = RunningEsContainer::start(&runtime, &image, port, SecurityMode::Enabled, Some(elastic_password))
+        .expect("start secure elasticsearch container");
 
-    wait_for_es(port, SecurityMode::Enabled, Some(elastic_password))
-        .expect("secure Elasticsearch should be ready");
+    wait_for_es(port, SecurityMode::Enabled, Some(elastic_password)).expect("secure Elasticsearch should be ready");
     let api_key = create_api_key(port, elastic_password).expect("create api key");
 
     let test_home = tempdir().expect("temp home");
@@ -684,10 +630,7 @@ impl RunningEsContainer {
                 args.push("-e".to_string());
                 args.push("xpack.security.enabled=true".to_string());
                 args.push("-e".to_string());
-                args.push(format!(
-                    "ELASTIC_PASSWORD={}",
-                    elastic_password.unwrap_or("changeme")
-                ));
+                args.push(format!("ELASTIC_PASSWORD={}", elastic_password.unwrap_or("changeme")));
             }
             SecurityMode::Disabled => {
                 args.push("-e".to_string());
@@ -712,9 +655,7 @@ impl RunningEsContainer {
 
 impl Drop for RunningEsContainer {
     fn drop(&mut self) {
-        let _ = Command::new(&self.runtime)
-            .args(["rm", "-f", &self.name])
-            .status();
+        let _ = Command::new(&self.runtime).args(["rm", "-f", &self.name]).status();
     }
 }
 
@@ -722,12 +663,7 @@ fn run_collect_assert_ok(home: &tempfile::TempDir, host: &str, label: &str) {
     run_collect_assert_ok_with_env(home, host, &[], label)
 }
 
-fn run_collect_assert_ok_with_env(
-    home: &tempfile::TempDir,
-    host: &str,
-    extra_env: &[(&str, &str)],
-    label: &str,
-) {
+fn run_collect_assert_ok_with_env(home: &tempfile::TempDir, host: &str, extra_env: &[(&str, &str)], label: &str) {
     let collect_out = tempdir().expect("collect output");
     let collect = run_esdiag(
         &[
@@ -744,12 +680,7 @@ fn run_collect_assert_ok_with_env(
     assert_has_diagnostic_manifest(collect_out.path(), home.path(), label, &collect);
 }
 
-fn assert_has_diagnostic_manifest(
-    output_root: &Path,
-    home_root: &Path,
-    label: &str,
-    output: &Output,
-) {
+fn assert_has_diagnostic_manifest(output_root: &Path, home_root: &Path, label: &str, output: &Output) {
     if let Some(diag_dir) = find_diag_dir(output_root) {
         assert!(diag_dir.join("diagnostic_manifest.json").exists());
         return;
@@ -939,11 +870,7 @@ fn run_esdiag(args: &[&str], home: &tempfile::TempDir, extra_env: &[(&str, &str)
     )
 }
 
-fn run_esdiag_with_home(
-    args: Vec<String>,
-    home_path: PathBuf,
-    extra_env: Vec<(String, String)>,
-) -> Output {
+fn run_esdiag_with_home(args: Vec<String>, home_path: PathBuf, extra_env: Vec<(String, String)>) -> Output {
     let home_path = home_path.to_str().expect("home path");
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_esdiag"));
     cmd.args(args)
@@ -993,13 +920,7 @@ fn run_kibana_collect_matrix_case(host_env: &str) {
 fn test_collect_kibana_localhost_no_auth() {
     let home = tempdir().expect("temp home");
     let host_output = run_esdiag(
-        &[
-            "host",
-            "add",
-            "localhost-kibana",
-            "kibana",
-            "http://localhost:5601",
-        ],
+        &["host", "add", "localhost-kibana", "kibana", "http://localhost:5601"],
         &home,
         &[],
     );
@@ -1126,20 +1047,14 @@ fn create_api_key(port: u16, elastic_password: &str) -> Result<String, String> {
         let text = resp.text().unwrap_or_default();
         return Err(format!("api key status {status}: {text}"));
     }
-    let json: Value = resp
-        .json()
-        .map_err(|e| format!("api key response parse: {e}"))?;
+    let json: Value = resp.json().map_err(|e| format!("api key response parse: {e}"))?;
     json.get("encoded")
         .and_then(Value::as_str)
         .map(ToOwned::to_owned)
         .ok_or_else(|| format!("missing encoded api key in response: {json}"))
 }
 
-fn wait_for_es(
-    port: u16,
-    security: SecurityMode,
-    elastic_password: Option<&str>,
-) -> Result<(), String> {
+fn wait_for_es(port: u16, security: SecurityMode, elastic_password: Option<&str>) -> Result<(), String> {
     let client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(5))
         .build()
@@ -1156,9 +1071,7 @@ fn wait_for_es(
             Ok(_) | Err(_) => sleep(Duration::from_secs(2)),
         }
     }
-    Err(format!(
-        "timed out waiting for Elasticsearch on port {port}"
-    ))
+    Err(format!("timed out waiting for Elasticsearch on port {port}"))
 }
 
 fn container_runtime() -> Option<String> {
@@ -1171,8 +1084,7 @@ fn container_runtime() -> Option<String> {
 }
 
 fn elastic_image() -> String {
-    let registry =
-        env::var("ELASTIC_CONTAINER_REGISTRY").unwrap_or_else(|_| "docker.elastic.co".to_string());
+    let registry = env::var("ELASTIC_CONTAINER_REGISTRY").unwrap_or_else(|_| "docker.elastic.co".to_string());
     let version = env::var("ELASTIC_VERSION").unwrap_or_else(|_| "9.3.0".to_string());
     format!("{registry}/elasticsearch/elasticsearch:{version}")
 }

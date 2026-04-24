@@ -4,10 +4,9 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 
 #[tokio::test]
 async fn deserialize_shard_documents_is_ok() {
-    let file =
-        File::open("src/processor/elasticsearch/indices_stats/tests/metrics-shard-esdiag.ndjson")
-            .await
-            .unwrap();
+    let file = File::open("src/processor/elasticsearch/indices_stats/tests/metrics-shard-esdiag.ndjson")
+        .await
+        .unwrap();
     let reader = BufReader::new(file);
     let mut lines = reader.lines();
     let mut documents = Vec::new();
@@ -25,10 +24,9 @@ async fn deserialize_shard_documents_is_ok() {
 
 #[tokio::test]
 async fn deserialize_index_documents_is_ok() {
-    let file =
-        File::open("src/processor/elasticsearch/indices_stats/tests/metrics-index-esdiag.ndjson")
-            .await
-            .unwrap();
+    let file = File::open("src/processor/elasticsearch/indices_stats/tests/metrics-index-esdiag.ndjson")
+        .await
+        .unwrap();
     let reader = BufReader::new(file);
     let mut lines = reader.lines();
     let mut documents = Vec::new();

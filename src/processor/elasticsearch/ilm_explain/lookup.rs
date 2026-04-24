@@ -7,8 +7,7 @@ use eyre::Result;
 
 impl From<String> for Lookup<IlmStats> {
     fn from(string: String) -> Self {
-        let ilm_explain: IlmExplain =
-            serde_json::from_str(&string).expect("Failed to deserialize ilm_explain");
+        let ilm_explain: IlmExplain = serde_json::from_str(&string).expect("Failed to deserialize ilm_explain");
         Lookup::<IlmStats>::from(ilm_explain)
     }
 }

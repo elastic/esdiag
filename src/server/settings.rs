@@ -112,7 +112,8 @@ pub async fn update_settings(
 
     // 1. Process target selection
     if target == "new_host" {
-        let err_msg = "Inline host creation from output settings is no longer supported. Use /settings instead.".to_string();
+        let err_msg =
+            "Inline host creation from output settings is no longer supported. Use /settings instead.".to_string();
         tracing::warn!("{}", err_msg);
         return settings_error_response(&state, prior_active_target.as_deref(), err_msg).await;
     } else if target_changed {
@@ -123,8 +124,7 @@ pub async fn update_settings(
             Some(_) => {
                 let err_msg = format!("Output target '{}' is not a send-capable host.", target);
                 tracing::warn!("{}", err_msg);
-                return settings_error_response(&state, prior_active_target.as_deref(), err_msg)
-                    .await;
+                return settings_error_response(&state, prior_active_target.as_deref(), err_msg).await;
             }
             None => {
                 next_settings.active_target = None;
@@ -163,13 +163,11 @@ pub async fn update_settings(
             {
                 if let Some(password) = keystore_password {
                     crate::data::with_scoped_keystore_password(password, async move {
-                        Exporter::try_from(host)
-                            .map_err(|e| format!("Failed to construct exporter: {}", e))
+                        Exporter::try_from(host).map_err(|e| format!("Failed to construct exporter: {}", e))
                     })
                     .await
                 } else {
-                    Exporter::try_from(host)
-                        .map_err(|e| format!("Failed to construct exporter: {}", e))
+                    Exporter::try_from(host).map_err(|e| format!("Failed to construct exporter: {}", e))
                 }
             }
             #[cfg(not(feature = "keystore"))]
@@ -184,16 +182,10 @@ pub async fn update_settings(
                 Err(e) => {
                     let err_msg = format!("Invalid output target: {}", e);
                     tracing::error!("{}", err_msg);
-                    return settings_error_response(
-                        &state,
-                        prior_active_target.as_deref(),
-                        err_msg,
-                    )
-                    .await;
+                    return settings_error_response(&state, prior_active_target.as_deref(), err_msg).await;
                 }
             };
-            Exporter::try_from(exporter_uri)
-                .map_err(|e| format!("Failed to construct exporter: {}", e))
+            Exporter::try_from(exporter_uri).map_err(|e| format!("Failed to construct exporter: {}", e))
         };
 
         match next_exporter {
@@ -202,8 +194,7 @@ pub async fn update_settings(
             }
             Err(err_msg) => {
                 tracing::error!("{}", err_msg);
-                return settings_error_response(&state, prior_active_target.as_deref(), err_msg)
-                    .await;
+                return settings_error_response(&state, prior_active_target.as_deref(), err_msg).await;
             }
         }
     }
@@ -276,15 +267,11 @@ fn secure_saved_output_error_message() -> String {
     }
     #[cfg(not(feature = "keystore"))]
     {
-        "Keystore support is unavailable in this build, so secure saved outputs cannot be selected."
-            .to_string()
+        "Keystore support is unavailable in this build, so secure saved outputs cannot be selected.".to_string()
     }
 }
 
-async fn footer_selection_signal_payload(
-    state: &Arc<ServerState>,
-    prior_active_target: Option<&str>,
-) -> String {
+async fn footer_selection_signal_payload(state: &Arc<ServerState>, prior_active_target: Option<&str>) -> String {
     let hosts_by_name = KnownHost::parse_hosts_yml().unwrap_or_default();
     let send_hosts: Vec<String> = hosts_by_name
         .iter()
@@ -292,18 +279,9 @@ async fn footer_selection_signal_payload(
         .map(|(name, _)| name.clone())
         .collect();
     let exporter = state.exporter.read().await.clone();
-    let (_output_options, selected_output, _label) = template::build_footer_output_context(
-        &hosts_by_name,
-        &send_hosts,
-        &exporter,
-        prior_active_target,
-    );
-    let secure = template::active_output_requires_keystore(
-        &hosts_by_name,
-        &send_hosts,
-        &selected_output,
-        &exporter,
-    );
+    let (_output_options, selected_output, _label) =
+        template::build_footer_output_context(&hosts_by_name, &send_hosts, &exporter, prior_active_target);
+    let secure = template::active_output_requires_keystore(&hosts_by_name, &send_hosts, &selected_output, &exporter);
     serde_json::json!({
         "settings": { "target": selected_output },
         "output": { "secure": secure }
@@ -343,9 +321,7 @@ mod tests {
     use crate::{
         data::{HostRole, KnownHost, Product, Settings, Uri, authenticate},
         exporter::Exporter,
-        server::{
-            RuntimeMode, RuntimeModePolicy, ServerEvent, SettingsUpdateSignals, test_server_state,
-        },
+        server::{RuntimeMode, RuntimeModePolicy, ServerEvent, SettingsUpdateSignals, test_server_state},
     };
     use axum::{
         extract::State,
@@ -431,9 +407,7 @@ mod tests {
         while let Ok(event) = events.try_recv() {
             match event {
                 ServerEvent::Signals(payload) => {
-                    if payload
-                        .contains(&format!(r#""settings":{{"target":"{}"}}"#, expected_target))
-                    {
+                    if payload.contains(&format!(r#""settings":{{"target":"{}"}}"#, expected_target)) {
                         saw_target_revert = true;
                     }
                     if payload.contains(r#""output":{"secure":false}"#) {
@@ -481,8 +455,7 @@ mod tests {
 
         let state = test_server_state();
         *state.exporter.write().await =
-            Exporter::try_from(Uri::Directory(PathBuf::from("/tmp/output")))
-                .expect("directory exporter");
+            Exporter::try_from(Uri::Directory(PathBuf::from("/tmp/output"))).expect("directory exporter");
         let mut events = state.subscribe_events();
 
         let response = get_modal(State(state)).await.into_response();
@@ -536,9 +509,7 @@ mod tests {
         while let Ok(event) = events.try_recv() {
             match event {
                 ServerEvent::Signals(payload) => {
-                    if payload
-                        .contains(&format!(r#""settings":{{"target":"{}"}}"#, expected_target))
-                    {
+                    if payload.contains(&format!(r#""settings":{{"target":"{}"}}"#, expected_target)) {
                         saw_target_revert = true;
                     }
                     if payload.contains(r#""output":{"secure":false}"#) {
@@ -626,10 +597,7 @@ mod tests {
         let response = update_settings(State(state.clone()), headers, ReadSignals(signals)).await;
 
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
-        assert_eq!(
-            state.kibana_url.read().await.as_str(),
-            "https://kibana.example"
-        );
+        assert_eq!(state.kibana_url.read().await.as_str(), "https://kibana.example");
     }
 
     #[tokio::test]
@@ -650,17 +618,13 @@ mod tests {
         signals.settings.target = Some(String::new());
         signals.settings.kibana_url = Some("https://new-kibana.example".to_string());
 
-        let response =
-            update_settings(State(state.clone()), HeaderMap::new(), ReadSignals(signals)).await;
+        let response = update_settings(State(state.clone()), HeaderMap::new(), ReadSignals(signals)).await;
 
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
         assert_eq!(state.exporter.read().await.target_uri(), original_target);
         let saved = Settings::load().expect("reload settings");
         assert_eq!(saved.active_target.as_deref(), Some("stdout"));
-        assert_eq!(
-            saved.kibana_url.as_deref(),
-            Some("https://new-kibana.example")
-        );
+        assert_eq!(saved.kibana_url.as_deref(), Some("https://new-kibana.example"));
     }
 
     #[tokio::test]
@@ -697,16 +661,12 @@ mod tests {
         signals.settings.target = Some("secure-es".to_string());
         signals.settings.kibana_url = Some("https://new-kibana.example".to_string());
 
-        let response =
-            update_settings(State(state.clone()), HeaderMap::new(), ReadSignals(signals)).await;
+        let response = update_settings(State(state.clone()), HeaderMap::new(), ReadSignals(signals)).await;
 
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
         let saved = Settings::load().expect("reload settings");
         assert_eq!(saved.active_target.as_deref(), Some("secure-es"));
-        assert_eq!(
-            saved.kibana_url.as_deref(),
-            Some("https://new-kibana.example")
-        );
+        assert_eq!(saved.kibana_url.as_deref(), Some("https://new-kibana.example"));
 
         let mut saw_unlock_modal = false;
         while let Ok(event) = events.try_recv() {

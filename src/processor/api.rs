@@ -130,19 +130,13 @@ impl ElasticsearchApi {
             "nodes_stats" => Ok(ElasticsearchApi::NodesStats),
             "pending_tasks" => Ok(ElasticsearchApi::PendingTasks),
             "repositories" => Ok(ElasticsearchApi::Repositories),
-            "searchable_snapshots_cache_stats" => {
-                Ok(ElasticsearchApi::SearchableSnapshotsCacheStats)
-            }
+            "searchable_snapshots_cache_stats" => Ok(ElasticsearchApi::SearchableSnapshotsCacheStats),
             "searchable_snapshots_stats" => Ok(ElasticsearchApi::SearchableSnapshotsStats),
             "snapshot" => Ok(ElasticsearchApi::Snapshots),
             "slm_policies" => Ok(ElasticsearchApi::SlmPolicies),
             "tasks" => Ok(ElasticsearchApi::Tasks),
             _ => {
-                let weight = match crate::processor::diagnostic::data_source::get_source(
-                    "elasticsearch",
-                    s,
-                    &[],
-                ) {
+                let weight = match crate::processor::diagnostic::data_source::get_source("elasticsearch", s, &[]) {
                     Ok((_, source)) => {
                         if source.has_tag("light") {
                             ApiWeight::Light
@@ -217,9 +211,7 @@ impl LogstashApi {
             "version" | "logstash_version" => "logstash_version",
             "health_report" | "logstash_health_report" => "logstash_health_report",
             "hot_threads" | "logstash_nodes_hot_threads" => "logstash_nodes_hot_threads",
-            "hot_threads_human" | "logstash_nodes_hot_threads_human" => {
-                "logstash_nodes_hot_threads_human"
-            }
+            "hot_threads_human" | "logstash_nodes_hot_threads_human" => "logstash_nodes_hot_threads_human",
             other => other,
         };
 
@@ -250,20 +242,17 @@ impl LogstashApi {
             "logstash_node" => Ok(LogstashApi::Node),
             "logstash_node_stats" => Ok(LogstashApi::NodeStats),
             _ => {
-                let weight = match crate::processor::diagnostic::data_source::get_source(
-                    "logstash",
-                    canonical.as_str(),
-                    &[],
-                ) {
-                    Ok((_, source)) => {
-                        if source.tags.as_deref() == Some("light") {
-                            ApiWeight::Light
-                        } else {
-                            ApiWeight::Heavy
+                let weight =
+                    match crate::processor::diagnostic::data_source::get_source("logstash", canonical.as_str(), &[]) {
+                        Ok((_, source)) => {
+                            if source.tags.as_deref() == Some("light") {
+                                ApiWeight::Light
+                            } else {
+                                ApiWeight::Heavy
+                            }
                         }
-                    }
-                    Err(_) => return Err(eyre!("Invalid Logstash API: {}", s)),
-                };
+                        Err(_) => return Err(eyre!("Invalid Logstash API: {}", s)),
+                    };
                 Ok(LogstashApi::Raw(canonical, weight))
             }
         }
@@ -361,8 +350,7 @@ impl ApiResolver {
     pub fn kb_dependencies(requested: &IndexSet<String>) -> HashMap<String, Vec<String>> {
         let mut deps = HashMap::new();
         for api in requested {
-            if let Ok((_, source)) =
-                crate::processor::diagnostic::data_source::get_source("kibana", api, &[])
+            if let Ok((_, source)) = crate::processor::diagnostic::data_source::get_source("kibana", api, &[])
                 && source.is_spaceaware()
             {
                 deps.entry(api.clone())
@@ -377,15 +365,9 @@ impl ApiResolver {
         let mut deps = HashMap::new();
         deps.insert(
             "logstash_node".to_string(),
-            vec![
-                "logstash_version".to_string(),
-                "logstash_plugins".to_string(),
-            ],
+            vec!["logstash_version".to_string(), "logstash_plugins".to_string()],
         );
-        deps.insert(
-            "logstash_node_stats".to_string(),
-            vec!["logstash_node".to_string()],
-        );
+        deps.insert("logstash_node_stats".to_string(), vec!["logstash_node".to_string()]);
         deps
     }
 
@@ -569,10 +551,7 @@ impl ApiResolver {
         }
     }
 
-    fn default_processing_selection(
-        product: &str,
-        diag_type: &DiagnosticType,
-    ) -> Result<Vec<String>> {
+    fn default_processing_selection(product: &str, diag_type: &DiagnosticType) -> Result<Vec<String>> {
         match product {
             "elasticsearch" => {
                 let selected = Self::resolve_es(diag_type, None, None)?
@@ -646,15 +625,10 @@ impl ApiResolver {
                 "slm_policies".to_string(),
                 "tasks".to_string(),
             ],
-            DiagnosticType::Support => {
-                crate::processor::diagnostic::data_source::get_source_keys("elasticsearch")
-            }
+            DiagnosticType::Support => crate::processor::diagnostic::data_source::get_source_keys("elasticsearch"),
             DiagnosticType::Light => {
                 let mut light_apis =
-                    crate::processor::diagnostic::data_source::get_source_keys_with_tag(
-                        "elasticsearch",
-                        "light",
-                    );
+                    crate::processor::diagnostic::data_source::get_source_keys_with_tag("elasticsearch", "light");
                 if !light_apis.iter().any(|api| api == "cluster") {
                     light_apis.push("cluster".to_string());
                 }
@@ -668,10 +642,7 @@ impl ApiResolver {
 
     pub fn kb_base_apis(diag_type: &DiagnosticType) -> Vec<String> {
         match diag_type {
-            DiagnosticType::Minimal => Self::kb_minimum_required()
-                .into_iter()
-                .map(str::to_string)
-                .collect(),
+            DiagnosticType::Minimal => Self::kb_minimum_required().into_iter().map(str::to_string).collect(),
             DiagnosticType::Standard | DiagnosticType::Support | DiagnosticType::Light => {
                 crate::processor::diagnostic::data_source::get_source_keys("kibana")
             }
@@ -703,11 +674,7 @@ impl ApiResolver {
             }
         }
 
-        let final_set = Self::resolve_requested(
-            requested,
-            &Self::es_minimum_required(),
-            &Self::es_dependencies(),
-        );
+        let final_set = Self::resolve_requested(requested, &Self::es_minimum_required(), &Self::es_dependencies());
 
         let mut api_set: IndexSet<ElasticsearchApi> = IndexSet::new();
         for api in final_set.iter() {
@@ -763,10 +730,9 @@ impl ApiResolver {
 
         let base_apis: Vec<String> = match diag_type {
             DiagnosticType::Minimal => vec!["logstash_node".to_string()],
-            DiagnosticType::Standard | DiagnosticType::Light => vec![
-                "logstash_node".to_string(),
-                "logstash_node_stats".to_string(),
-            ],
+            DiagnosticType::Standard | DiagnosticType::Light => {
+                vec!["logstash_node".to_string(), "logstash_node_stats".to_string()]
+            }
             DiagnosticType::Support => {
                 let sources = crate::processor::diagnostic::data_source::get_sources();
                 if let Some(logstash_sources) = sources.get("logstash") {
@@ -795,11 +761,7 @@ impl ApiResolver {
             }
         }
 
-        let final_set = Self::resolve_requested(
-            requested,
-            &Self::ls_minimum_required(),
-            &Self::ls_dependencies(),
-        );
+        let final_set = Self::resolve_requested(requested, &Self::ls_minimum_required(), &Self::ls_dependencies());
 
         let mut apis = Vec::new();
         for api in final_set.iter() {
@@ -816,12 +778,8 @@ mod tests {
 
     #[test]
     fn test_es_resolve_minimal_dependencies() {
-        let apis = ApiResolver::resolve_es(
-            &DiagnosticType::Minimal,
-            Some(&vec!["nodes_stats".to_string()]),
-            None,
-        )
-        .unwrap();
+        let apis =
+            ApiResolver::resolve_es(&DiagnosticType::Minimal, Some(&vec!["nodes_stats".to_string()]), None).unwrap();
 
         let api_strs: Vec<&str> = apis.iter().map(|a| a.as_str()).collect();
         assert!(api_strs.contains(&"cluster")); // required
@@ -832,12 +790,8 @@ mod tests {
 
     #[test]
     fn test_es_resolve_exclude_required() {
-        let apis = ApiResolver::resolve_es(
-            &DiagnosticType::Standard,
-            None,
-            Some(&vec!["cluster".to_string()]),
-        )
-        .unwrap();
+        let apis =
+            ApiResolver::resolve_es(&DiagnosticType::Standard, None, Some(&vec!["cluster".to_string()])).unwrap();
 
         let api_strs: Vec<&str> = apis.iter().map(|a| a.as_str()).collect();
         assert!(api_strs.contains(&"cluster")); // Should still be there because it's required
@@ -868,12 +822,7 @@ mod tests {
 
     #[test]
     fn test_es_version_alias_dedupes_to_cluster() {
-        let apis = ApiResolver::resolve_es(
-            &DiagnosticType::Minimal,
-            Some(&vec!["version".to_string()]),
-            None,
-        )
-        .unwrap();
+        let apis = ApiResolver::resolve_es(&DiagnosticType::Minimal, Some(&vec!["version".to_string()]), None).unwrap();
 
         let cluster_count = apis
             .iter()
@@ -884,12 +833,9 @@ mod tests {
 
     #[test]
     fn test_processing_selection_locks_required_dependencies() {
-        let selected = ApiResolver::resolve_processing_selection(
-            "elasticsearch",
-            "minimal",
-            &["nodes_stats".to_string()],
-        )
-        .unwrap();
+        let selected =
+            ApiResolver::resolve_processing_selection("elasticsearch", "minimal", &["nodes_stats".to_string()])
+                .unwrap();
 
         assert!(selected.contains(&"nodes_stats".to_string()));
         assert!(selected.contains(&"nodes".to_string()));
@@ -901,18 +847,9 @@ mod tests {
     fn test_processing_options_marks_required_entries() {
         let options = ApiResolver::resolve_processing_options("logstash", "standard", "").unwrap();
 
-        let version = options
-            .iter()
-            .find(|option| option.key == "version")
-            .unwrap();
-        let plugins = options
-            .iter()
-            .find(|option| option.key == "plugins")
-            .unwrap();
-        let node_stats = options
-            .iter()
-            .find(|option| option.key == "node_stats")
-            .unwrap();
+        let version = options.iter().find(|option| option.key == "version").unwrap();
+        let plugins = options.iter().find(|option| option.key == "plugins").unwrap();
+        let node_stats = options.iter().find(|option| option.key == "node_stats").unwrap();
 
         assert!(version.required);
         assert!(plugins.required);
@@ -921,8 +858,7 @@ mod tests {
 
     #[test]
     fn test_custom_processing_selects_all_implemented_options() {
-        let options =
-            ApiResolver::resolve_processing_options("elasticsearch", "custom", "").unwrap();
+        let options = ApiResolver::resolve_processing_options("elasticsearch", "custom", "").unwrap();
 
         assert!(options.iter().all(|option| option.selected));
         assert!(options.iter().any(|option| option.key == "tasks"));

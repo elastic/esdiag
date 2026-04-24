@@ -22,11 +22,7 @@ pub struct FinalizeResponse {
     pub token: String,
 }
 
-pub async fn upload_file(
-    file_path: &Path,
-    upload_id: &str,
-    api_url: &str,
-) -> Result<FinalizeResponse> {
+pub async fn upload_file(file_path: &Path, upload_id: &str, api_url: &str) -> Result<FinalizeResponse> {
     let client = build_http_client()?;
     let upload_id = normalize_upload_id(upload_id);
     let filename = file_path
@@ -38,15 +34,7 @@ pub async fn upload_file(
     ensure_upload_exists(&client, &upload_id, api_url).await?;
 
     let file_digest = digest_file(file_path).await?;
-    upload_parts(
-        &client,
-        file_path,
-        &filename,
-        &upload_id,
-        &file_digest,
-        api_url,
-    )
-    .await?;
+    upload_parts(&client, file_path, &filename, &upload_id, &file_digest, api_url).await?;
     finalize_upload(&client, &upload_id, &file_digest, api_url).await
 }
 
@@ -67,10 +55,7 @@ fn build_http_client() -> Result<Client> {
 }
 
 async fn ensure_upload_exists(client: &Client, upload_id: &str, api_url: &str) -> Result<()> {
-    let response = client
-        .head(format!("{api_url}/api/uploads/{upload_id}"))
-        .send()
-        .await?;
+    let response = client.head(format!("{api_url}/api/uploads/{upload_id}")).send().await?;
 
     if response.status() == StatusCode::OK {
         Ok(())
@@ -136,11 +121,7 @@ async fn upload_parts(
             .await?;
 
         if response.status() != StatusCode::CREATED && response.status() != StatusCode::CONFLICT {
-            return Err(eyre!(
-                "Failed to upload part {}: {}",
-                part_number,
-                response.status()
-            ));
+            return Err(eyre!("Failed to upload part {}: {}", part_number, response.status()));
         }
 
         part_number += 1;
@@ -156,9 +137,7 @@ async fn finalize_upload(
     api_url: &str,
 ) -> Result<FinalizeResponse> {
     let response = client
-        .post(format!(
-            "{api_url}/api/uploads/{upload_id}/{file_digest}/_finalize"
-        ))
+        .post(format!("{api_url}/api/uploads/{upload_id}/{file_digest}/_finalize"))
         .send()
         .await?;
 
@@ -174,11 +153,7 @@ async fn finalize_upload(
 }
 
 fn hex_digest(bytes: impl AsRef<[u8]>) -> String {
-    bytes
-        .as_ref()
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect()
+    bytes.as_ref().iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 pub fn default_upload_path(file_name: &str) -> PathBuf {
@@ -207,18 +182,12 @@ mod tests {
     #[test]
     fn normalize_upload_id_uses_last_path_segment() {
         assert_eq!(normalize_upload_id("abc123"), "abc123");
-        assert_eq!(
-            normalize_upload_id("https://upload.elastic.co/g/abc123"),
-            "abc123"
-        );
+        assert_eq!(normalize_upload_id("https://upload.elastic.co/g/abc123"), "abc123");
     }
 
     #[test]
     fn default_upload_path_preserves_cli_filename() {
-        assert_eq!(
-            default_upload_path("diag.zip").to_string_lossy(),
-            "diag.zip"
-        );
+        assert_eq!(default_upload_path("diag.zip").to_string_lossy(), "diag.zip");
         assert_eq!(DEFAULT_UPLOAD_API_URL, "https://upload.elastic.co");
     }
 
@@ -237,10 +206,7 @@ mod tests {
         part_digest: String,
     }
 
-    async fn head_upload(
-        State(state): State<TestState>,
-        AxumPath(_upload_id): AxumPath<String>,
-    ) -> StatusCode {
+    async fn head_upload(State(state): State<TestState>, AxumPath(_upload_id): AxumPath<String>) -> StatusCode {
         state.head_calls.fetch_add(1, Ordering::SeqCst);
         StatusCode::OK
     }
@@ -280,24 +246,17 @@ mod tests {
     async fn upload_file_uses_expected_service_protocol() {
         let state = TestState::default();
         let app = Router::new()
-            .route(
-                "/api/uploads/{upload_id}",
-                head(head_upload).put(put_upload),
-            )
+            .route("/api/uploads/{upload_id}", head(head_upload).put(put_upload))
             .route(
                 "/api/uploads/{upload_id}/{file_digest}/_finalize",
                 post(finalize_upload_handler),
             )
             .with_state(state.clone());
 
-        let listener = TcpListener::bind("127.0.0.1:0")
-            .await
-            .expect("bind test listener");
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind test listener");
         let addr = listener.local_addr().expect("listener addr");
         let server = tokio::spawn(async move {
-            axum::serve(listener, app)
-                .await
-                .expect("serve uploader stub");
+            axum::serve(listener, app).await.expect("serve uploader stub");
         });
 
         let mut file = tempfile::Builder::new()

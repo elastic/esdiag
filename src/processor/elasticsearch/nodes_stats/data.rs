@@ -193,13 +193,10 @@ pub struct CpuStats {
 impl NodeStats {
     pub fn calculate_stats(&mut self, processors: usize) {
         self.fs.total.used_in_bytes = self.fs.total.total_in_bytes - self.fs.total.free_in_bytes;
-        self.fs.total.used_percent =
-            (self.fs.total.used_in_bytes * 100) / self.fs.total.total_in_bytes;
+        self.fs.total.used_percent = (self.fs.total.used_in_bytes * 100) / self.fs.total.total_in_bytes;
         self.os.cpu.load_percent.one = (self.os.cpu.load_average.one * 100.0) as usize / processors;
-        self.os.cpu.load_percent.five =
-            (self.os.cpu.load_average.five * 100.0) as usize / processors;
-        self.os.cpu.load_percent.fifteen =
-            (self.os.cpu.load_average.fifteen * 100.0) as usize / processors;
+        self.os.cpu.load_percent.five = (self.os.cpu.load_average.five * 100.0) as usize / processors;
+        self.os.cpu.load_percent.fifteen = (self.os.cpu.load_average.fifteen * 100.0) as usize / processors;
     }
 
     pub fn enrich_from_lookup(&mut self, node: &NodeDocument) {
@@ -252,11 +249,7 @@ pub type IngestPipelines = Vec<(String, IngestPipeline)>;
 #[derive(Deserialize, Serialize)]
 pub struct Ingest {
     total: Box<RawValue>,
-    #[serde(
-        default,
-        deserialize_with = "option_map_as_vec_entries",
-        skip_serializing
-    )]
+    #[serde(default, deserialize_with = "option_map_as_vec_entries", skip_serializing)]
     pub pipelines: Option<Vec<(String, IngestPipeline)>>,
 }
 

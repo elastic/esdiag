@@ -28,19 +28,13 @@ impl Cluster {
         let display_name = match display_name {
             Some(name) => {
                 // Removes Elastic Cloud appended hash from name
-                let stripped_name = regex::Regex::new(r"\(.*\)")
-                    .unwrap()
-                    .replace_all(&name, "")
-                    .to_string();
+                let stripped_name = regex::Regex::new(r"\(.*\)").unwrap().replace_all(&name, "").to_string();
                 stripped_name.trim().to_string()
             }
             None => self.name.clone(),
         };
 
-        Self {
-            display_name,
-            ..self
-        }
+        Self { display_name, ..self }
     }
 }
 

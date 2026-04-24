@@ -170,23 +170,24 @@ pub struct MultiFieldSummary {
 
 impl IndexMapping {
     pub fn summarize(&self) -> MappingSummary {
-        let mut summary = MappingSummary {
-            dynamic: self.mappings.dynamic.as_ref().map(|v| {
-                match serde_json::from_str::<serde_json::Value>(v.get()) {
-                    Ok(serde_json::Value::String(s)) => s,
-                    Ok(val) => val.to_string(),
-                    Err(_) => v.get().to_string(),
-                }
-            }),
-            date_detection: self.mappings.date_detection,
-            numeric_detection: self.mappings.numeric_detection,
-            dynamic_date_formats: self.mappings.dynamic_date_formats.clone(),
-            dynamic_templates: self.mappings.dynamic_templates,
-            _data_stream_timestamp: self.mappings._data_stream_timestamp.clone(),
-            _source: self.mappings._source.clone(),
-            _meta: self.mappings._meta.clone(),
-            ..Default::default()
-        };
+        let mut summary =
+            MappingSummary {
+                dynamic: self.mappings.dynamic.as_ref().map(|v| {
+                    match serde_json::from_str::<serde_json::Value>(v.get()) {
+                        Ok(serde_json::Value::String(s)) => s,
+                        Ok(val) => val.to_string(),
+                        Err(_) => v.get().to_string(),
+                    }
+                }),
+                date_detection: self.mappings.date_detection,
+                numeric_detection: self.mappings.numeric_detection,
+                dynamic_date_formats: self.mappings.dynamic_date_formats.clone(),
+                dynamic_templates: self.mappings.dynamic_templates,
+                _data_stream_timestamp: self.mappings._data_stream_timestamp.clone(),
+                _source: self.mappings._source.clone(),
+                _meta: self.mappings._meta.clone(),
+                ..Default::default()
+            };
 
         if let Some(properties) = &self.mappings.properties {
             let mut path = String::with_capacity(128);
@@ -305,16 +306,10 @@ mod tests {
         assert_eq!(summary.dynamic, Some("strict".to_string()));
         assert_eq!(summary.date_detection, Some(false));
         assert_eq!(summary.numeric_detection, Some(true));
-        assert_eq!(
-            summary.dynamic_date_formats,
-            Some(vec!["yyyy-MM-dd".to_string()])
-        );
+        assert_eq!(summary.dynamic_date_formats, Some(vec!["yyyy-MM-dd".to_string()]));
         assert_eq!(summary.dynamic_templates, Some(2));
         assert!(summary._data_stream_timestamp.as_ref().unwrap().enabled);
-        assert_eq!(
-            summary._source.as_ref().unwrap().mode,
-            Some("synthetic".to_string())
-        );
+        assert_eq!(summary._source.as_ref().unwrap().mode, Some("synthetic".to_string()));
         assert_eq!(summary.fields.get("total").unwrap(), &4); // field1, field2, object1, subfield1
         assert_eq!(summary.fields.get("text").unwrap(), &1);
         assert_eq!(summary.fields.get("keyword").unwrap(), &1);
@@ -385,10 +380,7 @@ mod tests {
         // no_type_with_fields SHOULD count as multi-field even without explicit 'type' (Elasticsearch default)
         // object_with_no_type should count as 'object' in fields map
         assert_eq!(summary.multi_fields.total, 1);
-        assert_eq!(
-            summary.multi_fields.names,
-            vec!["no_type_with_fields".to_string()]
-        );
+        assert_eq!(summary.multi_fields.names, vec!["no_type_with_fields".to_string()]);
         assert_eq!(summary.fields.get("object").unwrap(), &1); // object_with_no_type
     }
 

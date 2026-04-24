@@ -5,9 +5,7 @@
 use super::{
     DiagnosticProcessor, ProcessorSummary,
     api::ProcessSelection,
-    diagnostic::{
-        DiagnosticManifest, DiagnosticMetadata, DiagnosticReport, DiagnosticReportBuilder, Lookup,
-    },
+    diagnostic::{DiagnosticManifest, DiagnosticMetadata, DiagnosticReport, DiagnosticReportBuilder, Lookup},
 };
 use crate::{data::Product, exporter::Exporter, receiver::Receiver};
 use eyre::Result;
@@ -54,9 +52,7 @@ impl DiagnosticProcessor for KubernetesPlatformDiagnostic {
 
     async fn process(self, _summary_tx: mpsc::Sender<ProcessorSummary>) -> Result<()> {
         self.receiver.is_connected().await;
-        tracing::warn!(
-            "Kubernetes Platform diagnostics only process included Elasticsearch bundles"
-        );
+        tracing::warn!("Kubernetes Platform diagnostics only process included Elasticsearch bundles");
         Ok(())
     }
 
@@ -65,11 +61,7 @@ impl DiagnosticProcessor for KubernetesPlatformDiagnostic {
     }
 
     fn origin(&self) -> (String, String, String) {
-        (
-            "mki".to_string(),
-            "".to_string(),
-            "orchestration".to_string(),
-        )
+        ("mki".to_string(), "".to_string(), "orchestration".to_string())
     }
 }
 

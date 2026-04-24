@@ -3,8 +3,8 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::{
-    ServerEvent, ServerState, UploadProcessSignals, receiver_stream, replace_job_event,
-    signal_event, template, workflow,
+    ServerEvent, ServerState, UploadProcessSignals, receiver_stream, replace_job_event, signal_event, template,
+    workflow,
 };
 use crate::processor::new_job_id;
 use axum::{
@@ -19,13 +19,9 @@ use tokio::sync::mpsc;
 use tokio::{fs::File, io::AsyncWriteExt};
 use uuid::Uuid;
 
-pub async fn submit(
-    State(state): State<Arc<ServerState>>,
-    mut multipart: Multipart,
-) -> impl IntoResponse {
+pub async fn submit(State(state): State<Arc<ServerState>>, mut multipart: Multipart) -> impl IntoResponse {
     let job_id = new_job_id();
-    let can_use_keystore =
-        cfg!(feature = "keystore") && state.runtime_mode_policy.allows_local_runtime_features();
+    let can_use_keystore = cfg!(feature = "keystore") && state.runtime_mode_policy.allows_local_runtime_features();
 
     // Process the multipart form
     if let Ok(Some(field)) = multipart.next_field().await {
@@ -66,8 +62,7 @@ pub async fn submit(
                 </div>"#
             );
 
-            let temp_upload_path =
-                std::env::temp_dir().join(format!("esdiag-upload-{job_id}-{}.zip", Uuid::new_v4()));
+            let temp_upload_path = std::env::temp_dir().join(format!("esdiag-upload-{job_id}-{}.zip", Uuid::new_v4()));
             match stage_upload_field(field, &temp_upload_path).await {
                 Ok(()) => {
                     state.push_upload(job_id, filename, temp_upload_path).await;

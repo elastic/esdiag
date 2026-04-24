@@ -7,8 +7,7 @@
 
 use crate::{
     data::{
-        CollectMode, CollectSource, KnownHost, ProcessMode, SendMode, Uri, Workflow,
-        load_saved_jobs, save_saved_jobs,
+        CollectMode, CollectSource, KnownHost, ProcessMode, SendMode, Uri, Workflow, load_saved_jobs, save_saved_jobs,
     },
     exporter::Exporter,
     processor::{
@@ -76,16 +75,11 @@ pub fn handle_job_list() -> Result<()> {
 
 pub async fn handle_job_run(name: &str) -> Result<()> {
     let jobs = load_saved_jobs()?;
-    let job = jobs
-        .get(name)
-        .ok_or_else(|| eyre!("Saved job '{}' not found", name))?;
+    let job = jobs.get(name).ok_or_else(|| eyre!("Saved job '{}' not found", name))?;
 
     let host_name = &job.workflow.collect.known_host;
     if host_name.is_empty() {
-        return Err(eyre!(
-            "Saved job '{}' has no collection host configured",
-            name
-        ));
+        return Err(eyre!("Saved job '{}' has no collection host configured", name));
     }
 
     let host = KnownHost::get_known(host_name).ok_or_else(|| {
@@ -112,11 +106,7 @@ pub fn handle_job_delete(name: &str) -> Result<()> {
     Ok(())
 }
 
-pub async fn run_saved_job(
-    workflow: &Workflow,
-    identifiers: Identifiers,
-    host: KnownHost,
-) -> Result<()> {
+pub async fn run_saved_job(workflow: &Workflow, identifiers: Identifiers, host: KnownHost) -> Result<()> {
     validate_saved_job_workflow(workflow)?;
     let host_url = host.get_url().to_string();
     tracing::info!("Running saved job against {host_url}");
@@ -129,10 +119,7 @@ pub async fn run_saved_job(
         let (output_dir, _cleanup) = if workflow.collect.save {
             (collect_output_dir(workflow)?, None)
         } else {
-            let temp_dir = std::env::temp_dir().join(format!(
-                "esdiag-job-{}",
-                uuid::Uuid::new_v4().as_u64_pair().0
-            ));
+            let temp_dir = std::env::temp_dir().join(format!("esdiag-job-{}", uuid::Uuid::new_v4().as_u64_pair().0));
             std::fs::create_dir_all(&temp_dir)?;
             (temp_dir.clone(), Some(TempDirCleanup(temp_dir)))
         };
@@ -161,19 +148,11 @@ pub async fn run_saved_job(
         let receiver = Arc::new(Receiver::try_from(Uri::File(archive_path.clone()))?);
         let exporter = Arc::new(exporter);
         let process_selection = explicit_process_selection(workflow)?;
-        let processor =
-            Processor::try_new_with_selection(receiver, exporter, identifiers, process_selection)
-                .await?;
-        let processor = processor
-            .start()
-            .await
-            .map_err(|failed| eyre!("{}", failed))?;
+        let processor = Processor::try_new_with_selection(receiver, exporter, identifiers, process_selection).await?;
+        let processor = processor.start().await.map_err(|failed| eyre!("{}", failed))?;
         match processor.process().await {
             Ok(completed) => {
-                tracing::info!(
-                    "Processing complete in {:.3}s",
-                    completed.state.runtime as f64 / 1000.0
-                );
+                tracing::info!("Processing complete in {:.3}s", completed.state.runtime as f64 / 1000.0);
                 if workflow.collect.save {
                     tracing::info!("Retained collected archive: {}", archive_path.display());
                 }
@@ -208,10 +187,8 @@ async fn run_saved_job_collect_only(
         && workflow.send.mode == SendMode::Remote
         && !workflow.collect.save;
     let (output_dir, _cleanup) = if use_temp_output {
-        let temp_dir = std::env::temp_dir().join(format!(
-            "esdiag-job-forward-{}",
-            uuid::Uuid::new_v4().as_u64_pair().0
-        ));
+        let temp_dir =
+            std::env::temp_dir().join(format!("esdiag-job-forward-{}", uuid::Uuid::new_v4().as_u64_pair().0));
         std::fs::create_dir_all(&temp_dir)?;
         (temp_dir.clone(), Some(TempDirCleanup(temp_dir)))
     } else {
@@ -243,12 +220,8 @@ async fn run_saved_job_collect_only(
             ));
         }
 
-        let response =
-            uploader::upload_file(&archive_path, target, uploader::DEFAULT_UPLOAD_API_URL).await?;
-        tracing::info!(
-            "Forwarded archive to https://upload.elastic.co/g/{}",
-            response.slug
-        );
+        let response = uploader::upload_file(&archive_path, target, uploader::DEFAULT_UPLOAD_API_URL).await?;
+        tracing::info!("Forwarded archive to https://upload.elastic.co/g/{}", response.slug);
         if workflow.collect.save {
             tracing::info!("Retained collected archive: {}", archive_path.display());
         }

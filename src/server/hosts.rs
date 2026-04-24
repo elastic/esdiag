@@ -1,7 +1,7 @@
 use super::{ServerState, get_theme_dark, template};
 use crate::data::{
-    HostRole, KnownHost, KnownHostBuilder, Product, SecretAuth, Settings, keystore_exists,
-    list_secret_names, remove_secret, resolve_secret_auth, upsert_secret_auth,
+    HostRole, KnownHost, KnownHostBuilder, Product, SecretAuth, Settings, keystore_exists, list_secret_names,
+    remove_secret, resolve_secret_auth, upsert_secret_auth,
 };
 use askama::Template;
 use axum::{
@@ -10,8 +10,7 @@ use axum::{
     response::{Html, IntoResponse, Response},
 };
 use datastar::{
-    axum::ReadSignals, consts::ElementPatchMode, patch_elements::PatchElements,
-    patch_signals::PatchSignals,
+    axum::ReadSignals, consts::ElementPatchMode, patch_elements::PatchElements, patch_signals::PatchSignals,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
@@ -165,23 +164,15 @@ pub async fn page(State(state): State<Arc<ServerState>>, headers: HeaderMap) -> 
         Err(err) => {
             return (
                 StatusCode::UNAUTHORIZED,
-                Html(format!(
-                    "<html><body><h1>Unauthorized</h1><p>{}</p></body></html>",
-                    err
-                )),
+                Html(format!("<html><body><h1>Unauthorized</h1><p>{}</p></body></html>", err)),
             )
                 .into_response();
         }
     };
 
-    let user_initial = user_email
-        .chars()
-        .next()
-        .unwrap_or('_')
-        .to_ascii_uppercase();
+    let user_initial = user_email.chars().next().unwrap_or('_').to_ascii_uppercase();
     let (keystore_locked, keystore_lock_time) = state.keystore_status().await;
-    let can_use_keystore =
-        cfg!(feature = "keystore") && state.runtime_mode_policy.allows_local_runtime_features();
+    let can_use_keystore = cfg!(feature = "keystore") && state.runtime_mode_policy.allows_local_runtime_features();
     let show_keystore_bootstrap = can_use_keystore && !keystore_exists().unwrap_or(false);
 
     let (hosts, clusters) = read_host_and_cluster_rows();
@@ -202,18 +193,12 @@ pub async fn page(State(state): State<Arc<ServerState>>, headers: HeaderMap) -> 
             }
         }
     };
-    let hosts_panel_html =
-        render_hosts_panel(&hosts, &secret_ids, keystore_locked).unwrap_or_else(|err| {
-            format!("<panel id=\"hosts-table-panel\"><div>Error: {err}</div></panel>")
-        });
-    let secrets_panel_html =
-        render_secrets_panel(&secrets, keystore_locked).unwrap_or_else(|err| {
-            format!("<panel id=\"secrets-table-panel\"><div>Error: {err}</div></panel>")
-        });
+    let hosts_panel_html = render_hosts_panel(&hosts, &secret_ids, keystore_locked)
+        .unwrap_or_else(|err| format!("<panel id=\"hosts-table-panel\"><div>Error: {err}</div></panel>"));
+    let secrets_panel_html = render_secrets_panel(&secrets, keystore_locked)
+        .unwrap_or_else(|err| format!("<panel id=\"secrets-table-panel\"><div>Error: {err}</div></panel>"));
     let clusters_panel_html = render_clusters_panel(&clusters, &secret_ids, keystore_locked)
-        .unwrap_or_else(|err| {
-            format!("<panel id=\"clusters-table-panel\"><div>Error: {err}</div></panel>")
-        });
+        .unwrap_or_else(|err| format!("<panel id=\"clusters-table-panel\"><div>Error: {err}</div></panel>"));
 
     let page = template::HostsPage {
         auth_header,
@@ -262,11 +247,7 @@ pub async fn host_action(
             action,
             id
         );
-        return (
-            StatusCode::PRECONDITION_FAILED,
-            "Unlock keystore before editing hosts.",
-        )
-            .into_response();
+        return (StatusCode::PRECONDITION_FAILED, "Unlock keystore before editing hosts.").into_response();
     }
 
     if action == "create" {
@@ -296,11 +277,7 @@ pub async fn host_action(
     let row_id = match id.parse::<usize>() {
         Ok(value) => value,
         Err(_) => {
-            tracing::warn!(
-                "Rejected host action '{}' with non-numeric id '{}'",
-                action,
-                id
-            );
+            tracing::warn!("Rejected host action '{}' with non-numeric id '{}'", action, id);
             return (StatusCode::BAD_REQUEST, "id must be numeric or 'new'").into_response();
         }
     };
@@ -327,17 +304,12 @@ pub async fn host_action(
         }
         "cancel" => {
             let Some(host) = host_row_by_id(&hosts, row_id).cloned() else {
-                tracing::warn!(
-                    "Host cancel for transient row {} removed patched row",
-                    row_id
-                );
+                tracing::warn!("Host cancel for transient row {} removed patched row", row_id);
                 return clear_and_remove_row("hosts", &host_row_selector(row_id), row_id);
             };
             let secret_ids = load_secret_ids(&state).await;
             sse_response(vec![
-                clear_row_signal_patch("hosts", row_id)
-                    .as_datastar_event()
-                    .to_string(),
+                clear_row_signal_patch("hosts", row_id).as_datastar_event().to_string(),
                 patch_host_error_event(""),
                 patch_row_event(
                     &host_row_selector(row_id),
@@ -363,11 +335,7 @@ pub async fn host_action(
         }
         "delete" => delete_host_row(&hosts, row_id).await,
         _ => {
-            tracing::warn!(
-                "Rejected unsupported host action '{}' for row {}",
-                action,
-                row_id
-            );
+            tracing::warn!("Rejected unsupported host action '{}' for row {}", action, row_id);
             (
                 StatusCode::BAD_REQUEST,
                 "unsupported action; supported: create, read, cancel, update, delete",
@@ -425,11 +393,7 @@ pub async fn cluster_action(
     let row_id = match id.parse::<usize>() {
         Ok(value) => value,
         Err(_) => {
-            tracing::warn!(
-                "Rejected cluster action '{}' with non-numeric id '{}'",
-                action,
-                id
-            );
+            tracing::warn!("Rejected cluster action '{}' with non-numeric id '{}'", action, id);
             return (StatusCode::BAD_REQUEST, "id must be numeric or 'new'").into_response();
         }
     };
@@ -443,13 +407,9 @@ pub async fn cluster_action(
             };
             let secret_ids = load_secret_ids(&state).await;
             sse_response(vec![
-                row_signal_patch(
-                    "clusters",
-                    row_id,
-                    &cluster_draft(&cluster, Some(&cluster.name)),
-                )
-                .as_datastar_event()
-                .to_string(),
+                row_signal_patch("clusters", row_id, &cluster_draft(&cluster, Some(&cluster.name)))
+                    .as_datastar_event()
+                    .to_string(),
                 patch_cluster_error_event(""),
                 patch_row_event(
                     &cluster_row_selector(row_id),
@@ -460,10 +420,7 @@ pub async fn cluster_action(
         }
         "cancel" => {
             let Some(cluster) = cluster_row_by_id(&clusters, row_id).cloned() else {
-                tracing::warn!(
-                    "Cluster cancel for transient row {} removed patched row",
-                    row_id
-                );
+                tracing::warn!("Cluster cancel for transient row {} removed patched row", row_id);
                 return clear_and_remove_row("clusters", &cluster_row_selector(row_id), row_id);
             };
             let secret_ids = load_secret_ids(&state).await;
@@ -486,10 +443,7 @@ pub async fn cluster_action(
                 return sse_response(vec![patch_cluster_error_event(&message)]);
             };
             match apply_upsert_cluster(&state, draft).await {
-                Ok(_) => {
-                    patch_hosts_and_secrets_with_clear_response(&state, Some(("clusters", row_id)))
-                        .await
-                }
+                Ok(_) => patch_hosts_and_secrets_with_clear_response(&state, Some(("clusters", row_id))).await,
                 Err(err) => {
                     tracing::warn!("Cluster update for row {} failed: {}", row_id, err);
                     sse_response(vec![patch_cluster_error_event(&err)])
@@ -562,13 +516,9 @@ pub async fn secret_action(
                 return (StatusCode::NOT_FOUND, "secret row not found").into_response();
             };
             sse_response(vec![
-                row_signal_patch(
-                    "secrets",
-                    row_id,
-                    &secret_draft(&secret, Some(&secret.secret_id)),
-                )
-                .as_datastar_event()
-                .to_string(),
+                row_signal_patch("secrets", row_id, &secret_draft(&secret, Some(&secret.secret_id)))
+                    .as_datastar_event()
+                    .to_string(),
                 patch_row_event(
                     &secret_row_selector(row_id),
                     render_secret_row(row_id, &secret, true, true, false),
@@ -616,14 +566,10 @@ pub async fn secret_action(
         }
         "update" => {
             let Some(draft) = secret_draft_from_signals(signal_state, row_id) else {
-                return (StatusCode::BAD_REQUEST, "missing secret row draft signals")
-                    .into_response();
+                return (StatusCode::BAD_REQUEST, "missing secret row draft signals").into_response();
             };
             match apply_upsert_secret(&state, draft).await {
-                Ok(_) => {
-                    patch_hosts_and_secrets_with_clear_response(&state, Some(("secrets", row_id)))
-                        .await
-                }
+                Ok(_) => patch_hosts_and_secrets_with_clear_response(&state, Some(("secrets", row_id))).await,
                 Err(err) => (StatusCode::BAD_REQUEST, err).into_response(),
             }
         }
@@ -645,20 +591,14 @@ pub async fn secret_action(
     }
 }
 
-pub async fn upsert_host(
-    State(state): State<Arc<ServerState>>,
-    Form(form): Form<HostUpsertForm>,
-) -> Response {
+pub async fn upsert_host(State(state): State<Arc<ServerState>>, Form(form): Form<HostUpsertForm>) -> Response {
     match apply_upsert_host(&state, form).await {
         Ok(_) => patch_hosts_panel_response(&state).await,
         Err(err) => (StatusCode::BAD_REQUEST, err).into_response(),
     }
 }
 
-pub async fn create_host(
-    State(state): State<Arc<ServerState>>,
-    Json(payload): Json<HostRecordPayload>,
-) -> Response {
+pub async fn create_host(State(state): State<Arc<ServerState>>, Json(payload): Json<HostRecordPayload>) -> Response {
     let form = HostUpsertForm {
         original_name: None,
         name: payload.name,
@@ -676,10 +616,7 @@ pub async fn create_host(
     }
 }
 
-pub async fn update_host(
-    State(state): State<Arc<ServerState>>,
-    Json(payload): Json<HostRecordPayload>,
-) -> Response {
+pub async fn update_host(State(state): State<Arc<ServerState>>, Json(payload): Json<HostRecordPayload>) -> Response {
     let form = HostUpsertForm {
         original_name: payload.original_name,
         name: payload.name,
@@ -697,10 +634,7 @@ pub async fn update_host(
     }
 }
 
-pub async fn delete_host(
-    State(state): State<Arc<ServerState>>,
-    Form(form): Form<HostDeleteForm>,
-) -> Response {
+pub async fn delete_host(State(state): State<Arc<ServerState>>, Form(form): Form<HostDeleteForm>) -> Response {
     let mut hosts = KnownHost::parse_hosts_yml().map_err(to_message);
     if let Ok(ref mut hosts) = hosts {
         hosts.remove(form.name.trim());
@@ -713,20 +647,14 @@ pub async fn delete_host(
     (StatusCode::BAD_REQUEST, hosts.err().unwrap_or_default()).into_response()
 }
 
-pub async fn upsert_secret(
-    State(state): State<Arc<ServerState>>,
-    Form(form): Form<SecretUpsertForm>,
-) -> Response {
+pub async fn upsert_secret(State(state): State<Arc<ServerState>>, Form(form): Form<SecretUpsertForm>) -> Response {
     match apply_upsert_secret(&state, form).await {
         Ok(_) => patch_hosts_and_secrets_response(&state).await,
         Err(err) => (StatusCode::BAD_REQUEST, err).into_response(),
     }
 }
 
-pub async fn delete_secret(
-    State(state): State<Arc<ServerState>>,
-    Form(form): Form<SecretDeleteForm>,
-) -> Response {
+pub async fn delete_secret(State(state): State<Arc<ServerState>>, Form(form): Form<SecretDeleteForm>) -> Response {
     if !state.is_keystore_unlocked().await {
         return (
             StatusCode::PRECONDITION_FAILED,
@@ -749,10 +677,7 @@ pub async fn delete_secret(
     }
 }
 
-fn read_host_and_cluster_rows() -> (
-    Vec<template::HostsTableRow>,
-    Vec<template::DiagnosticClusterTableRow>,
-) {
+fn read_host_and_cluster_rows() -> (Vec<template::HostsTableRow>, Vec<template::DiagnosticClusterTableRow>) {
     let hosts = KnownHost::parse_hosts_yml().unwrap_or_default();
     let mut rows = Vec::new();
     let mut clusters = Vec::new();
@@ -864,9 +789,7 @@ fn host_has_plaintext_auth(host: &KnownHost) -> bool {
     host.legacy_apikey.is_some() || host.legacy_username.is_some() || host.legacy_password.is_some()
 }
 
-fn read_secret_rows(
-    keystore_password: &str,
-) -> Result<(Vec<template::SecretTableRow>, Vec<String>), String> {
+fn read_secret_rows(keystore_password: &str) -> Result<(Vec<template::SecretTableRow>, Vec<String>), String> {
     let secret_ids = list_secret_names(keystore_password).map_err(to_message)?;
     let mut rows = Vec::new();
 
@@ -897,9 +820,7 @@ fn render_hosts_panel(
         rows_html: hosts
             .iter()
             .enumerate()
-            .map(|(idx, host)| {
-                render_host_row(idx + 1, host, secret_ids, keystore_locked, false, true)
-            })
+            .map(|(idx, host)| render_host_row(idx + 1, host, secret_ids, keystore_locked, false, true))
             .collect::<Vec<_>>()
             .join("\n"),
     }
@@ -917,9 +838,7 @@ fn render_clusters_panel(
         rows_html: clusters
             .iter()
             .enumerate()
-            .map(|(idx, cluster)| {
-                render_cluster_row(idx + 1, cluster, secret_ids, keystore_locked, false, true)
-            })
+            .map(|(idx, cluster)| render_cluster_row(idx + 1, cluster, secret_ids, keystore_locked, false, true))
             .collect::<Vec<_>>()
             .join("\n"),
     }
@@ -927,10 +846,7 @@ fn render_clusters_panel(
     .map_err(to_message)
 }
 
-fn render_secrets_panel(
-    secrets: &[template::SecretTableRow],
-    keystore_locked: bool,
-) -> Result<String, String> {
+fn render_secrets_panel(secrets: &[template::SecretTableRow], keystore_locked: bool) -> Result<String, String> {
     template::SecretsTablePanelTemplate {
         rows_html: secrets
             .iter()
@@ -1025,10 +941,7 @@ async fn load_table_panel_data(
                 (rows, ids)
             }
             Err(err) => {
-                tracing::warn!(
-                    "Failed to list keystore secrets for /settings patch: {}",
-                    err
-                );
+                tracing::warn!("Failed to list keystore secrets for /settings patch: {}", err);
                 (Vec::new(), Vec::new())
             }
         }
@@ -1065,10 +978,7 @@ fn host_error_html(message: &str) -> String {
     if message.trim().is_empty() {
         "<div id=\"hosts-table-error\"></div>".to_string()
     } else {
-        let message = message
-            .replace('&', "&amp;")
-            .replace('<', "&lt;")
-            .replace('>', "&gt;");
+        let message = message.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
         format!(
             "<div id=\"hosts-table-error\" class=\"error\" role=\"alert\"><p>{}</p></div>",
             message
@@ -1088,10 +998,7 @@ fn cluster_error_html(message: &str) -> String {
     if message.trim().is_empty() {
         "<div id=\"clusters-table-error\"></div>".to_string()
     } else {
-        let message = message
-            .replace('&', "&amp;")
-            .replace('<', "&lt;")
-            .replace('>', "&gt;");
+        let message = message.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
         format!(
             "<div id=\"clusters-table-error\" class=\"error\" role=\"alert\"><p>{}</p></div>",
             message
@@ -1112,8 +1019,7 @@ fn sse_response(events: Vec<String>) -> Response {
 }
 
 async fn patch_hosts_panel_response(state: &Arc<ServerState>) -> Response {
-    let (hosts, _clusters, _secrets, secret_ids, keystore_locked) =
-        load_table_panel_data(state).await;
+    let (hosts, _clusters, _secrets, secret_ids, keystore_locked) = load_table_panel_data(state).await;
     match render_hosts_panel(&hosts, &secret_ids, keystore_locked) {
         Ok(html) => sse_response(vec![patch_panel_event("#hosts-table-panel", html)]),
         Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, err).into_response(),
@@ -1161,11 +1067,7 @@ async fn patch_hosts_and_secrets_with_clear_response(
     };
     let mut events = Vec::new();
     if let Some((panel, row_id)) = clear {
-        events.push(
-            clear_row_signal_patch(panel, row_id)
-                .as_datastar_event()
-                .to_string(),
-        );
+        events.push(clear_row_signal_patch(panel, row_id).as_datastar_event().to_string());
     }
     events.push(patch_panel_event("#hosts-table-panel", hosts_html));
     events.push(patch_panel_event("#secrets-table-panel", secrets_html));
@@ -1173,10 +1075,7 @@ async fn patch_hosts_and_secrets_with_clear_response(
     sse_response(events)
 }
 
-async fn apply_upsert_host(
-    state: &Arc<ServerState>,
-    form: HostUpsertForm,
-) -> Result<(), String> {
+async fn apply_upsert_host(state: &Arc<ServerState>, form: HostUpsertForm) -> Result<(), String> {
     let name = form.name.trim();
     if name.is_empty() {
         return Err("Host name is required.".to_string());
@@ -1198,17 +1097,15 @@ async fn apply_upsert_host(
     let host = match auth.as_str() {
         "none" => builder.build().map_err(to_message)?,
         "apikey" | "basic" | "secret" => {
-            let secret_id = secret.ok_or_else(|| {
-                "Saved authenticated hosts require a secret reference.".to_string()
-            })?;
+            let secret_id =
+                secret.ok_or_else(|| "Saved authenticated hosts require a secret reference.".to_string())?;
             builder = builder.secret(Some(secret_id));
             builder.build().map_err(to_message)?
         }
         _ => return Err("Auth type must be one of: none, apikey, basic, secret.".to_string()),
     };
 
-    let mut hosts: BTreeMap<String, KnownHost> =
-        KnownHost::parse_hosts_yml().map_err(to_message)?;
+    let mut hosts: BTreeMap<String, KnownHost> = KnownHost::parse_hosts_yml().map_err(to_message)?;
     let mut settings = Settings::load().map_err(to_message)?;
     let mut settings_changed = false;
     if let Some(original_name) = form.original_name {
@@ -1238,19 +1135,15 @@ async fn apply_upsert_host(
     Ok(())
 }
 
-async fn apply_upsert_cluster(
-    state: &Arc<ServerState>,
-    form: ClusterUpsertForm,
-) -> Result<(), String> {
+async fn apply_upsert_cluster(state: &Arc<ServerState>, form: ClusterUpsertForm) -> Result<(), String> {
     let name = form.name.trim();
     if name.is_empty() {
         return Err("Diagnostic cluster name is required.".to_string());
     }
 
-    let elasticsearch_url = Url::parse(form.elasticsearch_url.trim())
-        .map_err(|err| format!("Invalid Elasticsearch URL: {err}"))?;
-    let kibana_url =
-        Url::parse(form.kibana_url.trim()).map_err(|err| format!("Invalid Kibana URL: {err}"))?;
+    let elasticsearch_url =
+        Url::parse(form.elasticsearch_url.trim()).map_err(|err| format!("Invalid Elasticsearch URL: {err}"))?;
+    let kibana_url = Url::parse(form.kibana_url.trim()).map_err(|err| format!("Invalid Kibana URL: {err}"))?;
     let secret = to_opt(form.secret);
     let accept_invalid_certs = form.accept_invalid_certs.is_some();
     let auth = infer_auth_from_secret_selection(state, &secret, form.auth.trim()).await?;
@@ -1265,9 +1158,9 @@ async fn apply_upsert_cluster(
         match auth.as_str() {
             "none" => builder.build().map_err(to_message)?,
             "apikey" | "basic" | "secret" => {
-                let secret_id = secret.clone().ok_or_else(|| {
-                    "Saved authenticated clusters require a secret reference.".to_string()
-                })?;
+                let secret_id = secret
+                    .clone()
+                    .ok_or_else(|| "Saved authenticated clusters require a secret reference.".to_string())?;
                 builder = builder.secret(Some(secret_id));
                 builder.build().map_err(to_message)?
             }
@@ -1282,9 +1175,9 @@ async fn apply_upsert_cluster(
         match auth.as_str() {
             "none" => builder.build().map_err(to_message)?,
             "apikey" | "basic" | "secret" => {
-                let secret_id = secret.clone().ok_or_else(|| {
-                    "Saved authenticated clusters require a secret reference.".to_string()
-                })?;
+                let secret_id = secret
+                    .clone()
+                    .ok_or_else(|| "Saved authenticated clusters require a secret reference.".to_string())?;
                 builder = builder.secret(Some(secret_id));
                 builder.build().map_err(to_message)?
             }
@@ -1292,8 +1185,7 @@ async fn apply_upsert_cluster(
         }
     };
 
-    let mut hosts: BTreeMap<String, KnownHost> =
-        KnownHost::parse_hosts_yml().map_err(to_message)?;
+    let mut hosts: BTreeMap<String, KnownHost> = KnownHost::parse_hosts_yml().map_err(to_message)?;
     let mut settings = Settings::load().map_err(to_message)?;
     let mut settings_changed = false;
 
@@ -1333,10 +1225,7 @@ async fn apply_upsert_cluster(
     Ok(())
 }
 
-async fn apply_upsert_secret(
-    state: &Arc<ServerState>,
-    form: SecretUpsertForm,
-) -> Result<(), String> {
+async fn apply_upsert_secret(state: &Arc<ServerState>, form: SecretUpsertForm) -> Result<(), String> {
     if !state.is_keystore_unlocked().await {
         return Err("Unlock keystore before editing secrets.".to_string());
     }
@@ -1354,8 +1243,7 @@ async fn apply_upsert_secret(
         }
         "basic" => {
             let username = to_opt(form.username).ok_or("username is required for Basic type.")?;
-            let password_value =
-                to_opt(form.password).ok_or("password is required for Basic type.")?;
+            let password_value = to_opt(form.password).ok_or("password is required for Basic type.")?;
             SecretAuth::Basic {
                 username,
                 password: password_value,
@@ -1388,17 +1276,11 @@ fn secret_row_selector(row_id: usize) -> String {
     format!("#secrets-table-row-{row_id}")
 }
 
-fn host_row_by_id(
-    hosts: &[template::HostsTableRow],
-    row_id: usize,
-) -> Option<&template::HostsTableRow> {
+fn host_row_by_id(hosts: &[template::HostsTableRow], row_id: usize) -> Option<&template::HostsTableRow> {
     row_id.checked_sub(1).and_then(|idx| hosts.get(idx))
 }
 
-fn secret_row_by_id(
-    secrets: &[template::SecretTableRow],
-    row_id: usize,
-) -> Option<&template::SecretTableRow> {
+fn secret_row_by_id(secrets: &[template::SecretTableRow], row_id: usize) -> Option<&template::SecretTableRow> {
     row_id.checked_sub(1).and_then(|idx| secrets.get(idx))
 }
 
@@ -1484,10 +1366,7 @@ fn host_draft(host: &template::HostsTableRow, original_name: Option<&str>) -> Ho
     }
 }
 
-fn cluster_draft(
-    cluster: &template::DiagnosticClusterTableRow,
-    original_name: Option<&str>,
-) -> ClusterDraftSignal {
+fn cluster_draft(cluster: &template::DiagnosticClusterTableRow, original_name: Option<&str>) -> ClusterDraftSignal {
     ClusterDraftSignal {
         original_name: original_name.map(str::to_string),
         name: cluster.name.clone(),
@@ -1499,10 +1378,7 @@ fn cluster_draft(
     }
 }
 
-fn secret_draft(
-    secret: &template::SecretTableRow,
-    original_secret_id: Option<&str>,
-) -> SecretDraftSignal {
+fn secret_draft(secret: &template::SecretTableRow, original_secret_id: Option<&str>) -> SecretDraftSignal {
     SecretDraftSignal {
         original_secret_id: original_secret_id.map(str::to_string),
         secret_id: secret.secret_id.clone(),
@@ -1513,10 +1389,7 @@ fn secret_draft(
     }
 }
 
-fn host_draft_from_signals(
-    signals: Option<&HostsUiSignals>,
-    row_id: usize,
-) -> Option<HostUpsertForm> {
+fn host_draft_from_signals(signals: Option<&HostsUiSignals>, row_id: usize) -> Option<HostUpsertForm> {
     let draft: HostDraftSignal = draft_from_rows(signals.map(|s| &s.hosts), row_id)?;
     Some(HostUpsertForm {
         original_name: draft.original_name,
@@ -1531,10 +1404,7 @@ fn host_draft_from_signals(
     })
 }
 
-fn cluster_draft_from_signals(
-    signals: Option<&ClustersUiSignals>,
-    row_id: usize,
-) -> Option<ClusterUpsertForm> {
+fn cluster_draft_from_signals(signals: Option<&ClustersUiSignals>, row_id: usize) -> Option<ClusterUpsertForm> {
     let draft: ClusterDraftSignal = draft_from_rows(signals.map(|s| &s.clusters), row_id)?;
     Some(ClusterUpsertForm {
         original_name: draft.original_name,
@@ -1547,10 +1417,7 @@ fn cluster_draft_from_signals(
     })
 }
 
-fn secret_draft_from_signals(
-    signals: Option<&SecretsUiSignals>,
-    row_id: usize,
-) -> Option<SecretUpsertForm> {
+fn secret_draft_from_signals(signals: Option<&SecretsUiSignals>, row_id: usize) -> Option<SecretUpsertForm> {
     let draft: SecretDraftSignal = draft_from_rows(signals.map(|s| &s.secrets), row_id)?;
     Some(SecretUpsertForm {
         original_secret_id: draft.original_secret_id,
@@ -1579,10 +1446,7 @@ fn secret_row_for_cancel_from_signals(
     })
 }
 
-fn draft_from_rows<T: for<'de> Deserialize<'de>>(
-    signals: Option<&TableUiSignals>,
-    row_id: usize,
-) -> Option<T> {
+fn draft_from_rows<T: for<'de> Deserialize<'de>>(signals: Option<&TableUiSignals>, row_id: usize) -> Option<T> {
     let row = signals?.rows.get(&row_id.to_string())?.draft.clone()?;
     serde_json::from_value(Value::Object(row)).ok()
 }
@@ -1622,10 +1486,7 @@ async fn load_secret_ids(state: &Arc<ServerState>) -> Vec<String> {
 
 async fn delete_host_row(hosts: &[template::HostsTableRow], row_id: usize) -> Response {
     let Some(host) = host_row_by_id(hosts, row_id) else {
-        tracing::warn!(
-            "Host delete for transient row {} removed patched row",
-            row_id
-        );
+        tracing::warn!("Host delete for transient row {} removed patched row", row_id);
         return clear_and_remove_row("hosts", &host_row_selector(row_id), row_id);
     };
 
@@ -1634,9 +1495,7 @@ async fn delete_host_row(hosts: &[template::HostsTableRow], row_id: usize) -> Re
         host_map.remove(host.name.trim());
         return match KnownHost::write_hosts_yml(host_map) {
             Ok(_) => sse_response(vec![
-                clear_row_signal_patch("hosts", row_id)
-                    .as_datastar_event()
-                    .to_string(),
+                clear_row_signal_patch("hosts", row_id).as_datastar_event().to_string(),
                 patch_host_error_event(""),
                 PatchElements::new_remove(host_row_selector(row_id))
                     .as_datastar_event()
@@ -1661,10 +1520,7 @@ async fn delete_cluster_row(
     row_id: usize,
 ) -> Response {
     let Some(cluster) = cluster_row_by_id(clusters, row_id) else {
-        tracing::warn!(
-            "Cluster delete for transient row {} removed patched row",
-            row_id
-        );
+        tracing::warn!("Cluster delete for transient row {} removed patched row", row_id);
         return clear_and_remove_row("clusters", &cluster_row_selector(row_id), row_id);
     };
 
@@ -1693,8 +1549,7 @@ async fn delete_cluster_row(
                     tracing::warn!("Cluster delete for row {} failed: {}", row_id, message);
                     return sse_response(vec![patch_cluster_error_event(&message)]);
                 }
-                patch_hosts_and_secrets_with_clear_response(state, Some(("clusters", row_id)))
-                    .await
+                patch_hosts_and_secrets_with_clear_response(state, Some(("clusters", row_id))).await
             }
             Err(err) => {
                 let message = to_message(err);
@@ -1709,11 +1564,7 @@ async fn delete_cluster_row(
     sse_response(vec![patch_cluster_error_event(&message)])
 }
 
-async fn delete_secret_row(
-    state: &Arc<ServerState>,
-    secrets: &[template::SecretTableRow],
-    row_id: usize,
-) -> Response {
+async fn delete_secret_row(state: &Arc<ServerState>, secrets: &[template::SecretTableRow], row_id: usize) -> Response {
     let Some(secret) = secret_row_by_id(secrets, row_id) else {
         return clear_and_remove_row("secrets", &secret_row_selector(row_id), row_id);
     };
@@ -1733,8 +1584,7 @@ async fn delete_secret_row(
     match remove_secret(secret.secret_id.trim(), None, &password) {
         Ok(_) => {
             state.touch_keystore_session().await;
-            patch_hosts_and_secrets_with_clear_response(state, Some(("secrets", row_id)))
-                .await
+            patch_hosts_and_secrets_with_clear_response(state, Some(("secrets", row_id))).await
         }
         Err(err) => (StatusCode::BAD_REQUEST, to_message(err)).into_response(),
     }
@@ -1742,34 +1592,21 @@ async fn delete_secret_row(
 
 fn clear_and_remove_row(panel: &str, selector: &str, row_id: usize) -> Response {
     sse_response(vec![
-        clear_row_signal_patch(panel, row_id)
-            .as_datastar_event()
-            .to_string(),
-        PatchElements::new_remove(selector)
-            .as_datastar_event()
-            .to_string(),
+        clear_row_signal_patch(panel, row_id).as_datastar_event().to_string(),
+        PatchElements::new_remove(selector).as_datastar_event().to_string(),
     ])
 }
 
-async fn patch_host_row_saved_response(
-    state: &Arc<ServerState>,
-    row_id: usize,
-    host_name: &str,
-) -> Response {
+async fn patch_host_row_saved_response(state: &Arc<ServerState>, row_id: usize, host_name: &str) -> Response {
     let hosts = read_host_rows();
     let Some(host) = hosts.iter().find(|host| host.name == host_name).cloned() else {
-        let message = format!(
-            "Saved host '{}' but could not reload the updated row.",
-            host_name
-        );
+        let message = format!("Saved host '{}' but could not reload the updated row.", host_name);
         tracing::warn!("{}", message);
         return sse_response(vec![patch_host_error_event(&message)]);
     };
     let keystore_locked = state.keystore_status().await.0;
     sse_response(vec![
-        clear_row_signal_patch("hosts", row_id)
-            .as_datastar_event()
-            .to_string(),
+        clear_row_signal_patch("hosts", row_id).as_datastar_event().to_string(),
         patch_host_error_event(""),
         patch_row_event(
             &host_row_selector(row_id),
@@ -1841,9 +1678,7 @@ fn to_message(err: impl std::fmt::Display) -> String {
     err.to_string()
 }
 
-async fn current_keystore_password(
-    state: &Arc<ServerState>,
-) -> Result<String, String> {
+async fn current_keystore_password(state: &Arc<ServerState>) -> Result<String, String> {
     state
         .keystore_password()
         .await
@@ -1854,21 +1689,14 @@ async fn current_keystore_password(
 #[allow(clippy::await_holding_lock)]
 mod tests {
     use super::{
-        ClusterUpsertForm, HostUpsertForm, SecretsUiSignals, TableRowSignals, TableUiSignals,
-        apply_upsert_cluster, apply_upsert_host, read_host_and_cluster_rows, read_secret_rows,
-        render_secret_row, secret_action,
+        ClusterUpsertForm, HostUpsertForm, SecretsUiSignals, TableRowSignals, TableUiSignals, apply_upsert_cluster,
+        apply_upsert_host, read_host_and_cluster_rows, read_secret_rows, render_secret_row, secret_action,
     };
     use crate::{
-        data::{
-            HostRole, KnownHost, Product, SecretAuth, Settings, authenticate, upsert_secret_auth,
-        },
+        data::{HostRole, KnownHost, Product, SecretAuth, Settings, authenticate, upsert_secret_auth},
         server::test_server_state,
     };
-    use axum::{
-        body::to_bytes,
-        extract::Path,
-        http::StatusCode,
-    };
+    use axum::{body::to_bytes, extract::Path, http::StatusCode};
     use datastar::axum::ReadSignals;
     use serde_json::json;
     use std::{collections::BTreeMap, sync::Mutex};
@@ -2032,9 +1860,7 @@ mod tests {
         .await;
 
         assert_eq!(response.status(), StatusCode::OK);
-        let body = to_bytes(response.into_body(), usize::MAX)
-            .await
-            .expect("response body");
+        let body = to_bytes(response.into_body(), usize::MAX).await.expect("response body");
         let body = String::from_utf8(body.to_vec()).expect("utf8 body");
         assert!(body.contains("secrets-table-row-1"));
         assert!(body.contains("existing-secret"));

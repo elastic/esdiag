@@ -21,10 +21,7 @@ impl UploadServiceDownloader {
         tokio::task::block_in_place(|| {
             let client = reqwest::blocking::Client::new();
             let mut headers = reqwest::header::HeaderMap::new();
-            headers.insert(
-                "Authorization",
-                reqwest::header::HeaderValue::from_str(&self.token)?,
-            );
+            headers.insert("Authorization", reqwest::header::HeaderValue::from_str(&self.token)?);
             let request = client.get(self.url.clone()).headers(headers);
             let response = request.send()?;
             let bytes = response.bytes()?;
@@ -42,10 +39,7 @@ impl TryFrom<Url> for UploadServiceDownloader {
 
     fn try_from(url: Url) -> Result<Self> {
         let mut url = url.clone();
-        let token = url
-            .password()
-            .ok_or_else(|| eyre!("No token provided"))?
-            .to_string();
+        let token = url.password().ok_or_else(|| eyre!("No token provided"))?.to_string();
         // Since token authentication is by header, clear provided username and password from the URL
         url.set_username("").ok();
         url.set_password(None).ok();

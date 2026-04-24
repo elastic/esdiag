@@ -185,15 +185,12 @@ fn run_external_logstash_collect_test(
         );
     }
 
-    let manifest_content =
-        fs::read_to_string(extracted.path.join("diagnostic_manifest.json")).expect("manifest");
+    let manifest_content = fs::read_to_string(extracted.path.join("diagnostic_manifest.json")).expect("manifest");
     let manifest: Value = serde_json::from_str(&manifest_content).expect("manifest json");
     assert_eq!(manifest["product"].as_str(), Some("logstash"));
     assert_eq!(manifest["mode"].as_str(), Some("support"));
 
-    let apis = manifest["collected_apis"]
-        .as_array()
-        .expect("collected_apis array");
+    let apis = manifest["collected_apis"].as_array().expect("collected_apis array");
     let api_names: Vec<&str> = apis.iter().filter_map(|v| v.as_str()).collect();
     for required in [
         "logstash_node",

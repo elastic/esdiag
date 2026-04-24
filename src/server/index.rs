@@ -70,19 +70,12 @@ pub async fn handler(
             tracing::warn!("Authentication header validation failed: {err}");
             return (
                 StatusCode::UNAUTHORIZED,
-                Html(format!(
-                    "<html><body><h1>Unauthorized</h1><p>{}</p></body></html>",
-                    err
-                )),
+                Html(format!("<html><body><h1>Unauthorized</h1><p>{}</p></body></html>", err)),
             )
                 .into_response();
         }
     };
-    let user_initial = user_email
-        .chars()
-        .next()
-        .unwrap_or('_')
-        .to_ascii_uppercase();
+    let user_initial = user_email.chars().next().unwrap_or('_').to_ascii_uppercase();
     let allows_local_runtime_features = state.runtime_mode_policy.allows_local_runtime_features();
     let theme_dark = get_theme_dark(&headers);
     let kibana_url = { state.kibana_url.read().await.clone() };
@@ -94,21 +87,10 @@ pub async fn handler(
             .map(|(name, _)| name.clone())
             .collect();
         let exporter = state.exporter.read().await.clone();
-        let preferred_target = Settings::load()
-            .ok()
-            .and_then(|settings| settings.active_target);
-        let (_output_options, selected_output, _label) = template::build_footer_output_context(
-            &hosts_by_name,
-            &send_hosts,
-            &exporter,
-            preferred_target.as_deref(),
-        );
-        template::active_output_requires_keystore(
-            &hosts_by_name,
-            &send_hosts,
-            &selected_output,
-            &exporter,
-        )
+        let preferred_target = Settings::load().ok().and_then(|settings| settings.active_target);
+        let (_output_options, selected_output, _label) =
+            template::build_footer_output_context(&hosts_by_name, &send_hosts, &exporter, preferred_target.as_deref());
+        template::active_output_requires_keystore(&hosts_by_name, &send_hosts, &selected_output, &exporter)
     } else {
         false
     };
@@ -136,10 +118,7 @@ pub async fn handler(
 
     let html = match page.render() {
         Ok(html) => html,
-        Err(err) => format!(
-            "<html><body><h1>Internal Server Error</h1><p>{}</p></body></html>",
-            err
-        ),
+        Err(err) => format!("<html><body><h1>Internal Server Error</h1><p>{}</p></body></html>", err),
     };
 
     Html(html).into_response()
@@ -156,27 +135,19 @@ pub async fn workflow_page(
             tracing::warn!("Authentication header validation failed: {err}");
             return (
                 StatusCode::UNAUTHORIZED,
-                Html(format!(
-                    "<html><body><h1>Unauthorized</h1><p>{}</p></body></html>",
-                    err
-                )),
+                Html(format!("<html><body><h1>Unauthorized</h1><p>{}</p></body></html>", err)),
             )
                 .into_response();
         }
     };
-    let user_initial = user_email
-        .chars()
-        .next()
-        .unwrap_or('_')
-        .to_ascii_uppercase();
+    let user_initial = user_email.chars().next().unwrap_or('_').to_ascii_uppercase();
 
     let exporter = { state.exporter.read().await.clone() };
     let send_defaults = classify_configured_exporter(&exporter);
     let workflow_hosts = workflow_host_options(&state);
     let default_save_dir = default_downloads_dir().display().to_string();
-    let process_options_json =
-        serde_json::to_string(&ApiResolver::processing_catalog().unwrap_or_default())
-            .unwrap_or_else(|_| "{}".to_string());
+    let process_options_json = serde_json::to_string(&ApiResolver::processing_catalog().unwrap_or_default())
+        .unwrap_or_else(|_| "{}".to_string());
     let theme_dark = get_theme_dark(&headers);
     let kibana_url = { state.kibana_url.read().await.clone() };
     let keystore_state = state.keystore_page_state().await;
@@ -216,10 +187,7 @@ pub async fn workflow_page(
 
     let html = match page.render() {
         Ok(html) => html,
-        Err(err) => format!(
-            "<html><body><h1>Internal Server Error</h1><p>{}</p></body></html>",
-            err
-        ),
+        Err(err) => format!("<html><body><h1>Internal Server Error</h1><p>{}</p></body></html>", err),
     };
 
     Html(html).into_response()
@@ -233,14 +201,8 @@ pub async fn jobs_page(
     build_jobs_page(state, None, Some(params), headers).await
 }
 
-pub async fn jobs_page_with_saved_job(
-    state: Arc<ServerState>,
-    name: String,
-    headers: HeaderMap,
-) -> Response {
-    build_jobs_page(state, Some(name), None, headers)
-        .await
-        .into_response()
+pub async fn jobs_page_with_saved_job(state: Arc<ServerState>, name: String, headers: HeaderMap) -> Response {
+    build_jobs_page(state, Some(name), None, headers).await.into_response()
 }
 
 async fn build_jobs_page(
@@ -255,27 +217,19 @@ async fn build_jobs_page(
             tracing::warn!("Authentication header validation failed: {err}");
             return (
                 StatusCode::UNAUTHORIZED,
-                Html(format!(
-                    "<html><body><h1>Unauthorized</h1><p>{}</p></body></html>",
-                    err
-                )),
+                Html(format!("<html><body><h1>Unauthorized</h1><p>{}</p></body></html>", err)),
             )
                 .into_response();
         }
     };
-    let user_initial = user_email
-        .chars()
-        .next()
-        .unwrap_or('_')
-        .to_ascii_uppercase();
+    let user_initial = user_email.chars().next().unwrap_or('_').to_ascii_uppercase();
 
     let exporter = { state.exporter.read().await.clone() };
     let send_defaults = classify_configured_exporter(&exporter);
     let workflow_hosts = workflow_host_options(&state);
     let default_save_dir = default_downloads_dir().display().to_string();
-    let process_options_json =
-        serde_json::to_string(&ApiResolver::processing_catalog().unwrap_or_default())
-            .unwrap_or_else(|_| "{}".to_string());
+    let process_options_json = serde_json::to_string(&ApiResolver::processing_catalog().unwrap_or_default())
+        .unwrap_or_else(|_| "{}".to_string());
     let theme_dark = get_theme_dark(&headers);
     let kibana_url = { state.kibana_url.read().await.clone() };
     let keystore_state = state.keystore_page_state().await;
@@ -307,10 +261,7 @@ async fn build_jobs_page(
     let message = if let Some(err) = job_load_error {
         err
     } else if job_not_found {
-        format!(
-            "Job '{}' not found",
-            saved_job_name.as_deref().unwrap_or("")
-        )
+        format!("Job '{}' not found", saved_job_name.as_deref().unwrap_or(""))
     } else if stale_host {
         format!(
             "Warning: host '{}' referenced by job '{}' is no longer configured",
@@ -376,10 +327,7 @@ async fn build_jobs_page(
 
     let html = match page.render() {
         Ok(html) => html,
-        Err(err) => format!(
-            "<html><body><h1>Internal Server Error</h1><p>{}</p></body></html>",
-            err
-        ),
+        Err(err) => format!("<html><body><h1>Internal Server Error</h1><p>{}</p></body></html>", err),
     };
 
     Html(html).into_response()
@@ -408,11 +356,7 @@ struct SavedJobDefaults {
 }
 
 impl SavedJobDefaults {
-    fn from_job(
-        job: Option<&SavedJob>,
-        send_defaults: &SendDefaults,
-        default_save_dir: &str,
-    ) -> Self {
+    fn from_job(job: Option<&SavedJob>, send_defaults: &SendDefaults, default_save_dir: &str) -> Self {
         if let Some(job) = job {
             Self {
                 collect_mode: serde_json::to_string(&job.workflow.collect.mode)
@@ -645,16 +589,8 @@ mod tests {
         assert!(options.send_remote_hosts.contains(&"es-local".to_string()));
         assert_eq!(options.send_local_hosts, vec!["es-local".to_string()]);
         assert!(options.collect_hosts.contains(&"kb-collect".to_string()));
-        assert!(
-            !options
-                .send_remote_hosts
-                .contains(&"kb-collect".to_string())
-        );
+        assert!(!options.send_remote_hosts.contains(&"kb-collect".to_string()));
         assert!(!options.send_local_hosts.contains(&"kb-collect".to_string()));
-        assert!(
-            !options
-                .send_secure_hosts
-                .contains(&"kb-collect".to_string())
-        );
+        assert!(!options.send_secure_hosts.contains(&"kb-collect".to_string()));
     }
 }

@@ -3,8 +3,7 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::super::{
-    DocumentExporter, ElasticsearchMetadata, Lookups, ProcessorSummary, metadata::MetadataRawValue,
-    nodes::NodeDocument,
+    DocumentExporter, ElasticsearchMetadata, Lookups, ProcessorSummary, metadata::MetadataRawValue, nodes::NodeDocument,
 };
 use super::{NodeTasks, ParentTask, Task, Tasks};
 use crate::exporter::Exporter;
@@ -37,8 +36,7 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for Tasks {
                         if node.is_none() {
                             tracing::warn!("Node [{}] not found for task [{}]", node_id, task.id);
                         }
-                        serde_json::to_value(EnrichedTask::new(task, task_metadata.clone(), node))
-                            .unwrap_or_default()
+                        serde_json::to_value(EnrichedTask::new(task, task_metadata.clone(), node)).unwrap_or_default()
                     })
                     .collect::<Vec<Value>>()
             })
@@ -66,10 +64,7 @@ pub struct EnrichedTask {
 
 impl EnrichedTask {
     pub fn new(task: Task, metadata: MetadataRawValue, node: Option<NodeDocument>) -> Self {
-        let parent = task
-            .parent_task_id
-            .as_ref()
-            .map(|id| ParentTask::from(id.clone()));
+        let parent = task.parent_task_id.as_ref().map(|id| ParentTask::from(id.clone()));
         EnrichedTask {
             metadata,
             node,
@@ -137,10 +132,7 @@ impl TaskData {
             _ => return None,
         };
 
-        let (docs, description) = match description
-            .trim_start_matches("requests[")
-            .split_once("], ")
-        {
+        let (docs, description) = match description.trim_start_matches("requests[").split_once("], ") {
             Some((docs, description)) => (docs.parse::<u64>().ok(), description),
             None => (None, description.as_str()),
         };
@@ -149,10 +141,7 @@ impl TaskData {
             true => {
                 let (index, number): (String, Option<u32>) =
                     match description.trim_start_matches("index[").split_once("][") {
-                        Some((index, number)) => (
-                            index.into(),
-                            number.trim_end_matches("]").parse::<u32>().ok(),
-                        ),
+                        Some((index, number)) => (index.into(), number.trim_end_matches("]").parse::<u32>().ok()),
                         None => (String::default(), None),
                     };
 

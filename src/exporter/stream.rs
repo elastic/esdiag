@@ -58,11 +58,7 @@ impl Export for StreamExporter {
 
     /// Transmits a single batch of documents in an async task
     /// Returns a one-shot channel for the BatchResponse
-    async fn batch_tx<T>(
-        &self,
-        index: String,
-        docs: Vec<T>,
-    ) -> Result<oneshot::Receiver<BatchResponse>>
+    async fn batch_tx<T>(&self, index: String, docs: Vec<T>) -> Result<oneshot::Receiver<BatchResponse>>
     where
         T: Serialize + Sized + Send + Sync + 'static,
     {

@@ -24,18 +24,15 @@ impl KibanaClient {
         headers.insert("kbn-xsrf", "true".parse()?);
         match auth {
             Auth::Basic(username, password) => {
-                let credentials = base64::engine::general_purpose::STANDARD
-                    .encode(format!("{}:{}", username, password));
+                let credentials =
+                    base64::engine::general_purpose::STANDARD.encode(format!("{}:{}", username, password));
                 headers.append(
                     reqwest::header::AUTHORIZATION,
                     format!("Basic {}", credentials).parse()?,
                 );
             }
             Auth::Apikey(apikey) => {
-                headers.append(
-                    reqwest::header::AUTHORIZATION,
-                    format!("ApiKey {}", apikey).parse()?,
-                );
+                headers.append(reqwest::header::AUTHORIZATION, format!("ApiKey {}", apikey).parse()?);
             }
             Auth::None => {
                 headers.append(reqwest::header::AUTHORIZATION, "None".parse()?);
@@ -80,10 +77,7 @@ impl KibanaClient {
                     .query(&query)
                     .headers(headers)
             }
-            None => self
-                .client
-                .request(method, self.url.join(path)?)
-                .headers(headers),
+            None => self.client.request(method, self.url.join(path)?).headers(headers),
         };
 
         match body {
@@ -108,8 +102,7 @@ impl KibanaClient {
 
     /// Verify the connection and authentication to Kibana
     pub async fn test_connection(&self) -> Result<reqwest::Response> {
-        self.request(Method::GET, &HashMap::new(), "/api/status", None)
-            .await
+        self.request(Method::GET, &HashMap::new(), "/api/status", None).await
     }
 }
 

@@ -88,11 +88,7 @@ pub async fn list_saved_jobs(signals: Option<ReadSignals<ListSavedJobsSignals>>)
         Ok(jobs) => jobs,
         Err(err) => {
             tracing::error!("Failed to load saved jobs: {err}");
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to load saved jobs",
-            )
-                .into_response();
+            return (StatusCode::INTERNAL_SERVER_ERROR, "Failed to load saved jobs").into_response();
         }
     };
     let names: Vec<String> = jobs.keys().cloned().collect();
@@ -267,10 +263,7 @@ mod tests {
         );
         KnownHost::write_hosts_yml(&hosts).expect("write hosts");
 
-        let result = validate_saved_job(&save_signals(
-            CollectSource::KnownHost,
-            "elasticsearch-local",
-        ));
+        let result = validate_saved_job(&save_signals(CollectSource::KnownHost, "elasticsearch-local"));
 
         assert!(result.is_ok(), "no-auth known hosts should be savable");
     }

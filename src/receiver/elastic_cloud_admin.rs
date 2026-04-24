@@ -2,9 +2,7 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use super::super::processor::{
-    DataSource, DiagnosticManifest, ElasticsearchCluster, ManifestBuilder, SourceContext,
-};
+use super::super::processor::{DataSource, DiagnosticManifest, ElasticsearchCluster, ManifestBuilder, SourceContext};
 use super::{Receive, ReceiveRaw};
 use crate::data::{Auth, KnownHost};
 use eyre::{Result, eyre};
@@ -67,10 +65,7 @@ impl ElasticCloudAdminReceiver {
         default_headers.append("X-Management-Request", "true".parse().unwrap());
         default_headers.append(ACCEPT, "application/json".parse().unwrap());
         default_headers.append(ACCEPT_ENCODING, "gzip, deflate".parse().unwrap());
-        default_headers.append(
-            AUTHORIZATION,
-            format!("ApiKey {}", api_key).parse().unwrap(),
-        );
+        default_headers.append(AUTHORIZATION, format!("ApiKey {}", api_key).parse().unwrap());
         let client = ClientBuilder::new()
             .default_headers(default_headers)
             .connect_timeout(ELASTIC_CLOUD_ADMIN_CONNECT_TIMEOUT)
@@ -104,8 +99,7 @@ impl ElasticCloudAdminReceiver {
                     .and_then(|v| v.get("number"))
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| eyre::eyre!("No version found in root response"))?;
-                semver::Version::parse(version_str)
-                    .map_err(|e| eyre!("Failed to parse version: {}", e))
+                semver::Version::parse(version_str).map_err(|e| eyre!("Failed to parse version: {}", e))
             })
             .await
     }
@@ -152,10 +146,7 @@ impl Receive for ElasticCloudAdminReceiver {
     }
 
     async fn is_connected(&self) -> bool {
-        tracing::debug!(
-            "Testing Elastic Cloud Admin connection to {}",
-            self.url.as_str()
-        );
+        tracing::debug!("Testing Elastic Cloud Admin connection to {}", self.url.as_str());
         // An empty request to `/`
         let response = self.client.get(self.url.as_str()).send().await;
 
@@ -175,10 +166,7 @@ impl Receive for ElasticCloudAdminReceiver {
                 }
             }
             Err(e) => {
-                tracing::error!(
-                    "Elastic Cloud Admin connection to {} failed: {e}",
-                    self.url.as_str()
-                );
+                tracing::error!("Elastic Cloud Admin connection to {} failed: {e}", self.url.as_str());
                 if e.is_connect() || e.is_timeout() {
                     tracing::warn!(
                         "Elastic Cloud Admin and Elastic GovCloud Admin hosts require VPN access; verify your VPN connection and retry."
@@ -249,9 +237,9 @@ impl std::fmt::Display for ElasticCloudAdminReceiver {
 mod tests {
     use super::*;
     use axum::{
+        Router,
         extract::Request,
         extract::State,
-        Router,
         http::StatusCode,
         middleware::{self, Next},
         routing::get,
@@ -266,9 +254,7 @@ mod tests {
     }
 
     async fn spawn_status_server(status: StatusCode) -> (Url, JoinHandle<()>, oneshot::Sender<()>) {
-        let app = Router::new()
-            .route("/", get(status_handler))
-            .with_state(status);
+        let app = Router::new().route("/", get(status_handler)).with_state(status);
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
             .expect("bind test server");
@@ -291,10 +277,7 @@ mod tests {
         server.await.expect("test server should exit cleanly");
     }
 
-    async fn stop_status_server_with_shutdown(
-        server: JoinHandle<()>,
-        shutdown_tx: oneshot::Sender<()>,
-    ) {
+    async fn stop_status_server_with_shutdown(server: JoinHandle<()>, shutdown_tx: oneshot::Sender<()>) {
         let _ = shutdown_tx.send(());
         server.await.expect("test server should exit cleanly");
     }
@@ -316,8 +299,7 @@ mod tests {
     #[tokio::test]
     async fn is_connected_returns_true_for_success_status() {
         let (url, server, shutdown_tx) = spawn_status_server(StatusCode::OK).await;
-        let receiver =
-            ElasticCloudAdminReceiver::new(url, "test-api-key".to_string()).expect("receiver");
+        let receiver = ElasticCloudAdminReceiver::new(url, "test-api-key".to_string()).expect("receiver");
 
         assert!(receiver.is_connected().await);
 
@@ -327,8 +309,7 @@ mod tests {
     #[tokio::test]
     async fn is_connected_returns_false_for_unauthorized_status() {
         let (url, server, shutdown_tx) = spawn_status_server(StatusCode::UNAUTHORIZED).await;
-        let receiver =
-            ElasticCloudAdminReceiver::new(url, "test-api-key".to_string()).expect("receiver");
+        let receiver = ElasticCloudAdminReceiver::new(url, "test-api-key".to_string()).expect("receiver");
 
         assert!(!receiver.is_connected().await);
 
@@ -368,8 +349,7 @@ mod tests {
             "http://{addr}/api/v1/deployments/test/elasticsearch/main-elasticsearch/proxy/"
         ))
         .expect("parse test url");
-        let receiver =
-            ElasticCloudAdminReceiver::new(url, "test-api-key".to_string()).expect("receiver");
+        let receiver = ElasticCloudAdminReceiver::new(url, "test-api-key".to_string()).expect("receiver");
 
         let body = receiver
             .get_raw_by_path("/_nodes/hot_threads", ".txt")
@@ -377,10 +357,7 @@ mod tests {
             .expect("raw response");
 
         assert_eq!(body, "hot threads");
-        assert_eq!(
-            last_accept.lock().expect("accept lock").as_deref(),
-            Some("text/plain")
-        );
+        assert_eq!(last_accept.lock().expect("accept lock").as_deref(), Some("text/plain"));
 
         stop_status_server_with_shutdown(server, shutdown_tx).await;
     }
@@ -412,8 +389,7 @@ mod tests {
             "http://{addr}/api/v1/deployments/test/elasticsearch/main-elasticsearch/proxy/"
         ))
         .expect("parse test url");
-        let receiver =
-            ElasticCloudAdminReceiver::new(url, "test-api-key".to_string()).expect("receiver");
+        let receiver = ElasticCloudAdminReceiver::new(url, "test-api-key".to_string()).expect("receiver");
 
         let err = receiver
             .get_raw_by_path("/_cluster/missing", ".json")

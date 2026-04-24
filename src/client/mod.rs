@@ -57,19 +57,10 @@ impl Client {
                     })
                     .collect();
                 use es::http::request::JsonBody;
-                let body: Option<JsonBody<serde_json::Value>> = body
-                    .map(serde_json::from_slice)
-                    .transpose()?
-                    .map(JsonBody::new);
+                let body: Option<JsonBody<serde_json::Value>> =
+                    body.map(serde_json::from_slice).transpose()?.map(JsonBody::new);
                 let response = client
-                    .send(
-                        method,
-                        path,
-                        header_map,
-                        Option::<&serde_json::Value>::None,
-                        body,
-                        None,
-                    )
+                    .send(method, path, header_map, Option::<&serde_json::Value>::None, body, None)
                     .await?;
                 Ok(response.into())
             }
@@ -104,10 +95,7 @@ impl Client {
                 if json.get("tagline").is_some() {
                     Ok(format!("{} ✅ Elasticsearch", status))
                 } else {
-                    Err(format!(
-                        "{} ❌ Root response did not match Elasticsearch",
-                        status
-                    ))
+                    Err(format!("{} ❌ Root response did not match Elasticsearch", status))
                 }
             }
             Client::Kibana(client) => {
@@ -133,16 +121,10 @@ impl Client {
                 tracing::debug!("Test response {} ", json);
 
                 if let Some(version) = json.get("version").and_then(|v| v.as_str()) {
-                    let name = json
-                        .get("name")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("unknown");
+                    let name = json.get("name").and_then(|v| v.as_str()).unwrap_or("unknown");
                     Ok(format!("{status} ✅ Logstash: {name} ({version})"))
                 } else {
-                    Err(format!(
-                        "{} ❌ Root response did not match Logstash",
-                        status
-                    ))
+                    Err(format!("{} ❌ Root response did not match Logstash", status))
                 }
             }
         }
@@ -245,9 +227,7 @@ impl TryFrom<Uri> for Client {
         match uri {
             Uri::KnownHost(host) => match host.app() {
                 Product::Kibana => Ok(Client::Kibana(KibanaClient::try_from(host)?)),
-                Product::Elasticsearch => {
-                    Ok(Client::Elasticsearch(ElasticsearchClient::try_from(host)?))
-                }
+                Product::Elasticsearch => Ok(Client::Elasticsearch(ElasticsearchClient::try_from(host)?)),
                 Product::Logstash => Ok(Client::Logstash(LogstashClient::try_from(host)?)),
                 _ => Err(eyre!("Unsupported product: {}", host.app())),
             },

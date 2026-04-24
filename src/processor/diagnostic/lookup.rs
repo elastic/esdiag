@@ -93,8 +93,7 @@ where
 
     /// Associate a name with the last entry added
     pub fn with_name(&mut self, name: &str) -> &mut Self {
-        self.by_name
-            .insert(name.to_string(), self.entries.len() - 1);
+        self.by_name.insert(name.to_string(), self.entries.len() - 1);
         self
     }
 }

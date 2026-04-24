@@ -39,9 +39,7 @@ impl ElasticsearchBuilder {
         let mut headers = self.headers;
         headers.append(
             headers::AUTHORIZATION,
-            format!("ApiKey {}", apikey)
-                .parse()
-                .expect("Invalid API key"),
+            format!("ApiKey {}", apikey).parse().expect("Invalid API key"),
         );
         Self { headers, ..self }
     }

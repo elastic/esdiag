@@ -12,18 +12,14 @@ use esdiag::setup;
 use esdiag::{
     client::Client,
     data::{
-        HostRole, KnownHost, KnownHostBuilder, KnownHostCliUpdate, Product, SecretAuth, Settings,
-        Uri, add_secret, clear_unlock_lease, create_keystore, default_unlock_ttl,
-        get_keystore_path, get_password_for_secret_commands, get_unlock_status, keystore_exists,
-        parse_unlock_ttl, remove_secret, resolve_secret_auth, rotate_keystore_password, update_secret,
-        validate_existing_keystore_password, write_unlock_lease,
+        HostRole, KnownHost, KnownHostBuilder, KnownHostCliUpdate, Product, SecretAuth, Settings, Uri, add_secret,
+        clear_unlock_lease, create_keystore, default_unlock_ttl, get_keystore_path, get_password_for_secret_commands,
+        get_unlock_status, keystore_exists, parse_unlock_ttl, remove_secret, resolve_secret_auth,
+        rotate_keystore_password, update_secret, validate_existing_keystore_password, write_unlock_lease,
     },
     env::LOG_LEVEL,
     exporter::Exporter,
-    processor::{
-        CollectionResult, Collector, DiagnosticReport, Identifiers, Processor,
-        default_collect_archive_name,
-    },
+    processor::{CollectionResult, Collector, DiagnosticReport, Identifiers, Processor, default_collect_archive_name},
     receiver::Receiver,
     uploader,
 };
@@ -79,18 +75,10 @@ enum Commands {
         )]
         r#type: String,
         /// Explicitly include APIs
-        #[arg(
-            long,
-            help = "Comma-separated list of APIs to include",
-            value_delimiter = ','
-        )]
+        #[arg(long, help = "Comma-separated list of APIs to include", value_delimiter = ',')]
         include: Option<Vec<String>>,
         /// Explicitly exclude APIs
-        #[arg(
-            long,
-            help = "Comma-separated list of APIs to exclude",
-            value_delimiter = ','
-        )]
+        #[arg(long, help = "Comma-separated list of APIs to exclude", value_delimiter = ',')]
         exclude: Option<Vec<String>>,
         /// Override the embedded sources.yml for the detected Elasticsearch or Logstash workflow.
         /// The file must match the active product or the command fails before collection.
@@ -106,12 +94,7 @@ enum Commands {
         #[arg(help = "Diagnostic report opportunity", long, short)]
         opportunity: Option<String>,
         /// Diagnostic report user
-        #[arg(
-            help = "Diagnostic report user",
-            long = "user",
-            short,
-            value_name = "USER"
-        )]
+        #[arg(help = "Diagnostic report user", long = "user", short, value_name = "USER")]
         user: Option<String>,
         /// Elastic Upload Service upload id or URL for immediate upload after collection
         #[arg(
@@ -124,12 +107,7 @@ enum Commands {
     #[cfg(feature = "server")]
     Serve {
         /// The port to bind the server to
-        #[arg(
-            help = "The port to bind the server to",
-            long,
-            short,
-            default_value = "2501"
-        )]
+        #[arg(help = "The port to bind the server to", long, short, default_value = "2501")]
         port: u16,
         /// Target to send processed diagnostic documents to
         #[arg(
@@ -160,9 +138,7 @@ enum Commands {
     /// Receives a diagnostic from the input, processes it, and sends processed docs to the output
     Process {
         /// Source to read diagnostic data from
-        #[arg(
-            help = "Source to read diagnostic data from (archive, directory, known host or Elastic uploader URL)"
-        )]
+        #[arg(help = "Source to read diagnostic data from (archive, directory, known host or Elastic uploader URL)")]
         input: String,
 
         /// Target to send processed diagnostic documents to
@@ -487,10 +463,7 @@ fn init_tracing(filter: EnvFilter) {
         eprintln!("tracing log bridge already initialized: {err}");
     }
 
-    let subscriber = fmt()
-        .with_env_filter(filter)
-        .with_writer(std::io::stderr)
-        .finish();
+    let subscriber = fmt().with_env_filter(filter).with_writer(std::io::stderr).finish();
     if let Err(err) = tracing::subscriber::set_global_default(subscriber) {
         eprintln!("tracing subscriber already initialized: {err}");
     }
@@ -593,9 +566,7 @@ async fn run(cli: Cli) -> Result<CommandResult> {
         use clap::CommandFactory;
         let mut cmd = Cli::command();
         cmd.print_help()?;
-        return Err(eyre!(
-            "No subcommand provided. Use --help for usage information."
-        ));
+        return Err(eyre!("No subcommand provided. Use --help for usage information."));
     }
 
     if let Some(command) = cli.command {
@@ -641,16 +612,11 @@ async fn run(cli: Cli) -> Result<CommandResult> {
                 let known_host = Uri::try_from(host)?;
                 let output = Uri::try_from(output)?;
                 match known_host {
-                    Uri::KnownHost(host)
-                    | Uri::ElasticCloudAdmin(host)
-                    | Uri::ElasticGovCloudAdmin(host) => {
+                    Uri::KnownHost(host) | Uri::ElasticCloudAdmin(host) | Uri::ElasticGovCloudAdmin(host) => {
                         ensure_host_role(&host, HostRole::Collect, "collect")?;
                         let product = host.app().clone();
                         if let Some(sources) = sources {
-                            esdiag::processor::init_sources(
-                                sources_product_key(&product)?,
-                                sources,
-                            )?;
+                            esdiag::processor::init_sources(sources_product_key(&product)?, sources)?;
                         }
                         let known_host = Uri::try_from(host)?;
                         tracing::info!("Collecting diagnostic from {known_host}");
@@ -665,47 +631,26 @@ async fn run(cli: Cli) -> Result<CommandResult> {
                         let exporter = Exporter::for_collect_archive(output_dir)?;
 
                         let timestamp = chrono::Utc::now().format("%Y%m%d-%H%M%S").to_string();
-                        let filename =
-                            format!("{}.zip", default_collect_archive_name(&product, &timestamp));
-                        let identifiers =
-                            Identifiers::new(account, case, Some(filename), opportunity, user);
+                        let filename = format!("{}.zip", default_collect_archive_name(&product, &timestamp));
+                        let identifiers = Identifiers::new(account, case, Some(filename), opportunity, user);
 
-                        let collector = Collector::try_new(
-                            receiver,
-                            exporter,
-                            product,
-                            r#type,
-                            include,
-                            exclude,
-                            identifiers,
-                        )
-                        .await?;
+                        let collector =
+                            Collector::try_new(receiver, exporter, product, r#type, include, exclude, identifiers)
+                                .await?;
                         collect_with_optional_upload(
                             collector.collect(),
                             upload_id.as_deref(),
                             upload_collected_archive,
                         )
                         .await
-                        .map(|result| {
-                            CommandResult::with_summary(
-                                "collect",
-                                format_collect_summary(&result),
-                            )
-                        })
+                        .map(|result| CommandResult::with_summary("collect", format_collect_summary(&result)))
                     }
-                    Uri::ElasticCloud(_) => {
-                        Err(eyre!("Elastic Cloud API collection not yet implemented"))
-                    }
+                    Uri::ElasticCloud(_) => Err(eyre!("Elastic Cloud API collection not yet implemented")),
                     _ => Err(eyre!("Collect requires a known host")),
                 }
             }
             Commands::Host { command } => match command {
-                HostCommands::Add {
-                    name,
-                    app,
-                    url,
-                    args,
-                } => {
+                HostCommands::Add { name, app, url, args } => {
                     tracing::info!("Adding host {name}");
                     if KnownHost::get_known(&name).is_some() {
                         return Err(eyre!("Host '{name}' already exists"));
@@ -724,8 +669,7 @@ async fn run(cli: Cli) -> Result<CommandResult> {
                             "No host update fields were provided. Use `esdiag host auth {name}` to test the saved host without modifying it."
                         ));
                     }
-                    let existing = KnownHost::get_known(&name)
-                        .ok_or_else(|| eyre!("Host '{name}' not found"))?;
+                    let existing = KnownHost::get_known(&name).ok_or_else(|| eyre!("Host '{name}' not found"))?;
                     let secret_auth = if update.secret.is_some() {
                         resolve_host_secret_auth(update.secret.as_deref())?
                     } else {
@@ -750,8 +694,7 @@ async fn run(cli: Cli) -> Result<CommandResult> {
                 }
                 HostCommands::Auth { name } => {
                     tracing::info!("Testing saved host {name}");
-                    let host = KnownHost::get_known(&name)
-                        .ok_or_else(|| eyre!("Host '{name}' not found"))?;
+                    let host = KnownHost::get_known(&name).ok_or_else(|| eyre!("Host '{name}' not found"))?;
                     let uri = Uri::try_from(host)?;
                     let summary = validate_host_connection(&name, uri).await?;
                     Ok(CommandResult::with_summary("host auth", summary))
@@ -766,10 +709,8 @@ async fn run(cli: Cli) -> Result<CommandResult> {
                     apikey,
                 } => {
                     let keystore_password = get_password_for_secret_commands()?;
-                    let (username, password, apikey) =
-                        resolve_secret_input(username, password, apikey)?;
-                    let path =
-                        add_secret(&secret_id, username, password, apikey, &keystore_password)?;
+                    let (username, password, apikey) = resolve_secret_input(username, password, apikey)?;
+                    let path = add_secret(&secret_id, username, password, apikey, &keystore_password)?;
                     tracing::info!("Secret '{secret_id}' saved to {path}");
                     Ok(CommandResult::with_summary(
                         "keystore",
@@ -783,10 +724,8 @@ async fn run(cli: Cli) -> Result<CommandResult> {
                     apikey,
                 } => {
                     let keystore_password = get_password_for_secret_commands()?;
-                    let (username, password, apikey) =
-                        resolve_secret_input(username, password, apikey)?;
-                    let path =
-                        update_secret(&secret_id, username, password, apikey, &keystore_password)?;
+                    let (username, password, apikey) = resolve_secret_input(username, password, apikey)?;
+                    let path = update_secret(&secret_id, username, password, apikey, &keystore_password)?;
                     tracing::info!("Secret '{secret_id}' updated in {path}");
                     Ok(CommandResult::with_summary(
                         "keystore",
@@ -855,18 +794,11 @@ async fn run(cli: Cli) -> Result<CommandResult> {
                         colorize_keystore_lock_status(&lock_status, std::io::stderr().is_terminal());
                     tracing::info!(
                         "Keystore: {} ({})",
-                        if status.keystore_exists {
-                            "present"
-                        } else {
-                            "absent"
-                        },
+                        if status.keystore_exists { "present" } else { "absent" },
                         keystore_path.display()
                     );
                     tracing::info!("{rendered_lock_status}");
-                    Ok(CommandResult::with_summary(
-                        "keystore",
-                        rendered_lock_status,
-                    ))
+                    Ok(CommandResult::with_summary("keystore", rendered_lock_status))
                 }
                 KeystoreCommands::Password => {
                     if !keystore_exists()? {
@@ -884,8 +816,7 @@ async fn run(cli: Cli) -> Result<CommandResult> {
                 }
                 KeystoreCommands::Migrate => {
                     let keystore_password = get_password_for_secret_commands()?;
-                    let (migrated, unchanged) =
-                        KnownHost::migrate_hosts_to_keystore(&keystore_password)?;
+                    let (migrated, unchanged) = KnownHost::migrate_hosts_to_keystore(&keystore_password)?;
                     tracing::info!(
                         "Keystore migration complete: migrated {migrated} host(s), unchanged {unchanged} host(s)."
                     );
@@ -922,8 +853,7 @@ async fn run(cli: Cli) -> Result<CommandResult> {
                 let receiver = Arc::new(receiver);
                 let exporter = Arc::new(Exporter::try_from(output_uri)?);
 
-                let identifiers =
-                    Identifiers::new(account, case, receiver.filename(), opportunity, user);
+                let identifiers = Identifiers::new(account, case, receiver.filename(), opportunity, user);
                 let processor = Processor::try_new(receiver, exporter, identifiers).await?;
                 let processor = match processor.start().await {
                     Ok(processor) => processor,
@@ -934,8 +864,7 @@ async fn run(cli: Cli) -> Result<CommandResult> {
 
                 match processor.process().await {
                     Ok(processor) => {
-                        let summary =
-                            format_process_summary(&processor.state.report, processor.state.runtime);
+                        let summary = format_process_summary(&processor.state.report, processor.state.runtime);
                         Ok(CommandResult::with_summary("process", summary))
                     }
                     Err(processor) => {
@@ -1017,8 +946,8 @@ async fn run(cli: Cli) -> Result<CommandResult> {
                         let settings = esdiag::data::Settings::load().unwrap_or_default();
 
                         let exporter = if let Some(target) = &settings.active_target {
-                            if let Ok(host) = esdiag::data::KnownHost::get_known(target)
-                                .ok_or_else(|| eyre::eyre!("Host not found"))
+                            if let Ok(host) =
+                                esdiag::data::KnownHost::get_known(target).ok_or_else(|| eyre::eyre!("Host not found"))
                             {
                                 if let Ok(uri) = Uri::try_from(host) {
                                     Exporter::try_from(uri).unwrap_or_default()
@@ -1038,21 +967,14 @@ async fn run(cli: Cli) -> Result<CommandResult> {
                             esdiag::env::append_kibana_space(&url)
                         });
 
-                        let (mut server, bound_addr) = match Server::start(
-                            [127, 0, 0, 1],
-                            0,
-                            exporter,
-                            kibana_url,
-                            RuntimeMode::User,
-                        )
-                        .await
-                        {
-                            Ok(res) => res,
-                            Err(e) => {
-                                tracing::error!("Failed to start embedded server: {}", e);
-                                return;
-                            }
-                        };
+                        let (mut server, bound_addr) =
+                            match Server::start([127, 0, 0, 1], 0, exporter, kibana_url, RuntimeMode::User).await {
+                                Ok(res) => res,
+                                Err(e) => {
+                                    tracing::error!("Failed to start embedded server: {}", e);
+                                    return;
+                                }
+                            };
 
                         let url = format!("http://localhost:{}", bound_addr.port());
 
@@ -1125,16 +1047,9 @@ where
 
 async fn upload_collected_archive(file_path: PathBuf, upload_id: String) -> Result<()> {
     if !file_path.exists() {
-        return Err(eyre!(
-            "Collected archive not found at {}",
-            file_path.display()
-        ));
+        return Err(eyre!("Collected archive not found at {}", file_path.display()));
     }
-    tracing::info!(
-        "Uploading collected archive {} to {}",
-        file_path.display(),
-        upload_id
-    );
+    tracing::info!("Uploading collected archive {} to {}", file_path.display(), upload_id);
     let response = uploader::upload_file(&file_path, &upload_id, uploader::DEFAULT_UPLOAD_API_URL)
         .await
         .inspect_err(|_| {
@@ -1156,14 +1071,9 @@ fn sources_product_key(product: &Product) -> Result<&'static str> {
     })
 }
 
-async fn detect_sources_product_for_process(
-    input_uri: &Uri,
-    receiver: &Receiver,
-) -> Result<Product> {
+async fn detect_sources_product_for_process(input_uri: &Uri, receiver: &Receiver) -> Result<Product> {
     match input_uri {
-        Uri::KnownHost(host) | Uri::ElasticCloudAdmin(host) | Uri::ElasticGovCloudAdmin(host) => {
-            Ok(host.app().clone())
-        }
+        Uri::KnownHost(host) | Uri::ElasticCloudAdmin(host) | Uri::ElasticGovCloudAdmin(host) => Ok(host.app().clone()),
         _ => Ok(receiver.try_get_manifest_from_files().await?.product),
     }
 }
@@ -1205,9 +1115,7 @@ fn expected_secret_auth(
     match (apikey, username, password) {
         (None, None, None) => Ok(None),
         (Some(apikey), None, None) => Ok(Some(SecretAuth::ApiKey { apikey })),
-        (None, Some(username), Some(password)) => {
-            Ok(Some(SecretAuth::Basic { username, password }))
-        }
+        (None, Some(username), Some(password)) => Ok(Some(SecretAuth::Basic { username, password })),
         _ => Err(eyre!(
             "Invalid auth options: use either --apikey or --user with --password"
         )),
@@ -1245,9 +1153,7 @@ async fn save_validated_host(name: &str, host: KnownHost, action: &str) -> Resul
     let validation_summary = validate_host_connection(name, uri).await?;
     let hostfile = host.save(name)?;
     tracing::info!("Host {name} successfully saved to {hostfile}");
-    Ok(format!(
-        "{validation_summary}\nHost '{name}' {action} in {hostfile}"
-    ))
+    Ok(format!("{validation_summary}\nHost '{name}' {action} in {hostfile}"))
 }
 
 fn render_host_list() -> Result<()> {
@@ -1263,12 +1169,7 @@ fn render_host_list() -> Result<()> {
     println!("{}", "-".repeat(56));
 
     for row in rows {
-        println!(
-            "{:<24} {:<16} {}",
-            row.name,
-            row.app,
-            row.secret.unwrap_or_default()
-        );
+        println!("{:<24} {:<16} {}", row.name, row.app, row.secret.unwrap_or_default());
     }
 
     Ok(())
@@ -1324,9 +1225,7 @@ where
     F: FnMut(&str) -> Result<String>,
 {
     let requested_apikey_prompt = apikey.as_ref().is_some_and(|value| value.trim().is_empty());
-    let requested_password_prompt = password
-        .as_ref()
-        .is_some_and(|value| value.trim().is_empty());
+    let requested_password_prompt = password.as_ref().is_some_and(|value| value.trim().is_empty());
     let username = normalize_optional_secret_arg(username);
     let mut password = normalize_optional_secret_arg(password);
     let mut apikey = normalize_optional_secret_arg(apikey);
@@ -1353,13 +1252,7 @@ where
 }
 
 fn normalize_optional_secret_arg(value: Option<String>) -> Option<String> {
-    value.and_then(|value| {
-        if value.trim().is_empty() {
-            None
-        } else {
-            Some(value)
-        }
-    })
+    value.and_then(|value| if value.trim().is_empty() { None } else { Some(value) })
 }
 
 fn prompt_missing_secret_value(prompt: &str) -> Result<String> {
@@ -1389,9 +1282,7 @@ fn prompt_confirm(message: &str) -> Result<bool> {
 
 fn prompt_new_keystore_password() -> Result<String> {
     if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
-        return Err(eyre!(
-            "A new keystore password requires an interactive terminal."
-        ));
+        return Err(eyre!("A new keystore password requires an interactive terminal."));
     }
     let password = rpassword::prompt_password("Enter new keystore password: ")?;
     if password.is_empty() {
@@ -1452,10 +1343,7 @@ fn format_keystore_lock_status(status: &esdiag::data::UnlockStatus) -> String {
     format_keystore_lock_status_at(chrono::Utc::now().timestamp(), status)
 }
 
-fn format_keystore_lock_status_at(
-    now_epoch: i64,
-    status: &esdiag::data::UnlockStatus,
-) -> String {
+fn format_keystore_lock_status_at(now_epoch: i64, status: &esdiag::data::UnlockStatus) -> String {
     if status.unlock_active {
         if let Some(expires_at_epoch) = status.expires_at_epoch {
             return format!(
@@ -1528,10 +1416,7 @@ fn resolve_host_secret_auth(secret_id: Option<&str>) -> Result<Option<SecretAuth
 }
 
 fn host_connection_uses_receiver(uri: &Uri) -> bool {
-    matches!(
-        uri,
-        Uri::ElasticCloudAdmin(_) | Uri::ElasticGovCloudAdmin(_)
-    )
+    matches!(uri, Uri::ElasticCloudAdmin(_) | Uri::ElasticGovCloudAdmin(_))
 }
 
 async fn validate_host_connection(name: &str, uri: Uri) -> Result<String> {
@@ -1616,28 +1501,25 @@ fn resolve_serve_exporter(output: Option<String>, runtime_mode: RuntimeMode) -> 
 #[cfg(test)]
 mod tests {
     use super::{
-        Cli, CommandResult, Commands, HostCommands, KeystoreCommands,
-        colorize_keystore_lock_status, collect_with_optional_upload, format_collect_summary,
-        format_keystore_lock_status, format_keystore_lock_status_at,
-        format_keystore_migrate_summary, format_keystore_password_summary,
+        Cli, CommandResult, Commands, HostCommands, KeystoreCommands, collect_with_optional_upload,
+        colorize_keystore_lock_status, format_collect_summary, format_keystore_lock_status,
+        format_keystore_lock_status_at, format_keystore_migrate_summary, format_keystore_password_summary,
         format_keystore_secret_summary, format_process_summary, format_remaining_duration_from,
-        host_connection_uses_receiver, is_agent_mode, resolve_host_secret_auth,
-        resolve_secret_input_with_prompt, resolve_tracing_filter,
-        should_error_for_missing_subcommand, upload_collected_archive, write_completion_summary,
+        host_connection_uses_receiver, is_agent_mode, resolve_host_secret_auth, resolve_secret_input_with_prompt,
+        resolve_tracing_filter, should_error_for_missing_subcommand, upload_collected_archive,
+        write_completion_summary,
     };
     #[cfg(feature = "server")]
     use super::{resolve_serve_exporter, resolve_serve_runtime_mode};
     use clap::Parser;
     use esdiag::data::{HostRole, KnownHost, Product, SecretAuth, UnlockStatus, Uri, upsert_secret_auth};
-    use esdiag::processor::{CollectionResult, DiagnosticManifest};
     use esdiag::processor::diagnostic::DiagnosticReportBuilder;
+    use esdiag::processor::{CollectionResult, DiagnosticManifest};
     #[cfg(feature = "server")]
     use esdiag::server::RuntimeMode;
-    use std::{
-        sync::{
-            Mutex, OnceLock,
-            atomic::{AtomicUsize, Ordering},
-        },
+    use std::sync::{
+        Mutex, OnceLock,
+        atomic::{AtomicUsize, Ordering},
     };
     use tempfile::TempDir;
     use url::Url;
@@ -1708,14 +1590,7 @@ mod tests {
 
     #[test]
     fn host_update_accept_invalid_certs_cli_parses_explicit_bool_values() {
-        let cli_true = Cli::parse_from([
-            "esdiag",
-            "host",
-            "update",
-            "prod-es",
-            "--accept-invalid-certs",
-            "true",
-        ]);
+        let cli_true = Cli::parse_from(["esdiag", "host", "update", "prod-es", "--accept-invalid-certs", "true"]);
         match cli_true.command.expect("command") {
             Commands::Host {
                 command: HostCommands::Update { args, .. },
@@ -1725,14 +1600,7 @@ mod tests {
             _ => panic!("expected host command"),
         }
 
-        let cli_false = Cli::parse_from([
-            "esdiag",
-            "host",
-            "update",
-            "prod-es",
-            "--accept-invalid-certs",
-            "false",
-        ]);
+        let cli_false = Cli::parse_from(["esdiag", "host", "update", "prod-es", "--accept-invalid-certs", "false"]);
         match cli_false.command.expect("command") {
             Commands::Host {
                 command: HostCommands::Update { args, .. },
@@ -1752,11 +1620,7 @@ mod tests {
             } => {
                 assert_eq!(
                     args,
-                    vec![
-                        "prod-es".to_string(),
-                        "--secret".to_string(),
-                        "rotated".to_string()
-                    ]
+                    vec!["prod-es".to_string(), "--secret".to_string(), "rotated".to_string()]
                 );
             }
             _ => panic!("expected legacy host command"),
@@ -1800,12 +1664,11 @@ mod tests {
     #[test]
     fn resolve_secret_input_uses_prompted_value_for_missing_apikey() {
         let mut prompts = Vec::new();
-        let resolved =
-            resolve_secret_input_with_prompt(None, None, Some(String::new()), |prompt| {
-                prompts.push(prompt.to_string());
-                Ok("prompted-api-key".to_string())
-            })
-            .expect("resolve secret input");
+        let resolved = resolve_secret_input_with_prompt(None, None, Some(String::new()), |prompt| {
+            prompts.push(prompt.to_string());
+            Ok("prompted-api-key".to_string())
+        })
+        .expect("resolve secret input");
 
         assert_eq!(prompts, vec!["Enter secret API key: ".to_string()]);
         assert_eq!(resolved, (None, None, Some("prompted-api-key".to_string())));
@@ -1872,9 +1735,7 @@ mod tests {
 
     #[test]
     fn collect_command_parses_upload_id() {
-        let cli = Cli::parse_from([
-            "esdiag", "collect", "prod-es", "diag-dir", "--upload", "abc123",
-        ]);
+        let cli = Cli::parse_from(["esdiag", "collect", "prod-es", "diag-dir", "--upload", "abc123"]);
         match cli.command.expect("command") {
             Commands::Collect {
                 host,
@@ -1898,9 +1759,7 @@ mod tests {
             "esdiag", "collect", "prod-es", "diag-dir", "-u", "elastic", "--upload", "abc123",
         ]);
         match cli.command.expect("command") {
-            Commands::Collect {
-                upload_id, user, ..
-            } => {
+            Commands::Collect { upload_id, user, .. } => {
                 assert_eq!(user, Some("elastic".to_string()));
                 assert_eq!(upload_id, Some("abc123".to_string()));
             }
@@ -1920,10 +1779,7 @@ mod tests {
             Some("https://upload.elastic.co/g/abc123"),
             |path, upload_id| {
                 upload_calls.fetch_add(1, Ordering::SeqCst);
-                assert_eq!(
-                    path,
-                    std::path::PathBuf::from("/tmp/runtime-generated-esdiag.zip")
-                );
+                assert_eq!(path, std::path::PathBuf::from("/tmp/runtime-generated-esdiag.zip"));
                 assert_eq!(upload_id, "https://upload.elastic.co/g/abc123".to_string());
                 std::future::ready(Ok(()))
             },
@@ -2011,10 +1867,7 @@ mod tests {
         };
         assert!(err.to_string().contains("upload failed"));
         assert_eq!(upload_calls.load(Ordering::SeqCst), 1);
-        assert!(
-            path.exists(),
-            "upload failure should preserve collected archive"
-        );
+        assert!(path.exists(), "upload failure should preserve collected archive");
     }
 
     #[tokio::test]
@@ -2026,10 +1879,10 @@ mod tests {
             .await
             .expect_err("missing archive should fail");
 
-        assert!(err.to_string().contains(&format!(
-            "Collected archive not found at {}",
-            missing_path.display()
-        )));
+        assert!(
+            err.to_string()
+                .contains(&format!("Collected archive not found at {}", missing_path.display()))
+        );
     }
     #[test]
     fn upload_command_parses_file_and_upload_id() {
@@ -2091,10 +1944,7 @@ mod tests {
 
         write_completion_summary(&mut buffer, "process complete").expect("write summary");
 
-        assert_eq!(
-            String::from_utf8(buffer).expect("utf8"),
-            "process complete\n"
-        );
+        assert_eq!(String::from_utf8(buffer).expect("utf8"), "process complete\n");
     }
 
     #[test]
@@ -2106,10 +1956,7 @@ mod tests {
 
     #[test]
     fn keystore_lock_uses_locked_stderr_summary() {
-        let result = CommandResult::with_summary(
-            "keystore",
-            colorize_keystore_lock_status("Keystore: locked", false),
-        );
+        let result = CommandResult::with_summary("keystore", colorize_keystore_lock_status("Keystore: locked", false));
 
         assert_eq!(result.summary().as_deref(), Some("Keystore: locked"));
     }
@@ -2121,10 +1968,7 @@ mod tests {
             colorize_keystore_lock_status("Keystore: unlocked until later", false),
         );
 
-        assert_eq!(
-            result.summary().as_deref(),
-            Some("Keystore: unlocked until later")
-        );
+        assert_eq!(result.summary().as_deref(), Some("Keystore: unlocked until later"));
     }
 
     #[test]
@@ -2209,10 +2053,8 @@ mod tests {
     fn elastic_cloud_admin_hosts_validate_via_receiver() {
         let uri = Uri::ElasticCloudAdmin(KnownHost::new_legacy_apikey(
             Product::Elasticsearch,
-            Url::parse(
-                "https://admin.found.no/api/v1/deployments/test/elasticsearch/main-elasticsearch/proxy",
-            )
-            .expect("valid url"),
+            Url::parse("https://admin.found.no/api/v1/deployments/test/elasticsearch/main-elasticsearch/proxy")
+                .expect("valid url"),
             vec![HostRole::Collect],
             None,
             false,
@@ -2329,8 +2171,7 @@ mod tests {
             std::env::remove_var("ESDIAG_OUTPUT_PASSWORD");
         }
 
-        let exporter =
-            resolve_serve_exporter(None, RuntimeMode::User).expect("resolve user-mode exporter");
+        let exporter = resolve_serve_exporter(None, RuntimeMode::User).expect("resolve user-mode exporter");
 
         assert_eq!(exporter.target_uri(), "stdio://stdout");
     }
@@ -2364,10 +2205,9 @@ mod desktop_startup_tests {
     async fn embedded_server_starts_and_serves_local_url() {
         let exporter = Exporter::default();
         let kibana_url = String::new();
-        let (mut server, bound_addr) =
-            Server::start([127, 0, 0, 1], 0, exporter, kibana_url, RuntimeMode::User)
-                .await
-                .expect("desktop embedded server should start");
+        let (mut server, bound_addr) = Server::start([127, 0, 0, 1], 0, exporter, kibana_url, RuntimeMode::User)
+            .await
+            .expect("desktop embedded server should start");
 
         let url = format!("http://localhost:{}", bound_addr.port());
         let parsed = tauri::Url::parse(&url).expect("desktop URL should be valid");
@@ -2386,8 +2226,7 @@ mod desktop_startup_tests {
 
     #[tokio::test]
     async fn embedded_server_avoids_occupied_port_by_using_ephemeral_binding() {
-        let occupied_listener =
-            TcpListener::bind("127.0.0.1:0").expect("should reserve a local test port");
+        let occupied_listener = TcpListener::bind("127.0.0.1:0").expect("should reserve a local test port");
         let occupied_port = occupied_listener
             .local_addr()
             .expect("reserved listener has local addr")
@@ -2395,10 +2234,9 @@ mod desktop_startup_tests {
 
         let exporter = Exporter::default();
         let kibana_url = String::new();
-        let (mut server, bound_addr) =
-            Server::start([127, 0, 0, 1], 0, exporter, kibana_url, RuntimeMode::User)
-                .await
-                .expect("desktop embedded server should start while another port is occupied");
+        let (mut server, bound_addr) = Server::start([127, 0, 0, 1], 0, exporter, kibana_url, RuntimeMode::User)
+            .await
+            .expect("desktop embedded server should start while another port is occupied");
 
         assert_ne!(
             bound_addr.port(),

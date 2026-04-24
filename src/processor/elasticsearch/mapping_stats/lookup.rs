@@ -17,9 +17,7 @@ impl From<MappingStats> for Lookup<MappingSummary> {
 }
 
 impl Lookup<MappingSummary> {
-    pub async fn from_stream(
-        mut stream: BoxStream<'static, Result<(String, IndexMapping)>>,
-    ) -> Self {
+    pub async fn from_stream(mut stream: BoxStream<'static, Result<(String, IndexMapping)>>) -> Self {
         let mut lookup = Lookup::new();
         while let Some(result) = stream.next().await {
             match result {

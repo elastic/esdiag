@@ -72,8 +72,7 @@ impl Serialize for MetadataRawValue {
         S: Serializer,
     {
         // MetadataRawValue is always flattened, so we want to emit the fields of the inner JSON object.
-        let value: serde_json::Value =
-            serde_json::from_str(self.0.get()).map_err(serde::ser::Error::custom)?;
+        let value: serde_json::Value = serde_json::from_str(self.0.get()).map_err(serde::ser::Error::custom)?;
         value.serialize(serializer)
     }
 }

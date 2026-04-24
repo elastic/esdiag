@@ -76,10 +76,7 @@ impl Receive for ArchiveBytesReceiver {
 
         match last_resolve_error {
             Some(e) => Err(e),
-            None => Err(eyre!(
-                "No candidate source files available for {}",
-                T::name()
-            )),
+            None => Err(eyre!("No candidate source files available for {}", T::name())),
         }
     }
 
@@ -89,12 +86,8 @@ impl Receive for ArchiveBytesReceiver {
         T::Item: DeserializeOwned + Send + 'static,
     {
         let ctx = self.source_context()?;
-        super::get_stream_from_archive::<BufReader<Cursor<Bytes>>, T>(
-            self.archive.clone(),
-            self.subdir.clone(),
-            ctx,
-        )
-        .await
+        super::get_stream_from_archive::<BufReader<Cursor<Bytes>>, T>(self.archive.clone(), self.subdir.clone(), ctx)
+            .await
     }
 }
 

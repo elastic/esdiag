@@ -65,13 +65,7 @@ fn should_skip_asset(asset: &Asset, security_enabled: bool) -> bool {
     asset.requires_security && !security_enabled
 }
 
-async fn send_asset(
-    client: &Client,
-    asset: &Asset,
-    path: &Path,
-    contents: &[u8],
-    named: bool,
-) -> Result<()> {
+async fn send_asset(client: &Client, asset: &Asset, path: &Path, contents: &[u8], named: bool) -> Result<()> {
     let stem = path.file_stem().unwrap().to_str().unwrap_or("");
     let endpoint = match named {
         true => &format!(
@@ -83,12 +77,7 @@ async fn send_asset(
         false => &asset.endpoint,
     };
     match client
-        .request(
-            asset.method.parse()?,
-            &asset.headers,
-            endpoint,
-            Some(contents),
-        )
+        .request(asset.method.parse()?, &asset.headers, endpoint, Some(contents))
         .await
     {
         Ok(response) => {
@@ -128,9 +117,7 @@ pub async fn assets(client: &Client) -> Result<()> {
         .wrap_err("Failed to determine security status")?;
 
     if !security_enabled {
-        tracing::info!(
-            "Security is disabled on the cluster. Security-dependent assets will be skipped."
-        );
+        tracing::info!("Security is disabled on the cluster. Security-dependent assets will be skipped.");
     }
 
     let mut error_count = 0;
@@ -180,9 +167,9 @@ pub async fn assets(client: &Client) -> Result<()> {
 /// Parses the assets YAML file for the given exporter. Currently only supports Elasticsearch.
 fn parse_assets_yml(product: Product, assets_store: &EmbeddedAssets) -> Result<Vec<Asset>> {
     let filename = format!("{}/{}", product.to_string().to_lowercase(), ASSETS_FILE);
-    let contents = assets_store.get_file(Path::new(&filename)).ok_or(eyre!(
-        "embedded assets did not contain expected file {filename}"
-    ))?;
+    let contents = assets_store
+        .get_file(Path::new(&filename))
+        .ok_or(eyre!("embedded assets did not contain expected file {filename}"))?;
     let assets = serde_yaml::from_slice(&contents)?;
     Ok(assets)
 }

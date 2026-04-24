@@ -17,8 +17,7 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for SearchableSnapshotsSta
         metadata: &ElasticsearchMetadata,
     ) -> ProcessorSummary {
         let data_stream = "metrics-searchable_snapshot-esdiag".to_string();
-        let searchable_snapshots_stats_metadata =
-            metadata.for_data_stream(&data_stream).as_meta_doc();
+        let searchable_snapshots_stats_metadata = metadata.for_data_stream(&data_stream).as_meta_doc();
 
         let mut indices: Vec<_> = self.indices.into_par_iter().collect();
 
@@ -42,10 +41,7 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for SearchableSnapshotsSta
             })
             .collect();
 
-        tracing::debug!(
-            "searchable_snapshot_stats docs: {}",
-            searchable_snapshot_stats.len()
-        );
+        tracing::debug!("searchable_snapshot_stats docs: {}", searchable_snapshot_stats.len());
 
         let mut summary = ProcessorSummary::new(data_stream.clone());
         match exporter.send(data_stream, searchable_snapshot_stats).await {

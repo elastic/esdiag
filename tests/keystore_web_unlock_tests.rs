@@ -41,19 +41,15 @@ fn run_esdiag(args: &[&str], home: &TempDir) -> Output {
     cmd.args(args)
         .env("HOME", home.path())
         .env("USERPROFILE", home.path())
-        .env(
-            "ESDIAG_KEYSTORE",
-            home.path().join(".esdiag").join("secrets.yml"),
-        )
+        .env("ESDIAG_KEYSTORE", home.path().join(".esdiag").join("secrets.yml"))
         .env("LOG_LEVEL", "debug");
     cmd.output().expect("run esdiag")
 }
 
 async fn start_server(mode: RuntimeMode) -> (Server, Client, String) {
-    let (server, bound_addr) =
-        Server::start([127, 0, 0, 1], 0, Exporter::default(), String::new(), mode)
-            .await
-            .expect("start local server");
+    let (server, bound_addr) = Server::start([127, 0, 0, 1], 0, Exporter::default(), String::new(), mode)
+        .await
+        .expect("start local server");
 
     let client = Client::new();
     let base = format!("http://127.0.0.1:{}", bound_addr.port());
