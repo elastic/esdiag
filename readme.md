@@ -201,6 +201,11 @@ esdiag host add elastic-cloud \
   "https://cloud.elastic.co/api/v1/deployments/{id}/{product}/main-{product}/proxy" \
   --url-template
 
+# Same-name secret is used automatically for template hosts when available
+esdiag host add cloud-admin \
+  "https://admin.cloud.com/api/v1/deployments/{id}/{product}/main-{product}/proxy" \
+  --url-template
+
 # Reusable ECE template host
 esdiag keystore add ece_admin --apikey
 esdiag host add ece \
@@ -224,6 +229,7 @@ esdiag host remove prod-es
 Template notes:
 
 - Template-backed hosts persist `url_template` instead of a concrete `url`.
+- `esdiag host add <name> ... --url-template` will use a same-name keystore secret by default when one already exists and `--secret` is omitted.
 - Supported placeholders are `{id}` and `{product}`.
 - Template host names should be lowercase and scheme-compatible so they can be resolved as `<template>://<id>/<product>`.
 - Bare template names return guidance instead of attempting a connection test:

@@ -931,13 +931,133 @@ async fn host_add_infers_app_from_concrete_url_and_requires_app_for_ambiguous_ta
         vec![],
     )
     .await;
-    assert_failure_contains(
-        &ambiguous,
-        "does not determine the app",
-        "ambiguous host add",
-    );
+    assert_failure_contains(&ambiguous, "does not determine the app", "ambiguous host add");
 
     let _ = shutdown_tx.send(());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn template_host_add_defaults_same_name_secret_when_available() {
+    let home = setup_home();
+    let home_path = home.path().to_path_buf();
+    let secret_env = vec![("ESDIAG_KEYSTORE_PASSWORD".to_string(), "pw".to_string())];
+    let template = "https://admin.cloud.com/api/v1/deployments/{id}/{product}/main-{product}/proxy";
+
+    let add_secret = run_esdiag_async(
+        vec![
+            "keystore".to_string(),
+            "add".to_string(),
+            "cloud-admin".to_string(),
+            "--apikey".to_string(),
+            "implicit-key".to_string(),
+        ],
+        home_path.clone(),
+        secret_env.clone(),
+    )
+    .await;
+    assert_success(&add_secret, "add same-name template secret");
+
+    let add_template = run_esdiag_async(
+        vec![
+            "host".to_string(),
+            "add".to_string(),
+            "cloud-admin".to_string(),
+            template.to_string(),
+            "--url-template".to_string(),
+        ],
+        home_path,
+        secret_env,
+    )
+    .await;
+    assert_success(&add_template, "add template host with implicit secret");
+
+    let hosts = read_hosts(&home);
+    let host = hosts.get("cloud-admin").expect("template host exists");
+    assert_eq!(host.secret.as_deref(), Some("cloud-admin"));
+    assert_eq!(host.url_template.as_deref(), Some(template));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn template_host_add_keeps_noauth_path_when_same_name_secret_is_missing() {
+    let home = setup_home();
+    let home_path = home.path().to_path_buf();
+    let template = "https://admin.cloud.com/api/v1/deployments/{id}/{product}/main-{product}/proxy";
+
+    let add_template = run_esdiag_async(
+        vec![
+            "host".to_string(),
+            "add".to_string(),
+            "cloud-admin".to_string(),
+            template.to_string(),
+            "--url-template".to_string(),
+        ],
+        home_path,
+        vec![],
+    )
+    .await;
+    assert_success(&add_template, "add template host without matching secret");
+
+    let hosts = read_hosts(&home);
+    let host = hosts.get("cloud-admin").expect("template host exists");
+    assert!(host.secret.is_none(), "missing same-name secret should not be invented");
+    assert_eq!(host.url_template.as_deref(), Some(template));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn template_host_add_explicit_secret_overrides_same_name_default() {
+    let home = setup_home();
+    let home_path = home.path().to_path_buf();
+    let secret_env = vec![("ESDIAG_KEYSTORE_PASSWORD".to_string(), "pw".to_string())];
+    let template = "https://admin.cloud.com/api/v1/deployments/{id}/{product}/main-{product}/proxy";
+
+    let add_same_name_secret = run_esdiag_async(
+        vec![
+            "keystore".to_string(),
+            "add".to_string(),
+            "cloud-admin".to_string(),
+            "--apikey".to_string(),
+            "implicit-key".to_string(),
+        ],
+        home_path.clone(),
+        secret_env.clone(),
+    )
+    .await;
+    assert_success(&add_same_name_secret, "add same-name secret");
+
+    let add_explicit_secret = run_esdiag_async(
+        vec![
+            "keystore".to_string(),
+            "add".to_string(),
+            "platform-admin".to_string(),
+            "--apikey".to_string(),
+            "explicit-key".to_string(),
+        ],
+        home_path.clone(),
+        secret_env.clone(),
+    )
+    .await;
+    assert_success(&add_explicit_secret, "add explicit override secret");
+
+    let add_template = run_esdiag_async(
+        vec![
+            "host".to_string(),
+            "add".to_string(),
+            "cloud-admin".to_string(),
+            template.to_string(),
+            "--url-template".to_string(),
+            "--secret".to_string(),
+            "platform-admin".to_string(),
+        ],
+        home_path,
+        secret_env,
+    )
+    .await;
+    assert_success(&add_template, "add template host with explicit secret");
+
+    let hosts = read_hosts(&home);
+    let host = hosts.get("cloud-admin").expect("template host exists");
+    assert_eq!(host.secret.as_deref(), Some("platform-admin"));
+    assert_eq!(host.url_template.as_deref(), Some(template));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -962,11 +1082,7 @@ async fn template_hosts_auth_materialize_and_preserve_transport_on_update() {
     assert_success(&add_template, "add template host");
 
     let bare_auth = run_esdiag_async(
-        vec![
-            "host".to_string(),
-            "auth".to_string(),
-            "elastic-cloud".to_string(),
-        ],
+        vec!["host".to_string(), "auth".to_string(), "elastic-cloud".to_string()],
         home_path.clone(),
         vec![],
     )

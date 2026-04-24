@@ -18,15 +18,62 @@ The system SHALL expose explicit saved-host lifecycle subcommands under `esdiag 
 ### Requirement: Explicit Host Creation Command
 The system SHALL make `esdiag host add <name>` create-only. `add` MUST require a complete host definition, MUST validate and connection-test the host before saving it, and MUST fail when the host already exists.
 
-#### Scenario: Add saves a complete new host
+The command grammar SHALL use the consistent shape `esdiag host add <name> <target> [--app <app>]`. In explicit host-definition mode, concrete hosts MUST validate and connection-test the provided endpoint before saving. Template-backed hosts MUST validate template structure and supported placeholders before saving, and MUST NOT require a live connection test until a concrete reference is resolved. In materialized-template mode, the system MUST resolve and validate the concrete rendered host before saving it.
+
+When `<target>` is a concrete URL, the system SHALL infer the concrete app when possible and SHALL require `--app` only when the target is ambiguous. When `<target>` is a resolved template reference, the system SHALL derive the concrete app from the resolved or defaulted product and SHALL NOT require `--app` unless the user is creating a template-backed definition whose product cannot be inferred from the target itself. A materialized-template add invocation SHALL support the same flags and defaults as a standard concrete host add invocation, including role overrides and other compatible saved-host options.
+
+For explicit template-backed host-definition mode using `--url-template`, when `--secret` is omitted the system SHALL check for an existing keystore secret whose identifier exactly matches `<name>`. If that same-name secret exists, the system SHALL persist the host using that secret reference as though `--secret <name>` had been supplied. If no matching secret can be confirmed, the system SHALL preserve current behavior and continue without inventing a secret reference. An explicit `--secret <id>` value MUST take precedence over the same-name default.
+
+#### Scenario: Add saves a complete new concrete host
 - **GIVEN** no saved host named `prod-es` exists
-- **WHEN** the user runs `esdiag host add prod-es elasticsearch http://localhost:9200 --secret prod-es-apikey`
+- **WHEN** the user runs `esdiag host add prod-es http://localhost:9200 --app elasticsearch --secret prod-es-apikey`
 - **THEN** the system validates and connection-tests the provided host definition
 - **AND** the system saves `prod-es` only after the connection test succeeds
 
+#### Scenario: Add saves a complete new template-backed host
+- **GIVEN** no saved host named `elastic-cloud` exists
+- **WHEN** the user runs `esdiag host add elastic-cloud https://cloud.elastic.co/api/v1/deployments/{id}/{product}/main-{product}/proxy --url-template --secret elastic-cloud`
+- **THEN** the system validates the template host definition
+- **AND** the system saves `elastic-cloud` without requiring a live deployment connection test
+
+#### Scenario: Add defaults template host secret to the host name
+- **GIVEN** no saved host named `cloud-admin` exists
+- **AND** the keystore already contains a secret named `cloud-admin`
+- **WHEN** the user runs `esdiag host add cloud-admin https://admin.cloud.com/api/v1/deployments/{id}/{product}/main-{product}/proxy --url-template`
+- **THEN** the system validates the template host definition
+- **AND** the system saves `cloud-admin` with secret reference `cloud-admin`
+
+#### Scenario: Add preserves current behavior when no matching template secret exists
+- **GIVEN** no saved host named `cloud-admin` exists
+- **AND** the keystore does not contain a secret named `cloud-admin`
+- **WHEN** the user runs `esdiag host add cloud-admin https://admin.cloud.com/api/v1/deployments/{id}/{product}/main-{product}/proxy --url-template`
+- **THEN** the system does not invent a secret reference
+- **AND** the command follows the same validation and save path it would have used before same-name secret defaulting
+
+#### Scenario: Explicit secret overrides same-name template secret default
+- **GIVEN** no saved host named `cloud-admin` exists
+- **AND** the keystore already contains a secret named `cloud-admin`
+- **WHEN** the user runs `esdiag host add cloud-admin https://admin.cloud.com/api/v1/deployments/{id}/{product}/main-{product}/proxy --url-template --secret platform-admin`
+- **THEN** the system uses `platform-admin` as the saved secret reference
+- **AND** the same-name default does not override the explicit `--secret` value
+
+#### Scenario: Add saves a rendered concrete host from a template reference
+- **GIVEN** a saved template-backed host named `elastic-cloud` exists
+- **WHEN** the user runs `esdiag host add netopsco elastic-cloud://415715723947/elasticsearch`
+- **THEN** the system resolves the template reference to a concrete host definition
+- **AND** validates the rendered host definition
+- **AND** saves `netopsco` as a normal concrete saved host
+
+#### Scenario: Add applies standard host flags to a rendered concrete host
+- **GIVEN** a saved template-backed host named `elastic-cloud` exists
+- **WHEN** the user runs `esdiag host add netopsco elastic-cloud://415715723947/elasticsearch --roles collect,send`
+- **THEN** the system resolves the template reference to a concrete host definition
+- **AND** applies the same defaulting rules used by standard concrete host creation
+- **AND** persists the explicit `collect,send` role override on `netopsco`
+
 #### Scenario: Add rejects duplicate host names
 - **GIVEN** a saved host named `prod-es` already exists
-- **WHEN** the user runs `esdiag host add prod-es elasticsearch http://localhost:9200`
+- **WHEN** the user runs `esdiag host add prod-es http://localhost:9200 --app elasticsearch`
 - **THEN** the command fails with an explicit error indicating that `prod-es` already exists
 - **AND** the existing saved host remains unchanged
 

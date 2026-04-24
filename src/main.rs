@@ -693,8 +693,21 @@ async fn run(cli: Cli) -> Result<CommandResult> {
                     if KnownHost::get_known(&name).is_some() {
                         return Err(eyre!("Host '{name}' already exists"));
                     }
-                    let update = build_host_cli_update(args);
-                    let secret_auth = resolve_host_secret_auth(update.secret.as_deref())?;
+                    let mut update = build_host_cli_update(args);
+                    let secret_auth = if update.secret.is_some() {
+                        resolve_host_secret_auth(update.secret.as_deref())?
+                    } else if url_template {
+                        match resolve_same_name_host_secret_auth(&name)? {
+                            Some(secret_auth) => {
+                                tracing::debug!("Using host name {} as secret_id", name);
+                                update.secret = Some(name.clone());
+                                Some(secret_auth)
+                            }
+                            None => None,
+                        }
+                    } else {
+                        None
+                    };
                     let host = if url_template {
                         build_host_from_definition(app, &target, true, &update, secret_auth)?
                     } else if let Some(host) = maybe_materialize_template_target(&target)? {
@@ -705,8 +718,7 @@ async fn run(cli: Cli) -> Result<CommandResult> {
                     } else {
                         build_host_from_definition(app, &target, false, &update, secret_auth)?
                     };
-                    let summary =
-                        save_host(&name, host.clone(), "added", !host.is_template()).await?;
+                    let summary = save_host(&name, host.clone(), "added", !host.is_template()).await?;
                     Ok(CommandResult::with_summary("host add", summary))
                 }
                 HostCommands::Update { name, args } => {
@@ -724,8 +736,7 @@ async fn run(cli: Cli) -> Result<CommandResult> {
                         None
                     };
                     let host = existing.merge_cli_update(&update, secret_auth)?;
-                    let summary =
-                        save_host(&name, host.clone(), "updated", !host.is_template()).await?;
+                    let summary = save_host(&name, host.clone(), "updated", !host.is_template()).await?;
                     Ok(CommandResult::with_summary("host update", summary))
                 }
                 HostCommands::Remove { name } => {
@@ -747,8 +758,7 @@ async fn run(cli: Cli) -> Result<CommandResult> {
                         let summary = validate_host_connection(&target, Uri::try_from(host)?).await?;
                         return Ok(CommandResult::with_summary("host auth", summary));
                     }
-                    let host = KnownHost::get_known(&target)
-                        .ok_or_else(|| eyre!("Host '{target}' not found"))?;
+                    let host = KnownHost::get_known(&target).ok_or_else(|| eyre!("Host '{target}' not found"))?;
                     if host.is_template() {
                         return Ok(CommandResult::with_summary(
                             "host auth",
@@ -1257,9 +1267,10 @@ fn build_host_from_definition(
     } else {
         let url = Url::parse(target).map_err(|err| eyre!("Invalid host target URL: {err}"))?;
         let inferred_app = infer_product_from_url(&url);
-        let app = app.clone().or(inferred_app).ok_or_else(|| {
-            eyre!("Target '{target}' does not determine the app. Rerun with `--app <app>`.")
-        })?;
+        let app = app
+            .clone()
+            .or(inferred_app)
+            .ok_or_else(|| eyre!("Target '{target}' does not determine the app. Rerun with `--app <app>`."))?;
         KnownHostBuilder::new(url).product(app)
     }
     .accept_invalid_certs(update.accept_invalid_certs.unwrap_or(false))
@@ -1289,9 +1300,7 @@ async fn save_host(name: &str, host: KnownHost, action: &str, validate_connectio
         let validation_summary = validate_host_connection(name, uri).await?;
         let hostfile = host.save(name)?;
         tracing::info!("Host {name} successfully saved to {hostfile}");
-        return Ok(format!(
-            "{validation_summary}\nHost '{name}' {action} in {hostfile}"
-        ));
+        return Ok(format!("{validation_summary}\nHost '{name}' {action} in {hostfile}"));
     }
     let hostfile = host.save(name)?;
     tracing::info!("Host {name} successfully saved to {hostfile}");
@@ -1555,6 +1564,13 @@ fn resolve_host_secret_auth(secret_id: Option<&str>) -> Result<Option<SecretAuth
     let secret_auth = resolve_secret_auth(secret_id, &keystore_password)?
         .ok_or_else(|| eyre!("Secret '{secret_id}' was not found in keystore"))?;
     Ok(Some(secret_auth))
+}
+
+fn resolve_same_name_host_secret_auth(host_name: &str) -> Result<Option<SecretAuth>> {
+    let Ok(keystore_password) = get_password_for_secret_commands() else {
+        return Ok(None);
+    };
+    resolve_secret_auth(host_name, &keystore_password)
 }
 
 fn host_connection_uses_receiver(uri: &Uri) -> bool {
@@ -2296,10 +2312,8 @@ mod tests {
     fn elastic_cloud_admin_hosts_validate_via_receiver() {
         let uri = Uri::ElasticCloudAdmin(KnownHost::new_legacy_apikey(
             Product::Elasticsearch,
-            Url::parse(
-                "https://admin.found.no/api/v1/deployments/test/elasticsearch/main-elasticsearch/proxy/",
-            )
-            .expect("valid url"),
+            Url::parse("https://admin.found.no/api/v1/deployments/test/elasticsearch/main-elasticsearch/proxy/")
+                .expect("valid url"),
             vec![HostRole::Collect],
             None,
             false,
@@ -2356,6 +2370,23 @@ mod tests {
 
         let resolved = resolve_host_secret_auth(Some("basic-secret")).expect("resolve auth");
         assert!(matches!(resolved, Some(SecretAuth::Basic { .. })));
+    }
+
+    #[test]
+    fn host_secret_auth_resolution_falls_back_to_host_name() {
+        let _guard = env_lock().lock().expect("env lock");
+        let _tmp = setup_env();
+        upsert_secret_auth(
+            "host-fallback",
+            SecretAuth::ApiKey {
+                apikey: "secret-key".to_string(),
+            },
+            "pw",
+        )
+        .expect("save fallback secret");
+
+        let resolved = resolve_host_secret_auth(Some("host-fallback")).expect("resolve auth");
+        assert!(matches!(resolved, Some(SecretAuth::ApiKey { .. })));
     }
 
     #[cfg(feature = "server")]
