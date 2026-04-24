@@ -124,9 +124,9 @@ async fn index_embeds_processing_option_catalog() {
         .get(format!("{base}/advanced"))
         .send()
         .await
-        .expect("workflow response");
+        .expect("advanced response");
     assert!(response.status().is_success());
-    let body = response.text().await.expect("workflow body");
+    let body = response.text().await.expect("advanced body");
 
     assert!(body.contains("const PROCESS_OPTIONS ="));
     assert!(body.contains("\"elasticsearch\""));

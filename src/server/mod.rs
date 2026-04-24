@@ -138,7 +138,9 @@ impl ServerPolicy {
     }
 
     pub fn allows_job_builder(&self) -> bool {
-        self.allows_local_runtime_features() && self.web_features.contains(WebFeature::JobBuilder)
+        cfg!(feature = "keystore")
+            && self.allows_local_runtime_features()
+            && self.web_features.contains(WebFeature::JobBuilder)
     }
 }
 
@@ -355,7 +357,6 @@ impl Server {
                 .route("/api/settings/update", post(settings::update_settings));
 
             #[cfg(feature = "keystore")]
-            #[cfg(feature = "keystore")]
             let app = if route_policy.allows_job_builder() {
                 app.route("/jobs", get(index::jobs_page))
                     .route("/jobs/saved", get(saved_jobs::list_saved_jobs))
@@ -368,8 +369,7 @@ impl Server {
 
             #[cfg(feature = "keystore")]
             let app = if route_policy.allows_local_runtime_features() {
-                app
-                    .route("/settings", get(hosts::page))
+                app.route("/settings", get(hosts::page))
                     .route("/settings/create", post(hosts::create_host))
                     .route("/settings/update", put(hosts::update_host))
                     .route("/settings/host/{action}/{id}", post(hosts::host_action))
@@ -424,7 +424,7 @@ impl Server {
             .ok_or_else(|| eyre::eyre!("Server failed to bind"))?;
         tracing::info!("Starting {}-mode server on port {}", runtime_mode, bound_addr.port());
         tracing::debug!(
-            "Runtime mode policy => requires_iap_headers={}, allows_local_runtime_features={}, allows_exporter_updates={}, allows_host_management={}",
+            "Server policy => requires_iap_headers={}, allows_local_runtime_features={}, allows_exporter_updates={}, allows_host_management={}",
             server_policy.requires_iap_headers(),
             server_policy.allows_local_runtime_features(),
             server_policy.allows_exporter_updates(),
@@ -897,7 +897,10 @@ pub(crate) fn test_server_state() -> Arc<ServerState> {
         workflow_jobs: Arc::new(RwLock::new(HashMap::new())),
         retained_bundles: Arc::new(RwLock::new(HashMap::new())),
         runtime_mode,
-        server_policy: ServerPolicy::new(runtime_mode).expect("test server policy"),
+        server_policy: ServerPolicy {
+            mode: runtime_mode,
+            web_features: WebFeatureSet::defaults_for(runtime_mode),
+        },
         #[cfg(feature = "keystore")]
         keystore_rate_limit: Arc::new(std::sync::Mutex::new(keystore::KeystoreRateLimit::default())),
         shutdown: watch::channel(false).1,
@@ -1387,7 +1390,7 @@ async fn add_client_hint_headers(mut response: Response) -> Response {
 #[cfg(test)]
 mod tests {
     use super::{
-        ApiKeyFormSignals, RuntimeMode, ServerPolicy, Server, ServerEvent, ServerState, Stats, WorkflowRunSignals,
+        ApiKeyFormSignals, RuntimeMode, Server, ServerEvent, ServerPolicy, ServerState, Stats, WorkflowRunSignals,
         event_visible_to_user, receiver_stream, replace_job_event, signal_event, targeted_signal_event,
         test_server_state,
     };
@@ -1411,7 +1414,10 @@ mod tests {
             workflow_jobs: Arc::new(RwLock::new(HashMap::new())),
             retained_bundles: Arc::new(RwLock::new(HashMap::new())),
             runtime_mode: mode,
-            server_policy: ServerPolicy::new(mode).expect("test server policy"),
+            server_policy: ServerPolicy {
+                mode,
+                web_features: super::WebFeatureSet::defaults_for(mode),
+            },
             #[cfg(feature = "keystore")]
             keystore_rate_limit: Arc::new(std::sync::Mutex::new(super::keystore::KeystoreRateLimit::default())),
             stats: Arc::new(RwLock::new(Stats::default())),
@@ -1446,8 +1452,8 @@ mod tests {
 
     #[test]
     fn explicit_web_features_are_authoritative() {
-        let policy = ServerPolicy::with_web_features(RuntimeMode::User, Some("job-builder"))
-            .expect("explicit web features");
+        let policy =
+            ServerPolicy::with_web_features(RuntimeMode::User, Some("job-builder")).expect("explicit web features");
 
         assert!(!policy.allows_advanced());
         assert!(policy.allows_job_builder());
@@ -1455,8 +1461,7 @@ mod tests {
 
     #[test]
     fn empty_web_features_disable_optional_features() {
-        let policy = ServerPolicy::with_web_features(RuntimeMode::User, Some("  "))
-            .expect("empty web features");
+        let policy = ServerPolicy::with_web_features(RuntimeMode::User, Some("  ")).expect("empty web features");
 
         assert!(!policy.allows_advanced());
         assert!(!policy.allows_job_builder());
