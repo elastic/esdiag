@@ -478,7 +478,9 @@ impl JobBuilder<NeedsCollect> {
             }
             builder.upload_to(signals.send.remote_target)
         } else {
-            let output_dir = if signals.send.local_target == "directory" && !signals.send.local_directory.is_empty() {
+            let output_dir = if signals.collect.save && !signals.collect.save_dir.trim().is_empty() {
+                signals.collect.save_dir
+            } else if signals.send.local_target == "directory" && !signals.send.local_directory.trim().is_empty() {
                 signals.send.local_directory
             } else {
                 return Err(eyre!("Collect-only jobs require an output directory"));
@@ -802,6 +804,35 @@ mod tests {
         assert!(!signals.process.enabled);
         assert_eq!(signals.send.local_target, "directory");
         assert_eq!(signals.send.local_directory, "/tmp/esdiag");
+    }
+
+    #[test]
+    fn collect_only_job_uses_download_save_dir_as_output_dir() {
+        let _guard = test_env_lock().lock().expect("env lock");
+        let _tmp = setup_env();
+        crate::data::KnownHostBuilder::new(url::Url::parse("http://localhost:9200/").expect("url"))
+            .product(crate::data::Product::Elasticsearch)
+            .roles(vec![HostRole::Collect])
+            .build()
+            .expect("host")
+            .save("prod")
+            .expect("save collect host");
+
+        let mut signals = JobSignals::default();
+        signals.collect.known_host = "prod".to_string();
+        signals.collect.save = true;
+        signals.collect.save_dir = "/tmp/browser-download".to_string();
+        signals.process.enabled = false;
+        signals.process.mode = ProcessMode::Forward;
+        signals.send.mode = SendMode::Local;
+
+        let job = Job::from_signals(signals, Identifiers::default()).expect("job from signals");
+
+        match job.action {
+            JobAction::Collect { output_dir } => assert_eq!(output_dir, PathBuf::from("/tmp/browser-download")),
+            _ => panic!("expected collect action"),
+        }
+        assert!(job.collect.save_dir.is_none());
     }
 
     #[test]
