@@ -377,9 +377,18 @@ impl JobOutput {
                     if target.is_empty() {
                         return Err(eyre!("Process jobs require a local output target"));
                     }
-                    Ok(Self::File {
-                        path: PathBuf::from(target),
-                    })
+                    match Uri::try_from(target.to_string())? {
+                        Uri::KnownHost(_) | Uri::ElasticCloudAdmin(_) | Uri::ElasticGovCloudAdmin(_) => {
+                            Ok(Self::KnownHost {
+                                name: target.to_string(),
+                            })
+                        }
+                        Uri::Stream => Ok(Self::Stdout),
+                        Uri::File(path) | Uri::Directory(path) => Ok(Self::File { path }),
+                        _ => Err(eyre!(
+                            "Jobs require an explicit known host or local filesystem output target"
+                        )),
+                    }
                 }
             }
         }
@@ -817,6 +826,43 @@ mod tests {
         assert!(yaml.contains("type: directory"));
         assert!(yaml.contains("output_dir: /tmp/final-output"));
         assert!(!yaml.contains("path: /tmp/final-output"));
+    }
+
+    #[test]
+    fn job_signals_preserve_local_known_host_output() {
+        let _guard = test_env_lock().lock().expect("env lock");
+        let _tmp = setup_env();
+        crate::data::KnownHostBuilder::new(url::Url::parse("http://localhost:9200/").expect("url"))
+            .product(crate::data::Product::Elasticsearch)
+            .roles(vec![HostRole::Collect])
+            .build()
+            .expect("host")
+            .save("prod")
+            .expect("save collect host");
+        crate::data::KnownHostBuilder::new(url::Url::parse("http://localhost:9201/").expect("url"))
+            .product(crate::data::Product::Elasticsearch)
+            .roles(vec![HostRole::Send])
+            .build()
+            .expect("host")
+            .save("monitoring")
+            .expect("save send host");
+
+        let mut signals = JobSignals::default();
+        signals.collect.known_host = "prod".to_string();
+        signals.process.enabled = true;
+        signals.process.mode = ProcessMode::Process;
+        signals.send.mode = SendMode::Local;
+        signals.send.local_target = "monitoring".to_string();
+
+        let job = Job::from_signals(signals, Identifiers::default()).expect("job from signals");
+
+        match job.action {
+            JobAction::Process {
+                output: JobOutput::KnownHost { name },
+                ..
+            } => assert_eq!(name, "monitoring"),
+            _ => panic!("expected process to known host"),
+        }
     }
 
     #[test]

@@ -392,7 +392,7 @@ Options:
           Save this invocation as a named job in `~/.esdiag/jobs.yml` before processing
 
       --sources <SOURCES>
-          Override the embedded sources.yml for the detected Elasticsearch or Logstash workflow. The file must match the active product or the command fails before processing
+          Override the embedded sources.yml for the detected Elasticsearch or Logstash job. The file must match the active product or the command fails before processing
 
   -h, --help
           Print help (see a summary with '-h')
@@ -430,7 +430,7 @@ These annotate the generated report context:
 
 ### `--sources`
 
-Use `--sources <path>` when endpoint definitions must come from a custom or version-specific `sources.yml`. The file must match the detected product when processing a host-backed Elasticsearch or Logstash workflow.
+Use `--sources <path>` when endpoint definitions must come from a custom or version-specific `sources.yml`. The file must match the detected product when processing a host-backed Elasticsearch or Logstash job.
 
 ### Examples
 
@@ -465,7 +465,7 @@ Options:
       --type <TYPE>                Diagnostic type (minimal, light, standard, support) [default: standard]
       --include <INCLUDE>          Comma-separated list of APIs to include
       --exclude <EXCLUDE>          Comma-separated list of APIs to exclude
-      --sources <SOURCES>          Override the embedded sources.yml for the detected Elasticsearch or Logstash workflow. The file must match the active product or the command fails before collection
+      --sources <SOURCES>          Override the embedded sources.yml for the detected Elasticsearch or Logstash job. The file must match the active product or the command fails before collection
   -a, --account <ACCOUNT>          Diagnostic report account name
   -c, --case <CASE>                Diagnostic report case number
   -o, --opportunity <OPPORTUNITY>  Diagnostic report opportunity
@@ -497,7 +497,7 @@ Options:
 
 - `--include` narrows to a comma-separated list of APIs
 - `--exclude` removes a comma-separated list of APIs
-- `--sources` overrides the embedded endpoint definitions for Elasticsearch or Logstash workflows
+- `--sources` overrides the embedded endpoint definitions for Elasticsearch or Logstash jobs
 
 ### Metadata options
 

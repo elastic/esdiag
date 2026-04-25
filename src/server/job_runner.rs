@@ -382,12 +382,16 @@ async fn execute_remote_collection_job(
     }
 
     let collected = collect_remote_archive(job_id, host, &diagnostic_type, signals, identifiers).await?;
-    let cleanup_path = match &collected.input {
-        JobInput::LocalArchive {
-            cleanup_path: Some(path),
-            ..
-        } => Some(path.clone()),
-        _ => None,
+    let cleanup_path = if signals.job.collect.save {
+        None
+    } else {
+        match &collected.input {
+            JobInput::LocalArchive {
+                cleanup_path: Some(path),
+                ..
+            } => Some(path.clone()),
+            _ => None,
+        }
     };
 
     let result = if let JobInput::LocalArchive { path, cleanup_path, .. } = collected.input {
@@ -966,9 +970,14 @@ async fn send_terminal_signal(tx: &mpsc::Sender<ServerEvent>, state: &ServerStat
 }
 
 async fn cleanup_local_path(path: &Path) {
-    if let Err(err) = fs::remove_file(path).await
-        && err.kind() != std::io::ErrorKind::NotFound
-    {
+    let metadata = fs::metadata(path).await;
+    let result = match metadata {
+        Ok(metadata) if metadata.is_dir() => fs::remove_dir_all(path).await,
+        Ok(_) => fs::remove_file(path).await,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(err) => Err(err),
+    };
+    if let Err(err) = result {
         tracing::debug!("Failed to clean local job path {}: {}", path.display(), err);
     }
 }
