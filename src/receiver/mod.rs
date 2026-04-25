@@ -36,6 +36,14 @@ use upload_service::UploadServiceDownloader;
 
 pub(crate) const LONG_RUNNING_REQUEST_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 
+#[derive(Clone, Debug)]
+pub struct RawResponse {
+    pub body: String,
+    pub status: u16,
+    pub response_time_ms: u64,
+    pub response_size_bytes: u64,
+}
+
 #[allow(async_fn_in_trait)]
 pub trait Receive {
     async fn is_connected(&self) -> bool;
@@ -60,9 +68,16 @@ pub trait ReceiveMultiple {
 
 #[allow(async_fn_in_trait)]
 pub trait ReceiveRaw {
-    async fn get_raw<T>(&self) -> Result<String>
+    async fn get_raw_response<T>(&self) -> Result<RawResponse>
     where
         T: DataSource;
+
+    async fn get_raw<T>(&self) -> Result<String>
+    where
+        T: DataSource,
+    {
+        self.get_raw_response::<T>().await.map(|response| response.body)
+    }
 }
 
 /// The different types of receivers for data input.
@@ -156,21 +171,34 @@ impl Receiver {
     where
         T: DataSource,
     {
+        self.get_raw_response::<T>().await.map(|response| response.body)
+    }
+
+    pub async fn get_raw_response<T>(&self) -> Result<RawResponse>
+    where
+        T: DataSource,
+    {
         match self {
-            Receiver::Elasticsearch(receiver) => receiver.get_raw::<T>().await,
-            Receiver::Kibana(receiver) => receiver.get_raw::<T>().await,
-            Receiver::Logstash(receiver) => receiver.get_raw::<T>().await,
-            Receiver::ElasticCloudAdmin(receiver) => receiver.get_raw::<T>().await,
+            Receiver::Elasticsearch(receiver) => receiver.get_raw_response::<T>().await,
+            Receiver::Kibana(receiver) => receiver.get_raw_response::<T>().await,
+            Receiver::Logstash(receiver) => receiver.get_raw_response::<T>().await,
+            Receiver::ElasticCloudAdmin(receiver) => receiver.get_raw_response::<T>().await,
             _ => Err(eyre!("Raw data is not supported for this receiver")),
         }
     }
 
     pub async fn get_raw_by_path(&self, path: &str, extension: &str) -> Result<String> {
+        self.get_raw_response_by_path(path, extension)
+            .await
+            .map(|response| response.body)
+    }
+
+    pub async fn get_raw_response_by_path(&self, path: &str, extension: &str) -> Result<RawResponse> {
         match self {
-            Receiver::Elasticsearch(receiver) => receiver.get_raw_by_path(path, extension).await,
-            Receiver::Kibana(receiver) => receiver.get_raw_by_path(path, extension).await,
-            Receiver::Logstash(receiver) => receiver.get_raw_by_path(path, extension).await,
-            Receiver::ElasticCloudAdmin(receiver) => receiver.get_raw_by_path(path, extension).await,
+            Receiver::Elasticsearch(receiver) => receiver.get_raw_response_by_path(path, extension).await,
+            Receiver::Kibana(receiver) => receiver.get_raw_response_by_path(path, extension).await,
+            Receiver::Logstash(receiver) => receiver.get_raw_response_by_path(path, extension).await,
+            Receiver::ElasticCloudAdmin(receiver) => receiver.get_raw_response_by_path(path, extension).await,
             _ => Err(eyre!(
                 "Raw data by path is only supported for Elasticsearch, Elastic Cloud Admin, Kibana, or Logstash receivers"
             )),

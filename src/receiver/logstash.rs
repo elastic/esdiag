@@ -3,7 +3,7 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::super::processor::{DataSource, DiagnosticManifest, SourceContext};
-use super::{Receive, ReceiveRaw};
+use super::{RawResponse, Receive, ReceiveRaw};
 use crate::client::LogstashClient;
 use crate::data::{KnownHost, Product};
 use eyre::{Result, eyre};
@@ -13,6 +13,7 @@ use serde::de::DeserializeOwned;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Instant;
 use tokio::sync::OnceCell;
 use url::Url;
 
@@ -27,6 +28,8 @@ pub struct LogstashReceiver {
 pub struct LogstashRequestError {
     pub status: reqwest::StatusCode,
     pub body: String,
+    pub response_time_ms: u64,
+    pub response_size_bytes: u64,
 }
 
 impl std::fmt::Display for LogstashRequestError {
@@ -48,13 +51,18 @@ impl LogstashReceiver {
         self.version
             .get_or_try_init(|| async {
                 tracing::debug!("Fetching Logstash version from {}", self.url);
+                let started = Instant::now();
                 let response = self.client.request(Method::GET, &HashMap::new(), "/", None).await?;
                 let status = response.status();
                 let body = response.text().await?;
+                let response_time_ms = started.elapsed().as_millis() as u64;
+                let response_size_bytes = body.len() as u64;
                 if !status.is_success() {
                     return Err(LogstashRequestError {
                         status,
                         body: Self::format_error_body(&body),
+                        response_time_ms,
+                        response_size_bytes,
                     }
                     .into());
                 }
@@ -68,8 +76,9 @@ impl LogstashReceiver {
             .await
     }
 
-    pub async fn get_raw_by_path(&self, path: &str, extension: &str) -> Result<String> {
+    pub async fn get_raw_response_by_path(&self, path: &str, extension: &str) -> Result<RawResponse> {
         tracing::debug!("Getting raw Logstash API path: {}", path);
+        let started = Instant::now();
 
         let accept = if extension == ".txt" {
             "text/plain"
@@ -80,15 +89,30 @@ impl LogstashReceiver {
         let response = self.client.request(Method::GET, &headers, path, None).await?;
         let status = response.status();
         let body = response.text().await?;
+        let response_time_ms = started.elapsed().as_millis() as u64;
+        let response_size_bytes = body.len() as u64;
         if !status.is_success() {
             return Err(LogstashRequestError {
                 status,
                 body: Self::format_error_body(&body),
+                response_time_ms,
+                response_size_bytes,
             }
             .into());
         }
 
-        Ok(body)
+        Ok(RawResponse {
+            body,
+            status: status.as_u16(),
+            response_time_ms,
+            response_size_bytes,
+        })
+    }
+
+    pub async fn get_raw_by_path(&self, path: &str, extension: &str) -> Result<String> {
+        self.get_raw_response_by_path(path, extension)
+            .await
+            .map(|response| response.body)
     }
 }
 
@@ -128,6 +152,7 @@ impl Receive for LogstashReceiver {
         let path = T::resolve_source_request_path(&ctx)?;
         tracing::debug!("Getting Logstash API: {}", &path);
 
+        let started = Instant::now();
         let response = self.client.request(Method::GET, &HashMap::new(), &path, None).await?;
 
         match response.status() {
@@ -135,10 +160,14 @@ impl Receive for LogstashReceiver {
             status => {
                 let body = response.text().await.unwrap_or_default();
                 let formatted_body = Self::format_error_body(&body);
+                let response_time_ms = started.elapsed().as_millis() as u64;
+                let response_size_bytes = body.len() as u64;
                 tracing::debug!("Failed to get Logstash API response: {}", formatted_body);
                 Err(LogstashRequestError {
                     status,
                     body: formatted_body,
+                    response_time_ms,
+                    response_size_bytes,
                 }
                 .into())
             }
@@ -170,14 +199,14 @@ impl Receive for LogstashReceiver {
 }
 
 impl ReceiveRaw for LogstashReceiver {
-    async fn get_raw<T>(&self) -> Result<String>
+    async fn get_raw_response<T>(&self) -> Result<RawResponse>
     where
         T: DataSource,
     {
         let ctx = SourceContext::new("logstash", self.get_version().await.ok().cloned());
         let path = T::resolve_source_request_path(&ctx)?;
         let extension = T::resolve_source_extension(&ctx)?;
-        self.get_raw_by_path(&path, &extension).await
+        self.get_raw_response_by_path(&path, &extension).await
     }
 }
 

@@ -5,7 +5,7 @@
 use super::resolve_archive_path;
 use crate::{
     processor::{DataSource, SourceContext, StreamingDataSource},
-    receiver::{Receive, ReceiveMultiple, ReceiveRaw},
+    receiver::{RawResponse, Receive, ReceiveMultiple, ReceiveRaw},
 };
 use eyre::{Result, eyre};
 use futures::stream::BoxStream;
@@ -120,7 +120,7 @@ impl Receive for ArchiveFileReceiver {
 }
 
 impl ReceiveRaw for ArchiveFileReceiver {
-    async fn get_raw<T>(&self) -> Result<String>
+    async fn get_raw_response<T>(&self) -> Result<RawResponse>
     where
         T: DataSource,
     {
@@ -137,7 +137,12 @@ impl ReceiveRaw for ArchiveFileReceiver {
                     let mut reader = BufReader::new(file);
                     let mut data = String::new();
                     reader.read_to_string(&mut data)?;
-                    return Ok(data);
+                    return Ok(RawResponse {
+                        body: data.clone(),
+                        status: 0,
+                        response_time_ms: 0,
+                        response_size_bytes: data.len() as u64,
+                    });
                 }
                 Err(e) => {
                     last_resolve_error = Some(e);
