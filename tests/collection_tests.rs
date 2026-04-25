@@ -56,6 +56,7 @@ fn test_collect_minimal() {
     assert_eq!(requested_api_status(&manifest, "cluster"), Some(200));
     assert_eq!(requested_api_status(&manifest, "nodes"), Some(200));
     assert_eq!(requested_api_status(&manifest, "cluster_settings"), Some(200));
+    assert_eq!(requested_api_retries(&manifest, "cluster"), Some(0));
     assert!(requested_api_response_time_ms(&manifest, "cluster").is_some());
     assert!(requested_api_response_size_bytes(&manifest, "cluster").is_some());
 }
@@ -232,6 +233,14 @@ fn requested_api_response_time_ms(manifest: &Value, name: &str) -> Option<u64> {
         .expect("requested_apis object")
         .get(name)
         .and_then(|value| value["response_time_ms"].as_u64())
+}
+
+fn requested_api_retries(manifest: &Value, name: &str) -> Option<u64> {
+    manifest["requested_apis"]
+        .as_object()
+        .expect("requested_apis object")
+        .get(name)
+        .and_then(|value| value["retries"].as_u64())
 }
 
 fn requested_api_response_size_bytes(manifest: &Value, name: &str) -> Option<u64> {

@@ -237,12 +237,14 @@ fn run_external_logstash_collect_test(
         );
         let status = requested_apis.get(required).and_then(|value| value["status"].as_u64());
         assert_eq!(status, Some(200), "{env_prefix} unexpected status for {required}");
+        let retries = requested_apis.get(required).and_then(|value| value["retries"].as_u64());
         let response_time_ms = requested_apis
             .get(required)
             .and_then(|value| value["response_time_ms"].as_u64());
         let response_size_bytes = requested_apis
             .get(required)
             .and_then(|value| value["response_size_bytes"].as_u64());
+        assert_eq!(retries, Some(0), "{env_prefix} unexpected retries for {required}");
         assert!(response_time_ms.is_some(), "{env_prefix} missing response time for {required}");
         assert!(response_size_bytes.is_some(), "{env_prefix} missing response size for {required}");
     }
