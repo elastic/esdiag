@@ -105,6 +105,12 @@ fn assert_node_lookup_enrichment(node: &Value, archive: &Path, stream: &str) {
         stream,
         archive.display()
     );
+    assert!(
+        node["version"].is_string(),
+        "{} in {} is missing node.version",
+        stream,
+        archive.display()
+    );
 }
 
 fn assert_has_data_stream_lookup(doc: &Value, archive: &Path, stream: &str) {

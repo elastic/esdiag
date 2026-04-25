@@ -41,6 +41,10 @@ published release notes, maintenance branches, and tagged history.
 - Improved saved host authentication persistence.
 - Improved agentic CLI summaries and viewer-aware Kibana links.
 
+### Fixed
+
+- Fixed Elasticsearch node stats processing to preserve lookup-enriched node identity fields.
+
 ## [0.14] - 2026-02-25
 
 ### Added

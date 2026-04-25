@@ -55,12 +55,12 @@ fn test_node_stats_os_enrichment_from_lookup() {
     use serde_json::json;
 
     let mut node_stats: NodeStats = serde_json::from_value(json!({
-        "name": "esdiag-node",
+        "name": "instance-0000000309",
         "transport_address": "127.0.0.1:9300",
         "host": "127.0.0.1",
-        "ip": "127.0.0.1",
+        "ip": "127.0.0.1:9300",
         "roles": ["master", "data"],
-        "attributes": {},
+        "attributes": { "raw": "stats" },
         "http": {},
         "transport": {},
         "discovery": {},
@@ -83,12 +83,15 @@ fn test_node_stats_os_enrichment_from_lookup() {
     .expect("parse NodeStats");
 
     let lookup_node: NodeDocument = serde_json::from_value(json!({
-        "name": "esdiag-node",
+        "attributes": {
+            "instance_configuration": "aws.es.datahot.i3"
+        },
+        "name": "hot-309",
         "id": "node-id",
         "host": "10.89.0.2",
         "ip": "10.89.0.2",
         "role": "dm",
-        "roles": ["data", "master"],
+        "roles": ["data_hot", "ingest"],
         "tier": "hot",
         "tier_order": 2,
         "version": "9.1.3",
@@ -110,6 +113,18 @@ fn test_node_stats_os_enrichment_from_lookup() {
     let node_stats_json = serde_json::to_value(&node_stats).expect("serialize NodeStats");
     let os = &node_stats_json["os"];
 
+    assert_eq!(node_stats_json["name"], "hot-309");
+    assert_eq!(node_stats_json["host"], "10.89.0.2");
+    assert_eq!(node_stats_json["ip"], "127.0.0.1:9300");
+    assert_eq!(
+        node_stats_json["attributes"]["instance_configuration"],
+        "aws.es.datahot.i3"
+    );
+    assert_eq!(node_stats_json["attributes"].get("raw"), None);
+    let roles = node_stats_json["roles"].as_array().expect("roles array");
+    assert!(roles.iter().any(|role| role == "data_hot"));
+    assert!(roles.iter().any(|role| role == "ingest"));
+    assert!(!roles.iter().any(|role| role == "master"));
     assert_eq!(os["timestamp"], 123);
     assert_eq!(os["cpu"]["percent"], 0);
     assert_eq!(os["refresh_interval_in_millis"], 1000);
