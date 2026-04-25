@@ -99,7 +99,7 @@ pub struct JobSignalsCollect {
     #[serde(default)]
     pub save: bool,
     #[serde(default)]
-    pub save_dir: String,
+    pub download_dir: String,
 }
 
 impl Default for JobSignalsCollect {
@@ -110,7 +110,7 @@ impl Default for JobSignalsCollect {
             known_host: String::new(),
             diagnostic_type: default_diagnostic_type(),
             save: false,
-            save_dir: String::new(),
+            download_dir: String::new(),
         }
     }
 }
@@ -263,7 +263,7 @@ impl Job {
         signals.collect.known_host = self.collect.host.clone();
         signals.collect.diagnostic_type = self.collect.diagnostic_type.clone();
         signals.collect.save = self.collect.save_dir.is_some();
-        signals.collect.save_dir = self
+        signals.collect.download_dir = self
             .collect
             .save_dir
             .as_ref()
@@ -272,6 +272,8 @@ impl Job {
 
         match &self.action {
             JobAction::Collect { output_dir } => {
+                signals.collect.save = true;
+                signals.collect.download_dir = output_dir.display().to_string();
                 signals.process.enabled = false;
                 signals.process.mode = ProcessMode::Forward;
                 signals.send.mode = SendMode::Local;
@@ -439,6 +441,11 @@ impl JobProcessSelection {
     }
 }
 
+fn intermediate_download_dir(signals: &JobSignals) -> Option<String> {
+    (signals.collect.save && !signals.collect.download_dir.trim().is_empty())
+        .then(|| signals.collect.download_dir.clone())
+}
+
 impl JobBuilder<NeedsCollect> {
     pub fn new() -> Self {
         Self {
@@ -466,20 +473,20 @@ impl JobBuilder<NeedsCollect> {
             .diagnostic_type(signals.collect.diagnostic_type.clone());
 
         if signals.process.enabled && signals.process.mode == ProcessMode::Process {
-            if signals.collect.save && !signals.collect.save_dir.trim().is_empty() {
-                builder = builder.save_collected_bundle_to(signals.collect.save_dir.clone());
+            if let Some(download_dir) = intermediate_download_dir(&signals) {
+                builder = builder.save_collected_bundle_to(download_dir);
             }
             let output = JobOutput::from_signals_send(&signals)?;
             let selection = JobProcessSelection::from_signals(&signals);
             builder.process_to_with_selection(output, selection)
         } else if signals.process.mode == ProcessMode::Forward && signals.send.mode == SendMode::Remote {
-            if signals.collect.save && !signals.collect.save_dir.trim().is_empty() {
-                builder = builder.save_collected_bundle_to(signals.collect.save_dir.clone());
+            if let Some(download_dir) = intermediate_download_dir(&signals) {
+                builder = builder.save_collected_bundle_to(download_dir);
             }
             builder.upload_to(signals.send.remote_target)
         } else {
-            let output_dir = if signals.collect.save && !signals.collect.save_dir.trim().is_empty() {
-                signals.collect.save_dir
+            let output_dir = if signals.collect.save && !signals.collect.download_dir.trim().is_empty() {
+                signals.collect.download_dir
             } else if signals.send.local_target == "directory" && !signals.send.local_directory.trim().is_empty() {
                 signals.send.local_directory
             } else {
@@ -801,13 +808,15 @@ mod tests {
 
         assert_eq!(signals.collect.known_host, "prod");
         assert_eq!(signals.collect.diagnostic_type, "standard");
+        assert!(signals.collect.save);
+        assert_eq!(signals.collect.download_dir, "/tmp/esdiag");
         assert!(!signals.process.enabled);
         assert_eq!(signals.send.local_target, "directory");
         assert_eq!(signals.send.local_directory, "/tmp/esdiag");
     }
 
     #[test]
-    fn collect_only_job_uses_download_save_dir_as_output_dir() {
+    fn collect_only_job_uses_download_dir_as_output_dir() {
         let _guard = test_env_lock().lock().expect("env lock");
         let _tmp = setup_env();
         crate::data::KnownHostBuilder::new(url::Url::parse("http://localhost:9200/").expect("url"))
@@ -821,7 +830,7 @@ mod tests {
         let mut signals = JobSignals::default();
         signals.collect.known_host = "prod".to_string();
         signals.collect.save = true;
-        signals.collect.save_dir = "/tmp/browser-download".to_string();
+        signals.collect.download_dir = "/tmp/browser-download".to_string();
         signals.process.enabled = false;
         signals.process.mode = ProcessMode::Forward;
         signals.send.mode = SendMode::Local;

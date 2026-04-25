@@ -43,7 +43,7 @@ Why:
 
 ### 5. Keep bundle retention separate from final output
 
-`save_dir` is optional retention for an intermediate diagnostic bundle, such as a future `--save-bundle <PATH>` flow or the browser's background-download target. `output_dir` is an action output: it is required for collect actions and appears on process output only when the process target is a directory.
+`save_dir` is optional retention for an intermediate diagnostic bundle, such as a future `--save-bundle <PATH>` flow. `output_dir` is an action output: it is required for collect actions and appears on process output only when the process target is a directory. The web UI uses a `download_dir` signal for the user's browser/download choice; saving that state maps it to `save_dir` only when the bundle is retained before a process or upload action, and maps it to collect `output_dir` when the download is the final collect action.
 
 Why:
 - avoids persisting the same collect path as both retention and final output

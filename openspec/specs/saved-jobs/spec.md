@@ -36,6 +36,7 @@ The system SHALL model executable diagnostic work as a `Job` independent of whet
 - **AND** `save_dir` is not used as the required final output destination
 - **AND** collect actions require `output_dir`
 - **AND** process actions use `output_dir` only when the process output target is a directory
+- **AND** UI download directory signals are mapped to either intermediate `save_dir` or final collect `output_dir` based on the executable job action
 
 #### Scenario: Conversion rejects incomplete job signals
 - **WHEN** CLI or UI signal input lacks a required collect host, action, or output

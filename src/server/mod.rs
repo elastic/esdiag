@@ -1653,7 +1653,7 @@ mod tests {
 
     #[test]
     fn job_run_signals_deserialize_without_archive_field() {
-        let payload = r#"{"metadata":{"user":"Anonymous","account":"","case_number":"","opportunity":""},"job":{"collect":{"mode":"collect","source":"known-host","known_host":"esdiag-prod","diagnostic_type":"standard","save":true,"save_dir":"/Users/reno/Downloads"},"process":{"mode":"forward","enabled":false,"product":"elasticsearch","diagnostic_type":"standard","selected":""},"send":{"mode":"remote","remote_target":"b8b9a090-21fa-419f-a731-ae8676fdd835","local_target":"directory","local_directory":"Directory /tmp/output"}}}"#;
+        let payload = r#"{"metadata":{"user":"Anonymous","account":"","case_number":"","opportunity":""},"job":{"collect":{"mode":"collect","source":"known-host","known_host":"esdiag-prod","diagnostic_type":"standard","save":true,"download_dir":"/Users/reno/Downloads"},"process":{"mode":"forward","enabled":false,"product":"elasticsearch","diagnostic_type":"standard","selected":""},"send":{"mode":"remote","remote_target":"b8b9a090-21fa-419f-a731-ae8676fdd835","local_target":"directory","local_directory":"Directory /tmp/output"}}}"#;
 
         let parsed =
             serde_json::from_str::<JobRunSignals>(payload).expect("job run payload without archive should deserialize");
@@ -1663,7 +1663,7 @@ mod tests {
 
     #[test]
     fn api_key_form_signals_deserialize_without_archive_field() {
-        let payload = r#"{"metadata":{"user":"Anonymous","account":"","case_number":"","opportunity":""},"job":{"collect":{"mode":"collect","source":"api-key","known_host":"","diagnostic_type":"standard","save":false,"save_dir":""},"process":{"mode":"process","enabled":true,"product":"elasticsearch","diagnostic_type":"standard","selected":""},"send":{"mode":"remote","remote_target":"","local_target":"","local_directory":""}},"es_api":{"url":"","key":"secret"}}"#;
+        let payload = r#"{"metadata":{"user":"Anonymous","account":"","case_number":"","opportunity":""},"job":{"collect":{"mode":"collect","source":"api-key","known_host":"","diagnostic_type":"standard","save":false,"download_dir":""},"process":{"mode":"process","enabled":true,"product":"elasticsearch","diagnostic_type":"standard","selected":""},"send":{"mode":"remote","remote_target":"","local_target":"","local_directory":""}},"es_api":{"url":"","key":"secret"}}"#;
 
         let parsed = serde_json::from_str::<ApiKeyFormSignals>(payload)
             .expect("api key payload without archive should deserialize");

@@ -29,7 +29,7 @@
     data-signals:job.collect.known_host="{{ saved_known_host|json }}"
     data-signals:job.collect.diagnostic_type="{{ saved_diagnostic_type|json }}"
     data-signals:job.collect.save="{{ saved_collect_save }}"
-    data-signals:job.collect.save_dir="{{ saved_save_dir|json }}"
+    data-signals:job.collect.download_dir="{{ saved_download_dir|json }}"
     data-signals:job.process.mode="{{ saved_process_mode }}"
     data-signals:job.process.enabled="{{ saved_process_enabled }}"
     data-signals:job.process.product="{{ saved_process_product|json }}"
@@ -492,7 +492,7 @@
                     data-show="$job.collect.save && !($job.collect.mode === 'upload' && $job.collect.source === 'upload-file')"
                     style="display: none"
                 >
-                    Saved bundles are retained server-side and downloaded automatically through the browser or a selected output directory.
+                    For collect-only jobs this directory is the final output. When the job continues to process or upload, it retains an intermediate bundle for download.
                 </info-text>
                 <div
                     data-show="$job.collect.save && !($job.collect.mode === 'upload' && $job.collect.source === 'upload-file')"
@@ -505,7 +505,7 @@
                                 id="jobs-download-directory"
                                 type="text"
                                 class="form-input"
-                                data-bind:job.collect.save_dir
+                                data-bind:job.collect.download_dir
                                 readonly
                             />
                             <button

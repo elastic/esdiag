@@ -320,7 +320,7 @@ async fn build_jobs_page(
         saved_known_host: saved.known_host,
         saved_diagnostic_type: saved.diagnostic_type,
         saved_collect_save: saved.collect_save,
-        saved_save_dir: saved.save_dir,
+        saved_download_dir: saved.download_dir,
         saved_process_mode: saved.process_mode,
         saved_process_enabled: saved.process_enabled,
         saved_process_product: saved.process_product,
@@ -353,7 +353,7 @@ struct SavedJobDefaults {
     known_host: String,
     diagnostic_type: String,
     collect_save: bool,
-    save_dir: String,
+    download_dir: String,
     process_mode: String,
     process_enabled: bool,
     process_product: String,
@@ -381,10 +381,10 @@ impl SavedJobDefaults {
                 known_host: signals.collect.known_host.clone(),
                 diagnostic_type: signals.collect.diagnostic_type.clone(),
                 collect_save: signals.collect.save,
-                save_dir: if signals.collect.save_dir.is_empty() {
+                download_dir: if signals.collect.download_dir.is_empty() {
                     default_save_dir.to_string()
                 } else {
-                    signals.collect.save_dir.clone()
+                    signals.collect.download_dir.clone()
                 },
                 process_mode: serde_json::to_string(&signals.process.mode)
                     .unwrap_or_else(|_| "\"process\"".to_string()),
@@ -409,7 +409,7 @@ impl SavedJobDefaults {
                 known_host: String::new(),
                 diagnostic_type: "standard".to_string(),
                 collect_save: false,
-                save_dir: default_save_dir.to_string(),
+                download_dir: default_save_dir.to_string(),
                 process_mode: "\"process\"".to_string(),
                 process_enabled: true,
                 process_product: "elasticsearch".to_string(),
