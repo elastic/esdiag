@@ -39,12 +39,13 @@ impl ApiCollectOutcome {
         }
     }
 
-    fn success(name: &str, response: &RawResponse, saved: usize) -> Self {
+    fn success(name: &str, response: &RawResponse, retries: u32, saved: usize) -> Self {
         Self {
             requested_api: Some((
                 name.to_string(),
                 RequestedApi {
                     status: response.status,
+                    retries,
                     response_time_ms: response.response_time_ms,
                     response_size_bytes: response.response_size_bytes,
                 },
@@ -53,12 +54,13 @@ impl ApiCollectOutcome {
         }
     }
 
-    fn failed(name: &str, status: u16, response_time_ms: u64, response_size_bytes: u64) -> Self {
+    fn failed(name: &str, status: u16, retries: u32, response_time_ms: u64, response_size_bytes: u64) -> Self {
         Self {
             requested_api: Some((
                 name.to_string(),
                 RequestedApi {
                     status,
+                    retries,
                     response_time_ms,
                     response_size_bytes,
                 },
@@ -153,10 +155,16 @@ impl LogstashCollector {
         let start_time = std::time::Instant::now();
         let mut attempt = 1;
         let mut delay = Duration::from_secs(2);
+        let mut retries = 0;
 
         loop {
             match self.save_api(api).await {
-                Ok(success) => return success,
+                Ok(mut success) => {
+                    if let Some((_, requested_api)) = success.requested_api.as_mut() {
+                        requested_api.retries = retries;
+                    }
+                    return success;
+                }
                 Err(e) => {
                     let (status, response_time_ms, response_size_bytes) = request_metrics(&e);
                     if !should_retry_logstash_error(&e) {
@@ -168,6 +176,7 @@ impl LogstashCollector {
                         return ApiCollectOutcome::failed(
                             api.as_str(),
                             status,
+                            retries,
                             response_time_ms,
                             response_size_bytes,
                         );
@@ -182,6 +191,7 @@ impl LogstashCollector {
                         return ApiCollectOutcome::failed(
                             api.as_str(),
                             status,
+                            retries,
                             response_time_ms,
                             response_size_bytes,
                         );
@@ -195,6 +205,7 @@ impl LogstashCollector {
                     );
                     tokio::time::sleep(delay).await;
                     attempt += 1;
+                    retries += 1;
                     delay = std::cmp::min(delay * 2, Duration::from_secs(60));
                 }
             }
@@ -209,7 +220,7 @@ impl LogstashCollector {
         };
 
         match response {
-            Some((response, saved)) => Ok(ApiCollectOutcome::success(api.as_str(), &response, saved)),
+            Some((response, saved)) => Ok(ApiCollectOutcome::success(api.as_str(), &response, 0, saved)),
             None => Ok(ApiCollectOutcome::skipped()),
         }
     }

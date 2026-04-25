@@ -14,6 +14,8 @@ use std::sync::RwLock;
 pub struct RequestedApi {
     /// Final HTTP response status observed for this API request
     pub status: u16,
+    /// Number of retry attempts performed before the final response
+    pub retries: u32,
     /// Time spent waiting for the final response body
     pub response_time_ms: u64,
     /// Size in bytes of the final response body

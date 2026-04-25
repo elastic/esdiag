@@ -201,8 +201,8 @@ fn test_archive_lookup_enriched_processors_match_expected_shape() {
 }
 
 #[test]
-fn test_archive_node_lookup_specific_os_values_for_9_1_fixture() {
-    let archive = Path::new("tests/archives/elasticsearch-api-diagnostics-9.1.3.zip");
+fn test_archive_node_lookup_specific_os_values_for_9_3_fixture() {
+    let archive = Path::new("tests/archives/elasticsearch-api-diagnostics-9.3.3.zip");
     assert!(archive.exists(), "missing archive fixture: {}", archive.display());
 
     let output_dir = process_archive(archive);
