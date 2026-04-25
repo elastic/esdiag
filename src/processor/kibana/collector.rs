@@ -37,12 +37,13 @@ impl ApiCollectOutcome {
         }
     }
 
-    fn success(name: &str, response: &RawResponse, saved: usize) -> Self {
+    fn success(name: &str, response: &RawResponse, retries: u32, saved: usize) -> Self {
         Self {
             requested_api: Some((
                 name.to_string(),
                 RequestedApi {
                     status: response.status,
+                    retries,
                     response_time_ms: response.response_time_ms,
                     response_size_bytes: response.response_size_bytes,
                 },
@@ -51,12 +52,13 @@ impl ApiCollectOutcome {
         }
     }
 
-    fn failed(name: &str, status: u16, response_time_ms: u64, response_size_bytes: u64) -> Self {
+    fn failed(name: &str, status: u16, retries: u32, response_time_ms: u64, response_size_bytes: u64) -> Self {
         Self {
             requested_api: Some((
                 name.to_string(),
                 RequestedApi {
                     status,
+                    retries,
                     response_time_ms,
                     response_size_bytes,
                 },
@@ -129,10 +131,16 @@ impl KibanaCollector {
         let start_time = std::time::Instant::now();
         let mut attempt = 1;
         let mut delay = Duration::from_secs(2);
+        let mut retries = 0;
 
         loop {
             match self.save_api(api).await {
-                Ok(success) => return success,
+                Ok(mut success) => {
+                    if let Some((_, requested_api)) = success.requested_api.as_mut() {
+                        requested_api.retries = retries;
+                    }
+                    return success;
+                }
                 Err(e) => {
                     let (status, response_time_ms, response_size_bytes) = request_metrics(&e);
                     if !should_retry_kibana_error(&e) {
@@ -140,6 +148,7 @@ impl KibanaCollector {
                         return ApiCollectOutcome::failed(
                             api.as_str(),
                             status,
+                            retries,
                             response_time_ms,
                             response_size_bytes,
                         );
@@ -154,6 +163,7 @@ impl KibanaCollector {
                         return ApiCollectOutcome::failed(
                             api.as_str(),
                             status,
+                            retries,
                             response_time_ms,
                             response_size_bytes,
                         );
@@ -167,6 +177,7 @@ impl KibanaCollector {
                     );
                     tokio::time::sleep(delay).await;
                     attempt += 1;
+                    retries += 1;
                     delay = std::cmp::min(delay * 2, Duration::from_secs(60));
                 }
             }
@@ -231,7 +242,7 @@ impl KibanaCollector {
         }
 
         match final_response {
-            Some(response) => Ok(ApiCollectOutcome::success(api.as_str(), &response, saved)),
+            Some(response) => Ok(ApiCollectOutcome::success(api.as_str(), &response, 0, saved)),
             None => Ok(ApiCollectOutcome::skipped()),
         }
     }
@@ -429,7 +440,9 @@ fn sanitize_segment(segment: &str) -> String {
 
 fn should_retry_kibana_error(error: &eyre::Report) -> bool {
     if let Some(request_error) = error.downcast_ref::<KibanaRequestError>() {
-        return request_error.status.as_u16() == 429 || request_error.status.is_server_error();
+        return request_error.status.as_u16() == 429
+            || (request_error.status.is_server_error()
+                && request_error.status != reqwest::StatusCode::INTERNAL_SERVER_ERROR);
     }
     if let Some(request_error) = error.downcast_ref::<reqwest::Error>() {
         return request_error.is_connect() || request_error.is_timeout();
@@ -493,7 +506,19 @@ mod tests {
     }
 
     #[test]
-    fn retry_policy_retries_server_errors_and_rate_limits() {
+    fn retry_policy_skips_internal_server_errors() {
+        let internal_server_error = eyre::Report::from(KibanaRequestError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            body: "internal".to_string(),
+            response_time_ms: 0,
+            response_size_bytes: 0,
+        });
+
+        assert!(!should_retry_kibana_error(&internal_server_error));
+    }
+
+    #[test]
+    fn retry_policy_retries_gateway_errors_and_rate_limits() {
         let rate_limit = eyre::Report::from(KibanaRequestError {
             status: StatusCode::TOO_MANY_REQUESTS,
             body: "slow down".to_string(),
