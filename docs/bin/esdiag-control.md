@@ -117,6 +117,7 @@ Command: up [options]
 Options:
     -e, --env <NAME|FILE>  - The .env.NAME or FILE to source credentials from (default .env)
     -i, --insecure         - Setup the Elasticsearch cluster with security disabled
+    -b, --open-browser <true|false> - Open ESDiag in a browser after startup (default true)
     -r, --registry <URL>   - Elastic container registry URL
     -s, --space            - Kibana space id (default esdiag)
 
