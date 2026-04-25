@@ -1,7 +1,7 @@
 {
   "identifier": "com.elastic.esdiag",
   "build": {
-    "frontendDist": "desktop/frontend-dist"
+    "frontendDist": "frontend-dist"
   },
   "app": {
     "withGlobalTauri": true,
@@ -19,16 +19,16 @@
     "targets": ["app", "dmg", "msi"],
     "windows": {
       "wix": {
-        "bannerPath": "desktop/packaging/windows/msi-banner.bmp",
-        "dialogImagePath": "desktop/packaging/windows/msi-dialog.bmp"
+        "bannerPath": "packaging/windows/msi-banner.bmp",
+        "dialogImagePath": "packaging/windows/msi-dialog.bmp"
       }
     },
     "icon": [
-      "desktop/icons/32x32.png",
-      "desktop/icons/128x128.png",
-      "desktop/icons/128x128@2x.png",
-      "desktop/icons/icon.icns",
-      "desktop/icons/icon.ico"
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
     ]
   },
   "plugins": {

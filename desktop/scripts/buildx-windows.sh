@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ARTIFACT_ROOT="${ROOT_DIR}/target/artifacts"
 
 require() {
@@ -13,7 +13,7 @@ require() {
 
 usage() {
   cat <<'EOF'
-Usage: bash bin/buildx-windows.sh
+Usage: bash desktop/scripts/buildx-windows.sh
 
 Builds a local Windows raw desktop app artifact with docker buildx and writes it into:
 - target/artifacts/windows/

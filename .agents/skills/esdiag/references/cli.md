@@ -27,6 +27,15 @@ Output resolution (in order):
 - Without `--upload`, a saved collect job stores `<OUTPUT>` as its final `output_dir`.
 - With `--upload <UPLOAD_ID>`, `--save-job` saves a collect-and-upload job instead of a collect-to-directory job.
 
+Common collection/report flags:
+- `--type <TYPE>` (`minimal`, `light`, `standard`, `support`; default `standard`)
+- `--include <INCLUDE>`
+- `--exclude <EXCLUDE>`
+- `--account <ACCOUNT>`
+- `--case <CASE>`
+- `--opportunity <OPPORTUNITY>`
+- `--user <USER>`
+
 ## Saved Jobs
 
 - Manage persisted jobs with `esdiag job list`, `esdiag job run <NAME>`, and `esdiag job delete <NAME>`.
@@ -41,6 +50,12 @@ If `[HOST]` is omitted, setup resolves output from:
 - `ESDIAG_OUTPUT_USERNAME`
 - `ESDIAG_OUTPUT_PASSWORD`
 - `ESDIAG_KIBANA_URL` (required for Kibana asset setup when host is omitted)
+
+## `serve`
+
+- Default port is `2501`.
+- Output follows the same resolution rules as `process`.
+- `--kibana <URL>` (or `ESDIAG_KIBANA_URL`) controls direct links in the UI.
 
 ## Cross-Cutting Options
 

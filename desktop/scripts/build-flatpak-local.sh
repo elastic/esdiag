@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TARGETS_CONF="${ROOT_DIR}/packaging/desktop-targets.json"
-MANIFEST="${ROOT_DIR}/packaging/flatpak/com.elastic.esdiag.json"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+DESKTOP_DIR="${ROOT_DIR}/desktop"
+TARGETS_CONF="${DESKTOP_DIR}/packaging/desktop-targets.json"
+MANIFEST="${DESKTOP_DIR}/packaging/flatpak/com.elastic.esdiag.json"
 OUTPUT_DIR="${ROOT_DIR}/target/flatpak"
 BUILD_DIR="${OUTPUT_DIR}/build"
 REPO_DIR="${OUTPUT_DIR}/repo"

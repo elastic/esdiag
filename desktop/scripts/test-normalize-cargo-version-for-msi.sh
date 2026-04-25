@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SCRIPT="${ROOT_DIR}/bin/normalize-cargo-version-for-msi.sh"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+SCRIPT="${ROOT_DIR}/desktop/scripts/normalize-cargo-version-for-msi.sh"
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/normalize-msi-test.XXXXXX")"
 trap 'rm -rf "${TMP_DIR}"' EXIT
 

@@ -13,13 +13,10 @@ Top-Level Layout
 ├── .gitignore
 ├── assets/
 ├── bin/
-├── capabilities/
+├── desktop/
 ├── docker/
 ├── docs/
-├── gen/
-├── icons/
 ├── openspec/
-├── packaging/
 ├── src/
 ├── templates/
 └── tests/
@@ -29,14 +26,12 @@ Top-Level Layout
 - `.github/`: GitHub automation such as Actions workflows and issue templates.
 - `.gitignore`: Root ignore rules for generated files, local artifacts, and other untracked content that should not be committed.
 - `assets/`: Elastic Stack assets installed into target environments, such as configuration and setup content used by `esdiag setup`.
-- `bin/`: Helper scripts for local development, local stack orchestration, packaging, and validation.
-- `capabilities/`: Desktop capability definitions, including the default window capability configuration.
+- `bin/`: User-facing helper executables such as `esdiag-control` and `min-diag.sh`.
+- `desktop/`: Tauri desktop app root, including desktop config, capabilities, icons, packaging assets, and desktop-only build scripts.
+- `gen/`: Generated Tauri schema output at the repo root during desktop builds; this directory is build output and is not tracked.
 - `docker/`: Container and Compose definitions for local and packaging-related workflows.
 - `docs/`: User-facing and maintainer-facing documentation.
-- `gen/`: Generated artifacts, including desktop-related JSON schemas.
-- `icons/`: Application icons used for desktop packaging and distribution.
 - `openspec/`: OpenSpec change proposals, archived changes, and repository specification artifacts.
-- `packaging/`: Packaging inputs and metadata for desktop distribution targets such as Flatpak and Windows.
 - `src/`: Rust application and library source code.
 - `templates/`: Askama HTML templates that power the web UI.
 - `tests/`: Integration-style tests, CLI tests, runtime tests, and test fixtures.

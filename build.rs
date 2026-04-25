@@ -2,6 +2,9 @@ use std::env;
 use std::path::Path;
 use std::process::Command;
 
+#[cfg(feature = "desktop")]
+use std::fs;
+
 fn main() {
     println!("cargo:rerun-if-changed=assets");
     println!("cargo:rerun-if-changed=build.rs");
@@ -78,9 +81,23 @@ fn main() {
 
     #[cfg(feature = "desktop")]
     {
-        println!("cargo:rerun-if-changed=tauri.conf.json");
-        println!("cargo:rerun-if-changed=icons");
-        tauri_build::build();
+        let manifest_dir =
+            env::var("CARGO_MANIFEST_DIR").expect("missing CARGO_MANIFEST_DIR for desktop build");
+        let manifest_path = Path::new(&manifest_dir);
+        let desktop_dir = manifest_path.join("desktop");
+
+        emit_rerun_if_changed(manifest_path, &manifest_path.join("tauri.conf.json"));
+        emit_rerun_if_changed(manifest_path, &desktop_dir.join("capabilities"));
+        emit_rerun_if_changed(manifest_path, &desktop_dir.join("frontend-dist"));
+        emit_rerun_if_changed(manifest_path, &desktop_dir.join("icons"));
+        emit_rerun_if_changed(manifest_path, &desktop_dir.join("packaging"));
+
+        tauri_build::try_build(
+            tauri_build::Attributes::new()
+                .capabilities_path_pattern("desktop/capabilities/**/*")
+                .codegen(tauri_build::CodegenContext::new().config_path("tauri.conf.json")),
+        )
+        .expect("failed to build desktop Tauri context");
     }
 }
 
@@ -91,4 +108,19 @@ fn env_flag(name: &str, default: bool) -> bool {
             matches!(normalized.as_str(), "1" | "true" | "yes" | "on")
         })
         .unwrap_or(default)
+}
+
+#[cfg(feature = "desktop")]
+fn emit_rerun_if_changed(repo_root: &Path, path: &Path) {
+    let display_path = path.strip_prefix(repo_root).unwrap_or(path);
+    println!("cargo:rerun-if-changed={}", display_path.display());
+
+    if !path.is_dir() {
+        return;
+    }
+
+    for entry in fs::read_dir(path).expect("failed to read rerun-if-changed directory") {
+        let entry = entry.expect("failed to read rerun-if-changed entry");
+        emit_rerun_if_changed(repo_root, &entry.path());
+    }
 }

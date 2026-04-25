@@ -32,9 +32,10 @@ published release notes, maintenance branches, and tagged history.
 
 ### Changed
 
+- Moved the Tauri desktop app root under `desktop/` while keeping root-level `cargo tauri build` and desktop packaging workflows working.
 - Refined workflow card controls.
 - Polished workflow bundle delivery.
-- Refined Advanced navigation and jobs UI.
+- Refined Advanced navigation and Job Builder UI.
 - Renamed the unreleased web workflow route to `/advanced` and defaulted Job Builder web UI behind the `job-builder` feature.
 - Finalized explicit host lifecycle commands.
 - Improved saved host authentication persistence.

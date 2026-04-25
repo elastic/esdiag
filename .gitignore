@@ -1,8 +1,10 @@
 # Rust build outputs
 /target
 /output
-/tauri-dist/
-/frontend-dist/
+/gen
+/desktop/gen
+/desktop/target
+/desktop/tauri-dist
 
 # Agent skills and commands
 /*/skills/

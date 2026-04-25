@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TAURI_CONF="${ROOT_DIR}/tauri.conf.json"
-TARGETS_CONF="${ROOT_DIR}/packaging/desktop-targets.json"
-FLATPAK_MANIFEST="${ROOT_DIR}/packaging/flatpak/com.elastic.esdiag.json"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+DESKTOP_DIR="${ROOT_DIR}/desktop"
+ROOT_TAURI_CONF="${ROOT_DIR}/tauri.conf.json"
+TAURI_CONF="${DESKTOP_DIR}/tauri.conf.json"
+TARGETS_CONF="${DESKTOP_DIR}/packaging/desktop-targets.json"
+FLATPAK_MANIFEST="${DESKTOP_DIR}/packaging/flatpak/com.elastic.esdiag.json"
 
 require() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -14,6 +16,11 @@ require() {
 }
 
 require jq
+
+if [[ ! -f "${ROOT_TAURI_CONF}" ]]; then
+  echo "Missing root tauri config: ${ROOT_TAURI_CONF}" >&2
+  exit 1
+fi
 
 if [[ ! -f "${TAURI_CONF}" ]]; then
   echo "Missing tauri config: ${TAURI_CONF}" >&2
@@ -55,10 +62,13 @@ if [[ "${FLATPAK_LOCAL_ONLY}" != "true" ]]; then
   exit 1
 fi
 
-jq -e '.bundle.targets | type == "array"' "${TAURI_CONF}" >/dev/null
-jq -e '.bundle.targets | index("msi") != null' "${TAURI_CONF}" >/dev/null
-jq -e '.bundle.targets | index("nsis") == null' "${TAURI_CONF}" >/dev/null
-jq -e '.bundle.targets | index("dmg") != null' "${TAURI_CONF}" >/dev/null
+jq -e '.bundle.targets | type == "array"' "${ROOT_TAURI_CONF}" >/dev/null
+jq -e '.bundle.targets | index("msi") != null' "${ROOT_TAURI_CONF}" >/dev/null
+jq -e '.bundle.targets | index("nsis") == null' "${ROOT_TAURI_CONF}" >/dev/null
+jq -e '.bundle.targets | index("dmg") != null' "${ROOT_TAURI_CONF}" >/dev/null
+
+jq -e '.bundle.targets == ["app","dmg","msi"]' "${TAURI_CONF}" >/dev/null
+jq -e '.bundle.targets == ["app","dmg","msi"]' "${ROOT_TAURI_CONF}" >/dev/null
 
 jq -e --arg v "${FLATPAK_BASE_VERSION}" '."x-esdiag-base-app-version" == $v' "${FLATPAK_MANIFEST}" >/dev/null
 
