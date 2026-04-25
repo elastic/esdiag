@@ -3,7 +3,7 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::super::processor::{DataSource, DiagnosticManifest, SourceContext, StreamingDataSource};
-use super::{Receive, ReceiveRaw};
+use super::{RawResponse, Receive, ReceiveRaw};
 use crate::{
     client::KibanaClient,
     data::{KnownHost, Product},
@@ -16,6 +16,7 @@ use serde::de::DeserializeOwned;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Instant;
 use tokio::sync::OnceCell;
 use url::Url;
 
@@ -46,6 +47,8 @@ struct KibanaSpace {
 pub struct KibanaRequestError {
     pub status: reqwest::StatusCode,
     pub body: String,
+    pub response_time_ms: u64,
+    pub response_size_bytes: u64,
 }
 
 impl std::fmt::Display for KibanaRequestError {
@@ -67,14 +70,23 @@ impl KibanaReceiver {
     }
 
     async fn get_status(&self) -> Result<KibanaStatusResponse> {
+        let started = Instant::now();
         let response = self
             .client
             .request(Method::GET, &HashMap::new(), "/api/status", None)
             .await?;
         let status = response.status();
         let body = response.text().await?;
+        let response_time_ms = started.elapsed().as_millis() as u64;
+        let response_size_bytes = body.len() as u64;
         if !status.is_success() {
-            return Err(KibanaRequestError { status, body }.into());
+            return Err(KibanaRequestError {
+                status,
+                body,
+                response_time_ms,
+                response_size_bytes,
+            }
+            .into());
         }
         serde_json::from_str(&body).map_err(Into::into)
     }
@@ -92,14 +104,23 @@ impl KibanaReceiver {
     pub async fn get_spaces(&self) -> Result<&Vec<String>> {
         self.spaces
             .get_or_try_init(|| async {
+                let started = Instant::now();
                 let response = self
                     .client
                     .request(Method::GET, &HashMap::new(), "/api/spaces/space", None)
                     .await?;
                 let status = response.status();
                 let body = response.text().await?;
+                let response_time_ms = started.elapsed().as_millis() as u64;
+                let response_size_bytes = body.len() as u64;
                 if !status.is_success() {
-                    return Err(KibanaRequestError { status, body }.into());
+                    return Err(KibanaRequestError {
+                        status,
+                        body,
+                        response_time_ms,
+                        response_size_bytes,
+                    }
+                    .into());
                 }
                 let spaces: Vec<KibanaSpace> = serde_json::from_str(&body)?;
                 Ok(spaces.into_iter().map(|space| space.id).collect())
@@ -107,8 +128,9 @@ impl KibanaReceiver {
             .await
     }
 
-    pub async fn get_raw_by_path(&self, path: &str, extension: &str) -> Result<String> {
+    pub async fn get_raw_response_by_path(&self, path: &str, extension: &str) -> Result<RawResponse> {
         tracing::debug!("Getting raw Kibana API path: {}", path);
+        let started = Instant::now();
 
         let mut headers = HashMap::new();
         if extension == ".txt" {
@@ -120,10 +142,29 @@ impl KibanaReceiver {
         let response = self.client.request(Method::GET, &headers, path, None).await?;
         let status = response.status();
         let body = response.text().await?;
+        let response_time_ms = started.elapsed().as_millis() as u64;
+        let response_size_bytes = body.len() as u64;
         if !status.is_success() {
-            return Err(KibanaRequestError { status, body }.into());
+            return Err(KibanaRequestError {
+                status,
+                body,
+                response_time_ms,
+                response_size_bytes,
+            }
+            .into());
         }
-        Ok(body)
+        Ok(RawResponse {
+            body,
+            status: status.as_u16(),
+            response_time_ms,
+            response_size_bytes,
+        })
+    }
+
+    pub async fn get_raw_by_path(&self, path: &str, extension: &str) -> Result<String> {
+        self.get_raw_response_by_path(path, extension)
+            .await
+            .map(|response| response.body)
     }
 }
 
@@ -156,9 +197,12 @@ impl Receive for KibanaReceiver {
     {
         let ctx = SourceContext::new("kibana", Some(self.get_version().await?.clone()));
         let path = T::resolve_source_request_path(&ctx)?;
+        let started = Instant::now();
         let response = self.client.request(Method::GET, &HashMap::new(), &path, None).await?;
         let status = response.status();
         let body = response.text().await?;
+        let response_time_ms = started.elapsed().as_millis() as u64;
+        let response_size_bytes = body.len() as u64;
 
         if status.is_success() {
             serde_json::from_str(&body).map_err(Into::into)
@@ -167,6 +211,8 @@ impl Receive for KibanaReceiver {
             Err(KibanaRequestError {
                 status,
                 body: body_json.to_string(),
+                response_time_ms,
+                response_size_bytes,
             }
             .into())
         }
@@ -197,14 +243,14 @@ impl Receive for KibanaReceiver {
 }
 
 impl ReceiveRaw for KibanaReceiver {
-    async fn get_raw<T>(&self) -> Result<String>
+    async fn get_raw_response<T>(&self) -> Result<RawResponse>
     where
         T: DataSource,
     {
         let ctx = SourceContext::new("kibana", Some(self.get_version().await?.clone()));
         let path = T::resolve_source_request_path(&ctx)?;
         let extension = T::resolve_source_extension(&ctx)?;
-        self.get_raw_by_path(&path, &extension).await
+        self.get_raw_response_by_path(&path, &extension).await
     }
 }
 

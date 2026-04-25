@@ -219,8 +219,10 @@ fn run_external_logstash_collect_test(
     assert_eq!(manifest["product"].as_str(), Some("logstash"));
     assert_eq!(manifest["mode"].as_str(), Some("support"));
 
-    let apis = manifest["collected_apis"].as_array().expect("collected_apis array");
-    let api_names: Vec<&str> = apis.iter().filter_map(|v| v.as_str()).collect();
+    let requested_apis = manifest["requested_apis"]
+        .as_object()
+        .expect("requested_apis object");
+    let api_names: Vec<&str> = requested_apis.keys().map(String::as_str).collect();
     for required in [
         "logstash_node",
         "logstash_node_stats",
@@ -231,8 +233,18 @@ fn run_external_logstash_collect_test(
     ] {
         assert!(
             api_names.contains(&required),
-            "{env_prefix} missing collected api {required}"
+            "{env_prefix} missing requested api {required}"
         );
+        let status = requested_apis.get(required).and_then(|value| value["status"].as_u64());
+        assert_eq!(status, Some(200), "{env_prefix} unexpected status for {required}");
+        let response_time_ms = requested_apis
+            .get(required)
+            .and_then(|value| value["response_time_ms"].as_u64());
+        let response_size_bytes = requested_apis
+            .get(required)
+            .and_then(|value| value["response_size_bytes"].as_u64());
+        assert!(response_time_ms.is_some(), "{env_prefix} missing response time for {required}");
+        assert!(response_size_bytes.is_some(), "{env_prefix} missing response size for {required}");
     }
     assert_eq!(
         api_names.contains(&"logstash_health_report"),
