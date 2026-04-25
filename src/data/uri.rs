@@ -251,7 +251,7 @@ impl std::fmt::Display for Uri {
 #[cfg(test)]
 mod tests {
     use super::Uri;
-    use std::path::PathBuf;
+    use std::path::Path;
 
     #[test]
     fn parses_stdio_stdout_uri_as_stream() {
@@ -263,15 +263,15 @@ mod tests {
     fn parses_file_uri_directory_and_file_targets() {
         assert!(matches!(
             Uri::try_from("file:///tmp/output/"),
-            Ok(Uri::Directory(path)) if path == PathBuf::from("/tmp/output")
+            Ok(Uri::Directory(path)) if path == Path::new("/tmp/output")
         ));
         assert!(matches!(
             Uri::try_from("file:///tmp/output/report.ndjson"),
-            Ok(Uri::File(path)) if path == PathBuf::from("/tmp/output/report.ndjson")
+            Ok(Uri::File(path)) if path == Path::new("/tmp/output/report.ndjson")
         ));
         assert!(matches!(
             Uri::try_from("file:///tmp/REPORT"),
-            Ok(Uri::File(path)) if path == PathBuf::from("/tmp/REPORT")
+            Ok(Uri::File(path)) if path == Path::new("/tmp/REPORT")
         ));
     }
 }

@@ -2,6 +2,7 @@
 /target
 /output
 /gen
+/desktop/gen
 /desktop/target
 /desktop/tauri-dist
 

@@ -1,7 +1,9 @@
 use std::env;
-use std::fs;
 use std::path::Path;
 use std::process::Command;
+
+#[cfg(feature = "desktop")]
+use std::fs;
 
 fn main() {
     println!("cargo:rerun-if-changed=assets");
@@ -96,8 +98,6 @@ fn main() {
                 .codegen(tauri_build::CodegenContext::new().config_path("desktop/tauri.conf.json")),
         )
         .expect("failed to build desktop Tauri context");
-
-        sync_desktop_generated_schemas(Path::new(&manifest_dir));
     }
 }
 
@@ -110,54 +110,7 @@ fn env_flag(name: &str, default: bool) -> bool {
         .unwrap_or(default)
 }
 
-fn sync_desktop_generated_schemas(repo_root: &Path) {
-    let generated_dir = repo_root.join("gen").join("schemas");
-    let desktop_dir = repo_root.join("desktop").join("gen").join("schemas");
-
-    if !generated_dir.exists() {
-        return;
-    }
-
-    fs::create_dir_all(&desktop_dir).expect("failed to create desktop schema directory");
-
-    for entry in fs::read_dir(&desktop_dir).expect("failed to read desktop schema directory") {
-        let entry = entry.expect("failed to read desktop schema entry");
-        let destination_path = entry.path();
-
-        if destination_path.is_file() {
-            let source_path = generated_dir.join(entry.file_name());
-            if !source_path.exists() {
-                fs::remove_file(&destination_path)
-                    .expect("failed to remove stale synced desktop schema file");
-            }
-        }
-    }
-
-    for entry in fs::read_dir(&generated_dir).expect("failed to read generated schema directory") {
-        let entry = entry.expect("failed to read generated schema entry");
-        let source_path = entry.path();
-
-        if !entry
-            .file_type()
-            .expect("failed to stat generated schema entry")
-            .is_file()
-        {
-            continue;
-        }
-
-        let destination_path = desktop_dir.join(entry.file_name());
-        let source_bytes = fs::read(&source_path).expect("failed to read generated schema file");
-        let needs_write = fs::read(&destination_path)
-            .map(|existing| existing != source_bytes)
-            .unwrap_or(true);
-
-        if needs_write {
-            fs::write(&destination_path, source_bytes)
-                .expect("failed to sync generated desktop schema file");
-        }
-    }
-}
-
+#[cfg(feature = "desktop")]
 fn emit_rerun_if_changed(repo_root: &Path, path: &Path) {
     let display_path = path.strip_prefix(repo_root).unwrap_or(path);
     println!("cargo:rerun-if-changed={}", display_path.display());
