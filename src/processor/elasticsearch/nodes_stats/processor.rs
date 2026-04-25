@@ -172,6 +172,7 @@ async fn process_node(node_id: String, mut node_stats: super::data::NodeStats, c
             role: node_metadata.as_ref().map(|node| node.role.clone()),
             tier: node_metadata.as_ref().map(|node| node.tier.clone()),
             tier_order: node_metadata.as_ref().map(|node| node.tier_order),
+            version: node_metadata.as_ref().and_then(|node| node.version.clone()),
         },
         shared_cache: lookup_shared_cache.by_id(node_id.as_str()).cloned(),
         metadata: ctx.node_stats_metadata.clone(),
@@ -367,4 +368,6 @@ struct NodeStatsEnvelope {
     tier: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     tier_order: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    version: Option<String>,
 }
