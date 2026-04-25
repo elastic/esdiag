@@ -151,11 +151,12 @@ impl ReceiveRaw for DirectoryReceiver {
                     let mut reader = BufReader::new(file);
                     let mut data = String::new();
                     reader.read_to_string(&mut data)?;
+                    let response_size_bytes = data.len() as u64;
                     return Ok(RawResponse {
-                        body: data.clone(),
+                        body: data,
                         status: 0,
                         response_time_ms: 0,
-                        response_size_bytes: data.len() as u64,
+                        response_size_bytes,
                     });
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {

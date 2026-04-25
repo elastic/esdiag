@@ -205,7 +205,9 @@ impl NodeStats {
         if node.attributes.is_some() {
             self.attributes = node.attributes.clone();
         }
-        self.host = node.host.clone();
+        if node.host.is_some() {
+            self.host = node.host.clone();
+        }
         self.name = node.name.clone();
         self.roles = node.roles.clone();
         self.os.enrich_from_lookup(node);
