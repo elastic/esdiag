@@ -8,7 +8,7 @@ The execution shape should not be specific to saved jobs. "Saved" only means a j
 
 ### 1. Keep save-job invocation-derived
 
-`--save-job <NAME>` attaches to existing workflow commands instead of introducing a parallel `job save` grammar.
+`--save-job <NAME>` attaches to existing collect/process commands instead of introducing a parallel `job save` grammar.
 
 Why:
 - avoids duplicate argument models for collect/process/send
@@ -25,21 +25,21 @@ Why:
 
 ### 3. Model executable jobs with typed actions
 
-Persisted jobs should store a strict executable shape instead of the broad UI workflow draft. `Job` contains collection input plus a `JobAction` enum such as collect-only, collect-and-upload, or collect-process-send.
+Persisted jobs should store a strict executable shape instead of the broad UI signal state. `Job` contains collection input plus a `JobAction` enum such as collect-only, collect-and-upload, or collect-process-send.
 
 Why:
 - removes invalid combinations like disabled processing plus unrelated send targets
 - avoids string sentinels such as `local_target == "directory"`
 - makes saved and one-shot execution use the same domain model
 
-### 4. Use JobBuilder as the boundary from draft inputs
+### 4. Use JobSignals as the UI boundary
 
-`JobBuilder` converts CLI arguments or UI workflow draft state into a valid `Job`. The builder validates required host/output/action choices and only exposes action methods after a collection source has been selected.
+`JobSignals` represents the Datastar signal payload for the web UI. `Job` conversion uses `JobBuilder` so UI signal payloads and CLI arguments share validation before producing an executable `Job`.
 
 Why:
 - keeps CLI/UI parsing flexible while storage and execution stay strict
 - makes missing required fields fail before persistence
-- follows the repository preference for typestate-style workflows
+- follows the repository preference for typestate-style builders
 
 ### 5. Keep bundle retention separate from final output
 
@@ -60,6 +60,6 @@ Why:
 
 ## Risks / Trade-offs
 
-- Job building intentionally supports only invocations that map to known-host collection workflows.
+- Job building intentionally supports only invocations that map to known-host collection jobs.
 - Process jobs require explicit output targets so execution has deterministic send behavior.
-- Users compose save behavior directly through CLI flags; this change does not add another workflow authoring surface.
+- Users compose save behavior directly through CLI flags; this change does not add another job authoring surface.

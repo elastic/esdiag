@@ -3,8 +3,8 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::{
-    ServerEvent, ServerState, ServiceLinkFormSignals, WorkflowRunSignals, job_feed_event, receiver_stream,
-    signal_event, template, template_event, workflow,
+    JobRunSignals, ServerEvent, ServerState, ServiceLinkFormSignals, job_feed_event, job_runner, receiver_stream,
+    signal_event, template, template_event,
 };
 use crate::{data::Uri, processor::new_job_id};
 use axum::{
@@ -190,9 +190,9 @@ pub(super) async fn run_service_link_form(
 
     tracing::debug!("Tokenized URI: {}", tokenized_uri);
     let job_id = new_job_id();
-    let job = super::WorkflowJob {
+    let job = super::JobRequest {
         identifiers: signals.metadata.clone(),
-        input: super::WorkflowInput::FromServiceLink {
+        input: super::JobInput::FromServiceLink {
             source: signals.service_link.filename.clone(),
             uri: tokenized_uri,
         },
@@ -202,16 +202,16 @@ pub(super) async fn run_service_link_form(
         let keystore_password = state.keystore_password().await;
         if let Some(password) = keystore_password {
             with_scoped_keystore_password(password, async move {
-                workflow::run_job(state, signals.into(), job_id, request_user, tx, job, false).await;
+                job_runner::run_job(state, signals.into(), job_id, request_user, tx, job, false).await;
             })
             .await;
         } else {
-            workflow::run_job(state, signals.into(), job_id, request_user, tx, job, false).await;
+            job_runner::run_job(state, signals.into(), job_id, request_user, tx, job, false).await;
         }
     }
     #[cfg(not(feature = "keystore"))]
     {
-        workflow::run_job(state, signals.into(), job_id, request_user, tx, job, false).await;
+        job_runner::run_job(state, signals.into(), job_id, request_user, tx, job, false).await;
     }
 }
 
@@ -221,7 +221,7 @@ async fn run_service_link_id(
     request_user: String,
     tx: mpsc::Sender<ServerEvent>,
 ) {
-    let job = match state.pop_workflow_job(job_id).await {
+    let job = match state.pop_job_request(job_id).await {
         Some(job) => job,
         None => {
             send_event(
@@ -237,14 +237,5 @@ async fn run_service_link_id(
             return;
         }
     };
-    workflow::run_job(
-        state,
-        WorkflowRunSignals::default(),
-        job_id,
-        request_user,
-        tx,
-        job,
-        true,
-    )
-    .await;
+    job_runner::run_job(state, JobRunSignals::default(), job_id, request_user, tx, job, true).await;
 }

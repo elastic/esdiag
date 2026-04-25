@@ -11,7 +11,7 @@ The system SHALL persist named job configurations to `~/.esdiag/jobs.yml` as a Y
 
 #### Scenario: Save new job
 - **WHEN** the user provides a non-empty name and clicks Save on the `/jobs` page
-- **THEN** the current workflow configuration and metadata are written to `~/.esdiag/jobs.yml` under that name
+- **THEN** the current job signals and metadata are written to `~/.esdiag/jobs.yml` under that name
 - **AND** the saved job appears in the left-panel job list without a page reload
 
 #### Scenario: Overwrite existing job
@@ -28,7 +28,7 @@ The system SHALL model executable diagnostic work as a `Job` independent of whet
 #### Scenario: Job contains only executable states
 - **WHEN** a job is constructed for collection, upload, or processing
 - **THEN** the job action is represented as an explicit typed variant
-- **AND** inactive workflow fields and string sentinels are not persisted
+- **AND** inactive builder fields and string sentinels are not persisted
 
 #### Scenario: Bundle retention is separate from final output
 - **WHEN** a job retains an intermediate diagnostic bundle in addition to producing its final action output
@@ -37,32 +37,32 @@ The system SHALL model executable diagnostic work as a `Job` independent of whet
 - **AND** collect actions require `output_dir`
 - **AND** process actions use `output_dir` only when the process output target is a directory
 
-#### Scenario: Builder rejects incomplete jobs
-- **WHEN** CLI or UI draft input lacks a required collect host, action, or output
-- **THEN** `JobBuilder` rejects the input before persistence or execution
+#### Scenario: Conversion rejects incomplete job signals
+- **WHEN** CLI or UI signal input lacks a required collect host, action, or output
+- **THEN** conversion rejects the input before persistence or execution
 
-#### Scenario: Saved job loads into existing UI draft state
+#### Scenario: Saved job loads into existing UI signal state
 - **WHEN** a persisted `Job` is loaded by the Jobs page
-- **THEN** the system projects it into the existing workflow draft signals for display and editing
+- **THEN** the system projects it into the existing job signals for display and editing
 - **AND** the persisted YAML remains the typed `Job` shape
 
 ### Requirement: Valid Collect Sources for Saved Jobs
-Only known-host collection SHALL be valid for saved jobs. Direct API key collection, direct uploads, and service link downloads either depend on non-persistent credentials or reference one-time paths/URIs and therefore are not repeatable. The Save button SHALL be disabled when the workflow is configured for any collect source other than known host.
+Only known-host collection SHALL be valid for saved jobs. Direct API key collection, direct uploads, and service link downloads either depend on non-persistent credentials or reference one-time paths/URIs and therefore are not repeatable. The Save button SHALL be disabled when the job signals are configured for any collect source other than known host.
 
-#### Scenario: Save disabled for upload workflow
-- **WHEN** the workflow collect source is set to direct file upload
+#### Scenario: Save disabled for upload job signals
+- **WHEN** the job signal collect source is set to direct file upload
 - **THEN** the Save button is disabled and cannot be clicked
 
-#### Scenario: Save disabled for service link workflow
-- **WHEN** the workflow collect source is set to a service link
+#### Scenario: Save disabled for service link job signals
+- **WHEN** the job signal collect source is set to a service link
 - **THEN** the Save button is disabled and cannot be clicked
 
-#### Scenario: Save enabled for known host workflow
-- **WHEN** the workflow collect source is set to a known host
+#### Scenario: Save enabled for known-host job signals
+- **WHEN** the job signal collect source is set to a known host
 - **THEN** the Save button is enabled
 
-#### Scenario: Save disabled for API key workflow
-- **WHEN** the workflow collect source is set to an API key
+#### Scenario: Save disabled for API key job signals
+- **WHEN** the job signal collect source is set to an API key
 - **THEN** the Save button is disabled and cannot be clicked
 
 ### Requirement: Saved Jobs Use Persisted Known Hosts
@@ -79,7 +79,7 @@ Saved jobs SHALL be created and executed only for known hosts that exist in `hos
 - **THEN** the system runs the saved job using that host configuration
 
 ### Requirement: Default Job Name
-The system SHALL derive a default job name from the current workflow configuration using the pattern `{host}-{action}-{destination}`, pre-populating the name field so the user can accept or override it before saving.
+The system SHALL derive a default job name from the current job signals using the pattern `{host}-{action}-{destination}`, pre-populating the name field so the user can accept or override it before saving.
 
 - **host**: the known host name from the collect stage
 - **action**: `collect` when only collecting; `process` when processing
@@ -91,19 +91,19 @@ The system SHALL derive a default job name from the current workflow configurati
   - process + write to local directory -> `directory`
 
 #### Scenario: Default name for collect-save
-- **WHEN** the workflow is configured to collect from host `prod` and save locally
+- **WHEN** the job signals are configured to collect from host `prod` and save locally
 - **THEN** the name field is pre-populated with `prod-collect-save`
 
 #### Scenario: Default name for collect-upload
-- **WHEN** the workflow is configured to collect from host `es_poc` and upload to the upload service
+- **WHEN** the job signals are configured to collect from host `es_poc` and upload to the upload service
 - **THEN** the name field is pre-populated with `es_poc-collect-upload`
 
 #### Scenario: Default name for process to remote host
-- **WHEN** the workflow is configured to process and send to remote host `monitoring`
+- **WHEN** the job signals are configured to process and send to remote host `monitoring`
 - **THEN** the name field is pre-populated with `prod-process-monitoring`
 
 #### Scenario: Default name for process to disk
-- **WHEN** the workflow is configured to process and write to a local directory
+- **WHEN** the job signals are configured to process and write to a local directory
 - **THEN** the name field is pre-populated with `prod-process-directory`
 
 #### Scenario: User overrides default name
@@ -132,13 +132,13 @@ The system SHALL expose a list of saved job names to the Job Builder web UI only
 - **THEN** the saved-job web listing endpoint is not mounted
 
 ### Requirement: Load Saved Job into UI
-The system SHALL restore a saved job's full workflow configuration into the Job Builder page signal state when `ServerPolicy` allows the `job-builder` web feature and the user selects it from the left panel.
+The system SHALL restore a saved job's full job signals into the Job Builder page signal state when `ServerPolicy` allows the `job-builder` web feature and the user selects it from the left panel.
 
-#### Scenario: Select saved job restores workflow
+#### Scenario: Select saved job restores signal state
 - **GIVEN** the web server is running in `user` mode
 - **AND** the `job-builder` web feature is enabled
 - **WHEN** the user selects a job name from the left panel
-- **THEN** the `/jobs` page is rendered with the saved job's workflow and identifiers pre-populated in the initial signals
+- **THEN** the `/jobs` page is rendered with the saved job's signal state and identifiers pre-populated in the initial signals
 - **AND** the user can immediately run or further modify the loaded configuration
 
 #### Scenario: Load unknown job name via URL
@@ -189,7 +189,7 @@ The system SHALL provide `esdiag job run <name>` as a CLI subcommand that loads 
 
 #### Scenario: Run saved job by name
 - **WHEN** the user runs `esdiag job run my-job`
-- **THEN** the system loads `my-job` from `~/.esdiag/jobs.yml` and executes the full workflow
+- **THEN** the system loads `my-job` from `~/.esdiag/jobs.yml` and executes the full job
 - **AND** exits with code 0 on success
 
 #### Scenario: Unknown job name

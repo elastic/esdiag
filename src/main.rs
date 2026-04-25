@@ -80,7 +80,7 @@ enum Commands {
         /// Explicitly exclude APIs
         #[arg(long, help = "Comma-separated list of APIs to exclude", value_delimiter = ',')]
         exclude: Option<Vec<String>>,
-        /// Override the embedded sources.yml for the detected Elasticsearch or Logstash workflow.
+        /// Override the embedded sources.yml for the detected Elasticsearch or Logstash job.
         /// The file must match the active product or the command fails before collection.
         #[arg(long)]
         sources: Option<String>,
@@ -169,7 +169,7 @@ enum Commands {
         /// Diagnostic report user
         #[arg(help = "Diagnostic report user", long, short)]
         user: Option<String>,
-        /// Override the embedded sources.yml for the detected Elasticsearch or Logstash workflow.
+        /// Override the embedded sources.yml for the detected Elasticsearch or Logstash job.
         /// The file must match the active product or the command fails before processing.
         #[arg(long)]
         sources: Option<String>,

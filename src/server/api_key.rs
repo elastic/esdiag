@@ -3,8 +3,8 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::{
-    ApiKeyFormSignals, ServerEvent, ServerState, WorkflowRunSignals, job_feed_event, receiver_stream, signal_event,
-    template, template_event, workflow,
+    ApiKeyFormSignals, JobRunSignals, ServerEvent, ServerState, job_feed_event, job_runner, receiver_stream,
+    signal_event, template, template_event,
 };
 use crate::{data::KnownHostBuilder, processor::new_job_id};
 use axum::{
@@ -145,12 +145,12 @@ pub(super) async fn run_api_key_form(
             return;
         }
     };
-    let job = super::WorkflowJob {
+    let job = super::JobRequest {
         identifiers: signals.metadata.clone(),
-        input: super::WorkflowInput::FromRemoteHost {
+        input: super::JobInput::FromRemoteHost {
             source: host.get_url().to_string(),
             host,
-            diagnostic_type: signals.workflow.collect.diagnostic_type.clone(),
+            diagnostic_type: signals.job.collect.diagnostic_type.clone(),
         },
     };
     let job_id = new_job_id();
@@ -159,21 +159,21 @@ pub(super) async fn run_api_key_form(
         let keystore_password = state.keystore_password().await;
         if let Some(password) = keystore_password {
             with_scoped_keystore_password(password, async move {
-                workflow::run_job(state, signals.into(), job_id, request_user, tx, job, false).await;
+                job_runner::run_job(state, signals.into(), job_id, request_user, tx, job, false).await;
             })
             .await;
         } else {
-            workflow::run_job(state, signals.into(), job_id, request_user, tx, job, false).await;
+            job_runner::run_job(state, signals.into(), job_id, request_user, tx, job, false).await;
         }
     }
     #[cfg(not(feature = "keystore"))]
     {
-        workflow::run_job(state, signals.into(), job_id, request_user, tx, job, false).await;
+        job_runner::run_job(state, signals.into(), job_id, request_user, tx, job, false).await;
     }
 }
 
 async fn run_api_key_id(state: Arc<ServerState>, job_id: u64, request_user: String, tx: mpsc::Sender<ServerEvent>) {
-    let job = match state.pop_workflow_job(job_id).await {
+    let job = match state.pop_job_request(job_id).await {
         Some(job) => job,
         None => {
             send_event(
@@ -189,16 +189,7 @@ async fn run_api_key_id(state: Arc<ServerState>, job_id: u64, request_user: Stri
             return;
         }
     };
-    workflow::run_job(
-        state,
-        WorkflowRunSignals::default(),
-        job_id,
-        request_user,
-        tx,
-        job,
-        true,
-    )
-    .await;
+    job_runner::run_job(state, JobRunSignals::default(), job_id, request_user, tx, job, true).await;
 }
 
 #[cfg(all(test, feature = "keystore"))]

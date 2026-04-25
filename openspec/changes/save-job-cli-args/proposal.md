@@ -7,7 +7,7 @@ Operators need a direct CLI way to persist reusable saved jobs from commands the
 - Add `--save-job <NAME>` to `esdiag collect` and `esdiag process`.
 - Persist a named `Job` before command execution by deriving an executable job from the effective invocation.
 - Introduce a typed `Job`/`JobBuilder` domain model so saved jobs and one-shot executions can share valid execution shapes.
-- Treat `SavedJobs` as YAML persistence for named `Job` values rather than a separate saved-job workflow model.
+- Treat `SavedJobs` as YAML persistence for named `Job` values rather than a separate saved-job signal model.
 - Reuse shared job validation and persistence rules so CLI and server paths enforce the same constraints.
 - Reject `--save-job` on incompatible invocation shapes with clear non-zero failures.
 

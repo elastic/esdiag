@@ -323,7 +323,7 @@ mod tests {
     use crate::{
         data::{HostRole, KnownHost, Product, Settings, Uri, authenticate},
         exporter::Exporter,
-        server::{RuntimeMode, ServerPolicy, ServerEvent, SettingsUpdateSignals, test_server_state},
+        server::{RuntimeMode, ServerEvent, ServerPolicy, SettingsUpdateSignals, test_server_state},
     };
     use axum::{
         extract::State,

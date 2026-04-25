@@ -11,23 +11,23 @@
         data-signals:archive.ready_token="''"
         data-signals:archive.status="'idle'"
         data-signals:archive.error="''"
-        data-signals:workflow.collect.mode="'upload'"
-        data-signals:workflow.collect.source="'upload-file'"
-        data-signals:workflow.collect.save="false"
-        data-signals:_pending_workflow_action="''"
+        data-signals:job.collect.mode="'upload'"
+        data-signals:job.collect.source="'upload-file'"
+        data-signals:job.collect.save="false"
+        data-signals:_pending_job_action="''"
         data-signals:_service_link_curl="''"
     >
         <div
             hidden
             data-effect="
-                if (!$keystore.locked && $_pending_workflow_action) {
+                if (!$keystore.locked && $_pending_job_action) {
                     const buttonId = {
                         'api-key': 'es-api-key-button',
                         'service-link': 'service-link-button',
                         'upload-process': 'main-upload-process-button',
-                    }[$_pending_workflow_action];
+                    }[$_pending_job_action];
                     if (buttonId) {
-                        $_pending_workflow_action = '';
+                        $_pending_job_action = '';
                         document.getElementById(buttonId)?.click();
                     }
                 }
@@ -98,7 +98,7 @@
                         id="main-upload-process-button"
                         type="button"
                         style="display: none"
-                        data-on:click="$loading = true; $message = 'Processing diagnostic...'; @post('/upload/process', {openWhenHidden: true, filterSignals: {include: /^(metadata|archive|workflow|file_upload)(\.|$)/}})"
+                        data-on:click="$loading = true; $message = 'Processing diagnostic...'; @post('/upload/process', {openWhenHidden: true, filterSignals: {include: /^(metadata|archive|job|file_upload)(\.|$)/}})"
                     ></button>
                     <script>
                         // File upload handling
@@ -321,7 +321,7 @@
                         class="button"
                         type="button"
                         value="Process"
-                        data-on:click="{% if can_use_keystore %}if ($keystore.locked && $output.secure) { $_pending_workflow_action = 'service-link'; $message = 'Unlock keystore to continue...'; @get('/keystore/modal/process', {filterSignals: {exclude: /.*/}}); } else { $loading = true; $message = 'Connecting to Elastic Upload service...'; @post('/service_link', {filterSignals: {include: /^(metadata|archive|workflow|service_link)(\.|$)/}}); }{% else %}$loading = true; $message = 'Connecting to Elastic Upload service...'; @post('/service_link', {filterSignals: {include: /^(metadata|archive|workflow|service_link)(\.|$)/}});{% endif %}"
+                        data-on:click="{% if can_use_keystore %}if ($keystore.locked && $output.secure) { $_pending_job_action = 'service-link'; $message = 'Unlock keystore to continue...'; @get('/keystore/modal/process', {filterSignals: {exclude: /.*/}}); } else { $loading = true; $message = 'Connecting to Elastic Upload service...'; @post('/service_link', {filterSignals: {include: /^(metadata|archive|job|service_link)(\.|$)/}}); }{% else %}$loading = true; $message = 'Connecting to Elastic Upload service...'; @post('/service_link', {filterSignals: {include: /^(metadata|archive|job|service_link)(\.|$)/}});{% endif %}"
                         data-attr:disabled="$loading || !$service_link.url || !$service_link.token"
                     />
                     <script>
@@ -385,7 +385,7 @@
                         class="button"
                         type="button"
                         value="Process"
-                        data-on:click="{% if can_use_keystore %}if ($keystore.locked && $output.secure) { $_pending_workflow_action = 'api-key'; $message = 'Unlock keystore to continue...'; @get('/keystore/modal/process', {filterSignals: {exclude: /.*/}}); } else { $loading = true; $message = 'Connecting with API key...'; @post('/api_key', {filterSignals: {include: /^(metadata|archive|workflow|es_api)(\.|$)/}}); }{% else %}$loading = true; $message = 'Connecting with API key...'; @post('/api_key', {filterSignals: {include: /^(metadata|archive|workflow|es_api)(\.|$)/}});{% endif %}"
+                        data-on:click="{% if can_use_keystore %}if ($keystore.locked && $output.secure) { $_pending_job_action = 'api-key'; $message = 'Unlock keystore to continue...'; @get('/keystore/modal/process', {filterSignals: {exclude: /.*/}}); } else { $loading = true; $message = 'Connecting with API key...'; @post('/api_key', {filterSignals: {include: /^(metadata|archive|job|es_api)(\.|$)/}}); }{% else %}$loading = true; $message = 'Connecting with API key...'; @post('/api_key', {filterSignals: {include: /^(metadata|archive|job|es_api)(\.|$)/}});{% endif %}"
                         data-attr:disabled="$loading || !$es_api.url || !$es_api.key"
                     />
                 </form>
@@ -485,7 +485,7 @@
     {% else if let Some(upload_id) = upload_id %}
     <div
         id="job-{{ upload_id }}"
-        data-init="$loading = true; $file_upload.job_id={{ upload_id|json }}; $message = 'Processing file upload {{ upload_id }}'; @post('/upload/process', {filterSignals: {include: /^(archive|metadata|workflow|file_upload)(\.|$)/}})"
+        data-init="$loading = true; $file_upload.job_id={{ upload_id|json }}; $message = 'Processing file upload {{ upload_id }}'; @post('/upload/process', {filterSignals: {include: /^(archive|metadata|job|file_upload)(\.|$)/}})"
         data-signals:_job_id="true"
         class="status-box history-item status-processing"
     >

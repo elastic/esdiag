@@ -6,12 +6,12 @@
 
 ## 2. Shared Saved-Job Persistence
 
-- [x] 2.1 Add shared `save_job` helper in `src/job.rs` for name/workflow validation and persistence.
-- [x] 2.2 Reuse existing workflow compatibility checks and add explicit name validation.
-- [x] 2.3 Replace the flattened saved-job workflow payload with a shared typed `Job` domain model.
-- [x] 2.4 Add a typestate-style `JobBuilder` that converts CLI/UI draft inputs into executable jobs.
+- [x] 2.1 Add shared `save_job` helper in `src/job.rs` for name/job validation and persistence.
+- [x] 2.2 Reuse existing job compatibility checks and add explicit name validation.
+- [x] 2.3 Replace the flattened saved-job signal payload with a shared typed `Job` domain model.
+- [x] 2.4 Add a typestate-style `JobBuilder` that converts CLI/UI signal inputs into executable jobs.
 - [x] 2.5 Update saved-job persistence to store named `Job` values in `jobs.yml`.
-- [x] 2.6 Update saved-job execution/listing and web adapters to consume `Job` instead of `Workflow`.
+- [x] 2.6 Update saved-job execution/listing and web adapters to consume `Job`, using `JobSignals` as UI form state.
 
 ## 3. Documentation and Verification
 

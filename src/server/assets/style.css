@@ -1185,7 +1185,7 @@ tab-bar > button:hover {
     color: var(--color-primary-shade);
 }
 
-content.workflow-content {
+content.job-content {
     max-width: min(1500px, calc(100vw - var(--size-xl)));
 }
 
@@ -1603,11 +1603,11 @@ panel > :is(h1, h2, h3, h4, h5, h6):first-child {
     margin-top: 0;
 }
 
-.workflow-panel {
+.job-panel {
     padding: var(--size-l);
 }
 
-workflow-grid {
+job-grid {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: var(--size-l);
@@ -1627,7 +1627,7 @@ card {
     overflow: visible;
 }
 
-card.workflow-card {
+card.job-card {
     min-height: calc(100svh - var(--size-header) - 8rem);
     max-height: calc(100svh - var(--size-header) - 8rem);
 }
@@ -1745,7 +1745,7 @@ card > footer > button:focus-visible {
     outline-offset: 2px;
 }
 
-.workflow-card-footer {
+.job-card-footer {
     gap: var(--size);
 }
 
@@ -1787,7 +1787,7 @@ card > footer > button:focus-visible {
     flex: 0 0 auto;
 }
 
-.workflow-step-segment {
+.job-step-segment {
     text-transform: lowercase;
 }
 
@@ -3220,22 +3220,22 @@ button:disabled {
     margin-top: var(--size);
 }
 
-.workflow-results {
+.job-results {
     display: flex;
     flex-direction: column;
 }
 
-content:is(.workflow-content, .jobs-content) .status-box {
+content:is(.job-content, .jobs-content) .status-box {
     max-width: none;
     margin: var(--size-s) 0;
 }
 
 @media (max-width: 1200px) {
-    workflow-grid {
+    job-grid {
         grid-template-columns: 1fr;
     }
 
-    card.workflow-card {
+    card.job-card {
         min-height: 0;
         max-height: none;
     }

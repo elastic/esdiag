@@ -1,6 +1,6 @@
 use super::ServerState;
 use crate::data::{
-    CollectSource, HostRole, Job, KnownHost, Workflow, load_saved_jobs_async, save_saved_jobs, with_saved_jobs_async,
+    CollectSource, HostRole, Job, JobSignals, KnownHost, load_saved_jobs_async, save_saved_jobs, with_saved_jobs_async,
 };
 use crate::processor::Identifiers;
 use askama::Template;
@@ -102,7 +102,7 @@ pub async fn list_saved_jobs(signals: Option<ReadSignals<ListSavedJobsSignals>>)
 pub struct SaveJobSignals {
     pub job_name: String,
     pub metadata: Identifiers,
-    pub workflow: Workflow,
+    pub job: JobSignals,
 }
 
 pub async fn save_job(signals: ReadSignals<SaveJobSignals>) -> Response {
@@ -115,7 +115,7 @@ pub async fn save_job(signals: ReadSignals<SaveJobSignals>) -> Response {
         return (StatusCode::BAD_REQUEST, err).into_response();
     }
 
-    let saved_job = match Job::from_workflow(signals.workflow, signals.metadata) {
+    let saved_job = match Job::from_signals(signals.job, signals.metadata) {
         Ok(job) => job,
         Err(err) => return (StatusCode::BAD_REQUEST, err.to_string()).into_response(),
     };
@@ -139,15 +139,15 @@ pub async fn save_job(signals: ReadSignals<SaveJobSignals>) -> Response {
 }
 
 fn validate_saved_job(signals: &SaveJobSignals) -> Result<(), &'static str> {
-    if signals.workflow.collect.mode != crate::data::CollectMode::Collect {
+    if signals.job.collect.mode != crate::data::CollectMode::Collect {
         return Err("Saved jobs require collect mode.");
     }
 
-    if signals.workflow.collect.source != CollectSource::KnownHost {
+    if signals.job.collect.source != CollectSource::KnownHost {
         return Err("Saved jobs require a known-host collection source.");
     }
 
-    let host_name = signals.workflow.collect.known_host.trim();
+    let host_name = signals.job.collect.known_host.trim();
     if host_name.is_empty() {
         return Err("Saved jobs require a selected known host.");
     }
@@ -233,14 +233,14 @@ mod tests {
     }
 
     fn save_signals(collect_source: CollectSource, known_host: &str) -> SaveJobSignals {
-        let mut workflow = Workflow::default();
-        workflow.collect.source = collect_source;
-        workflow.collect.known_host = known_host.to_string();
+        let mut job = JobSignals::default();
+        job.collect.source = collect_source;
+        job.collect.known_host = known_host.to_string();
 
         SaveJobSignals {
             job_name: "test-job".to_string(),
             metadata: Identifiers::default(),
-            workflow,
+            job,
         }
     }
 
@@ -312,7 +312,7 @@ mod tests {
         let _tmp = setup_env();
 
         let mut signals = save_signals(CollectSource::KnownHost, "elasticsearch-local");
-        signals.workflow.collect.mode = crate::data::CollectMode::Upload;
+        signals.job.collect.mode = crate::data::CollectMode::Upload;
 
         assert_eq!(
             validate_saved_job(&signals).expect_err("upload mode should be rejected"),

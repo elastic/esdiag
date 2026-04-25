@@ -470,7 +470,7 @@ mod tests {
     use crate::{
         data::{KnownHost, Settings, authenticate},
         exporter::Exporter,
-        server::{RuntimeMode, ServerPolicy, ServerEvent, ServerState, Stats, test_server_state},
+        server::{RuntimeMode, ServerEvent, ServerPolicy, ServerState, Stats, test_server_state},
     };
     use axum::{
         extract::{Form, State},
@@ -515,7 +515,7 @@ mod tests {
         Arc::new(ServerState {
             exporter: Arc::new(RwLock::new(Exporter::default())),
             kibana_url: Arc::new(RwLock::new(String::new())),
-            workflow_jobs: Arc::new(RwLock::new(HashMap::new())),
+            job_requests: Arc::new(RwLock::new(HashMap::new())),
             retained_bundles: Arc::new(RwLock::new(HashMap::new())),
             runtime_mode,
             server_policy: ServerPolicy::new(runtime_mode).expect("test server policy"),

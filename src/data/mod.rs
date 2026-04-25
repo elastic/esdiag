@@ -16,8 +16,6 @@ pub mod saved_jobs;
 pub mod settings;
 /// Universal resource identifiers
 mod uri;
-/// Workflow configuration types
-pub mod workflow;
 
 pub use auth::{Auth, AuthType};
 pub(crate) use keystore::list_secret_entries;
@@ -33,14 +31,12 @@ pub(crate) use known_host::write_hosts_yml_for_tests;
 pub use known_host::{ElasticCloud, HostRole, KnownHost, KnownHostBuilder, KnownHostCliUpdate};
 pub use product::Product;
 pub use saved_jobs::{
-    Job, JobAction, JobBuilder, JobCollect, JobOutput, JobProcessSelection, NeedsAction, NeedsCollect, SavedJobs,
+    CollectMode, CollectSource, Job, JobAction, JobBuilder, JobCollect, JobOutput, JobProcessSelection, JobSignals,
+    JobSignalsCollect, JobSignalsProcess, JobSignalsSend, NeedsAction, NeedsCollect, ProcessMode, SavedJobs, SendMode,
     load_saved_jobs, load_saved_jobs_async, save_saved_jobs, with_saved_jobs_async,
 };
 pub use settings::Settings;
 pub use uri::Uri;
-pub use workflow::{
-    CollectMode, CollectSource, CollectStage, ProcessMode, ProcessStage, SendMode, SendStage, Workflow,
-};
 
 use crate::env;
 use eyre::Result;

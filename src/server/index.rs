@@ -9,13 +9,13 @@ use crate::data::{Job, load_saved_jobs_async};
 use crate::exporter::Exporter;
 use crate::processor::api::ApiResolver;
 use askama::Template;
+#[cfg(feature = "keystore")]
+use axum::response::Response;
 use axum::{
     extract::{Query, State},
     http::{HeaderMap, StatusCode},
     response::{Html, IntoResponse},
 };
-#[cfg(feature = "keystore")]
-use axum::response::Response;
 use serde::{Deserialize, Deserializer, Serialize, de};
 use std::{path::PathBuf, str::FromStr, sync::Arc};
 
@@ -150,7 +150,7 @@ pub async fn advanced_page(
 
     let exporter = { state.exporter.read().await.clone() };
     let send_defaults = classify_configured_exporter(&exporter);
-    let workflow_hosts = workflow_host_options(&state);
+    let job_hosts = job_host_options(&state);
     let default_save_dir = default_downloads_dir().display().to_string();
     let process_options_json = serde_json::to_string(&ApiResolver::processing_catalog().unwrap_or_default())
         .unwrap_or_else(|_| "{}".to_string());
@@ -161,8 +161,8 @@ pub async fn advanced_page(
         auth_header,
         debug: tracing::enabled!(tracing::Level::DEBUG),
         desktop: cfg!(feature = "desktop"),
-        collect_hosts: workflow_hosts.collect_hosts,
-        collect_secure_hosts_json: serde_json::to_string(&workflow_hosts.collect_secure_hosts)
+        collect_hosts: job_hosts.collect_hosts,
+        collect_secure_hosts_json: serde_json::to_string(&job_hosts.collect_secure_hosts)
             .unwrap_or_else(|_| "[]".to_string()),
         configured_local_path: send_defaults.local_path,
         configured_remote_target: send_defaults.remote_target,
@@ -174,10 +174,10 @@ pub async fn advanced_page(
         key_id: params.key_id,
         link_id: params.link_id,
         process_options_json,
-        send_secure_hosts_json: serde_json::to_string(&workflow_hosts.send_secure_hosts)
+        send_secure_hosts_json: serde_json::to_string(&job_hosts.send_secure_hosts)
             .unwrap_or_else(|_| "[]".to_string()),
-        send_local_hosts: workflow_hosts.send_local_hosts,
-        send_remote_hosts: workflow_hosts.send_remote_hosts,
+        send_local_hosts: job_hosts.send_local_hosts,
+        send_remote_hosts: job_hosts.send_remote_hosts,
         upload_id: params.upload_id,
         stats: state.get_stats_as_signals().await,
         user: user_email,
@@ -237,7 +237,7 @@ async fn build_jobs_page(
 
     let exporter = { state.exporter.read().await.clone() };
     let send_defaults = classify_configured_exporter(&exporter);
-    let workflow_hosts = workflow_host_options(&state);
+    let job_hosts = job_host_options(&state);
     let default_save_dir = default_downloads_dir().display().to_string();
     let process_options_json = serde_json::to_string(&ApiResolver::processing_catalog().unwrap_or_default())
         .unwrap_or_else(|_| "{}".to_string());
@@ -263,7 +263,7 @@ async fn build_jobs_page(
 
     let stale_host = saved_job.as_ref().is_some_and(|job| {
         let h = job.collect_host();
-        !h.is_empty() && !workflow_hosts.collect_hosts.iter().any(|host| host == h)
+        !h.is_empty() && !job_hosts.collect_hosts.iter().any(|host| host == h)
     });
     let hide_saved_job = job_not_found || job_load_error.is_some();
 
@@ -287,8 +287,8 @@ async fn build_jobs_page(
         auth_header,
         debug: tracing::enabled!(tracing::Level::DEBUG),
         desktop: cfg!(feature = "desktop"),
-        collect_hosts: workflow_hosts.collect_hosts,
-        collect_secure_hosts_json: serde_json::to_string(&workflow_hosts.collect_secure_hosts)
+        collect_hosts: job_hosts.collect_hosts,
+        collect_secure_hosts_json: serde_json::to_string(&job_hosts.collect_secure_hosts)
             .unwrap_or_else(|_| "[]".to_string()),
         configured_local_path: send_defaults.local_path,
         configured_remote_target: send_defaults.remote_target,
@@ -297,10 +297,10 @@ async fn build_jobs_page(
         key_id: params.as_ref().and_then(|p| p.key_id),
         link_id: params.as_ref().and_then(|p| p.link_id),
         process_options_json,
-        send_secure_hosts_json: serde_json::to_string(&workflow_hosts.send_secure_hosts)
+        send_secure_hosts_json: serde_json::to_string(&job_hosts.send_secure_hosts)
             .unwrap_or_else(|_| "[]".to_string()),
-        send_local_hosts: workflow_hosts.send_local_hosts,
-        send_remote_hosts: workflow_hosts.send_remote_hosts,
+        send_local_hosts: job_hosts.send_local_hosts,
+        send_remote_hosts: job_hosts.send_remote_hosts,
         upload_id: params.as_ref().and_then(|p| p.upload_id),
         stats: state.get_stats_as_signals().await,
         user: user_email,
@@ -373,31 +373,30 @@ struct SavedJobDefaults {
 impl SavedJobDefaults {
     fn from_job(job: Option<&Job>, send_defaults: &SendDefaults, default_save_dir: &str) -> Self {
         if let Some(job) = job {
-            let workflow = job.to_workflow();
+            let signals = job.to_signals();
             Self {
-                collect_mode: serde_json::to_string(&workflow.collect.mode)
-                    .unwrap_or_else(|_| "\"upload\"".to_string()),
-                collect_source: serde_json::to_string(&workflow.collect.source)
+                collect_mode: serde_json::to_string(&signals.collect.mode).unwrap_or_else(|_| "\"upload\"".to_string()),
+                collect_source: serde_json::to_string(&signals.collect.source)
                     .unwrap_or_else(|_| "\"upload-file\"".to_string()),
-                known_host: workflow.collect.known_host.clone(),
-                diagnostic_type: workflow.collect.diagnostic_type.clone(),
-                collect_save: workflow.collect.save,
-                save_dir: if workflow.collect.save_dir.is_empty() {
+                known_host: signals.collect.known_host.clone(),
+                diagnostic_type: signals.collect.diagnostic_type.clone(),
+                collect_save: signals.collect.save,
+                save_dir: if signals.collect.save_dir.is_empty() {
                     default_save_dir.to_string()
                 } else {
-                    workflow.collect.save_dir.clone()
+                    signals.collect.save_dir.clone()
                 },
-                process_mode: serde_json::to_string(&workflow.process.mode)
+                process_mode: serde_json::to_string(&signals.process.mode)
                     .unwrap_or_else(|_| "\"process\"".to_string()),
-                process_enabled: workflow.process.enabled,
-                process_product: workflow.process.product.clone(),
-                process_diagnostic_type: workflow.process.diagnostic_type.clone(),
-                process_selected: workflow.process.selected.clone(),
-                send_mode: serde_json::to_string(&workflow.send.mode)
+                process_enabled: signals.process.enabled,
+                process_product: signals.process.product.clone(),
+                process_diagnostic_type: signals.process.diagnostic_type.clone(),
+                process_selected: signals.process.selected.clone(),
+                send_mode: serde_json::to_string(&signals.send.mode)
                     .unwrap_or_else(|_| format!("\"{}\"", send_defaults.mode)),
-                remote_target: workflow.send.remote_target.clone(),
-                local_target: workflow.send.local_target.clone(),
-                local_directory: workflow.send.local_directory.clone(),
+                remote_target: signals.send.remote_target.clone(),
+                local_target: signals.send.local_target.clone(),
+                local_directory: signals.send.local_directory.clone(),
                 user: job.identifiers.user.clone().unwrap_or_default(),
                 account: job.identifiers.account.clone().unwrap_or_default(),
                 case_number: job.identifiers.case_number.clone().unwrap_or_default(),
@@ -437,7 +436,7 @@ struct SendDefaults {
     remote_target_default: String,
 }
 
-struct WorkflowHostOptions {
+struct JobHostOptions {
     collect_hosts: Vec<String>,
     collect_secure_hosts: Vec<String>,
     send_remote_hosts: Vec<String>,
@@ -472,9 +471,9 @@ fn classify_configured_exporter(exporter: &Exporter) -> SendDefaults {
     }
 }
 
-fn workflow_host_options(state: &Arc<ServerState>) -> WorkflowHostOptions {
+fn job_host_options(state: &Arc<ServerState>) -> JobHostOptions {
     if !state.server_policy.allows_host_management() {
-        return WorkflowHostOptions {
+        return JobHostOptions {
             collect_hosts: Vec::new(),
             collect_secure_hosts: Vec::new(),
             send_remote_hosts: Vec::new(),
@@ -509,7 +508,7 @@ fn workflow_host_options(state: &Arc<ServerState>) -> WorkflowHostOptions {
         }
     }
 
-    WorkflowHostOptions {
+    JobHostOptions {
         collect_hosts,
         collect_secure_hosts,
         send_remote_hosts,
@@ -539,7 +538,7 @@ fn default_downloads_dir() -> PathBuf {
 
 #[cfg(test)]
 mod tests {
-    use super::workflow_host_options;
+    use super::job_host_options;
     use crate::{
         data::{HostRole, KnownHost, KnownHostBuilder, Product},
         server::test_server_state,
@@ -593,12 +592,12 @@ mod tests {
     }
 
     #[test]
-    fn workflow_host_options_only_offer_elasticsearch_send_hosts() {
+    fn job_host_options_only_offer_elasticsearch_send_hosts() {
         let _guard = env_lock().lock().expect("env lock");
         let _tmp = setup_hosts();
         let state = test_server_state();
 
-        let options = workflow_host_options(&state);
+        let options = job_host_options(&state);
 
         assert_eq!(options.send_remote_hosts.len(), 2);
         assert!(options.send_remote_hosts.contains(&"es-remote".to_string()));

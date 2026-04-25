@@ -4,18 +4,18 @@
             type="button"
             class="close-button"
             aria-label="Close keystore unlock"
-            data-on:click="$_pending_workflow_action = ''; document.getElementById('keystore-process-unlock-modal')?.remove()"
+            data-on:click="$_pending_job_action = ''; document.getElementById('keystore-process-unlock-modal')?.remove()"
         >
             <icon-x></icon-x>
         </button>
         <h2>Unlock Keystore</h2>
-        <p>Unlock the keystore to continue with the selected secure workflow action or output target.</p>
+        <p>Unlock the keystore to continue with the selected secure job action or output target.</p>
         <form
             id="keystore-process-unlock-form"
             data-on:submit__prevent="{
-                const workflow = typeof $workflow === 'undefined' ? null : $workflow;
+                const jobDraft = typeof $job === 'undefined' ? null : $job;
                 const archive = typeof $archive === 'undefined' ? null : $archive;
-                if (workflow && archive && workflow.collect.save && !(workflow.collect.mode === 'upload' && workflow.collect.source === 'upload-file')) {
+                if (jobDraft && archive && jobDraft.collect.save && !(jobDraft.collect.mode === 'upload' && jobDraft.collect.source === 'upload-file')) {
                     const token = archive.download_token || crypto.randomUUID();
                     $archive.download_token = token;
                     $archive.pending_token = token;
@@ -45,7 +45,7 @@
                 <button
                     type="button"
                     class="button is-neutral"
-                    data-on:click="$_pending_workflow_action = ''; document.getElementById('keystore-process-unlock-modal')?.remove()"
+                    data-on:click="$_pending_job_action = ''; document.getElementById('keystore-process-unlock-modal')?.remove()"
                 >
                     Cancel
                 </button>

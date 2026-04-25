@@ -1,10 +1,10 @@
 <content
     id="main-content"
-    class="workflow-content"
+    class="job-content"
     data-signals:loading="false"
     data-signals:processing="false"
     data-signals:_file_selected="false"
-    data-signals:_pending_workflow_action="''"
+    data-signals:_pending_job_action="''"
     data-signals:_service_link_curl="''"
     data-signals:archive.download_token="''"
     data-signals:archive.pending_token="''"
@@ -15,34 +15,34 @@
     data-signals:_send_secure_hosts="{{ send_secure_hosts_json }}"
     data-on:datastar-fetch-error="$loading = false; $processing = false; $message = evt.detail.error || 'Request failed'"
     data-on:datastar-fetch-retries-failed="$loading = false; $processing = false"
-    data-signals:workflow.collect.mode="'upload'"
-    data-signals:workflow.collect.source="'upload-file'"
-    data-signals:workflow.collect.known_host="''"
-    data-signals:workflow.collect.diagnostic_type="'standard'"
-    data-signals:workflow.collect.save="false"
-    data-signals:workflow.collect.save_dir="'{{ default_save_dir }}'"
-    data-signals:workflow.process.mode="'process'"
-    data-signals:workflow.process.enabled="true"
-    data-signals:workflow.process.product="'elasticsearch'"
-    data-signals:workflow.process.diagnostic_type="'standard'"
-    data-signals:workflow.process.selected="''"
-    data-signals:workflow.send.mode="'{{ initial_send_mode }}'"
-    data-signals:workflow.send.remote_target="'{{ initial_remote_target }}'"
-    data-signals:workflow.send.local_target="'{{ initial_local_target }}'"
-    data-signals:workflow.send.local_directory="'{% if configured_local_path != "" %}{{ configured_local_path }}{% else %}{{ default_save_dir }}{% endif %}'"
+    data-signals:job.collect.mode="'upload'"
+    data-signals:job.collect.source="'upload-file'"
+    data-signals:job.collect.known_host="''"
+    data-signals:job.collect.diagnostic_type="'standard'"
+    data-signals:job.collect.save="false"
+    data-signals:job.collect.save_dir="'{{ default_save_dir }}'"
+    data-signals:job.process.mode="'process'"
+    data-signals:job.process.enabled="true"
+    data-signals:job.process.product="'elasticsearch'"
+    data-signals:job.process.diagnostic_type="'standard'"
+    data-signals:job.process.selected="''"
+    data-signals:job.send.mode="'{{ initial_send_mode }}'"
+    data-signals:job.send.remote_target="'{{ initial_remote_target }}'"
+    data-signals:job.send.local_target="'{{ initial_local_target }}'"
+    data-signals:job.send.local_directory="'{% if configured_local_path != "" %}{{ configured_local_path }}{% else %}{{ default_save_dir }}{% endif %}'"
 >
     <div
         hidden
         data-effect="
-            if (!$keystore.locked && $_pending_workflow_action) {
+            if (!$keystore.locked && $_pending_job_action) {
                 const buttonId = {
                     'known-host': 'known-host-button',
                     'api-key': 'es-api-key-button',
                     'service-link': 'service-link-button',
-                    'upload-process': 'workflow-upload-process-button',
-                }[$_pending_workflow_action];
+                    'upload-process': 'job-upload-process-button',
+                }[$_pending_job_action];
                 if (buttonId) {
-                    $_pending_workflow_action = '';
+                    $_pending_job_action = '';
                     document.getElementById(buttonId)?.click();
                 }
             }
@@ -51,7 +51,7 @@
     <div
         hidden
         data-effect="
-            if ($workflow.collect.save && !$archive.download_token && !$loading && !($workflow.collect.mode === 'upload' && $workflow.collect.source === 'upload-file')) {
+            if ($job.collect.save && !$archive.download_token && !$loading && !($job.collect.mode === 'upload' && $job.collect.source === 'upload-file')) {
                 $archive.download_token = crypto.randomUUID();
             }
         "
@@ -60,7 +60,7 @@
         hidden
         data-effect="
             if ($archive.ready_token && $archive.pending_token && $archive.ready_token === $archive.pending_token && $archive.status === 'ready') {
-                window.esdiagStartRetainedDownload?.({ token: $archive.ready_token, anchorId: 'workflow-download-anchor' });
+                window.esdiagStartRetainedDownload?.({ token: $archive.ready_token, anchorId: 'job-download-anchor' });
                 $archive.pending_token = '';
                 $archive.ready_token = '';
                 $archive.status = 'idle';
@@ -73,35 +73,35 @@
             }
         "
     ></div>
-    <workflow-grid>
-        <card class="workflow-card">
+    <job-grid>
+        <card class="job-card">
             <card-badge>Collect</card-badge>
             <card-body>
             <tab-links class="stage-options">
                 <button
                     class="tab active"
                     data-on:click="{
-                        $workflow.collect.mode = 'upload',
-                        $workflow.collect.source = $workflow.collect.source === 'service-link' ? 'service-link' : 'upload-file',
-                        $workflow.collect.source !== 'service-link' ? ($workflow.collect.save = false, $archive.download_token = '') : null
+                        $job.collect.mode = 'upload',
+                        $job.collect.source = $job.collect.source === 'service-link' ? 'service-link' : 'upload-file',
+                        $job.collect.source !== 'service-link' ? ($job.collect.save = false, $archive.download_token = '') : null
                     }"
-                    data-class:active="$workflow.collect.mode === 'upload'"
+                    data-class:active="$job.collect.mode === 'upload'"
                 >
                     Existing
                 </button>
                 <button
                     class="tab"
                     data-on:click="{
-                        $workflow.collect.mode = 'collect',
-                        $workflow.collect.source = {% if runtime_mode == "user" %}'known-host'{% else %}'api-key'{% endif %}
+                        $job.collect.mode = 'collect',
+                        $job.collect.source = {% if runtime_mode == "user" %}'known-host'{% else %}'api-key'{% endif %}
                     }"
-                    data-class:active="$workflow.collect.mode === 'collect'"
+                    data-class:active="$job.collect.mode === 'collect'"
                 >
                     New
                 </button>
             </tab-links>
 
-            <div data-show="$workflow.collect.mode === 'collect'">
+            <div data-show="$job.collect.mode === 'collect'">
                 <button-group
                     class="stage-options nested"
                     role="group"
@@ -110,16 +110,16 @@
                     {% if runtime_mode == "user" %}
                     <button
                         type="button"
-                        data-on:click="$workflow.collect.source = 'known-host'"
-                        data-attr:aria-pressed="$workflow.collect.source === 'known-host' ? 'true' : 'false'"
+                        data-on:click="$job.collect.source = 'known-host'"
+                        data-attr:aria-pressed="$job.collect.source === 'known-host' ? 'true' : 'false'"
                     >
                         Known Host
                     </button>
                     {% endif %}
                     <button
                         type="button"
-                        data-on:click="$workflow.collect.source = 'api-key'"
-                        data-attr:aria-pressed="$workflow.collect.source === 'api-key' ? 'true' : 'false'"
+                        data-on:click="$job.collect.source = 'api-key'"
+                        data-attr:aria-pressed="$job.collect.source === 'api-key' ? 'true' : 'false'"
                     >
                         API Key
                     </button>
@@ -128,7 +128,7 @@
                 {% if runtime_mode == "user" %}
                 <form
                     id="known-host-form"
-                    data-show="$workflow.collect.source === 'known-host'"
+                    data-show="$job.collect.source === 'known-host'"
                     style="display: none"
                 >
                     <info-text class="margin-after">Collect from a saved known host.</info-text>
@@ -137,7 +137,7 @@
                         <select
                             id="collect-known-host"
                             class="form-input"
-                            data-bind:workflow.collect.known_host
+                            data-bind:job.collect.known_host
                         >
                             <option value="">Select a known host</option>
                             {% for host in collect_hosts %}
@@ -150,7 +150,7 @@
                         <select
                             id="collect-diagnostic-type"
                             class="form-input"
-                            data-bind:workflow.collect.diagnostic_type
+                            data-bind:job.collect.diagnostic_type
                         >
                             <option value="minimal">minimal</option>
                             <option value="light">light</option>
@@ -158,14 +158,14 @@
                             <option value="support">support</option>
                         </select>
                     </input-group>
-                    <info-text>Saved-host collection wiring is handled in the workflow implementation layer.</info-text>
+                    <info-text>Saved-host collection wiring is handled in the job implementation layer.</info-text>
                     <input
                         id="known-host-button"
                         class="button"
                         type="button"
                         value="Collect"
-                        data-on:click="{% if can_use_keystore %}if ($keystore.locked && (($_collect_secure_hosts.includes($workflow.collect.known_host)) || ($workflow.send.mode === 'remote' && $_send_secure_hosts.includes($workflow.send.remote_target)) || ($workflow.send.mode === 'local' && $_send_secure_hosts.includes($workflow.send.local_target)))) { $_pending_workflow_action = 'known-host'; $message = 'Unlock keystore to continue...'; @get('/keystore/modal/process', {filterSignals: {exclude: /.*/}}); } else { $loading = true; $message = 'Collecting from known host...'; @post('/known_host', {filterSignals: {include: /^(metadata|archive|workflow)(\.|$)/}}); }{% else %}$loading = true; $message = 'Collecting from known host...'; @post('/known_host', {filterSignals: {include: /^(metadata|archive|workflow)(\.|$)/}});{% endif %}"
-                        data-attr:disabled="$loading || !$workflow.collect.known_host"
+                        data-on:click="{% if can_use_keystore %}if ($keystore.locked && (($_collect_secure_hosts.includes($job.collect.known_host)) || ($job.send.mode === 'remote' && $_send_secure_hosts.includes($job.send.remote_target)) || ($job.send.mode === 'local' && $_send_secure_hosts.includes($job.send.local_target)))) { $_pending_job_action = 'known-host'; $message = 'Unlock keystore to continue...'; @get('/keystore/modal/process', {filterSignals: {exclude: /.*/}}); } else { $loading = true; $message = 'Collecting from known host...'; @post('/known_host', {filterSignals: {include: /^(metadata|archive|job)(\.|$)/}}); }{% else %}$loading = true; $message = 'Collecting from known host...'; @post('/known_host', {filterSignals: {include: /^(metadata|archive|job)(\.|$)/}});{% endif %}"
+                        data-attr:disabled="$loading || !$job.collect.known_host"
                         style="display: none"
                     />
                 </form>
@@ -173,7 +173,7 @@
 
                 <form
                     id="api-key-form"
-                    data-show="$workflow.collect.source === 'api-key'"
+                    data-show="$job.collect.source === 'api-key'"
                     style="{% if runtime_mode != "user" %}display: block{% else %}display: none{% endif %}"
                 >
                     <info-text class="margin-after">Collect directly from a remote Elasticsearch API.</info-text>
@@ -209,7 +209,7 @@
                         <select
                             id="collect-api-type"
                             class="form-input"
-                            data-bind:workflow.collect.diagnostic_type
+                            data-bind:job.collect.diagnostic_type
                         >
                             <option value="minimal">minimal</option>
                             <option value="light">light</option>
@@ -222,7 +222,7 @@
                         class="button"
                         type="button"
                         value="Collect"
-                        data-on:click="{% if can_use_keystore %}if ($keystore.locked && (($workflow.send.mode === 'remote' && $_send_secure_hosts.includes($workflow.send.remote_target)) || ($workflow.send.mode === 'local' && $_send_secure_hosts.includes($workflow.send.local_target)))) { $_pending_workflow_action = 'api-key'; $message = 'Unlock keystore to continue...'; @get('/keystore/modal/process', {filterSignals: {exclude: /.*/}}); } else { $loading = true; $message = 'Connecting with API key...'; @post('/api_key', {filterSignals: {include: /^(metadata|archive|workflow|es_api)(\.|$)/}}); }{% else %}$loading = true; $message = 'Connecting with API key...'; @post('/api_key', {filterSignals: {include: /^(metadata|archive|workflow|es_api)(\.|$)/}});{% endif %}"
+                        data-on:click="{% if can_use_keystore %}if ($keystore.locked && (($job.send.mode === 'remote' && $_send_secure_hosts.includes($job.send.remote_target)) || ($job.send.mode === 'local' && $_send_secure_hosts.includes($job.send.local_target)))) { $_pending_job_action = 'api-key'; $message = 'Unlock keystore to continue...'; @get('/keystore/modal/process', {filterSignals: {exclude: /.*/}}); } else { $loading = true; $message = 'Connecting with API key...'; @post('/api_key', {filterSignals: {include: /^(metadata|archive|job|es_api)(\.|$)/}}); }{% else %}$loading = true; $message = 'Connecting with API key...'; @post('/api_key', {filterSignals: {include: /^(metadata|archive|job|es_api)(\.|$)/}});{% endif %}"
                         data-attr:disabled="$loading || !$es_api.url || !$es_api.key"
                         style="display: none"
                     />
@@ -230,7 +230,7 @@
 
             </div>
 
-            <div data-show="$workflow.collect.mode === 'upload'" style="display: none">
+            <div data-show="$job.collect.mode === 'upload'" style="display: none">
                 <button-group
                     class="stage-options nested"
                     role="group"
@@ -238,15 +238,15 @@
                 >
                     <button
                         type="button"
-                        data-on:click="{ $workflow.collect.source = 'upload-file', $workflow.collect.save = false, $archive.download_token = '' }"
-                        data-attr:aria-pressed="$workflow.collect.source === 'upload-file' ? 'true' : 'false'"
+                        data-on:click="{ $job.collect.source = 'upload-file', $job.collect.save = false, $archive.download_token = '' }"
+                        data-attr:aria-pressed="$job.collect.source === 'upload-file' ? 'true' : 'false'"
                     >
                         Local File
                     </button>
                     <button
                         type="button"
-                        data-on:click="$workflow.collect.source = 'service-link'"
-                        data-attr:aria-pressed="$workflow.collect.source === 'service-link' ? 'true' : 'false'"
+                        data-on:click="$job.collect.source = 'service-link'"
+                        data-attr:aria-pressed="$job.collect.source === 'service-link' ? 'true' : 'false'"
                     >
                         Service Link
                     </button>
@@ -254,7 +254,7 @@
 
                 <form
                     id="upload-form"
-                    data-show="$workflow.collect.source === 'upload-file'"
+                    data-show="$job.collect.source === 'upload-file'"
                     data-signals:file_upload.job_id="0"
                     enctype="multipart/form-data"
                     style="display: none"
@@ -302,17 +302,17 @@
                         style="display: none"
                     />
                     <button
-                        id="workflow-upload-process-button"
+                        id="job-upload-process-button"
                         type="button"
                         style="display: none"
-                        data-on:click="$loading = true; $message = 'Processing diagnostic...'; @post('/upload/process', {openWhenHidden: true, filterSignals: {include: /^(metadata|archive|workflow|file_upload)(\.|$)/}})"
+                        data-on:click="$loading = true; $message = 'Processing diagnostic...'; @post('/upload/process', {openWhenHidden: true, filterSignals: {include: /^(metadata|archive|job|file_upload)(\.|$)/}})"
                     ></button>
                 </form>
 
                 <form
                     id="service-link-form"
                     enctype="multipart/form-data"
-                    data-show="$workflow.collect.source === 'service-link'"
+                    data-show="$job.collect.source === 'service-link'"
                     style="display: none"
                 >
                     <info-text class="margin-after">
@@ -390,7 +390,7 @@
                         class="button"
                         type="button"
                         value="Load"
-                        data-on:click="{% if can_use_keystore %}if ($keystore.locked && (($workflow.send.mode === 'remote' && $_send_secure_hosts.includes($workflow.send.remote_target)) || ($workflow.send.mode === 'local' && $_send_secure_hosts.includes($workflow.send.local_target)))) { $_pending_workflow_action = 'service-link'; $message = 'Unlock keystore to continue...'; @get('/keystore/modal/process', {filterSignals: {exclude: /.*/}}); } else { $loading = true; $message = 'Connecting to Elastic Upload service...'; @post('/service_link', {filterSignals: {include: /^(metadata|archive|workflow|service_link)(\.|$)/}}); }{% else %}$loading = true; $message = 'Connecting to Elastic Upload service...'; @post('/service_link', {filterSignals: {include: /^(metadata|archive|workflow|service_link)(\.|$)/}});{% endif %}"
+                        data-on:click="{% if can_use_keystore %}if ($keystore.locked && (($job.send.mode === 'remote' && $_send_secure_hosts.includes($job.send.remote_target)) || ($job.send.mode === 'local' && $_send_secure_hosts.includes($job.send.local_target)))) { $_pending_job_action = 'service-link'; $message = 'Unlock keystore to continue...'; @get('/keystore/modal/process', {filterSignals: {exclude: /.*/}}); } else { $loading = true; $message = 'Connecting to Elastic Upload service...'; @post('/service_link', {filterSignals: {include: /^(metadata|archive|job|service_link)(\.|$)/}}); }{% else %}$loading = true; $message = 'Connecting to Elastic Upload service...'; @post('/service_link', {filterSignals: {include: /^(metadata|archive|job|service_link)(\.|$)/}});{% endif %}"
                         data-attr:disabled="$loading || !$service_link.url || !$service_link.token"
                         style="display: none"
                     />
@@ -544,18 +544,18 @@
             </div>
 
             </card-body>
-            <footer class="workflow-card-footer">
+            <footer class="job-card-footer">
                 <choice-row class="footer-choice">
                     <input
                         id="collect-save-toggle"
                         type="checkbox"
                         class="switch"
-                        data-bind:workflow.collect.save
+                        data-bind:job.collect.save
                         data-on:change="if (evt.target.checked) { $archive.download_token = $archive.download_token || crypto.randomUUID(); } else { $archive.download_token = ''; }"
-                        data-attr:disabled="$workflow.collect.mode === 'upload' && $workflow.collect.source === 'upload-file'"
+                        data-attr:disabled="$job.collect.mode === 'upload' && $job.collect.source === 'upload-file'"
                     />
                     <switch-clip>
-                        <switch-glyphs data-class="{'switch-on': $workflow.collect.save, 'switch-off': !$workflow.collect.save}">
+                        <switch-glyphs data-class="{'switch-on': $job.collect.save, 'switch-off': !$job.collect.save}">
                             <svg viewBox="0 0 50 20" aria-hidden="true" focusable="false">
                                 <path class="glyph" d="M2 9 L6 13 L13 6"></path>
                                 <circle class="glyph filled" cx="26" cy="10" r="7"></circle>
@@ -568,20 +568,20 @@
             </footer>
         </card>
 
-        <card class="workflow-card" data-class:disabled="!$workflow.process.enabled">
+        <card class="job-card" data-class:disabled="!$job.process.enabled">
             <card-badge>Process</card-badge>
             <card-body>
-            <div data-show="$workflow.process.enabled">
+            <div data-show="$job.process.enabled">
                 <input-group>
                     <label for="process-product" class="form-label">Product</label>
-                    <select id="process-product" class="form-input" data-bind:workflow.process.product>
+                    <select id="process-product" class="form-input" data-bind:job.process.product>
                         <option value="elasticsearch">Elasticsearch</option>
                         <option value="logstash">Logstash</option>
                     </select>
                 </input-group>
                 <input-group>
                     <label for="process-type" class="form-label">Diagnostic Processors</label>
-                    <select id="process-type" class="form-input" data-bind:workflow.process.diagnostic_type>
+                    <select id="process-type" class="form-input" data-bind:job.process.diagnostic_type>
                         <option value="minimal">minimal</option>
                         <option value="light">light</option>
                         <option value="standard">standard</option>
@@ -593,7 +593,7 @@
                     <details
                         id="process-custom-processors"
                         class="processor-accordion"
-                        data-show="$workflow.process.diagnostic_type === 'custom'"
+                        data-show="$job.process.diagnostic_type === 'custom'"
                         data-preserve-attr="open"
                         style="display: none"
                         open
@@ -605,29 +605,29 @@
                         </advanced-panel>
                     </details>
                 </input-group>
-                <input type="hidden" id="process-selected-options" data-bind:workflow.process.selected />
+                <input type="hidden" id="process-selected-options" data-bind:job.process.selected />
             </div>
 
-            <div data-show="!$workflow.process.enabled" style="display: none">
+            <div data-show="!$job.process.enabled" style="display: none">
                 <info-text>Forward preserves the raw diagnostic archive without processing it into documents.</info-text>
             </div>
             </card-body>
-            <footer class="workflow-card-footer">
+            <footer class="job-card-footer">
                 <choice-row class="footer-choice">
                     <input
                         id="process-enabled-toggle"
                         type="checkbox"
                         class="switch"
-                        data-bind:workflow.process.enabled
+                        data-bind:job.process.enabled
                         data-on:change="{
-                            $workflow.process.mode = $workflow.process.enabled ? 'process' : 'forward',
-                            !$workflow.process.enabled && $workflow.send.mode === 'local' && $workflow.collect.source !== 'upload-file'
-                                ? $workflow.collect.save = true
+                            $job.process.mode = $job.process.enabled ? 'process' : 'forward',
+                            !$job.process.enabled && $job.send.mode === 'local' && $job.collect.source !== 'upload-file'
+                                ? $job.collect.save = true
                                 : null
                         }"
                     />
                     <switch-clip>
-                        <switch-glyphs data-class="{'switch-on': $workflow.process.enabled, 'switch-off': !$workflow.process.enabled}">
+                        <switch-glyphs data-class="{'switch-on': $job.process.enabled, 'switch-off': !$job.process.enabled}">
                             <svg viewBox="0 0 50 20" aria-hidden="true" focusable="false">
                                 <path class="glyph" d="M2 9 L6 13 L13 6"></path>
                                 <circle class="glyph filled" cx="26" cy="10" r="7"></circle>
@@ -640,38 +640,38 @@
             </footer>
         </card>
 
-        <card class="workflow-card">
+        <card class="job-card">
             <card-badge>Send</card-badge>
             <card-body>
             <tab-links class="stage-options">
                 <button
                     class="tab active"
-                    data-on:click="$workflow.send.mode = 'remote'"
-                    data-class:active="$workflow.send.mode === 'remote'"
+                    data-on:click="$job.send.mode = 'remote'"
+                    data-class:active="$job.send.mode === 'remote'"
                 >
                     Remote
                 </button>
                 <button
                     class="tab"
                     data-on:click="{
-                        $workflow.send.mode = 'local',
-                        !$workflow.process.enabled && $workflow.collect.source !== 'upload-file'
-                            ? $workflow.collect.save = true
+                        $job.send.mode = 'local',
+                        !$job.process.enabled && $job.collect.source !== 'upload-file'
+                            ? $job.collect.save = true
                             : null
                     }"
-                    data-class:active="$workflow.send.mode === 'local'"
+                    data-class:active="$job.send.mode === 'local'"
                 >
                     Local
                 </button>
             </tab-links>
 
-            <div data-show="$workflow.send.mode === 'remote'">
-                <input-group data-show="$workflow.process.enabled">
+            <div data-show="$job.send.mode === 'remote'">
+                <input-group data-show="$job.process.enabled">
                     <label for="send-remote-target" class="form-label">Diagnostic Cluster</label>
                     <select
                         id="send-remote-target"
                         class="form-input"
-                        data-bind:workflow.send.remote_target
+                        data-bind:job.send.remote_target
                     >
                         {% if configured_remote_target != "" %}
                         <option value="{{ configured_remote_target }}">{{ configured_remote_target }}</option>
@@ -681,32 +681,32 @@
                         {% endfor %}
                     </select>
                 </input-group>
-                <input-group data-show="!$workflow.process.enabled" style="display: none">
+                <input-group data-show="!$job.process.enabled" style="display: none">
                     <label for="send-forward-upload" class="form-label">Upload ID</label>
                     <input
                         id="send-forward-upload"
                         type="text"
                         class="form-input"
-                        data-bind:workflow.send.remote_target
+                        data-bind:job.send.remote_target
                         placeholder="00000000-0000-0000-0000-000000000000"
                     />
                 </input-group>
-                <info-text data-show="$workflow.process.enabled">
+                <info-text data-show="$job.process.enabled">
                     Remote send uses the configured output target for processed diagnostics.
                 </info-text>
-                <info-text data-show="!$workflow.process.enabled" style="display: none">
+                <info-text data-show="!$job.process.enabled" style="display: none">
                     Upload the archive to the Elastic Upload Service:
                 </info-text>
                 <a href="https://upload.elastic.co" target="_blank">https://upload.elastic.co</a>
             </div>
 
-            <div data-show="$workflow.send.mode === 'local'" style="display: none">
-                <input-group data-show="$workflow.process.enabled">
+            <div data-show="$job.send.mode === 'local'" style="display: none">
+                <input-group data-show="$job.process.enabled">
                     <label for="send-local-target" class="form-label">Local Target</label>
                     <select
                         id="send-local-target"
                         class="form-input"
-                        data-bind:workflow.send.local_target
+                        data-bind:job.send.local_target
                     >
                         <option value="">Select local target</option>
                         {% for host in send_local_hosts %}
@@ -715,11 +715,11 @@
                         <option value="directory">{% if configured_local_path != "" %}Configured local path{% else %}Local directory{% endif %}</option>
                     </select>
                 </input-group>
-                <info-text data-show="$workflow.process.enabled">
+                <info-text data-show="$job.process.enabled">
                     Local send supports localhost diagnostic clusters or local directory output.
                 </info-text>
                 <input-group
-                    data-show="$workflow.process.enabled && $workflow.send.local_target === 'directory'"
+                    data-show="$job.process.enabled && $job.send.local_target === 'directory'"
                     style="display: none"
                 >
                     <label for="send-local-directory" class="form-label">Local Directory</label>
@@ -727,16 +727,16 @@
                         id="send-local-directory"
                         type="text"
                         class="form-input"
-                        data-bind:workflow.send.local_directory
+                        data-bind:job.send.local_directory
                         placeholder="{% if configured_local_path != "" %}{{ configured_local_path }}{% else %}{{ default_save_dir }}{% endif %}"
                     />
                 </input-group>
-                <info-text data-show="!$workflow.process.enabled" style="display: none">
+                <info-text data-show="!$job.process.enabled" style="display: none">
                     Download the archive from&nbsp;<strong>Collect</strong>.
                 </info-text>
             </div>
             <info-text
-                data-show="!$workflow.process.enabled && $workflow.send.mode === 'local' && $workflow.collect.mode === 'upload' && $workflow.collect.source === 'upload-file'"
+                data-show="!$job.process.enabled && $job.send.mode === 'local' && $job.collect.mode === 'upload' && $job.collect.source === 'upload-file'"
                 style="display: none"
             >
                 Existing local files stay in place. Choose `Remote` or use a save-capable collect source to create a new saved archive.
@@ -793,29 +793,29 @@
                 />
             </input-group>
             </card-body>
-            <footer class="workflow-card-footer send-card-footer">
+            <footer class="job-card-footer send-card-footer">
                 <button
-                    id="workflow-go-button"
+                    id="job-go-button"
                     type="button"
                     data-on:click="{
-                        const shouldDownload = $workflow.collect.save && !($workflow.collect.mode === 'upload' && $workflow.collect.source === 'upload-file');
+                        const shouldDownload = $job.collect.save && !($job.collect.mode === 'upload' && $job.collect.source === 'upload-file');
                         const secureSendTarget =
-                            ($workflow.send.mode === 'remote' && $_send_secure_hosts.includes($workflow.send.remote_target)) ||
-                            ($workflow.send.mode === 'local' && $_send_secure_hosts.includes($workflow.send.local_target));
+                            ($job.send.mode === 'remote' && $_send_secure_hosts.includes($job.send.remote_target)) ||
+                            ($job.send.mode === 'local' && $_send_secure_hosts.includes($job.send.local_target));
                         const secureCollectTarget =
-                            $workflow.collect.mode === 'collect' &&
-                            $workflow.collect.source === 'known-host' &&
-                            $_collect_secure_hosts.includes($workflow.collect.known_host);
+                            $job.collect.mode === 'collect' &&
+                            $job.collect.source === 'known-host' &&
+                            $_collect_secure_hosts.includes($job.collect.known_host);
                         const needsUnlock = {% if can_use_keystore %}$keystore.locked && (secureCollectTarget || secureSendTarget){% else %}false{% endif %};
                         {% if can_use_keystore %}
                         if (needsUnlock) {
                             evt.preventDefault();
-                            $_pending_workflow_action =
-                                $workflow.collect.mode === 'upload' && $workflow.collect.source === 'upload-file'
+                            $_pending_job_action =
+                                $job.collect.mode === 'upload' && $job.collect.source === 'upload-file'
                                     ? 'upload-process'
-                                    : $workflow.collect.mode === 'upload' && $workflow.collect.source === 'service-link'
+                                    : $job.collect.mode === 'upload' && $job.collect.source === 'service-link'
                                         ? 'service-link'
-                                        : $workflow.collect.mode === 'collect' && $workflow.collect.source === 'api-key'
+                                        : $job.collect.mode === 'collect' && $job.collect.source === 'api-key'
                                             ? 'api-key'
                                             : 'known-host';
                             $message = 'Unlock keystore to continue...';
@@ -832,16 +832,16 @@
                                 $archive.error = '';
                             };
                             requestDownload();
-                            $workflow.collect.mode === 'upload' && $workflow.collect.source === 'upload-file'
+                            $job.collect.mode === 'upload' && $job.collect.source === 'upload-file'
                                 ? document.getElementById('upload-form').requestSubmit()
                                 : null;
-                            $workflow.collect.mode === 'upload' && $workflow.collect.source === 'service-link'
+                            $job.collect.mode === 'upload' && $job.collect.source === 'service-link'
                                 ? document.getElementById('service-link-button').click()
                                 : null;
-                            $workflow.collect.mode === 'collect' && $workflow.collect.source === 'api-key'
+                            $job.collect.mode === 'collect' && $job.collect.source === 'api-key'
                                 ? document.getElementById('es-api-key-button').click()
                                 : null;
-                            $workflow.collect.mode === 'collect' && $workflow.collect.source === 'known-host'
+                            $job.collect.mode === 'collect' && $job.collect.source === 'known-host'
                                 ? document.getElementById('known-host-button')?.click()
                                 : null;
                         {% if can_use_keystore %}
@@ -850,24 +850,24 @@
                     }"
                     data-attr:disabled="$loading || $processing || !((
                         (
-                            ($workflow.collect.mode === 'upload' && $workflow.collect.source === 'upload-file' && $_file_selected) ||
-                            ($workflow.collect.mode === 'upload' && $workflow.collect.source === 'service-link' && $service_link.url !== '' && $service_link.token !== '' && $service_link.filename !== '') ||
-                            ($workflow.collect.mode === 'collect' && $workflow.collect.source === 'api-key' && $es_api.url !== '' && $es_api.key !== '') ||
-                            ($workflow.collect.mode === 'collect' && $workflow.collect.source === 'known-host' && $workflow.collect.known_host !== '')
+                            ($job.collect.mode === 'upload' && $job.collect.source === 'upload-file' && $_file_selected) ||
+                            ($job.collect.mode === 'upload' && $job.collect.source === 'service-link' && $service_link.url !== '' && $service_link.token !== '' && $service_link.filename !== '') ||
+                            ($job.collect.mode === 'collect' && $job.collect.source === 'api-key' && $es_api.url !== '' && $es_api.key !== '') ||
+                            ($job.collect.mode === 'collect' && $job.collect.source === 'known-host' && $job.collect.known_host !== '')
                         )
                     ) && (
                         (
-                            $workflow.process.enabled &&
+                            $job.process.enabled &&
                             (
-                                ($workflow.send.mode === 'remote' && $workflow.send.remote_target !== '') ||
-                                ($workflow.send.mode === 'local' && $workflow.send.local_target !== '' && ($workflow.send.local_target !== 'directory' || $workflow.send.local_directory !== ''))
+                                ($job.send.mode === 'remote' && $job.send.remote_target !== '') ||
+                                ($job.send.mode === 'local' && $job.send.local_target !== '' && ($job.send.local_target !== 'directory' || $job.send.local_directory !== ''))
                             )
                         ) ||
                         (
-                            !$workflow.process.enabled &&
+                            !$job.process.enabled &&
                             (
-                                ($workflow.send.mode === 'local' && $workflow.collect.save && !($workflow.collect.mode === 'upload' && $workflow.collect.source === 'upload-file')) ||
-                                ($workflow.send.mode === 'remote' && $workflow.send.remote_target !== '')
+                                ($job.send.mode === 'local' && $job.collect.save && !($job.collect.mode === 'upload' && $job.collect.source === 'upload-file')) ||
+                                ($job.send.mode === 'remote' && $job.send.remote_target !== '')
                             )
                         )
                     ))"
@@ -875,12 +875,12 @@
                     Go
                 </button>
                 <span
-                    id="workflow-step-label"
+                    id="job-step-label"
                     class="footer-status"
                 >
-                    <span class="workflow-step-segment">collect</span>
+                    <span class="job-step-segment">collect</span>
                     <svg
-                        data-show="$workflow.collect.save && !($workflow.collect.mode === 'upload' && $workflow.collect.source === 'upload-file')"
+                        data-show="$job.collect.save && !($job.collect.mode === 'upload' && $job.collect.source === 'upload-file')"
                         viewBox="0 0 16 16"
                         aria-hidden="true"
                         focusable="false"
@@ -889,14 +889,14 @@
                         <path d="M6 3L11 8L6 13"></path>
                     </svg>
                     <span
-                        class="workflow-step-segment"
-                        data-show="$workflow.collect.save && !($workflow.collect.mode === 'upload' && $workflow.collect.source === 'upload-file')"
+                        class="job-step-segment"
+                        data-show="$job.collect.save && !($job.collect.mode === 'upload' && $job.collect.source === 'upload-file')"
                         style="display: none"
                     >
                         download
                     </span>
                     <svg
-                        data-show="$workflow.process.enabled"
+                        data-show="$job.process.enabled"
                         viewBox="0 0 16 16"
                         aria-hidden="true"
                         focusable="false"
@@ -905,14 +905,14 @@
                         <path d="M6 3L11 8L6 13"></path>
                     </svg>
                     <span
-                        class="workflow-step-segment"
-                        data-show="$workflow.process.enabled"
+                        class="job-step-segment"
+                        data-show="$job.process.enabled"
                         style="display: none"
                     >
                         process
                     </span>
                     <svg
-                        data-show="$workflow.process.enabled || $workflow.send.mode === 'remote'"
+                        data-show="$job.process.enabled || $job.send.mode === 'remote'"
                         viewBox="0 0 16 16"
                         aria-hidden="true"
                         focusable="false"
@@ -921,8 +921,8 @@
                         <path d="M6 3L11 8L6 13"></path>
                     </svg>
                     <span
-                        class="workflow-step-segment"
-                        data-show="$workflow.process.enabled || $workflow.send.mode === 'remote'"
+                        class="job-step-segment"
+                        data-show="$job.process.enabled || $job.send.mode === 'remote'"
                         style="display: none"
                     >
                         send
@@ -930,9 +930,9 @@
                 </span>
             </footer>
         </card>
-    </workflow-grid>
+    </job-grid>
 
-    <workflow-results>
+    <job-results>
     <div id="current-status" data-show="$loading && $_job_id === '' " class="status-box loading" style="display: none">
         <div class="spinner"></div>
         <span id="status-message" data-text="$message">Uploading...</span>
@@ -941,7 +941,7 @@
     {% if let Some(key_id) = key_id %}
     <div
         id="job-{{ key_id }}"
-        data-init="$loading = true; $workflow.collect.mode='collect'; $workflow.collect.source='api-key'; $message = 'Processing api key {{ key_id }}'; @post('/api_key/{{ key_id }}', {filterSignals: {exclude: /.*/}})"
+        data-init="$loading = true; $job.collect.mode='collect'; $job.collect.source='api-key'; $message = 'Processing api key {{ key_id }}'; @post('/api_key/{{ key_id }}', {filterSignals: {exclude: /.*/}})"
         data-signals:_job_id="true"
         class="status-box history-item status-processing"
     >
@@ -951,7 +951,7 @@
     {% else if let Some(link_id) = link_id %}
     <div
         id="job-{{ link_id }}"
-        data-init="$loading = true; $workflow.collect.mode='upload'; $workflow.collect.source='service-link'; $message = 'Forwarding service link {{ link_id }}'; @post('/service_link/{{ link_id }}', {filterSignals: {exclude: /.*/}})"
+        data-init="$loading = true; $job.collect.mode='upload'; $job.collect.source='service-link'; $message = 'Forwarding service link {{ link_id }}'; @post('/service_link/{{ link_id }}', {filterSignals: {exclude: /.*/}})"
         data-signals:_job_id="true"
         class="status-box history-item status-processing"
     >
@@ -961,7 +961,7 @@
     {% else if let Some(upload_id) = upload_id %}
     <div
         id="job-{{ upload_id }}"
-        data-init="$loading = true; $workflow.collect.mode='upload'; $workflow.collect.source='upload-file'; $file_upload.job_id={{ upload_id|json }}; $message = 'Processing file upload {{ upload_id }}'; @post('/upload/process', {filterSignals: {include: /^(metadata|archive|workflow|file_upload)(\.|$)/}})"
+        data-init="$loading = true; $job.collect.mode='upload'; $job.collect.source='upload-file'; $file_upload.job_id={{ upload_id|json }}; $message = 'Processing file upload {{ upload_id }}'; @post('/upload/process', {filterSignals: {include: /^(metadata|archive|job|file_upload)(\.|$)/}})"
         data-signals:_job_id="true"
         class="status-box history-item status-processing"
     >
@@ -969,9 +969,9 @@
         Loading file upload {{ upload_id }}
     </div>
     {% endif %}
-    </workflow-results>
+    </job-results>
     <a
-        id="workflow-download-anchor"
+        id="job-download-anchor"
         href=""
         data-attr:href="$archive.download_token ? `/advanced/download/${$archive.download_token}` : null"
         aria-hidden="true"

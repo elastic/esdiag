@@ -11,7 +11,7 @@ use std::{
 };
 use tokio::{sync::Mutex, task};
 
-use super::{CollectMode, CollectSource, HostRole, KnownHost, ProcessMode, SendMode, Uri, Workflow};
+use super::{HostRole, KnownHost, Uri};
 use crate::processor::Identifiers;
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -67,7 +67,9 @@ pub struct JobProcessSelection {
     pub selected: Vec<String>,
 }
 
+#[derive(Clone)]
 pub struct NeedsCollect;
+#[derive(Clone)]
 pub struct NeedsAction;
 
 pub struct JobBuilder<State> {
@@ -78,12 +80,141 @@ pub struct JobBuilder<State> {
 
 pub type SavedJobs = IndexMap<String, Job>;
 
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(default)]
+pub struct JobSignals {
+    pub collect: JobSignalsCollect,
+    pub process: JobSignalsProcess,
+    pub send: JobSignalsSend,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+pub struct JobSignalsCollect {
+    pub mode: CollectMode,
+    pub source: CollectSource,
+    #[serde(default)]
+    pub known_host: String,
+    #[serde(default = "default_diagnostic_type")]
+    pub diagnostic_type: String,
+    #[serde(default)]
+    pub save: bool,
+    #[serde(default)]
+    pub save_dir: String,
+}
+
+impl Default for JobSignalsCollect {
+    fn default() -> Self {
+        Self {
+            mode: CollectMode::Collect,
+            source: CollectSource::KnownHost,
+            known_host: String::new(),
+            diagnostic_type: default_diagnostic_type(),
+            save: false,
+            save_dir: String::new(),
+        }
+    }
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+pub struct JobSignalsProcess {
+    pub mode: ProcessMode,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default = "default_process_product")]
+    pub product: String,
+    #[serde(default = "default_diagnostic_type")]
+    pub diagnostic_type: String,
+    #[serde(default)]
+    pub advanced: bool,
+    #[serde(default)]
+    pub selected: String,
+}
+
+impl Default for JobSignalsProcess {
+    fn default() -> Self {
+        Self {
+            mode: ProcessMode::Process,
+            enabled: true,
+            product: default_process_product(),
+            diagnostic_type: default_diagnostic_type(),
+            advanced: false,
+            selected: String::new(),
+        }
+    }
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+pub struct JobSignalsSend {
+    pub mode: SendMode,
+    #[serde(default)]
+    pub remote_target: String,
+    #[serde(default)]
+    pub local_target: String,
+    #[serde(default)]
+    pub local_directory: String,
+}
+
+impl Default for JobSignalsSend {
+    fn default() -> Self {
+        Self {
+            mode: SendMode::Remote,
+            remote_target: String::new(),
+            local_target: String::new(),
+            local_directory: String::new(),
+        }
+    }
+}
+
+impl Default for JobSignals {
+    fn default() -> Self {
+        Self {
+            collect: JobSignalsCollect::default(),
+            process: JobSignalsProcess::default(),
+            send: JobSignalsSend::default(),
+        }
+    }
+}
+
 fn default_process_product() -> String {
     "elasticsearch".to_string()
 }
 
 fn default_diagnostic_type() -> String {
     "standard".to_string()
+}
+
+fn default_true() -> bool {
+    true
+}
+
+#[derive(Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum CollectMode {
+    Collect,
+    Upload,
+}
+
+#[derive(Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum CollectSource {
+    KnownHost,
+    ApiKey,
+    ServiceLink,
+    UploadFile,
+}
+
+#[derive(Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum ProcessMode {
+    Process,
+    Forward,
+}
+
+#[derive(Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum SendMode {
+    Remote,
+    Local,
 }
 
 impl Job {
@@ -125,14 +256,14 @@ impl Job {
         hosts
     }
 
-    pub fn to_workflow(&self) -> Workflow {
-        let mut workflow = Workflow::default();
-        workflow.collect.mode = CollectMode::Collect;
-        workflow.collect.source = CollectSource::KnownHost;
-        workflow.collect.known_host = self.collect.host.clone();
-        workflow.collect.diagnostic_type = self.collect.diagnostic_type.clone();
-        workflow.collect.save = self.collect.save_dir.is_some();
-        workflow.collect.save_dir = self
+    pub fn to_signals(&self) -> JobSignals {
+        let mut signals = JobSignals::default();
+        signals.collect.mode = CollectMode::Collect;
+        signals.collect.source = CollectSource::KnownHost;
+        signals.collect.known_host = self.collect.host.clone();
+        signals.collect.diagnostic_type = self.collect.diagnostic_type.clone();
+        signals.collect.save = self.collect.save_dir.is_some();
+        signals.collect.save_dir = self
             .collect
             .save_dir
             .as_ref()
@@ -141,60 +272,50 @@ impl Job {
 
         match &self.action {
             JobAction::Collect { output_dir } => {
-                workflow.process.enabled = false;
-                workflow.process.mode = ProcessMode::Forward;
-                workflow.send.mode = SendMode::Local;
-                workflow.send.local_target = "directory".to_string();
-                workflow.send.local_directory = output_dir.display().to_string();
+                signals.process.enabled = false;
+                signals.process.mode = ProcessMode::Forward;
+                signals.send.mode = SendMode::Local;
+                signals.send.local_target = "directory".to_string();
+                signals.send.local_directory = output_dir.display().to_string();
             }
             JobAction::Upload { upload_id } => {
-                workflow.process.enabled = false;
-                workflow.process.mode = ProcessMode::Forward;
-                workflow.send.mode = SendMode::Remote;
-                workflow.send.remote_target = upload_id.clone();
+                signals.process.enabled = false;
+                signals.process.mode = ProcessMode::Forward;
+                signals.send.mode = SendMode::Remote;
+                signals.send.remote_target = upload_id.clone();
             }
             JobAction::Process { output, selection } => {
-                workflow.process.enabled = true;
-                workflow.process.mode = ProcessMode::Process;
+                signals.process.enabled = true;
+                signals.process.mode = ProcessMode::Process;
                 if let Some(selection) = selection {
-                    workflow.process.product = selection.product.clone();
-                    workflow.process.diagnostic_type = selection.diagnostic_type.clone();
-                    workflow.process.advanced = !selection.selected.is_empty();
-                    workflow.process.selected = selection.selected.join(",");
+                    signals.process.product = selection.product.clone();
+                    signals.process.diagnostic_type = selection.diagnostic_type.clone();
+                    signals.process.advanced = !selection.selected.is_empty();
+                    signals.process.selected = selection.selected.join(",");
                 }
-                output.apply_to_workflow(&mut workflow);
+                output.apply_to_signals(&mut signals);
             }
         }
 
-        workflow
+        signals
     }
 
-    pub fn from_workflow(workflow: Workflow, identifiers: Identifiers) -> Result<Self> {
-        let mut builder = Job::builder()
-            .identifiers(identifiers)
-            .collect_from(workflow.collect.known_host.clone())?
-            .diagnostic_type(workflow.collect.diagnostic_type.clone());
+    pub fn from_signals(signals: JobSignals, identifiers: Identifiers) -> Result<Self> {
+        Job::builder().identifiers(identifiers).from_signals(signals)
+    }
+}
 
-        if workflow.process.enabled && workflow.process.mode == ProcessMode::Process {
-            if workflow.collect.save && !workflow.collect.save_dir.trim().is_empty() {
-                builder = builder.save_collected_bundle_to(workflow.collect.save_dir.clone());
-            }
-            let output = JobOutput::from_workflow_send(&workflow)?;
-            let selection = JobProcessSelection::from_workflow(&workflow);
-            builder.process_to_with_selection(output, selection)
-        } else if workflow.process.mode == ProcessMode::Forward && workflow.send.mode == SendMode::Remote {
-            if workflow.collect.save && !workflow.collect.save_dir.trim().is_empty() {
-                builder = builder.save_collected_bundle_to(workflow.collect.save_dir.clone());
-            }
-            builder.upload_to(workflow.send.remote_target)
-        } else {
-            let output_dir = if workflow.send.local_target == "directory" && !workflow.send.local_directory.is_empty() {
-                workflow.send.local_directory
-            } else {
-                return Err(eyre!("Collect-only jobs require an output directory"));
-            };
-            builder.collect_to(output_dir)
-        }
+impl TryFrom<JobSignals> for Job {
+    type Error = eyre::Report;
+
+    fn try_from(signals: JobSignals) -> Result<Self> {
+        Job::from_signals(signals, Identifiers::default())
+    }
+}
+
+impl From<&Job> for JobSignals {
+    fn from(job: &Job) -> Self {
+        job.to_signals()
     }
 }
 
@@ -231,10 +352,10 @@ impl JobOutput {
         }
     }
 
-    fn from_workflow_send(workflow: &Workflow) -> Result<Self> {
-        match workflow.send.mode {
+    fn from_signals_send(signals: &JobSignals) -> Result<Self> {
+        match signals.send.mode {
             SendMode::Remote => {
-                let target = workflow.send.remote_target.trim();
+                let target = signals.send.remote_target.trim();
                 if target.is_empty() {
                     return Err(eyre!("Process jobs require a remote output target"));
                 }
@@ -243,8 +364,8 @@ impl JobOutput {
                 })
             }
             SendMode::Local => {
-                if workflow.send.local_target == "directory" {
-                    let directory = workflow.send.local_directory.trim();
+                if signals.send.local_target == "directory" {
+                    let directory = signals.send.local_directory.trim();
                     if directory.is_empty() {
                         return Err(eyre!("Process jobs require a local output directory"));
                     }
@@ -252,7 +373,7 @@ impl JobOutput {
                         output_dir: PathBuf::from(directory),
                     })
                 } else {
-                    let target = workflow.send.local_target.trim();
+                    let target = signals.send.local_target.trim();
                     if target.is_empty() {
                         return Err(eyre!("Process jobs require a local output target"));
                     }
@@ -264,32 +385,32 @@ impl JobOutput {
         }
     }
 
-    fn apply_to_workflow(&self, workflow: &mut Workflow) {
+    fn apply_to_signals(&self, signals: &mut JobSignals) {
         match self {
             Self::KnownHost { name } => {
-                workflow.send.mode = SendMode::Remote;
-                workflow.send.remote_target = name.clone();
+                signals.send.mode = SendMode::Remote;
+                signals.send.remote_target = name.clone();
             }
             Self::Directory { output_dir } => {
-                workflow.send.mode = SendMode::Local;
-                workflow.send.local_target = "directory".to_string();
-                workflow.send.local_directory = output_dir.display().to_string();
+                signals.send.mode = SendMode::Local;
+                signals.send.local_target = "directory".to_string();
+                signals.send.local_directory = output_dir.display().to_string();
             }
             Self::File { path } => {
-                workflow.send.mode = SendMode::Local;
-                workflow.send.local_target = path.display().to_string();
+                signals.send.mode = SendMode::Local;
+                signals.send.local_target = path.display().to_string();
             }
             Self::Stdout => {
-                workflow.send.mode = SendMode::Local;
-                workflow.send.local_target = "-".to_string();
+                signals.send.mode = SendMode::Local;
+                signals.send.local_target = "-".to_string();
             }
         }
     }
 }
 
 impl JobProcessSelection {
-    fn from_workflow(workflow: &Workflow) -> Option<Self> {
-        let selected: Vec<String> = workflow
+    fn from_signals(signals: &JobSignals) -> Option<Self> {
+        let selected: Vec<String> = signals
             .process
             .selected
             .split(',')
@@ -298,11 +419,11 @@ impl JobProcessSelection {
             .map(ToString::to_string)
             .collect();
         let has_explicit_choice = !selected.is_empty()
-            || workflow.process.product != "elasticsearch"
-            || workflow.process.diagnostic_type != "standard";
+            || signals.process.product != "elasticsearch"
+            || signals.process.diagnostic_type != "standard";
         has_explicit_choice.then(|| Self {
-            product: workflow.process.product.clone(),
-            diagnostic_type: workflow.process.diagnostic_type.clone(),
+            product: signals.process.product.clone(),
+            diagnostic_type: signals.process.diagnostic_type.clone(),
             selected,
         })
     }
@@ -320,6 +441,40 @@ impl JobBuilder<NeedsCollect> {
     pub fn identifiers(mut self, identifiers: Identifiers) -> Self {
         self.identifiers = identifiers;
         self
+    }
+
+    pub fn from_signals(self, signals: JobSignals) -> Result<Job> {
+        if signals.collect.mode != CollectMode::Collect {
+            return Err(eyre!("Jobs require collect mode"));
+        }
+        if signals.collect.source != CollectSource::KnownHost {
+            return Err(eyre!("Jobs require a known-host collection source"));
+        }
+
+        let mut builder = self
+            .collect_from(signals.collect.known_host.clone())?
+            .diagnostic_type(signals.collect.diagnostic_type.clone());
+
+        if signals.process.enabled && signals.process.mode == ProcessMode::Process {
+            if signals.collect.save && !signals.collect.save_dir.trim().is_empty() {
+                builder = builder.save_collected_bundle_to(signals.collect.save_dir.clone());
+            }
+            let output = JobOutput::from_signals_send(&signals)?;
+            let selection = JobProcessSelection::from_signals(&signals);
+            builder.process_to_with_selection(output, selection)
+        } else if signals.process.mode == ProcessMode::Forward && signals.send.mode == SendMode::Remote {
+            if signals.collect.save && !signals.collect.save_dir.trim().is_empty() {
+                builder = builder.save_collected_bundle_to(signals.collect.save_dir.clone());
+            }
+            builder.upload_to(signals.send.remote_target)
+        } else {
+            let output_dir = if signals.send.local_target == "directory" && !signals.send.local_directory.is_empty() {
+                signals.send.local_directory
+            } else {
+                return Err(eyre!("Collect-only jobs require an output directory"));
+            };
+            builder.collect_to(output_dir)
+        }
     }
 
     pub fn collect_from(self, host: impl Into<String>) -> Result<JobBuilder<NeedsAction>> {
@@ -366,17 +521,22 @@ impl JobBuilder<NeedsAction> {
         self
     }
 
-    pub fn collect_to(mut self, output_dir: impl Into<PathBuf>) -> Result<Job> {
+    pub fn collect_to(self, output_dir: impl Into<PathBuf>) -> Result<Job> {
         let output_dir = output_dir.into();
         if output_dir.as_os_str().is_empty() {
             return Err(eyre!("Collect jobs require an output directory"));
         }
-        if self.collect_mut().save_dir.is_some() {
+        if self
+            .collect
+            .as_ref()
+            .and_then(|collect| collect.save_dir.as_ref())
+            .is_some()
+        {
             return Err(eyre!(
                 "Collect jobs use output_dir as their final diagnostic bundle destination"
             ));
         }
-        self.build(JobAction::Collect { output_dir })
+        self.build_action(JobAction::Collect { output_dir })
     }
 
     pub fn upload_to(self, upload_id: impl Into<String>) -> Result<Job> {
@@ -384,7 +544,7 @@ impl JobBuilder<NeedsAction> {
         if upload_id.trim().is_empty() {
             return Err(eyre!("Upload jobs require an Elastic Upload Service upload id or URL"));
         }
-        self.build(JobAction::Upload { upload_id })
+        self.build_action(JobAction::Upload { upload_id })
     }
 
     pub fn process_to(self, output: JobOutput) -> Result<Job> {
@@ -392,14 +552,14 @@ impl JobBuilder<NeedsAction> {
     }
 
     pub fn process_to_with_selection(self, output: JobOutput, selection: Option<JobProcessSelection>) -> Result<Job> {
-        self.build(JobAction::Process { output, selection })
+        self.build_action(JobAction::Process { output, selection })
     }
 
     fn collect_mut(&mut self) -> &mut JobCollect {
         self.collect.as_mut().expect("typestate guarantees collect")
     }
 
-    fn build(self, action: JobAction) -> Result<Job> {
+    fn build_action(self, action: JobAction) -> Result<Job> {
         Ok(Job {
             identifiers: self.identifiers,
             collect: self.collect.expect("typestate guarantees collect"),
@@ -602,8 +762,36 @@ mod tests {
         assert!(yaml.contains("action: collect"));
         assert!(yaml.contains("output_dir: /tmp/esdiag"));
         assert!(!yaml.contains("save_dir"));
-        assert!(!yaml.contains("workflow:"));
+        assert!(!yaml.contains("job:"));
         assert!(!yaml.contains("local_target"));
+    }
+
+    #[test]
+    fn job_signals_deserialize_with_missing_process_and_send_fields() {
+        let job: JobSignals = serde_json::from_value(serde_json::json!({
+            "collect": {
+                "mode": "upload",
+                "source": "upload-file",
+                "save": false
+            }
+        }))
+        .expect("job signals should deserialize with defaults");
+
+        assert!(job.collect.mode == CollectMode::Upload);
+        assert!(job.collect.source == CollectSource::UploadFile);
+        assert!(job.process.enabled);
+        assert!(job.send.mode == SendMode::Remote);
+    }
+
+    #[test]
+    fn job_projects_to_signals_for_form_state() {
+        let signals = test_job("prod").to_signals();
+
+        assert_eq!(signals.collect.known_host, "prod");
+        assert_eq!(signals.collect.diagnostic_type, "standard");
+        assert!(!signals.process.enabled);
+        assert_eq!(signals.send.local_target, "directory");
+        assert_eq!(signals.send.local_directory, "/tmp/esdiag");
     }
 
     #[test]

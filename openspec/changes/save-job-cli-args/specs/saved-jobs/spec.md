@@ -36,7 +36,7 @@ The system SHALL model executable diagnostic work as a `Job` independent of whet
 
 - **WHEN** a job is constructed for collection, upload, or processing
 - **THEN** the job action is represented as an explicit typed variant
-- **AND** inactive workflow fields and string sentinels are not persisted
+- **AND** inactive builder fields and string sentinels are not persisted
 
 #### Scenario: Bundle retention is separate from final output
 
@@ -46,13 +46,13 @@ The system SHALL model executable diagnostic work as a `Job` independent of whet
 - **AND** collect actions require `output_dir`
 - **AND** process actions use `output_dir` only when the process output target is a directory
 
-#### Scenario: Builder rejects incomplete jobs
+#### Scenario: Conversion rejects incomplete job signals
 
-- **WHEN** CLI or UI draft input lacks a required collect host, action, or output
-- **THEN** `JobBuilder` rejects the input before persistence or execution
+- **WHEN** CLI or UI signal input lacks a required collect host, action, or output
+- **THEN** conversion rejects the input before persistence or execution
 
-#### Scenario: Saved job loads into existing UI draft state
+#### Scenario: Saved job loads into existing UI signal state
 
 - **WHEN** a persisted `Job` is loaded by the Jobs page
-- **THEN** the system projects it into the existing workflow draft signals for display and editing
+- **THEN** the system projects it into the existing job signals for display and editing
 - **AND** the persisted YAML remains the typed `Job` shape
