@@ -133,9 +133,11 @@ impl DiagnosticManifest {
     }
 
     pub fn collection_date_in_millis(&self) -> u64 {
-        Self::parse_collection_date_millis(&self.collection_date).unwrap_or_else(|| {
-            tracing::warn!("Failed to parse collection date: {}", &self.collection_date);
-            chrono::Utc::now().timestamp_millis() as u64
+        self.collection_date_millis.unwrap_or_else(|| {
+            Self::parse_collection_date_millis(&self.collection_date).unwrap_or_else(|| {
+                tracing::warn!("Failed to parse collection date: {}", &self.collection_date);
+                chrono::Utc::now().timestamp_millis() as u64
+            })
         })
     }
 
@@ -231,5 +233,23 @@ mod tests {
         );
 
         assert_eq!(manifest.collection_date_millis, Some(1_777_148_323_610));
+    }
+
+    #[test]
+    fn collection_date_in_millis_uses_stored_value_first() {
+        let mut manifest = DiagnosticManifest::new(
+            "2026-04-25T20:18:43.610Z".to_string(),
+            Some("esdiag-0.15.0-SNAPSHOT".to_string()),
+            None,
+            None,
+            Some("support".to_string()),
+            Product::Elasticsearch,
+            Some("elasticsearch_diagnostic".to_string()),
+            Some("esdiag".to_string()),
+            Some("8.19.3".to_string()),
+        );
+        manifest.collection_date = "not-a-date".to_string();
+
+        assert_eq!(manifest.collection_date_in_millis(), 1_777_148_323_610);
     }
 }

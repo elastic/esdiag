@@ -134,4 +134,34 @@ fn test_node_stats_os_enrichment_from_lookup() {
     assert_eq!(os["version"], "6.15.6-200.fc42.aarch64");
     assert_eq!(os["available_processors"], 8);
     assert_eq!(os["allocated_processors"], 8);
+
+    let lookup_node_without_host: NodeDocument = serde_json::from_value(json!({
+        "attributes": {
+            "instance_configuration": "aws.es.datahot.i3"
+        },
+        "name": "hot-309-renamed",
+        "id": "node-id",
+        "ip": "10.89.0.2",
+        "role": "dm",
+        "roles": ["data_hot", "ingest"],
+        "tier": "hot",
+        "tier_order": 2,
+        "version": "9.1.3",
+        "os": {
+            "allocated_processors": 8,
+            "arch": "aarch64",
+            "available_processors": 8,
+            "name": "Linux",
+            "pretty_name": "Red Hat Enterprise Linux 9.6 (Plow)",
+            "refresh_interval_in_millis": 1000,
+            "version": "6.15.6-200.fc42.aarch64"
+        }
+    }))
+    .expect("parse NodeDocument without host");
+
+    node_stats.enrich_from_lookup(&lookup_node_without_host);
+    let node_stats_json = serde_json::to_value(&node_stats).expect("serialize NodeStats");
+
+    assert_eq!(node_stats_json["name"], "hot-309-renamed");
+    assert_eq!(node_stats_json["host"], "10.89.0.2");
 }
