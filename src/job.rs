@@ -66,7 +66,8 @@ pub async fn handle_job_run(name: &str) -> Result<()> {
         return Err(eyre!("Saved job '{}' has no collection host configured", name));
     }
 
-    let host = KnownHost::get_known(&host_name.to_string()).ok_or_else(|| {
+    let hosts = KnownHost::parse_hosts_yml()?;
+    let host = hosts.get(host_name).cloned().ok_or_else(|| {
         eyre!(
             "Host '{}' referenced by job '{}' not found in hosts.yml",
             host_name,

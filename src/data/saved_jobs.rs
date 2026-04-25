@@ -384,7 +384,8 @@ impl JobOutput {
                             })
                         }
                         Uri::Stream => Ok(Self::Stdout),
-                        Uri::File(path) | Uri::Directory(path) => Ok(Self::File { path }),
+                        Uri::File(path) => Ok(Self::File { path }),
+                        Uri::Directory(output_dir) => Ok(Self::Directory { output_dir }),
                         _ => Err(eyre!(
                             "Jobs require an explicit known host or local filesystem output target"
                         )),
@@ -862,6 +863,38 @@ mod tests {
                 ..
             } => assert_eq!(name, "monitoring"),
             _ => panic!("expected process to known host"),
+        }
+    }
+
+    #[test]
+    fn job_signals_preserve_local_directory_output() {
+        let _guard = test_env_lock().lock().expect("env lock");
+        let tmp = setup_env();
+        let output_dir = tmp.path().join("output");
+        std::fs::create_dir(&output_dir).expect("create output dir");
+        crate::data::KnownHostBuilder::new(url::Url::parse("http://localhost:9200/").expect("url"))
+            .product(crate::data::Product::Elasticsearch)
+            .roles(vec![HostRole::Collect])
+            .build()
+            .expect("host")
+            .save("prod")
+            .expect("save collect host");
+
+        let mut signals = JobSignals::default();
+        signals.collect.known_host = "prod".to_string();
+        signals.process.enabled = true;
+        signals.process.mode = ProcessMode::Process;
+        signals.send.mode = SendMode::Local;
+        signals.send.local_target = output_dir.display().to_string();
+
+        let job = Job::from_signals(signals, Identifiers::default()).expect("job from signals");
+
+        match job.action {
+            JobAction::Process {
+                output: JobOutput::Directory { output_dir: actual },
+                ..
+            } => assert_eq!(actual, output_dir),
+            _ => panic!("expected process to directory"),
         }
     }
 
