@@ -43,17 +43,21 @@ fn test_collect_minimal() {
     assert!(extracted.path.join("nodes.json").exists()); // nodes api
     assert!(extracted.path.join("cluster_settings.json").exists()); // from nodes resolving cluster_settings
 
-    // The script `bin/min-diag.sh` collected a lot more, but our Rust `Minimal` currently just does `cluster` and `nodes` and `cluster_settings`.
-    // Let's verify the manifest contains the correct collected_apis
+    // The script `bin/min-diag.sh` collected a lot more, but our Rust `Minimal` currently just does
+    // `cluster`, `nodes`, and `cluster_settings`. Verify the manifest records those requested APIs.
     let manifest_content = fs::read_to_string(extracted.path.join("diagnostic_manifest.json")).unwrap();
     let manifest: Value = serde_json::from_str(&manifest_content).unwrap();
 
-    let apis = manifest["collected_apis"].as_array().unwrap();
-    let api_names: Vec<&str> = apis.iter().map(|v| v.as_str().unwrap()).collect();
+    let api_names = requested_api_names(&manifest);
 
     assert!(api_names.contains(&"cluster"));
     assert!(api_names.contains(&"nodes"));
     assert!(api_names.contains(&"cluster_settings"));
+    assert_eq!(requested_api_status(&manifest, "cluster"), Some(200));
+    assert_eq!(requested_api_status(&manifest, "nodes"), Some(200));
+    assert_eq!(requested_api_status(&manifest, "cluster_settings"), Some(200));
+    assert!(requested_api_response_time_ms(&manifest, "cluster").is_some());
+    assert!(requested_api_response_size_bytes(&manifest, "cluster").is_some());
 }
 
 fn extract_diag_zip_to_temp(path: &Path) -> Option<ExtractedDiag> {
@@ -203,6 +207,39 @@ fn file_set(root: &Path) -> BTreeSet<String> {
     let mut files = BTreeSet::new();
     visit(root, root, &mut files);
     files
+}
+
+fn requested_api_names(manifest: &Value) -> Vec<&str> {
+    manifest["requested_apis"]
+        .as_object()
+        .expect("requested_apis object")
+        .keys()
+        .map(String::as_str)
+        .collect()
+}
+
+fn requested_api_status(manifest: &Value, name: &str) -> Option<u64> {
+    manifest["requested_apis"]
+        .as_object()
+        .expect("requested_apis object")
+        .get(name)
+        .and_then(|value| value["status"].as_u64())
+}
+
+fn requested_api_response_time_ms(manifest: &Value, name: &str) -> Option<u64> {
+    manifest["requested_apis"]
+        .as_object()
+        .expect("requested_apis object")
+        .get(name)
+        .and_then(|value| value["response_time_ms"].as_u64())
+}
+
+fn requested_api_response_size_bytes(manifest: &Value, name: &str) -> Option<u64> {
+    manifest["requested_apis"]
+        .as_object()
+        .expect("requested_apis object")
+        .get(name)
+        .and_then(|value| value["response_size_bytes"].as_u64())
 }
 
 #[test]
