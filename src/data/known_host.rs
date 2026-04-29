@@ -573,12 +573,15 @@ impl KnownHost {
             }
         }
 
+        let cloud_id = url
+            .as_ref()
+            .and_then(|url| cloud_id.clone().or_else(|| ElasticCloud::try_from(url).ok()));
+        let url = url.map(|url| normalize_elastic_cloud_proxy_url(url, cloud_id.as_ref()));
+
         Ok(Self {
             accept_invalid_certs,
             app,
-            cloud_id: url
-                .as_ref()
-                .and_then(|url| cloud_id.or_else(|| ElasticCloud::try_from(url).ok())),
+            cloud_id,
             roles,
             secret,
             viewer,
@@ -1381,6 +1384,14 @@ fn validate_viewer_links(hosts: &BTreeMap<String, KnownHost>) -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn normalize_elastic_cloud_proxy_url(mut url: Url, cloud_id: Option<&ElasticCloud>) -> Url {
+    if cloud_id.is_some() && url.path().ends_with("/proxy") {
+        let path = format!("{}/", url.path());
+        url.set_path(&path);
+    }
+    url
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -2386,6 +2397,34 @@ mod tests {
             host.concrete_url().map(|url| url.as_str()),
             Some(
                 "https://cloud.elastic.co/api/v1/deployments/deployment-123/elasticsearch/elasticsearch/proxy/"
+            )
+        );
+    }
+
+    #[test]
+    fn elastic_cloud_admin_proxy_urls_keep_trailing_slash() {
+        let host = KnownHost::from_parts(KnownHostParts {
+            accept_invalid_certs: false,
+            app: Product::Elasticsearch,
+            cloud_id: Some(ElasticCloud::ElasticCloudAdmin),
+            roles: default_collect_roles(),
+            secret: None,
+            viewer: None,
+            url: Some(
+                Url::parse("https://admin.found.no/api/v1/deployments/deployment-123/elasticsearch/main-elasticsearch/proxy")
+                    .expect("cloud admin proxy url"),
+            ),
+            url_template: None,
+            legacy_apikey: None,
+            legacy_username: None,
+            legacy_password: None,
+        })
+        .expect("build host");
+
+        assert_eq!(
+            host.concrete_url().map(|url| url.as_str()),
+            Some(
+                "https://admin.found.no/api/v1/deployments/deployment-123/elasticsearch/main-elasticsearch/proxy/"
             )
         );
     }
