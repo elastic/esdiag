@@ -1694,7 +1694,8 @@ async fn infer_auth_from_secret_selection(
         if !state.is_keystore_unlocked().await {
             return Err("Unlock keystore before selecting a secret.".to_string());
         }
-        let resolved = resolve_secret_auth(secret_id).map_err(to_message)?;
+        let password = current_keystore_password(state).await?;
+        let resolved = resolve_secret_auth(secret_id, &password).map_err(to_message)?;
         state.touch_keystore_session().await;
         return match resolved {
             Some(SecretAuth::ApiKey { .. }) => Ok("apikey".to_string()),
