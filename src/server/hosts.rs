@@ -1052,9 +1052,9 @@ fn secret_error_html(message: &str) -> String {
         "<div id=\"secrets-error-modal\"></div>".to_string()
     } else {
         let message = message.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
-        let close_action = "const modal = document.getElementById('secrets-error-modal'); if (modal) modal.outerHTML = '<div id=\"secrets-error-modal\"></div>';";
+        let close_action = "const modal = document.getElementById('secrets-error-modal'); if (modal) modal.outerHTML = `<div id='secrets-error-modal'></div>`;";
         format!(
-            "<div id=\"secrets-error-modal\" class=\"modal\"><div class=\"modal-content\"><button type=\"button\" class=\"close-button\" aria-label=\"Close secret error\" data-on:click=\"{}\"><icon-x></icon-x></button><h2>Unable to delete secret</h2><p>{}</p><form-actions><button type=\"button\" class=\"button\" data-on:click=\"{}\">Close</button></form-actions></div></div>",
+            "<div id=\"secrets-error-modal\" class=\"modal\"><div class=\"modal-content\"><button type=\"button\" class=\"close-button\" aria-label=\"Close secret error\" data-on:click=\"{}\"><icon-x></icon-x></button><h2>Secret action failed</h2><p>{}</p><form-actions><button type=\"button\" class=\"button\" data-on:click=\"{}\">Close</button></form-actions></div></div>",
             close_action, message, close_action
         )
     }
@@ -1070,7 +1070,7 @@ fn patch_secret_error_event(message: &str) -> String {
 
 fn secret_delete_error_response(secret_id: &str, message: &str) -> Response {
     tracing::warn!("Secret delete for '{}' failed: {}", secret_id, message);
-    Html(secret_error_html(message)).into_response()
+    sse_response(vec![patch_secret_error_event(message)])
 }
 
 fn sse_response(events: Vec<String>) -> Response {
@@ -2089,7 +2089,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn delete_secret_by_id_returns_reference_error_body_when_secret_is_in_use() {
+    async fn delete_secret_by_id_returns_reference_error_patch_when_secret_is_in_use() {
         let _guard = env_lock().lock().expect("env lock");
         let _tmp = setup_env();
         authenticate("pw").expect("create keystore");
@@ -2125,14 +2125,16 @@ mod tests {
                 .headers()
                 .get(CONTENT_TYPE)
                 .and_then(|value| value.to_str().ok()),
-            Some("text/html; charset=utf-8")
+            Some("text/event-stream")
         );
         let body = to_bytes(response.into_body(), usize::MAX).await.expect("response body");
         let body = String::from_utf8(body.to_vec()).expect("utf8 body");
+        assert!(body.contains("datastar-patch-elements"));
+        assert!(body.contains("selector #secrets-error-modal"));
         assert!(body.contains("id=\"secrets-error-modal\""));
         assert!(body.contains("class=\"modal\""));
-        assert!(body.contains("Unable to delete secret"));
-        assert!(body.contains("modal.outerHTML = '<div id=\"secrets-error-modal\"></div>'"));
+        assert!(body.contains("Secret action failed"));
+        assert!(body.contains("modal.outerHTML = `<div id='secrets-error-modal'></div>`"));
         assert!(body.contains("Cannot remove secret 'servermore' because it is still referenced by hosts: servermore"));
     }
 

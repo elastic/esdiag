@@ -1927,7 +1927,9 @@ mod tests {
         assert_eq!(status, reqwest::StatusCode::OK, "unexpected response body: {body}");
         assert!(!body.contains("id must be numeric or 'new'"));
         assert!(
-            resolve_secret_auth("servermore").expect("read secret").is_none(),
+            resolve_secret_auth("servermore", "secretpw")
+                .expect("read secret")
+                .is_none(),
             "secret should be removed by delete-by-id route"
         );
     }

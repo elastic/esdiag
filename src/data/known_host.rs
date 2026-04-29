@@ -1405,14 +1405,21 @@ fn parse_template_reference(reference: &str) -> Result<Option<TemplateReference>
             "Template reference '{reference}' is missing required `id`"
         ));
     }
-    let product = url
+    let product_segments = url
         .path_segments()
-        .and_then(|mut segments| {
+        .map(|segments| {
             segments
-                .find(|segment| !segment.is_empty())
+                .filter(|segment| !segment.trim().is_empty())
                 .map(str::to_string)
+                .collect::<Vec<_>>()
         })
-        .filter(|product| !product.trim().is_empty());
+        .unwrap_or_default();
+    if product_segments.len() > 1 {
+        return Err(eyre!(
+            "Template reference '{reference}' contains too many path segments; expected at most one optional `product` segment"
+        ));
+    }
+    let product = product_segments.into_iter().next();
     Ok(Some(TemplateReference {
         template_name: url.scheme().to_string(),
         id: id.to_string(),
@@ -2341,6 +2348,14 @@ mod tests {
             resolved.concrete_url().map(|url| url.as_str()),
             Some("https://cloud.elastic.co/api/v1/deployments/cluster-1/elasticsearch/elasticsearch/proxy/")
         );
+    }
+
+    #[test]
+    fn template_reference_rejects_extra_path_segments() {
+        let err = parse_template_reference("elastic-cloud://cluster-1/elasticsearch/extra")
+            .expect_err("extra path segment should fail");
+
+        assert!(err.to_string().contains("too many path segments"));
     }
 
     #[test]
