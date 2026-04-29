@@ -94,7 +94,7 @@ impl TryFrom<KnownHost> for LogstashClient {
     type Error = eyre::Report;
 
     fn try_from(host: KnownHost) -> Result<Self> {
-        let url = host.get_url();
+        let url = host.get_url()?;
         let ignore_certs = host.accept_invalid_certs();
         let auth = host.get_auth()?;
         LogstashClient::try_new(url, auth, ignore_certs)

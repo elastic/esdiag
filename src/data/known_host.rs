@@ -22,6 +22,8 @@ use std::{
 };
 use url::Url;
 
+const DEFAULT_TEMPLATE_PRODUCT: &str = "elasticsearch";
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum HostRole {
@@ -124,7 +126,8 @@ pub struct KnownHostBuilder {
     password: Option<String>,
     roles: Vec<HostRole>,
     secret: Option<String>,
-    url: Url,
+    url: Option<Url>,
+    url_template: Option<String>,
     username: Option<String>,
     viewer: Option<String>,
 }
@@ -139,7 +142,24 @@ impl KnownHostBuilder {
             password: None,
             roles: default_collect_roles(),
             secret: None,
-            url,
+            url: Some(url),
+            url_template: None,
+            username: None,
+            viewer: None,
+        }
+    }
+
+    pub fn new_template(url_template: String) -> Self {
+        KnownHostBuilder {
+            accept_invalid_certs: false,
+            apikey: None,
+            product: Product::Unknown,
+            cloud_id: None,
+            password: None,
+            roles: default_collect_roles(),
+            secret: None,
+            url: None,
+            url_template: Some(url_template),
             username: None,
             viewer: None,
         }
@@ -181,7 +201,10 @@ impl KnownHostBuilder {
     }
 
     fn update_cloud_api_path(&mut self) {
-        let mut url = self.url.clone();
+        let Some(mut url) = self.url.clone() else {
+            self.cloud_id = None;
+            return;
+        };
         self.cloud_id = ElasticCloud::try_from(&url).ok();
         if self.cloud_id.is_none() {
             return;
@@ -195,32 +218,39 @@ impl KnownHostBuilder {
             .skip_while(|segment| *segment != "deployments")
             .nth(1)
             .unwrap_or("");
-        let new_segments: Vec<&str> = match self.product {
+        let rendered = match self.product {
             Product::Elasticsearch => {
-                let product = match url.domain() {
-                    Some("admin.found.no") => "main-elasticsearch",
-                    _ => "elasticsearch",
+                let template = match url.domain() {
+                    Some("admin.found.no") => {
+                        "https://admin.found.no/api/v1/deployments/{id}/elasticsearch/main-{product}/proxy/"
+                    }
+                    Some("cloud.elastic.co") => {
+                        "https://cloud.elastic.co/api/v1/deployments/{id}/elasticsearch/{product}/proxy/"
+                    }
+                    Some("admin.us-gov-east-1.aws.elastic-cloud.com") => {
+                        "https://admin.us-gov-east-1.aws.elastic-cloud.com/api/v1/deployments/{id}/elasticsearch/{product}/proxy/"
+                    }
+                    _ => "",
                 };
-                vec![
-                    "api",
-                    "v1",
-                    "deployments",
-                    deployment_id,
-                    "elasticsearch",
-                    product,
-                    "proxy",
-                ]
+                if template.is_empty() {
+                    None
+                } else {
+                    render_url_template_url(template, deployment_id, DEFAULT_TEMPLATE_PRODUCT).ok()
+                }
             }
-            _ => Vec::new(),
+            _ => None,
         };
-        // Only modify the path if we have new segments
-        if !new_segments.is_empty() {
-            let mut path_segments = url.path_segments_mut().expect("Failed to get path segments");
-            path_segments.clear().extend(new_segments);
+        if let Some(mut rendered) = rendered {
+            if url.query().is_some() {
+                rendered
+                    .query_pairs_mut()
+                    .extend_pairs(url.query_pairs().map(|(k, v)| (k.into_owned(), v.into_owned())));
+            }
+            url = rendered;
         }
 
         tracing::debug!("Updated Cloud API URL: {}", url);
-        self.url = url;
+        self.url = Some(url);
     }
 
     pub fn build(mut self) -> Result<KnownHost> {
@@ -233,6 +263,7 @@ impl KnownHostBuilder {
             secret: self.secret,
             viewer: self.viewer,
             url: self.url,
+            url_template: self.url_template,
             legacy_apikey: self.apikey,
             legacy_username: self.username,
             legacy_password: self.password,
@@ -261,6 +292,7 @@ impl KnownHostBuilder {
             secret: Some(secret),
             viewer: self.viewer,
             url: self.url,
+            url_template: self.url_template,
             legacy_apikey: None,
             legacy_username: None,
             legacy_password: None,
@@ -304,7 +336,8 @@ pub struct KnownHost {
     pub roles: Vec<HostRole>,
     pub secret: Option<String>,
     pub viewer: Option<String>,
-    pub url: Url,
+    pub url: Option<Url>,
+    pub url_template: Option<String>,
     pub legacy_apikey: Option<String>,
     pub legacy_username: Option<String>,
     pub legacy_password: Option<String>,
@@ -323,7 +356,10 @@ struct FlatKnownHostRef<'a> {
     secret: &'a Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     viewer: &'a Option<String>,
-    url: &'a Url,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    url: &'a Option<Url>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    url_template: &'a Option<String>,
 }
 
 #[cfg(test)]
@@ -385,7 +421,10 @@ struct FlatKnownHostWire {
     secret: Option<String>,
     #[serde(default)]
     viewer: Option<String>,
-    url: Url,
+    #[serde(default)]
+    url: Option<Url>,
+    #[serde(default)]
+    url_template: Option<String>,
     #[serde(default)]
     apikey: Option<String>,
     #[serde(default)]
@@ -449,7 +488,8 @@ struct KnownHostParts {
     roles: Vec<HostRole>,
     secret: Option<String>,
     viewer: Option<String>,
-    url: Url,
+    url: Option<Url>,
+    url_template: Option<String>,
     legacy_apikey: Option<String>,
     legacy_username: Option<String>,
     legacy_password: Option<String>,
@@ -468,6 +508,7 @@ impl Serialize for KnownHost {
             secret: &self.secret,
             viewer: &self.viewer,
             url: &self.url,
+            url_template: &self.url_template,
         }
         .serialize(serializer)
     }
@@ -497,6 +538,7 @@ impl KnownHost {
             secret,
             viewer,
             url,
+            url_template,
             legacy_apikey,
             legacy_username,
             legacy_password,
@@ -516,14 +558,35 @@ impl KnownHost {
             }
         }
 
+        match (&url, &url_template) {
+            (Some(_), None) => {}
+            (None, Some(template)) => validate_url_template(template)?,
+            (Some(_), Some(_)) => {
+                return Err(eyre!(
+                    "Invalid KnownHost configuration: `url` and `url_template` are mutually exclusive"
+                ));
+            }
+            (None, None) => {
+                return Err(eyre!(
+                    "Invalid KnownHost configuration: one of `url` or `url_template` is required"
+                ));
+            }
+        }
+
+        let cloud_id = url
+            .as_ref()
+            .and_then(|url| cloud_id.clone().or_else(|| ElasticCloud::try_from(url).ok()));
+        let url = url.map(|url| normalize_elastic_cloud_proxy_url(url, cloud_id.as_ref()));
+
         Ok(Self {
             accept_invalid_certs,
             app,
-            cloud_id: cloud_id.or_else(|| ElasticCloud::try_from(&url).ok()),
+            cloud_id,
             roles,
             secret,
             viewer,
             url,
+            url_template,
             legacy_apikey,
             legacy_username,
             legacy_password,
@@ -539,6 +602,7 @@ impl KnownHost {
             secret: wire.secret.clone(),
             viewer: wire.viewer,
             url: wire.url,
+            url_template: wire.url_template,
             legacy_apikey: wire.apikey,
             legacy_username: wire.username,
             legacy_password: wire.password,
@@ -563,7 +627,8 @@ impl KnownHost {
                 roles,
                 secret: secret.clone(),
                 viewer,
-                url,
+                url: Some(url),
+                url_template: None,
                 legacy_apikey: apikey,
                 legacy_username: None,
                 legacy_password: None,
@@ -584,7 +649,8 @@ impl KnownHost {
                 roles,
                 secret: secret.clone(),
                 viewer,
-                url,
+                url: Some(url),
+                url_template: None,
                 legacy_apikey: None,
                 legacy_username: username,
                 legacy_password: password,
@@ -602,7 +668,8 @@ impl KnownHost {
                 roles,
                 secret: None,
                 viewer,
-                url,
+                url: Some(url),
+                url_template: None,
                 legacy_apikey: None,
                 legacy_username: None,
                 legacy_password: None,
@@ -646,7 +713,8 @@ impl KnownHost {
             roles,
             secret: None,
             viewer,
-            url,
+            url: Some(url),
+            url_template: None,
             legacy_apikey: None,
             legacy_username: None,
             legacy_password: None,
@@ -670,7 +738,8 @@ impl KnownHost {
             roles,
             secret: secret.clone(),
             viewer,
-            url,
+            url: Some(url),
+            url_template: None,
             legacy_apikey: apikey,
             legacy_username: None,
             legacy_password: None,
@@ -697,7 +766,8 @@ impl KnownHost {
             roles,
             secret: secret.clone(),
             viewer,
-            url,
+            url: Some(url),
+            url_template: None,
             legacy_apikey: None,
             legacy_username,
             legacy_password,
@@ -709,8 +779,30 @@ impl KnownHost {
         &self.app
     }
 
-    pub fn get_url(&self) -> Url {
-        self.url.clone()
+    pub fn get_url(&self) -> Result<Url> {
+        self.url
+            .clone()
+            .ok_or_else(|| eyre!("Template-backed hosts must be resolved into a concrete URL before runtime use"))
+    }
+
+    pub fn concrete_url(&self) -> Option<&Url> {
+        self.url.as_ref()
+    }
+
+    pub fn url_template(&self) -> Option<&str> {
+        self.url_template.as_deref()
+    }
+
+    pub fn is_template(&self) -> bool {
+        self.url_template.is_some()
+    }
+
+    pub fn transport_display(&self) -> String {
+        match (&self.url, &self.url_template) {
+            (Some(url), None) => url.to_string(),
+            (None, Some(url_template)) => url_template.clone(),
+            _ => String::new(),
+        }
     }
 
     pub fn roles(&self) -> &[HostRole] {
@@ -749,6 +841,62 @@ impl KnownHost {
         )
     }
 
+    pub fn template_guidance(name: &str) -> String {
+        format!(
+            "Host '{name}' is template-backed and requires an `id` plus an optional `product`. Use `{name}://<id>[/<product>]` and omit `product` to default to `{DEFAULT_TEMPLATE_PRODUCT}`."
+        )
+    }
+
+    pub fn resolve_template_reference(reference: &str) -> Result<Option<Self>> {
+        let Some(parsed) = parse_template_reference(reference)? else {
+            return Ok(None);
+        };
+        let template_name = parsed.template_name.clone();
+        let host = Self::get_known(&template_name)
+            .ok_or_else(|| eyre!("Template host '{template_name}' not found"))?;
+        if !host.is_template() {
+            return Err(eyre!("Saved host '{template_name}' is not template-backed"));
+        }
+        host.render_template_reference(&parsed.id, parsed.product.as_deref())
+            .map(Some)
+    }
+
+    pub fn render_template_reference(&self, id: &str, product: Option<&str>) -> Result<Self> {
+        let url_template = self
+            .url_template()
+            .ok_or_else(|| eyre!("KnownHost is not template-backed"))?;
+        let id = id.trim();
+        if id.is_empty() {
+            return Err(eyre!("Template reference is missing required `id`"));
+        }
+
+        let product = product.unwrap_or(DEFAULT_TEMPLATE_PRODUCT).trim().to_ascii_lowercase();
+        let app = Product::from_str(&product)
+            .map_err(|_| eyre!("Unsupported template product '{product}'"))?;
+        let url = render_url_template_url(url_template, id, &product)?;
+
+        let mut builder = KnownHostBuilder::new(url)
+            .product(app)
+            .accept_invalid_certs(self.accept_invalid_certs)
+            .roles(self.roles.clone())
+            .viewer(self.viewer.clone())
+            .apikey(self.legacy_apikey.clone())
+            .username(self.legacy_username.clone())
+            .password(self.legacy_password.clone())
+            .secret(self.secret.clone());
+        if self.roles.is_empty() {
+            builder = builder.roles(default_collect_roles());
+        }
+        builder.build()
+    }
+
+    fn validate_template_host_name(&self, host_name: &str) -> Result<()> {
+        if self.is_template() {
+            validate_template_host_name(host_name)?;
+        }
+        Ok(())
+    }
+
     pub fn save(mut self, name: &str) -> Result<String> {
         // parse the ~/.esdiag/hosts.yml file into a HashMap<String, Host>
         let mut hosts = match KnownHost::parse_hosts_yml() {
@@ -759,6 +907,7 @@ impl KnownHost {
             }
         };
         self.normalize_and_validate_roles(name)?;
+        self.validate_template_host_name(name)?;
         if self.secret.is_some() {
             self.clear_legacy_plaintext_auth();
         } else if self.has_legacy_plaintext_auth() {
@@ -772,7 +921,8 @@ impl KnownHost {
 
     pub fn merge_cli_update(&self, update: &KnownHostCliUpdate, secret_auth: Option<SecretAuth>) -> Result<Self> {
         let app = self.app().clone();
-        let url = self.get_url();
+        let url = self.concrete_url().cloned();
+        let url_template = self.url_template.clone();
         let viewer = self.viewer().map(str::to_string);
         let roles = update.roles.clone().unwrap_or_else(|| self.roles().to_vec());
         let accept_invalid_certs = update
@@ -785,11 +935,12 @@ impl KnownHost {
             return Self::from_parts(KnownHostParts {
                 accept_invalid_certs,
                 app,
-                cloud_id: ElasticCloud::try_from(&url).ok(),
+                cloud_id: url.as_ref().and_then(|url| ElasticCloud::try_from(url).ok()),
                 roles,
                 secret: Some(secret_id.clone()),
                 viewer,
                 url,
+                url_template,
                 legacy_apikey: None,
                 legacy_username: None,
                 legacy_password: None,
@@ -800,11 +951,12 @@ impl KnownHost {
             return Self::from_parts(KnownHostParts {
                 accept_invalid_certs,
                 app,
-                cloud_id: ElasticCloud::try_from(&url).ok(),
+                cloud_id: url.as_ref().and_then(|url| ElasticCloud::try_from(url).ok()),
                 roles,
                 secret: None,
                 viewer,
                 url,
+                url_template,
                 legacy_apikey: Some(apikey.clone()),
                 legacy_username: None,
                 legacy_password: None,
@@ -822,11 +974,12 @@ impl KnownHost {
             return Self::from_parts(KnownHostParts {
                 accept_invalid_certs,
                 app,
-                cloud_id: ElasticCloud::try_from(&url).ok(),
+                cloud_id: url.as_ref().and_then(|url| ElasticCloud::try_from(url).ok()),
                 roles,
                 secret: None,
                 viewer,
                 url,
+                url_template,
                 legacy_apikey: None,
                 legacy_username: username,
                 legacy_password: password,
@@ -971,7 +1124,8 @@ impl KnownHost {
             roles: default_collect_roles(),
             secret: None,
             viewer: None,
-            url: url.clone(),
+            url: Some(url.clone()),
+            url_template: None,
             legacy_apikey: None,
             legacy_username: None,
             legacy_password: None,
@@ -1055,6 +1209,7 @@ impl KnownHost {
         let mut hosts = hosts.clone();
         for (name, host) in hosts.iter_mut() {
             host.normalize_and_validate_roles(name)?;
+            host.validate_template_host_name(name)?;
             if host.secret.is_some() {
                 host.clear_legacy_plaintext_auth();
             } else if host.has_legacy_plaintext_auth() {
@@ -1118,6 +1273,7 @@ impl KnownHost {
 
 impl Display for KnownHost {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> std::fmt::Result {
+        let transport = self.transport_display();
         match self.auth_label() {
             "apikey" => {
                 let cloud_id = self
@@ -1125,17 +1281,17 @@ impl Display for KnownHost {
                     .as_ref()
                     .map(std::string::ToString::to_string)
                     .unwrap_or_else(|| "None".to_string());
-                write!(fmt, "KnownHost ApiKey: {} {} {}", self.app, self.url, cloud_id)
+                write!(fmt, "KnownHost ApiKey: {} {} {}", self.app, transport, cloud_id)
             }
             "basic" => {
                 let username = self
                     .legacy_username
                     .clone()
                     .unwrap_or_else(|| "<secret-auth>".to_string());
-                write!(fmt, "KnownHost Basic: {} {}@ {}", self.app, username, self.url)
+                write!(fmt, "KnownHost Basic: {} {}@ {}", self.app, username, transport)
             }
-            "secret" => write!(fmt, "KnownHost Secret: {} {}", self.app, self.url),
-            _ => write!(fmt, "KnownHost NoAuth: {} {}", self.app, self.url),
+            "secret" => write!(fmt, "KnownHost Secret: {} {}", self.app, transport),
+            _ => write!(fmt, "KnownHost NoAuth: {} {}", self.app, transport),
         }
     }
 }
@@ -1160,7 +1316,9 @@ impl Serialize for TestKnownHostRef<'_> {
                     roles: &host.roles,
                     secret: &host.secret,
                     viewer: &host.viewer,
-                    url: &host.url,
+                    url: host
+                        .concrete_url()
+                        .expect("legacy test serialization requires a concrete URL"),
                 }
                 .serialize(serializer);
             }
@@ -1171,7 +1329,9 @@ impl Serialize for TestKnownHostRef<'_> {
                 roles: &host.roles,
                 secret: &host.secret,
                 viewer: &host.viewer,
-                url: &host.url,
+                url: host
+                    .concrete_url()
+                    .expect("legacy test serialization requires a concrete URL"),
                 username: &host.legacy_username,
             }
             .serialize(serializer);
@@ -1226,6 +1386,133 @@ fn validate_viewer_links(hosts: &BTreeMap<String, KnownHost>) -> Result<()> {
     Ok(())
 }
 
+fn normalize_elastic_cloud_proxy_url(mut url: Url, cloud_id: Option<&ElasticCloud>) -> Url {
+    if cloud_id.is_some() && url.path().ends_with("/proxy") {
+        let path = format!("{}/", url.path());
+        url.set_path(&path);
+    }
+    url
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct TemplateReference {
+    template_name: String,
+    id: String,
+    product: Option<String>,
+}
+
+fn parse_template_reference(reference: &str) -> Result<Option<TemplateReference>> {
+    let Ok(url) = Url::parse(reference) else {
+        return Ok(None);
+    };
+    if matches!(url.scheme(), "http" | "https" | "file" | "stdin" | "stdio") {
+        return Ok(None);
+    }
+    let id = url
+        .host_str()
+        .ok_or_else(|| eyre!("Template reference '{reference}' is missing required `id`"))?;
+    if id.trim().is_empty() {
+        return Err(eyre!(
+            "Template reference '{reference}' is missing required `id`"
+        ));
+    }
+    let product_segments = url
+        .path_segments()
+        .map(|segments| {
+            segments
+                .filter(|segment| !segment.trim().is_empty())
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    if product_segments.len() > 1 {
+        return Err(eyre!(
+            "Template reference '{reference}' contains too many path segments; expected at most one optional `product` segment"
+        ));
+    }
+    let product = product_segments.into_iter().next();
+    Ok(Some(TemplateReference {
+        template_name: url.scheme().to_string(),
+        id: id.to_string(),
+        product,
+    }))
+}
+
+fn validate_template_host_name(host_name: &str) -> Result<()> {
+    let mut chars = host_name.chars();
+    let Some(first) = chars.next() else {
+        return Err(eyre!("Template host names cannot be empty"));
+    };
+    if !first.is_ascii_lowercase() {
+        return Err(eyre!(
+            "Template host '{host_name}' must start with a lowercase ASCII letter to support custom-scheme resolution"
+        ));
+    }
+    if !chars.all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || matches!(ch, '+' | '-' | '.'))
+    {
+        return Err(eyre!(
+            "Template host '{host_name}' must use lowercase scheme-compatible characters: [a-z][a-z0-9+.-]*"
+        ));
+    }
+    Ok(())
+}
+
+fn validate_url_template(template: &str) -> Result<()> {
+    let mut placeholders = Vec::new();
+    let mut current = String::new();
+    let mut in_placeholder = false;
+    for ch in template.chars() {
+        match ch {
+            '{' if in_placeholder => {
+                return Err(eyre!(
+                    "Unsupported `url_template`: nested placeholders are not allowed"
+                ));
+            }
+            '{' => {
+                in_placeholder = true;
+                current.clear();
+            }
+            '}' if !in_placeholder => {
+                return Err(eyre!(
+                    "Unsupported `url_template`: unmatched closing brace"
+                ));
+            }
+            '}' => {
+                in_placeholder = false;
+                placeholders.push(current.clone());
+                current.clear();
+            }
+            _ if in_placeholder => current.push(ch),
+            _ => {}
+        }
+    }
+    if in_placeholder {
+        return Err(eyre!(
+            "Unsupported `url_template`: unterminated placeholder"
+        ));
+    }
+    for placeholder in &placeholders {
+        if !matches!(placeholder.as_str(), "id" | "product") {
+            return Err(eyre!(
+                "Unsupported `url_template` placeholder '{{{placeholder}}}'. Supported placeholders are `{{id}}` and `{{product}}`."
+            ));
+        }
+    }
+    if !placeholders.iter().any(|placeholder| placeholder == "id") {
+        return Err(eyre!(
+            "Unsupported `url_template`: template-backed hosts must include the `{{id}}` placeholder"
+        ));
+    }
+    render_url_template_url(template, "test-id", DEFAULT_TEMPLATE_PRODUCT)
+        .map(|_| ())
+        .map_err(|err| eyre!("Invalid `url_template`: {err}"))
+}
+
+fn render_url_template_url(template: &str, id: &str, product: &str) -> Result<Url> {
+    let rendered = template.replace("{id}", id).replace("{product}", product);
+    Url::parse(&rendered).map_err(|err| eyre!("Invalid rendered URL from template host: {err}"))
+}
+
 fn resolve_auth_with_precedence(
     secret_id: &Option<String>,
     legacy_apikey: Option<String>,
@@ -1278,6 +1565,7 @@ impl FromStr for KnownHost {
 impl From<KnownHost> for Url {
     fn from(host: KnownHost) -> Url {
         host.url
+            .expect("Only concrete KnownHost values can convert into Url")
     }
 }
 
@@ -2044,6 +2332,120 @@ mod tests {
                     secret: None,
                 },
             ]
+        );
+    }
+
+    #[test]
+    fn template_hosts_serialize_round_trip_and_resolve_default_product() {
+        let _guard = env_lock().lock().expect("env lock");
+        let (_tmp, _hosts, _keystore) = setup_env();
+
+        let mut hosts = BTreeMap::new();
+        let template_host = KnownHostBuilder::new_template(
+            "https://cloud.elastic.co/api/v1/deployments/{id}/{product}".to_string(),
+        )
+        .build()
+        .expect("build template host");
+        hosts.insert("elastic-cloud".to_string(), template_host);
+        write_hosts(hosts);
+
+        let saved = KnownHost::get_known(&"elastic-cloud".to_string()).expect("saved template host");
+        assert!(saved.url.is_none(), "template host should not persist a concrete URL");
+        assert_eq!(
+            saved.url_template(),
+            Some("https://cloud.elastic.co/api/v1/deployments/{id}/{product}")
+        );
+
+        let resolved = KnownHost::resolve_template_reference("elastic-cloud://cluster-1")
+            .expect("resolve template reference")
+            .expect("resolved host");
+        assert_eq!(resolved.app(), &Product::Elasticsearch);
+        assert_eq!(
+            resolved.concrete_url().map(|url| url.as_str()),
+            Some("https://cloud.elastic.co/api/v1/deployments/cluster-1/elasticsearch/elasticsearch/proxy/")
+        );
+    }
+
+    #[test]
+    fn template_reference_rejects_extra_path_segments() {
+        let err = parse_template_reference("elastic-cloud://cluster-1/elasticsearch/extra")
+            .expect_err("extra path segment should fail");
+
+        assert!(err.to_string().contains("too many path segments"));
+    }
+
+    #[test]
+    fn template_host_get_url_returns_error_without_panicking() {
+        let host = KnownHostBuilder::new_template("https://example.com/{id}".to_string())
+            .build()
+            .expect("build template host");
+
+        let err = host.get_url().expect_err("template host has no concrete URL");
+        assert!(err.to_string().contains("resolved into a concrete URL"));
+    }
+
+    #[test]
+    fn template_hosts_reject_invalid_placeholders_and_non_scheme_names() {
+        let err = KnownHostBuilder::new_template("https://example.com/{unsupported}".to_string())
+            .build()
+            .expect_err("unsupported placeholder should fail");
+        assert!(err.to_string().contains("Unsupported `url_template` placeholder"));
+
+        let err = KnownHostBuilder::new_template("https://example.com/static".to_string())
+            .build()
+            .expect_err("missing id placeholder should fail");
+        assert!(err.to_string().contains("must include the `{id}` placeholder"));
+
+        let _guard = env_lock().lock().expect("env lock");
+        let (_tmp, _hosts, _keystore) = setup_env();
+        let host = KnownHostBuilder::new_template("https://example.com/{id}".to_string())
+            .build()
+            .expect("valid template host");
+        let err = host.save("ElasticCloud").expect_err("invalid template host name should fail");
+        assert!(err.to_string().contains("lowercase ASCII letter"));
+    }
+
+    #[test]
+    fn elastic_cloud_builder_rewrites_proxy_path_via_template_rendering() {
+        let host = KnownHostBuilder::new(
+            Url::parse("https://cloud.elastic.co/deployments/deployment-123").expect("cloud url"),
+        )
+        .product(Product::Elasticsearch)
+        .build()
+        .expect("build cloud host");
+        assert_eq!(
+            host.concrete_url().map(|url| url.as_str()),
+            Some(
+                "https://cloud.elastic.co/api/v1/deployments/deployment-123/elasticsearch/elasticsearch/proxy/"
+            )
+        );
+    }
+
+    #[test]
+    fn elastic_cloud_admin_proxy_urls_keep_trailing_slash() {
+        let host = KnownHost::from_parts(KnownHostParts {
+            accept_invalid_certs: false,
+            app: Product::Elasticsearch,
+            cloud_id: Some(ElasticCloud::ElasticCloudAdmin),
+            roles: default_collect_roles(),
+            secret: None,
+            viewer: None,
+            url: Some(
+                Url::parse("https://admin.found.no/api/v1/deployments/deployment-123/elasticsearch/main-elasticsearch/proxy")
+                    .expect("cloud admin proxy url"),
+            ),
+            url_template: None,
+            legacy_apikey: None,
+            legacy_username: None,
+            legacy_password: None,
+        })
+        .expect("build host");
+
+        assert_eq!(
+            host.concrete_url().map(|url| url.as_str()),
+            Some(
+                "https://admin.found.no/api/v1/deployments/deployment-123/elasticsearch/main-elasticsearch/proxy/"
+            )
         );
     }
 }

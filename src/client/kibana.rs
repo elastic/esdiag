@@ -110,7 +110,7 @@ impl TryFrom<KnownHost> for KibanaClient {
     type Error = eyre::Report;
 
     fn try_from(host: KnownHost) -> Result<Self> {
-        let url = host.get_url();
+        let url = host.get_url()?;
         let auth = host.get_auth()?;
         KibanaClient::try_new(url, auth)
     }

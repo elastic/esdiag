@@ -502,7 +502,7 @@ fn job_host_options(state: &Arc<ServerState>) -> JobHostOptions {
             if host.requires_keystore_secret() {
                 send_secure_hosts.push(name.clone());
             }
-            if host.get_url().host_str().is_some_and(is_local_host) {
+            if host.concrete_url().and_then(|url| url.host_str()).is_some_and(is_local_host) {
                 send_local_hosts.push(name.clone());
             }
         }

@@ -132,7 +132,7 @@ impl TryFrom<KnownHost> for ElasticCloudAdminReceiver {
     type Error = eyre::Report;
 
     fn try_from(host: KnownHost) -> Result<Self> {
-        let url = host.get_url();
+        let url = host.get_url()?;
         match host.get_auth()? {
             Auth::Apikey(apikey) => Ok(ElasticCloudAdminReceiver::new(url, apikey)?),
             _ => Err(eyre::eyre!("Elastic Cloud Admin requires a URL and ApiKey")),

@@ -153,7 +153,7 @@ impl TryFrom<KnownHost> for ElasticsearchExporter {
     fn try_from(host: KnownHost) -> Result<Self> {
         let kibana_base_url = super::saved_viewer_kibana_base_url(&host).or_else(super::kibana_base_url_from_env);
         let requires_secret = !matches!(host.get_auth()?, Auth::None);
-        let url = host.get_url();
+        let url = host.get_url()?;
         let client = ElasticsearchClient::try_from(host)?;
         let limit = std::env::var("ESDIAG_OUTPUT_TASK_LIMIT")
             .ok()

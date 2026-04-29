@@ -121,10 +121,31 @@ pub(super) async fn run_known_host_form(
         return;
     }
 
+    let source = match host.get_url() {
+        Ok(url) => url.to_string(),
+        Err(e) => {
+            let error_message = format!("Failed to resolve host URL: {}", e);
+            state
+                .reject_retained_bundle(&download_token, &request_user, error_message.clone(), DOWNLOAD_REJECTION_TTL)
+                .await;
+            state.record_failure().await;
+            send_event(
+                &tx,
+                job_feed_event(template::JobFailed {
+                    job_id,
+                    error: &error_message,
+                    source: &signals.job.collect.known_host,
+                }),
+            )
+            .await;
+            send_event(&tx, signal_event(r#"{"loading":false}"#)).await;
+            return;
+        }
+    };
     let job = super::JobRequest {
         identifiers: signals.metadata.clone(),
         input: super::JobInput::FromRemoteHost {
-            source: host.get_url().to_string(),
+            source,
             host,
             diagnostic_type: signals.job.collect.diagnostic_type.clone(),
         },

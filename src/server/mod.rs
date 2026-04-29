@@ -396,6 +396,7 @@ impl Server {
                     .route("/settings/cluster/{action}/{id}", post(hosts::cluster_action))
                     .route("/settings/host/upsert", post(hosts::upsert_host))
                     .route("/settings/host/delete", post(hosts::delete_host))
+                    .route("/settings/secret/by-id/{secret_id}/delete", post(hosts::delete_secret_by_id))
                     .route("/settings/secret/{action}/{id}", post(hosts::secret_action))
                     .route("/settings/secret/upsert", post(hosts::upsert_secret))
                     .route("/settings/secret/delete", post(hosts::delete_secret))
@@ -802,12 +803,19 @@ impl ServerState {
         host: KnownHost,
         diagnostic_type: String,
     ) -> Option<JobRequest> {
+        let source = match host.get_url() {
+            Ok(url) => url.to_string(),
+            Err(err) => {
+                tracing::warn!("Skipping job request for host without concrete URL: {err}");
+                return None;
+            }
+        };
         self.push_job_request(
             id,
             JobRequest {
                 identifiers,
                 input: JobInput::FromRemoteHost {
-                    source: host.get_url().to_string(),
+                    source,
                     host,
                     diagnostic_type,
                 },
@@ -1419,10 +1427,14 @@ mod tests {
         test_server_state,
     };
     #[cfg(feature = "keystore")]
-    use crate::data::{create_keystore, write_unlock_lease};
+    use crate::data::{
+        SecretAuth, authenticate, create_keystore, resolve_secret_auth, upsert_secret_auth, write_unlock_lease,
+    };
     use crate::exporter::Exporter;
     use axum::http::HeaderMap;
     use futures::StreamExt;
+    #[cfg(feature = "keystore")]
+    use reqwest::Client;
     use std::{collections::HashMap, sync::Arc};
     #[cfg(feature = "keystore")]
     use tempfile::TempDir;
@@ -1623,10 +1635,12 @@ mod tests {
         let config_dir = tmp.path().join(".esdiag");
         std::fs::create_dir_all(&config_dir).expect("create config dir");
         let keystore_path = config_dir.join("secrets.yml");
+        let hosts_path = config_dir.join("hosts.yml");
         unsafe {
             std::env::set_var("HOME", tmp.path());
             std::env::set_var("USERPROFILE", tmp.path());
             std::env::set_var("ESDIAG_KEYSTORE", &keystore_path);
+            std::env::set_var("ESDIAG_HOSTS", &hosts_path);
             std::env::remove_var("ESDIAG_KEYSTORE_PASSWORD");
         }
         tmp
@@ -1875,5 +1889,55 @@ mod tests {
             .resolve_user_email(&headers)
             .expect("user mode should not require header");
         assert_eq!(user, "Anonymous");
+    }
+
+    #[cfg(feature = "keystore")]
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn secret_delete_path_prefers_secret_id_route_over_generic_action_route() {
+        let _guard = crate::test_env_lock().lock().expect("env lock");
+        let _tmp = setup_keystore_env();
+        authenticate("secretpw").expect("create keystore");
+        upsert_secret_auth(
+            "servermore",
+            SecretAuth::ApiKey {
+                apikey: "super-secret-api-key".to_string(),
+            },
+            "secretpw",
+        )
+        .expect("store secret");
+
+        let (mut server, bound_addr) =
+            Server::start([127, 0, 0, 1], 0, Exporter::default(), String::new(), RuntimeMode::User)
+                .await
+                .expect("server should bind");
+
+        let client = Client::new();
+        let unlock = client
+            .post(format!("http://{bound_addr}/keystore/unlock"))
+            .form(&[("password", "secretpw")])
+            .send()
+            .await
+            .expect("unlock request should succeed");
+        assert_eq!(unlock.status(), reqwest::StatusCode::NO_CONTENT);
+
+        let delete = client
+            .post(format!("http://{bound_addr}/settings/secret/by-id/servermore/delete"))
+            .send()
+            .await
+            .expect("delete request should succeed");
+        let status = delete.status();
+        let body = delete.text().await.expect("delete body");
+
+        server.shutdown().await;
+
+        assert_eq!(status, reqwest::StatusCode::OK, "unexpected response body: {body}");
+        assert!(!body.contains("id must be numeric or 'new'"));
+        assert!(
+            resolve_secret_auth("servermore", "secretpw")
+                .expect("read secret")
+                .is_none(),
+            "secret should be removed by delete-by-id route"
+        );
     }
 }

@@ -126,7 +126,7 @@ Usage
 
 1. Save a target Elasticsearch cluster to the hosts configuration
     ```sh
-    esdiag host my_cluster elasticsearch http://localhost:9200
+    esdiag host add my_cluster http://localhost:9200 --app elasticsearch
     ```
 
 2. Setup the Elasticsearch cluster with the templates, data streams, etc.
@@ -180,27 +180,62 @@ Manage saved host connections in `~/.esdiag/hosts.yml`
 Usage: esdiag host <COMMAND>
 
 Commands:
-  add <NAME> <APP> <URL>   Add a saved host
+  add <NAME> <TARGET>      Add a saved host
   update <NAME>            Update an existing saved host
   remove <NAME>            Remove an existing saved host
   list                     List all saved hosts
-  auth <NAME>              Test authentication for a saved host
+  auth <TARGET>            Test authentication for a saved host or resolved template reference
 ```
 
 Examples:
 
 ```sh
 # Host backed by a keystore secret reference
-esdiag host add prod-es elasticsearch http://localhost:9200 --secret prod-es-apikey
+esdiag host add prod-es http://localhost:9200 --app elasticsearch --secret prod-es-apikey
 
 # Host with explicit roles for workflow filtering
-esdiag host add prod-es elasticsearch http://localhost:9200 --roles collect,send
+esdiag host add prod-es http://localhost:9200 --app elasticsearch --roles collect,send
+
+# Reusable Elastic Cloud template host
+esdiag host add elastic-cloud \
+  "https://cloud.elastic.co/api/v1/deployments/{id}/elasticsearch/{product}/proxy/" \
+  --url-template
+
+# Same-name secret is used automatically for template hosts when available
+esdiag host add cloud-admin \
+  "https://admin.cloud.com/api/v1/deployments/{id}/elasticsearch/{product}/proxy/" \
+  --url-template
+
+# Reusable ECE template host
+esdiag keystore add ece_admin --apikey
+esdiag host add ece \
+  "https://coord.example.com:12443/api/v1/clusters/elasticsearch/{id}/{product}/_proxy" \
+  --url-template \
+  --secret ece_admin
+
+# Resolve a template reference directly; omitted product defaults to elasticsearch
+esdiag host auth elastic-cloud://1234
+
+# Materialize a concrete saved host from a template reference
+esdiag host add prod-es elastic-cloud://1234/elasticsearch
 
 # Update only the saved certificate setting in place
 esdiag host update prod-es --accept-invalid-certs false
 
 # Delete a saved host
 esdiag host remove prod-es
+```
+
+Template notes:
+
+- Template-backed hosts persist `url_template` instead of a concrete `url`.
+- `esdiag host add <name> ... --url-template` will use a same-name keystore secret by default when one already exists and `--secret` is omitted.
+- Supported placeholders are `{id}` and `{product}`.
+- Template host names should be lowercase and scheme-compatible so they can be resolved as `<template>://<id>/<product>`.
+- Bare template names return guidance instead of attempting a connection test:
+
+```sh
+esdiag host auth elastic-cloud
 ```
 
 #### Keystore
