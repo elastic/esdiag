@@ -803,12 +803,19 @@ impl ServerState {
         host: KnownHost,
         diagnostic_type: String,
     ) -> Option<JobRequest> {
+        let source = match host.get_url() {
+            Ok(url) => url.to_string(),
+            Err(err) => {
+                tracing::warn!("Skipping job request for host without concrete URL: {err}");
+                return None;
+            }
+        };
         self.push_job_request(
             id,
             JobRequest {
                 identifiers,
                 input: JobInput::FromRemoteHost {
-                    source: host.get_url().to_string(),
+                    source,
                     host,
                     diagnostic_type,
                 },

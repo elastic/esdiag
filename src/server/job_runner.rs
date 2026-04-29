@@ -345,7 +345,7 @@ async fn execute_remote_collection_job(
         ..
     } = ctx;
 
-    let source = host.get_url().to_string();
+    let source = host.get_url()?.to_string();
     if signals.job.process.mode == ProcessMode::Process && !signals.job.collect.save {
         let receiver = Arc::new(Receiver::try_from(host)?);
         let exporter = Arc::new(select_processed_exporter(state.clone(), signals).await?);
@@ -739,7 +739,7 @@ fn validate_local_send_uri(uri: &Uri) -> Result<()> {
             if !host.has_role(HostRole::Send) {
                 return Err(eyre!("Local known-host send targets must have the `send` role"));
             }
-            let url = host.get_url();
+            let url = host.get_url()?;
             let host_name = url
                 .host_str()
                 .ok_or_else(|| eyre!("Local send host is missing a hostname"))?;
@@ -783,7 +783,7 @@ async fn collect_remote_archive(
         (temp_dir.clone(), Some(temp_dir))
     };
 
-    let source = host.get_url().to_string();
+    let source = host.get_url()?.to_string();
     let receiver = Receiver::try_from(host.clone())?;
     let exporter = Exporter::for_collect_archive(output_dir)?;
     let collector = Collector::try_new(

@@ -365,7 +365,9 @@ fn saved_viewer_kibana_base_url(host: &KnownHost) -> Option<String> {
         return None;
     }
 
-    Some(crate::env::append_kibana_space(viewer_host.get_url().as_ref()))
+    viewer_host
+        .concrete_url()
+        .map(|url| crate::env::append_kibana_space(url.as_ref()))
 }
 
 fn kibana_base_url_from_env() -> Option<String> {

@@ -779,10 +779,10 @@ impl KnownHost {
         &self.app
     }
 
-    pub fn get_url(&self) -> Url {
+    pub fn get_url(&self) -> Result<Url> {
         self.url
             .clone()
-            .expect("KnownHost::get_url requires a concrete host URL")
+            .ok_or_else(|| eyre!("Template-backed hosts must be resolved into a concrete URL before runtime use"))
     }
 
     pub fn concrete_url(&self) -> Option<&Url> {
@@ -2367,6 +2367,16 @@ mod tests {
             .expect_err("extra path segment should fail");
 
         assert!(err.to_string().contains("too many path segments"));
+    }
+
+    #[test]
+    fn template_host_get_url_returns_error_without_panicking() {
+        let host = KnownHostBuilder::new_template("https://example.com/{id}".to_string())
+            .build()
+            .expect("build template host");
+
+        let err = host.get_url().expect_err("template host has no concrete URL");
+        assert!(err.to_string().contains("resolved into a concrete URL"));
     }
 
     #[test]

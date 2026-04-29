@@ -941,7 +941,7 @@ async fn template_host_add_defaults_same_name_secret_when_available() {
     let home = setup_home();
     let home_path = home.path().to_path_buf();
     let secret_env = vec![("ESDIAG_KEYSTORE_PASSWORD".to_string(), "pw".to_string())];
-    let template = "https://admin.cloud.com/api/v1/deployments/{id}/{product}/main-{product}/proxy";
+    let template = "https://admin.cloud.com/api/v1/deployments/{id}/elasticsearch/{product}/proxy/";
 
     let add_secret = run_esdiag_async(
         vec![
@@ -981,7 +981,7 @@ async fn template_host_add_defaults_same_name_secret_when_available() {
 async fn template_host_add_keeps_noauth_path_when_same_name_secret_is_missing() {
     let home = setup_home();
     let home_path = home.path().to_path_buf();
-    let template = "https://admin.cloud.com/api/v1/deployments/{id}/{product}/main-{product}/proxy";
+    let template = "https://admin.cloud.com/api/v1/deployments/{id}/elasticsearch/{product}/proxy/";
 
     let add_template = run_esdiag_async(
         vec![
@@ -1008,7 +1008,7 @@ async fn template_host_add_explicit_secret_overrides_same_name_default() {
     let home = setup_home();
     let home_path = home.path().to_path_buf();
     let secret_env = vec![("ESDIAG_KEYSTORE_PASSWORD".to_string(), "pw".to_string())];
-    let template = "https://admin.cloud.com/api/v1/deployments/{id}/{product}/main-{product}/proxy";
+    let template = "https://admin.cloud.com/api/v1/deployments/{id}/elasticsearch/{product}/proxy/";
 
     let add_same_name_secret = run_esdiag_async(
         vec![

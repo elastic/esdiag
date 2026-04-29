@@ -65,7 +65,7 @@ Shared host auth/update options:
 
 Host target modes:
 - Concrete URL: `esdiag host add prod-es http://localhost:9200 --app elasticsearch`
-- Template definition: `esdiag host add elastic-cloud "https://cloud.elastic.co/api/v1/deployments/{id}/{product}/main-{product}/proxy" --url-template`
+- Template definition: `esdiag host add elastic-cloud "https://cloud.elastic.co/api/v1/deployments/{id}/elasticsearch/{product}/proxy/" --url-template`
 - Materialize from template: `esdiag host add prod-es elastic-cloud://1234/elasticsearch`
 
 Template reference examples:

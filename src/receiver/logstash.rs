@@ -96,7 +96,7 @@ impl TryFrom<KnownHost> for LogstashReceiver {
     type Error = eyre::Report;
 
     fn try_from(host: KnownHost) -> Result<Self> {
-        let url = host.get_url();
+        let url = host.get_url()?;
         let client = LogstashClient::try_from(host)?;
         Ok(Self {
             client,

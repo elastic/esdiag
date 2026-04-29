@@ -131,7 +131,7 @@ impl TryFrom<KnownHost> for KibanaReceiver {
     type Error = eyre::Report;
 
     fn try_from(host: KnownHost) -> Result<Self> {
-        let url = host.get_url();
+        let url = host.get_url()?;
         let client = KibanaClient::try_from(host)?;
         Ok(Self::new(url, client))
     }

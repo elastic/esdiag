@@ -390,7 +390,8 @@ fn preferred_target_matches_exporter(
     let Some(host) = hosts_by_name.get(target) else {
         return false;
     };
-    host.get_url().to_string() == exporter.target_uri()
+    host.concrete_url()
+        .is_some_and(|url| url.as_str() == exporter.target_uri())
 }
 
 pub fn active_output_requires_keystore(
@@ -411,7 +412,8 @@ pub fn active_output_requires_keystore(
         if !secure {
             return false;
         }
-        host.get_url().to_string() == exporter.target_uri()
+        host.concrete_url()
+            .is_some_and(|url| url.as_str() == exporter.target_uri())
     })
 }
 

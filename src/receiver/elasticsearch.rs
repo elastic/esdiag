@@ -129,7 +129,7 @@ impl TryFrom<KnownHost> for ElasticsearchReceiver {
     type Error = eyre::Report;
 
     fn try_from(host: KnownHost) -> Result<Self> {
-        let url = host.get_url();
+        let url = host.get_url()?;
         let client = Elasticsearch::try_from(host)?;
         Ok(Self {
             client,

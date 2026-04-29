@@ -794,8 +794,8 @@ fn diagnostic_cluster_row(
         auth: host_auth_value(host).to_string(),
         secret: host_secret_value(host),
         accept_invalid_certs: host.accept_invalid_certs(),
-        elasticsearch_url: host.get_url().to_string(),
-        kibana_url: kibana_host.get_url().to_string(),
+        elasticsearch_url: host.get_url().ok()?.to_string(),
+        kibana_url: kibana_host.get_url().ok()?.to_string(),
     })
 }
 
@@ -1969,6 +1969,7 @@ mod tests {
         assert!(editing_html.contains("class=\"switch\""));
         assert!(editing_html.contains("Template URL"));
         assert!(editing_html.contains("Concrete URL"));
+        assert!(editing_html.contains(r#"<option value="Unknown""#));
 
         let template_readonly_html = render_host_row(1, &template_row, &[], false, false, true);
         let concrete_readonly_html = render_host_row(2, &concrete_row, &[], false, false, true);
