@@ -1491,12 +1491,17 @@ fn validate_url_template(template: &str) -> Result<()> {
             "Unsupported `url_template`: unterminated placeholder"
         ));
     }
-    for placeholder in placeholders {
+    for placeholder in &placeholders {
         if !matches!(placeholder.as_str(), "id" | "product") {
             return Err(eyre!(
                 "Unsupported `url_template` placeholder '{{{placeholder}}}'. Supported placeholders are `{{id}}` and `{{product}}`."
             ));
         }
+    }
+    if !placeholders.iter().any(|placeholder| placeholder == "id") {
+        return Err(eyre!(
+            "Unsupported `url_template`: template-backed hosts must include the `{{id}}` placeholder"
+        ));
     }
     render_url_template_url(template, "test-id", DEFAULT_TEMPLATE_PRODUCT)
         .map(|_| ())
@@ -2385,6 +2390,11 @@ mod tests {
             .build()
             .expect_err("unsupported placeholder should fail");
         assert!(err.to_string().contains("Unsupported `url_template` placeholder"));
+
+        let err = KnownHostBuilder::new_template("https://example.com/static".to_string())
+            .build()
+            .expect_err("missing id placeholder should fail");
+        assert!(err.to_string().contains("must include the `{id}` placeholder"));
 
         let _guard = env_lock().lock().expect("env lock");
         let (_tmp, _hosts, _keystore) = setup_env();

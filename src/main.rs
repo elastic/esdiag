@@ -2373,7 +2373,7 @@ mod tests {
     }
 
     #[test]
-    fn host_secret_auth_resolution_falls_back_to_host_name() {
+    fn host_secret_auth_resolution_reads_named_secret() {
         let _guard = env_lock().lock().expect("env lock");
         let _tmp = setup_env();
         upsert_secret_auth(

@@ -396,7 +396,7 @@ impl Server {
                     .route("/settings/cluster/{action}/{id}", post(hosts::cluster_action))
                     .route("/settings/host/upsert", post(hosts::upsert_host))
                     .route("/settings/host/delete", post(hosts::delete_host))
-                    .route("/settings/secret/delete/{secret_id}", post(hosts::delete_secret_by_id))
+                    .route("/settings/secret/by-id/{secret_id}/delete", post(hosts::delete_secret_by_id))
                     .route("/settings/secret/{action}/{id}", post(hosts::secret_action))
                     .route("/settings/secret/upsert", post(hosts::upsert_secret))
                     .route("/settings/secret/delete", post(hosts::delete_secret))
@@ -1922,7 +1922,7 @@ mod tests {
         assert_eq!(unlock.status(), reqwest::StatusCode::NO_CONTENT);
 
         let delete = client
-            .post(format!("http://{bound_addr}/settings/secret/delete/servermore"))
+            .post(format!("http://{bound_addr}/settings/secret/by-id/servermore/delete"))
             .send()
             .await
             .expect("delete request should succeed");
