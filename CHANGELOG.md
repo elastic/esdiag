@@ -32,6 +32,7 @@ published release notes, maintenance branches, and tagged history.
 
 ### Changed
 
+- Changed diagnostic manifests to record `requested_apis` as keyed response metadata including status, response time, and response size.
 - Moved the Tauri desktop app root under `desktop/` while keeping root-level `cargo tauri build` and desktop packaging workflows working.
 - Refined workflow card controls.
 - Polished workflow bundle delivery.
@@ -40,6 +41,10 @@ published release notes, maintenance branches, and tagged history.
 - Finalized explicit host lifecycle commands.
 - Improved saved host authentication persistence.
 - Improved agentic CLI summaries and viewer-aware Kibana links.
+
+### Fixed
+
+- Fixed Elasticsearch node stats processing to preserve lookup-enriched node identity fields.
 
 ## [0.14] - 2026-02-25
 

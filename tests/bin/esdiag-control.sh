@@ -168,7 +168,7 @@ function command_auth_returns_success() {
 
 function command_up_insecure_starts_stack_containers() {
     test_start "command_up_insecure_starts_stack_containers"
-    if ! esdiag_control up --insecure; then
+    if ! esdiag_control up --insecure -b false; then
         test_fail command_up_insecure_starts_stack_containers with exit code "${?}"
         return 1
     fi
@@ -216,7 +216,7 @@ function command_down_removes_containers {
 function command_up_secure_starts_stack_containers {
     test_start "command_up_secure_starts_stack_containers"
     sed -i -e 's/ELASTIC_SECURITY_ENABLED=false/ELASTIC_SECURITY_ENABLED=true/' .env.test
-    if ! esdiag_control up; then
+    if ! esdiag_control up -b false; then
         test_fail command_up_secure_starts_stack_containers with exit code "${?}"
         return 1
     fi

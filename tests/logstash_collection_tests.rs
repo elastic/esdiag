@@ -1,3 +1,32 @@
+//! Ignored external Logstash collection tests.
+//!
+//! These tests validate Logstash support collection against real external
+//! services. They are intentionally ignored because they depend on
+//! environment-specific infrastructure.
+//!
+//! Set `*_URL` for each version you want to exercise:
+//!
+//! - `ESDIAG_LOGSTASH_68_URL`
+//! - `ESDIAG_LOGSTASH_717_URL`
+//! - `ESDIAG_LOGSTASH_819_URL`
+//! - `ESDIAG_LOGSTASH_9_URL`
+//!
+//! Authentication is optional and can be provided per target with either
+//! `*_APIKEY` or `*_USERNAME` and `*_PASSWORD`.
+//!
+//! If the target uses a self-signed or otherwise invalid TLS certificate, set
+//! `*_ACCEPT_INVALID_CERTS=true`.
+//!
+//! Example:
+//!
+//! ```sh
+//! ESDIAG_LOGSTASH_68_URL=https://ls68.example.org:9600 \
+//! ESDIAG_LOGSTASH_68_USERNAME=elastic \
+//! ESDIAG_LOGSTASH_68_PASSWORD=changeme \
+//! ESDIAG_LOGSTASH_68_ACCEPT_INVALID_CERTS=true \
+//! cargo test --test logstash_collection_tests -- --ignored
+//! ```
+
 use serde_json::Value;
 use std::env;
 use std::fs;
@@ -190,8 +219,10 @@ fn run_external_logstash_collect_test(
     assert_eq!(manifest["product"].as_str(), Some("logstash"));
     assert_eq!(manifest["mode"].as_str(), Some("support"));
 
-    let apis = manifest["collected_apis"].as_array().expect("collected_apis array");
-    let api_names: Vec<&str> = apis.iter().filter_map(|v| v.as_str()).collect();
+    let requested_apis = manifest["requested_apis"]
+        .as_object()
+        .expect("requested_apis object");
+    let api_names: Vec<&str> = requested_apis.keys().map(String::as_str).collect();
     for required in [
         "logstash_node",
         "logstash_node_stats",
@@ -202,8 +233,20 @@ fn run_external_logstash_collect_test(
     ] {
         assert!(
             api_names.contains(&required),
-            "{env_prefix} missing collected api {required}"
+            "{env_prefix} missing requested api {required}"
         );
+        let status = requested_apis.get(required).and_then(|value| value["status"].as_u64());
+        assert_eq!(status, Some(200), "{env_prefix} unexpected status for {required}");
+        let retries = requested_apis.get(required).and_then(|value| value["retries"].as_u64());
+        let response_time_ms = requested_apis
+            .get(required)
+            .and_then(|value| value["response_time_ms"].as_u64());
+        let response_size_bytes = requested_apis
+            .get(required)
+            .and_then(|value| value["response_size_bytes"].as_u64());
+        assert_eq!(retries, Some(0), "{env_prefix} unexpected retries for {required}");
+        assert!(response_time_ms.is_some(), "{env_prefix} missing response time for {required}");
+        assert!(response_size_bytes.is_some(), "{env_prefix} missing response size for {required}");
     }
     assert_eq!(
         api_names.contains(&"logstash_health_report"),

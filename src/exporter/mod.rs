@@ -149,6 +149,17 @@ impl Exporter {
     where
         T: Serialize + Sized + Send + Sync,
     {
+        if docs.is_empty() {
+            return Ok(crate::processor::BatchResponse {
+                docs: 0,
+                errors: 0,
+                retries: 0,
+                size: 0,
+                status_code: 200,
+                time: 0,
+            });
+        }
+
         match self {
             Exporter::Archive(_) => Err(eyre!("batch send not supported for archive exporter")),
             Exporter::Directory(exporter) => exporter.batch_send(index, docs).await,
@@ -396,7 +407,7 @@ fn build_kibana_link(kibana_url: &str, diagnostic_id: &str, collection_date: u64
 
 #[cfg(test)]
 mod tests {
-    use super::{Exporter, format_directory_label};
+    use super::{ArchiveExporter, Exporter, format_directory_label};
     use crate::data::{HostRole, KnownHost, KnownHostBuilder, Product, Uri};
     use std::{collections::BTreeMap, path::PathBuf, sync::Mutex};
     use tempfile::TempDir;
@@ -421,6 +432,20 @@ mod tests {
     fn format_directory_label_preserves_existing_trailing_separator() {
         assert_eq!(format_directory_label("/tmp/out/"), "/tmp/out/");
         assert_eq!(format_directory_label(r"C:\out\"), r"C:\out\");
+    }
+
+    #[test]
+    fn send_empty_batch_succeeds_without_backend_support() {
+        let tmp = TempDir::new().expect("temp dir");
+        let exporter = Exporter::Archive(ArchiveExporter::zip(tmp.path().to_path_buf()).expect("archive exporter"));
+
+        let response =
+            tokio_test::block_on(exporter.send::<serde_json::Value>("settings-slm-esdiag".to_string(), Vec::new()))
+                .expect("empty send response");
+
+        assert_eq!(response.docs, 0);
+        assert_eq!(response.errors, 0);
+        assert_eq!(response.status_code, 200);
     }
 
     #[test]

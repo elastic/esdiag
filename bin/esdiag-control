@@ -289,6 +289,11 @@ function set_auth_header() {
 }
 
 function browser_open() {
+    if [[ "${open_browser}" == "false" ]]; then
+        log_info "$(green skipping) browser launch: $(cyan "--open-browser=false")"
+        return 0
+    fi
+
     if [[ $(command -v explorer.exe) ]]; then
         # Windows Subsystem for Linux (WSL)
         log_info "$(green running) $(white explorer.exe "${esdiag_url}")"
@@ -544,6 +549,7 @@ function print_help_up () {
     white "Options:\n"
     echo "    -e, --env <NAME|FILE>  - The $(gray .env.NAME) or $(gray FILE) to source credentials from (default $(gray .env))"
     echo "    -i, --insecure         - Setup the Elasticsearch cluster with security disabled"
+    echo "    -b, --open-browser <true|false> - Open ESDiag in a browser after startup (default $(gray true))"
     echo "    -r, --registry <URL>   - Elastic container registry URL"
     echo "    -s, --space            - Kibana space id (default $(gray esdiag))"
     echo
@@ -790,6 +796,7 @@ fi
 
 # Defaults
 declare env_file=".env"
+declare open_browser="true"
 
 # ----- Process command line arguments -----
 
@@ -828,6 +835,24 @@ while [[ $# -gt 0 ]]; do
         ;;
         -i|--insecure)
             declare security="false"
+            shift
+        ;;
+        -b|--open-browser)
+            shift
+            if [[ $# -gt 0 && "$1" =~ ^(true|false)$ ]]; then
+                open_browser="$1"
+            else
+                log_error "Missing or invalid $(gray --open-browser) value: expected true or false"
+                exit 1
+            fi
+            shift
+        ;;
+        --open-browser=*)
+            open_browser="${1#*=}"
+            if [[ ! "${open_browser}" =~ ^(true|false)$ ]]; then
+                log_error "Invalid $(gray --open-browser) value: expected true or false"
+                exit 1
+            fi
             shift
         ;;
         --remove-all)

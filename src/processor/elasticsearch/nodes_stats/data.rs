@@ -119,14 +119,14 @@ pub struct NodeStats {
     breakers: Box<RawValue>,
     pub discovery: Box<RawValue>,
     pub fs: Filesystem,
-    host: Option<Box<RawValue>>,
+    host: Option<String>,
     pub http: Box<RawValue>,
     indexing_pressure: Box<RawValue>,
     indices: Box<RawValue>,
     pub ingest: Ingest,
     ip: Option<Box<RawValue>>,
     jvm: Box<RawValue>,
-    name: Box<RawValue>,
+    name: String,
     os: NodeOs,
     process: Box<RawValue>,
     repositories: Option<Box<RawValue>>,
@@ -193,8 +193,7 @@ pub struct CpuStats {
 impl NodeStats {
     pub fn calculate_stats(&mut self, processors: usize) {
         self.fs.total.used_in_bytes = self.fs.total.total_in_bytes - self.fs.total.free_in_bytes;
-        self.fs.total.used_percent =
-            (self.fs.total.used_in_bytes * 100) / self.fs.total.total_in_bytes;
+        self.fs.total.used_percent = (self.fs.total.used_in_bytes * 100) / self.fs.total.total_in_bytes;
         if let Some(load_average) = &self.os.cpu.load_average {
             self.os.cpu.load_percent.one = (load_average.one * 100.0) as usize / processors;
             self.os.cpu.load_percent.five = (load_average.five * 100.0) as usize / processors;
@@ -203,6 +202,14 @@ impl NodeStats {
     }
 
     pub fn enrich_from_lookup(&mut self, node: &NodeDocument) {
+        if node.attributes.is_some() {
+            self.attributes = node.attributes.clone();
+        }
+        if node.host.is_some() {
+            self.host = node.host.clone();
+        }
+        self.name = node.name.clone();
+        self.roles = node.roles.clone();
         self.os.enrich_from_lookup(node);
     }
 }

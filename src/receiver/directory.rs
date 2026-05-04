@@ -3,7 +3,7 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::super::processor::{DataSource, SourceContext, StreamingDataSource};
-use super::{Receive, ReceiveMultiple, ReceiveRaw};
+use super::{RawResponse, Receive, ReceiveMultiple, ReceiveRaw};
 use eyre::{Result, eyre};
 use futures::stream::{self, BoxStream};
 use serde::de::DeserializeOwned;
@@ -135,7 +135,7 @@ impl Receive for DirectoryReceiver {
 }
 
 impl ReceiveRaw for DirectoryReceiver {
-    async fn get_raw<T>(&self) -> Result<String>
+    async fn get_raw_response<T>(&self) -> Result<RawResponse>
     where
         T: DataSource,
     {
@@ -151,7 +151,13 @@ impl ReceiveRaw for DirectoryReceiver {
                     let mut reader = BufReader::new(file);
                     let mut data = String::new();
                     reader.read_to_string(&mut data)?;
-                    return Ok(data);
+                    let response_size_bytes = data.len() as u64;
+                    return Ok(RawResponse {
+                        body: data,
+                        status: 0,
+                        response_time_ms: 0,
+                        response_size_bytes,
+                    });
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                     last_open_error = Some(e);

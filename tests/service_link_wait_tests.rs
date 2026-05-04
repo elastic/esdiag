@@ -29,7 +29,7 @@ use std::{io::Cursor, net::SocketAddr, sync::Arc, time::Duration};
 use tokio::{net::TcpListener, sync::oneshot, time::sleep};
 use url::Url;
 
-const UPLOAD_FILENAME: &str = "elasticsearch-api-diagnostics-9.1.3.zip";
+const UPLOAD_FILENAME: &str = "elasticsearch-api-diagnostics-9.3.3.zip";
 
 /// Returns real upload credentials from environment variables for `#[ignore]`d
 /// network tests. Panics with a helpful message if the variables are unset.
@@ -149,7 +149,7 @@ async fn service_link_wait_for_completion_processes_synchronously() {
     let zip_bytes = Bytes::from(
         std::fs::read(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/tests/archives/elasticsearch-api-diagnostics-9.1.3.zip"
+            "/tests/archives/elasticsearch-api-diagnostics-9.3.3.zip"
         ))
         .expect("test archive should be readable"),
     );
