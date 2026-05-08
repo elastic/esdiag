@@ -125,25 +125,31 @@ impl KibanaCollector {
         let mut attempt = 1;
         let mut delay = Duration::from_secs(2);
         let mut retries = 0;
+        let mut retried_response_time_ms = 0;
+        let mut retried_response_size_bytes = 0;
 
         loop {
             match self.save_api(api).await {
                 Ok(mut success) => {
                     if let Some((_, requested_api)) = success.requested_api.as_mut() {
                         requested_api.retries = retries;
+                        requested_api.response_time_ms += retried_response_time_ms;
+                        requested_api.response_size_bytes += retried_response_size_bytes;
                     }
                     return success;
                 }
                 Err(e) => {
                     let (status, response_time_ms, response_size_bytes) = request_metrics(&e);
+                    retried_response_time_ms += response_time_ms;
+                    retried_response_size_bytes += response_size_bytes;
                     if !should_retry_kibana_error(&e) {
                         tracing::warn!("Skipping non-retriable failure for {}: {}", api.as_str(), e);
                         return ApiCollectOutcome::failed(
                             api.as_str(),
                             status,
                             retries,
-                            response_time_ms,
-                            response_size_bytes,
+                            retried_response_time_ms,
+                            retried_response_size_bytes,
                         );
                     }
                     if start_time.elapsed() > max_duration {
@@ -157,8 +163,8 @@ impl KibanaCollector {
                             api.as_str(),
                             status,
                             retries,
-                            response_time_ms,
-                            response_size_bytes,
+                            retried_response_time_ms,
+                            retried_response_size_bytes,
                         );
                     }
                     tracing::warn!(

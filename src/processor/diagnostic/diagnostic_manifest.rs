@@ -85,9 +85,9 @@ impl Clone for DiagnosticManifest {
 impl DiagnosticManifest {
     fn parse_collection_date_millis(collection_date: &str) -> Option<u64> {
         if let Ok(date) = DateTime::parse_from_rfc3339(collection_date) {
-            Some(date.timestamp_millis() as u64)
+            u64::try_from(date.timestamp_millis()).ok()
         } else if let Ok(date) = DateTime::parse_from_str(collection_date, "%Y-%m-%dT%H:%M:%S%.3f%z") {
-            Some(date.timestamp_millis() as u64)
+            u64::try_from(date.timestamp_millis()).ok()
         } else {
             None
         }
@@ -231,6 +231,14 @@ mod tests {
         );
 
         assert_eq!(manifest.collection_date_millis, Some(1_777_148_323_610));
+    }
+
+    #[test]
+    fn parse_collection_date_millis_rejects_pre_epoch_timestamp() {
+        assert_eq!(
+            DiagnosticManifest::parse_collection_date_millis("1969-12-31T23:59:59Z"),
+            None
+        );
     }
 
     #[test]
