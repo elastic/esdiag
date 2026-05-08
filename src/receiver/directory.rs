@@ -154,9 +154,9 @@ impl ReceiveRaw for DirectoryReceiver {
                     let response_size_bytes = data.len() as u64;
                     return Ok(RawResponse {
                         body: data,
-                        status: 0,
-                        response_time_ms: 0,
-                        response_size_bytes,
+                        status: None,
+                        response_time_ms: None,
+                        response_size_bytes: Some(response_size_bytes),
                     });
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {

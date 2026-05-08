@@ -60,7 +60,13 @@ impl ApiCollectOutcome {
         }
     }
 
-    fn failed(name: &str, status: u16, retries: u32, response_time_ms: u64, response_size_bytes: u64) -> Self {
+    fn failed(
+        name: &str,
+        status: Option<u16>,
+        retries: u32,
+        response_time_ms: Option<u64>,
+        response_size_bytes: Option<u64>,
+    ) -> Self {
         Self {
             requested_api: Some((
                 name.to_string(),
@@ -361,22 +367,22 @@ impl ElasticsearchCollector {
     }
 }
 
-fn request_metrics(error: &eyre::Report) -> (u16, u64, u64) {
+fn request_metrics(error: &eyre::Report) -> (Option<u16>, Option<u64>, Option<u64>) {
     if let Some(request_error) = error.downcast_ref::<ElasticsearchRequestError>() {
         return (
-            request_error.status.as_u16(),
-            request_error.response_time_ms,
-            request_error.response_size_bytes,
+            Some(request_error.status.as_u16()),
+            Some(request_error.response_time_ms),
+            Some(request_error.response_size_bytes),
         );
     }
     if let Some(request_error) = error.downcast_ref::<ElasticCloudAdminRequestError>() {
         return (
-            request_error.status.as_u16(),
-            request_error.response_time_ms,
-            request_error.response_size_bytes,
+            Some(request_error.status.as_u16()),
+            Some(request_error.response_time_ms),
+            Some(request_error.response_size_bytes),
         );
     }
-    (0, 0, 0)
+    (None, None, None)
 }
 
 fn should_retry_elasticsearch_error(error: &eyre::Report) -> bool {

@@ -36,9 +36,9 @@ use upload_service::UploadServiceDownloader;
 #[derive(Clone, Debug)]
 pub struct RawResponse {
     pub body: String,
-    pub status: u16,
-    pub response_time_ms: u64,
-    pub response_size_bytes: u64,
+    pub status: Option<u16>,
+    pub response_time_ms: Option<u64>,
+    pub response_size_bytes: Option<u64>,
 }
 
 #[allow(async_fn_in_trait)]

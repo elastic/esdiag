@@ -103,9 +103,9 @@ impl LogstashReceiver {
 
         Ok(RawResponse {
             body,
-            status: status.as_u16(),
-            response_time_ms,
-            response_size_bytes,
+            status: Some(status.as_u16()),
+            response_time_ms: Some(response_time_ms),
+            response_size_bytes: Some(response_size_bytes),
         })
     }
 
