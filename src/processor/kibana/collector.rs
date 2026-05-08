@@ -45,7 +45,7 @@ impl ApiCollectOutcome {
         }
     }
 
-    fn failed(name: &str, status: u16, retries: u32, response_time_ms: u64, response_size_bytes: u64) -> Self {
+    fn failed(name: &str, status: Option<u16>, retries: u32, response_time_ms: u64, response_size_bytes: u64) -> Self {
         Self {
             requested_api: Some((
                 name.to_string(),
@@ -267,7 +267,7 @@ impl KibanaCollector {
         let request_path = with_space_prefix(base_url, space);
         let response = receiver.get_raw_response_by_path(&request_path, extension).await?;
         let requested_api = RequestedApi {
-            status: response.status.unwrap_or_default(),
+            status: response.status,
             retries: 0,
             response_time_ms: response.response_time_ms,
             response_size_bytes: response.response_size_bytes,
@@ -298,7 +298,7 @@ impl KibanaCollector {
             let response = receiver.get_raw_response_by_path(&request_path, extension).await?;
             total_pages = total_pages.max(parse_total_pages(&response.body, paginate_field, page).unwrap_or(page));
             let page_requested_api = RequestedApi {
-                status: response.status.unwrap_or_default(),
+                status: response.status,
                 retries: 0,
                 response_time_ms: response.response_time_ms,
                 response_size_bytes: response.response_size_bytes,
@@ -373,15 +373,15 @@ impl KibanaCollector {
     }
 }
 
-fn request_metrics(error: &eyre::Report) -> (u16, u64, u64) {
+fn request_metrics(error: &eyre::Report) -> (Option<u16>, u64, u64) {
     if let Some(request_error) = error.downcast_ref::<KibanaRequestError>() {
         return (
-            request_error.status.as_u16(),
+            Some(request_error.status.as_u16()),
             request_error.response_time_ms,
             request_error.response_size_bytes,
         );
     }
-    (0, 0, 0)
+    (None, 0, 0)
 }
 
 fn merge_requested_api(target: &mut Option<RequestedApi>, next: RequestedApi) {
@@ -516,7 +516,7 @@ mod tests {
     #[test]
     fn merge_requested_api_aggregates_response_metrics() {
         let mut requested_api = Some(RequestedApi {
-            status: 200,
+            status: Some(200),
             retries: 0,
             response_time_ms: 10,
             response_size_bytes: 20,
@@ -525,7 +525,7 @@ mod tests {
         merge_requested_api(
             &mut requested_api,
             RequestedApi {
-                status: 204,
+                status: Some(204),
                 retries: 0,
                 response_time_ms: 30,
                 response_size_bytes: 40,
@@ -535,7 +535,7 @@ mod tests {
         assert_eq!(
             requested_api,
             Some(RequestedApi {
-                status: 204,
+                status: Some(204),
                 retries: 0,
                 response_time_ms: 40,
                 response_size_bytes: 60,

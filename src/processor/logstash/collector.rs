@@ -47,7 +47,7 @@ impl ApiCollectOutcome {
         }
     }
 
-    fn failed(name: &str, status: u16, retries: u32, response_time_ms: u64, response_size_bytes: u64) -> Self {
+    fn failed(name: &str, status: Option<u16>, retries: u32, response_time_ms: u64, response_size_bytes: u64) -> Self {
         Self {
             requested_api: Some((
                 name.to_string(),
@@ -265,7 +265,7 @@ impl LogstashCollector {
         let filename = format!("{}", file_path.display());
 
         let requested_api = RequestedApi {
-            status: response.status.unwrap_or_default(),
+            status: response.status,
             retries: 0,
             response_time_ms: response.response_time_ms,
             response_size_bytes: response.response_size_bytes,
@@ -302,7 +302,7 @@ impl LogstashCollector {
         let path = PathBuf::from(T::resolve_source_file_path(&ctx)?);
         let filename = format!("{}", path.display());
         let requested_api = RequestedApi {
-            status: response.status.unwrap_or_default(),
+            status: response.status,
             retries: 0,
             response_time_ms: response.response_time_ms,
             response_size_bytes: response.response_size_bytes,
@@ -346,23 +346,25 @@ impl LogstashCollector {
     }
 }
 
-fn request_metrics(error: &eyre::Report) -> (u16, u64, u64) {
+fn request_metrics(error: &eyre::Report) -> (Option<u16>, u64, u64) {
     if let Some(request_error) = error.downcast_ref::<LogstashRequestError>() {
         return (
-            request_error.status.as_u16(),
+            Some(request_error.status.as_u16()),
             request_error.response_time_ms,
             request_error.response_size_bytes,
         );
     }
-    (0, 0, 0)
+    (None, 0, 0)
 }
 
 fn should_retry_logstash_error(error: &eyre::Report) -> bool {
     if let Some(request_error) = error.downcast_ref::<LogstashRequestError>() {
-        return request_error.status != reqwest::StatusCode::UNAUTHORIZED
-            && request_error.status != reqwest::StatusCode::FORBIDDEN;
+        return request_error.status.as_u16() == 429 || request_error.status.is_server_error();
     }
-    true
+    if let Some(request_error) = error.downcast_ref::<reqwest::Error>() {
+        return request_error.is_connect() || request_error.is_timeout();
+    }
+    false
 }
 
 #[cfg(test)]
@@ -390,16 +392,22 @@ mod tests {
     }
 
     #[test]
-    fn retry_policy_retries_non_auth_failures() {
+    fn retry_policy_retries_rate_limits_and_server_errors() {
         let rate_limited = eyre::Report::from(LogstashRequestError {
             status: StatusCode::TOO_MANY_REQUESTS,
             body: "slow down".to_string(),
             response_time_ms: 0,
             response_size_bytes: 0,
         });
-        let transport = eyre::eyre!("connection reset");
+        let server_error = eyre::Report::from(LogstashRequestError {
+            status: StatusCode::BAD_GATEWAY,
+            body: "gateway".to_string(),
+            response_time_ms: 0,
+            response_size_bytes: 0,
+        });
 
         assert!(should_retry_logstash_error(&rate_limited));
-        assert!(should_retry_logstash_error(&transport));
+        assert!(should_retry_logstash_error(&server_error));
+        assert!(!should_retry_logstash_error(&eyre::eyre!("connection reset")));
     }
 }

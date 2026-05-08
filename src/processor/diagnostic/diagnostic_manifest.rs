@@ -12,8 +12,8 @@ use std::sync::RwLock;
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct RequestedApi {
-    /// Final HTTP response status observed for this API request
-    pub status: u16,
+    /// Final HTTP response status observed for this API request, if available
+    pub status: Option<u16>,
     /// Number of retry attempts performed before the final response
     pub retries: u32,
     /// Total time spent waiting for collected response bodies for this API
@@ -107,7 +107,7 @@ impl DiagnosticManifest {
     ) -> Self {
         let collection_date_millis = Some(Self::parse_collection_date_millis(&collection_date).unwrap_or_else(|| {
             tracing::warn!("Failed to parse collection date: {}", &collection_date);
-            chrono::Utc::now().timestamp_millis() as u64
+            u64::try_from(chrono::Utc::now().timestamp_millis()).unwrap_or_default()
         }));
         let diagnostic_id = RwLock::new(None);
         let name = r#type.clone().unwrap_or("diagnostic".to_string());
