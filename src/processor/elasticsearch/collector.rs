@@ -399,6 +399,17 @@ fn should_retry_elasticsearch_error(error: &eyre::Report) -> bool {
     if let Some(request_error) = error.downcast_ref::<ElasticCloudAdminRequestError>() {
         return request_error.status.as_u16() == 429 || request_error.status.is_server_error();
     }
+    if let Some(request_error) = error.downcast_ref::<elasticsearch::Error>() {
+        if let Some(status) = request_error.status_code() {
+            return status.as_u16() == 429 || status.is_server_error();
+        }
+        if request_error.is_timeout() {
+            return true;
+        }
+        return std::error::Error::source(request_error)
+            .and_then(|source| source.downcast_ref::<reqwest::Error>())
+            .is_some_and(|source| source.is_connect() || source.is_timeout());
+    }
     if let Some(request_error) = error.downcast_ref::<reqwest::Error>() {
         return request_error.is_connect() || request_error.is_timeout();
     }
