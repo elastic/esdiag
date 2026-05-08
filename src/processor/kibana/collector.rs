@@ -267,7 +267,7 @@ impl KibanaCollector {
         let request_path = with_space_prefix(base_url, space);
         let response = receiver.get_raw_response_by_path(&request_path, extension).await?;
         let requested_api = RequestedApi {
-            status: response.status,
+            status: response.status.unwrap_or_default(),
             retries: 0,
             response_time_ms: response.response_time_ms,
             response_size_bytes: response.response_size_bytes,
@@ -298,7 +298,7 @@ impl KibanaCollector {
             let response = receiver.get_raw_response_by_path(&request_path, extension).await?;
             total_pages = total_pages.max(parse_total_pages(&response.body, paginate_field, page).unwrap_or(page));
             let page_requested_api = RequestedApi {
-                status: response.status,
+                status: response.status.unwrap_or_default(),
                 retries: 0,
                 response_time_ms: response.response_time_ms,
                 response_size_bytes: response.response_size_bytes,

@@ -154,7 +154,7 @@ impl ReceiveRaw for DirectoryReceiver {
                     let response_size_bytes = data.len() as u64;
                     return Ok(RawResponse {
                         body: data,
-                        status: 0,
+                        status: None,
                         response_time_ms: 0,
                         response_size_bytes,
                     });

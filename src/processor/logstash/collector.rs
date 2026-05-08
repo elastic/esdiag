@@ -265,7 +265,7 @@ impl LogstashCollector {
         let filename = format!("{}", file_path.display());
 
         let requested_api = RequestedApi {
-            status: response.status,
+            status: response.status.unwrap_or_default(),
             retries: 0,
             response_time_ms: response.response_time_ms,
             response_size_bytes: response.response_size_bytes,
@@ -302,7 +302,7 @@ impl LogstashCollector {
         let path = PathBuf::from(T::resolve_source_file_path(&ctx)?);
         let filename = format!("{}", path.display());
         let requested_api = RequestedApi {
-            status: response.status,
+            status: response.status.unwrap_or_default(),
             retries: 0,
             response_time_ms: response.response_time_ms,
             response_size_bytes: response.response_size_bytes,

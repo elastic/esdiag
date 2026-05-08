@@ -39,7 +39,7 @@ pub(crate) const LONG_RUNNING_REQUEST_TIMEOUT: Duration = Duration::from_secs(5 
 #[derive(Clone, Debug)]
 pub struct RawResponse {
     pub body: String,
-    pub status: u16,
+    pub status: Option<u16>,
     pub response_time_ms: u64,
     pub response_size_bytes: u64,
 }
