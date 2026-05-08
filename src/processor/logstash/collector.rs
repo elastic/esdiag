@@ -168,7 +168,7 @@ impl LogstashCollector {
                     retried_response_size_bytes += response_size_bytes;
                     if !should_retry_logstash_error(&e) {
                         tracing::warn!(
-                            "Skipping non-retriable authentication failure for {}: {}",
+                            "Skipping non-retriable failure for {}: {}",
                             api.as_str(),
                             e
                         );
