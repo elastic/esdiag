@@ -10,7 +10,7 @@ use crate::{
         DiagnosticManifest, RequestedApi,
         api::{ApiResolver, DiagnosticType, KibanaApi},
     },
-    receiver::{KibanaReceiver, KibanaRequestError, RawResponse, Receiver},
+    receiver::{KibanaReceiver, KibanaRequestError, Receiver},
 };
 use eyre::{Result, WrapErr, eyre};
 use futures::stream::{self, StreamExt};
@@ -37,17 +37,10 @@ impl ApiCollectOutcome {
         }
     }
 
-    fn success(name: &str, response: &RawResponse, retries: u32, saved: usize) -> Self {
+    fn success(name: &str, mut requested_api: RequestedApi, retries: u32, saved: usize) -> Self {
+        requested_api.retries = retries;
         Self {
-            requested_api: Some((
-                name.to_string(),
-                RequestedApi {
-                    status: response.status,
-                    retries,
-                    response_time_ms: response.response_time_ms,
-                    response_size_bytes: response.response_size_bytes,
-                },
-            )),
+            requested_api: Some((name.to_string(), requested_api)),
             saved,
         }
     }
@@ -230,10 +223,10 @@ impl KibanaCollector {
         };
 
         let mut saved = 0;
-        let mut final_response: Option<RawResponse> = None;
+        let mut final_requested_api: Option<RequestedApi> = None;
         for scope in scopes {
             let space = resolved.spaceaware.then_some(scope.as_str());
-            let (response, scope_saved) = self
+            let (requested_api, scope_saved) = self
                 .save_endpoint(
                     receiver,
                     api.as_str(),
@@ -244,11 +237,11 @@ impl KibanaCollector {
                 )
                 .await?;
             saved += scope_saved;
-            final_response = Some(response);
+            final_requested_api = Some(requested_api);
         }
 
-        match final_response {
-            Some(response) => Ok(ApiCollectOutcome::success(api.as_str(), &response, 0, saved)),
+        match final_requested_api {
+            Some(requested_api) => Ok(ApiCollectOutcome::success(api.as_str(), requested_api, 0, saved)),
             None => Ok(ApiCollectOutcome::skipped()),
         }
     }
@@ -261,7 +254,7 @@ impl KibanaCollector {
         base_url: &str,
         space: Option<&str>,
         paginate_field: Option<&str>,
-    ) -> Result<(RawResponse, usize)> {
+    ) -> Result<(RequestedApi, usize)> {
         let base_file_path = source_conf.get_file_path(api_name);
         let extension = source_conf.extension.as_deref().unwrap_or(".json");
 
@@ -273,10 +266,14 @@ impl KibanaCollector {
 
         let request_path = with_space_prefix(base_url, space);
         let response = receiver.get_raw_response_by_path(&request_path, extension).await?;
-        let saved = self
-            .save_content(&base_file_path, response.body.clone(), space, None)
-            .await?;
-        Ok((response, saved))
+        let requested_api = RequestedApi {
+            status: response.status,
+            retries: 0,
+            response_time_ms: response.response_time_ms,
+            response_size_bytes: response.response_size_bytes,
+        };
+        let saved = self.save_content(&base_file_path, response.body, space, None).await?;
+        Ok((requested_api, saved))
     }
 
     async fn save_paginated_endpoint(
@@ -287,13 +284,13 @@ impl KibanaCollector {
         space: Option<&str>,
         extension: &str,
         paginate_field: &str,
-    ) -> Result<(RawResponse, usize)> {
+    ) -> Result<(RequestedApi, usize)> {
         const PAGE_SIZE: usize = 100;
 
         let mut page = 1;
         let mut total_pages = 1;
         let mut saved = 0;
-        let mut final_response: Option<RawResponse> = None;
+        let mut final_requested_api: Option<RequestedApi> = None;
 
         loop {
             let request_path =
@@ -301,12 +298,16 @@ impl KibanaCollector {
             let response = receiver.get_raw_response_by_path(&request_path, extension).await?;
             total_pages =
                 total_pages.max(parse_total_pages(&response.body, paginate_field, page).unwrap_or(page));
+            let requested_api = RequestedApi {
+                status: response.status,
+                retries: 0,
+                response_time_ms: response.response_time_ms,
+                response_size_bytes: response.response_size_bytes,
+            };
 
             let page_scope = (total_pages > 1).then_some(page);
-            saved += self
-                .save_content(base_file_path, response.body.clone(), space, page_scope)
-                .await?;
-            final_response = Some(response);
+            saved += self.save_content(base_file_path, response.body, space, page_scope).await?;
+            final_requested_api = Some(requested_api);
 
             if page >= total_pages {
                 break;
@@ -314,8 +315,8 @@ impl KibanaCollector {
             page += 1;
         }
 
-        match final_response {
-            Some(response) => Ok((response, saved)),
+        match final_requested_api {
+            Some(requested_api) => Ok((requested_api, saved)),
             None => unreachable!("paginated endpoint should fetch at least one page"),
         }
     }

@@ -15,7 +15,7 @@ use crate::{
     data::Product,
     exporter::ArchiveExporter,
     processor::RequestedApi,
-    receiver::{ElasticCloudAdminRequestError, ElasticsearchRequestError, RawResponse, Receiver},
+    receiver::{ElasticCloudAdminRequestError, ElasticsearchRequestError, Receiver},
 };
 use eyre::{Result, WrapErr};
 use std::path::PathBuf;
@@ -45,17 +45,10 @@ impl ApiCollectOutcome {
         }
     }
 
-    fn success(name: &str, response: &RawResponse, retries: u32, saved: usize) -> Self {
+    fn success(name: &str, mut requested_api: RequestedApi, retries: u32, saved: usize) -> Self {
+        requested_api.retries = retries;
         Self {
-            requested_api: Some((
-                name.to_string(),
-                RequestedApi {
-                    status: response.status,
-                    retries,
-                    response_time_ms: response.response_time_ms,
-                    response_size_bytes: response.response_size_bytes,
-                },
-            )),
+            requested_api: Some((name.to_string(), requested_api)),
             saved,
         }
     }
@@ -248,12 +241,12 @@ impl ElasticsearchCollector {
         };
 
         match response {
-            Some((response, saved)) => Ok(ApiCollectOutcome::success(api.as_str(), &response, 0, saved)),
+            Some((requested_api, saved)) => Ok(ApiCollectOutcome::success(api.as_str(), requested_api, 0, saved)),
             None => Ok(ApiCollectOutcome::skipped()),
         }
     }
 
-    async fn save_raw(&self, name: &str) -> Result<Option<(RawResponse, usize)>> {
+    async fn save_raw(&self, name: &str) -> Result<Option<(RequestedApi, usize)>> {
         let source_conf = match crate::processor::diagnostic::data_source::get_source("elasticsearch", name, &[]) {
             Ok((_, conf)) => conf,
             Err(e) => {
@@ -300,19 +293,26 @@ impl ElasticsearchCollector {
         let file_path = PathBuf::from(source_conf.get_file_path(name));
         let filename = format!("{}", file_path.display());
 
-        match self.exporter.save(file_path, response.body.clone()).await {
+        let requested_api = RequestedApi {
+            status: response.status,
+            retries: 0,
+            response_time_ms: response.response_time_ms,
+            response_size_bytes: response.response_size_bytes,
+        };
+        let body = response.body;
+        match self.exporter.save(file_path, body).await {
             Ok(()) => {
                 tracing::info!("Saved {filename}");
-                Ok(Some((response, 1)))
+                Ok(Some((requested_api, 1)))
             }
             Err(e) => {
                 tracing::error!("Failed to save {filename}: {e}");
-                Ok(Some((response, 0)))
+                Ok(Some((requested_api, 0)))
             }
         }
     }
 
-    async fn save<T>(&self) -> Result<Option<(RawResponse, usize)>>
+    async fn save<T>(&self) -> Result<Option<(RequestedApi, usize)>>
     where
         T: DataSource,
     {
@@ -329,14 +329,21 @@ impl ElasticsearchCollector {
         let ctx = SourceContext::new("elasticsearch", None);
         let path = PathBuf::from(T::resolve_source_file_path(&ctx)?);
         let filename = format!("{}", path.display());
-        match self.exporter.save(path, response.body.clone()).await {
+        let requested_api = RequestedApi {
+            status: response.status,
+            retries: 0,
+            response_time_ms: response.response_time_ms,
+            response_size_bytes: response.response_size_bytes,
+        };
+        let body = response.body;
+        match self.exporter.save(path, body).await {
             Ok(()) => {
                 tracing::info!("Saved {filename}");
-                Ok(Some((response, 1)))
+                Ok(Some((requested_api, 1)))
             }
             Err(e) => {
                 tracing::error!("Failed to save {filename}: {e}");
-                Ok(Some((response, 0)))
+                Ok(Some((requested_api, 0)))
             }
         }
     }
