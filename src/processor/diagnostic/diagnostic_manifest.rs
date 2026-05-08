@@ -7,7 +7,7 @@ use super::{DiagPath, Manifest};
 use crate::data::Product;
 use chrono::{DateTime, SecondsFormat, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::sync::RwLock;
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -53,7 +53,7 @@ pub struct DiagnosticManifest {
     /// Additional identifiers not included in the diagnostic itself
     pub identifiers: Option<Identifiers>,
     /// APIs requested during this run keyed by API name
-    pub requested_apis: Option<HashMap<String, RequestedApi>>,
+    pub requested_apis: Option<BTreeMap<String, RequestedApi>>,
 }
 
 impl Clone for DiagnosticManifest {
@@ -105,12 +105,10 @@ impl DiagnosticManifest {
         runner: Option<String>,
         version: Option<String>,
     ) -> Self {
-        let collection_date_millis = Some(
-            Self::parse_collection_date_millis(&collection_date).unwrap_or_else(|| {
-                tracing::warn!("Failed to parse collection date: {}", &collection_date);
-                chrono::Utc::now().timestamp_millis() as u64
-            }),
-        );
+        let collection_date_millis = Some(Self::parse_collection_date_millis(&collection_date).unwrap_or_else(|| {
+            tracing::warn!("Failed to parse collection date: {}", &collection_date);
+            chrono::Utc::now().timestamp_millis() as u64
+        }));
         let diagnostic_id = RwLock::new(None);
         let name = r#type.clone().unwrap_or("diagnostic".to_string());
 
@@ -178,7 +176,7 @@ impl DiagnosticManifest {
         }
     }
 
-    pub fn with_requested_apis(self, requested_apis: HashMap<String, RequestedApi>) -> Self {
+    pub fn with_requested_apis(self, requested_apis: BTreeMap<String, RequestedApi>) -> Self {
         Self {
             requested_apis: Some(requested_apis),
             ..self

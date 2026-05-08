@@ -11,11 +11,11 @@ use crate::{
         api::{ApiResolver, ApiWeight, DiagnosticType, LogstashApi},
         collector::{CollectOptions, CollectionResult, default_collect_archive_name},
     },
-    receiver::{LogstashRequestError, RawResponse, Receiver},
+    receiver::{LogstashRequestError, Receiver},
 };
 use eyre::{Result, WrapErr};
-use std::collections::HashMap;
 use futures::stream::{self, StreamExt};
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::Duration;
@@ -39,17 +39,10 @@ impl ApiCollectOutcome {
         }
     }
 
-    fn success(name: &str, response: &RawResponse, retries: u32, saved: usize) -> Self {
+    fn success(name: &str, mut requested_api: RequestedApi, retries: u32, saved: usize) -> Self {
+        requested_api.retries = retries;
         Self {
-            requested_api: Some((
-                name.to_string(),
-                RequestedApi {
-                    status: response.status,
-                    retries,
-                    response_time_ms: response.response_time_ms,
-                    response_size_bytes: response.response_size_bytes,
-                },
-            )),
+            requested_api: Some((name.to_string(), requested_api)),
             saved,
         }
     }
@@ -118,7 +111,7 @@ impl LogstashCollector {
                 .map(|api| async move { self.save_api_with_retry(&api).await })
                 .buffer_unordered(5);
 
-            let mut requested_apis = HashMap::new();
+            let mut requested_apis = BTreeMap::new();
             while let Some(res) = light_stream.next().await {
                 result.success += res.saved;
                 if let Some((name, requested_api)) = res.requested_api {
@@ -220,12 +213,12 @@ impl LogstashCollector {
         };
 
         match response {
-            Some((response, saved)) => Ok(ApiCollectOutcome::success(api.as_str(), &response, 0, saved)),
+            Some((requested_api, saved)) => Ok(ApiCollectOutcome::success(api.as_str(), requested_api, 0, saved)),
             None => Ok(ApiCollectOutcome::skipped()),
         }
     }
 
-    async fn save_raw(&self, name: &str) -> Result<Option<(RawResponse, usize)>> {
+    async fn save_raw(&self, name: &str) -> Result<Option<(RequestedApi, usize)>> {
         let source_conf = match crate::processor::diagnostic::data_source::get_source("logstash", name, &[]) {
             Ok((_, conf)) => conf,
             Err(e) => {
@@ -265,19 +258,26 @@ impl LogstashCollector {
         let file_path = PathBuf::from(source_conf.get_file_path(name));
         let filename = format!("{}", file_path.display());
 
-        match self.exporter.save(file_path, response.body.clone()).await {
+        let requested_api = RequestedApi {
+            status: response.status,
+            retries: 0,
+            response_time_ms: response.response_time_ms,
+            response_size_bytes: response.response_size_bytes,
+        };
+
+        match self.exporter.save(file_path, response.body).await {
             Ok(()) => {
                 tracing::info!("Saved {filename}");
-                Ok(Some((response, 1)))
+                Ok(Some((requested_api, 1)))
             }
             Err(e) => {
                 tracing::error!("Failed to save {filename}: {e}");
-                Ok(Some((response, 0)))
+                Ok(Some((requested_api, 0)))
             }
         }
     }
 
-    async fn save<T>(&self) -> Result<Option<(RawResponse, usize)>>
+    async fn save<T>(&self) -> Result<Option<(RequestedApi, usize)>>
     where
         T: DataSource,
     {
@@ -295,19 +295,26 @@ impl LogstashCollector {
         let ctx = SourceContext::new("logstash", None);
         let path = PathBuf::from(T::resolve_source_file_path(&ctx)?);
         let filename = format!("{}", path.display());
-        match self.exporter.save(path, response.body.clone()).await {
+        let requested_api = RequestedApi {
+            status: response.status,
+            retries: 0,
+            response_time_ms: response.response_time_ms,
+            response_size_bytes: response.response_size_bytes,
+        };
+
+        match self.exporter.save(path, response.body).await {
             Ok(()) => {
                 tracing::info!("Saved {filename}");
-                Ok(Some((response, 1)))
+                Ok(Some((requested_api, 1)))
             }
             Err(e) => {
                 tracing::error!("Failed to save {filename}: {e}");
-                Ok(Some((response, 0)))
+                Ok(Some((requested_api, 0)))
             }
         }
     }
 
-    async fn save_diagnostic_manifest(&self, requested_apis: &HashMap<String, RequestedApi>) -> Result<usize> {
+    async fn save_diagnostic_manifest(&self, requested_apis: &BTreeMap<String, RequestedApi>) -> Result<usize> {
         let version = self.receiver.get::<Version>().await?;
 
         let manifest = DiagnosticManifest::new(
