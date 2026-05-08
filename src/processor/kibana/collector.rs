@@ -223,7 +223,7 @@ impl KibanaCollector {
         };
 
         let mut saved = 0;
-        let mut final_requested_api: Option<RequestedApi> = None;
+        let mut aggregate_requested_api: Option<RequestedApi> = None;
         for scope in scopes {
             let space = resolved.spaceaware.then_some(scope.as_str());
             let (requested_api, scope_saved) = self
@@ -237,10 +237,13 @@ impl KibanaCollector {
                 )
                 .await?;
             saved += scope_saved;
-            final_requested_api = Some(requested_api);
+            match aggregate_requested_api.as_mut() {
+                Some(aggregate) => merge_requested_api(aggregate, requested_api),
+                None => aggregate_requested_api = Some(requested_api),
+            }
         }
 
-        match final_requested_api {
+        match aggregate_requested_api {
             Some(requested_api) => Ok(ApiCollectOutcome::success(api.as_str(), requested_api, 0, saved)),
             None => Ok(ApiCollectOutcome::skipped()),
         }
@@ -290,7 +293,7 @@ impl KibanaCollector {
         let mut page = 1;
         let mut total_pages = 1;
         let mut saved = 0;
-        let mut final_requested_api: Option<RequestedApi> = None;
+        let mut aggregate_requested_api: Option<RequestedApi> = None;
 
         loop {
             let request_path =
@@ -307,7 +310,10 @@ impl KibanaCollector {
 
             let page_scope = (total_pages > 1).then_some(page);
             saved += self.save_content(base_file_path, response.body, space, page_scope).await?;
-            final_requested_api = Some(requested_api);
+            match aggregate_requested_api.as_mut() {
+                Some(aggregate) => merge_requested_api(aggregate, requested_api),
+                None => aggregate_requested_api = Some(requested_api),
+            }
 
             if page >= total_pages {
                 break;
@@ -315,7 +321,7 @@ impl KibanaCollector {
             page += 1;
         }
 
-        match final_requested_api {
+        match aggregate_requested_api {
             Some(requested_api) => Ok((requested_api, saved)),
             None => unreachable!("paginated endpoint should fetch at least one page"),
         }
@@ -425,6 +431,38 @@ fn lookup_page_size(value: &Value, paginate_field: &str) -> Option<u64> {
         .and_then(Value::as_u64)
         .or_else(|| value.get("per_page").and_then(Value::as_u64))
         .or_else(|| value.get("perPage").and_then(Value::as_u64))
+}
+
+fn merge_requested_api(aggregate: &mut RequestedApi, incoming: RequestedApi) {
+    aggregate.status = match (aggregate.status, incoming.status) {
+        (Some(left), Some(right)) => Some(select_more_severe_status(left, right)),
+        (Some(left), None) => Some(left),
+        (None, Some(right)) => Some(right),
+        (None, None) => None,
+    };
+    aggregate.response_time_ms = add_optional_u64(aggregate.response_time_ms, incoming.response_time_ms);
+    aggregate.response_size_bytes = add_optional_u64(aggregate.response_size_bytes, incoming.response_size_bytes);
+}
+
+fn add_optional_u64(left: Option<u64>, right: Option<u64>) -> Option<u64> {
+    match (left, right) {
+        (Some(left), Some(right)) => Some(left.saturating_add(right)),
+        (Some(left), None) => Some(left),
+        (None, Some(right)) => Some(right),
+        (None, None) => None,
+    }
+}
+
+fn select_more_severe_status(left: u16, right: u16) -> u16 {
+    let left_rank = left / 100;
+    let right_rank = right / 100;
+    if right_rank > left_rank {
+        right
+    } else if left_rank > right_rank {
+        left
+    } else {
+        left.max(right)
+    }
 }
 
 fn scoped_output_path(base_file_path: &str, space: Option<&str>, page: Option<usize>) -> PathBuf {

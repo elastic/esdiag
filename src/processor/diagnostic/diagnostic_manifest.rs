@@ -85,9 +85,9 @@ impl Clone for DiagnosticManifest {
 impl DiagnosticManifest {
     fn parse_collection_date_millis(collection_date: &str) -> Option<u64> {
         if let Ok(date) = DateTime::parse_from_rfc3339(collection_date) {
-            Some(date.timestamp_millis() as u64)
+            u64::try_from(date.timestamp_millis()).ok()
         } else if let Ok(date) = DateTime::parse_from_str(collection_date, "%Y-%m-%dT%H:%M:%S%.3f%z") {
-            Some(date.timestamp_millis() as u64)
+            u64::try_from(date.timestamp_millis()).ok()
         } else {
             None
         }

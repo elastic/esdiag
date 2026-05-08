@@ -286,7 +286,7 @@ impl ElasticsearchCollector {
             Ok(response) => response,
             Err(e) => {
                 tracing::warn!("Failed to get raw API {}: {}", name, e);
-                return Err(eyre::eyre!(e));
+                return Err(e);
             }
         };
 
