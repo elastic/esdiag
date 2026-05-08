@@ -16,9 +16,9 @@ pub struct RequestedApi {
     pub status: u16,
     /// Number of retry attempts performed before the final response
     pub retries: u32,
-    /// Time spent waiting for the final response body
+    /// Total time spent waiting for collected response bodies for this API
     pub response_time_ms: u64,
-    /// Size in bytes of the final response body
+    /// Total size in bytes of collected response bodies for this API
     pub response_size_bytes: u64,
 }
 
@@ -131,7 +131,7 @@ impl DiagnosticManifest {
     }
 
     pub fn collection_date_in_millis(&self) -> u64 {
-        self.collection_date_millis.unwrap_or_else(|| {
+        self.collection_date_millis.filter(|millis| *millis > 0).unwrap_or_else(|| {
             Self::parse_collection_date_millis(&self.collection_date).unwrap_or_else(|| {
                 tracing::warn!("Failed to parse collection date: {}", &self.collection_date);
                 chrono::Utc::now().timestamp_millis() as u64
@@ -247,6 +247,24 @@ mod tests {
             Some("8.19.3".to_string()),
         );
         manifest.collection_date = "not-a-date".to_string();
+
+        assert_eq!(manifest.collection_date_in_millis(), 1_777_148_323_610);
+    }
+
+    #[test]
+    fn collection_date_in_millis_treats_zero_as_missing() {
+        let mut manifest = DiagnosticManifest::new(
+            "2026-04-25T20:18:43.610Z".to_string(),
+            Some("esdiag-0.15.0-SNAPSHOT".to_string()),
+            None,
+            None,
+            Some("support".to_string()),
+            Product::Elasticsearch,
+            Some("elasticsearch_diagnostic".to_string()),
+            Some("esdiag".to_string()),
+            Some("8.19.3".to_string()),
+        );
+        manifest.collection_date_millis = Some(0);
 
         assert_eq!(manifest.collection_date_in_millis(), 1_777_148_323_610);
     }
