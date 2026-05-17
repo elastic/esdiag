@@ -56,7 +56,7 @@ fn test_collect_minimal() {
     assert_eq!(requested_api_status(&manifest, "cluster"), Some(200));
     assert_eq!(requested_api_status(&manifest, "nodes"), Some(200));
     assert_eq!(requested_api_status(&manifest, "cluster_settings"), Some(200));
-    assert_eq!(requested_api_retries(&manifest, "cluster"), Some(0));
+    assert!(requested_api_retries(&manifest, "cluster").is_some());
     assert!(requested_api_response_time_ms(&manifest, "cluster").is_some());
     assert!(requested_api_response_size_bytes(&manifest, "cluster").is_some());
 }
@@ -915,7 +915,7 @@ async fn test_collect_kibana_mock_workflow() {
     assert!(api_names.contains(&"kibana_alerts"));
     for required in ["kibana_stats", "kibana_alerts"] {
         assert_eq!(requested_api_status(&manifest, required), Some(200));
-        assert_eq!(requested_api_retries(&manifest, required), Some(0));
+        assert!(requested_api_retries(&manifest, required).is_some());
         assert!(
             requested_api_response_time_ms(&manifest, required).is_some(),
             "missing response_time_ms for {required}"

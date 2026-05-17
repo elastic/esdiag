@@ -138,7 +138,6 @@ impl KibanaCollector {
         loop {
             match self.save_api(api).await {
                 Ok(mut success) => {
-                    success.saved += retried_saved;
                     if let Some((_, requested_api)) = success.requested_api.as_mut() {
                         requested_api.retries = retries;
                         requested_api.response_time_ms += retried_response_time_ms;
