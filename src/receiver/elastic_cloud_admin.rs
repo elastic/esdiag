@@ -244,6 +244,13 @@ impl Receive for ElasticCloudAdminReceiver {
 }
 
 impl ReceiveRaw for ElasticCloudAdminReceiver {
+    async fn get_raw<T>(&self) -> Result<String>
+    where
+        T: DataSource,
+    {
+        self.get_raw_response::<T>().await.map(|response| response.body)
+    }
+
     async fn get_raw_response<T>(&self) -> Result<RawResponse>
     where
         T: DataSource,
