@@ -198,12 +198,17 @@ esdiag host add prod-es http://localhost:9200 --app elasticsearch --roles collec
 
 # Reusable Elastic Cloud template host
 esdiag host add elastic-cloud \
-  "https://cloud.elastic.co/api/v1/deployments/{id}/elasticsearch/{product}/proxy/" \
+  "https://cloud.elastic.co/api/v1/deployments/{id}/elasticsearch/_main/proxy/" \
   --url-template
 
 # Same-name secret is used automatically for template hosts when available
 esdiag host add cloud-admin \
   "https://admin.cloud.com/api/v1/deployments/{id}/elasticsearch/{product}/proxy/" \
+  --url-template
+
+# Elastic Cloud admin can use `_main` for single-resource deployments
+esdiag host add cloud-admin-legacy \
+  "https://admin.found.no/api/v1/deployments/{id}/elasticsearch/_main/proxy/" \
   --url-template
 
 # Reusable ECE template host

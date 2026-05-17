@@ -32,7 +32,7 @@ For explicit template-backed host-definition mode using `--url-template`, when `
 
 #### Scenario: Add saves a complete new template-backed host
 - **GIVEN** no saved host named `elastic-cloud` exists
-- **WHEN** the user runs `esdiag host add elastic-cloud https://cloud.elastic.co/api/v1/deployments/{id}/elasticsearch/{product}/proxy/ --url-template --secret elastic-cloud`
+- **WHEN** the user runs `esdiag host add elastic-cloud https://cloud.elastic.co/api/v1/deployments/{id}/elasticsearch/_main/proxy/ --url-template --secret elastic-cloud`
 - **THEN** the system validates the template host definition
 - **AND** the system saves `elastic-cloud` without requiring a live deployment connection test
 
