@@ -4,7 +4,7 @@
 
 use crate::data::{Auth, KnownHost};
 use base64::Engine;
-use eyre::{Result, eyre};
+use eyre::Result;
 use reqwest::{Client, Method};
 use std::collections::HashMap;
 use url::Url;
@@ -73,7 +73,7 @@ impl LogstashClient {
             None => request.send().await,
         };
 
-        response.map_err(|e| eyre!("Failed to send request: {}", e))
+        response.map_err(Into::into)
     }
 
     fn query_pairs(query: &str) -> Vec<(&str, &str)> {

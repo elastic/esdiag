@@ -137,6 +137,17 @@ impl ApiCollectOutcome {
         response_time_ms: u64,
         response_size_bytes: u64,
     ) -> Self {
+        Self::failed_with_saved(name, status, retries, response_time_ms, response_size_bytes, 0)
+    }
+
+    pub(crate) fn failed_with_saved(
+        name: &str,
+        status: Option<u16>,
+        retries: u32,
+        response_time_ms: u64,
+        response_size_bytes: u64,
+        saved: usize,
+    ) -> Self {
         Self {
             requested_api: Some((
                 name.to_string(),
@@ -147,7 +158,7 @@ impl ApiCollectOutcome {
                     response_size_bytes,
                 },
             )),
-            saved: 0,
+            saved,
         }
     }
 }

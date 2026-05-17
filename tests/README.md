@@ -92,5 +92,5 @@ Pass one or more Elastic Stack versions to regenerate a smaller set:
 ./tests/bin/regenerate-fixture-archives.sh 8.19.3 9.3.3
 ```
 
-The script requires `docker` and writes temporary container data under
-`target/fixture-archives/`.
+The script requires `docker`, starts temporary Elastic Stack containers, and
+uses a temporary directory for the Logstash pipeline configuration.
