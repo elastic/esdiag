@@ -31,7 +31,10 @@ use directory::DirectoryReceiver;
 use eyre::{Result, eyre};
 use futures::stream::BoxStream;
 use serde::de::DeserializeOwned;
+use std::time::Duration;
 use upload_service::UploadServiceDownloader;
+
+pub(crate) const LONG_RUNNING_REQUEST_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 
 #[allow(async_fn_in_trait)]
 pub trait Receive {

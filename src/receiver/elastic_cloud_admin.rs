@@ -3,7 +3,7 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::super::processor::{DataSource, DiagnosticManifest, ElasticsearchCluster, ManifestBuilder, SourceContext};
-use super::{Receive, ReceiveRaw};
+use super::{LONG_RUNNING_REQUEST_TIMEOUT, Receive, ReceiveRaw};
 use crate::data::{Auth, KnownHost};
 use eyre::{Result, eyre};
 use reqwest::header::{ACCEPT, ACCEPT_ENCODING, AUTHORIZATION};
@@ -17,7 +17,6 @@ use std::time::Duration;
 use tokio::sync::OnceCell;
 
 const ELASTIC_CLOUD_ADMIN_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
-const ELASTIC_CLOUD_ADMIN_REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 
 #[derive(Debug)]
 pub struct ElasticCloudAdminRequestError {
@@ -69,7 +68,9 @@ impl ElasticCloudAdminReceiver {
         let client = ClientBuilder::new()
             .default_headers(default_headers)
             .connect_timeout(ELASTIC_CLOUD_ADMIN_CONNECT_TIMEOUT)
-            .timeout(ELASTIC_CLOUD_ADMIN_REQUEST_TIMEOUT)
+            // Cloud Admin collection proxies Elasticsearch APIs that can spend
+            // minutes building large payloads before response headers arrive.
+            .timeout(LONG_RUNNING_REQUEST_TIMEOUT)
             .build()?;
         Ok(Self {
             client,

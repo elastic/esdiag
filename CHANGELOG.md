@@ -32,6 +32,7 @@ published release notes, maintenance branches, and tagged history.
 
 ### Changed
 
+- Increased the long-running collection request timeout so large Elasticsearch API payloads can finish returning.
 - Moved the Tauri desktop app root under `desktop/` while keeping root-level `cargo tauri build` and desktop packaging workflows working.
 - Refined workflow card controls.
 - Polished workflow bundle delivery.
