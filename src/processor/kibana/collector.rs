@@ -155,15 +155,15 @@ impl KibanaCollector {
                 }
                 Err(e) => {
                     let (status, response_time_ms, response_size_bytes) = request_metrics(&e);
-                    let response_time_ms = if response_time_ms == 0 {
-                        attempt_started.elapsed().as_millis() as u64
-                    } else {
-                        response_time_ms
-                    };
                     let (completed_response_time_ms, completed_response_size_bytes) =
                         e.downcast_ref::<KibanaPartialCollectError>()
                             .map(KibanaPartialCollectError::completed_metrics)
                             .unwrap_or((0, 0));
+                    let response_time_ms = fallback_response_time_ms(
+                        response_time_ms,
+                        attempt_started.elapsed().as_millis() as u64,
+                        completed_response_time_ms,
+                    );
                     if let Some(partial) = e.downcast_ref::<KibanaPartialCollectError>() {
                         retried_saved += partial.saved;
                     }
@@ -522,6 +522,14 @@ fn is_retryable_reqwest_error(error: &reqwest::Error) -> bool {
     error.is_connect() || error.is_timeout() || error.is_body() || error.is_request()
 }
 
+fn fallback_response_time_ms(response_time_ms: u64, attempt_elapsed_ms: u64, completed_response_time_ms: u64) -> u64 {
+    if response_time_ms == 0 {
+        attempt_elapsed_ms.saturating_sub(completed_response_time_ms)
+    } else {
+        response_time_ms
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -652,5 +660,12 @@ mod tests {
         assert_eq!(request_metrics(&partial), (None, 0, 0));
         let partial = partial.downcast_ref::<KibanaPartialCollectError>().unwrap();
         assert_eq!(partial.completed_metrics(), (25, 100));
+    }
+
+    #[test]
+    fn partial_error_elapsed_fallback_excludes_completed_request_time() {
+        assert_eq!(fallback_response_time_ms(0, 40, 25), 15);
+        assert_eq!(fallback_response_time_ms(0, 10, 25), 0);
+        assert_eq!(fallback_response_time_ms(7, 40, 25), 7);
     }
 }
