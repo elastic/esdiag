@@ -2,7 +2,7 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use super::{node::Node, node_stats::NodeStats, version::Version};
+use super::{node::Node, node_stats::NodeStats};
 use crate::{
     data::Product,
     exporter::ArchiveExporter,
@@ -52,6 +52,12 @@ impl LogstashCollector {
 
             let api_names: Vec<&str> = apis.iter().map(|a| a.as_str()).collect();
             tracing::debug!("Resolved Logstash APIs for collection: {:?}", api_names);
+            let stack_version = self
+                .receiver
+                .source_context()
+                .await?
+                .version
+                .map(|version| version.to_string());
 
             let mut result = CollectionResult {
                 path: self.exporter.to_string(),
@@ -90,7 +96,7 @@ impl LogstashCollector {
                 }
             }
 
-            result.success += self.save_diagnostic_manifest(&requested_apis).await?;
+            result.success += self.save_diagnostic_manifest(&requested_apis, stack_version).await?;
 
             Ok(result)
         }
@@ -116,6 +122,7 @@ impl LogstashCollector {
         let mut retried_response_size_bytes = 0;
 
         loop {
+            let attempt_started = std::time::Instant::now();
             match self.save_api(api).await {
                 Ok(mut success) => {
                     if let Some((_, requested_api)) = success.requested_api.as_mut() {
@@ -127,6 +134,11 @@ impl LogstashCollector {
                 }
                 Err(e) => {
                     let (status, response_time_ms, response_size_bytes) = request_metrics(&e);
+                    let response_time_ms = if response_time_ms == 0 {
+                        attempt_started.elapsed().as_millis() as u64
+                    } else {
+                        response_time_ms
+                    };
                     retried_response_time_ms += response_time_ms;
                     retried_response_size_bytes += response_size_bytes;
                     if !should_retry_logstash_error(&e) {
@@ -279,9 +291,11 @@ impl LogstashCollector {
         }
     }
 
-    async fn save_diagnostic_manifest(&self, requested_apis: &BTreeMap<String, RequestedApi>) -> Result<usize> {
-        let version = self.receiver.get::<Version>().await?;
-
+    async fn save_diagnostic_manifest(
+        &self,
+        requested_apis: &BTreeMap<String, RequestedApi>,
+        stack_version: Option<String>,
+    ) -> Result<usize> {
         let manifest = DiagnosticManifest::new(
             chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
             Some(format!("esdiag-{}", env!("CARGO_PKG_VERSION"))),
@@ -291,7 +305,7 @@ impl LogstashCollector {
             Product::Logstash,
             Some("logstash_diagnostic".to_string()),
             Some("esdiag".to_string()),
-            Some(version.version),
+            stack_version,
         )
         .with_identifiers(self.options.identifiers.clone())
         .with_requested_apis(requested_apis.clone());

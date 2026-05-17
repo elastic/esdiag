@@ -53,6 +53,7 @@ Run it from the repository root:
 ./tests/bin/esdiag-cli-e2e.sh
 ```
 
+The script requires `cargo`, `curl`, `jq`, and either `podman` or `docker`.
 The suite isolates CLI state under `target/pre-release-e2e/<run-id>/home` by
 setting `HOME`, `ESDIAG_HOSTS`, and `ESDIAG_KEYSTORE` for every installed
 `esdiag` command. It also passes `-b false` to `esdiag-control up` so headless

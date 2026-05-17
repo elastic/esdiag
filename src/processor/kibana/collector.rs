@@ -136,6 +136,7 @@ impl KibanaCollector {
         let mut retried_saved = 0;
 
         loop {
+            let attempt_started = std::time::Instant::now();
             match self.save_api(api).await {
                 Ok(mut success) => {
                     if let Some((_, requested_api)) = success.requested_api.as_mut() {
@@ -147,6 +148,11 @@ impl KibanaCollector {
                 }
                 Err(e) => {
                     let (status, response_time_ms, response_size_bytes) = request_metrics(&e);
+                    let response_time_ms = if response_time_ms == 0 {
+                        attempt_started.elapsed().as_millis() as u64
+                    } else {
+                        response_time_ms
+                    };
                     if let Some(partial) = e.downcast_ref::<KibanaPartialCollectError>() {
                         retried_saved += partial.saved;
                     }
