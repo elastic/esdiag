@@ -165,7 +165,7 @@ impl ApiCollectOutcome {
 
 #[cfg(test)]
 mod tests {
-    use super::default_collect_archive_name;
+    use super::{ApiCollectOutcome, default_collect_archive_name};
     use crate::data::Product;
 
     #[test]
@@ -186,5 +186,31 @@ mod tests {
             default_collect_archive_name(&Product::Kibana, "20260406-203000"),
             "kibana-api-diagnostics-20260406-203000"
         );
+    }
+
+    #[test]
+    fn failed_outcome_emits_requested_api_metadata() {
+        let outcome = ApiCollectOutcome::failed("nodes", Some(503), 2, 1500, 2048);
+
+        let (name, requested_api) = outcome.requested_api.expect("requested API metadata");
+        assert_eq!(name, "nodes");
+        assert_eq!(requested_api.status, Some(503));
+        assert_eq!(requested_api.retries, 2);
+        assert_eq!(requested_api.response_time_ms, 1500);
+        assert_eq!(requested_api.response_size_bytes, 2048);
+        assert_eq!(outcome.saved, 0);
+    }
+
+    #[test]
+    fn failed_outcome_preserves_partial_saved_count() {
+        let outcome = ApiCollectOutcome::failed_with_saved("alerts", None, 1, 250, 0, 3);
+
+        let (name, requested_api) = outcome.requested_api.expect("requested API metadata");
+        assert_eq!(name, "alerts");
+        assert_eq!(requested_api.status, None);
+        assert_eq!(requested_api.retries, 1);
+        assert_eq!(requested_api.response_time_ms, 250);
+        assert_eq!(requested_api.response_size_bytes, 0);
+        assert_eq!(outcome.saved, 3);
     }
 }

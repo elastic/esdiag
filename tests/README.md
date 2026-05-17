@@ -28,9 +28,10 @@ To run one test function:
 ./tests/bin/esdiag-control.sh --only command_help_prints_usage
 ```
 
-The script requires `shellcheck` and either `podman` or `docker`. It writes its
-combined command log to `target/test-esdiag-control.log` and uses a temporary
-`.env.test` file copied from `.env` or `example.env`.
+The script requires `shellcheck`, `curl`, `jq`, `grep`, `sed`, and either
+`podman` or `docker`. It writes its combined command log to
+`target/test-esdiag-control.log` and uses a temporary `.env.test` file copied
+from `.env` or `example.env`.
 
 ## CLI End-To-End Suite
 
@@ -93,5 +94,7 @@ Pass one or more Elastic Stack versions to regenerate a smaller set:
 ./tests/bin/regenerate-fixture-archives.sh 8.19.3 9.3.3
 ```
 
-The script requires `docker`, starts temporary Elastic Stack containers, and
-uses a temporary directory for the Logstash pipeline configuration.
+The script requires `cargo`, `curl`, and `docker` by default. Set
+`CONTAINER_RUNTIME=podman` to use Podman instead. It starts temporary Elastic
+Stack containers and uses a temporary directory for the Logstash pipeline
+configuration.

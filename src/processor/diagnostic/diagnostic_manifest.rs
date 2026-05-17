@@ -93,6 +93,16 @@ impl DiagnosticManifest {
         }
     }
 
+    fn valid_collection_date_millis(collection_date_millis: u64) -> Option<u64> {
+        if collection_date_millis == 0 {
+            return None;
+        }
+
+        let millis = i64::try_from(collection_date_millis).ok()?;
+        Utc.timestamp_millis_opt(millis).single()?;
+        Some(collection_date_millis)
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         collection_date: String,
@@ -131,12 +141,14 @@ impl DiagnosticManifest {
     }
 
     pub fn collection_date_in_millis(&self) -> u64 {
-        self.collection_date_millis.filter(|millis| *millis > 0).unwrap_or_else(|| {
-            Self::parse_collection_date_millis(&self.collection_date).unwrap_or_else(|| {
-                tracing::warn!("Failed to parse collection date: {}", &self.collection_date);
-                chrono::Utc::now().timestamp_millis() as u64
+        self.collection_date_millis
+            .and_then(Self::valid_collection_date_millis)
+            .unwrap_or_else(|| {
+                Self::parse_collection_date_millis(&self.collection_date).unwrap_or_else(|| {
+                    tracing::warn!("Failed to parse collection date: {}", &self.collection_date);
+                    u64::try_from(chrono::Utc::now().timestamp_millis()).unwrap_or_default()
+                })
             })
-        })
     }
 
     pub fn diagnostic_id(&self, uuid: &str) -> String {
@@ -150,8 +162,9 @@ impl DiagnosticManifest {
             None => {
                 let collection_date_string = Utc
                     .timestamp_millis_opt(self.collection_date_in_millis() as i64)
-                    .map(|dt| dt.to_rfc3339_opts(SecondsFormat::Secs, true))
-                    .unwrap();
+                    .single()
+                    .unwrap_or_else(Utc::now)
+                    .to_rfc3339_opts(SecondsFormat::Secs, true);
 
                 // Human readable ID
                 *id = Some(format!(
@@ -275,5 +288,24 @@ mod tests {
         manifest.collection_date_millis = Some(0);
 
         assert_eq!(manifest.collection_date_in_millis(), 1_777_148_323_610);
+    }
+
+    #[test]
+    fn collection_date_in_millis_rejects_out_of_range_stored_value() {
+        let mut manifest = DiagnosticManifest::new(
+            "2026-04-25T20:18:43.610Z".to_string(),
+            Some("esdiag-0.15.0-SNAPSHOT".to_string()),
+            None,
+            None,
+            Some("support".to_string()),
+            Product::Elasticsearch,
+            Some("elasticsearch_diagnostic".to_string()),
+            Some("esdiag".to_string()),
+            Some("8.19.3".to_string()),
+        );
+        manifest.collection_date_millis = Some(u64::MAX);
+
+        assert_eq!(manifest.collection_date_in_millis(), 1_777_148_323_610);
+        assert_eq!(manifest.diagnostic_id("abcd1234"), "elasticsearch_diagnostic@2026-04-25~abcd");
     }
 }
