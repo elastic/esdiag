@@ -70,7 +70,17 @@ pub trait ReceiveMultiple {
 pub trait ReceiveRaw {
     async fn get_raw_response<T>(&self) -> Result<RawResponse>
     where
-        T: DataSource;
+        T: DataSource,
+    {
+        let body = self.get_raw::<T>().await?;
+        let response_size_bytes = body.len() as u64;
+        Ok(RawResponse {
+            body,
+            status: None,
+            response_time_ms: 0,
+            response_size_bytes,
+        })
+    }
 
     async fn get_raw<T>(&self) -> Result<String>
     where

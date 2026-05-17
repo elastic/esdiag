@@ -3,7 +3,12 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::{elasticsearch::ElasticsearchCollector, kibana::KibanaCollector, logstash::LogstashCollector};
-use crate::{data::Product, exporter::Exporter, processor::Identifiers, receiver::Receiver};
+use crate::{
+    data::Product,
+    exporter::Exporter,
+    processor::{Identifiers, RequestedApi},
+    receiver::Receiver,
+};
 use eyre::{Result, eyre};
 
 #[derive(Debug, Clone)]
@@ -102,6 +107,49 @@ pub struct CollectionResult {
     pub path: String,
     pub success: usize,
     pub total: usize,
+}
+
+pub(crate) struct ApiCollectOutcome {
+    pub(crate) requested_api: Option<(String, RequestedApi)>,
+    pub(crate) saved: usize,
+}
+
+impl ApiCollectOutcome {
+    pub(crate) fn skipped() -> Self {
+        Self {
+            requested_api: None,
+            saved: 0,
+        }
+    }
+
+    pub(crate) fn success(name: &str, mut requested_api: RequestedApi, retries: u32, saved: usize) -> Self {
+        requested_api.retries = retries;
+        Self {
+            requested_api: Some((name.to_string(), requested_api)),
+            saved,
+        }
+    }
+
+    pub(crate) fn failed(
+        name: &str,
+        status: Option<u16>,
+        retries: u32,
+        response_time_ms: u64,
+        response_size_bytes: u64,
+    ) -> Self {
+        Self {
+            requested_api: Some((
+                name.to_string(),
+                RequestedApi {
+                    status,
+                    retries,
+                    response_time_ms,
+                    response_size_bytes,
+                },
+            )),
+            saved: 0,
+        }
+    }
 }
 
 #[cfg(test)]

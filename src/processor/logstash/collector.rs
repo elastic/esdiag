@@ -9,7 +9,7 @@ use crate::{
     processor::{
         DataSource, DiagnosticManifest, RequestedApi, SourceContext,
         api::{ApiResolver, ApiWeight, DiagnosticType, LogstashApi},
-        collector::{CollectOptions, CollectionResult, default_collect_archive_name},
+        collector::{ApiCollectOutcome, CollectOptions, CollectionResult, default_collect_archive_name},
     },
     receiver::{LogstashRequestError, Receiver},
 };
@@ -24,43 +24,6 @@ pub struct LogstashCollector {
     receiver: Receiver,
     exporter: ArchiveExporter,
     options: CollectOptions,
-}
-
-struct ApiCollectOutcome {
-    requested_api: Option<(String, RequestedApi)>,
-    saved: usize,
-}
-
-impl ApiCollectOutcome {
-    fn skipped() -> Self {
-        Self {
-            requested_api: None,
-            saved: 0,
-        }
-    }
-
-    fn success(name: &str, mut requested_api: RequestedApi, retries: u32, saved: usize) -> Self {
-        requested_api.retries = retries;
-        Self {
-            requested_api: Some((name.to_string(), requested_api)),
-            saved,
-        }
-    }
-
-    fn failed(name: &str, status: Option<u16>, retries: u32, response_time_ms: u64, response_size_bytes: u64) -> Self {
-        Self {
-            requested_api: Some((
-                name.to_string(),
-                RequestedApi {
-                    status,
-                    retries,
-                    response_time_ms,
-                    response_size_bytes,
-                },
-            )),
-            saved: 0,
-        }
-    }
 }
 
 impl LogstashCollector {
@@ -167,11 +130,7 @@ impl LogstashCollector {
                     retried_response_time_ms += response_time_ms;
                     retried_response_size_bytes += response_size_bytes;
                     if !should_retry_logstash_error(&e) {
-                        tracing::warn!(
-                            "Skipping non-retriable failure for {}: {}",
-                            api.as_str(),
-                            e
-                        );
+                        tracing::warn!("Skipping non-retriable failure for {}: {}", api.as_str(), e);
                         return ApiCollectOutcome::failed(
                             api.as_str(),
                             status,

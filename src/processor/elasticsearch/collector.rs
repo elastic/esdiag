@@ -4,7 +4,7 @@
 
 use super::super::{
     SourceContext,
-    collector::{CollectOptions, CollectionResult, default_collect_archive_name},
+    collector::{ApiCollectOutcome, CollectOptions, CollectionResult, default_collect_archive_name},
 };
 use super::{
     AliasList, Cluster, ClusterSettings, DataSource, DataStreams, DiagnosticManifest, HealthReport, IlmExplain,
@@ -30,43 +30,6 @@ pub struct ElasticsearchCollector {
     receiver: Receiver,
     exporter: ArchiveExporter,
     options: CollectOptions,
-}
-
-struct ApiCollectOutcome {
-    requested_api: Option<(String, RequestedApi)>,
-    saved: usize,
-}
-
-impl ApiCollectOutcome {
-    fn skipped() -> Self {
-        Self {
-            requested_api: None,
-            saved: 0,
-        }
-    }
-
-    fn success(name: &str, mut requested_api: RequestedApi, retries: u32, saved: usize) -> Self {
-        requested_api.retries = retries;
-        Self {
-            requested_api: Some((name.to_string(), requested_api)),
-            saved,
-        }
-    }
-
-    fn failed(name: &str, status: Option<u16>, retries: u32, response_time_ms: u64, response_size_bytes: u64) -> Self {
-        Self {
-            requested_api: Some((
-                name.to_string(),
-                RequestedApi {
-                    status,
-                    retries,
-                    response_time_ms,
-                    response_size_bytes,
-                },
-            )),
-            saved: 0,
-        }
-    }
 }
 
 impl ElasticsearchCollector {
