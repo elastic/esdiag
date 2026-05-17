@@ -335,9 +335,13 @@ fn should_retry_logstash_error(error: &eyre::Report) -> bool {
         return request_error.status.as_u16() == 429 || request_error.status.is_server_error();
     }
     if let Some(request_error) = error.downcast_ref::<reqwest::Error>() {
-        return request_error.is_connect() || request_error.is_timeout();
+        return is_retryable_reqwest_error(request_error);
     }
     false
+}
+
+fn is_retryable_reqwest_error(error: &reqwest::Error) -> bool {
+    error.is_connect() || error.is_timeout() || error.is_body() || error.is_request()
 }
 
 #[cfg(test)]

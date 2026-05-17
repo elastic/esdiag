@@ -43,15 +43,22 @@ impl KibanaPartialCollectError {
     }
 
     fn metrics(&self) -> (Option<u16>, u64, u64) {
-        let (status, response_time_ms, response_size_bytes) = request_metrics(&self.source);
-        match &self.requested_api {
-            Some(requested_api) => (
-                status.or(requested_api.status),
-                requested_api.response_time_ms + response_time_ms,
-                requested_api.response_size_bytes + response_size_bytes,
-            ),
-            None => (status, response_time_ms, response_size_bytes),
+        request_metrics(&self.source)
+    }
+
+    fn completed_metrics(&self) -> (u64, u64) {
+        let mut response_time_ms = 0;
+        let mut response_size_bytes = 0;
+        if let Some(requested_api) = &self.requested_api {
+            response_time_ms += requested_api.response_time_ms;
+            response_size_bytes += requested_api.response_size_bytes;
         }
+        if let Some(partial) = self.source.downcast_ref::<KibanaPartialCollectError>() {
+            let (nested_time_ms, nested_size_bytes) = partial.completed_metrics();
+            response_time_ms += nested_time_ms;
+            response_size_bytes += nested_size_bytes;
+        }
+        (response_time_ms, response_size_bytes)
     }
 }
 
@@ -153,11 +160,15 @@ impl KibanaCollector {
                     } else {
                         response_time_ms
                     };
+                    let (completed_response_time_ms, completed_response_size_bytes) =
+                        e.downcast_ref::<KibanaPartialCollectError>()
+                            .map(KibanaPartialCollectError::completed_metrics)
+                            .unwrap_or((0, 0));
                     if let Some(partial) = e.downcast_ref::<KibanaPartialCollectError>() {
                         retried_saved += partial.saved;
                     }
-                    retried_response_time_ms += response_time_ms;
-                    retried_response_size_bytes += response_size_bytes;
+                    retried_response_time_ms += completed_response_time_ms + response_time_ms;
+                    retried_response_size_bytes += completed_response_size_bytes + response_size_bytes;
                     if !should_retry_kibana_error(&e) {
                         tracing::warn!("Skipping non-retriable failure for {}: {}", api.as_str(), e);
                         return ApiCollectOutcome::failed_with_saved(
@@ -499,14 +510,16 @@ fn should_retry_kibana_error(error: &eyre::Report) -> bool {
         return should_retry_kibana_error(&partial_error.source);
     }
     if let Some(request_error) = error.downcast_ref::<KibanaRequestError>() {
-        return request_error.status.as_u16() == 429
-            || (request_error.status.is_server_error()
-                && request_error.status != reqwest::StatusCode::INTERNAL_SERVER_ERROR);
+        return request_error.status.as_u16() == 429 || request_error.status.is_server_error();
     }
     if let Some(request_error) = error.downcast_ref::<reqwest::Error>() {
-        return request_error.is_connect() || request_error.is_timeout();
+        return is_retryable_reqwest_error(request_error);
     }
     false
+}
+
+fn is_retryable_reqwest_error(error: &reqwest::Error) -> bool {
+    error.is_connect() || error.is_timeout() || error.is_body() || error.is_request()
 }
 
 #[cfg(test)]
@@ -595,7 +608,7 @@ mod tests {
     }
 
     #[test]
-    fn retry_policy_skips_internal_server_errors() {
+    fn retry_policy_retries_internal_server_errors() {
         let internal_server_error = eyre::Report::from(KibanaRequestError {
             status: StatusCode::INTERNAL_SERVER_ERROR,
             body: "internal".to_string(),
@@ -603,7 +616,7 @@ mod tests {
             response_size_bytes: 0,
         });
 
-        assert!(!should_retry_kibana_error(&internal_server_error));
+        assert!(should_retry_kibana_error(&internal_server_error));
     }
 
     #[test]
@@ -623,5 +636,21 @@ mod tests {
 
         assert!(should_retry_kibana_error(&rate_limit));
         assert!(should_retry_kibana_error(&server_error));
+    }
+
+    #[test]
+    fn partial_error_metrics_keep_final_error_separate_from_completed_pages() {
+        let completed = RequestedApi {
+            status: Some(200),
+            retries: 0,
+            response_time_ms: 25,
+            response_size_bytes: 100,
+        };
+        let transport_error = eyre!("connection reset");
+        let partial = eyre::Report::from(KibanaPartialCollectError::new(transport_error, Some(completed), 1));
+
+        assert_eq!(request_metrics(&partial), (None, 0, 0));
+        let partial = partial.downcast_ref::<KibanaPartialCollectError>().unwrap();
+        assert_eq!(partial.completed_metrics(), (25, 100));
     }
 }

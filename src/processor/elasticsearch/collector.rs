@@ -385,12 +385,16 @@ fn should_retry_elasticsearch_error(error: &eyre::Report) -> bool {
         }
         return std::error::Error::source(request_error)
             .and_then(|source| source.downcast_ref::<reqwest::Error>())
-            .is_some_and(|source| source.is_connect() || source.is_timeout());
+            .is_some_and(is_retryable_reqwest_error);
     }
     if let Some(request_error) = error.downcast_ref::<reqwest::Error>() {
-        return request_error.is_connect() || request_error.is_timeout();
+        return is_retryable_reqwest_error(request_error);
     }
     false
+}
+
+fn is_retryable_reqwest_error(error: &reqwest::Error) -> bool {
+    error.is_connect() || error.is_timeout() || error.is_body() || error.is_request()
 }
 
 #[cfg(test)]
