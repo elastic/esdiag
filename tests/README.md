@@ -73,3 +73,24 @@ ESDIAG_E2E_PROCESS_KIBANA=true ./tests/bin/esdiag-cli-e2e.sh
 processing once that processor is implemented. By default the suite still
 collects from Kibana but skips processing that collected Kibana diagnostic so
 the release gate only covers supported workflows.
+
+## Fixture Archive Regeneration
+
+`tests/bin/regenerate-fixture-archives.sh` rebuilds the checked-in
+Elasticsearch, Kibana, and Logstash diagnostic archive fixtures under
+`tests/archives/`.
+
+Run it from the repository root:
+
+```sh
+./tests/bin/regenerate-fixture-archives.sh
+```
+
+Pass one or more Elastic Stack versions to regenerate a smaller set:
+
+```sh
+./tests/bin/regenerate-fixture-archives.sh 8.19.3 9.3.3
+```
+
+The script requires `docker` and writes temporary container data under
+`target/fixture-archives/`.

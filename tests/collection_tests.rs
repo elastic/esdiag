@@ -907,6 +907,25 @@ async fn test_collect_kibana_mock_workflow() {
             .exists()
     );
 
+    let manifest_content = fs::read_to_string(extracted.path.join("diagnostic_manifest.json")).unwrap();
+    let manifest: Value = serde_json::from_str(&manifest_content).unwrap();
+    let api_names = requested_api_names(&manifest);
+
+    assert!(api_names.contains(&"kibana_stats"));
+    assert!(api_names.contains(&"kibana_alerts"));
+    for required in ["kibana_stats", "kibana_alerts"] {
+        assert_eq!(requested_api_status(&manifest, required), Some(200));
+        assert_eq!(requested_api_retries(&manifest, required), Some(0));
+        assert!(
+            requested_api_response_time_ms(&manifest, required).is_some(),
+            "missing response_time_ms for {required}"
+        );
+        assert!(
+            requested_api_response_size_bytes(&manifest, required).is_some(),
+            "missing response_size_bytes for {required}"
+        );
+    }
+
     let _ = shutdown_tx.send(());
     let _ = server.await;
 }
