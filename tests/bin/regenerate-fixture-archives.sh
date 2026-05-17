@@ -91,7 +91,7 @@ collect_fixture() {
     home_dir="$(mktemp -d)"
     out_dir="$(mktemp -d)"
 
-    HOME="${home_dir}" USERPROFILE="${home_dir}" "${ESDIAG_BIN}" host add "${host_name}" "${product}" "${url}" --agent >/dev/null
+    HOME="${home_dir}" USERPROFILE="${home_dir}" "${ESDIAG_BIN}" host add "${host_name}" "${url}" --app "${product}" --agent >/dev/null
     HOME="${home_dir}" USERPROFILE="${home_dir}" "${ESDIAG_BIN}" collect "${host_name}" "${out_dir}" --type support --agent >/dev/null
 
     shopt -s nullglob

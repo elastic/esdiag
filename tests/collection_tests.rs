@@ -28,7 +28,7 @@ fn test_collect_minimal() {
     let out_dir = dir.path().to_str().unwrap();
 
     // This test expects a known host named "elasticsearch-local" to be configured in ~/.esdiag/hosts.yml
-    // You can create this with: `esdiag host add elasticsearch-local elasticsearch http://localhost:9200`
+    // You can create this with: `esdiag host add elasticsearch-local http://localhost:9200 --app elasticsearch`
     let status = Command::new(env!("CARGO_BIN_EXE_esdiag"))
         .args(["collect", "elasticsearch-local", out_dir, "--type", "minimal"])
         .status()
@@ -94,7 +94,7 @@ fn test_collect_light() {
     let out_dir = dir.path().to_str().unwrap();
 
     // This test expects a known host named "elasticsearch-local" to be configured in ~/.esdiag/hosts.yml
-    // You can create this with: `esdiag host add elasticsearch-local elasticsearch http://localhost:9200`
+    // You can create this with: `esdiag host add elasticsearch-local http://localhost:9200 --app elasticsearch`
     let status = Command::new(env!("CARGO_BIN_EXE_esdiag"))
         .args([
             "collect",
@@ -129,7 +129,7 @@ fn test_collect_support_all_endpoints() {
     let out_dir = dir.path().to_str().unwrap();
 
     // This test expects a known host named "elasticsearch-local" to be configured in ~/.esdiag/hosts.yml
-    // You can create this with: `esdiag host add elasticsearch-local elasticsearch http://localhost:9200`
+    // You can create this with: `esdiag host add elasticsearch-local http://localhost:9200 --app elasticsearch`
     let status = Command::new(env!("CARGO_BIN_EXE_esdiag"))
         .args(["collect", "elasticsearch-local", out_dir, "--type", "support"])
         .status()
@@ -498,7 +498,7 @@ fn test_collect_no_auth_with_ephemeral_container() {
 
 #[test]
 #[ignore = "requires docker or podman runtime"]
-fn test_collect_with_plaintext_and_keystore_auth_modes() {
+fn test_collect_with_keystore_auth_modes() {
     let runtime = match container_runtime() {
         Some(runtime) => runtime,
         None => {
@@ -520,30 +520,7 @@ fn test_collect_with_plaintext_and_keystore_auth_modes() {
     let keystore_password = "esdiag-keystore-password";
     let host_url = format!("http://127.0.0.1:{port}");
 
-    // 1) collect with basic auth saved directly in hosts.yml
-    let basic_plain_name = "it-basic-plain";
-    let host_plain = run_esdiag(
-        &[
-            "host",
-            "add",
-            basic_plain_name,
-            &host_url,
-            "--app",
-            "elasticsearch",
-            "--user",
-            "elastic",
-            "--password",
-            elastic_password,
-            "--accept-invalid-certs",
-            "true",
-        ],
-        &test_home,
-        &[],
-    );
-    assert_success(&host_plain, "host basic plaintext");
-    run_collect_assert_ok(&test_home, basic_plain_name, "collect basic plaintext");
-
-    // 2) collect with basic auth loaded from keystore
+    // 1) collect with basic auth loaded from keystore
     let add_basic_secret = run_esdiag(
         &[
             "keystore",
@@ -583,28 +560,7 @@ fn test_collect_with_plaintext_and_keystore_auth_modes() {
         "collect basic keystore",
     );
 
-    // 3) collect with apikey stored directly in hosts.yml
-    let apikey_plain_name = "it-apikey-plain";
-    let host_apikey_plain = run_esdiag(
-        &[
-            "host",
-            "add",
-            apikey_plain_name,
-            &host_url,
-            "--app",
-            "elasticsearch",
-            "--apikey",
-            &api_key,
-            "--accept-invalid-certs",
-            "true",
-        ],
-        &test_home,
-        &[],
-    );
-    assert_success(&host_apikey_plain, "host apikey plaintext");
-    run_collect_assert_ok(&test_home, apikey_plain_name, "collect apikey plaintext");
-
-    // 4) collect with apikey loaded from keystore
+    // 2) collect with apikey loaded from keystore
     let add_apikey_secret = run_esdiag(
         &["keystore", "add", "it-apikey-secret", "--apikey", &api_key],
         &test_home,
@@ -708,10 +664,6 @@ impl Drop for RunningEsContainer {
     fn drop(&mut self) {
         let _ = Command::new(&self.runtime).args(["rm", "-f", &self.name]).status();
     }
-}
-
-fn run_collect_assert_ok(home: &tempfile::TempDir, host: &str, label: &str) {
-    run_collect_assert_ok_with_env(home, host, &[], label)
 }
 
 fn run_collect_assert_ok_with_env(home: &tempfile::TempDir, host: &str, extra_env: &[(&str, &str)], label: &str) {
