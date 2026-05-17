@@ -74,7 +74,7 @@ async fn extract_ingest_processors(
                         pipeline: IngestPipelineName {
                             name: pipeline_name.to_string(),
                         },
-                        processor: IngestProcessorStatsDoc::from(processor)
+                        processor: IngestProcessorStatsDoc::from_processor(processor, &name)
                             .with_name(name)
                             .with_order(index),
                     },
@@ -129,10 +129,10 @@ impl IngestProcessorStatsDoc {
     }
 }
 
-impl From<IngestProcessor> for IngestProcessorStatsDoc {
-    fn from(processor: IngestProcessor) -> Self {
+impl IngestProcessorStatsDoc {
+    fn from_processor(processor: IngestProcessor, name: &str) -> Self {
         IngestProcessorStatsDoc {
-            r#type: processor.r#type,
+            r#type: processor.r#type.unwrap_or_else(|| name.to_string()),
             stats: processor.stats,
             order: None,
             name: None,

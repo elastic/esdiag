@@ -309,13 +309,13 @@ async fn user_mode_workflow_shows_known_host_collect_and_local_save_defaults() {
 
     assert!(body.contains("id=\"collect-known-host\""));
     assert!(body.contains("id=\"known-host-button\""));
-    assert!(body.contains("data-signals:workflow.collect.mode=\"'upload'\""));
-    assert!(body.contains("data-signals:workflow.collect.source=\"'upload-file'\""));
+    assert!(body.contains("data-signals:job.collect.mode=\"'upload'\""));
+    assert!(body.contains("data-signals:job.collect.source=\"'upload-file'\""));
     assert!(body.contains("id=\"collect-save-toggle\""));
     assert!(body.contains("Download Archive"));
     assert!(body.contains("id=\"upload-form\""));
     assert!(body.contains(
-        "data-attr:disabled=\"$workflow.collect.mode === 'upload' && $workflow.collect.source === 'upload-file'\""
+        "data-attr:disabled=\"$job.collect.mode === 'upload' && $job.collect.source === 'upload-file'\""
     ));
     assert!(body.contains("placeholder=\"/"));
 
@@ -360,15 +360,15 @@ async fn advanced_page_embeds_send_target_disable_and_auto_save_rules() {
     assert_eq!(response.status(), reqwest::StatusCode::OK);
     let body = response.text().await.expect("advanced page body");
 
-    assert!(body.contains("data-bind:workflow.process.enabled"));
-    assert!(body.contains("$workflow.process.mode = $workflow.process.enabled ? 'process' : 'forward'"));
-    assert!(body.contains("$workflow.send.mode = 'local'"));
+    assert!(body.contains("data-bind:job.process.enabled"));
+    assert!(body.contains("$job.process.mode = $job.process.enabled ? 'process' : 'forward'"));
+    assert!(body.contains("$job.send.mode = 'local'"));
     assert!(body.contains("Download the archive from&nbsp;<strong>Collect</strong>."));
-    assert!(body.contains("$workflow.collect.source === 'known-host'"));
-    assert!(body.contains("$workflow.collect.mode === 'collect' && $workflow.collect.source === 'known-host' && $workflow.collect.known_host !== ''"));
+    assert!(body.contains("$job.collect.source === 'known-host'"));
+    assert!(body.contains("$job.collect.mode === 'collect' && $job.collect.source === 'known-host' && $job.collect.known_host !== ''"));
     assert!(body.contains("id=\"send-local-directory\""));
     assert!(body.contains("Local directory"));
-    assert!(body.contains("id=\"workflow-go-button\""));
+    assert!(body.contains("id=\"job-go-button\""));
     assert!(body.contains("id=\"known-host-button\""));
     assert!(body.contains("<path d=\"M6 3L11 8L6 13\"></path>"));
 
@@ -388,7 +388,7 @@ async fn user_mode_workflow_exposes_browser_download_binding_and_local_directory
     let body = response.text().await.expect("advanced page body");
 
     assert!(body.contains("data-signals:archive.download_token=\"''\""));
-    assert!(body.contains("id=\"workflow-download-anchor\""));
+    assert!(body.contains("id=\"job-download-anchor\""));
     assert!(body.contains("data-on:change=\"if (evt.target.checked)"));
     assert!(body.contains("crypto.randomUUID()"));
     assert!(body.contains(

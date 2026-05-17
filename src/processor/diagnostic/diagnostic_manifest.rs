@@ -15,6 +15,7 @@ pub struct RequestedApi {
     /// Final HTTP response status observed for this API request, if available
     pub status: Option<u16>,
     /// Number of retry attempts performed before the final response
+    #[serde(default)]
     pub retries: u32,
     /// Total time spent waiting for collected response bodies for this API
     pub response_time_ms: u64,
@@ -307,5 +308,41 @@ mod tests {
 
         assert_eq!(manifest.collection_date_in_millis(), 1_777_148_323_610);
         assert_eq!(manifest.diagnostic_id("abcd1234"), "elasticsearch_diagnostic@2026-04-25~abcd");
+    }
+
+    #[test]
+    fn requested_api_retries_defaults_for_legacy_manifests() {
+        let manifest: DiagnosticManifest = serde_json::from_str(
+            r#"{
+              "mode": "support",
+              "product": "elasticsearch",
+              "flags": null,
+              "diagnostic": "esdiag-0.15.0-SNAPSHOT",
+              "type": "elasticsearch_diagnostic",
+              "runner": "esdiag",
+              "version": "6.8.23",
+              "timestamp": "2026-04-25T20:52:09.948Z",
+              "collection_date_millis": 1777150329948,
+              "included_diagnostics": null,
+              "name": "elasticsearch_diagnostic",
+              "diagnostic_id": null,
+              "identifiers": null,
+              "requested_apis": {
+                "nodes": {
+                  "status": 200,
+                  "response_time_ms": 191,
+                  "response_size_bytes": 14005
+                }
+              }
+            }"#,
+        )
+        .expect("legacy diagnostic_manifest.json should deserialize");
+
+        let requested_apis = manifest.requested_apis.expect("requested APIs");
+        let nodes = requested_apis.get("nodes").expect("nodes API metadata");
+        assert_eq!(nodes.retries, 0);
+        assert_eq!(nodes.status, Some(200));
+        assert_eq!(nodes.response_time_ms, 191);
+        assert_eq!(nodes.response_size_bytes, 14005);
     }
 }
