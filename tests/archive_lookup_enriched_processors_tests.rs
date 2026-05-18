@@ -95,6 +95,25 @@ fn read_docs_if_present(output_dir: &Path, file_name: &str) -> Option<Vec<Value>
     path.exists().then(|| read_docs(output_dir, file_name))
 }
 
+fn find_required_doc<'a, P>(docs: &'a [Value], archive: &Path, stream: &str, description: &str, predicate: P) -> &'a Value
+where
+    P: Fn(&Value) -> bool,
+{
+    docs.iter().find(|doc| predicate(doc)).unwrap_or_else(|| {
+        panic!(
+            "{} in {} did not contain a document with {}",
+            stream,
+            archive.display(),
+            description
+        )
+    })
+}
+
+fn archive_requires_lookup_enrichment(archive: &Path) -> bool {
+    let filename = archive.file_name().and_then(|name| name.to_str()).unwrap_or_default();
+    filename.contains("8.19.3") || filename.contains("9.3.3")
+}
+
 fn assert_node_lookup_enrichment(node: &Value, archive: &Path, stream: &str) {
     let os = &node["os"];
     assert!(
@@ -247,20 +266,36 @@ fn test_archive_data_stream_lookup_enrichment_for_index_processors() {
         let output_dir = process_archive(&archive);
 
         if let Some(settings_index_docs) = read_docs_if_present(&output_dir, "settings-index-esdiag.ndjson") {
-            if let Some(settings_index_doc) = settings_index_docs
+            if settings_index_docs
                 .iter()
-                .find(|doc| doc["index"]["data_stream"]["name"].is_string())
+                .any(|doc| doc["index"]["data_stream"]["name"].is_string())
+                || archive_requires_lookup_enrichment(&archive)
             {
+                let settings_index_doc = find_required_doc(
+                    &settings_index_docs,
+                    &archive,
+                    "settings-index-esdiag",
+                    "data stream lookup enrichment",
+                    |doc| doc["index"]["data_stream"]["name"].is_string(),
+                );
                 assert_has_data_stream_lookup(settings_index_doc, &archive, "settings-index-esdiag");
                 checked_streams += 1;
             }
         }
 
         if let Some(metrics_index_docs) = read_docs_if_present(&output_dir, "metrics-index-esdiag.ndjson") {
-            if let Some(metrics_index_doc) = metrics_index_docs
+            if metrics_index_docs
                 .iter()
-                .find(|doc| doc["index"]["data_stream"]["name"].is_string())
+                .any(|doc| doc["index"]["data_stream"]["name"].is_string())
+                || archive_requires_lookup_enrichment(&archive)
             {
+                let metrics_index_doc = find_required_doc(
+                    &metrics_index_docs,
+                    &archive,
+                    "metrics-index-esdiag",
+                    "data stream lookup enrichment",
+                    |doc| doc["index"]["data_stream"]["name"].is_string(),
+                );
                 assert_has_data_stream_lookup(metrics_index_doc, &archive, "metrics-index-esdiag");
                 checked_streams += 1;
             }
@@ -276,28 +311,38 @@ fn test_archive_index_settings_lookup_enrichment_for_index_metrics() {
         let output_dir = process_archive(&archive);
 
         if let Some(metrics_index_docs) = read_docs_if_present(&output_dir, "metrics-index-esdiag.ndjson") {
-            if let Some(metrics_index_doc) = metrics_index_docs
-                .iter()
-                .find(|doc| {
-                    doc["index"]["number_of_shards"].is_number()
-                        && doc["index"]["number_of_replicas"].is_number()
-                        && doc["index"]["refresh_interval"].is_string()
-                })
-            {
+            let has_index_settings_lookup = |doc: &Value| {
+                doc["index"]["number_of_shards"].is_number()
+                    && doc["index"]["number_of_replicas"].is_number()
+                    && doc["index"]["refresh_interval"].is_string()
+            };
+            if metrics_index_docs.iter().any(has_index_settings_lookup) || archive_requires_lookup_enrichment(&archive) {
+                let metrics_index_doc = find_required_doc(
+                    &metrics_index_docs,
+                    &archive,
+                    "metrics-index-esdiag",
+                    "index settings lookup enrichment",
+                    has_index_settings_lookup,
+                );
                 assert_has_index_settings_lookup(metrics_index_doc, &archive, "metrics-index-esdiag");
                 checked_streams += 1;
             }
         }
 
         if let Some(metrics_shard_docs) = read_docs_if_present(&output_dir, "metrics-shard-esdiag.ndjson") {
-            if let Some(metrics_shard_doc) = metrics_shard_docs
-                .iter()
-                .find(|doc| {
-                    doc["index"]["number_of_shards"].is_number()
-                        && doc["index"]["number_of_replicas"].is_number()
-                        && doc["index"]["refresh_interval"].is_string()
-                })
-            {
+            let has_index_settings_lookup = |doc: &Value| {
+                doc["index"]["number_of_shards"].is_number()
+                    && doc["index"]["number_of_replicas"].is_number()
+                    && doc["index"]["refresh_interval"].is_string()
+            };
+            if metrics_shard_docs.iter().any(has_index_settings_lookup) || archive_requires_lookup_enrichment(&archive) {
+                let metrics_shard_doc = find_required_doc(
+                    &metrics_shard_docs,
+                    &archive,
+                    "metrics-shard-esdiag",
+                    "index settings lookup enrichment",
+                    has_index_settings_lookup,
+                );
                 assert_has_index_settings_lookup(metrics_shard_doc, &archive, "metrics-shard-esdiag");
                 checked_streams += 1;
             }

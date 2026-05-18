@@ -55,6 +55,9 @@ pub struct DiagnosticManifest {
     pub identifiers: Option<Identifiers>,
     /// APIs requested during this run keyed by API name
     pub requested_apis: Option<BTreeMap<String, RequestedApi>>,
+    /// Deprecated compatibility list of API names collected during this run.
+    #[serde(default, skip_deserializing)]
+    pub collected_apis: Option<Vec<String>>,
 }
 
 impl Clone for DiagnosticManifest {
@@ -79,6 +82,7 @@ impl Clone for DiagnosticManifest {
             diagnostic_id,
             identifiers: self.identifiers.clone(),
             requested_apis: self.requested_apis.clone(),
+            collected_apis: self.collected_apis.clone(),
         }
     }
 }
@@ -132,6 +136,7 @@ impl DiagnosticManifest {
             included_diagnostics,
             identifiers: None,
             requested_apis: None,
+            collected_apis: None,
             mode,
             name,
             product,
@@ -191,8 +196,10 @@ impl DiagnosticManifest {
     }
 
     pub fn with_requested_apis(self, requested_apis: BTreeMap<String, RequestedApi>) -> Self {
+        let collected_apis = requested_apis.keys().cloned().collect();
         Self {
             requested_apis: Some(requested_apis),
+            collected_apis: Some(collected_apis),
             ..self
         }
     }
@@ -227,8 +234,9 @@ impl From<Manifest> for DiagnosticManifest {
 
 #[cfg(test)]
 mod tests {
-    use super::DiagnosticManifest;
+    use super::{DiagnosticManifest, RequestedApi};
     use crate::data::Product;
+    use std::collections::BTreeMap;
 
     #[test]
     fn new_sets_collection_date_millis_from_timestamp() {
@@ -344,5 +352,33 @@ mod tests {
         assert_eq!(nodes.status, Some(200));
         assert_eq!(nodes.response_time_ms, 191);
         assert_eq!(nodes.response_size_bytes, 14005);
+    }
+
+    #[test]
+    fn requested_apis_serializes_deprecated_collected_apis_list() {
+        let manifest = DiagnosticManifest::new(
+            "2026-04-25T20:18:43.610Z".to_string(),
+            Some("esdiag-0.15.0-SNAPSHOT".to_string()),
+            None,
+            None,
+            Some("support".to_string()),
+            Product::Elasticsearch,
+            Some("elasticsearch_diagnostic".to_string()),
+            Some("esdiag".to_string()),
+            Some("8.19.3".to_string()),
+        )
+        .with_requested_apis(BTreeMap::from([(
+            "nodes".to_string(),
+            RequestedApi {
+                status: Some(200),
+                retries: 0,
+                response_time_ms: 191,
+                response_size_bytes: 14005,
+            },
+        )]));
+
+        let value = serde_json::to_value(&manifest).expect("serialize manifest");
+        assert_eq!(value["requested_apis"]["nodes"]["status"], 200);
+        assert_eq!(value["collected_apis"], serde_json::json!(["nodes"]));
     }
 }
