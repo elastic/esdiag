@@ -90,11 +90,6 @@ fn read_docs(output_dir: &Path, file_name: &str) -> Vec<Value> {
     docs
 }
 
-fn read_docs_if_present(output_dir: &Path, file_name: &str) -> Option<Vec<Value>> {
-    let path = output_dir.join(file_name);
-    path.exists().then(|| read_docs(output_dir, file_name))
-}
-
 fn read_required_lookup_docs(output_dir: &Path, file_name: &str, archive: &Path) -> Option<Vec<Value>> {
     let path = output_dir.join(file_name);
     if path.exists() {
