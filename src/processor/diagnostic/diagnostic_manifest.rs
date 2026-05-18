@@ -56,7 +56,7 @@ pub struct DiagnosticManifest {
     /// APIs requested during this run keyed by API name
     pub requested_apis: Option<BTreeMap<String, RequestedApi>>,
     /// Deprecated compatibility list of API names collected during this run.
-    #[serde(default, skip_deserializing)]
+    #[serde(default)]
     pub collected_apis: Option<Vec<String>>,
 }
 
@@ -352,6 +352,31 @@ mod tests {
         assert_eq!(nodes.status, Some(200));
         assert_eq!(nodes.response_time_ms, 191);
         assert_eq!(nodes.response_size_bytes, 14005);
+    }
+
+    #[test]
+    fn collected_apis_deserializes_for_legacy_consumers() {
+        let manifest: DiagnosticManifest = serde_json::from_str(
+            r#"{
+              "mode": "support",
+              "product": "elasticsearch",
+              "flags": null,
+              "diagnostic": "esdiag-0.15.0-SNAPSHOT",
+              "type": "elasticsearch_diagnostic",
+              "runner": "esdiag",
+              "version": "6.8.23",
+              "timestamp": "2026-04-25T20:52:09.948Z",
+              "collection_date_millis": 1777150329948,
+              "included_diagnostics": null,
+              "name": "elasticsearch_diagnostic",
+              "diagnostic_id": null,
+              "identifiers": null,
+              "collected_apis": ["nodes"]
+            }"#,
+        )
+        .expect("legacy diagnostic_manifest.json should deserialize");
+
+        assert_eq!(manifest.collected_apis, Some(vec!["nodes".to_string()]));
     }
 
     #[test]
