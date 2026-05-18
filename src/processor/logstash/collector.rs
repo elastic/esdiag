@@ -46,6 +46,7 @@ impl LogstashCollector {
 
     pub async fn collect(&self) -> Result<CollectionResult> {
         let collect_result: Result<CollectionResult> = async {
+            let collection_date = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
             let diag_type = DiagnosticType::from_str(&self.options.r#type)?;
             let apis =
                 ApiResolver::resolve_ls(&diag_type, self.options.include.as_ref(), self.options.exclude.as_ref())?;
@@ -96,7 +97,9 @@ impl LogstashCollector {
                 }
             }
 
-            result.success += self.save_diagnostic_manifest(&requested_apis, stack_version).await?;
+            result.success += self
+                .save_diagnostic_manifest(&requested_apis, stack_version, collection_date)
+                .await?;
 
             Ok(result)
         }
@@ -295,9 +298,10 @@ impl LogstashCollector {
         &self,
         requested_apis: &BTreeMap<String, RequestedApi>,
         stack_version: Option<String>,
+        collection_date: String,
     ) -> Result<usize> {
         let manifest = DiagnosticManifest::new(
-            chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+            collection_date,
             Some(format!("esdiag-{}", env!("CARGO_PKG_VERSION"))),
             None,
             None,

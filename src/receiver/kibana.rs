@@ -44,6 +44,7 @@ struct KibanaSpace {
 }
 
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct KibanaRequestError {
     pub status: reqwest::StatusCode,
     pub body: String,

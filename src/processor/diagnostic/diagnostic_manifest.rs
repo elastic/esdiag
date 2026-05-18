@@ -203,6 +203,14 @@ impl DiagnosticManifest {
             ..self
         }
     }
+
+    #[deprecated(note = "use with_requested_apis to include per-request metadata")]
+    pub fn with_collected_apis(self, collected_apis: Vec<String>) -> Self {
+        Self {
+            collected_apis: Some(collected_apis),
+            ..self
+        }
+    }
 }
 
 impl DiagnosticManifest {

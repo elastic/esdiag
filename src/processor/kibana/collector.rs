@@ -94,6 +94,7 @@ impl KibanaCollector {
 
     pub async fn collect(&self) -> Result<CollectionResult> {
         let collect_result: Result<CollectionResult> = async {
+            let collection_date = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
             let diag_type = DiagnosticType::from_str(&self.options.r#type)?;
             let apis =
                 ApiResolver::resolve_kb(&diag_type, self.options.include.as_ref(), self.options.exclude.as_ref())?;
@@ -116,7 +117,7 @@ impl KibanaCollector {
                 }
             }
 
-            result.success += self.save_diagnostic_manifest(&requested_apis).await?;
+            result.success += self.save_diagnostic_manifest(&requested_apis, collection_date).await?;
 
             Ok(result)
         }
@@ -389,14 +390,18 @@ impl KibanaCollector {
         }
     }
 
-    async fn save_diagnostic_manifest(&self, requested_apis: &BTreeMap<String, RequestedApi>) -> Result<usize> {
+    async fn save_diagnostic_manifest(
+        &self,
+        requested_apis: &BTreeMap<String, RequestedApi>,
+        collection_date: String,
+    ) -> Result<usize> {
         let version = match &self.receiver {
             Receiver::Kibana(receiver) => receiver.get_version().await?.to_string(),
             _ => return Err(eyre!("Kibana manifest requires a Kibana receiver")),
         };
 
         let manifest = DiagnosticManifest::new(
-            chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+            collection_date,
             Some(format!("esdiag-{}", env!("CARGO_PKG_VERSION"))),
             None,
             None,

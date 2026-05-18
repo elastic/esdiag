@@ -20,6 +20,7 @@ use tokio::sync::OnceCell;
 const ELASTIC_CLOUD_ADMIN_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct ElasticCloudAdminRequestError {
     pub status: reqwest::StatusCode,
     pub body: String,

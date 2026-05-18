@@ -25,6 +25,7 @@ pub struct LogstashReceiver {
 }
 
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct LogstashRequestError {
     pub status: reqwest::StatusCode,
     pub body: String,

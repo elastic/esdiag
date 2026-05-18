@@ -19,6 +19,7 @@ use std::time::Instant;
 use tokio::sync::OnceCell;
 
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct ElasticsearchRequestError {
     pub status: http::StatusCode,
     pub body: String,
