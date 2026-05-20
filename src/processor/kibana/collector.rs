@@ -156,10 +156,10 @@ impl KibanaCollector {
                 }
                 Err(e) => {
                     let (status, response_time_ms, response_size_bytes) = request_metrics(&e);
-                    let (completed_response_time_ms, completed_response_size_bytes) =
-                        e.downcast_ref::<KibanaPartialCollectError>()
-                            .map(KibanaPartialCollectError::completed_metrics)
-                            .unwrap_or((0, 0));
+                    let (completed_response_time_ms, completed_response_size_bytes) = e
+                        .downcast_ref::<KibanaPartialCollectError>()
+                        .map(KibanaPartialCollectError::completed_metrics)
+                        .unwrap_or((0, 0));
                     let response_time_ms = fallback_response_time_ms(
                         response_time_ms,
                         attempt_started.elapsed().as_millis() as u64,
@@ -515,7 +515,9 @@ fn should_retry_kibana_error(error: &eyre::Report) -> bool {
         return should_retry_kibana_error(&partial_error.source);
     }
     if let Some(request_error) = error.downcast_ref::<KibanaRequestError>() {
-        return request_error.status.as_u16() == 429 || request_error.status.is_server_error();
+        return request_error.status.as_u16() == 408
+            || request_error.status.as_u16() == 429
+            || request_error.status.is_server_error();
     }
     if let Some(request_error) = error.downcast_ref::<reqwest::Error>() {
         return is_retryable_reqwest_error(request_error);
@@ -633,7 +635,13 @@ mod tests {
     }
 
     #[test]
-    fn retry_policy_retries_gateway_errors_and_rate_limits() {
+    fn retry_policy_retries_request_timeouts_gateway_errors_and_rate_limits() {
+        let request_timeout = eyre::Report::from(KibanaRequestError {
+            status: StatusCode::REQUEST_TIMEOUT,
+            body: "timeout".to_string(),
+            response_time_ms: 0,
+            response_size_bytes: 0,
+        });
         let rate_limit = eyre::Report::from(KibanaRequestError {
             status: StatusCode::TOO_MANY_REQUESTS,
             body: "slow down".to_string(),
@@ -647,6 +655,7 @@ mod tests {
             response_size_bytes: 0,
         });
 
+        assert!(should_retry_kibana_error(&request_timeout));
         assert!(should_retry_kibana_error(&rate_limit));
         assert!(should_retry_kibana_error(&server_error));
     }

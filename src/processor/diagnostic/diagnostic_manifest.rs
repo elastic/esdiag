@@ -196,7 +196,11 @@ impl DiagnosticManifest {
     }
 
     pub fn with_requested_apis(self, requested_apis: BTreeMap<String, RequestedApi>) -> Self {
-        let collected_apis = requested_apis.keys().cloned().collect();
+        let collected_apis = requested_apis
+            .iter()
+            .filter(|(_, api)| api.status.is_some_and(|status| (200..300).contains(&status)))
+            .map(|(name, _)| name.clone())
+            .collect();
         Self {
             requested_apis: Some(requested_apis),
             collected_apis: Some(collected_apis),
@@ -323,7 +327,10 @@ mod tests {
         manifest.collection_date_millis = Some(u64::MAX);
 
         assert_eq!(manifest.collection_date_in_millis(), 1_777_148_323_610);
-        assert_eq!(manifest.diagnostic_id("abcd1234"), "elasticsearch_diagnostic@2026-04-25~abcd");
+        assert_eq!(
+            manifest.diagnostic_id("abcd1234"),
+            "elasticsearch_diagnostic@2026-04-25~abcd"
+        );
     }
 
     #[test]
@@ -400,18 +407,30 @@ mod tests {
             Some("esdiag".to_string()),
             Some("8.19.3".to_string()),
         )
-        .with_requested_apis(BTreeMap::from([(
-            "nodes".to_string(),
-            RequestedApi {
-                status: Some(200),
-                retries: 0,
-                response_time_ms: 191,
-                response_size_bytes: 14005,
-            },
-        )]));
+        .with_requested_apis(BTreeMap::from([
+            (
+                "nodes".to_string(),
+                RequestedApi {
+                    status: Some(200),
+                    retries: 0,
+                    response_time_ms: 191,
+                    response_size_bytes: 14005,
+                },
+            ),
+            (
+                "missing_api".to_string(),
+                RequestedApi {
+                    status: Some(404),
+                    retries: 0,
+                    response_time_ms: 12,
+                    response_size_bytes: 42,
+                },
+            ),
+        ]));
 
         let value = serde_json::to_value(&manifest).expect("serialize manifest");
         assert_eq!(value["requested_apis"]["nodes"]["status"], 200);
+        assert_eq!(value["requested_apis"]["missing_api"]["status"], 404);
         assert_eq!(value["collected_apis"], serde_json::json!(["nodes"]));
     }
 }

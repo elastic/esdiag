@@ -336,7 +336,9 @@ fn request_metrics(error: &eyre::Report) -> (Option<u16>, u64, u64) {
 
 fn should_retry_logstash_error(error: &eyre::Report) -> bool {
     if let Some(request_error) = error.downcast_ref::<LogstashRequestError>() {
-        return request_error.status.as_u16() == 429 || request_error.status.is_server_error();
+        return request_error.status.as_u16() == 408
+            || request_error.status.as_u16() == 429
+            || request_error.status.is_server_error();
     }
     if let Some(request_error) = error.downcast_ref::<reqwest::Error>() {
         return is_retryable_reqwest_error(request_error);
@@ -373,7 +375,13 @@ mod tests {
     }
 
     #[test]
-    fn retry_policy_retries_rate_limits_and_server_errors() {
+    fn retry_policy_retries_request_timeouts_rate_limits_and_server_errors() {
+        let request_timeout = eyre::Report::from(LogstashRequestError {
+            status: StatusCode::REQUEST_TIMEOUT,
+            body: "timeout".to_string(),
+            response_time_ms: 0,
+            response_size_bytes: 0,
+        });
         let rate_limited = eyre::Report::from(LogstashRequestError {
             status: StatusCode::TOO_MANY_REQUESTS,
             body: "slow down".to_string(),
@@ -387,6 +395,7 @@ mod tests {
             response_size_bytes: 0,
         });
 
+        assert!(should_retry_logstash_error(&request_timeout));
         assert!(should_retry_logstash_error(&rate_limited));
         assert!(should_retry_logstash_error(&server_error));
         assert!(!should_retry_logstash_error(&eyre::eyre!("connection reset")));
