@@ -203,7 +203,7 @@ esdiag host add elastic-cloud \
 
 # Same-name secret is used automatically for template hosts when available
 esdiag host add cloud-admin \
-  "https://admin.cloud.com/api/v1/deployments/{id}/elasticsearch/{product}/proxy/" \
+  "https://admin.cloud.com/api/v1/deployments/{id}/elasticsearch/_main/proxy/" \
   --url-template
 
 # Elastic Cloud admin can use `_main` for single-resource deployments

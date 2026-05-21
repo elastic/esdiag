@@ -39,21 +39,21 @@ For explicit template-backed host-definition mode using `--url-template`, when `
 #### Scenario: Add defaults template host secret to the host name
 - **GIVEN** no saved host named `cloud-admin` exists
 - **AND** the keystore already contains a secret named `cloud-admin`
-- **WHEN** the user runs `esdiag host add cloud-admin https://admin.cloud.com/api/v1/deployments/{id}/elasticsearch/{product}/proxy/ --url-template`
+- **WHEN** the user runs `esdiag host add cloud-admin https://admin.cloud.com/api/v1/deployments/{id}/elasticsearch/_main/proxy/ --url-template`
 - **THEN** the system validates the template host definition
 - **AND** the system saves `cloud-admin` with secret reference `cloud-admin`
 
 #### Scenario: Add preserves current behavior when no matching template secret exists
 - **GIVEN** no saved host named `cloud-admin` exists
 - **AND** the keystore does not contain a secret named `cloud-admin`
-- **WHEN** the user runs `esdiag host add cloud-admin https://admin.cloud.com/api/v1/deployments/{id}/elasticsearch/{product}/proxy/ --url-template`
+- **WHEN** the user runs `esdiag host add cloud-admin https://admin.cloud.com/api/v1/deployments/{id}/elasticsearch/_main/proxy/ --url-template`
 - **THEN** the system does not invent a secret reference
 - **AND** the command follows the same validation and save path it would have used before same-name secret defaulting
 
 #### Scenario: Explicit secret overrides same-name template secret default
 - **GIVEN** no saved host named `cloud-admin` exists
 - **AND** the keystore already contains a secret named `cloud-admin`
-- **WHEN** the user runs `esdiag host add cloud-admin https://admin.cloud.com/api/v1/deployments/{id}/elasticsearch/{product}/proxy/ --url-template --secret platform-admin`
+- **WHEN** the user runs `esdiag host add cloud-admin https://admin.cloud.com/api/v1/deployments/{id}/elasticsearch/_main/proxy/ --url-template --secret platform-admin`
 - **THEN** the system uses `platform-admin` as the saved secret reference
 - **AND** the same-name default does not override the explicit `--secret` value
 
