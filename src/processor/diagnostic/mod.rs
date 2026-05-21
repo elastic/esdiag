@@ -19,7 +19,7 @@ pub mod report;
 
 pub use data_source::{DataSource, SourceContext};
 pub use data_stream_name::DataStreamName;
-pub use diagnostic_manifest::DiagnosticManifest;
+pub use diagnostic_manifest::{DiagnosticManifest, RequestedApi};
 pub use doc::DiagnosticMetadata;
 pub use lookup::Lookup;
 pub use manifest::Manifest;

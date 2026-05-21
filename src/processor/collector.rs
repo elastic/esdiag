@@ -3,7 +3,12 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::{elasticsearch::ElasticsearchCollector, kibana::KibanaCollector, logstash::LogstashCollector};
-use crate::{data::Product, exporter::Exporter, processor::Identifiers, receiver::Receiver};
+use crate::{
+    data::Product,
+    exporter::Exporter,
+    processor::{Identifiers, RequestedApi},
+    receiver::Receiver,
+};
 use eyre::{Result, eyre};
 
 #[derive(Debug, Clone)]
@@ -104,9 +109,63 @@ pub struct CollectionResult {
     pub total: usize,
 }
 
+pub(crate) struct ApiCollectOutcome {
+    pub(crate) requested_api: Option<(String, RequestedApi)>,
+    pub(crate) saved: usize,
+}
+
+impl ApiCollectOutcome {
+    pub(crate) fn skipped() -> Self {
+        Self {
+            requested_api: None,
+            saved: 0,
+        }
+    }
+
+    pub(crate) fn success(name: &str, mut requested_api: RequestedApi, retries: u32, saved: usize) -> Self {
+        requested_api.retries = retries;
+        Self {
+            requested_api: Some((name.to_string(), requested_api)),
+            saved,
+        }
+    }
+
+    pub(crate) fn failed(
+        name: &str,
+        status: Option<u16>,
+        retries: u32,
+        response_time_ms: u64,
+        response_size_bytes: u64,
+    ) -> Self {
+        Self::failed_with_saved(name, status, retries, response_time_ms, response_size_bytes, 0)
+    }
+
+    pub(crate) fn failed_with_saved(
+        name: &str,
+        status: Option<u16>,
+        retries: u32,
+        response_time_ms: u64,
+        response_size_bytes: u64,
+        saved: usize,
+    ) -> Self {
+        Self {
+            requested_api: Some((
+                name.to_string(),
+                RequestedApi {
+                    status,
+                    retries,
+                    response_time_ms,
+                    response_size_bytes,
+                },
+            )),
+            saved,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::default_collect_archive_name;
+    use super::{ApiCollectOutcome, default_collect_archive_name};
     use crate::data::Product;
 
     #[test]
@@ -127,5 +186,31 @@ mod tests {
             default_collect_archive_name(&Product::Kibana, "20260406-203000"),
             "kibana-api-diagnostics-20260406-203000"
         );
+    }
+
+    #[test]
+    fn failed_outcome_emits_requested_api_metadata() {
+        let outcome = ApiCollectOutcome::failed("nodes", Some(503), 2, 1500, 2048);
+
+        let (name, requested_api) = outcome.requested_api.expect("requested API metadata");
+        assert_eq!(name, "nodes");
+        assert_eq!(requested_api.status, Some(503));
+        assert_eq!(requested_api.retries, 2);
+        assert_eq!(requested_api.response_time_ms, 1500);
+        assert_eq!(requested_api.response_size_bytes, 2048);
+        assert_eq!(outcome.saved, 0);
+    }
+
+    #[test]
+    fn failed_outcome_preserves_partial_saved_count() {
+        let outcome = ApiCollectOutcome::failed_with_saved("alerts", None, 1, 250, 0, 3);
+
+        let (name, requested_api) = outcome.requested_api.expect("requested API metadata");
+        assert_eq!(name, "alerts");
+        assert_eq!(requested_api.status, None);
+        assert_eq!(requested_api.retries, 1);
+        assert_eq!(requested_api.response_time_ms, 250);
+        assert_eq!(requested_api.response_size_bytes, 0);
+        assert_eq!(outcome.saved, 3);
     }
 }

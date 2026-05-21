@@ -20,7 +20,7 @@ mod logstash;
 
 pub use collector::{CollectionResult, Collector, default_collect_archive_name};
 pub use diagnostic::{
-    DataSource, DiagnosticManifest, DiagnosticReport, Manifest, SourceContext,
+    DataSource, DiagnosticManifest, DiagnosticReport, Manifest, RequestedApi, SourceContext,
     data_source::init_sources,
     manifest::ManifestBuilder,
     report::{BatchResponse, Identifiers, ProcessorSummary},

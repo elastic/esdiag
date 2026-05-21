@@ -134,7 +134,7 @@ Options:
 
 ### `host add`
 
-Use `esdiag host add <NAME> <APP> <URL>` to create a new saved host. The command connection-tests the full definition before saving it and fails if the host already exists.
+Use `esdiag host add <NAME> <TARGET> --app <APP>` to create a new saved host when the target URL cannot infer the app. The command connection-tests the full definition before saving it and fails if the host already exists.
 
 Shared add/update options:
 
@@ -188,7 +188,7 @@ Role validation rules enforced by the saved host model:
 
 The old positional host mutation form has been removed. Replace it as follows:
 
-- `esdiag host <name> <app> <url>` -> `esdiag host add <name> <app> <url>`
+- `esdiag host <name> <app> <url>` -> `esdiag host add <name> <url> --app <app>`
 - `esdiag host <name> --secret ...` -> `esdiag host update <name> --secret ...`
 - `esdiag host <name> --accept-invalid-certs false` -> `esdiag host update <name> --accept-invalid-certs false`
 - `esdiag host <name> --delete` -> `esdiag host remove <name>`
@@ -198,13 +198,13 @@ The old positional host mutation form has been removed. Replace it as follows:
 
 ```sh
 # Create a saved Elasticsearch host
-esdiag host add prod-es elasticsearch http://localhost:9200
+esdiag host add prod-es http://localhost:9200 --app elasticsearch
 
 # Create a host backed by a keystore secret
-esdiag host add prod-es elasticsearch http://localhost:9200 --secret prod-es-apikey
+esdiag host add prod-es http://localhost:9200 --app elasticsearch --secret prod-es-apikey
 
 # Create a host with explicit workflow roles
-esdiag host add prod-es elasticsearch http://localhost:9200 --roles collect,send
+esdiag host add prod-es http://localhost:9200 --app elasticsearch --roles collect,send
 
 # Rotate a saved host to a new secret reference
 esdiag host update prod-es --secret prod-es-rotated
