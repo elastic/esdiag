@@ -200,57 +200,44 @@ impl KnownHostBuilder {
         Self { viewer, ..self }
     }
 
+    /// Normalize recognized Elastic Cloud deployment URLs into Elasticsearch proxy URLs.
+    ///
+    /// This only rewrites concrete Elasticsearch hosts for known Elastic Cloud domains:
+    ///
+    /// - `cloud.elastic.co`
+    /// - `admin.found.no`
+    /// - `admin.us-gov-east-1.aws.elastic-cloud.com`
+    ///
+    /// The input URL may be a deployment page/API URL such as:
+    ///
+    /// `https://cloud.elastic.co/deployments/<deployment_id>`
+    ///
+    /// The stored host URL becomes the Cloud API proxy endpoint:
+    ///
+    /// `https://<domain>/api/v1/deployments/<deployment_id>/elasticsearch/_main/proxy/`
+    ///
+    /// `_main` is the documented Elasticsearch resource ref for deployments with a
+    /// single Elasticsearch resource. Query parameters from the input URL are
+    /// preserved. Non-Elastic-Cloud URLs and non-Elasticsearch products are left
+    /// unchanged, aside from clearing `cloud_id` when no concrete URL is present.
     fn update_cloud_api_path(&mut self) {
-        let Some(mut url) = self.url.clone() else {
+        let Some(url) = self.url.as_ref() else {
             self.cloud_id = None;
             return;
         };
-        self.cloud_id = ElasticCloud::try_from(&url).ok();
-        if self.cloud_id.is_none() {
-            return;
-        }
 
-        // Desired URL format is https://{domain}/api/v1/deployments/{deployment_id}/elasticsearch/elasticsearch/proxy/
-        let deployment_id = url.clone();
-        let deployment_id = deployment_id
-            .path()
-            .split('/')
-            .skip_while(|segment| *segment != "deployments")
-            .nth(1)
-            .unwrap_or("");
-        let rendered = match self.product {
-            Product::Elasticsearch => {
-                let template = match url.domain() {
-                    Some("admin.found.no") => {
-                        "https://admin.found.no/api/v1/deployments/{id}/elasticsearch/main-{product}/proxy/"
-                    }
-                    Some("cloud.elastic.co") => {
-                        "https://cloud.elastic.co/api/v1/deployments/{id}/elasticsearch/{product}/proxy/"
-                    }
-                    Some("admin.us-gov-east-1.aws.elastic-cloud.com") => {
-                        "https://admin.us-gov-east-1.aws.elastic-cloud.com/api/v1/deployments/{id}/elasticsearch/{product}/proxy/"
-                    }
-                    _ => "",
-                };
-                if template.is_empty() {
-                    None
-                } else {
-                    render_url_template_url(template, deployment_id, DEFAULT_TEMPLATE_PRODUCT).ok()
-                }
-            }
-            _ => None,
+        let cloud = match ElasticCloud::try_from(url) {
+            Ok(cloud) => cloud,
+            Err(_) => return,
         };
-        if let Some(mut rendered) = rendered {
-            if url.query().is_some() {
-                rendered
-                    .query_pairs_mut()
-                    .extend_pairs(url.query_pairs().map(|(k, v)| (k.into_owned(), v.into_owned())));
-            }
-            url = rendered;
-        }
+        self.cloud_id = Some(cloud);
 
-        tracing::debug!("Updated Cloud API URL: {}", url);
-        self.url = Some(url);
+        let Some(rendered) = elastic_cloud_proxy_url(url, &self.product) else {
+            return;
+        };
+
+        tracing::debug!("Updated Cloud API URL: {}", rendered);
+        self.url = Some(rendered);
     }
 
     pub fn build(mut self) -> Result<KnownHost> {
@@ -297,6 +284,43 @@ impl KnownHostBuilder {
             legacy_username: None,
             legacy_password: None,
         })
+    }
+}
+
+fn elastic_cloud_proxy_url(url: &Url, product: &Product) -> Option<Url> {
+    if product != &Product::Elasticsearch {
+        return None;
+    }
+
+    let template = elastic_cloud_proxy_template(url.domain())?;
+    let deployment_id = deployment_id_from_cloud_url(url)?;
+    let mut rendered = render_url_template_url(template, deployment_id, DEFAULT_TEMPLATE_PRODUCT).ok()?;
+
+    if url.query().is_some() {
+        rendered
+            .query_pairs_mut()
+            .extend_pairs(url.query_pairs().map(|(k, v)| (k.into_owned(), v.into_owned())));
+    }
+
+    Some(rendered)
+}
+
+fn deployment_id_from_cloud_url(url: &Url) -> Option<&str> {
+    url.path()
+        .split('/')
+        .skip_while(|segment| *segment != "deployments")
+        .nth(1)
+        .filter(|deployment_id| !deployment_id.is_empty())
+}
+
+fn elastic_cloud_proxy_template(domain: Option<&str>) -> Option<&'static str> {
+    match domain {
+        Some("admin.found.no") => Some("https://admin.found.no/api/v1/deployments/{id}/elasticsearch/_main/proxy/"),
+        Some("cloud.elastic.co") => Some("https://cloud.elastic.co/api/v1/deployments/{id}/elasticsearch/_main/proxy/"),
+        Some("admin.us-gov-east-1.aws.elastic-cloud.com") => {
+            Some("https://admin.us-gov-east-1.aws.elastic-cloud.com/api/v1/deployments/{id}/elasticsearch/_main/proxy/")
+        }
+        _ => None,
     }
 }
 
@@ -852,8 +876,7 @@ impl KnownHost {
             return Ok(None);
         };
         let template_name = parsed.template_name.clone();
-        let host = Self::get_known(&template_name)
-            .ok_or_else(|| eyre!("Template host '{template_name}' not found"))?;
+        let host = Self::get_known(&template_name).ok_or_else(|| eyre!("Template host '{template_name}' not found"))?;
         if !host.is_template() {
             return Err(eyre!("Saved host '{template_name}' is not template-backed"));
         }
@@ -871,8 +894,7 @@ impl KnownHost {
         }
 
         let product = product.unwrap_or(DEFAULT_TEMPLATE_PRODUCT).trim().to_ascii_lowercase();
-        let app = Product::from_str(&product)
-            .map_err(|_| eyre!("Unsupported template product '{product}'"))?;
+        let app = Product::from_str(&product).map_err(|_| eyre!("Unsupported template product '{product}'"))?;
         let url = render_url_template_url(url_template, id, &product)?;
 
         let mut builder = KnownHostBuilder::new(url)
@@ -1412,9 +1434,7 @@ fn parse_template_reference(reference: &str) -> Result<Option<TemplateReference>
         .host_str()
         .ok_or_else(|| eyre!("Template reference '{reference}' is missing required `id`"))?;
     if id.trim().is_empty() {
-        return Err(eyre!(
-            "Template reference '{reference}' is missing required `id`"
-        ));
+        return Err(eyre!("Template reference '{reference}' is missing required `id`"));
     }
     let product_segments = url
         .path_segments()
@@ -1448,8 +1468,7 @@ fn validate_template_host_name(host_name: &str) -> Result<()> {
             "Template host '{host_name}' must start with a lowercase ASCII letter to support custom-scheme resolution"
         ));
     }
-    if !chars.all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || matches!(ch, '+' | '-' | '.'))
-    {
+    if !chars.all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || matches!(ch, '+' | '-' | '.')) {
         return Err(eyre!(
             "Template host '{host_name}' must use lowercase scheme-compatible characters: [a-z][a-z0-9+.-]*"
         ));
@@ -1464,18 +1483,14 @@ fn validate_url_template(template: &str) -> Result<()> {
     for ch in template.chars() {
         match ch {
             '{' if in_placeholder => {
-                return Err(eyre!(
-                    "Unsupported `url_template`: nested placeholders are not allowed"
-                ));
+                return Err(eyre!("Unsupported `url_template`: nested placeholders are not allowed"));
             }
             '{' => {
                 in_placeholder = true;
                 current.clear();
             }
             '}' if !in_placeholder => {
-                return Err(eyre!(
-                    "Unsupported `url_template`: unmatched closing brace"
-                ));
+                return Err(eyre!("Unsupported `url_template`: unmatched closing brace"));
             }
             '}' => {
                 in_placeholder = false;
@@ -1487,9 +1502,7 @@ fn validate_url_template(template: &str) -> Result<()> {
         }
     }
     if in_placeholder {
-        return Err(eyre!(
-            "Unsupported `url_template`: unterminated placeholder"
-        ));
+        return Err(eyre!("Unsupported `url_template`: unterminated placeholder"));
     }
     for placeholder in &placeholders {
         if !matches!(placeholder.as_str(), "id" | "product") {
@@ -1564,8 +1577,7 @@ impl FromStr for KnownHost {
 
 impl From<KnownHost> for Url {
     fn from(host: KnownHost) -> Url {
-        host.url
-            .expect("Only concrete KnownHost values can convert into Url")
+        host.url.expect("Only concrete KnownHost values can convert into Url")
     }
 }
 
@@ -2341,11 +2353,10 @@ mod tests {
         let (_tmp, _hosts, _keystore) = setup_env();
 
         let mut hosts = BTreeMap::new();
-        let template_host = KnownHostBuilder::new_template(
-            "https://cloud.elastic.co/api/v1/deployments/{id}/{product}".to_string(),
-        )
-        .build()
-        .expect("build template host");
+        let template_host =
+            KnownHostBuilder::new_template("https://cloud.elastic.co/api/v1/deployments/{id}/{product}".to_string())
+                .build()
+                .expect("build template host");
         hosts.insert("elastic-cloud".to_string(), template_host);
         write_hosts(hosts);
 
@@ -2362,7 +2373,7 @@ mod tests {
         assert_eq!(resolved.app(), &Product::Elasticsearch);
         assert_eq!(
             resolved.concrete_url().map(|url| url.as_str()),
-            Some("https://cloud.elastic.co/api/v1/deployments/cluster-1/elasticsearch/elasticsearch/proxy/")
+            Some("https://cloud.elastic.co/api/v1/deployments/cluster-1/elasticsearch/_main/proxy/")
         );
     }
 
@@ -2401,7 +2412,9 @@ mod tests {
         let host = KnownHostBuilder::new_template("https://example.com/{id}".to_string())
             .build()
             .expect("valid template host");
-        let err = host.save("ElasticCloud").expect_err("invalid template host name should fail");
+        let err = host
+            .save("ElasticCloud")
+            .expect_err("invalid template host name should fail");
         assert!(err.to_string().contains("lowercase ASCII letter"));
     }
 
@@ -2415,8 +2428,24 @@ mod tests {
         .expect("build cloud host");
         assert_eq!(
             host.concrete_url().map(|url| url.as_str()),
+            Some("https://cloud.elastic.co/api/v1/deployments/deployment-123/elasticsearch/_main/proxy/")
+        );
+    }
+
+    #[test]
+    fn elastic_govcloud_admin_builder_rewrites_proxy_path_to_main_ref() {
+        let host = KnownHostBuilder::new(
+            Url::parse("https://admin.us-gov-east-1.aws.elastic-cloud.com/deployments/deployment-123")
+                .expect("govcloud admin url"),
+        )
+        .product(Product::Elasticsearch)
+        .build()
+        .expect("build govcloud admin host");
+
+        assert_eq!(
+            host.concrete_url().map(|url| url.as_str()),
             Some(
-                "https://cloud.elastic.co/api/v1/deployments/deployment-123/elasticsearch/elasticsearch/proxy/"
+                "https://admin.us-gov-east-1.aws.elastic-cloud.com/api/v1/deployments/deployment-123/elasticsearch/_main/proxy/"
             )
         );
     }
@@ -2431,8 +2460,10 @@ mod tests {
             secret: None,
             viewer: None,
             url: Some(
-                Url::parse("https://admin.found.no/api/v1/deployments/deployment-123/elasticsearch/main-elasticsearch/proxy")
-                    .expect("cloud admin proxy url"),
+                Url::parse(
+                    "https://admin.found.no/api/v1/deployments/deployment-123/elasticsearch/main-elasticsearch/proxy",
+                )
+                .expect("cloud admin proxy url"),
             ),
             url_template: None,
             legacy_apikey: None,
@@ -2443,9 +2474,23 @@ mod tests {
 
         assert_eq!(
             host.concrete_url().map(|url| url.as_str()),
-            Some(
-                "https://admin.found.no/api/v1/deployments/deployment-123/elasticsearch/main-elasticsearch/proxy/"
-            )
+            Some("https://admin.found.no/api/v1/deployments/deployment-123/elasticsearch/main-elasticsearch/proxy/")
+        );
+    }
+
+    #[test]
+    fn elastic_cloud_admin_builder_rewrites_proxy_path_to_main_ref() {
+        let host = KnownHostBuilder::new(
+            Url::parse("https://admin.found.no/api/v1/deployments/deployment-123/elasticsearch/es-ref-id/proxy")
+                .expect("cloud admin proxy url"),
+        )
+        .product(Product::Elasticsearch)
+        .build()
+        .expect("build cloud admin host");
+
+        assert_eq!(
+            host.concrete_url().map(|url| url.as_str()),
+            Some("https://admin.found.no/api/v1/deployments/deployment-123/elasticsearch/_main/proxy/")
         );
     }
 }

@@ -46,6 +46,7 @@ published release notes, maintenance branches, and tagged history.
 ### Fixed
 
 - Fixed Elasticsearch node stats processing to preserve lookup-enriched node identity fields.
+- Fixed Elastic Cloud and GovCloud host normalization to use the documented `_main` single-resource reference.
 
 ## [0.14] - 2026-02-25
 
