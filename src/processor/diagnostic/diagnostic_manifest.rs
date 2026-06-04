@@ -254,7 +254,7 @@ mod tests {
     fn new_sets_collection_date_millis_from_timestamp() {
         let manifest = DiagnosticManifest::new(
             "2026-04-25T20:18:43.610Z".to_string(),
-            Some("esdiag-0.15.0-SNAPSHOT".to_string()),
+            Some("esdiag-0.16.0-SNAPSHOT".to_string()),
             None,
             None,
             Some("support".to_string()),
@@ -279,7 +279,7 @@ mod tests {
     fn collection_date_in_millis_uses_stored_value_first() {
         let mut manifest = DiagnosticManifest::new(
             "2026-04-25T20:18:43.610Z".to_string(),
-            Some("esdiag-0.15.0-SNAPSHOT".to_string()),
+            Some("esdiag-0.16.0-SNAPSHOT".to_string()),
             None,
             None,
             Some("support".to_string()),
@@ -297,7 +297,7 @@ mod tests {
     fn collection_date_in_millis_treats_zero_as_missing() {
         let mut manifest = DiagnosticManifest::new(
             "2026-04-25T20:18:43.610Z".to_string(),
-            Some("esdiag-0.15.0-SNAPSHOT".to_string()),
+            Some("esdiag-0.16.0-SNAPSHOT".to_string()),
             None,
             None,
             Some("support".to_string()),
@@ -315,7 +315,7 @@ mod tests {
     fn collection_date_in_millis_rejects_out_of_range_stored_value() {
         let mut manifest = DiagnosticManifest::new(
             "2026-04-25T20:18:43.610Z".to_string(),
-            Some("esdiag-0.15.0-SNAPSHOT".to_string()),
+            Some("esdiag-0.16.0-SNAPSHOT".to_string()),
             None,
             None,
             Some("support".to_string()),
@@ -340,7 +340,7 @@ mod tests {
               "mode": "support",
               "product": "elasticsearch",
               "flags": null,
-              "diagnostic": "esdiag-0.15.0-SNAPSHOT",
+              "diagnostic": "esdiag-0.16.0-SNAPSHOT",
               "type": "elasticsearch_diagnostic",
               "runner": "esdiag",
               "version": "6.8.23",
@@ -376,7 +376,7 @@ mod tests {
               "mode": "support",
               "product": "elasticsearch",
               "flags": null,
-              "diagnostic": "esdiag-0.15.0-SNAPSHOT",
+              "diagnostic": "esdiag-0.16.0-SNAPSHOT",
               "type": "elasticsearch_diagnostic",
               "runner": "esdiag",
               "version": "6.8.23",
@@ -398,7 +398,7 @@ mod tests {
     fn requested_apis_serializes_deprecated_collected_apis_list() {
         let manifest = DiagnosticManifest::new(
             "2026-04-25T20:18:43.610Z".to_string(),
-            Some("esdiag-0.15.0-SNAPSHOT".to_string()),
+            Some("esdiag-0.16.0-SNAPSHOT".to_string()),
             None,
             None,
             Some("support".to_string()),
