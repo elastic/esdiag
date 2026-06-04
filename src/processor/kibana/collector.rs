@@ -9,13 +9,15 @@ use crate::{
     processor::{
         DiagnosticManifest, RequestedApi,
         api::{ApiResolver, DiagnosticType, KibanaApi},
+        collector::ApiCollectOutcome,
     },
     receiver::{KibanaReceiver, KibanaRequestError, Receiver},
 };
 use eyre::{Result, WrapErr, eyre};
 use futures::stream::{self, StreamExt};
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
+use std::fmt;
 use std::{path::PathBuf, str::FromStr, time::Duration};
 
 pub struct KibanaCollector {
@@ -24,46 +26,51 @@ pub struct KibanaCollector {
     options: CollectOptions,
 }
 
-struct ApiCollectOutcome {
-    requested_api: Option<(String, RequestedApi)>,
+#[derive(Debug)]
+struct KibanaPartialCollectError {
+    source: eyre::Report,
+    requested_api: Option<RequestedApi>,
     saved: usize,
 }
 
-impl ApiCollectOutcome {
-    fn skipped() -> Self {
+impl KibanaPartialCollectError {
+    fn new(source: eyre::Report, requested_api: Option<RequestedApi>, saved: usize) -> Self {
         Self {
-            requested_api: None,
-            saved: 0,
-        }
-    }
-
-    fn success(name: &str, mut requested_api: RequestedApi, retries: u32, saved: usize) -> Self {
-        requested_api.retries = retries;
-        Self {
-            requested_api: Some((name.to_string(), requested_api)),
+            source,
+            requested_api,
             saved,
         }
     }
 
-    fn failed(
-        name: &str,
-        status: Option<u16>,
-        retries: u32,
-        response_time_ms: Option<u64>,
-        response_size_bytes: Option<u64>,
-    ) -> Self {
-        Self {
-            requested_api: Some((
-                name.to_string(),
-                RequestedApi {
-                    status,
-                    retries,
-                    response_time_ms,
-                    response_size_bytes,
-                },
-            )),
-            saved: 0,
+    fn metrics(&self) -> (Option<u16>, u64, u64) {
+        request_metrics(&self.source)
+    }
+
+    fn completed_metrics(&self) -> (u64, u64) {
+        let mut response_time_ms = 0;
+        let mut response_size_bytes = 0;
+        if let Some(requested_api) = &self.requested_api {
+            response_time_ms += requested_api.response_time_ms;
+            response_size_bytes += requested_api.response_size_bytes;
         }
+        if let Some(partial) = self.source.downcast_ref::<KibanaPartialCollectError>() {
+            let (nested_time_ms, nested_size_bytes) = partial.completed_metrics();
+            response_time_ms += nested_time_ms;
+            response_size_bytes += nested_size_bytes;
+        }
+        (response_time_ms, response_size_bytes)
+    }
+}
+
+impl fmt::Display for KibanaPartialCollectError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.source)
+    }
+}
+
+impl std::error::Error for KibanaPartialCollectError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(self.source.as_ref())
     }
 }
 
@@ -87,6 +94,7 @@ impl KibanaCollector {
 
     pub async fn collect(&self) -> Result<CollectionResult> {
         let collect_result: Result<CollectionResult> = async {
+            let collection_date = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
             let diag_type = DiagnosticType::from_str(&self.options.r#type)?;
             let apis =
                 ApiResolver::resolve_kb(&diag_type, self.options.include.as_ref(), self.options.exclude.as_ref())?;
@@ -101,7 +109,7 @@ impl KibanaCollector {
                 .map(|api| async move { self.save_api_with_retry(&api).await })
                 .buffer_unordered(5);
 
-            let mut requested_apis = HashMap::new();
+            let mut requested_apis = BTreeMap::new();
             while let Some(res) = api_stream.next().await {
                 result.success += res.saved;
                 if let Some((name, requested_api)) = res.requested_api {
@@ -109,7 +117,7 @@ impl KibanaCollector {
                 }
             }
 
-            result.success += self.save_diagnostic_manifest(&requested_apis).await?;
+            result.success += self.save_diagnostic_manifest(&requested_apis, collection_date).await?;
 
             Ok(result)
         }
@@ -131,25 +139,46 @@ impl KibanaCollector {
         let mut attempt = 1;
         let mut delay = Duration::from_secs(2);
         let mut retries = 0;
+        let mut retried_response_time_ms = 0;
+        let mut retried_response_size_bytes = 0;
+        let mut retried_saved = 0;
 
         loop {
+            let attempt_started = std::time::Instant::now();
             match self.save_api(api).await {
                 Ok(mut success) => {
                     if let Some((_, requested_api)) = success.requested_api.as_mut() {
                         requested_api.retries = retries;
+                        requested_api.response_time_ms += retried_response_time_ms;
+                        requested_api.response_size_bytes += retried_response_size_bytes;
                     }
                     return success;
                 }
                 Err(e) => {
                     let (status, response_time_ms, response_size_bytes) = request_metrics(&e);
+                    let (completed_response_time_ms, completed_response_size_bytes) = e
+                        .downcast_ref::<KibanaPartialCollectError>()
+                        .map(KibanaPartialCollectError::completed_metrics)
+                        .unwrap_or((0, 0));
+                    let response_time_ms = fallback_response_time_ms(
+                        response_time_ms,
+                        attempt_started.elapsed().as_millis() as u64,
+                        completed_response_time_ms,
+                    );
+                    if let Some(partial) = e.downcast_ref::<KibanaPartialCollectError>() {
+                        retried_saved += partial.saved;
+                    }
+                    retried_response_time_ms += completed_response_time_ms + response_time_ms;
+                    retried_response_size_bytes += completed_response_size_bytes + response_size_bytes;
                     if !should_retry_kibana_error(&e) {
                         tracing::warn!("Skipping non-retriable failure for {}: {}", api.as_str(), e);
-                        return ApiCollectOutcome::failed(
+                        return ApiCollectOutcome::failed_with_saved(
                             api.as_str(),
                             status,
                             retries,
-                            response_time_ms,
-                            response_size_bytes,
+                            retried_response_time_ms,
+                            retried_response_size_bytes,
+                            retried_saved,
                         );
                     }
                     if start_time.elapsed() > max_duration {
@@ -159,12 +188,13 @@ impl KibanaCollector {
                             attempt,
                             e
                         );
-                        return ApiCollectOutcome::failed(
+                        return ApiCollectOutcome::failed_with_saved(
                             api.as_str(),
                             status,
                             retries,
-                            response_time_ms,
-                            response_size_bytes,
+                            retried_response_time_ms,
+                            retried_response_size_bytes,
+                            retried_saved,
                         );
                     }
                     tracing::warn!(
@@ -223,10 +253,10 @@ impl KibanaCollector {
         };
 
         let mut saved = 0;
-        let mut aggregate_requested_api: Option<RequestedApi> = None;
+        let mut requested_api: Option<RequestedApi> = None;
         for scope in scopes {
             let space = resolved.spaceaware.then_some(scope.as_str());
-            let (requested_api, scope_saved) = self
+            let result = self
                 .save_endpoint(
                     receiver,
                     api.as_str(),
@@ -235,15 +265,23 @@ impl KibanaCollector {
                     space,
                     resolved.paginate.as_deref(),
                 )
-                .await?;
+                .await;
+            let (scope_requested_api, scope_saved) = match result {
+                Ok(result) => result,
+                Err(err) => {
+                    let saved = saved
+                        + err
+                            .downcast_ref::<KibanaPartialCollectError>()
+                            .map(|partial| partial.saved)
+                            .unwrap_or(0);
+                    return Err(KibanaPartialCollectError::new(err, requested_api, saved).into());
+                }
+            };
             saved += scope_saved;
-            match aggregate_requested_api.as_mut() {
-                Some(aggregate) => merge_requested_api(aggregate, requested_api),
-                None => aggregate_requested_api = Some(requested_api),
-            }
+            merge_requested_api(&mut requested_api, scope_requested_api);
         }
 
-        match aggregate_requested_api {
+        match requested_api {
             Some(requested_api) => Ok(ApiCollectOutcome::success(api.as_str(), requested_api, 0, saved)),
             None => Ok(ApiCollectOutcome::skipped()),
         }
@@ -293,15 +331,19 @@ impl KibanaCollector {
         let mut page = 1;
         let mut total_pages = 1;
         let mut saved = 0;
-        let mut aggregate_requested_api: Option<RequestedApi> = None;
+        let mut requested_api: Option<RequestedApi> = None;
 
         loop {
             let request_path =
                 with_pagination_query(&with_space_prefix(base_url, space), paginate_field, page, PAGE_SIZE);
-            let response = receiver.get_raw_response_by_path(&request_path, extension).await?;
-            total_pages =
-                total_pages.max(parse_total_pages(&response.body, paginate_field, page).unwrap_or(page));
-            let requested_api = RequestedApi {
+            let response = match receiver.get_raw_response_by_path(&request_path, extension).await {
+                Ok(response) => response,
+                Err(err) => {
+                    return Err(KibanaPartialCollectError::new(err, requested_api, saved).into());
+                }
+            };
+            total_pages = total_pages.max(parse_total_pages(&response.body, paginate_field, page).unwrap_or(page));
+            let page_requested_api = RequestedApi {
                 status: response.status,
                 retries: 0,
                 response_time_ms: response.response_time_ms,
@@ -309,11 +351,10 @@ impl KibanaCollector {
             };
 
             let page_scope = (total_pages > 1).then_some(page);
-            saved += self.save_content(base_file_path, response.body, space, page_scope).await?;
-            match aggregate_requested_api.as_mut() {
-                Some(aggregate) => merge_requested_api(aggregate, requested_api),
-                None => aggregate_requested_api = Some(requested_api),
-            }
+            saved += self
+                .save_content(base_file_path, response.body, space, page_scope)
+                .await?;
+            merge_requested_api(&mut requested_api, page_requested_api);
 
             if page >= total_pages {
                 break;
@@ -321,7 +362,7 @@ impl KibanaCollector {
             page += 1;
         }
 
-        match aggregate_requested_api {
+        match requested_api {
             Some(requested_api) => Ok((requested_api, saved)),
             None => unreachable!("paginated endpoint should fetch at least one page"),
         }
@@ -349,14 +390,18 @@ impl KibanaCollector {
         }
     }
 
-    async fn save_diagnostic_manifest(&self, requested_apis: &HashMap<String, RequestedApi>) -> Result<usize> {
+    async fn save_diagnostic_manifest(
+        &self,
+        requested_apis: &BTreeMap<String, RequestedApi>,
+        collection_date: String,
+    ) -> Result<usize> {
         let version = match &self.receiver {
             Receiver::Kibana(receiver) => receiver.get_version().await?.to_string(),
             _ => return Err(eyre!("Kibana manifest requires a Kibana receiver")),
         };
 
         let manifest = DiagnosticManifest::new(
-            chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+            collection_date,
             Some(format!("esdiag-{}", env!("CARGO_PKG_VERSION"))),
             None,
             None,
@@ -378,15 +423,29 @@ impl KibanaCollector {
     }
 }
 
-fn request_metrics(error: &eyre::Report) -> (Option<u16>, Option<u64>, Option<u64>) {
+fn request_metrics(error: &eyre::Report) -> (Option<u16>, u64, u64) {
+    if let Some(partial_error) = error.downcast_ref::<KibanaPartialCollectError>() {
+        return partial_error.metrics();
+    }
     if let Some(request_error) = error.downcast_ref::<KibanaRequestError>() {
         return (
             Some(request_error.status.as_u16()),
-            Some(request_error.response_time_ms),
-            Some(request_error.response_size_bytes),
+            request_error.response_time_ms,
+            request_error.response_size_bytes,
         );
     }
-    (None, None, None)
+    (None, 0, 0)
+}
+
+fn merge_requested_api(target: &mut Option<RequestedApi>, next: RequestedApi) {
+    match target {
+        Some(current) => {
+            current.status = next.status;
+            current.response_time_ms += next.response_time_ms;
+            current.response_size_bytes += next.response_size_bytes;
+        }
+        None => *target = Some(next),
+    }
 }
 
 fn with_space_prefix(path: &str, space: Option<&str>) -> String {
@@ -433,38 +492,6 @@ fn lookup_page_size(value: &Value, paginate_field: &str) -> Option<u64> {
         .or_else(|| value.get("perPage").and_then(Value::as_u64))
 }
 
-fn merge_requested_api(aggregate: &mut RequestedApi, incoming: RequestedApi) {
-    aggregate.status = match (aggregate.status, incoming.status) {
-        (Some(left), Some(right)) => Some(select_more_severe_status(left, right)),
-        (Some(left), None) => Some(left),
-        (None, Some(right)) => Some(right),
-        (None, None) => None,
-    };
-    aggregate.response_time_ms = add_optional_u64(aggregate.response_time_ms, incoming.response_time_ms);
-    aggregate.response_size_bytes = add_optional_u64(aggregate.response_size_bytes, incoming.response_size_bytes);
-}
-
-fn add_optional_u64(left: Option<u64>, right: Option<u64>) -> Option<u64> {
-    match (left, right) {
-        (Some(left), Some(right)) => Some(left.saturating_add(right)),
-        (Some(left), None) => Some(left),
-        (None, Some(right)) => Some(right),
-        (None, None) => None,
-    }
-}
-
-fn select_more_severe_status(left: u16, right: u16) -> u16 {
-    let left_rank = left / 100;
-    let right_rank = right / 100;
-    if right_rank > left_rank {
-        right
-    } else if left_rank > right_rank {
-        left
-    } else {
-        left.max(right)
-    }
-}
-
 fn scoped_output_path(base_file_path: &str, space: Option<&str>, page: Option<usize>) -> PathBuf {
     let mut path = PathBuf::new();
     if let Some(space) = space {
@@ -484,15 +511,30 @@ fn sanitize_segment(segment: &str) -> String {
 }
 
 fn should_retry_kibana_error(error: &eyre::Report) -> bool {
+    if let Some(partial_error) = error.downcast_ref::<KibanaPartialCollectError>() {
+        return should_retry_kibana_error(&partial_error.source);
+    }
     if let Some(request_error) = error.downcast_ref::<KibanaRequestError>() {
-        return request_error.status.as_u16() == 429
-            || (request_error.status.is_server_error()
-                && request_error.status != reqwest::StatusCode::INTERNAL_SERVER_ERROR);
+        return request_error.status.as_u16() == 408
+            || request_error.status.as_u16() == 429
+            || request_error.status.is_server_error();
     }
     if let Some(request_error) = error.downcast_ref::<reqwest::Error>() {
-        return request_error.is_connect() || request_error.is_timeout();
+        return is_retryable_reqwest_error(request_error);
     }
     false
+}
+
+fn is_retryable_reqwest_error(error: &reqwest::Error) -> bool {
+    error.is_connect() || error.is_timeout() || error.is_body() || error.is_request()
+}
+
+fn fallback_response_time_ms(response_time_ms: u64, attempt_elapsed_ms: u64, completed_response_time_ms: u64) -> u64 {
+    if response_time_ms == 0 {
+        attempt_elapsed_ms.saturating_sub(completed_response_time_ms)
+    } else {
+        response_time_ms
+    }
 }
 
 #[cfg(test)]
@@ -540,6 +582,36 @@ mod tests {
     }
 
     #[test]
+    fn merge_requested_api_aggregates_response_metrics() {
+        let mut requested_api = Some(RequestedApi {
+            status: Some(200),
+            retries: 0,
+            response_time_ms: 10,
+            response_size_bytes: 20,
+        });
+
+        merge_requested_api(
+            &mut requested_api,
+            RequestedApi {
+                status: Some(204),
+                retries: 0,
+                response_time_ms: 30,
+                response_size_bytes: 40,
+            },
+        );
+
+        assert_eq!(
+            requested_api,
+            Some(RequestedApi {
+                status: Some(204),
+                retries: 0,
+                response_time_ms: 40,
+                response_size_bytes: 60,
+            })
+        );
+    }
+
+    #[test]
     fn retry_policy_skips_non_retriable_client_errors() {
         let error = eyre::Report::from(KibanaRequestError {
             status: StatusCode::FORBIDDEN,
@@ -551,7 +623,7 @@ mod tests {
     }
 
     #[test]
-    fn retry_policy_skips_internal_server_errors() {
+    fn retry_policy_retries_internal_server_errors() {
         let internal_server_error = eyre::Report::from(KibanaRequestError {
             status: StatusCode::INTERNAL_SERVER_ERROR,
             body: "internal".to_string(),
@@ -559,11 +631,17 @@ mod tests {
             response_size_bytes: 0,
         });
 
-        assert!(!should_retry_kibana_error(&internal_server_error));
+        assert!(should_retry_kibana_error(&internal_server_error));
     }
 
     #[test]
-    fn retry_policy_retries_gateway_errors_and_rate_limits() {
+    fn retry_policy_retries_request_timeouts_gateway_errors_and_rate_limits() {
+        let request_timeout = eyre::Report::from(KibanaRequestError {
+            status: StatusCode::REQUEST_TIMEOUT,
+            body: "timeout".to_string(),
+            response_time_ms: 0,
+            response_size_bytes: 0,
+        });
         let rate_limit = eyre::Report::from(KibanaRequestError {
             status: StatusCode::TOO_MANY_REQUESTS,
             body: "slow down".to_string(),
@@ -577,7 +655,31 @@ mod tests {
             response_size_bytes: 0,
         });
 
+        assert!(should_retry_kibana_error(&request_timeout));
         assert!(should_retry_kibana_error(&rate_limit));
         assert!(should_retry_kibana_error(&server_error));
+    }
+
+    #[test]
+    fn partial_error_metrics_keep_final_error_separate_from_completed_pages() {
+        let completed = RequestedApi {
+            status: Some(200),
+            retries: 0,
+            response_time_ms: 25,
+            response_size_bytes: 100,
+        };
+        let transport_error = eyre!("connection reset");
+        let partial = eyre::Report::from(KibanaPartialCollectError::new(transport_error, Some(completed), 1));
+
+        assert_eq!(request_metrics(&partial), (None, 0, 0));
+        let partial = partial.downcast_ref::<KibanaPartialCollectError>().unwrap();
+        assert_eq!(partial.completed_metrics(), (25, 100));
+    }
+
+    #[test]
+    fn partial_error_elapsed_fallback_excludes_completed_request_time() {
+        assert_eq!(fallback_response_time_ms(0, 40, 25), 15);
+        assert_eq!(fallback_response_time_ms(0, 10, 25), 0);
+        assert_eq!(fallback_response_time_ms(7, 40, 25), 7);
     }
 }

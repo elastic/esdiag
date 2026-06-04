@@ -19,6 +19,7 @@ use std::time::Instant;
 use tokio::sync::OnceCell;
 
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct ElasticsearchRequestError {
     pub status: http::StatusCode,
     pub body: String,
@@ -137,8 +138,8 @@ impl ElasticsearchReceiver {
         Ok(RawResponse {
             body,
             status: Some(status.as_u16()),
-            response_time_ms: Some(response_time_ms),
-            response_size_bytes: Some(response_size_bytes),
+            response_time_ms,
+            response_size_bytes,
         })
     }
 
@@ -269,6 +270,13 @@ impl Receive for ElasticsearchReceiver {
 }
 
 impl ReceiveRaw for ElasticsearchReceiver {
+    async fn get_raw<T>(&self) -> Result<String>
+    where
+        T: DataSource,
+    {
+        self.get_raw_response::<T>().await.map(|response| response.body)
+    }
+
     async fn get_raw_response<T>(&self) -> Result<RawResponse>
     where
         T: DataSource,

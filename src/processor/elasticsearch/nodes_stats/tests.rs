@@ -159,9 +159,14 @@ fn test_node_stats_os_enrichment_from_lookup() {
     }))
     .expect("parse NodeDocument without host");
 
-    node_stats.enrich_from_lookup(&lookup_node_without_host);
-    let node_stats_json = serde_json::to_value(&node_stats).expect("serialize NodeStats");
+    let mut hostless_node_stats_json = serde_json::to_value(&node_stats).expect("serialize NodeStats");
+    hostless_node_stats_json["host"] = json!("pre-existing-host");
+    let mut hostless_node_stats: NodeStats =
+        serde_json::from_value(hostless_node_stats_json).expect("parse hostless test NodeStats");
+
+    hostless_node_stats.enrich_from_lookup(&lookup_node_without_host);
+    let node_stats_json = serde_json::to_value(&hostless_node_stats).expect("serialize NodeStats");
 
     assert_eq!(node_stats_json["name"], "hot-309-renamed");
-    assert_eq!(node_stats_json["host"], "10.89.0.2");
+    assert_eq!(node_stats_json["host"], "pre-existing-host");
 }

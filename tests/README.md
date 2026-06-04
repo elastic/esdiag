@@ -28,9 +28,10 @@ To run one test function:
 ./tests/bin/esdiag-control.sh --only command_help_prints_usage
 ```
 
-The script requires `shellcheck` and either `podman` or `docker`. It writes its
-combined command log to `target/test-esdiag-control.log` and uses a temporary
-`.env.test` file copied from `.env` or `example.env`.
+The script requires `shellcheck`, `curl`, `jq`, `grep`, `sed`, and either
+`podman` or `docker`. It writes its combined command log to
+`target/test-esdiag-control.log` and uses a temporary `.env.test` file copied
+from `.env` or `example.env`.
 
 ## CLI End-To-End Suite
 
@@ -53,6 +54,7 @@ Run it from the repository root:
 ./tests/bin/esdiag-cli-e2e.sh
 ```
 
+The script requires `cargo`, `curl`, `jq`, and either `podman` or `docker`.
 The suite isolates CLI state under `target/pre-release-e2e/<run-id>/home` by
 setting `HOME`, `ESDIAG_HOSTS`, and `ESDIAG_KEYSTORE` for every installed
 `esdiag` command. It also passes `-b false` to `esdiag-control up` so headless
@@ -73,3 +75,26 @@ ESDIAG_E2E_PROCESS_KIBANA=true ./tests/bin/esdiag-cli-e2e.sh
 processing once that processor is implemented. By default the suite still
 collects from Kibana but skips processing that collected Kibana diagnostic so
 the release gate only covers supported workflows.
+
+## Fixture Archive Regeneration
+
+`tests/bin/regenerate-fixture-archives.sh` rebuilds the checked-in
+Elasticsearch, Kibana, and Logstash diagnostic archive fixtures under
+`tests/archives/`.
+
+Run it from the repository root:
+
+```sh
+./tests/bin/regenerate-fixture-archives.sh
+```
+
+Pass one or more Elastic Stack versions to regenerate a smaller set:
+
+```sh
+./tests/bin/regenerate-fixture-archives.sh 8.19.3 9.3.3
+```
+
+The script requires `cargo`, `curl`, and `docker` by default. Set
+`CONTAINER_RUNTIME=podman` to use Podman instead. It starts temporary Elastic
+Stack containers and uses a temporary directory for the Logstash pipeline
+configuration.

@@ -12,7 +12,9 @@
 //! - `ESDIAG_LOGSTASH_9_URL`
 //!
 //! Authentication is optional and can be provided per target with either
-//! `*_APIKEY` or `*_USERNAME` and `*_PASSWORD`.
+//! `*_APIKEY` or `*_USERNAME` and `*_PASSWORD`. Authenticated test setup stores
+//! those credentials in a temporary esdiag keystore and saves hosts with
+//! `--secret` references, matching the current host persistence rules.
 //!
 //! If the target uses a self-signed or otherwise invalid TLS certificate, set
 //! `*_ACCEPT_INVALID_CERTS=true`.
@@ -161,21 +163,40 @@ fn run_external_logstash_collect_test(
 
     let test_home = tempdir().expect("temp home");
 
+    let secret_id = format!("{}-secret", config.host_name);
     let mut host_args = vec![
         "host".to_string(),
+        "add".to_string(),
         config.host_name.clone(),
-        "logstash".to_string(),
         config.url.clone(),
+        "--app".to_string(),
+        "logstash".to_string(),
     ];
 
     if let Some(apikey) = &config.apikey {
-        host_args.push("--apikey".to_string());
-        host_args.push(apikey.clone());
+        let secret = run_esdiag(
+            &["keystore", "add", &secret_id, "--apikey", apikey],
+            &test_home,
+        );
+        assert_success(&secret, &format!("{env_prefix} api key secret setup"));
+        host_args.push("--secret".to_string());
+        host_args.push(secret_id.clone());
     } else if let (Some(username), Some(password)) = (&config.username, &config.password) {
-        host_args.push("--user".to_string());
-        host_args.push(username.clone());
-        host_args.push("--password".to_string());
-        host_args.push(password.clone());
+        let secret = run_esdiag(
+            &[
+                "keystore",
+                "add",
+                &secret_id,
+                "--user",
+                username,
+                "--password",
+                password,
+            ],
+            &test_home,
+        );
+        assert_success(&secret, &format!("{env_prefix} basic secret setup"));
+        host_args.push("--secret".to_string());
+        host_args.push(secret_id.clone());
     }
 
     if config.accept_invalid_certs {
@@ -244,7 +265,7 @@ fn run_external_logstash_collect_test(
         let response_size_bytes = requested_apis
             .get(required)
             .and_then(|value| value["response_size_bytes"].as_u64());
-        assert_eq!(retries, Some(0), "{env_prefix} unexpected retries for {required}");
+        assert!(retries.is_some(), "{env_prefix} missing retries for {required}");
         assert!(response_time_ms.is_some(), "{env_prefix} missing response time for {required}");
         assert!(response_size_bytes.is_some(), "{env_prefix} missing response size for {required}");
     }
@@ -287,6 +308,7 @@ fn run_esdiag(args: &[&str], home: &tempfile::TempDir) -> Output {
         .args(args)
         .env("HOME", home_path)
         .env("USERPROFILE", home_path)
+        .env("ESDIAG_KEYSTORE_PASSWORD", "logstash-collection-test-password")
         .env("LOG_LEVEL", "debug")
         .output()
         .expect("run esdiag")

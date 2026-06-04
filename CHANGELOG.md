@@ -32,7 +32,8 @@ published release notes, maintenance branches, and tagged history.
 
 ### Changed
 
-- Changed diagnostic manifests to record `requested_apis` as keyed response metadata including status, response time, and response size.
+- Increased the long-running collection request timeout so large Elasticsearch API payloads can finish returning.
+- Changed diagnostic manifests to record `requested_apis` including status, response time, and response size.
 - Moved the Tauri desktop app root under `desktop/` while keeping root-level `cargo tauri build` and desktop packaging workflows working.
 - Refined workflow card controls.
 - Polished workflow bundle delivery.
@@ -45,6 +46,7 @@ published release notes, maintenance branches, and tagged history.
 ### Fixed
 
 - Fixed Elasticsearch node stats processing to preserve lookup-enriched node identity fields.
+- Fixed Elastic Cloud and GovCloud host normalization to use the documented `_main` single-resource reference.
 
 ## [0.14] - 2026-02-25
 

@@ -120,6 +120,13 @@ impl Receive for ArchiveFileReceiver {
 }
 
 impl ReceiveRaw for ArchiveFileReceiver {
+    async fn get_raw<T>(&self) -> Result<String>
+    where
+        T: DataSource,
+    {
+        self.get_raw_response::<T>().await.map(|response| response.body)
+    }
+
     async fn get_raw_response<T>(&self) -> Result<RawResponse>
     where
         T: DataSource,
@@ -141,8 +148,8 @@ impl ReceiveRaw for ArchiveFileReceiver {
                     return Ok(RawResponse {
                         body: data,
                         status: None,
-                        response_time_ms: None,
-                        response_size_bytes: Some(response_size_bytes),
+                        response_time_ms: 0,
+                        response_size_bytes,
                     });
                 }
                 Err(e) => {

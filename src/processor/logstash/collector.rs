@@ -2,20 +2,20 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use super::{node::Node, node_stats::NodeStats, version::Version};
+use super::{node::Node, node_stats::NodeStats};
 use crate::{
     data::Product,
     exporter::ArchiveExporter,
     processor::{
         DataSource, DiagnosticManifest, RequestedApi, SourceContext,
         api::{ApiResolver, ApiWeight, DiagnosticType, LogstashApi},
-        collector::{CollectOptions, CollectionResult, default_collect_archive_name},
+        collector::{ApiCollectOutcome, CollectOptions, CollectionResult, default_collect_archive_name},
     },
     receiver::{LogstashRequestError, Receiver},
 };
 use eyre::{Result, WrapErr};
-use std::collections::HashMap;
 use futures::stream::{self, StreamExt};
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::Duration;
@@ -24,49 +24,6 @@ pub struct LogstashCollector {
     receiver: Receiver,
     exporter: ArchiveExporter,
     options: CollectOptions,
-}
-
-struct ApiCollectOutcome {
-    requested_api: Option<(String, RequestedApi)>,
-    saved: usize,
-}
-
-impl ApiCollectOutcome {
-    fn skipped() -> Self {
-        Self {
-            requested_api: None,
-            saved: 0,
-        }
-    }
-
-    fn success(name: &str, mut requested_api: RequestedApi, retries: u32, saved: usize) -> Self {
-        requested_api.retries = retries;
-        Self {
-            requested_api: Some((name.to_string(), requested_api)),
-            saved,
-        }
-    }
-
-    fn failed(
-        name: &str,
-        status: Option<u16>,
-        retries: u32,
-        response_time_ms: Option<u64>,
-        response_size_bytes: Option<u64>,
-    ) -> Self {
-        Self {
-            requested_api: Some((
-                name.to_string(),
-                RequestedApi {
-                    status,
-                    retries,
-                    response_time_ms,
-                    response_size_bytes,
-                },
-            )),
-            saved: 0,
-        }
-    }
 }
 
 impl LogstashCollector {
@@ -89,12 +46,19 @@ impl LogstashCollector {
 
     pub async fn collect(&self) -> Result<CollectionResult> {
         let collect_result: Result<CollectionResult> = async {
+            let collection_date = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
             let diag_type = DiagnosticType::from_str(&self.options.r#type)?;
             let apis =
                 ApiResolver::resolve_ls(&diag_type, self.options.include.as_ref(), self.options.exclude.as_ref())?;
 
             let api_names: Vec<&str> = apis.iter().map(|a| a.as_str()).collect();
             tracing::debug!("Resolved Logstash APIs for collection: {:?}", api_names);
+            let stack_version = self
+                .receiver
+                .source_context()
+                .await?
+                .version
+                .map(|version| version.to_string());
 
             let mut result = CollectionResult {
                 path: self.exporter.to_string(),
@@ -117,7 +81,7 @@ impl LogstashCollector {
                 .map(|api| async move { self.save_api_with_retry(&api).await })
                 .buffer_unordered(5);
 
-            let mut requested_apis = HashMap::new();
+            let mut requested_apis = BTreeMap::new();
             while let Some(res) = light_stream.next().await {
                 result.success += res.saved;
                 if let Some((name, requested_api)) = res.requested_api {
@@ -133,7 +97,9 @@ impl LogstashCollector {
                 }
             }
 
-            result.success += self.save_diagnostic_manifest(&requested_apis).await?;
+            result.success += self
+                .save_diagnostic_manifest(&requested_apis, stack_version, collection_date)
+                .await?;
 
             Ok(result)
         }
@@ -155,29 +121,37 @@ impl LogstashCollector {
         let mut attempt = 1;
         let mut delay = Duration::from_secs(2);
         let mut retries = 0;
+        let mut retried_response_time_ms = 0;
+        let mut retried_response_size_bytes = 0;
 
         loop {
+            let attempt_started = std::time::Instant::now();
             match self.save_api(api).await {
                 Ok(mut success) => {
                     if let Some((_, requested_api)) = success.requested_api.as_mut() {
                         requested_api.retries = retries;
+                        requested_api.response_time_ms += retried_response_time_ms;
+                        requested_api.response_size_bytes += retried_response_size_bytes;
                     }
                     return success;
                 }
                 Err(e) => {
                     let (status, response_time_ms, response_size_bytes) = request_metrics(&e);
+                    let response_time_ms = if response_time_ms == 0 {
+                        attempt_started.elapsed().as_millis() as u64
+                    } else {
+                        response_time_ms
+                    };
+                    retried_response_time_ms += response_time_ms;
+                    retried_response_size_bytes += response_size_bytes;
                     if !should_retry_logstash_error(&e) {
-                        tracing::warn!(
-                            "Skipping non-retriable authentication failure for {}: {}",
-                            api.as_str(),
-                            e
-                        );
+                        tracing::warn!("Skipping non-retriable failure for {}: {}", api.as_str(), e);
                         return ApiCollectOutcome::failed(
                             api.as_str(),
                             status,
                             retries,
-                            response_time_ms,
-                            response_size_bytes,
+                            retried_response_time_ms,
+                            retried_response_size_bytes,
                         );
                     }
                     if start_time.elapsed() > max_duration {
@@ -191,8 +165,8 @@ impl LogstashCollector {
                             api.as_str(),
                             status,
                             retries,
-                            response_time_ms,
-                            response_size_bytes,
+                            retried_response_time_ms,
+                            retried_response_size_bytes,
                         );
                     }
                     tracing::warn!(
@@ -270,8 +244,8 @@ impl LogstashCollector {
             response_time_ms: response.response_time_ms,
             response_size_bytes: response.response_size_bytes,
         };
-        let body = response.body;
-        match self.exporter.save(file_path, body).await {
+
+        match self.exporter.save(file_path, response.body).await {
             Ok(()) => {
                 tracing::info!("Saved {filename}");
                 Ok(Some((requested_api, 1)))
@@ -307,8 +281,8 @@ impl LogstashCollector {
             response_time_ms: response.response_time_ms,
             response_size_bytes: response.response_size_bytes,
         };
-        let body = response.body;
-        match self.exporter.save(path, body).await {
+
+        match self.exporter.save(path, response.body).await {
             Ok(()) => {
                 tracing::info!("Saved {filename}");
                 Ok(Some((requested_api, 1)))
@@ -320,11 +294,14 @@ impl LogstashCollector {
         }
     }
 
-    async fn save_diagnostic_manifest(&self, requested_apis: &HashMap<String, RequestedApi>) -> Result<usize> {
-        let version = self.receiver.get::<Version>().await?;
-
+    async fn save_diagnostic_manifest(
+        &self,
+        requested_apis: &BTreeMap<String, RequestedApi>,
+        stack_version: Option<String>,
+        collection_date: String,
+    ) -> Result<usize> {
         let manifest = DiagnosticManifest::new(
-            chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+            collection_date,
             Some(format!("esdiag-{}", env!("CARGO_PKG_VERSION"))),
             None,
             None,
@@ -332,7 +309,7 @@ impl LogstashCollector {
             Product::Logstash,
             Some("logstash_diagnostic".to_string()),
             Some("esdiag".to_string()),
-            Some(version.version),
+            stack_version,
         )
         .with_identifiers(self.options.identifiers.clone())
         .with_requested_apis(requested_apis.clone());
@@ -346,23 +323,31 @@ impl LogstashCollector {
     }
 }
 
-fn request_metrics(error: &eyre::Report) -> (Option<u16>, Option<u64>, Option<u64>) {
+fn request_metrics(error: &eyre::Report) -> (Option<u16>, u64, u64) {
     if let Some(request_error) = error.downcast_ref::<LogstashRequestError>() {
         return (
             Some(request_error.status.as_u16()),
-            Some(request_error.response_time_ms),
-            Some(request_error.response_size_bytes),
+            request_error.response_time_ms,
+            request_error.response_size_bytes,
         );
     }
-    (None, None, None)
+    (None, 0, 0)
 }
 
 fn should_retry_logstash_error(error: &eyre::Report) -> bool {
     if let Some(request_error) = error.downcast_ref::<LogstashRequestError>() {
-        return request_error.status != reqwest::StatusCode::UNAUTHORIZED
-            && request_error.status != reqwest::StatusCode::FORBIDDEN;
+        return request_error.status.as_u16() == 408
+            || request_error.status.as_u16() == 429
+            || request_error.status.is_server_error();
     }
-    true
+    if let Some(request_error) = error.downcast_ref::<reqwest::Error>() {
+        return is_retryable_reqwest_error(request_error);
+    }
+    false
+}
+
+fn is_retryable_reqwest_error(error: &reqwest::Error) -> bool {
+    error.is_connect() || error.is_timeout() || error.is_body() || error.is_request()
 }
 
 #[cfg(test)]
@@ -390,16 +375,29 @@ mod tests {
     }
 
     #[test]
-    fn retry_policy_retries_non_auth_failures() {
+    fn retry_policy_retries_request_timeouts_rate_limits_and_server_errors() {
+        let request_timeout = eyre::Report::from(LogstashRequestError {
+            status: StatusCode::REQUEST_TIMEOUT,
+            body: "timeout".to_string(),
+            response_time_ms: 0,
+            response_size_bytes: 0,
+        });
         let rate_limited = eyre::Report::from(LogstashRequestError {
             status: StatusCode::TOO_MANY_REQUESTS,
             body: "slow down".to_string(),
             response_time_ms: 0,
             response_size_bytes: 0,
         });
-        let transport = eyre::eyre!("connection reset");
+        let server_error = eyre::Report::from(LogstashRequestError {
+            status: StatusCode::BAD_GATEWAY,
+            body: "gateway".to_string(),
+            response_time_ms: 0,
+            response_size_bytes: 0,
+        });
 
+        assert!(should_retry_logstash_error(&request_timeout));
         assert!(should_retry_logstash_error(&rate_limited));
-        assert!(should_retry_logstash_error(&transport));
+        assert!(should_retry_logstash_error(&server_error));
+        assert!(!should_retry_logstash_error(&eyre::eyre!("connection reset")));
     }
 }

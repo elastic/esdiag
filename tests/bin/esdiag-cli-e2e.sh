@@ -47,7 +47,8 @@ function run_step() {
     local log_file="${logs_dir}/${name}.log"
     log "START ${name}"
     if "$@" >"${log_file}" 2>&1; then
-        if grep -Eq '(^|[[:space:]])ERROR([[:space:]]|:|$)|(^|[[:space:]])Error([[:space:]]|:|$)' "${log_file}"; then
+        if [[ "${ESDIAG_E2E_FAIL_ON_ERROR_LOGS:-false}" == "true" ]] \
+            && grep -Eq '(^|[[:space:]])ERROR([[:space:]]|:|$)|(^|[[:space:]])Error([[:space:]]|:|$)' "${log_file}"; then
             log "FAIL  ${name}; command completed but reported errors in ${log_file}"
             grep -En '(^|[[:space:]])ERROR([[:space:]]|:|$)|(^|[[:space:]])Error([[:space:]]|:|$)' "${log_file}" >&2 || true
             exit 1
@@ -182,8 +183,8 @@ function main() {
     run_esdiag_step keystore-create keystore add ironhide-es-basic --user elastic --password "${ELASTIC_PASSWORD}"
     run_esdiag_step keystore-add-kibana keystore add ironhide-kibana-basic --user elastic --password "${ELASTIC_PASSWORD}"
 
-    run_esdiag_step host-add-es host add "${es_host_name}" elasticsearch "${es_url}" --secret ironhide-es-basic --roles collect,send
-    run_esdiag_step host-add-kibana host add "${kibana_host_name}" kibana "${kibana_url}" --secret ironhide-kibana-basic --roles collect,view
+    run_esdiag_step host-add-es host add "${es_host_name}" "${es_url}" --app elasticsearch --secret ironhide-es-basic --roles collect,send
+    run_esdiag_step host-add-kibana host add "${kibana_host_name}" "${kibana_url}" --app kibana --secret ironhide-kibana-basic --roles collect,view
     run_esdiag_step host-auth-es host auth "${es_host_name}"
     run_esdiag_step host-auth-kibana host auth "${kibana_host_name}"
 

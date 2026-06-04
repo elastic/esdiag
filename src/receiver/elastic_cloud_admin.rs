@@ -3,7 +3,7 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::super::processor::{DataSource, DiagnosticManifest, ElasticsearchCluster, ManifestBuilder, SourceContext};
-use super::{RawResponse, Receive, ReceiveRaw};
+use super::{LONG_RUNNING_REQUEST_TIMEOUT, RawResponse, Receive, ReceiveRaw};
 use crate::data::{Auth, KnownHost};
 use eyre::{Result, eyre};
 use reqwest::header::{ACCEPT, ACCEPT_ENCODING, AUTHORIZATION};
@@ -18,9 +18,9 @@ use std::time::Instant;
 use tokio::sync::OnceCell;
 
 const ELASTIC_CLOUD_ADMIN_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
-const ELASTIC_CLOUD_ADMIN_REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct ElasticCloudAdminRequestError {
     pub status: reqwest::StatusCode,
     pub body: String,
@@ -72,7 +72,9 @@ impl ElasticCloudAdminReceiver {
         let client = ClientBuilder::new()
             .default_headers(default_headers)
             .connect_timeout(ELASTIC_CLOUD_ADMIN_CONNECT_TIMEOUT)
-            .timeout(ELASTIC_CLOUD_ADMIN_REQUEST_TIMEOUT)
+            // Cloud Admin collection proxies Elasticsearch APIs that can spend
+            // minutes building large payloads before response headers arrive.
+            .timeout(LONG_RUNNING_REQUEST_TIMEOUT)
             .build()?;
         Ok(Self {
             client,
@@ -140,8 +142,8 @@ impl ElasticCloudAdminReceiver {
         Ok(RawResponse {
             body,
             status: Some(status.as_u16()),
-            response_time_ms: Some(response_time_ms),
-            response_size_bytes: Some(response_size_bytes),
+            response_time_ms,
+            response_size_bytes,
         })
     }
 
@@ -243,6 +245,13 @@ impl Receive for ElasticCloudAdminReceiver {
 }
 
 impl ReceiveRaw for ElasticCloudAdminReceiver {
+    async fn get_raw<T>(&self) -> Result<String>
+    where
+        T: DataSource,
+    {
+        self.get_raw_response::<T>().await.map(|response| response.body)
+    }
+
     async fn get_raw_response<T>(&self) -> Result<RawResponse>
     where
         T: DataSource,

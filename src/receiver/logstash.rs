@@ -25,6 +25,7 @@ pub struct LogstashReceiver {
 }
 
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct LogstashRequestError {
     pub status: reqwest::StatusCode,
     pub body: String,
@@ -104,8 +105,8 @@ impl LogstashReceiver {
         Ok(RawResponse {
             body,
             status: Some(status.as_u16()),
-            response_time_ms: Some(response_time_ms),
-            response_size_bytes: Some(response_size_bytes),
+            response_time_ms,
+            response_size_bytes,
         })
     }
 
@@ -199,6 +200,13 @@ impl Receive for LogstashReceiver {
 }
 
 impl ReceiveRaw for LogstashReceiver {
+    async fn get_raw<T>(&self) -> Result<String>
+    where
+        T: DataSource,
+    {
+        self.get_raw_response::<T>().await.map(|response| response.body)
+    }
+
     async fn get_raw_response<T>(&self) -> Result<RawResponse>
     where
         T: DataSource,

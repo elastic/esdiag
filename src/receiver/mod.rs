@@ -31,14 +31,17 @@ use directory::DirectoryReceiver;
 use eyre::{Result, eyre};
 use futures::stream::BoxStream;
 use serde::de::DeserializeOwned;
+use std::time::Duration;
 use upload_service::UploadServiceDownloader;
+
+pub(crate) const LONG_RUNNING_REQUEST_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 
 #[derive(Clone, Debug)]
 pub struct RawResponse {
     pub body: String,
     pub status: Option<u16>,
-    pub response_time_ms: Option<u64>,
-    pub response_size_bytes: Option<u64>,
+    pub response_time_ms: u64,
+    pub response_size_bytes: u64,
 }
 
 #[allow(async_fn_in_trait)]
@@ -65,15 +68,22 @@ pub trait ReceiveMultiple {
 
 #[allow(async_fn_in_trait)]
 pub trait ReceiveRaw {
-    async fn get_raw_response<T>(&self) -> Result<RawResponse>
+    async fn get_raw<T>(&self) -> Result<String>
     where
         T: DataSource;
 
-    async fn get_raw<T>(&self) -> Result<String>
+    async fn get_raw_response<T>(&self) -> Result<RawResponse>
     where
         T: DataSource,
     {
-        self.get_raw_response::<T>().await.map(|response| response.body)
+        let body = self.get_raw::<T>().await?;
+        let response_size_bytes = body.len() as u64;
+        Ok(RawResponse {
+            body,
+            status: None,
+            response_time_ms: 0,
+            response_size_bytes,
+        })
     }
 }
 
