@@ -13,12 +13,166 @@ use super::super::{DocumentExporter, ElasticsearchMetadata, Lookups, SharedCache
 use super::NodesStats;
 use crate::processor::StreamingDocumentExporter;
 use futures::stream::{BoxStream, StreamExt};
+use json_patch::merge;
 use serde::Serialize;
 use serde_json::Value;
+use std::collections::HashSet;
 use std::sync::LazyLock;
 use tokio::sync::mpsc;
 
 static INGEST_ROLE: LazyLock<String> = LazyLock::new(|| String::from("ingest"));
+
+fn node_name_from_stats(node_stats: &super::data::NodeStats) -> Option<String> {
+    node_stats.node_name()
+}
+
+#[allow(dead_code)]
+fn apply_node_summary(
+    doc: &mut Value,
+    node_id: &str,
+    node_summary_patch: Option<Value>,
+    cluster_version: Option<&str>,
+) {
+    if let Some(node_summary_patch) = node_summary_patch {
+        merge(doc, &node_summary_patch);
+    } else {
+        tracing::debug!("Node lookup not found for node_id={}", node_id);
+        if let Some(node_obj) = doc.get_mut("node").and_then(Value::as_object_mut) {
+            if !node_obj.contains_key("id") {
+                node_obj.insert("id".to_string(), Value::String(node_id.to_string()));
+            }
+
+            let roles: HashSet<String> = node_obj
+                .get("roles")
+                .and_then(Value::as_array)
+                .map(|items| {
+                    items
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .map(ToString::to_string)
+                        .collect()
+                })
+                .unwrap_or_default();
+
+            if !roles.is_empty() {
+                let tier = get_tier(&roles);
+                node_obj
+                    .entry("tier".to_string())
+                    .or_insert_with(|| Value::String(tier.clone()));
+                node_obj
+                    .entry("tier_order".to_string())
+                    .or_insert_with(|| Value::Number(get_tier_order(&tier).into()));
+                node_obj
+                    .entry("role".to_string())
+                    .or_insert_with(|| Value::String(get_roles_abbreviation(&roles)));
+
+                if let Some(name) = node_obj.get("name").and_then(Value::as_str) {
+                    let normalized = get_tier_node_name(name.to_string(), &tier);
+                    node_obj.insert("name".to_string(), Value::String(normalized));
+                }
+            }
+
+            if let Some(cluster_version) = cluster_version {
+                node_obj
+                    .entry("version".to_string())
+                    .or_insert_with(|| Value::String(cluster_version.to_string()));
+            }
+        }
+    }
+}
+
+fn get_tier(roles: &HashSet<String>) -> String {
+    match () {
+        _ if roles.contains("index") => "index",
+        _ if roles.contains("search") => "search",
+        _ if roles.contains("data_hot") => "hot",
+        _ if roles.contains("data_warm") => "warm",
+        _ if roles.contains("data_cold") => "cold",
+        _ if roles.contains("data_frozen") => "frozen",
+        _ if roles.contains("data_content") => "content",
+        _ if roles.contains("data") => "data",
+        _ if roles.contains("ingest") => "ingest",
+        _ if roles.contains("ml") => "ml",
+        _ if roles.contains("transform") => "transform",
+        _ if roles.contains("voting_only") => "tiebreaker",
+        _ if roles.contains("master") => "master",
+        _ if roles.contains("remote_cluster_client") => "remote",
+        _ if roles.is_empty() => "coord",
+        _ => "node",
+    }
+    .to_string()
+}
+
+fn get_tier_order(tier: &str) -> u64 {
+    match tier {
+        "index" => 0,
+        "search" => 1,
+        "hot" => 2,
+        "warm" => 3,
+        "cold" => 4,
+        "frozen" => 5,
+        "content" => 6,
+        "data" => 7,
+        "ingest" => 8,
+        "ml" => 9,
+        "transform" => 10,
+        "tiebreaker" => 11,
+        "master" => 12,
+        "remote" => 13,
+        "coord" => 14,
+        "node" => 15,
+        _ => 99,
+    }
+}
+
+fn get_tier_node_name(node_name: String, tier: &str) -> String {
+    if let Some(("instance", number)) = node_name.split_once('-') {
+        let number = number.trim_start_matches("000000");
+        format!("{tier}-{number}")
+    } else if is_scrubbed_hex_node_name(&node_name) {
+        let suffix = &node_name[node_name.len() - 4..];
+        format!("{tier}-{suffix}")
+    } else {
+        node_name
+    }
+}
+
+fn is_scrubbed_hex_node_name(node_name: &str) -> bool {
+    node_name.len() == 19
+        && node_name
+            .chars()
+            .all(|ch| ch.is_ascii_hexdigit() && !ch.is_ascii_uppercase())
+}
+
+fn get_roles_abbreviation(role_list: &HashSet<String>) -> String {
+    let char_for = |role: &str| {
+        let c = match role {
+            "data" => 'd',
+            "data_content" => 's',
+            "data_frozen" => 'f',
+            "data_hot" => 'h',
+            "data_warm" => 'w',
+            "data_cold" => 'c',
+            "index" => 'I',
+            "ingest" => 'i',
+            "master" => 'm',
+            "ml" => 'l',
+            "remote_cluster_client" => 'r',
+            "search" => 'S',
+            "transform" => 't',
+            _ => return None,
+        };
+        Some(c)
+    };
+
+    if role_list.is_empty() {
+        return String::from("-");
+    }
+
+    let mut roles: Vec<char> = role_list.iter().filter_map(|role| char_for(role)).collect();
+    roles.sort_unstable();
+    roles.iter().collect()
+}
 
 struct NodeProcessingContext<'a> {
     lookups: &'a Lookups,
@@ -41,8 +195,22 @@ async fn process_node(node_id: String, mut node_stats: super::data::NodeStats, c
     let lookup_node = &ctx.lookups.node;
     let lookup_shared_cache = &ctx.lookups.shared_cache;
 
-    let node_metadata = lookup_node.by_id(&node_id);
-    let allocated_processors = node_metadata.map(|node| node.os.allocated_processors).unwrap_or(1);
+    let node_metadata = lookup_node.by_id(&node_id).or_else(|| {
+        node_name_from_stats(&node_stats).and_then(|node_name| {
+            let by_name = lookup_node.by_name(&node_name);
+            if by_name.is_some() {
+                tracing::debug!(
+                    "Resolved node lookup by name fallback: node_id={} node_name={}",
+                    node_id,
+                    node_name
+                );
+            }
+            by_name
+        })
+    });
+    let allocated_processors = node_metadata
+        .map(|node| node.os.allocated_processors)
+        .unwrap_or(1);
     node_stats.calculate_stats(allocated_processors);
     if let Some(node) = node_metadata {
         node_stats.enrich_from_lookup(node);
@@ -370,4 +538,58 @@ struct NodeStatsEnvelope {
     tier_order: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     version: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::apply_node_summary;
+    use serde_json::json;
+
+    #[test]
+    fn keeps_existing_node_fields_and_backfills_id_when_lookup_missing() {
+        let mut doc = json!({
+            "node": {
+                "name": "instance-0000000070",
+                "roles": ["ingest", "remote_cluster_client"],
+                "ip": "152.189.195.170"
+            }
+        });
+
+        apply_node_summary(&mut doc, "stats-node-id-123", None, Some("9.3.0"));
+
+        assert_eq!(doc["node"]["id"], "stats-node-id-123");
+        assert_eq!(doc["node"]["name"], "ingest-0070");
+        assert_eq!(doc["node"]["ip"], "152.189.195.170");
+        assert_eq!(doc["node"]["roles"][0], "ingest");
+        assert_eq!(doc["node"]["tier"], "ingest");
+        assert_eq!(doc["node"]["tier_order"], 8);
+        assert_eq!(doc["node"]["role"], "ir");
+        assert_eq!(doc["node"]["version"], "9.3.0");
+    }
+
+    #[test]
+    fn uses_lookup_node_summary_when_available() {
+        let mut doc = json!({
+            "node": {
+                "name": "instance-0000000070",
+                "roles": ["ingest"],
+                "ip": "152.189.195.170"
+            }
+        });
+        let summary_patch = json!({
+            "node": {
+                "id": "lookup-id-789",
+                "name": "hot-2bc5",
+                "roles": ["data_hot"],
+                "ip": "10.10.10.10"
+            }
+        });
+
+        apply_node_summary(&mut doc, "stats-node-id-123", Some(summary_patch), Some("9.3.0"));
+
+        assert_eq!(doc["node"]["id"], "lookup-id-789");
+        assert_eq!(doc["node"]["name"], "hot-2bc5");
+        assert_eq!(doc["node"]["ip"], "10.10.10.10");
+        assert_eq!(doc["node"]["roles"][0], "data_hot");
+    }
 }

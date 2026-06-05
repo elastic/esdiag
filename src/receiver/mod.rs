@@ -45,6 +45,41 @@ pub struct RawResponse {
     pub response_size_bytes: u64,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ScrubMode {
+    Auto,
+    Enabled,
+    Disabled,
+}
+
+impl From<Option<bool>> for ScrubMode {
+    fn from(value: Option<bool>) -> Self {
+        match value {
+            Some(true) => ScrubMode::Enabled,
+            Some(false) => ScrubMode::Disabled,
+            None => ScrubMode::Auto,
+        }
+    }
+}
+
+fn should_enable_scrubbed(mode: ScrubMode, filename: Option<&str>) -> bool {
+    match mode {
+        ScrubMode::Enabled => true,
+        ScrubMode::Disabled => false,
+        ScrubMode::Auto => filename
+            .map(|value| value.to_ascii_lowercase().contains("scrubbed"))
+            .unwrap_or(false),
+    }
+}
+
+fn scrub_mode_label(mode: ScrubMode) -> &'static str {
+    match mode {
+        ScrubMode::Auto => "auto",
+        ScrubMode::Enabled => "explicit true",
+        ScrubMode::Disabled => "explicit false",
+    }
+}
+
 #[allow(async_fn_in_trait)]
 pub trait Receive {
     async fn is_connected(&self) -> bool;
@@ -59,7 +94,9 @@ pub trait Receive {
         Err(eyre!("Streaming is not supported for this receiver"))
     }
     async fn try_get_manifest(&self) -> Result<DiagnosticManifest> {
-        Err(eyre!("Manifest synthesis is not supported for this receiver"))
+        Err(eyre!(
+            "Manifest synthesis is not supported for this receiver"
+        ))
     }
 }
 
@@ -361,15 +398,60 @@ fn validate_relative_subdir(sub_dir: &str) -> Result<()> {
 impl TryFrom<Uri> for Receiver {
     type Error = eyre::Report;
     fn try_from(uri: Uri) -> std::result::Result<Self, Self::Error> {
+        Receiver::try_from_with_scrub(uri, None, None)
+    }
+}
+
+fn resolve_scrub_detect_name(path: &str, hint: Option<&str>) -> String {
+    hint.filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| path.to_string())
+}
+
+impl Receiver {
+    pub fn try_from_with_scrub(
+        uri: Uri,
+        scrubbed_override: Option<bool>,
+        auto_detect_filename: Option<&str>,
+    ) -> std::result::Result<Self, eyre::Report> {
+        let scrub_mode = ScrubMode::from(scrubbed_override);
         let receiver = match uri {
-            Uri::Directory(dir) => Receiver::Directory(DirectoryReceiver::try_from(dir)?),
+            Uri::Directory(dir) => {
+                let path_label = dir.to_string_lossy().to_string();
+                let detect_name = resolve_scrub_detect_name(&path_label, auto_detect_filename);
+                let mut receiver = DirectoryReceiver::try_from(dir)?;
+                let scrubbed = should_enable_scrubbed(scrub_mode, Some(&detect_name));
+                tracing::debug!(
+                    "Scrub normalization {} for {} (detect name: {}, mode: {})",
+                    if scrubbed { "enabled" } else { "disabled" },
+                    path_label,
+                    detect_name,
+                    scrub_mode_label(scrub_mode)
+                );
+                receiver.set_scrubbed(scrubbed);
+                Receiver::Directory(receiver)
+            }
             Uri::ElasticCloud(host) => {
                 return Err(eyre!("Elastic Cloud API not yet implemented. {host}"));
             }
             Uri::ElasticCloudAdmin(host) | Uri::ElasticGovCloudAdmin(host) => {
                 Receiver::ElasticCloudAdmin(ElasticCloudAdminReceiver::try_from(host)?)
             }
-            Uri::File(file) => Receiver::ArchiveFile(ArchiveFileReceiver::try_from(file)?),
+            Uri::File(file) => {
+                let path = file.to_string_lossy().to_string();
+                let detect_name = resolve_scrub_detect_name(&path, auto_detect_filename);
+                let mut receiver = ArchiveFileReceiver::try_from(file)?;
+                let scrubbed = should_enable_scrubbed(scrub_mode, Some(&detect_name));
+                tracing::debug!(
+                    "Scrub normalization {} for {} (detect name: {}, mode: {})",
+                    if scrubbed { "enabled" } else { "disabled" },
+                    path,
+                    detect_name,
+                    scrub_mode_label(scrub_mode)
+                );
+                receiver.set_scrubbed(scrubbed);
+                Receiver::ArchiveFile(receiver)
+            }
             Uri::KnownHost(host) => match host.app() {
                 Product::Elasticsearch => Receiver::Elasticsearch(ElasticsearchReceiver::try_from(host)?),
                 Product::Logstash => Receiver::Logstash(LogstashReceiver::try_from(host)?),
@@ -378,7 +460,23 @@ impl TryFrom<Uri> for Receiver {
                     return Err(eyre!("Unsupported known-host receiver product: {}", host.app()));
                 }
             },
-            Uri::ServiceLink(url) => Receiver::ArchiveBytes(UploadServiceDownloader::try_from(url)?.download()?),
+            Uri::ServiceLink(url) => {
+                let detect_name = auto_detect_filename
+                    .filter(|value| !value.is_empty())
+                    .map(str::to_string);
+                let mut receiver = UploadServiceDownloader::try_from(url)?.download()?;
+                let scrubbed = should_enable_scrubbed(scrub_mode, detect_name.as_deref());
+                if let Some(name) = detect_name.as_deref() {
+                    tracing::debug!(
+                        "Scrub normalization {} for service link (detect name: {}, mode: {})",
+                        if scrubbed { "enabled" } else { "disabled" },
+                        name,
+                        scrub_mode_label(scrub_mode)
+                    );
+                }
+                receiver.set_scrubbed(scrubbed);
+                Receiver::ArchiveBytes(receiver)
+            }
             _ => return Err(eyre!("Unsupported URI: {uri}")),
         };
         Ok(receiver)
@@ -418,7 +516,7 @@ impl std::fmt::Display for Receiver {
 
 #[cfg(test)]
 mod tests {
-    use super::{DirectoryReceiver, Receiver};
+    use super::{DirectoryReceiver, Receiver, ScrubMode, resolve_scrub_detect_name, should_enable_scrubbed};
 
     fn directory_receiver() -> Receiver {
         let root = tempfile::tempdir().expect("temp diagnostic root");
@@ -454,5 +552,40 @@ mod tests {
             .expect("absolute path should be rejected");
 
         assert!(err.to_string().contains("must be relative and stay within the bundle"));
+    #[test]
+    fn upload_temp_path_auto_detects_from_original_filename_hint() {
+        let temp = "esdiag-upload-1-550e8400-e29b-41d4-a716-446655440000.zip";
+        let original = "example_scrubbed-api-diagnostics.zip";
+        let detect = resolve_scrub_detect_name(temp, Some(original));
+        assert!(should_enable_scrubbed(ScrubMode::Auto, Some(&detect)));
+        assert!(!should_enable_scrubbed(ScrubMode::Auto, Some(temp)));
+    }
+
+    #[test]
+    fn scrub_mode_enabled_always_true() {
+        assert!(should_enable_scrubbed(ScrubMode::Enabled, None));
+        assert!(should_enable_scrubbed(
+            ScrubMode::Enabled,
+            Some("diagnostic.zip")
+        ));
+    }
+
+    #[test]
+    fn scrub_mode_disabled_always_false() {
+        assert!(!should_enable_scrubbed(ScrubMode::Disabled, None));
+        assert!(!should_enable_scrubbed(
+            ScrubMode::Disabled,
+            Some("example_scrubbed-api-diagnostics.zip")
+        ));
+    }
+
+    #[test]
+    fn scrub_mode_auto_uses_filename_match() {
+        assert!(should_enable_scrubbed(
+            ScrubMode::Auto,
+            Some("example_scrubbed-api-diagnostics.zip")
+        ));
+        assert!(!should_enable_scrubbed(ScrubMode::Auto, Some("example-api-diagnostics.zip")));
+        assert!(!should_enable_scrubbed(ScrubMode::Auto, None));
     }
 }

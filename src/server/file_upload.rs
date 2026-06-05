@@ -19,102 +19,116 @@ use tokio::sync::mpsc;
 use tokio::{fs::File, io::AsyncWriteExt};
 use uuid::Uuid;
 
+/// Parse upload checkbox value. When the field body cannot be read, scrub mode defaults to enabled.
+fn parse_scrubbed_upload_field(text: Result<String, axum::extract::multipart::MultipartError>) -> bool {
+    match text {
+        Ok(value) => parse_scrubbed_checkbox_value(&value),
+        Err(_) => true,
+    }
+}
+
+fn parse_scrubbed_checkbox_value(value: &str) -> bool {
+    let normalized = value.trim().to_ascii_lowercase();
+    matches!(normalized.as_str(), "true" | "1" | "on")
+}
+
 pub async fn submit(State(state): State<Arc<ServerState>>, mut multipart: Multipart) -> impl IntoResponse {
     let job_id = new_job_id();
     let can_use_keystore = cfg!(feature = "keystore") && state.server_policy.allows_local_runtime_features();
+    let mut scrubbed_override: Option<bool> = None;
+    let mut staged_upload: Option<(String, std::path::PathBuf)> = None;
 
-    // Process the multipart form
-    if let Ok(Some(field)) = multipart.next_field().await {
-        if field.name() == Some("file") {
-            // Check if the file has a valid filename
-            let filename = match field.file_name() {
-                Some(filename) if !filename.ends_with(".zip") => {
-                    return (
-                        StatusCode::BAD_REQUEST,
-                        Html(format!(
-                            r#"<div id="job-{job_id}" class="status-box history-item status-error">
-                        🛑 Invalid file type, only .zip files are allowed.
-                    </div>"#
-                        )),
-                    );
-                }
-                Some(filename) => filename.to_string(),
-                None => {
-                    return (
-                        StatusCode::BAD_REQUEST,
-                        Html(format!(
-                            r#"<div id="job-{job_id}" class="status-box history-item status-error">
-                            🛑 Missing file name
+    while let Ok(Some(field)) = multipart.next_field().await {
+        match field.name() {
+            Some("file") => {
+                let filename = match field.file_name() {
+                    Some(filename) if !filename.ends_with(".zip") => {
+                        return (
+                            StatusCode::BAD_REQUEST,
+                            Html(format!(
+                                r#"<div id="job-{job_id}" class="status-box history-item status-error">
+                            🛑 Invalid file type, only .zip files are allowed.
                         </div>"#
-                        )),
-                    );
-                }
-            };
-
-            let upload_file_element = format!(
-                r#"<div id="job-{job_id}"
-                    class="status-box history-item status-processing"
-                    data-init="$loading=false; $file_upload.job_id={job_id}; if ({can_use_keystore} && $keystore.locked && $output.secure) {{ $_pending_job_action = 'upload-process'; $message = 'Unlock keystore to continue...'; @get('/keystore/modal/process', {{filterSignals: {{exclude: /.*/}}}}); }} else {{ @post('/upload/process', {{openWhenHidden: true, filterSignals: {{include: /^(metadata|archive|job|file_upload)(\.|$)/}}}}); }}"
-                >
-                    <div class="spinner"></div>
-                    <span>Processing diagnostic</span>
-                    <p><b>Filename:</b> {filename}</p>
-                </div>"#
-            );
-
-            let temp_upload_path = std::env::temp_dir().join(format!("esdiag-upload-{job_id}-{}.zip", Uuid::new_v4()));
-            match stage_upload_field(field, &temp_upload_path).await {
-                Ok(()) => {
-                    state.push_upload(job_id, filename, temp_upload_path).await;
-
-                    // Add a cleanup task to remove abandoned staged uploads.
-                    let state_clone = state.clone();
-                    tokio::spawn(async move {
-                        tokio::time::sleep(tokio::time::Duration::from_secs(300)).await;
-                        if let Some(job) = state_clone.pop_job_request(job_id).await {
-                            job.cleanup().await;
-                            tracing::warn!(
-                                "Upload job {} was never processed and was removed from state to clean up the staged upload",
-                                job_id
-                            );
-                        }
-                    });
-                }
-                Err(e) => {
-                    if let Err(remove_err) = tokio::fs::remove_file(&temp_upload_path).await
-                        && remove_err.kind() != std::io::ErrorKind::NotFound
-                    {
-                        tracing::debug!(
-                            "Failed to remove partial upload {}: {}",
-                            temp_upload_path.display(),
-                            remove_err
+                            )),
                         );
                     }
-                    let error_msg = format!("Failed to stage upload data: {}", e);
-                    tracing::error!("{}", error_msg);
-                    state.record_failure().await;
-                    return (
-                        StatusCode::BAD_REQUEST,
-                        Html(format!(
-                            r#"<div id="job-{job_id}" class="status-box history-item status-error">
-                            🛑 Error {error_msg}
-                        </div>"#
-                        )),
-                    );
-                }
-            };
+                    Some(filename) => filename.to_string(),
+                    None => {
+                        return (
+                            StatusCode::BAD_REQUEST,
+                            Html(format!(
+                                r#"<div id="job-{job_id}" class="status-box history-item status-error">
+                                🛑 Missing file name
+                            </div>"#
+                            )),
+                        );
+                    }
+                };
 
-            (StatusCode::OK, Html(upload_file_element))
-        } else {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Html(format!(
-                    r#"<div id="job-{job_id}" class="status-box history-item status-error">
-                        🛑 Upload Failed
-                    </div>"#
-                )),
-            )
+                let temp_upload_path =
+                    std::env::temp_dir().join(format!("esdiag-upload-{job_id}-{}.zip", Uuid::new_v4()));
+                match stage_upload_field(field, &temp_upload_path).await {
+                    Ok(()) => staged_upload = Some((filename, temp_upload_path)),
+                    Err(e) => {
+                        if let Err(remove_err) = tokio::fs::remove_file(&temp_upload_path).await
+                            && remove_err.kind() != std::io::ErrorKind::NotFound
+                        {
+                            tracing::debug!(
+                                "Failed to remove partial upload {}: {}",
+                                temp_upload_path.display(),
+                                remove_err
+                            );
+                        }
+                        let error_msg = format!("Failed to stage upload data: {}", e);
+                        tracing::error!("{}", error_msg);
+                        state.record_failure().await;
+                        return (
+                            StatusCode::BAD_REQUEST,
+                            Html(format!(
+                                r#"<div id="job-{job_id}" class="status-box history-item status-error">
+                                🛑 Error {error_msg}
+                            </div>"#
+                            )),
+                        );
+                    }
+                }
+            }
+            Some("scrubbed") => {
+                scrubbed_override = Some(parse_scrubbed_upload_field(field.text().await));
+            }
+            _ => {}
         }
+    }
+
+    if let Some((filename, temp_upload_path)) = staged_upload {
+        let upload_file_element = format!(
+            r#"<div id="job-{job_id}"
+                class="status-box history-item status-processing"
+                data-init="$loading=false; $file_upload.job_id={job_id}; if ({can_use_keystore} && $keystore.locked && $output.secure) {{ $_pending_job_action = 'upload-process'; $message = 'Unlock keystore to continue...'; @get('/keystore/modal/process', {{filterSignals: {{exclude: /.*/}}}}); }} else {{ @post('/upload/process', {{openWhenHidden: true, filterSignals: {{include: /^(metadata|archive|job|file_upload)(\.|$)/}}}}); }}"
+            >
+                <div class="spinner"></div>
+                <span>Processing diagnostic</span>
+                <p><b>Filename:</b> {filename}</p>
+            </div>"#
+        );
+
+        state
+            .push_upload(job_id, filename, temp_upload_path, scrubbed_override)
+            .await;
+
+        let state_clone = state.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(tokio::time::Duration::from_secs(300)).await;
+            if let Some(job) = state_clone.pop_job_request(job_id).await {
+                job.cleanup().await;
+                tracing::warn!(
+                    "Upload job {} was never processed and was removed from state to clean up the staged upload",
+                    job_id
+                );
+            }
+        });
+
+        (StatusCode::OK, Html(upload_file_element))
     } else {
         (
             StatusCode::INTERNAL_SERVER_ERROR,

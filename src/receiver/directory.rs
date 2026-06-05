@@ -3,6 +3,7 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::super::processor::{DataSource, SourceContext, StreamingDataSource};
+use super::archive::{normalize_supported_content, supports_json_normalization};
 use super::{RawResponse, Receive, ReceiveMultiple, ReceiveRaw};
 use eyre::{Result, eyre};
 use futures::stream::{self, BoxStream};
@@ -23,6 +24,7 @@ pub struct DirectoryReceiver {
     work_dir: String,
     modified_date: SystemTime,
     source_product: Arc<OnceLock<&'static str>>,
+    scrubbed: bool,
 }
 
 impl TryFrom<PathBuf> for DirectoryReceiver {
@@ -37,6 +39,7 @@ impl TryFrom<PathBuf> for DirectoryReceiver {
                     work_dir: String::from(""),
                     modified_date: path.metadata()?.modified()?,
                     source_product: Arc::new(OnceLock::new()),
+                    scrubbed: false,
                 })
             }
             false => {
@@ -72,12 +75,22 @@ impl Receive for DirectoryReceiver {
         let mut last_open_error = None;
 
         for source_path in source_paths {
-            let filename = self.path.join(&self.work_dir).join(source_path);
+            let filename = self.path.join(&self.work_dir).join(&source_path);
             tracing::debug!("Reading file: {}", &filename.display());
             match File::open(&filename) {
                 Ok(file) => {
-                    let reader = BufReader::new(file);
-                    let data: T = serde_json::from_reader(reader)?;
+                    if self.scrubbed {
+                        tracing::debug!("Reading {} (scrubbed mode)", source_path);
+                    }
+                    let mut reader = BufReader::new(file);
+                    let mut content = String::new();
+                    reader.read_to_string(&mut content)?;
+                    let content = normalize_file_content_if_needed(
+                        &source_path,
+                        self.scrubbed,
+                        content,
+                    )?;
+                    let data: T = serde_json::from_str(&content)?;
                     return Ok(data);
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -101,20 +114,43 @@ impl Receive for DirectoryReceiver {
     {
         let ctx = self.source_context()?;
         let source_path = T::resolve_source_file_path(&ctx)?;
-        let filename = self.path.join(&self.work_dir).join(source_path);
+        let filename = self.path.join(&self.work_dir).join(&source_path);
         tracing::debug!("Streaming file: {}", &filename.display());
 
         let filename_clone = filename.clone();
+        let scrubbed = self.scrubbed;
+        let source_path_for_scrub = source_path.clone();
         let (tx, rx) = mpsc::channel(100);
 
         let tx_err = tx.clone();
         let handle = tokio::task::spawn_blocking(move || match File::open(&filename_clone) {
             Ok(file) => {
-                let reader = BufReader::new(file);
-                let mut deserializer = serde_json::Deserializer::from_reader(reader);
-                if let Err(e) = T::deserialize_stream(&mut deserializer, tx.clone()) {
-                    tracing::error!("Error deserializing stream: {}", e);
-                    let _ = tx.blocking_send(Err(eyre!(e)));
+                if scrubbed {
+                    tracing::debug!("Reading {} (scrubbed mode)", source_path_for_scrub);
+                }
+                let mut reader = BufReader::new(file);
+                let mut content = String::new();
+                match reader.read_to_string(&mut content) {
+                    Ok(_) => match normalize_file_content_if_needed(
+                        &source_path_for_scrub,
+                        scrubbed,
+                        content,
+                    ) {
+                        Ok(normalized) => {
+                            let mut deserializer =
+                                serde_json::Deserializer::from_str(&normalized);
+                            if let Err(e) = T::deserialize_stream(&mut deserializer, tx.clone()) {
+                                tracing::error!("Error deserializing stream: {}", e);
+                                let _ = tx.blocking_send(Err(eyre!(e)));
+                            }
+                        }
+                        Err(e) => {
+                            let _ = tx.blocking_send(Err(e));
+                        }
+                    },
+                    Err(e) => {
+                        let _ = tx.blocking_send(Err(eyre!(e)));
+                    }
                 }
             }
             Err(e) => {
@@ -151,16 +187,20 @@ impl ReceiveRaw for DirectoryReceiver {
         let mut last_open_error = None;
 
         for source_path in source_paths {
-            let filename = self.path.join(&self.work_dir).join(source_path);
+            let filename = self.path.join(&self.work_dir).join(&source_path);
             tracing::debug!("Reading file: {}", &filename.display());
             match File::open(&filename) {
                 Ok(file) => {
+                    if self.scrubbed {
+                        tracing::debug!("Reading {} (scrubbed mode)", source_path);
+                    }
                     let mut reader = BufReader::new(file);
                     let mut data = String::new();
                     reader.read_to_string(&mut data)?;
-                    let response_size_bytes = data.len() as u64;
+                    let body = normalize_file_content_if_needed(&source_path, self.scrubbed, data)?;
+                    let response_size_bytes = body.len() as u64;
                     return Ok(RawResponse {
-                        body: data,
+                        body,
                         status: None,
                         response_time_ms: 0,
                         response_size_bytes,
@@ -189,7 +229,7 @@ impl ReceiveMultiple for DirectoryReceiver {
 }
 
 impl std::fmt::Display for DirectoryReceiver {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "Directory {}", self.path.display())
     }
 }
@@ -201,7 +241,12 @@ impl DirectoryReceiver {
             work_dir: work_dir.to_string(),
             modified_date: self.modified_date,
             source_product: Arc::new(OnceLock::new()),
+            scrubbed: self.scrubbed,
         }
+    }
+
+    pub fn set_scrubbed(&mut self, scrubbed: bool) {
+        self.scrubbed = scrubbed;
     }
 
     pub async fn read_bundle_json<T>(&self, filename: &str) -> Result<T>
@@ -211,8 +256,11 @@ impl DirectoryReceiver {
         let path = self.path.join(&self.work_dir).join(filename);
         tracing::debug!("Reading bundle file: {}", path.display());
         let file = File::open(path)?;
-        let reader = BufReader::new(file);
-        serde_json::from_reader(reader).map_err(Into::into)
+        let mut reader = BufReader::new(file);
+        let mut content = String::new();
+        reader.read_to_string(&mut content)?;
+        let content = normalize_file_content_if_needed(filename, self.scrubbed, content)?;
+        serde_json::from_str(&content).map_err(Into::into)
     }
 
     pub fn set_source_product(&self, product: &'static str) -> Result<()> {
@@ -240,4 +288,27 @@ impl DirectoryReceiver {
     pub fn source_context(&self) -> Result<SourceContext> {
         Ok(SourceContext::new(self.source_product()?, None))
     }
+}
+
+fn normalize_file_content_if_needed(
+    logical_name: &str,
+    scrubbed: bool,
+    content: String,
+) -> Result<String> {
+    if !scrubbed {
+        return Ok(content);
+    }
+
+    if !supports_json_normalization(logical_name) {
+        tracing::debug!("Scrubbed mode read {} (no normalization rules)", logical_name);
+        return Ok(content);
+    }
+
+    let transformed = normalize_supported_content(logical_name, content)?;
+    tracing::debug!(
+        "Unscrubbed {} address fields in {}",
+        transformed.transformed_fields,
+        logical_name
+    );
+    Ok(transformed.content)
 }

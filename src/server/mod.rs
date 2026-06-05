@@ -836,7 +836,13 @@ impl ServerState {
         .await
     }
 
-    pub async fn push_upload(&self, id: u64, filename: String, path: PathBuf) -> Option<JobRequest> {
+    pub async fn push_upload(
+        &self,
+        id: u64,
+        filename: String,
+        path: PathBuf,
+        scrubbed_override: Option<bool>,
+    ) -> Option<JobRequest> {
         tracing::debug!("Pushing file upload id: {id}");
         self.push_job_request(
             id,
@@ -847,6 +853,7 @@ impl ServerState {
                     filename,
                     path: path.clone(),
                     cleanup_path: Some(path),
+                    scrubbed_override,
                 },
             },
         )
@@ -1131,6 +1138,7 @@ pub enum JobInput {
         filename: String,
         path: PathBuf,
         cleanup_path: Option<PathBuf>,
+        scrubbed_override: Option<bool>,
     },
     FromServiceLink {
         source: String,

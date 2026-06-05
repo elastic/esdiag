@@ -30,6 +30,7 @@ published release notes, maintenance branches, and tagged history.
 - Added a file-based keystore unlock lease workflow shared by the CLI and web UI.
 - Added runtime web feature gating with `--web-features` and `ESDIAG_WEB_FEATURES`.
 - Added web, CLI, and synchronous API reporting for included diagnostics in ECK and KubernetesPlatform bundles.
+- Added receiver-stage normalization for malformed IPv4 values in scrubbed diagnostics, with `--scrubbed` CLI flag and upload checkbox (#330).
 
 ### Changed
 
