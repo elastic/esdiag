@@ -59,12 +59,13 @@ impl Receive for ArchiveBytesReceiver {
             match resolve_archive_path(self.subdir.as_ref(), &mut *archive, &source_path) {
                 Ok(filename) => {
                     tracing::debug!("Reading {}", filename);
-                    let file = match archive.by_name(&filename) {
+                    let mut file = match archive.by_name(&filename) {
                         Ok(file) => file,
                         Err(_) => return Err(eyre!("Failed to read file {filename} from archive")),
                     };
-                    let reader = BufReader::new(file);
-                    let data: T = serde_json::from_reader(reader)?;
+                    let mut buf = Vec::with_capacity(file.size() as usize);
+                    std::io::Read::read_to_end(&mut file, &mut buf)?;
+                    let data: T = serde_json::from_slice(&buf)?;
                     return Ok(data);
                 }
                 Err(e) => {
@@ -135,12 +136,13 @@ impl ArchiveBytesReceiver {
         let mut archive = self.archive.write().await;
         let filename = resolve_archive_path(self.subdir.as_ref(), &mut *archive, filename)?;
         tracing::debug!("Reading bundle file {}", filename);
-        let file = match archive.by_name(&filename) {
+        let mut file = match archive.by_name(&filename) {
             Ok(file) => file,
             Err(_) => return Err(eyre!("Failed to read file {filename} from archive")),
         };
-        let reader = BufReader::new(file);
-        serde_json::from_reader(reader).map_err(Into::into)
+        let mut buf = Vec::with_capacity(file.size() as usize);
+        std::io::Read::read_to_end(&mut file, &mut buf)?;
+        serde_json::from_slice(&buf).map_err(Into::into)
     }
 
     pub fn set_source_product(&self, product: &'static str) -> Result<()> {
