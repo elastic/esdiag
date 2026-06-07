@@ -7,7 +7,6 @@ use super::Metadata;
 use super::version::{Cluster, ClusterMetadata};
 use eyre::Result;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use serde_json::value::RawValue;
 use std::sync::Arc;
 
 #[derive(Clone, Serialize)]
@@ -35,8 +34,8 @@ impl ElasticsearchMetadata {
             diagnostic: &self.diagnostic,
             data_stream: DataStreamName::from(data_stream),
         };
-        let raw = serde_json::value::to_raw_value(&temp).expect("Failed to serialize metadata");
-        MetadataRawValue(Arc::from(raw))
+        let value: serde_json::Value = serde_json::to_value(&temp).expect("Failed to serialize metadata");
+        MetadataRawValue(Arc::new(value))
     }
 
     pub fn try_new(manifest: DiagnosticManifest, cluster: Cluster) -> Result<Self> {
@@ -51,8 +50,8 @@ impl ElasticsearchMetadata {
             diagnostic: &diagnostic,
             data_stream: DataStreamName::from("metrics-default-esdiag"),
         };
-        let raw = serde_json::value::to_raw_value(&temp).expect("Failed to serialize metadata");
-        let as_doc = MetadataRawValue(Arc::from(raw));
+        let value: serde_json::Value = serde_json::to_value(&temp).expect("Failed to serialize metadata");
+        let as_doc = MetadataRawValue(Arc::new(value));
 
         Ok(Self {
             as_doc,
@@ -63,17 +62,17 @@ impl ElasticsearchMetadata {
     }
 }
 
+// Cached metadata value for flattened serialization. Named RawValue for historical reasons;
+// the inner type was changed from Arc<RawValue> to Arc<Value> to avoid per-serialize reparsing.
 #[derive(Clone)]
-pub struct MetadataRawValue(pub Arc<RawValue>);
+pub struct MetadataRawValue(Arc<serde_json::Value>);
 
 impl Serialize for MetadataRawValue {
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
-        // MetadataRawValue is always flattened, so we want to emit the fields of the inner JSON object.
-        let value: serde_json::Value = serde_json::from_str(self.0.get()).map_err(serde::ser::Error::custom)?;
-        value.serialize(serializer)
+        self.0.serialize(serializer)
     }
 }
 
@@ -82,18 +81,14 @@ impl<'de> Deserialize<'de> for MetadataRawValue {
     where
         D: Deserializer<'de>,
     {
-        // For testing we need to be able to deserialize flattened values back into a string,
-        // although this doesn't fully reconstruct the original string, we don't care about it
-        // during tests
         let value: serde_json::Value = Deserialize::deserialize(deserializer)?;
-        let raw = serde_json::value::to_raw_value(&value).map_err(serde::de::Error::custom)?;
-        Ok(MetadataRawValue(Arc::from(raw)))
+        Ok(MetadataRawValue(Arc::new(value)))
     }
 }
 
 impl MetadataRawValue {
     pub fn as_meta_doc(&self) -> serde_json::Value {
-        serde_json::from_str(self.0.get()).expect("Failed to parse metadata raw value")
+        (*self.0).clone()
     }
 }
 

@@ -32,6 +32,7 @@ published release notes, maintenance branches, and tagged history.
 
 ### Changed
 
+- Cached metadata serialization value to eliminate redundant JSON reparsing during document export (#324).
 - Increased the long-running collection request timeout so large Elasticsearch API payloads can finish returning.
 - Changed diagnostic manifests to record `requested_apis` including status, response time, and response size.
 - Moved the Tauri desktop app root under `desktop/` while keeping root-level `cargo tauri build` and desktop packaging workflows working.
