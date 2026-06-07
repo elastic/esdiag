@@ -14,6 +14,10 @@ use std::{
 use tokio::sync::{RwLock, mpsc};
 use zip::ZipArchive;
 
+// Cap pre-allocation from ZipFile::size() to avoid trusting unverified archive metadata.
+// Real files larger than this still work — read_to_end grows the Vec organically.
+pub(crate) const MAX_PREALLOC: usize = 256 * 1024 * 1024;
+
 mod bytes;
 mod file;
 
@@ -59,7 +63,7 @@ where
                     return;
                 }
             };
-            let mut buf = Vec::with_capacity(file.size() as usize);
+            let mut buf = Vec::with_capacity((file.size() as usize).min(MAX_PREALLOC));
             if let Err(e) = std::io::Read::read_to_end(&mut file, &mut buf) {
                 let _ = tx.blocking_send(Err(eyre::eyre!(e)));
                 return;

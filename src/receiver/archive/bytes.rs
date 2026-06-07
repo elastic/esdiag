@@ -67,7 +67,7 @@ impl Receive for ArchiveBytesReceiver {
                         Ok(file) => file,
                         Err(_) => return Err(eyre!("Failed to read file {filename} from archive")),
                     };
-                    let mut buf = Vec::with_capacity(file.size() as usize);
+                    let mut buf = Vec::with_capacity((file.size() as usize).min(super::MAX_PREALLOC));
                     std::io::Read::read_to_end(&mut file, &mut buf)?;
                     let data: T = serde_json::from_slice(&buf)?;
                     return Ok(data);
@@ -145,7 +145,7 @@ impl ArchiveBytesReceiver {
             Ok(file) => file,
             Err(_) => return Err(eyre!("Failed to read file {filename} from archive")),
         };
-        let mut buf = Vec::with_capacity(file.size() as usize);
+        let mut buf = Vec::with_capacity((file.size() as usize).min(super::MAX_PREALLOC));
         std::io::Read::read_to_end(&mut file, &mut buf)?;
         serde_json::from_slice(&buf).map_err(Into::into)
     }
