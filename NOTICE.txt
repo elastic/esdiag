@@ -5,7 +5,7 @@ Copyright 2012-2025 Elasticsearch B.V.
 This document lists the licenses of the projects used in esdiag.
 
 ## Overview of licenses
-- [Apache License 2.0](#Apache-2.0) (227)
+- [Apache License 2.0](#Apache-2.0) (228)
 - [MIT License](#MIT) (72)
 - [Unicode License v3](#Unicode-3.0) (19)
 - [BSD 3-Clause "New" or "Revised" License](#BSD-3-Clause) (3)
@@ -3487,6 +3487,7 @@ Apache License 2.0
 - [crossbeam-deque]( https://github.com/crossbeam-rs/crossbeam ) 0.8.6
 - [crossbeam-epoch]( https://github.com/crossbeam-rs/crossbeam ) 0.9.18
 - [crossbeam-utils]( https://github.com/crossbeam-rs/crossbeam ) 0.8.21
+- [cty]( https://github.com/japaric/cty ) 0.2.2
 - [displaydoc]( https://github.com/yaahc/displaydoc ) 0.2.5
 - [either]( https://github.com/rayon-rs/either ) 1.16.0
 - [equivalent]( https://github.com/indexmap-rs/equivalent ) 1.0.2
