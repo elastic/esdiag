@@ -449,7 +449,7 @@ fn configure_allocator() {
     // Verified against libmimalloc-sys 0.1.49 c_src/mimalloc/v3/include/mimalloc.h.
     const MI_OPTION_PURGE_DELAY: i32 = 15;
 
-    // Return freed memory to the OS immediately instead of the default 10ms delay.
+    // Return freed memory to the OS immediately instead of the default delay.
     // Without this, mimalloc retains large arenas that inflate RSS in containers.
     unsafe {
         libmimalloc_sys::mi_option_set(MI_OPTION_PURGE_DELAY, 0);
