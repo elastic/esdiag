@@ -325,29 +325,7 @@
                         data-attr:disabled="$loading || !$service_link.url || !$service_link.token"
                     />
                     <script>
-                        // Extract token from Authorization header
-                        const parseToken = (cmd) => {
-                            const token = cmd.match(/Authorization(?: Token)?:\s*([^ '"]+[^ '"])/);
-                            return token ? token[1] : null;
-                        };
-
-                        // Extract filename from -o option
-                        const parseFilename = (cmd) => {
-                            const filename =
-                                cmd.match(/File name:\s*(\S+)/) ||
-                                cmd.match(/-o\s+['"]([^'"]+)['"]/) ||
-                                cmd.match(/-o\s+(\S+)/) ||
-                                cmd.match(/--output\s+['"]([^'"]+)['"]/) ||
-                                cmd.match(/--output\s+(\S+)/);
-                            return filename ? filename[1] : null;
-                        };
-
-                        // Extract URL
-                        const parseUrl = (cmd) => {
-                            const match = cmd.match(/https?:\/\/\S+/);
-                            const url = match ? match[0].replace(/\.$/, "") : null;
-                            return url;
-                        };
+                        {% include "components/service_link_parser.js" %}
                     </script>
                 </form>
 
