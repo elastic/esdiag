@@ -54,11 +54,18 @@ for (const testCase of cases) {{
 "#,
     );
 
-    let output = Command::new("node")
+    let output = match Command::new("node")
         .arg("-e")
         .arg(script)
         .output()
-        .expect("node must be available to test service link parser");
+    {
+        Ok(output) => output,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            eprintln!("skipping service link parser test because node is not available");
+            return;
+        }
+        Err(err) => panic!("failed to run service link parser test with node: {err}"),
+    };
 
     assert!(
         output.status.success(),
