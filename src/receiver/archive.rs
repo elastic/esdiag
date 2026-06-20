@@ -17,8 +17,6 @@ use zip::ZipArchive;
 mod bytes;
 mod file;
 mod scrub;
-#[cfg(test)]
-mod synthetic_scrub_vectors;
 
 pub use bytes::*;
 pub use file::*;
@@ -69,8 +67,7 @@ where
                                     transformed.transformed_fields,
                                     filename
                                 );
-                                let mut deserializer =
-                                    serde_json::Deserializer::from_str(&transformed.content);
+                                let mut deserializer = serde_json::Deserializer::from_str(&transformed.content);
                                 T::deserialize_stream(&mut deserializer, tx.clone())
                                     .map_err(|e| eyre::eyre!(e.to_string()))
                             }
@@ -84,8 +81,7 @@ where
                     }
                     let reader = BufReader::new(file);
                     let mut deserializer = serde_json::Deserializer::from_reader(reader);
-                    T::deserialize_stream(&mut deserializer, tx.clone())
-                        .map_err(|e| eyre::eyre!(e.to_string()))
+                    T::deserialize_stream(&mut deserializer, tx.clone()).map_err(|e| eyre::eyre!(e.to_string()))
                 }
             }
             Err(e) => Err(eyre::eyre!(e)),

@@ -26,7 +26,6 @@ pub use diagnostic::{
     report::{BatchResponse, Identifiers, ProcessorSummary},
 };
 pub use elasticsearch::Cluster as ElasticsearchCluster;
-pub use elasticsearch::Nodes;
 
 pub use crate::processor::diagnostic::data_source::StreamingDataSource;
 use crate::{data::Product, exporter::Exporter, receiver::Receiver};

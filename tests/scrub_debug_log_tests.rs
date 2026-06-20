@@ -2,27 +2,31 @@
 //! Runs in its own test binary so tracing capture is not shared with lib unit tests.
 
 use esdiag::data::Uri;
-use esdiag::processor::Nodes;
+use esdiag::processor::DataSource;
 use esdiag::receiver::{ReceiveRaw, Receiver};
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, OnceLock};
 use tracing_subscriber::{Layer, layer::SubscriberExt};
-use zip::{write::SimpleFileOptions, ZipWriter};
+use zip::{ZipWriter, write::SimpleFileOptions};
 
 struct CaptureLayer {
     logs: Arc<Mutex<Vec<String>>>,
+}
+
+struct NodesSource;
+
+impl DataSource for NodesSource {
+    fn name() -> String {
+        "nodes".to_string()
+    }
 }
 
 impl<S> Layer<S> for CaptureLayer
 where
     S: tracing::Subscriber,
 {
-    fn on_event(
-        &self,
-        event: &tracing::Event<'_>,
-        _ctx: tracing_subscriber::layer::Context<'_, S>,
-    ) {
+    fn on_event(&self, event: &tracing::Event<'_>, _ctx: tracing_subscriber::layer::Context<'_, S>) {
         let mut message = String::new();
         let mut visitor = MessageVisitor(&mut message);
         event.record(&mut visitor);
@@ -53,9 +57,7 @@ fn log_capture() -> Arc<Mutex<Vec<String>>> {
     CAPTURE
         .get_or_init(|| {
             let logs = Arc::new(Mutex::new(Vec::new()));
-            let layer = CaptureLayer {
-                logs: logs.clone(),
-            };
+            let layer = CaptureLayer { logs: logs.clone() };
             let subscriber = tracing_subscriber::registry::Registry::default().with(layer);
             let _ = tracing::subscriber::set_global_default(subscriber);
             logs
@@ -83,8 +85,7 @@ fn write_scrubbed_nodes_zip(path: &PathBuf, nodes_json: &str) {
     )
     .expect("version body");
 
-    zip.start_file(format!("{prefix}/nodes.json"), options)
-        .expect("nodes");
+    zip.start_file(format!("{prefix}/nodes.json"), options).expect("nodes");
     zip.write_all(nodes_json.as_bytes()).expect("nodes body");
 
     zip.finish().expect("finish zip");
@@ -124,17 +125,14 @@ async fn scrubbed_read_emits_mode_and_file_unscrubbed_debug_logs() {
     let zip_path = dir.path().join("synthetic-malformed-ips-test.zip");
     write_scrubbed_nodes_zip(&zip_path, &nodes_json);
 
-    let receiver = Receiver::try_from_with_scrub(Uri::File(zip_path), Some(true), None)
-        .expect("receiver");
+    let receiver = Receiver::try_from_with_scrub(Uri::File(zip_path), Some(true), None).expect("receiver");
     let archive = match receiver {
         Receiver::ArchiveFile(r) => r,
         _ => panic!("expected archive file receiver"),
     };
-    archive
-        .set_source_product("elasticsearch")
-        .expect("source product");
+    archive.set_source_product("elasticsearch").expect("source product");
 
-    let _raw = archive.get_raw::<Nodes>().await.expect("get raw nodes");
+    let _raw = archive.get_raw::<NodesSource>().await.expect("get raw nodes");
 
     let captured = logs.lock().expect("log capture lock");
     assert!(

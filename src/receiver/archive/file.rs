@@ -137,13 +137,7 @@ impl Receive for ArchiveFileReceiver {
         T::Item: DeserializeOwned + Send + 'static,
     {
         let ctx = self.source_context()?;
-        super::get_stream_from_archive::<File, T>(
-            self.archive.clone(),
-            self.subdir.clone(),
-            ctx,
-            self.scrubbed,
-        )
-        .await
+        super::get_stream_from_archive::<File, T>(self.archive.clone(), self.subdir.clone(), ctx, self.scrubbed).await
     }
 }
 
@@ -283,13 +277,21 @@ impl ArchiveFileReceiver {
 
 #[cfg(test)]
 mod tests {
+    use super::super::scrub::synthetic_vectors as v;
     use super::ArchiveFileReceiver;
-    use super::super::synthetic_scrub_vectors as v;
-    use crate::processor::Nodes;
+    use crate::processor::DataSource;
     use crate::receiver::{ReceiveRaw, ScrubMode, should_enable_scrubbed};
     use std::io::Write;
     use std::path::PathBuf;
     use zip::{ZipWriter, write::SimpleFileOptions};
+
+    struct NodesSource;
+
+    impl DataSource for NodesSource {
+        fn name() -> String {
+            "nodes".to_string()
+        }
+    }
 
     fn write_test_archive(base_dir: &str, nodes_json: &str) -> (tempfile::TempDir, PathBuf) {
         let dir = tempfile::tempdir().expect("tempdir");
@@ -336,8 +338,7 @@ mod tests {
         )
         .expect("version body");
 
-        zip.start_file(format!("{prefix}nodes.json"), options)
-            .expect("nodes");
+        zip.start_file(format!("{prefix}nodes.json"), options).expect("nodes");
         zip.write_all(nodes_json.as_bytes()).expect("nodes body");
 
         zip.finish().expect("finish zip");
@@ -346,8 +347,8 @@ mod tests {
 
     #[tokio::test]
     async fn non_scrubbed_archive_passes_nodes_json_unchanged() {
-        let archive_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/archives/elasticsearch-api-diagnostics-9.1.3.zip");
+        let archive_path =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/archives/elasticsearch-api-diagnostics-9.1.3.zip");
         if !archive_path.exists() {
             return;
         }
@@ -357,21 +358,18 @@ mod tests {
         let entry_path = "api-diagnostics-20250918-001807/nodes.json";
         let mut expected = String::new();
         let mut zip_entry = archive.by_name(entry_path).expect("nodes.json");
-        std::io::Read::read_to_string(&mut zip_entry, &mut expected)
-        .expect("read nodes.json");
+        std::io::Read::read_to_string(&mut zip_entry, &mut expected).expect("read nodes.json");
 
         let mut receiver = ArchiveFileReceiver::try_from(archive_path).expect("receiver");
         receiver.set_scrubbed(false);
-        receiver
-            .set_source_product("elasticsearch")
-            .expect("source product");
+        receiver.set_source_product("elasticsearch").expect("source product");
 
         assert!(!should_enable_scrubbed(
             ScrubMode::Auto,
             Some("elasticsearch-api-diagnostics-9.1.3.zip")
         ));
 
-        let actual = receiver.get_raw::<Nodes>().await.expect("get raw nodes");
+        let actual = receiver.get_raw::<NodesSource>().await.expect("get raw nodes");
         assert_eq!(actual, expected);
     }
 
@@ -409,16 +407,11 @@ mod tests {
         let (_dir, zip_path) = write_test_archive("api-diagnostics-scrubbed-test", &nodes_json);
         let mut receiver = ArchiveFileReceiver::try_from(zip_path).expect("receiver");
         receiver.set_scrubbed(true);
-        receiver
-            .set_source_product("elasticsearch")
-            .expect("source product");
+        receiver.set_source_product("elasticsearch").expect("source product");
 
-        let raw = receiver.get_raw::<Nodes>().await.expect("get raw nodes");
+        let raw = receiver.get_raw::<NodesSource>().await.expect("get raw nodes");
         assert!(raw.contains(&format!("\"ip\":\"{}\"", v::NORMALIZED_IP)));
         assert!(raw.contains(&format!("\"host\":\"{}\"", v::NORMALIZED_IP)));
-        assert!(raw.contains(&format!(
-            "\"transport_address\":\"{}\"",
-            v::NORMALIZED_IP_WITH_PORT
-        )));
+        assert!(raw.contains(&format!("\"transport_address\":\"{}\"", v::NORMALIZED_IP_WITH_PORT)));
     }
 }

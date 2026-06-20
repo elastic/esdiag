@@ -176,9 +176,35 @@ fn parse_ipv4_octets(value: &str) -> Option<[u16; 4]> {
 }
 
 #[cfg(test)]
+pub(super) mod synthetic_vectors {
+    // Hand-authored scrub test vectors only. Do NOT copy values from customer diagnostics.
+
+    /// Malformed IPv4-like string used in unit/integration tests (each octet > 255).
+    pub const MALFORMED_IP: &str = "512.768.1024.1280";
+    pub const MALFORMED_IP_WITH_PORT: &str = "512.768.1024.1280:19840";
+    pub const NORMALIZED_IP: &str = "2.3.4.5";
+    pub const NORMALIZED_IP_WITH_PORT: &str = "2.3.4.5:19840";
+
+    pub const MALFORMED_IP_SECONDARY: &str = "513.769.1025.1281";
+    pub const NORMALIZED_IP_SECONDARY: &str = "3.4.5.6";
+    pub const MALFORMED_IP_SECONDARY_WITH_PORT: &str = "513.769.1025.1281:19033";
+    pub const NORMALIZED_IP_SECONDARY_WITH_PORT: &str = "3.4.5.6:19033";
+
+    pub const MALFORMED_HTTP_CLIENT_ID: &str = "516.772.1028.1284";
+    pub const NORMALIZED_HTTP_CLIENT_ID: u64 = 101_124_105;
+
+    /// RFC 5737 TEST-NET-1 address for valid pass-through cases.
+    pub const VALID_IP: &str = "192.0.2.50";
+    pub const VALID_IP_WITH_PORT: &str = "192.0.2.50:9300";
+
+    /// 19-char lowercase hex node id/name for scrub humanization tests.
+    pub const SYNTHETIC_HEX_NODE_ID: &str = "aaaabbbbccccddddee0";
+}
+
+#[cfg(test)]
 mod tests {
+    use super::synthetic_vectors as v;
     use super::*;
-    use super::super::synthetic_scrub_vectors as v;
 
     #[test]
     fn normalizes_supported_ip_fields_only() {
@@ -209,35 +235,32 @@ mod tests {
             malformed_client_id = v::MALFORMED_HTTP_CLIENT_ID,
         );
 
-        let result =
-            normalize_supported_content("diag/nodes.json", input).expect("normalize");
+        let result = normalize_supported_content("diag/nodes.json", input).expect("normalize");
 
         assert!(result.supported);
         assert_eq!(result.transformed_fields, 6);
-        assert!(result
-            .content
-            .contains(&format!("\"ip\":\"{}\"", v::NORMALIZED_IP)));
-        assert!(result
-            .content
-            .contains(&format!("\"host\":\"{}\"", v::NORMALIZED_IP)));
-        assert!(result.content.contains(&format!(
-            "\"transport_address\":\"{}\"",
-            v::NORMALIZED_IP_WITH_PORT
-        )));
+        assert!(result.content.contains(&format!("\"ip\":\"{}\"", v::NORMALIZED_IP)));
+        assert!(result.content.contains(&format!("\"host\":\"{}\"", v::NORMALIZED_IP)));
+        assert!(
+            result
+                .content
+                .contains(&format!("\"transport_address\":\"{}\"", v::NORMALIZED_IP_WITH_PORT))
+        );
         assert!(result.content.contains(&format!(
             "\"publish_address\":\"{}\"",
             v::NORMALIZED_IP_SECONDARY_WITH_PORT
         )));
-        assert!(result.content.contains(&format!(
-            "\"x_forwarded_for\":\"{}\"",
-            v::NORMALIZED_IP_SECONDARY
-        )));
-        assert!(result
-            .content
-            .contains(&format!("\"name\":\"{}\"", v::MALFORMED_IP)));
-        assert!(result
-            .content
-            .contains(&format!("\"id\":{}", v::NORMALIZED_HTTP_CLIENT_ID)));
+        assert!(
+            result
+                .content
+                .contains(&format!("\"x_forwarded_for\":\"{}\"", v::NORMALIZED_IP_SECONDARY))
+        );
+        assert!(result.content.contains(&format!("\"name\":\"{}\"", v::MALFORMED_IP)));
+        assert!(
+            result
+                .content
+                .contains(&format!("\"id\":{}", v::NORMALIZED_HTTP_CLIENT_ID))
+        );
     }
 
     #[test]
@@ -274,24 +297,29 @@ mod tests {
             malformed = v::MALFORMED_IP,
         );
 
-        let result =
-            normalize_supported_content("diag/nodes.json", input).expect("normalize");
+        let result = normalize_supported_content("diag/nodes.json", input).expect("normalize");
 
         assert!(result.supported);
         assert_eq!(result.transformed_fields, 3);
-        assert!(result
-            .content
-            .contains(&format!("\"publish_host\":\"{}\"", v::NORMALIZED_IP)));
-        assert!(result
-            .content
-            .contains(&format!("\"bind_host\":\"{}\"", v::NORMALIZED_IP)));
+        assert!(
+            result
+                .content
+                .contains(&format!("\"publish_host\":\"{}\"", v::NORMALIZED_IP))
+        );
+        assert!(
+            result
+                .content
+                .contains(&format!("\"bind_host\":\"{}\"", v::NORMALIZED_IP))
+        );
     }
 
     #[test]
     fn normalizes_ip_fields_in_other_diagnostic_json_files() {
-        let input = format!(r#"{{"master_node":{{"ip":"{malformed}","host":"{malformed}"}}}}"#, malformed = v::MALFORMED_IP);
-        let result =
-            normalize_supported_content("diag/master.json", input).expect("normalize");
+        let input = format!(
+            r#"{{"master_node":{{"ip":"{malformed}","host":"{malformed}"}}}}"#,
+            malformed = v::MALFORMED_IP
+        );
+        let result = normalize_supported_content("diag/master.json", input).expect("normalize");
         assert!(result.supported);
         assert_eq!(result.transformed_fields, 2);
     }
@@ -322,21 +350,17 @@ mod tests {
             malformed_port = v::MALFORMED_IP_WITH_PORT,
         );
 
-        let result =
-            normalize_supported_content("diag/tasks.json", input).expect("normalize");
+        let result = normalize_supported_content("diag/tasks.json", input).expect("normalize");
 
         assert!(result.supported);
         assert_eq!(result.transformed_fields, 3);
-        assert!(result
-            .content
-            .contains(&format!("\"host\":\"{}\"", v::NORMALIZED_IP)));
-        assert!(result
-            .content
-            .contains(&format!("\"ip\":\"{}\"", v::NORMALIZED_IP)));
-        assert!(result.content.contains(&format!(
-            "\"transport_address\":\"{}\"",
-            v::NORMALIZED_IP_WITH_PORT
-        )));
+        assert!(result.content.contains(&format!("\"host\":\"{}\"", v::NORMALIZED_IP)));
+        assert!(result.content.contains(&format!("\"ip\":\"{}\"", v::NORMALIZED_IP)));
+        assert!(
+            result
+                .content
+                .contains(&format!("\"transport_address\":\"{}\"", v::NORMALIZED_IP_WITH_PORT))
+        );
     }
 
     #[test]
@@ -358,17 +382,15 @@ mod tests {
             valid_port = v::VALID_IP_WITH_PORT,
         );
 
-        let result =
-            normalize_supported_content("diag/nodes.json", input).expect("normalize");
+        let result = normalize_supported_content("diag/nodes.json", input).expect("normalize");
 
         assert!(result.supported);
         assert_eq!(result.transformed_fields, 0);
-        assert!(result
-            .content
-            .contains(&format!("\"ip\":\"{}\"", v::VALID_IP)));
-        assert!(result.content.contains(&format!(
-            "\"transport_address\":\"{}\"",
-            v::VALID_IP_WITH_PORT
-        )));
+        assert!(result.content.contains(&format!("\"ip\":\"{}\"", v::VALID_IP)));
+        assert!(
+            result
+                .content
+                .contains(&format!("\"transport_address\":\"{}\"", v::VALID_IP_WITH_PORT))
+        );
     }
 }
