@@ -144,6 +144,10 @@ fn normalize_malformed_ipv4(value: &str) -> Option<String> {
 
 fn normalize_http_client_id(value: &str) -> Option<u64> {
     let octets = parse_ipv4_octets(value)?;
+    if octets.iter().all(|octet| *octet <= 255) {
+        return None;
+    }
+
     let normalized = octets.map(|octet| octet % 255);
     let id = ((normalized[0] as u64) << 24)
         | ((normalized[1] as u64) << 16)
@@ -374,6 +378,11 @@ mod tests {
                     "transport_address": "{valid_port}",
                     "transport": {{
                         "publish_address": "{valid_port}"
+                    }},
+                    "http": {{
+                        "clients": [
+                            {{ "id": "{valid}" }}
+                        ]
                     }}
                 }}
             }}
@@ -392,5 +401,6 @@ mod tests {
                 .content
                 .contains(&format!("\"transport_address\":\"{}\"", v::VALID_IP_WITH_PORT))
         );
+        assert!(result.content.contains(&format!("\"id\":\"{}\"", v::VALID_IP)));
     }
 }

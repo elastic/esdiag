@@ -1,7 +1,8 @@
 # malformed-ip-normalization Specification
 
 ## Purpose
-TBD - created by archiving change normalize-malformed-scrubbed-ips. Update Purpose after archive.
+Define how esdiag detects scrubbed diagnostic inputs and normalizes deterministic malformed IPv4-like values before processors consume diagnostic JSON, preserving ingest compatibility while keeping normalization bounded to known address fields.
+
 ## Requirements
 ### Requirement: Receiver applies scrub normalization before processors
 The system SHALL normalize scrubbed archive payloads in the receiver read path before any processor consumes file content.

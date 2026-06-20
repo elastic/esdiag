@@ -45,7 +45,7 @@ Scrubbed 19-character lowercase hex node names are humanized during node lookup 
 
 **Never commit customer scrubbed API bundles to this repository.**
 
-Automated tests build synthetic malformed IPs at runtime from the esdiag golden archive (`tests/archives/elasticsearch-api-diagnostics-9.1.3.zip`). See `tests/scrubbed_normalization_tests.rs` and `src/receiver/archive/synthetic_scrub_vectors.rs` for canonical test constants.
+Automated tests build synthetic malformed IPs at runtime from the esdiag golden archive (`tests/archives/elasticsearch-api-diagnostics-9.1.3.zip`). See `tests/scrubbed_normalization_tests.rs` and the `synthetic_vectors` test module in `src/receiver/archive/scrub.rs` for canonical test constants.
 
 ## Deterministic verification (CI)
 
@@ -79,7 +79,7 @@ Pass criteria:
 2. `diagnostic.docs.errors` is zero in `~/.esdiag/last_run/report.json`.
 3. `diagnostic.processor.stats["metrics-node-esdiag"].docs` is non-zero when the archive includes node stats.
 
-Recorded run: `openspec/changes/normalize-malformed-scrubbed-ips/validation-code-gates.md` (§3 Live ingest)
+Recorded run: `openspec/changes/archive/2026-06-04-normalize-malformed-scrubbed-ips/validation-code-gates.md` (§3 Live ingest)
 
 ## Memory regression spot-check
 
