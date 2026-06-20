@@ -3,6 +3,7 @@ use std::process::Command;
 const SERVICE_LINK_PARSER: &str = include_str!("../templates/components/service_link_parser.js");
 
 #[test]
+#[ignore = "requires node to execute the shared JavaScript parser"]
 fn service_link_parser_strips_quotes_from_pasted_curl_command() {
     let script = format!(
         r#"
