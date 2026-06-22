@@ -67,7 +67,11 @@ fn should_enable_scrubbed(mode: ScrubMode, filename: Option<&str>) -> bool {
         ScrubMode::Enabled => true,
         ScrubMode::Disabled => false,
         ScrubMode::Auto => filename
-            .map(|value| value.to_ascii_lowercase().contains("scrubbed"))
+            .map(|value| {
+                value
+                    .split(|ch: char| !ch.is_ascii_alphanumeric())
+                    .any(|token| token.eq_ignore_ascii_case("scrubbed"))
+            })
             .unwrap_or(false),
     }
 }
@@ -584,6 +588,18 @@ mod tests {
         assert!(should_enable_scrubbed(
             ScrubMode::Auto,
             Some("example_scrubbed-api-diagnostics.zip")
+        ));
+        assert!(should_enable_scrubbed(
+            ScrubMode::Auto,
+            Some("example-scrubbed-api-diagnostics.zip")
+        ));
+        assert!(should_enable_scrubbed(
+            ScrubMode::Auto,
+            Some("example.scrubbed.api.diagnostics.zip")
+        ));
+        assert!(!should_enable_scrubbed(
+            ScrubMode::Auto,
+            Some("example-unscrubbed-api-diagnostics.zip")
         ));
         assert!(!should_enable_scrubbed(ScrubMode::Auto, Some("example-api-diagnostics.zip")));
         assert!(!should_enable_scrubbed(ScrubMode::Auto, None));

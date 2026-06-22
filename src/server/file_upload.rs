@@ -20,7 +20,7 @@ use tokio::{fs::File, io::AsyncWriteExt};
 use uuid::Uuid;
 
 /// Parse upload checkbox value. When the field body cannot be read, scrub mode defaults to enabled.
-fn parse_scrubbed_upload_field(text: Result<String, axum::extract::multipart::MultipartError>) -> bool {
+fn parse_scrubbed_upload_field<E>(text: Result<String, E>) -> bool {
     match text {
         Ok(value) => parse_scrubbed_checkbox_value(&value),
         Err(_) => true,
@@ -255,9 +255,31 @@ pub(super) async fn run_upload_job(
 
 #[cfg(test)]
 mod tests {
-    use super::{run_upload_job, send_terminal_signal};
+    use super::{parse_scrubbed_checkbox_value, parse_scrubbed_upload_field, run_upload_job, send_terminal_signal};
     use crate::server::{ServerEvent, UploadProcessSignals, test_server_state};
     use tokio::sync::mpsc;
+
+    #[test]
+    fn parse_scrubbed_checkbox_value_accepts_truthy_values() {
+        for value in ["true", "TRUE", " True ", "1", " on "] {
+            assert!(parse_scrubbed_checkbox_value(value), "expected {value:?} to enable scrub mode");
+        }
+    }
+
+    #[test]
+    fn parse_scrubbed_checkbox_value_rejects_falsy_or_unknown_values() {
+        for value in ["", "false", "0", "off", "yes", "scrubbed"] {
+            assert!(
+                !parse_scrubbed_checkbox_value(value),
+                "expected {value:?} to disable scrub mode"
+            );
+        }
+    }
+
+    #[test]
+    fn parse_scrubbed_upload_field_enables_when_field_cannot_be_read() {
+        assert!(parse_scrubbed_upload_field::<()>(Err(())));
+    }
 
     #[tokio::test]
     async fn run_upload_job_missing_upload_emits_failure_and_terminal_signal() {

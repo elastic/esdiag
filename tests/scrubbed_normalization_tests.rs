@@ -98,7 +98,7 @@ async fn process_input_to_directory(
     input: Uri,
     scrubbed: Option<bool>,
     auto_detect_filename: Option<&str>,
-) -> PathBuf {
+) -> (tempfile::TempDir, PathBuf) {
     let output = tempdir().expect("output tempdir");
     let output_path = output.path().to_path_buf();
 
@@ -121,8 +121,7 @@ async fn process_input_to_directory(
         Err(failed) => panic!("processor process failed: {}", failed.state.error),
     };
 
-    std::mem::forget(output);
-    output_path
+    (output, output_path)
 }
 
 #[tokio::test]
@@ -136,7 +135,7 @@ async fn archive_export_normalizes_ips_with_stable_node_mapping() {
     let scrubbed_zip = fixture_dir.path().join("synthetic-malformed-ips-test.zip");
     let expectations = build_synthetic_scrubbed_archive(&scrubbed_zip);
 
-    let output_path =
+    let (_output, output_path) =
         process_input_to_directory(Uri::File(scrubbed_zip), Some(true), None).await;
     assert_scrubbed_export(&output_path, &expectations);
 }
@@ -160,7 +159,7 @@ async fn directory_export_normalizes_ips_with_stable_node_mapping() {
     }
 
     let input_dir = extract_dir.join(ARCHIVE_PREFIX);
-    let output_path =
+    let (_output, output_path) =
         process_input_to_directory(Uri::Directory(input_dir), Some(true), None).await;
     assert_scrubbed_export(&output_path, &expectations);
 }
@@ -186,7 +185,7 @@ async fn directory_auto_detect_enables_scrub_when_path_contains_scrubbed() {
     }
 
     let input_dir = extract_dir.join(ARCHIVE_PREFIX);
-    let output_path = process_input_to_directory(Uri::Directory(input_dir), None, None).await;
+    let (_output, output_path) = process_input_to_directory(Uri::Directory(input_dir), None, None).await;
     assert_scrubbed_export(&output_path, &expectations);
 }
 
@@ -214,7 +213,7 @@ async fn directory_with_scrub_disabled_preserves_malformed_ips() {
     }
 
     let input_dir = extract_dir.join(ARCHIVE_PREFIX);
-    let output_path =
+    let (_output, output_path) =
         process_input_to_directory(Uri::Directory(input_dir), Some(false), None).await;
     assert_malformed_ips_preserved_in_node_metrics(&output_path, &malformed);
 }
@@ -226,7 +225,7 @@ async fn processes_non_scrubbed_golden_archive_without_error() {
         return;
     }
 
-    let output_path =
+    let (_output, output_path) =
         process_input_to_directory(Uri::File(archive), Some(false), None).await;
     let node_metrics = output_path.join("metrics-node-esdiag.ndjson");
     assert!(
