@@ -20,7 +20,7 @@ mod scrub;
 
 pub use bytes::*;
 pub use file::*;
-pub use scrub::{normalize_supported_content, supports_json_normalization};
+pub use scrub::{normalize_supported_content, normalize_supported_reader_to_temp, supports_json_normalization};
 
 pub async fn get_stream_from_archive<R, T>(
     archive: Arc<RwLock<ZipArchive<R>>>,
@@ -57,23 +57,19 @@ where
         let stream_result = match archive_guard.by_name(&filename) {
             Ok(file) => {
                 if scrubbed && supports_json_normalization(&filename) {
-                    let mut reader = BufReader::new(file);
-                    let mut content = String::new();
-                    match reader.read_to_string(&mut content) {
-                        Ok(_) => match normalize_supported_content(&filename, content) {
-                            Ok(transformed) => {
-                                tracing::debug!(
-                                    "Unscrubbed {} address fields in stream file {}",
-                                    transformed.transformed_fields,
-                                    filename
-                                );
-                                let mut deserializer = serde_json::Deserializer::from_str(&transformed.content);
-                                T::deserialize_stream(&mut deserializer, tx.clone())
-                                    .map_err(|e| eyre::eyre!(e.to_string()))
-                            }
-                            Err(e) => Err(e),
-                        },
-                        Err(e) => Err(e.into()),
+                    let reader = BufReader::new(file);
+                    match normalize_supported_reader_to_temp(&filename, reader) {
+                        Ok(mut transformed) => {
+                            tracing::debug!(
+                                "Unscrubbed {} address fields in stream file {}",
+                                transformed.transformed_fields,
+                                filename
+                            );
+                            let reader = BufReader::new(transformed.file.as_file_mut());
+                            let mut deserializer = serde_json::Deserializer::from_reader(reader);
+                            T::deserialize_stream(&mut deserializer, tx.clone()).map_err(|e| eyre::eyre!(e.to_string()))
+                        }
+                        Err(e) => Err(e),
                     }
                 } else {
                     if scrubbed {

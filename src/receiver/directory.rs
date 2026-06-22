@@ -3,7 +3,7 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::super::processor::{DataSource, SourceContext, StreamingDataSource};
-use super::archive::{normalize_supported_content, supports_json_normalization};
+use super::archive::{normalize_supported_content, normalize_supported_reader_to_temp, supports_json_normalization};
 use super::{RawResponse, Receive, ReceiveMultiple, ReceiveRaw};
 use eyre::{Result, eyre};
 use futures::stream::{self, BoxStream};
@@ -132,21 +132,21 @@ impl Receive for DirectoryReceiver {
             Ok(file) => {
                 if should_normalize {
                     tracing::debug!("Reading {} (scrubbed mode)", source_path_for_scrub);
-                    let mut reader = BufReader::new(file);
-                    let mut content = String::new();
-                    match reader.read_to_string(&mut content) {
-                        Ok(_) => match normalize_file_content_if_needed(&source_path_for_scrub, scrubbed, content) {
-                            Ok(normalized) => {
-                                let mut deserializer = serde_json::Deserializer::from_str(&normalized);
-                                if let Err(e) = T::deserialize_stream(&mut deserializer, tx.clone()) {
-                                    tracing::error!("Error deserializing stream: {}", e);
-                                    let _ = tx.blocking_send(Err(eyre!(e)));
-                                }
+                    let reader = BufReader::new(file);
+                    match normalize_supported_reader_to_temp(&source_path_for_scrub, reader) {
+                        Ok(mut transformed) => {
+                            tracing::debug!(
+                                "Unscrubbed {} address fields in {}",
+                                transformed.transformed_fields,
+                                source_path_for_scrub
+                            );
+                            let reader = BufReader::new(transformed.file.as_file_mut());
+                            let mut deserializer = serde_json::Deserializer::from_reader(reader);
+                            if let Err(e) = T::deserialize_stream(&mut deserializer, tx.clone()) {
+                                tracing::error!("Error deserializing stream: {}", e);
+                                let _ = tx.blocking_send(Err(eyre!(e)));
                             }
-                            Err(e) => {
-                                let _ = tx.blocking_send(Err(e));
-                            }
-                        },
+                        }
                         Err(e) => {
                             let _ = tx.blocking_send(Err(eyre!(e)));
                         }

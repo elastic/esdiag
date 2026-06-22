@@ -4,6 +4,7 @@
 
 use eyre::Result;
 use serde_json::Value;
+use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 
 /// Fields mapped as `ip` or keyword mirrors of node addresses in esdiag exports.
@@ -22,6 +23,11 @@ pub struct TransformResult {
     pub content: String,
     pub transformed_fields: usize,
     pub supported: bool,
+}
+
+pub struct TempTransformResult {
+    pub file: tempfile::NamedTempFile,
+    pub transformed_fields: usize,
 }
 
 pub fn supports_json_normalization(path: &str) -> bool {
@@ -50,6 +56,27 @@ pub fn normalize_supported_content(path: &str, input: String) -> Result<Transfor
         content: serde_json::to_string(&json)?,
         transformed_fields: transformed,
         supported: true,
+    })
+}
+
+pub fn normalize_supported_reader_to_temp<R: Read>(path: &str, reader: R) -> Result<TempTransformResult> {
+    let mut file = tempfile::NamedTempFile::new()?;
+    if !supports_json_normalization(path) {
+        return Ok(TempTransformResult {
+            file,
+            transformed_fields: 0,
+        });
+    }
+
+    let mut json: Value = serde_json::from_reader(reader)?;
+    let mut transformed = 0usize;
+    normalize_value(&mut json, &mut Vec::new(), &mut transformed);
+    serde_json::to_writer(&mut file, &json)?;
+    file.as_file_mut().seek(SeekFrom::Start(0))?;
+
+    Ok(TempTransformResult {
+        file,
+        transformed_fields: transformed,
     })
 }
 
@@ -101,8 +128,12 @@ fn normalize_value(value: &mut Value, path: &mut Vec<String>, transformed: &mut 
 }
 
 fn normalize_pure_ip(value: &str) -> Option<String> {
-    let (candidate_ip, _) = split_ip_port(value);
-    normalize_malformed_ipv4(candidate_ip)
+    let (candidate_ip, port) = split_ip_port(value);
+    if port.is_none() {
+        return normalize_malformed_ipv4(candidate_ip);
+    }
+
+    normalize_malformed_ipv4(candidate_ip).or_else(|| parse_ipv4_octets(candidate_ip).map(|_| candidate_ip.to_string()))
 }
 
 fn normalize_ip_or_ip_port(value: &str) -> Option<String> {
@@ -402,5 +433,39 @@ mod tests {
                 .contains(&format!("\"transport_address\":\"{}\"", v::VALID_IP_WITH_PORT))
         );
         assert!(result.content.contains(&format!("\"id\":\"{}\"", v::VALID_IP)));
+    }
+
+    #[test]
+    fn strips_valid_ports_from_pure_ip_fields() {
+        let input = format!(
+            r#"{{
+            "nodes": {{
+                "a": {{
+                    "ip": "{valid_port}",
+                    "host": "{valid_port}",
+                    "publish_host": "{valid_port}",
+                    "transport_address": "{valid_port}"
+                }}
+            }}
+        }}"#,
+            valid_port = v::VALID_IP_WITH_PORT,
+        );
+
+        let result = normalize_supported_content("diag/nodes.json", input).expect("normalize");
+
+        assert!(result.supported);
+        assert_eq!(result.transformed_fields, 3);
+        assert!(result.content.contains(&format!("\"ip\":\"{}\"", v::VALID_IP)));
+        assert!(result.content.contains(&format!("\"host\":\"{}\"", v::VALID_IP)));
+        assert!(
+            result
+                .content
+                .contains(&format!("\"publish_host\":\"{}\"", v::VALID_IP))
+        );
+        assert!(
+            result
+                .content
+                .contains(&format!("\"transport_address\":\"{}\"", v::VALID_IP_WITH_PORT))
+        );
     }
 }
