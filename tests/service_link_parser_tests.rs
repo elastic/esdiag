@@ -52,6 +52,34 @@ for (const testCase of cases) {{
         testCase.name,
     );
 }}
+
+assert.deepEqual(
+    {{
+        token: parseToken("not a curl command"),
+        filename: parseFilename("not a curl command"),
+        url: parseUrl("not a curl command"),
+    }},
+    {{
+        token: "",
+        filename: "",
+        url: "",
+    }},
+    "missing values return empty strings",
+);
+
+assert.deepEqual(
+    {{
+        token: parseToken(undefined),
+        filename: parseFilename(undefined),
+        url: parseUrl(undefined),
+    }},
+    {{
+        token: "",
+        filename: "",
+        url: "",
+    }},
+    "undefined input returns empty strings",
+);
 "#,
     );
 

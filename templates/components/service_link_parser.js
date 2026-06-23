@@ -1,6 +1,6 @@
 function cleanServiceLinkValue(value, trimTrailingPeriod = false) {
     if (!value) {
-        return null;
+        return "";
     }
 
     let cleaned = value.trim();
@@ -21,23 +21,35 @@ function cleanServiceLinkValue(value, trimTrailingPeriod = false) {
         cleaned = cleaned.replace(/\.$/, "");
     }
 
-    return cleaned || null;
+    return cleaned || "";
 }
 
 function parseToken(cmd) {
+    if (!cmd) {
+        return "";
+    }
+
     const token = cmd.match(/Authorization(?: Token)?:\s*(?:"([^"]+)"|'([^']+)'|(\S+))/);
-    return token ? cleanServiceLinkValue(token[1] || token[2] || token[3]) : null;
+    return token ? cleanServiceLinkValue(token[1] || token[2] || token[3]) : "";
 }
 
 function parseFilename(cmd) {
+    if (!cmd) {
+        return "";
+    }
+
     const filename =
         cmd.match(/File name:\s*(?:"([^"]+)"|'([^']+)'|(\S+))/) ||
         cmd.match(/-o\s+(?:"([^"]+)"|'([^']+)'|(\S+))/) ||
         cmd.match(/--output\s+(?:"([^"]+)"|'([^']+)'|(\S+))/);
-    return filename ? cleanServiceLinkValue(filename[1] || filename[2] || filename[3]) : null;
+    return filename ? cleanServiceLinkValue(filename[1] || filename[2] || filename[3]) : "";
 }
 
 function parseUrl(cmd) {
+    if (!cmd) {
+        return "";
+    }
+
     const match = cmd.match(/https?:\/\/[^\s"'\\]+/);
-    return match ? cleanServiceLinkValue(match[0], true) : null;
+    return match ? cleanServiceLinkValue(match[0], true) : "";
 }
