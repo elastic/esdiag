@@ -644,6 +644,21 @@ mod tests {
         assert!(completed.contains("https://kb.example/app/dashboards#/view/child"));
         assert!(completed.contains("Included diagnostic: child-es"));
 
+        let no_link = JobCompleted {
+            job_id: 102,
+            diagnostic_id: "elasticsearch_diagnostic@2026-01-01~efgh",
+            docs_created: &docs_created,
+            duration: "0.500",
+            source: "Included diagnostic: child-es",
+            kibana_link: "",
+            product: "Elasticsearch",
+        }
+        .render()
+        .expect("completed template without Kibana link renders");
+
+        assert!(no_link.contains("elasticsearch_diagnostic@2026-01-01~efgh"));
+        assert!(!no_link.contains(r#"<a target="_blank" href="">"#));
+
         let skipped = JobSkipped {
             job_id: 101,
             source: "Included diagnostic: child-kibana",

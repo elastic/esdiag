@@ -516,7 +516,7 @@ async fn run_processor_job(ctx: ProcessorJobContext<'_>) -> Result<()> {
                         docs_created: &report.diagnostic.docs.created,
                         duration: &format!("{:.3}", report.diagnostic.processing_duration as f64 / 1000.0),
                         source: job.source,
-                        kibana_link: report.diagnostic.kibana_link.as_ref().unwrap_or(&"#".to_string()),
+                        kibana_link: report.diagnostic.kibana_link.as_deref().unwrap_or(""),
                         product: &report.diagnostic.product.to_string(),
                     },
                 ),
@@ -578,7 +578,7 @@ async fn render_child_diagnostic_events(
                 let source = child_source(&path);
                 let product = product.to_string();
                 let duration = format!("{:.3}", duration_ms as f64 / 1000.0);
-                let kibana_link = kibana_link.unwrap_or_else(|| "#".to_string());
+                let kibana_link = kibana_link.unwrap_or_default();
                 send_event(
                     &tx,
                     replace_job_event(

@@ -33,12 +33,16 @@ use api::ProcessSelection;
 use elastic_cloud_kubernetes::ElasticCloudKubernetesDiagnostic;
 use elasticsearch::ElasticsearchDiagnostic;
 use eyre::{Result, eyre};
-use futures::stream::{BoxStream, FuturesUnordered};
+use futures::{
+    FutureExt,
+    future::BoxFuture,
+    stream::{BoxStream, FuturesUnordered},
+};
 use kubernetes_platform::KubernetesPlatformDiagnostic;
 use logstash::LogstashDiagnostic;
 use std::sync::Arc;
 use std::time::UNIX_EPOCH;
-use tokio::{sync::mpsc, task::JoinHandle, time::Instant};
+use tokio::{sync::mpsc, time::Instant};
 
 pub struct Processor<S: State> {
     receiver: Arc<Receiver>,
@@ -64,7 +68,7 @@ pub struct Processing {
     summary_tx: mpsc::Sender<ProcessorSummary>,
     summary_rx: mpsc::Receiver<ProcessorSummary>,
     report: DiagnosticReport,
-    sub_processors: FuturesUnordered<JoinHandle<IncludedDiagnosticOutcome>>,
+    sub_processors: FuturesUnordered<BoxFuture<'static, IncludedDiagnosticOutcome>>,
 }
 
 /// The `Completed` state represents a successful processing job
@@ -161,7 +165,7 @@ fn spawn_sub_processors(
     exporter: Arc<Exporter>,
     identifiers: Option<Identifiers>,
     child_event_tx: Option<mpsc::UnboundedSender<IncludedDiagnosticJobEvent>>,
-) -> FuturesUnordered<JoinHandle<IncludedDiagnosticOutcome>> {
+) -> FuturesUnordered<BoxFuture<'static, IncludedDiagnosticOutcome>> {
     let handles = FuturesUnordered::new();
     let identifiers = identifiers.unwrap_or_default();
     for (index, diag_path) in diag_paths.into_iter().enumerate() {
@@ -178,6 +182,7 @@ fn spawn_sub_processors(
         let exporter = exporter.clone();
         let ident_clone = identifiers.clone();
         let event_tx = child_event_tx.clone();
+        let join_path = path.clone();
         let handle = tokio::spawn(async move {
             send_child_event(
                 &event_tx,
@@ -258,7 +263,22 @@ fn spawn_sub_processors(
                 }
             }
         });
-        handles.push(handle)
+        handles.push(
+            async move {
+                match handle.await {
+                    Ok(outcome) => outcome,
+                    Err(e) => {
+                        tracing::error!("Included diagnostic task panicked or failed to join: {}", e);
+                        IncludedDiagnosticOutcome::Failed {
+                            job_id: child_job_id,
+                            path: join_path,
+                            error: format!("Included diagnostic task failed to join: {e}"),
+                        }
+                    }
+                }
+            }
+            .boxed(),
+        )
     }
     handles
 }
@@ -544,18 +564,8 @@ impl Processor<Processing> {
 
         // Wait for sub processors to finish
         let mut included_diagnostics = Vec::new();
-        while let Some(res) = futures::stream::StreamExt::next(&mut sub_processors).await {
-            match res {
-                Ok(outcome) => included_diagnostics.push(outcome),
-                Err(e) => {
-                    tracing::error!("Included diagnostic task panicked or failed to join: {}", e);
-                    included_diagnostics.push(IncludedDiagnosticOutcome::Failed {
-                        job_id: new_job_id(),
-                        path: "unknown".to_string(),
-                        error: format!("Included diagnostic task failed to join: {e}"),
-                    });
-                }
-            }
+        while let Some(outcome) = futures::stream::StreamExt::next(&mut sub_processors).await {
+            included_diagnostics.push(outcome);
         }
 
         let mut report = match summary_handle.await {

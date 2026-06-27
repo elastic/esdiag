@@ -2,7 +2,11 @@
     ✅ Processing complete!
     <p>
         <b>Diagnostic ID:</b>
+        {% if kibana_link != "" %}
         <a target="_blank" href="{{ kibana_link }}">{{ diagnostic_id }}</a>
+        {% else %}
+        {{ diagnostic_id }}
+        {% endif %}
     </p>
     <p><b>Source:</b> {{ source }}</p>
     <p><b>Product:</b> {{ product }}</p>
