@@ -370,18 +370,21 @@ async fn service_link_endpoint_returns_diagnostic_when_wait_for_completion() {
 
     let body: serde_json::Value = response.json().await.expect("response should be JSON");
 
+    let entries = body.as_array().expect("response should be a JSON array");
+    let first = entries.first().expect("response should contain at least one result");
     assert!(
-        body["diagnostic_id"].as_str().is_some_and(|s| !s.is_empty()),
+        first["diagnostic_id"].as_str().is_some_and(|s| !s.is_empty()),
         "response should contain non-empty diagnostic_id, got: {body}"
     );
     assert!(
-        body["kibana_link"].is_string(),
+        first["kibana_link"].is_string(),
         "response should contain kibana_link, got: {body}"
     );
     assert!(
-        body["took"].is_number(),
+        first["took"].is_number(),
         "response should contain took (milliseconds), got: {body}"
     );
+    assert_eq!(first["status"], "success");
 
     server.shutdown().await;
 }

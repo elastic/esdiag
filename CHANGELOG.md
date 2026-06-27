@@ -29,6 +29,7 @@ published release notes, maintenance branches, and tagged history.
 - Added collect-to-upload handoff support.
 - Added a file-based keystore unlock lease workflow shared by the CLI and web UI.
 - Added runtime web feature gating with `--web-features` and `ESDIAG_WEB_FEATURES`.
+- Added web, CLI, and synchronous API reporting for included diagnostics in ECK and KubernetesPlatform bundles.
 
 ### Changed
 

@@ -43,6 +43,7 @@ use tokio::{sync::mpsc, task::JoinHandle, time::Instant};
 pub struct Processor<S: State> {
     receiver: Arc<Receiver>,
     exporter: Arc<Exporter>,
+    child_event_tx: Option<mpsc::UnboundedSender<IncludedDiagnosticJobEvent>>,
     start_time: Instant,
     pub id: u64,
     pub state: S,
@@ -53,6 +54,7 @@ pub struct Ready {
     manifest: DiagnosticManifest,
     identifiers: Identifiers,
     process_selection: Option<ProcessSelection>,
+    process_included_diagnostics: bool,
 }
 
 /// The `Processing` state represents an active processing job
@@ -62,13 +64,14 @@ pub struct Processing {
     summary_tx: mpsc::Sender<ProcessorSummary>,
     summary_rx: mpsc::Receiver<ProcessorSummary>,
     report: DiagnosticReport,
-    sub_processors: FuturesUnordered<JoinHandle<()>>,
+    sub_processors: FuturesUnordered<JoinHandle<IncludedDiagnosticOutcome>>,
 }
 
 /// The `Completed` state represents a successful processing job
 pub struct Completed {
     pub report: DiagnosticReport,
     pub runtime: u128,
+    pub included_diagnostics: Vec<IncludedDiagnosticOutcome>,
 }
 
 /// The `Failed` state represents a failed processing job
@@ -85,49 +88,281 @@ impl State for Processing {}
 impl State for Completed {}
 impl State for Failed {}
 
+pub enum IncludedDiagnosticOutcome {
+    Completed {
+        job_id: u64,
+        path: String,
+        report: Box<DiagnosticReport>,
+        runtime: u128,
+    },
+    Skipped {
+        job_id: u64,
+        path: String,
+        product: Option<Product>,
+        reason: String,
+    },
+    Failed {
+        job_id: u64,
+        path: String,
+        error: String,
+    },
+}
+
+impl IncludedDiagnosticOutcome {
+    pub fn job_id(&self) -> u64 {
+        match self {
+            Self::Completed { job_id, .. } | Self::Skipped { job_id, .. } | Self::Failed { job_id, .. } => *job_id,
+        }
+    }
+
+    pub fn path(&self) -> &str {
+        match self {
+            Self::Completed { path, .. } | Self::Skipped { path, .. } | Self::Failed { path, .. } => path,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum IncludedDiagnosticJobEvent {
+    Queued {
+        job_id: u64,
+        path: String,
+    },
+    Started {
+        job_id: u64,
+        path: String,
+    },
+    Completed {
+        job_id: u64,
+        path: String,
+        product: Product,
+        diagnostic_id: String,
+        docs_created: u32,
+        duration_ms: u128,
+        kibana_link: Option<String>,
+    },
+    Skipped {
+        job_id: u64,
+        path: String,
+        product: Option<Product>,
+        reason: String,
+    },
+    Failed {
+        job_id: u64,
+        path: String,
+        error: String,
+    },
+}
+
 fn spawn_sub_processors(
+    parent_job_id: u64,
     diag_paths: Vec<diagnostic::DiagPath>,
     receiver: Arc<Receiver>,
     exporter: Arc<Exporter>,
     identifiers: Option<Identifiers>,
-) -> FuturesUnordered<JoinHandle<()>> {
+    child_event_tx: Option<mpsc::UnboundedSender<IncludedDiagnosticJobEvent>>,
+) -> FuturesUnordered<JoinHandle<IncludedDiagnosticOutcome>> {
     let handles = FuturesUnordered::new();
     let identifiers = identifiers.unwrap_or_default();
-    for diag_path in diag_paths {
-        let receiver = match receiver.clone_for_subdir(&diag_path.diag_path) {
-            Ok(receiver) => receiver,
-            Err(e) => {
-                tracing::error!("Failed to clone receiver for sub-processor: {} ", e);
-                continue;
-            }
-        };
+    for (index, diag_path) in diag_paths.into_iter().enumerate() {
+        let child_job_id = child_job_id(parent_job_id, index);
+        let path = diag_path.diag_path;
+        send_child_event(
+            &child_event_tx,
+            IncludedDiagnosticJobEvent::Queued {
+                job_id: child_job_id,
+                path: path.clone(),
+            },
+        );
+        let parent_receiver = receiver.clone();
         let exporter = exporter.clone();
         let ident_clone = identifiers.clone();
+        let event_tx = child_event_tx.clone();
         let handle = tokio::spawn(async move {
-            match Processor::try_new(Arc::new(receiver), exporter, ident_clone).await {
-                Ok(processor) => {
-                    match processor.start().await {
-                        Ok(processing) => match processing.process().await {
-                            Ok(_complete) => {
-                                tracing::info!("Sub-processor complete");
-                            }
-                            Err(failed) => {
-                                tracing::error!("Sub-processor failed: {}", failed);
-                            }
-                        },
-                        Err(failed) => {
-                            tracing::error!("Sub-processor failed: {}", failed);
-                        }
-                    };
-                }
+            send_child_event(
+                &event_tx,
+                IncludedDiagnosticJobEvent::Started {
+                    job_id: child_job_id,
+                    path: path.clone(),
+                },
+            );
+
+            let receiver = match parent_receiver.clone_for_subdir(&path) {
+                Ok(receiver) => Arc::new(receiver),
                 Err(e) => {
-                    tracing::error!("Diagnostic sub-processor failed: {}", e);
+                    let outcome = IncludedDiagnosticOutcome::Failed {
+                        job_id: child_job_id,
+                        path,
+                        error: format!("Failed to clone receiver for included diagnostic: {e}"),
+                    };
+                    send_child_outcome_event(&event_tx, &outcome);
+                    return outcome;
                 }
             };
+
+            let processor = match Processor::try_new_child(receiver, exporter, ident_clone).await {
+                Ok(processor) => processor,
+                Err(e) => {
+                    let outcome = IncludedDiagnosticOutcome::Failed {
+                        job_id: child_job_id,
+                        path,
+                        error: format!("Failed to read included diagnostic manifest: {e}"),
+                    };
+                    send_child_outcome_event(&event_tx, &outcome);
+                    return outcome;
+                }
+            };
+
+            let product = processor.state.manifest.product.clone();
+            match processor.start().await {
+                Ok(processing) => match processing.process().await {
+                    Ok(complete) => {
+                        tracing::info!("Included diagnostic processor complete");
+                        let outcome = IncludedDiagnosticOutcome::Completed {
+                            job_id: child_job_id,
+                            path,
+                            report: Box::new(complete.state.report),
+                            runtime: complete.state.runtime,
+                        };
+                        send_child_outcome_event(&event_tx, &outcome);
+                        outcome
+                    }
+                    Err(failed) => {
+                        let outcome = IncludedDiagnosticOutcome::Failed {
+                            job_id: child_job_id,
+                            path,
+                            error: failed.state.error,
+                        };
+                        send_child_outcome_event(&event_tx, &outcome);
+                        outcome
+                    }
+                },
+                Err(failed) if is_unsupported_child_processor(&failed.state.error) => {
+                    let outcome = IncludedDiagnosticOutcome::Skipped {
+                        job_id: child_job_id,
+                        path,
+                        product: Some(product),
+                        reason: failed.state.error,
+                    };
+                    send_child_outcome_event(&event_tx, &outcome);
+                    outcome
+                }
+                Err(failed) => {
+                    let outcome = IncludedDiagnosticOutcome::Failed {
+                        job_id: child_job_id,
+                        path,
+                        error: failed.state.error,
+                    };
+                    send_child_outcome_event(&event_tx, &outcome);
+                    outcome
+                }
+            }
         });
         handles.push(handle)
     }
     handles
+}
+
+fn send_child_event(
+    child_event_tx: &Option<mpsc::UnboundedSender<IncludedDiagnosticJobEvent>>,
+    event: IncludedDiagnosticJobEvent,
+) {
+    if let Some(tx) = child_event_tx {
+        let _ = tx.send(event);
+    }
+}
+
+fn send_child_outcome_event(
+    child_event_tx: &Option<mpsc::UnboundedSender<IncludedDiagnosticJobEvent>>,
+    outcome: &IncludedDiagnosticOutcome,
+) {
+    let event = match outcome {
+        IncludedDiagnosticOutcome::Completed {
+            job_id,
+            path,
+            report,
+            runtime,
+        } => IncludedDiagnosticJobEvent::Completed {
+            job_id: *job_id,
+            path: path.clone(),
+            product: report.diagnostic.product.clone(),
+            diagnostic_id: report.diagnostic.metadata.id.clone(),
+            docs_created: report.diagnostic.docs.created,
+            duration_ms: *runtime,
+            kibana_link: report.diagnostic.kibana_link.clone(),
+        },
+        IncludedDiagnosticOutcome::Skipped {
+            job_id,
+            path,
+            product,
+            reason,
+        } => IncludedDiagnosticJobEvent::Skipped {
+            job_id: *job_id,
+            path: path.clone(),
+            product: product.clone(),
+            reason: reason.clone(),
+        },
+        IncludedDiagnosticOutcome::Failed { job_id, path, error } => IncludedDiagnosticJobEvent::Failed {
+            job_id: *job_id,
+            path: path.clone(),
+            error: error.clone(),
+        },
+    };
+    send_child_event(child_event_tx, event);
+}
+
+fn is_unsupported_child_processor(error: &str) -> bool {
+    error.contains("processing is not yet implemented") || error.contains("Unsupported product or diagnostic bundle")
+}
+
+impl Processor<Ready> {
+    async fn try_new_with_options(
+        receiver: Arc<Receiver>,
+        exporter: Arc<Exporter>,
+        identifiers: Identifiers,
+        process_selection: Option<ProcessSelection>,
+        child_event_tx: Option<mpsc::UnboundedSender<IncludedDiagnosticJobEvent>>,
+        process_included_diagnostics: bool,
+    ) -> Result<Self> {
+        let manifest = receiver.try_get_manifest().await?;
+        Ok(Self {
+            receiver,
+            exporter,
+            child_event_tx,
+            id: new_job_id(),
+            start_time: Instant::now(),
+            state: Ready {
+                manifest,
+                identifiers,
+                process_selection,
+                process_included_diagnostics,
+            },
+        })
+    }
+
+    async fn try_new_child(receiver: Arc<Receiver>, exporter: Arc<Exporter>, identifiers: Identifiers) -> Result<Self> {
+        Self::try_new_with_options(receiver, exporter, identifiers, None, None, false).await
+    }
+}
+
+impl Processor<Ready> {
+    pub async fn try_new_with_child_events(
+        receiver: Arc<Receiver>,
+        exporter: Arc<Exporter>,
+        identifiers: Identifiers,
+        process_selection: Option<ProcessSelection>,
+        child_event_tx: mpsc::UnboundedSender<IncludedDiagnosticJobEvent>,
+    ) -> Result<Self> {
+        Self::try_new_with_options(
+            receiver,
+            exporter,
+            identifiers,
+            process_selection,
+            Some(child_event_tx),
+            true,
+        )
+        .await
+    }
 }
 
 impl Processor<Ready> {
@@ -143,18 +378,7 @@ impl Processor<Ready> {
         identifiers: Identifiers,
         process_selection: Option<ProcessSelection>,
     ) -> Result<Self> {
-        let manifest = receiver.try_get_manifest().await?;
-        Ok(Self {
-            receiver,
-            exporter,
-            id: new_job_id(),
-            start_time: Instant::now(),
-            state: Ready {
-                manifest,
-                identifiers,
-                process_selection,
-            },
-        })
+        Self::try_new_with_options(receiver, exporter, identifiers, process_selection, None, true).await
     }
 
     /// State transition from `Ready` to `Processing`, returning the progress channel
@@ -190,6 +414,7 @@ impl Processor<Ready> {
                     return Err(Processor {
                         receiver: self.receiver,
                         exporter: self.exporter,
+                        child_event_tx: self.child_event_tx,
                         start_time: self.start_time,
                         id: self.id,
                         state: Failed {
@@ -205,16 +430,23 @@ impl Processor<Ready> {
                 child_identifiers = child_identifiers.with_parent_id(parent_uuid);
             }
 
-            let sub_processors = spawn_sub_processors(
-                included_diagnostics,
-                self.receiver.clone(),
-                self.exporter.clone(),
-                Some(child_identifiers),
-            );
+            let sub_processors = if self.state.process_included_diagnostics {
+                spawn_sub_processors(
+                    self.id,
+                    included_diagnostics,
+                    self.receiver.clone(),
+                    self.exporter.clone(),
+                    Some(child_identifiers),
+                    self.child_event_tx.clone(),
+                )
+            } else {
+                FuturesUnordered::new()
+            };
 
             let processor = Processor {
                 receiver: self.receiver,
                 exporter: self.exporter,
+                child_event_tx: self.child_event_tx,
                 id: self.id,
                 start_time: self.start_time,
                 state: Processing {
@@ -241,6 +473,7 @@ impl Processor<Ready> {
                 let processor = Processor {
                     receiver: self.receiver,
                     exporter: self.exporter,
+                    child_event_tx: self.child_event_tx,
                     id: self.id,
                     start_time: self.start_time,
                     state: Processing {
@@ -257,6 +490,7 @@ impl Processor<Ready> {
             Err(err) => Err(Processor {
                 receiver: self.receiver,
                 exporter: self.exporter,
+                child_event_tx: self.child_event_tx,
                 start_time: self.start_time,
                 id: self.id,
                 state: Failed {
@@ -271,24 +505,34 @@ impl Processor<Ready> {
 /// The actively `Processing` state.
 impl Processor<Processing> {
     #[tracing::instrument(skip_all)]
-    pub async fn process(mut self) -> Result<Processor<Completed>, Processor<Failed>> {
+    pub async fn process(self) -> Result<Processor<Completed>, Processor<Failed>> {
         tracing::debug!("Processing with async progress updates");
 
-        let mut report = self.state.report;
-        let origin = self.state.diagnostic.origin();
+        let Processing {
+            diagnostic,
+            identifiers,
+            summary_tx,
+            mut summary_rx,
+            report,
+            mut sub_processors,
+        } = self.state;
+
+        let mut report = report;
+        let origin = diagnostic.origin();
         let summary_handle = tokio::spawn(async move {
-            while let Some(summary) = self.state.summary_rx.recv().await {
+            while let Some(summary) = summary_rx.recv().await {
                 tracing::debug!("{}", summary);
                 report.add_processor_summary(summary);
             }
             report
         });
 
-        let process_result = self.state.diagnostic.process(self.state.summary_tx).await;
+        let process_result = diagnostic.process(summary_tx).await;
         if let Err(err) = process_result {
             return Err(Processor {
                 receiver: self.receiver,
                 exporter: self.exporter,
+                child_event_tx: self.child_event_tx,
                 start_time: self.start_time,
                 id: self.id,
                 state: Failed {
@@ -299,10 +543,18 @@ impl Processor<Processing> {
         }
 
         // Wait for sub processors to finish
-        let mut sub_processors = self.state.sub_processors;
+        let mut included_diagnostics = Vec::new();
         while let Some(res) = futures::stream::StreamExt::next(&mut sub_processors).await {
-            if let Err(e) = res {
-                tracing::error!("Sub-processor task panicked or failed to join: {}", e);
+            match res {
+                Ok(outcome) => included_diagnostics.push(outcome),
+                Err(e) => {
+                    tracing::error!("Included diagnostic task panicked or failed to join: {}", e);
+                    included_diagnostics.push(IncludedDiagnosticOutcome::Failed {
+                        job_id: new_job_id(),
+                        path: "unknown".to_string(),
+                        error: format!("Included diagnostic task failed to join: {e}"),
+                    });
+                }
             }
         }
 
@@ -313,6 +565,7 @@ impl Processor<Processing> {
                 return Err(Processor {
                     receiver: self.receiver,
                     exporter: self.exporter,
+                    child_event_tx: self.child_event_tx,
                     start_time: self.start_time,
                     id: self.id,
                     state: Failed {
@@ -336,8 +589,8 @@ impl Processor<Processing> {
         ) {
             report.add_kibana_link(kibana_link);
         }
-        tracing::debug!("{:?}", self.state.identifiers);
-        report.add_identifiers(self.state.identifiers);
+        tracing::debug!("{:?}", identifiers);
+        report.add_identifiers(identifiers);
         report.add_origin(origin);
         report.add_processing_duration(self.start_time.elapsed().as_millis());
         if let Err(e) = self.exporter.save_report(&report).await {
@@ -347,11 +600,13 @@ impl Processor<Processing> {
         Ok(Processor {
             exporter: self.exporter,
             receiver: self.receiver,
+            child_event_tx: self.child_event_tx,
             start_time: self.start_time,
             id: self.id,
             state: Completed {
                 report,
                 runtime: self.start_time.elapsed().as_millis(),
+                included_diagnostics,
             },
         })
     }
@@ -494,4 +749,163 @@ pub fn new_job_id() -> u64 {
         .unwrap()
         .as_millis() as u64
         % 100000
+}
+
+fn child_job_id(parent_job_id: u64, index: usize) -> u64 {
+    1_000_000u64
+        .saturating_add(parent_job_id.saturating_mul(1000))
+        .saturating_add(index as u64)
+        .saturating_add(1)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        data::{Product, Uri},
+        exporter::Exporter,
+        receiver::Receiver,
+    };
+    use serde_json::json;
+    use std::collections::HashSet;
+    use std::{fs::File, path::Path, sync::Arc};
+    use tempfile::TempDir;
+    use zip::ZipArchive;
+
+    fn archive_path(name: &str) -> String {
+        format!("{}/tests/archives/{name}", env!("CARGO_MANIFEST_DIR"))
+    }
+
+    fn extract_archive(name: &str, destination: &Path) {
+        std::fs::create_dir_all(destination).expect("create child diagnostic dir");
+        let file = File::open(archive_path(name)).expect("open fixture archive");
+        let mut archive = ZipArchive::new(file).expect("read fixture archive");
+        archive.extract(destination).expect("extract fixture archive");
+    }
+
+    fn write_parent_manifest(root: &Path, included_diagnostics: Vec<diagnostic::DiagPath>) {
+        let manifest = json!({
+            "mode": "support",
+            "product": "eck",
+            "flags": null,
+            "diagnostic": "esdiag-test",
+            "type": "eck-diagnostics",
+            "runner": "esdiag",
+            "version": "3.0.0",
+            "timestamp": "2026-01-01T00:00:00Z",
+            "collection_date_millis": 1767225600000u64,
+            "included_diagnostics": included_diagnostics,
+            "identifiers": null,
+            "requested_apis": null,
+            "collected_apis": null
+        });
+        std::fs::write(
+            root.join(DiagnosticManifest::FILENAME),
+            serde_json::to_vec_pretty(&manifest).expect("serialize parent manifest"),
+        )
+        .expect("write parent manifest");
+    }
+
+    async fn process_parent_bundle(root: &Path) -> Processor<Completed> {
+        let receiver = Arc::new(Receiver::try_from(Uri::Directory(root.to_path_buf())).expect("receiver"));
+        let output = tempfile::tempdir().expect("output dir");
+        let exporter = Arc::new(Exporter::try_from(Uri::Directory(output.path().to_path_buf())).expect("exporter"));
+        let processor = Processor::try_new(receiver, exporter, Identifiers::default())
+            .await
+            .expect("ready processor");
+        let processing = processor
+            .start()
+            .await
+            .map_err(|failed| failed.state.error)
+            .expect("processing processor");
+        processing
+            .process()
+            .await
+            .map_err(|failed| failed.state.error)
+            .expect("completed processor")
+    }
+
+    fn parent_with_children(children: &[(&str, &str)]) -> TempDir {
+        let root = tempfile::tempdir().expect("parent dir");
+        let included = children
+            .iter()
+            .map(|(path, archive)| {
+                extract_archive(archive, &root.path().join(path));
+                diagnostic::DiagPath {
+                    diag_type: "diagnostic".to_string(),
+                    diag_path: (*path).to_string(),
+                }
+            })
+            .collect();
+        write_parent_manifest(root.path(), included);
+        root
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn parent_manifest_returns_multiple_supported_child_outcomes() {
+        let root = parent_with_children(&[
+            ("child-a", "elasticsearch-api-diagnostics-9.3.3.zip"),
+            ("child-b", "elasticsearch-api-diagnostics-8.19.3.zip"),
+        ]);
+
+        let completed = process_parent_bundle(root.path()).await;
+
+        assert_eq!(completed.state.included_diagnostics.len(), 2);
+        let child_job_ids = completed
+            .state
+            .included_diagnostics
+            .iter()
+            .map(IncludedDiagnosticOutcome::job_id)
+            .collect::<HashSet<_>>();
+        assert_eq!(child_job_ids.len(), 2);
+        for outcome in &completed.state.included_diagnostics {
+            let IncludedDiagnosticOutcome::Completed { report, .. } = outcome else {
+                panic!("expected supported child to complete");
+            };
+            assert_eq!(report.diagnostic.product, Product::Elasticsearch);
+            assert!(report.diagnostic.docs.created > 0);
+            assert!(report.diagnostic.identifiers.parent_id.is_some());
+            assert_eq!(
+                report.diagnostic.identifiers.orchestration.as_deref(),
+                Some("elastic-cloud-kubernetes")
+            );
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn unsupported_readable_child_returns_skipped_outcome() {
+        let root = parent_with_children(&[("kibana-child", "kibana-api-diagnostics-9.3.3.zip")]);
+
+        let completed = process_parent_bundle(root.path()).await;
+
+        assert_eq!(completed.state.included_diagnostics.len(), 1);
+        let IncludedDiagnosticOutcome::Skipped { product, reason, .. } = &completed.state.included_diagnostics[0]
+        else {
+            panic!("expected unsupported child to be skipped");
+        };
+        assert_eq!(product.as_ref(), Some(&Product::Kibana));
+        assert!(reason.contains("Kibana processing is not yet implemented"));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn unreadable_child_returns_failed_outcome_without_failing_parent() {
+        let root = tempfile::tempdir().expect("parent dir");
+        write_parent_manifest(
+            root.path(),
+            vec![diagnostic::DiagPath {
+                diag_type: "diagnostic".to_string(),
+                diag_path: "missing-child".to_string(),
+            }],
+        );
+
+        let completed = process_parent_bundle(root.path()).await;
+
+        assert_eq!(completed.state.report.diagnostic.product, Product::ECK);
+        assert_eq!(completed.state.included_diagnostics.len(), 1);
+        let IncludedDiagnosticOutcome::Failed { path, error, .. } = &completed.state.included_diagnostics[0] else {
+            panic!("expected unreadable child to fail independently");
+        };
+        assert_eq!(path, "missing-child");
+        assert!(error.contains("Failed to read included diagnostic manifest"));
+    }
 }

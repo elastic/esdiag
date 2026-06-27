@@ -234,9 +234,16 @@ impl Receiver {
     }
 
     pub fn clone_for_subdir(&self, sub_dir: &str) -> Result<Self> {
-        let mut receiver = self.clone();
-        receiver.set_work_dir(sub_dir)?;
-        Ok(receiver)
+        match self {
+            Receiver::ArchiveBytes(receiver) => Ok(Receiver::ArchiveBytes(receiver.clone_for_subdir(sub_dir))),
+            Receiver::ArchiveFile(receiver) => Ok(Receiver::ArchiveFile(receiver.clone_for_subdir(sub_dir))),
+            Receiver::Directory(receiver) => Ok(Receiver::Directory(receiver.clone_for_subdir(sub_dir))),
+            _ => {
+                let mut receiver = self.clone();
+                receiver.set_work_dir(sub_dir)?;
+                Ok(receiver)
+            }
+        }
     }
 
     pub async fn collection_date(&self) -> String {

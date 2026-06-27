@@ -5,7 +5,7 @@
 use super::{ApiKeyRequest, ServerState, UploadServiceRequest};
 use crate::{
     data::{KnownHostBuilder, Uri},
-    processor::{Processor, new_job_id},
+    processor::{Completed, IncludedDiagnosticOutcome, Processor, new_job_id},
     receiver::Receiver,
 };
 use axum::{
@@ -15,7 +15,7 @@ use axum::{
     response::IntoResponse,
 };
 use serde::Deserialize;
-use serde_json::json;
+use serde_json::{Value, json};
 use std::sync::Arc;
 use url::Url;
 
@@ -196,11 +196,7 @@ pub async fn service_link(
                     .record_success(report.diagnostic.docs.total, report.diagnostic.docs.errors)
                     .await;
 
-                let response = json!({
-                    "diagnostic_id": report.diagnostic.metadata.id,
-                    "kibana_link": report.diagnostic.kibana_link.as_deref().unwrap_or(""),
-                    "took": completed.state.runtime
-                });
+                let response = diagnostic_result_entries(&completed.state);
 
                 tracing::info!(
                     "Service link job completed synchronously: {}",
@@ -408,11 +404,7 @@ pub async fn api_key(
                     .record_success(report.diagnostic.docs.total, report.diagnostic.docs.errors)
                     .await;
 
-                let response = json!({
-                    "diagnostic_id": report.diagnostic.metadata.id,
-                    "kibana_link": report.diagnostic.kibana_link.as_deref().unwrap_or(""),
-                    "took": completed.state.runtime
-                });
+                let response = diagnostic_result_entries(&completed.state);
 
                 tracing::info!("Job completed successfully: {}", report.diagnostic.metadata.id);
                 (StatusCode::OK, Json(response))
@@ -441,5 +433,125 @@ pub async fn api_key(
 
         // Respond with a JSON success
         (StatusCode::CREATED, Json(json!({"key_id": job_id})))
+    }
+}
+
+fn diagnostic_result_entries(completed: &Completed) -> Value {
+    let report = &completed.report;
+    let mut entries = vec![json!({
+        "status": "success",
+        "diagnostic_id": report.diagnostic.metadata.id,
+        "kibana_link": report.diagnostic.kibana_link.as_deref().unwrap_or(""),
+        "took": completed.runtime,
+        "product": report.diagnostic.product.to_string(),
+        "source": "parent"
+    })];
+
+    for outcome in &completed.included_diagnostics {
+        match outcome {
+            IncludedDiagnosticOutcome::Completed {
+                path, report, runtime, ..
+            } => entries.push(json!({
+                "status": "success",
+                "diagnostic_id": report.diagnostic.metadata.id,
+                "kibana_link": report.diagnostic.kibana_link.as_deref().unwrap_or(""),
+                "took": runtime,
+                "product": report.diagnostic.product.to_string(),
+                "source": "included_diagnostic",
+                "path": path
+            })),
+            IncludedDiagnosticOutcome::Skipped {
+                path, product, reason, ..
+            } => entries.push(json!({
+                "status": "info",
+                "product": product.as_ref().map(ToString::to_string).unwrap_or_else(|| "unknown".to_string()),
+                "source": "included_diagnostic",
+                "path": path,
+                "reason": reason
+            })),
+            IncludedDiagnosticOutcome::Failed { path, error, .. } => entries.push(json!({
+                "status": "failed",
+                "source": "included_diagnostic",
+                "path": path,
+                "error": error
+            })),
+        }
+    }
+
+    Value::Array(entries)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::diagnostic_result_entries;
+    use crate::{
+        data::Product,
+        processor::{Completed, DiagnosticManifest, IncludedDiagnosticOutcome, diagnostic::DiagnosticReportBuilder},
+    };
+
+    fn report(product: Product, id_type: &str) -> crate::processor::DiagnosticReport {
+        DiagnosticReportBuilder::try_from(DiagnosticManifest::new(
+            "2024-01-01T00:00:00Z".to_string(),
+            Some("esdiag-test".to_string()),
+            None,
+            None,
+            Some("standard".to_string()),
+            product.clone(),
+            Some(id_type.to_string()),
+            Some("esdiag".to_string()),
+            Some("9.3.3".to_string()),
+        ))
+        .expect("report builder")
+        .receiver("Directory /tmp/diag".to_string())
+        .product(product)
+        .build()
+        .expect("report")
+    }
+
+    #[test]
+    fn synchronous_api_results_include_parent_and_child_outcomes() {
+        let mut child_report = report(Product::Elasticsearch, "elasticsearch_diagnostic");
+        child_report.add_kibana_link("https://kb.example/app/dashboards#/view/child".to_string());
+
+        let completed = Completed {
+            report: report(Product::ECK, "eck-diagnostics"),
+            runtime: 1_000,
+            included_diagnostics: vec![
+                IncludedDiagnosticOutcome::Completed {
+                    job_id: 11,
+                    path: "child-es".to_string(),
+                    report: Box::new(child_report),
+                    runtime: 500,
+                },
+                IncludedDiagnosticOutcome::Skipped {
+                    job_id: 12,
+                    path: "child-kibana".to_string(),
+                    product: Some(Product::Kibana),
+                    reason: "Kibana processing is not yet implemented".to_string(),
+                },
+                IncludedDiagnosticOutcome::Failed {
+                    job_id: 13,
+                    path: "child-missing".to_string(),
+                    error: "manifest missing".to_string(),
+                },
+            ],
+        };
+
+        let entries = diagnostic_result_entries(&completed);
+        let entries = entries.as_array().expect("array response");
+
+        assert_eq!(entries.len(), 4);
+        assert_eq!(entries[0]["status"], "success");
+        assert_eq!(entries[0]["source"], "parent");
+        assert_eq!(entries[1]["status"], "success");
+        assert_eq!(entries[1]["path"], "child-es");
+        assert_eq!(
+            entries[1]["kibana_link"],
+            "https://kb.example/app/dashboards#/view/child"
+        );
+        assert_eq!(entries[2]["status"], "info");
+        assert_eq!(entries[2]["reason"], "Kibana processing is not yet implemented");
+        assert_eq!(entries[3]["status"], "failed");
+        assert_eq!(entries[3]["error"], "manifest missing");
     }
 }

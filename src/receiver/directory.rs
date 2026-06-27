@@ -195,6 +195,15 @@ impl std::fmt::Display for DirectoryReceiver {
 }
 
 impl DirectoryReceiver {
+    pub(crate) fn clone_for_subdir(&self, work_dir: &str) -> Self {
+        Self {
+            path: self.path.clone(),
+            work_dir: work_dir.to_string(),
+            modified_date: self.modified_date,
+            source_product: Arc::new(OnceLock::new()),
+        }
+    }
+
     pub async fn read_bundle_json<T>(&self, filename: &str) -> Result<T>
     where
         T: DeserializeOwned,

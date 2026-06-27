@@ -10,7 +10,7 @@ use crate::{
     data::{HostRole, Product, Uri},
     exporter::Exporter,
     processor::{
-        Collector, Identifiers, Processor,
+        Collector, Identifiers, IncludedDiagnosticJobEvent, Processor,
         api::{ApiResolver, ProcessSelection},
         new_job_id,
     },
@@ -475,7 +475,11 @@ async fn run_processor_job(ctx: ProcessorJobContext<'_>) -> Result<()> {
         replace_existing_entry,
     } = ctx;
 
-    let processor = Processor::try_new_with_selection(receiver, exporter, identifiers, process_selection).await?;
+    let (child_event_tx, child_event_rx) = mpsc::unbounded_channel();
+    let child_event_task = tokio::spawn(render_child_diagnostic_events(tx.clone(), child_event_rx));
+    let processor =
+        Processor::try_new_with_child_events(receiver, exporter, identifiers, process_selection, child_event_tx)
+            .await?;
     let processor = processor.start().await.map_err(|failed| eyre!(failed.state.error))?;
     state.record_job_started().await;
 
@@ -518,10 +522,125 @@ async fn run_processor_job(ctx: ProcessorJobContext<'_>) -> Result<()> {
                 ),
             )
             .await;
+            drop(completed);
+            let _ = child_event_task.await;
             Ok(())
         }
-        Err(failed) => Err(eyre!(failed.state.error)),
+        Err(failed) => {
+            let error = failed.state.error.clone();
+            drop(failed);
+            let _ = child_event_task.await;
+            Err(eyre!(error))
+        }
     }
+}
+
+async fn render_child_diagnostic_events(
+    tx: mpsc::Sender<ServerEvent>,
+    mut child_event_rx: mpsc::UnboundedReceiver<IncludedDiagnosticJobEvent>,
+) {
+    while let Some(event) = child_event_rx.recv().await {
+        match event {
+            IncludedDiagnosticJobEvent::Queued { job_id, path } => {
+                let source = child_source(&path);
+                send_event(
+                    &tx,
+                    job_feed_event(template::JobProcessing {
+                        job_id,
+                        source: &source,
+                    }),
+                )
+                .await;
+            }
+            IncludedDiagnosticJobEvent::Started { job_id, path } => {
+                let source = child_source(&path);
+                send_event(
+                    &tx,
+                    replace_job_event(
+                        job_id,
+                        template::JobProcessing {
+                            job_id,
+                            source: &source,
+                        },
+                    ),
+                )
+                .await;
+            }
+            IncludedDiagnosticJobEvent::Completed {
+                job_id,
+                path,
+                product,
+                diagnostic_id,
+                docs_created,
+                duration_ms,
+                kibana_link,
+            } => {
+                let source = child_source(&path);
+                let product = product.to_string();
+                let duration = format!("{:.3}", duration_ms as f64 / 1000.0);
+                let kibana_link = kibana_link.unwrap_or_else(|| "#".to_string());
+                send_event(
+                    &tx,
+                    replace_job_event(
+                        job_id,
+                        template::JobCompleted {
+                            job_id,
+                            diagnostic_id: &diagnostic_id,
+                            docs_created: &docs_created,
+                            duration: &duration,
+                            source: &source,
+                            kibana_link: &kibana_link,
+                            product: &product,
+                        },
+                    ),
+                )
+                .await;
+            }
+            IncludedDiagnosticJobEvent::Skipped {
+                job_id,
+                path,
+                product,
+                reason,
+            } => {
+                let source = child_source(&path);
+                let product = product
+                    .map(|product| product.to_string())
+                    .unwrap_or_else(|| "unknown".to_string());
+                send_event(
+                    &tx,
+                    replace_job_event(
+                        job_id,
+                        template::JobSkipped {
+                            job_id,
+                            source: &source,
+                            product: &product,
+                            reason: &reason,
+                        },
+                    ),
+                )
+                .await;
+            }
+            IncludedDiagnosticJobEvent::Failed { job_id, path, error } => {
+                let source = child_source(&path);
+                send_event(
+                    &tx,
+                    replace_job_event(
+                        job_id,
+                        template::JobFailed {
+                            job_id,
+                            error: &error,
+                            source: &source,
+                        },
+                    ),
+                )
+                .await;
+            }
+        }
+    }
+}
+
+fn child_source(path: &str) -> String {
+    format!("Included diagnostic: {path}")
 }
 
 fn explicit_process_selection(signals: &JobRunSignals) -> Result<Option<ProcessSelection>> {
