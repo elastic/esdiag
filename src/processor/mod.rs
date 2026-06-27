@@ -182,6 +182,7 @@ fn spawn_sub_processors(
         let exporter = exporter.clone();
         let ident_clone = identifiers.clone();
         let event_tx = child_event_tx.clone();
+        let join_event_tx = child_event_tx.clone();
         let join_path = path.clone();
         let handle = tokio::spawn(async move {
             send_child_event(
@@ -269,11 +270,13 @@ fn spawn_sub_processors(
                     Ok(outcome) => outcome,
                     Err(e) => {
                         tracing::error!("Included diagnostic task panicked or failed to join: {}", e);
-                        IncludedDiagnosticOutcome::Failed {
+                        let outcome = IncludedDiagnosticOutcome::Failed {
                             job_id: child_job_id,
                             path: join_path,
                             error: format!("Included diagnostic task failed to join: {e}"),
-                        }
+                        };
+                        send_child_outcome_event(&join_event_tx, &outcome);
+                        outcome
                     }
                 }
             }

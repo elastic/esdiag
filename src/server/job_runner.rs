@@ -476,11 +476,19 @@ async fn run_processor_job(ctx: ProcessorJobContext<'_>) -> Result<()> {
     } = ctx;
 
     let (child_event_tx, child_event_rx) = mpsc::unbounded_channel();
-    let child_event_task = tokio::spawn(render_child_diagnostic_events(tx.clone(), child_event_rx));
     let processor =
         Processor::try_new_with_child_events(receiver, exporter, identifiers, process_selection, child_event_tx)
             .await?;
-    let processor = processor.start().await.map_err(|failed| eyre!(failed.state.error))?;
+    let child_event_task = tokio::spawn(render_child_diagnostic_events(tx.clone(), child_event_rx));
+    let processor = match processor.start().await {
+        Ok(processor) => processor,
+        Err(failed) => {
+            let error = failed.state.error.clone();
+            drop(failed);
+            child_event_task.abort();
+            return Err(eyre!(error));
+        }
+    };
     state.record_job_started().await;
 
     if !replace_existing_entry {
@@ -529,7 +537,7 @@ async fn run_processor_job(ctx: ProcessorJobContext<'_>) -> Result<()> {
         Err(failed) => {
             let error = failed.state.error.clone();
             drop(failed);
-            let _ = child_event_task.await;
+            child_event_task.abort();
             Err(eyre!(error))
         }
     }
