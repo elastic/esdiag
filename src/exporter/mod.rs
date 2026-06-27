@@ -119,16 +119,23 @@ impl Exporter {
                 let batch = std::mem::replace(&mut accumulator, Vec::with_capacity(batch_size));
                 match self.tx(index.clone(), batch).await {
                     Ok(batch_rx) => batch_receivers.push(batch_rx),
-                    Err(err) => tracing::warn!("Failed to send document batch: {}", err),
+                    Err(err) => {
+                        tracing::warn!("Failed to send document batch: {}", err);
+                        summary.add_batch(BatchResponse::failed(batch_size as u32, 0));
+                    }
                 }
             }
         }
 
         // Send final partial batch
         if !accumulator.is_empty() {
+            let doc_count = accumulator.len() as u32;
             match self.tx(index.clone(), accumulator).await {
                 Ok(batch_rx) => batch_receivers.push(batch_rx),
-                Err(err) => tracing::warn!("Failed to send final document batch: {}", err),
+                Err(err) => {
+                    tracing::warn!("Failed to send final document batch: {}", err);
+                    summary.add_batch(BatchResponse::failed(doc_count, 0));
+                }
             }
         }
 
@@ -149,17 +156,78 @@ impl Exporter {
     where
         T: Serialize + Sized + Send + Sync,
     {
+        let bulk_size = crate::env::get_int("ESDIAG_ES_BULK_SIZE")
+            .unwrap_or(crate::env::ESDIAG_ES_BULK_SIZE)
+            .max(1);
+        let bulk_bytes = match self {
+            Exporter::Elasticsearch(_) => crate::env::get_int("ESDIAG_ES_BULK_BYTES")
+                .ok()
+                .filter(|bytes| *bytes > 0)
+                .or(Some(crate::env::ESDIAG_ES_BULK_BYTES)),
+            _ => None,
+        };
         if docs.is_empty() {
-            return Ok(crate::processor::BatchResponse {
-                docs: 0,
-                errors: 0,
-                retries: 0,
-                size: 0,
-                status_code: 200,
-                time: 0,
-            });
+            let mut response = crate::processor::BatchResponse::new(0);
+            response.status_code = 200;
+            return Ok(response);
+        }
+        if matches!(self, Exporter::Archive(_)) {
+            return Err(eyre!("batch send not supported for archive exporter"));
         }
 
+        if docs.len() <= bulk_size && bulk_bytes.is_none() {
+            return self.send_batch(index, docs).await;
+        }
+
+        let mut summary = crate::processor::BatchResponse::aggregate();
+        let mut batch = Vec::with_capacity(bulk_size);
+        let mut batch_bytes = 0usize;
+
+        for doc in docs {
+            let doc_bytes = match bulk_bytes {
+                Some(_) => estimated_bulk_item_bytes(&index, &doc)?,
+                None => 0,
+            };
+
+            let would_exceed_count = batch.len() >= bulk_size;
+            let would_exceed_bytes = bulk_bytes
+                .is_some_and(|max_bytes| !batch.is_empty() && batch_bytes.saturating_add(doc_bytes) > max_bytes);
+
+            if would_exceed_count || would_exceed_bytes {
+                let doc_count = batch.len() as u32;
+                match self.send_batch(index.clone(), std::mem::take(&mut batch)).await {
+                    Ok(response) => summary.merge(response),
+                    Err(err) => {
+                        tracing::warn!("Failed to send document batch: {}", err);
+                        summary.merge(BatchResponse::failed(doc_count, 0));
+                    }
+                }
+                batch = Vec::with_capacity(bulk_size);
+                batch_bytes = 0;
+            }
+
+            batch_bytes = batch_bytes.saturating_add(doc_bytes);
+            batch.push(doc);
+        }
+
+        if !batch.is_empty() {
+            let doc_count = batch.len() as u32;
+            match self.send_batch(index, batch).await {
+                Ok(response) => summary.merge(response),
+                Err(err) => {
+                    tracing::warn!("Failed to send final document batch: {}", err);
+                    summary.merge(BatchResponse::failed(doc_count, 0));
+                }
+            }
+        }
+
+        Ok(summary)
+    }
+
+    async fn send_batch<T>(&self, index: String, docs: Vec<T>) -> Result<crate::processor::BatchResponse>
+    where
+        T: Serialize + Sized + Send + Sync,
+    {
         match self {
             Exporter::Archive(_) => Err(eyre!("batch send not supported for archive exporter")),
             Exporter::Directory(exporter) => exporter.batch_send(index, docs).await,
@@ -325,6 +393,14 @@ fn format_directory_label(value: &str) -> String {
     } else {
         format!("{value}{}", std::path::MAIN_SEPARATOR)
     }
+}
+
+fn estimated_bulk_item_bytes<T: Serialize>(index: &str, doc: &T) -> Result<usize> {
+    const BULK_ACTION_OVERHEAD_BYTES: usize = 128;
+    let doc_bytes = serde_json::to_vec(doc)?.len();
+    Ok(doc_bytes
+        .saturating_add(index.len())
+        .saturating_add(BULK_ACTION_OVERHEAD_BYTES))
 }
 
 fn path_to_file_uri(path: &Path, is_dir: bool) -> String {

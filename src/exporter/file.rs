@@ -124,6 +124,7 @@ impl Export for FileExporter {
         T: Serialize + Sized + Send + Sync + 'static,
     {
         let (tx, rx) = oneshot::channel();
+        let doc_count = docs.len() as u32;
 
         // File exporter writes synchronously, so we just write and send a simple response
         match self.batch_send(index, docs).await {
@@ -132,7 +133,12 @@ impl Export for FileExporter {
                     tracing::error!("Failed to send batch response");
                 }
             }
-            Err(e) => tracing::warn!("File write failed: {}", e),
+            Err(e) => {
+                tracing::warn!("File write failed: {}", e);
+                if tx.send(BatchResponse::failed(doc_count, 0)).is_err() {
+                    tracing::error!("Failed to send failed batch response");
+                }
+            }
         }
 
         Ok(rx)

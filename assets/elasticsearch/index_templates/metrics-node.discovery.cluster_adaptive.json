@@ -1,0 +1,39 @@
+{
+  "_meta": {
+    "description": "ESDiag Elasticsearch node adaptive selection stats"
+  },
+  "index_patterns": ["metrics-node.discovery.cluster_adaptive-esdiag*"],
+  "composed_of": [
+    "esdiag@mappings",
+    "esdiag@metadata",
+    "esdiag@settings",
+    "esdiag@node"
+  ],
+  "allow_auto_create": true,
+  "data_stream": {
+    "hidden": false,
+    "allow_custom_routing": false
+  },
+  "priority": 310,
+  "template": {
+    "mappings": {
+      "dynamic": true,
+      "properties": {
+        "data_stream": {
+          "type": "object",
+          "properties": {
+            "dataset": {
+              "type": "constant_keyword",
+              "value": "node.discovery.cluster_adaptive"
+            },
+            "type": {
+              "type": "constant_keyword",
+              "value": "metrics"
+            }
+          }
+        }
+      }
+    }
+  },
+  "version": 2
+}

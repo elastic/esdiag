@@ -270,8 +270,29 @@ impl<T> NestedStats<T> {
     }
 }
 
+#[cfg(test)]
+impl NestedStats<ProcessorSummary> {
+    fn stats(&self) -> &HashMap<String, ProcessorSummary> {
+        &self.stats
+    }
+
+    fn errors(&self) -> u32 {
+        self.errors
+    }
+
+    fn count(&self) -> u32 {
+        self.count
+    }
+}
+
 impl DiagnosticReport {
     pub fn add_processor_summary(&mut self, summary: ProcessorSummary) {
+        for summary in summary.into_summaries() {
+            self.add_single_processor_summary(summary);
+        }
+    }
+
+    fn add_single_processor_summary(&mut self, summary: ProcessorSummary) {
         if !summary.source.parsed {
             self.diagnostic.processor.errors += 1;
             self.diagnostic.processor.failures.push(summary.index.clone());
@@ -342,8 +363,12 @@ impl TryFrom<DiagnosticReportBuilder> for DiagnosticReport {
     }
 }
 
-#[derive(Serialize, Clone, Copy)]
+#[derive(Serialize, Clone)]
 pub struct BatchResponse {
+    #[serde(skip_serializing)]
+    pub batch_count: u32,
+    #[serde(skip_serializing)]
+    status_counts: HashMap<u16, u32>,
     pub docs: u32,
     pub errors: u32,
     pub retries: u16,
@@ -355,12 +380,76 @@ pub struct BatchResponse {
 impl BatchResponse {
     pub fn new(docs: u32) -> Self {
         Self {
+            batch_count: 1,
+            status_counts: HashMap::new(),
             docs,
             errors: 0,
             retries: 0,
             size: 0,
             status_code: 0,
             time: 0,
+        }
+    }
+
+    pub fn aggregate() -> Self {
+        Self {
+            batch_count: 0,
+            status_counts: HashMap::new(),
+            docs: 0,
+            errors: 0,
+            retries: 0,
+            size: 0,
+            status_code: 0,
+            time: 0,
+        }
+    }
+
+    pub fn failed(docs: u32, status_code: u16) -> Self {
+        Self {
+            batch_count: 1,
+            status_counts: HashMap::new(),
+            docs: 0,
+            errors: docs,
+            retries: 0,
+            size: 0,
+            status_code,
+            time: 0,
+        }
+    }
+
+    pub fn merge(&mut self, other: Self) {
+        let was_empty = self.batch_count == 0;
+        self.batch_count += other.batch_count;
+        self.docs += other.docs;
+        self.errors += other.errors;
+        self.retries += other.retries;
+        self.size += other.size;
+        self.time += other.time;
+        self.status_code = match (self.status_code, other.status_code) {
+            (0, status) if was_empty => status,
+            (status, 0) if other.errors == 0 => status,
+            (left, right) if left == right => left,
+            _ => 0,
+        };
+        self.merge_status_counts(&other);
+    }
+
+    fn merge_status_counts(&mut self, other: &Self) {
+        if other.status_counts.is_empty() {
+            if other.batch_count > 0 {
+                self.status_counts
+                    .entry(other.status_code)
+                    .and_modify(|count| *count += other.batch_count)
+                    .or_insert(other.batch_count);
+            }
+            return;
+        }
+
+        for (status, count) in &other.status_counts {
+            self.status_counts
+                .entry(*status)
+                .and_modify(|existing| *existing += count)
+                .or_insert(*count);
         }
     }
 }
@@ -390,6 +479,8 @@ pub struct ProcessorSummary {
     pub processor: String,
     pub index: String,
     pub source: Source,
+    #[serde(skip_serializing)]
+    children: Vec<ProcessorSummary>,
 }
 
 impl ProcessorSummary {
@@ -404,6 +495,25 @@ impl ProcessorSummary {
                 tracing::warn!("processor summary was err: {}", err);
             }
         }
+    }
+
+    pub fn add_child(&mut self, other: Result<ProcessorSummary>) {
+        match other {
+            Ok(other) => self.children.push(other),
+            Err(err) => {
+                tracing::warn!("processor summary was err: {}", err);
+            }
+        }
+    }
+
+    fn into_summaries(mut self) -> Vec<ProcessorSummary> {
+        let children = std::mem::take(&mut self.children);
+        let mut summaries = Vec::with_capacity(children.len() + 1);
+        summaries.push(self);
+        for child in children {
+            summaries.extend(child.into_summaries());
+        }
+        summaries
     }
 }
 
@@ -451,6 +561,13 @@ impl std::fmt::Display for Source {
     }
 }
 
+impl Source {
+    #[cfg(test)]
+    fn parsed(&self) -> bool {
+        self.parsed
+    }
+}
+
 impl ProcessorSummary {
     pub fn new(name: String) -> Self {
         Self {
@@ -465,27 +582,37 @@ impl ProcessorSummary {
             doc_errors: 0,
             processor: name,
             source: Source { parsed: false },
+            children: Vec::new(),
         }
     }
 
     pub fn add_batch(&mut self, batch: BatchResponse) {
-        self.batch.count += 1;
+        self.batch.count += batch.batch_count;
         self.batch.retries += batch.retries;
-        self.batch
-            .status_codes
-            .entry(batch.status_code)
-            .and_modify(|count| *count += 1)
-            .or_insert(1);
+        if batch.status_counts.is_empty() {
+            self.batch
+                .status_codes
+                .entry(batch.status_code)
+                .and_modify(|count| *count += batch.batch_count)
+                .or_insert(batch.batch_count);
+        } else {
+            for (status, count) in &batch.status_counts {
+                self.batch
+                    .status_codes
+                    .entry(*status)
+                    .and_modify(|existing| *existing += count)
+                    .or_insert(*count);
+            }
+        }
         self.docs += batch.docs;
         self.doc_errors += batch.errors;
         self.batch.responses.push(batch);
     }
 
-    pub fn was_parsed(self) -> Self {
-        Self {
-            source: Source { parsed: true },
-            ..self
-        }
+    pub fn was_parsed(mut self) -> Self {
+        self.source = Source { parsed: true };
+        self.children = self.children.into_iter().map(ProcessorSummary::was_parsed).collect();
+        self
     }
 
     pub fn rename(self, name: String) -> Self {
@@ -493,6 +620,11 @@ impl ProcessorSummary {
             processor: name,
             ..self
         }
+    }
+
+    #[cfg(test)]
+    fn doc_errors(&self) -> u32 {
+        self.doc_errors
     }
 }
 
@@ -603,5 +735,59 @@ user: ada
         assert!(!yaml.contains("account"));
         assert!(!yaml.contains("case_number"));
         assert!(yaml.contains("user: ada"));
+    }
+
+    #[test]
+    fn processor_summary_preserves_aggregated_batch_status_counts() {
+        let mut aggregate = BatchResponse::aggregate();
+        let mut first = BatchResponse::new(2);
+        first.status_code = 200;
+        let mut second = BatchResponse::new(3);
+        second.status_code = 200;
+        aggregate.merge(first);
+        aggregate.merge(second);
+
+        let mut summary = ProcessorSummary::new("metrics-task-esdiag".to_string());
+        summary.add_batch(aggregate);
+
+        let value = serde_json::to_value(summary).expect("summary json");
+        assert_eq!(value["batch"]["count"], 2);
+        assert_eq!(value["batch"]["status_codes"]["200"], 2);
+        assert_eq!(value["docs"], 5);
+    }
+
+    #[test]
+    fn diagnostic_report_flattens_child_processor_summaries() {
+        let metadata = DiagnosticMetadata {
+            id: "test".to_string(),
+            collection_date: 0,
+            runner: "test".to_string(),
+            uuid: "test".to_string(),
+        };
+        let mut report =
+            DiagnosticReport::try_from(DiagnosticReportBuilder::from(metadata).receiver("file path".to_string()))
+                .unwrap();
+
+        let mut parent = ProcessorSummary::new("metrics-node-esdiag".to_string());
+        let mut parent_batch = BatchResponse::new(4);
+        parent_batch.status_code = 200;
+        parent.add_batch(parent_batch);
+
+        let mut child = ProcessorSummary::new("metrics-node.http.clients-esdiag".to_string());
+        let mut child_batch = BatchResponse::failed(2, 400);
+        child_batch.status_code = 400;
+        child.add_batch(child_batch);
+
+        parent.add_child(Ok(child));
+        report.add_processor_summary(parent.was_parsed());
+
+        let stats = report.diagnostic.processor.stats();
+        assert_eq!(report.diagnostic.processor.count(), 2);
+        assert_eq!(report.diagnostic.processor.errors(), 0);
+        assert_eq!(report.diagnostic.docs.created, 4);
+        assert_eq!(report.diagnostic.docs.errors, 2);
+        assert!(stats["metrics-node-esdiag"].source.parsed());
+        assert!(stats["metrics-node.http.clients-esdiag"].source.parsed());
+        assert_eq!(stats["metrics-node.http.clients-esdiag"].doc_errors(), 2);
     }
 }
