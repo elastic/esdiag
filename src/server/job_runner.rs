@@ -531,7 +531,9 @@ async fn run_processor_job(ctx: ProcessorJobContext<'_>) -> Result<()> {
             )
             .await;
             drop(completed);
-            let _ = child_event_task.await;
+            if let Err(err) = child_event_task.await {
+                tracing::error!("Child diagnostic event task failed: {}", err);
+            }
             Ok(())
         }
         Err(failed) => {

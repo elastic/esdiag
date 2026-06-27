@@ -3,7 +3,7 @@
     <p>
         <b>Diagnostic ID:</b>
         {% if kibana_link != "" %}
-        <a target="_blank" href="{{ kibana_link }}">{{ diagnostic_id }}</a>
+        <a target="_blank" rel="noopener noreferrer" href="{{ kibana_link }}">{{ diagnostic_id }}</a>
         {% else %}
         {{ diagnostic_id }}
         {% endif %}

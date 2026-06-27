@@ -765,10 +765,7 @@ pub fn new_job_id() -> u64 {
 }
 
 fn child_job_id(parent_job_id: u64, index: usize) -> u64 {
-    1_000_000u64
-        .saturating_add(parent_job_id.saturating_mul(1000))
-        .saturating_add(index as u64)
-        .saturating_add(1)
+    (parent_job_id << 32) | (index as u64 + 1)
 }
 
 #[cfg(test)]
@@ -920,5 +917,10 @@ mod tests {
         };
         assert_eq!(path, "missing-child");
         assert!(error.contains("Failed to read included diagnostic manifest"));
+    }
+
+    #[test]
+    fn child_job_ids_do_not_overlap_across_parent_ranges() {
+        assert_ne!(child_job_id(2, 0), child_job_id(1, 1000));
     }
 }
