@@ -167,7 +167,7 @@ impl Exporter {
             _ => None,
         };
         if docs.is_empty() {
-            let mut response = crate::processor::BatchResponse::new(0);
+            let mut response = crate::processor::BatchResponse::aggregate();
             response.status_code = 200;
             return Ok(response);
         }
@@ -521,6 +521,7 @@ mod tests {
 
         assert_eq!(response.docs, 0);
         assert_eq!(response.errors, 0);
+        assert_eq!(response.batch_count, 0);
         assert_eq!(response.status_code, 200);
     }
 

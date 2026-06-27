@@ -587,6 +587,10 @@ impl ProcessorSummary {
     }
 
     pub fn add_batch(&mut self, batch: BatchResponse) {
+        if batch.batch_count == 0 && batch.docs == 0 && batch.errors == 0 {
+            return;
+        }
+
         self.batch.count += batch.batch_count;
         self.batch.retries += batch.retries;
         if batch.status_counts.is_empty() {
@@ -754,6 +758,20 @@ user: ada
         assert_eq!(value["batch"]["count"], 2);
         assert_eq!(value["batch"]["status_codes"]["200"], 2);
         assert_eq!(value["docs"], 5);
+    }
+
+    #[test]
+    fn processor_summary_ignores_empty_noop_batch_response() {
+        let mut empty = BatchResponse::aggregate();
+        empty.status_code = 200;
+
+        let mut summary = ProcessorSummary::new("metrics-ingest.pipeline-esdiag".to_string());
+        summary.add_batch(empty);
+
+        let value = serde_json::to_value(summary).expect("summary json");
+        assert_eq!(value["batch"]["count"], 0);
+        assert_eq!(value["batch"]["status_codes"], serde_json::json!({}));
+        assert_eq!(value["docs"], 0);
     }
 
     #[test]
