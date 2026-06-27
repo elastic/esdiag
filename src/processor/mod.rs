@@ -44,6 +44,9 @@ use std::sync::Arc;
 use std::time::UNIX_EPOCH;
 use tokio::{sync::mpsc, time::Instant};
 
+const KIBANA_PROCESSING_NOT_IMPLEMENTED: &str = "Kibana processing is not yet implemented";
+const UNSUPPORTED_PRODUCT_OR_DIAGNOSTIC_BUNDLE: &str = "Unsupported product or diagnostic bundle";
+
 pub struct Processor<S: State> {
     receiver: Arc<Receiver>,
     exporter: Arc<Exporter>,
@@ -335,7 +338,10 @@ fn send_child_outcome_event(
 }
 
 fn is_unsupported_child_processor(error: &str) -> bool {
-    error.contains("processing is not yet implemented") || error.contains("Unsupported product or diagnostic bundle")
+    matches!(
+        error,
+        KIBANA_PROCESSING_NOT_IMPLEMENTED | UNSUPPORTED_PRODUCT_OR_DIAGNOSTIC_BUNDLE
+    )
 }
 
 impl Processor<Ready> {
@@ -687,8 +693,8 @@ impl Diagnostic {
                     LogstashDiagnostic::try_new(receiver, exporter, manifest, process_selection).await?;
                 Ok((Self::Logstash(diagnostic), report))
             }
-            Product::Kibana => Err(eyre!("Kibana processing is not yet implemented")),
-            _ => Err(eyre!("Unsupported product or diagnostic bundle")),
+            Product::Kibana => Err(eyre!(KIBANA_PROCESSING_NOT_IMPLEMENTED)),
+            _ => Err(eyre!(UNSUPPORTED_PRODUCT_OR_DIAGNOSTIC_BUNDLE)),
         }
     }
 

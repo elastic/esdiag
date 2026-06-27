@@ -657,7 +657,7 @@ mod tests {
         .expect("completed template without Kibana link renders");
 
         assert!(no_link.contains("elasticsearch_diagnostic@2026-01-01~efgh"));
-        assert!(!no_link.contains(r#"<a target="_blank" href="">"#));
+        assert!(!no_link.contains(r#"href="""#));
 
         let skipped = JobSkipped {
             job_id: 101,
