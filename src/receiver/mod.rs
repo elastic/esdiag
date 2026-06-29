@@ -31,6 +31,7 @@ use directory::DirectoryReceiver;
 use eyre::{Result, eyre};
 use futures::stream::BoxStream;
 use serde::de::DeserializeOwned;
+use std::path::{Component, Path};
 use std::time::Duration;
 use upload_service::UploadServiceDownloader;
 
@@ -234,6 +235,7 @@ impl Receiver {
     }
 
     pub fn clone_for_subdir(&self, sub_dir: &str) -> Result<Self> {
+        validate_relative_subdir(sub_dir)?;
         match self {
             Receiver::ArchiveBytes(receiver) => Ok(Receiver::ArchiveBytes(receiver.clone_for_subdir(sub_dir))),
             Receiver::ArchiveFile(receiver) => Ok(Receiver::ArchiveFile(receiver.clone_for_subdir(sub_dir))),
@@ -336,6 +338,26 @@ impl Receiver {
     }
 }
 
+fn validate_relative_subdir(sub_dir: &str) -> Result<()> {
+    let path = Path::new(sub_dir);
+    if path.as_os_str().is_empty() {
+        return Err(eyre!("Included diagnostic path cannot be empty"));
+    }
+
+    for component in path.components() {
+        match component {
+            Component::Normal(_) | Component::CurDir => {}
+            Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
+                return Err(eyre!(
+                    "Included diagnostic path must be relative and stay within the bundle"
+                ));
+            }
+        }
+    }
+
+    Ok(())
+}
+
 impl TryFrom<Uri> for Receiver {
     type Error = eyre::Report;
     fn try_from(uri: Uri) -> std::result::Result<Self, Self::Error> {
@@ -391,5 +413,46 @@ impl std::fmt::Display for Receiver {
                 write!(f, "ElasticCloudAdmin {receiver}")
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{DirectoryReceiver, Receiver};
+
+    fn directory_receiver() -> Receiver {
+        let root = tempfile::tempdir().expect("temp diagnostic root");
+        Receiver::Directory(DirectoryReceiver::try_from(root.keep()).expect("directory receiver"))
+    }
+
+    #[test]
+    fn clone_for_subdir_accepts_relative_bundle_path() {
+        let receiver = directory_receiver();
+
+        assert!(receiver.clone_for_subdir("namespace/es/instance").is_ok());
+    }
+
+    #[test]
+    fn clone_for_subdir_rejects_parent_traversal() {
+        let receiver = directory_receiver();
+
+        let err = receiver
+            .clone_for_subdir("namespace/../outside")
+            .err()
+            .expect("parent traversal should be rejected");
+
+        assert!(err.to_string().contains("must be relative and stay within the bundle"));
+    }
+
+    #[test]
+    fn clone_for_subdir_rejects_absolute_path() {
+        let receiver = directory_receiver();
+
+        let err = receiver
+            .clone_for_subdir("/tmp/outside")
+            .err()
+            .expect("absolute path should be rejected");
+
+        assert!(err.to_string().contains("must be relative and stay within the bundle"));
     }
 }
