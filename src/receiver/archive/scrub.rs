@@ -4,7 +4,7 @@
 
 use eyre::Result;
 use serde_json::Value;
-use std::io::{Read, Seek, SeekFrom};
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::Path;
 
 /// Fields mapped as `ip` or keyword mirrors of node addresses in esdiag exports.
@@ -68,16 +68,211 @@ pub fn normalize_supported_reader_to_temp<R: Read>(path: &str, reader: R) -> Res
         });
     }
 
-    let mut json: Value = serde_json::from_reader(reader)?;
     let mut transformed = 0usize;
-    normalize_value(&mut json, &mut Vec::new(), &mut transformed);
-    serde_json::to_writer(&mut file, &json)?;
+    normalize_json_stream(reader, &mut file, &mut transformed)?;
     file.as_file_mut().seek(SeekFrom::Start(0))?;
 
     Ok(TempTransformResult {
         file,
         transformed_fields: transformed,
     })
+}
+
+fn normalize_json_stream<R: Read, W: Write>(reader: R, writer: &mut W, transformed: &mut usize) -> Result<()> {
+    let mut bytes = reader.bytes().peekable();
+    let mut stack = Vec::<JsonContext>::new();
+
+    while let Some(byte) = bytes.next() {
+        let byte = byte?;
+        match byte {
+            b'"' => {
+                let raw = read_json_string_body(&mut bytes)?;
+                if is_object_key_context(&stack) {
+                    let key = serde_json::from_str::<String>(&format!("\"{raw}\""))?;
+                    write!(writer, "\"{raw}\"")?;
+                    if let Some(JsonContext::Object { pending_key, .. }) = stack.last_mut() {
+                        *pending_key = Some(key);
+                    }
+                } else {
+                    let value = serde_json::from_str::<String>(&format!("\"{raw}\""))?;
+                    let path = path_for_string_value(&stack);
+                    if matches_http_client_id(&path)
+                        && let Some(client_id) = normalize_http_client_id(&value)
+                    {
+                        write!(writer, "{client_id}")?;
+                        *transformed += 1;
+                        mark_value_written(&mut stack);
+                        continue;
+                    }
+
+                    match normalize_string_for_path(&path, &value) {
+                        Some(updated) if updated != value => {
+                            serde_json::to_writer(&mut *writer, &updated)?;
+                            *transformed += 1;
+                        }
+                        _ => write!(writer, "\"{raw}\"")?,
+                    }
+                    mark_value_written(&mut stack);
+                }
+            }
+            b'{' => {
+                let segment = take_pending_key(&mut stack);
+                writer.write_all(b"{")?;
+                stack.push(JsonContext::Object {
+                    segment,
+                    pending_key: None,
+                    expecting_key: true,
+                });
+            }
+            b'[' => {
+                let segment = take_pending_key(&mut stack);
+                writer.write_all(b"[")?;
+                stack.push(JsonContext::Array { segment });
+            }
+            b'}' | b']' => {
+                writer.write_all(&[byte])?;
+                stack.pop();
+                mark_value_written(&mut stack);
+            }
+            b',' => {
+                writer.write_all(b",")?;
+                if let Some(JsonContext::Object {
+                    pending_key,
+                    expecting_key,
+                    ..
+                }) = stack.last_mut()
+                {
+                    *pending_key = None;
+                    *expecting_key = true;
+                }
+            }
+            b':' => writer.write_all(b":")?,
+            byte if byte.is_ascii_whitespace() => writer.write_all(&[byte])?,
+            byte => {
+                writer.write_all(&[byte])?;
+                copy_literal_tail(&mut bytes, writer)?;
+                mark_value_written(&mut stack);
+            }
+        }
+    }
+
+    Ok(())
+}
+
+enum JsonContext {
+    Object {
+        segment: Option<String>,
+        pending_key: Option<String>,
+        expecting_key: bool,
+    },
+    Array {
+        segment: Option<String>,
+    },
+}
+
+impl JsonContext {
+    fn segment(&self) -> Option<&str> {
+        match self {
+            JsonContext::Object { segment, .. } | JsonContext::Array { segment } => segment.as_deref(),
+        }
+    }
+}
+
+fn read_json_string_body<I>(bytes: &mut std::iter::Peekable<I>) -> Result<String>
+where
+    I: Iterator<Item = std::io::Result<u8>>,
+{
+    let mut raw = Vec::new();
+    let mut escaped = false;
+    for byte in bytes.by_ref() {
+        let byte = byte?;
+        if escaped {
+            raw.push(byte);
+            escaped = false;
+        } else if byte == b'\\' {
+            raw.push(byte);
+            escaped = true;
+        } else if byte == b'"' {
+            break;
+        } else {
+            raw.push(byte);
+        }
+    }
+    Ok(String::from_utf8(raw)?)
+}
+
+fn is_object_key_context(stack: &[JsonContext]) -> bool {
+    matches!(
+        stack.last(),
+        Some(JsonContext::Object {
+            expecting_key: true,
+            ..
+        })
+    )
+}
+
+fn take_pending_key(stack: &mut [JsonContext]) -> Option<String> {
+    match stack.last_mut() {
+        Some(JsonContext::Object { pending_key, .. }) => pending_key.take(),
+        _ => None,
+    }
+}
+
+fn mark_value_written(stack: &mut [JsonContext]) {
+    if let Some(JsonContext::Object {
+        pending_key,
+        expecting_key,
+        ..
+    }) = stack.last_mut()
+    {
+        *pending_key = None;
+        *expecting_key = false;
+    }
+}
+
+fn path_for_string_value(stack: &[JsonContext]) -> Vec<String> {
+    let mut path: Vec<String> = stack
+        .iter()
+        .filter_map(|ctx| ctx.segment().map(ToString::to_string))
+        .collect();
+    if let Some(JsonContext::Object {
+        pending_key: Some(key),
+        ..
+    }) = stack.last()
+    {
+        path.push(key.clone());
+    }
+    path
+}
+
+fn normalize_string_for_path(path: &[String], raw: &str) -> Option<String> {
+    let key = path.last().map(String::as_str)?;
+    if PURE_IP_FIELDS.contains(&key) {
+        normalize_pure_ip(raw)
+    } else if IP_OR_PORT_FIELDS.contains(&key) {
+        normalize_ip_or_ip_port(raw)
+    } else {
+        None
+    }
+}
+
+fn copy_literal_tail<I, W>(bytes: &mut std::iter::Peekable<I>, writer: &mut W) -> Result<()>
+where
+    I: Iterator<Item = std::io::Result<u8>>,
+    W: Write,
+{
+    while let Some(byte) = bytes.peek() {
+        let byte = match byte {
+            Ok(byte) => *byte,
+            Err(_) => break,
+        };
+        if byte == b',' || byte == b'}' || byte == b']' || byte.is_ascii_whitespace() {
+            break;
+        }
+        let byte = bytes.next().transpose()?.expect("peeked byte");
+        writer.write_all(&[byte])?;
+    }
+    Ok(())
 }
 
 fn normalize_value(value: &mut Value, path: &mut Vec<String>, transformed: &mut usize) {

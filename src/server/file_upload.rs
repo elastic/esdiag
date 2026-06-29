@@ -41,6 +41,26 @@ pub async fn submit(State(state): State<Arc<ServerState>>, mut multipart: Multip
     while let Ok(Some(field)) = multipart.next_field().await {
         match field.name() {
             Some("file") => {
+                if let Some((_filename, temp_upload_path)) = staged_upload.take() {
+                    if let Err(remove_err) = tokio::fs::remove_file(&temp_upload_path).await
+                        && remove_err.kind() != std::io::ErrorKind::NotFound
+                    {
+                        tracing::debug!(
+                            "Failed to remove duplicate upload {}: {}",
+                            temp_upload_path.display(),
+                            remove_err
+                        );
+                    }
+                    return (
+                        StatusCode::BAD_REQUEST,
+                        Html(format!(
+                            r#"<div id="job-{job_id}" class="status-box history-item status-error">
+                                🛑 Multiple upload files are not supported
+                            </div>"#
+                        )),
+                    );
+                }
+
                 let filename = match field.file_name() {
                     Some(filename) if !filename.ends_with(".zip") => {
                         return (
