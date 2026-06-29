@@ -22,8 +22,8 @@ use std::{
 use tempfile::tempdir;
 use zip::{ZipArchive, ZipWriter, write::SimpleFileOptions};
 
-const GOLDEN_ARCHIVE: &str = "tests/archives/elasticsearch-api-diagnostics-9.1.3.zip";
-const ARCHIVE_PREFIX: &str = "api-diagnostics-20250918-001807";
+const GOLDEN_ARCHIVE: &str = "tests/archives/elasticsearch-api-diagnostics-9.3.3.zip";
+const ARCHIVE_PREFIX: &str = "";
 
 fn manifest_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -50,7 +50,7 @@ fn build_synthetic_scrubbed_archive(out_zip: &Path) -> ScrubFixtureExpectations 
     let mut expectations = None;
 
     for entry in entries {
-        let path = format!("{ARCHIVE_PREFIX}/{entry}");
+        let path = archive_entry_path(entry);
         let mut content = String::new();
         source_archive
             .by_name(&path)
@@ -92,6 +92,22 @@ fn build_synthetic_scrubbed_archive(out_zip: &Path) -> ScrubFixtureExpectations 
 
     dest_archive.finish().expect("finish synthetic scrubbed zip");
     expectations.expect("nodes.json expectations")
+}
+
+fn archive_entry_path(entry: &str) -> String {
+    if ARCHIVE_PREFIX.is_empty() {
+        entry.to_string()
+    } else {
+        format!("{ARCHIVE_PREFIX}/{entry}")
+    }
+}
+
+fn archive_root_path(path: &Path) -> PathBuf {
+    if ARCHIVE_PREFIX.is_empty() {
+        path.to_path_buf()
+    } else {
+        path.join(ARCHIVE_PREFIX)
+    }
 }
 
 async fn process_input_to_directory(
@@ -158,7 +174,7 @@ async fn directory_export_normalizes_ips_with_stable_node_mapping() {
         archive.extract(&extract_dir).expect("extract synthetic zip");
     }
 
-    let input_dir = extract_dir.join(ARCHIVE_PREFIX);
+    let input_dir = archive_root_path(&extract_dir);
     let (_output, output_path) =
         process_input_to_directory(Uri::Directory(input_dir), Some(true), None).await;
     assert_scrubbed_export(&output_path, &expectations);
@@ -184,7 +200,7 @@ async fn directory_auto_detect_enables_scrub_when_path_contains_scrubbed() {
             .expect("extract synthetic zip");
     }
 
-    let input_dir = extract_dir.join(ARCHIVE_PREFIX);
+    let input_dir = archive_root_path(&extract_dir);
     let (_output, output_path) = process_input_to_directory(Uri::Directory(input_dir), None, None).await;
     assert_scrubbed_export(&output_path, &expectations);
 }
@@ -212,7 +228,7 @@ async fn directory_with_scrub_disabled_preserves_malformed_ips() {
         archive.extract(&extract_dir).expect("extract synthetic zip");
     }
 
-    let input_dir = extract_dir.join(ARCHIVE_PREFIX);
+    let input_dir = archive_root_path(&extract_dir);
     let (_output, output_path) =
         process_input_to_directory(Uri::Directory(input_dir), Some(false), None).await;
     assert_malformed_ips_preserved_in_node_metrics(&output_path, &malformed);

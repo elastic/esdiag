@@ -59,9 +59,11 @@ pub fn normalize_supported_content(path: &str, input: String) -> Result<Transfor
     })
 }
 
-pub fn normalize_supported_reader_to_temp<R: Read>(path: &str, reader: R) -> Result<TempTransformResult> {
+pub fn normalize_supported_reader_to_temp<R: Read>(path: &str, mut reader: R) -> Result<TempTransformResult> {
     let mut file = tempfile::NamedTempFile::new()?;
     if !supports_json_normalization(path) {
+        std::io::copy(&mut reader, &mut file)?;
+        file.as_file_mut().seek(SeekFrom::Start(0))?;
         return Ok(TempTransformResult {
             file,
             transformed_fields: 0,
@@ -146,7 +148,12 @@ fn normalize_json_stream<R: Read, W: Write>(reader: R, writer: &mut W, transform
                     *expecting_key = true;
                 }
             }
-            b':' => writer.write_all(b":")?,
+            b':' => {
+                writer.write_all(b":")?;
+                if let Some(JsonContext::Object { expecting_key, .. }) = stack.last_mut() {
+                    *expecting_key = false;
+                }
+            }
             byte if byte.is_ascii_whitespace() => writer.write_all(&[byte])?,
             byte => {
                 writer.write_all(&[byte])?;
@@ -491,6 +498,41 @@ mod tests {
                 .content
                 .contains(&format!("\"id\":{}", v::NORMALIZED_HTTP_CLIENT_ID))
         );
+    }
+
+    #[test]
+    fn normalizes_supported_reader_to_temp_without_value_materialization() {
+        let input = format!(
+            r#"{{
+            "nodes": {{
+                "a": {{
+                    "ip": "{malformed}",
+                    "transport_address": "{malformed_port}",
+                    "http": {{
+                        "clients": [
+                            {{ "id": "{malformed_client_id}" }}
+                        ]
+                    }}
+                }}
+            }}
+        }}"#,
+            malformed = v::MALFORMED_IP,
+            malformed_port = v::MALFORMED_IP_WITH_PORT,
+            malformed_client_id = v::MALFORMED_HTTP_CLIENT_ID,
+        );
+
+        let mut result = normalize_supported_reader_to_temp("diag/nodes.json", input.as_bytes()).expect("normalize");
+        let mut content = String::new();
+        result
+            .file
+            .as_file_mut()
+            .read_to_string(&mut content)
+            .expect("read normalized temp");
+
+        assert_eq!(result.transformed_fields, 3);
+        assert!(content.contains(&format!("\"{}\"", v::NORMALIZED_IP)));
+        assert!(content.contains(&format!("\"{}\"", v::NORMALIZED_IP_WITH_PORT)));
+        assert!(content.contains(&v::NORMALIZED_HTTP_CLIENT_ID.to_string()));
     }
 
     #[test]

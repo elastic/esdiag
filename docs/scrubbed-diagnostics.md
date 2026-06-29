@@ -45,7 +45,7 @@ Scrubbed 19-character lowercase hex node names are humanized during node lookup 
 
 **Never commit customer scrubbed API bundles to this repository.**
 
-Automated tests build synthetic malformed IPs at runtime from the esdiag golden archive (`tests/archives/elasticsearch-api-diagnostics-9.1.3.zip`). See `tests/scrubbed_normalization_tests.rs` and the `synthetic_vectors` test module in `src/receiver/archive/scrub.rs` for canonical test constants.
+Automated tests build synthetic malformed IPs at runtime from the esdiag golden archive (`tests/archives/elasticsearch-api-diagnostics-9.3.3.zip`). See `tests/scrubbed_normalization_tests.rs` and the `synthetic_vectors` test module in `src/receiver/archive/scrub.rs` for canonical test constants.
 
 ## Deterministic verification (CI)
 
@@ -88,15 +88,15 @@ Compare RSS for the same archive with scrub mode off vs on. Target: **≤ 20% RS
 Linux:
 
 ```bash
-/usr/bin/time -v ./target/release/esdiag process tests/archives/elasticsearch-api-diagnostics-9.1.3.zip --scrubbed false -o /tmp/esdiag-out-base
-/usr/bin/time -v ./target/release/esdiag process tests/archives/elasticsearch-api-diagnostics-9.1.3.zip --scrubbed true -o /tmp/esdiag-out-scrub
+/usr/bin/time -v ./target/release/esdiag process tests/archives/elasticsearch-api-diagnostics-9.3.3.zip --scrubbed false -o /tmp/esdiag-out-base
+/usr/bin/time -v ./target/release/esdiag process tests/archives/elasticsearch-api-diagnostics-9.3.3.zip --scrubbed true -o /tmp/esdiag-out-scrub
 ```
 
 macOS:
 
 ```bash
-/usr/bin/time -l ./target/release/esdiag process tests/archives/elasticsearch-api-diagnostics-9.1.3.zip --scrubbed false -o /tmp/esdiag-out-base
-/usr/bin/time -l ./target/release/esdiag process tests/archives/elasticsearch-api-diagnostics-9.1.3.zip --scrubbed true -o /tmp/esdiag-out-scrub
+/usr/bin/time -l ./target/release/esdiag process tests/archives/elasticsearch-api-diagnostics-9.3.3.zip --scrubbed false -o /tmp/esdiag-out-base
+/usr/bin/time -l ./target/release/esdiag process tests/archives/elasticsearch-api-diagnostics-9.3.3.zip --scrubbed true -o /tmp/esdiag-out-scrub
 ```
 
 Use the `Maximum resident set size` line from each run.

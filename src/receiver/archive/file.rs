@@ -348,14 +348,14 @@ mod tests {
     #[tokio::test]
     async fn non_scrubbed_archive_passes_nodes_json_unchanged() {
         let archive_path =
-            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/archives/elasticsearch-api-diagnostics-9.1.3.zip");
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/archives/elasticsearch-api-diagnostics-9.3.3.zip");
         if !archive_path.exists() {
             return;
         }
 
         let file = std::fs::File::open(&archive_path).expect("open archive");
         let mut archive = zip::ZipArchive::new(file).expect("read archive");
-        let entry_path = "api-diagnostics-20250918-001807/nodes.json";
+        let entry_path = "nodes.json";
         let mut expected = String::new();
         let mut zip_entry = archive.by_name(entry_path).expect("nodes.json");
         std::io::Read::read_to_string(&mut zip_entry, &mut expected).expect("read nodes.json");
@@ -366,7 +366,7 @@ mod tests {
 
         assert!(!should_enable_scrubbed(
             ScrubMode::Auto,
-            Some("elasticsearch-api-diagnostics-9.1.3.zip")
+            Some("elasticsearch-api-diagnostics-9.3.3.zip")
         ));
 
         let actual = receiver.get_raw::<NodesSource>().await.expect("get raw nodes");
