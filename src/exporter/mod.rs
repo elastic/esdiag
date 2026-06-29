@@ -194,7 +194,6 @@ impl Exporter {
                 .is_some_and(|max_bytes| !batch.is_empty() && batch_bytes.saturating_add(doc_bytes) > max_bytes);
 
             if would_exceed_count || would_exceed_bytes {
-                let doc_count = batch.len() as u32;
                 summary.merge(
                     self.send_batch_with_failed_response(index.clone(), std::mem::take(&mut batch))
                         .await?,
