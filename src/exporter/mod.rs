@@ -23,7 +23,10 @@ use elasticsearch::ElasticsearchExporter;
 use eyre::{Result, eyre};
 use file::FileExporter;
 use serde::Serialize;
-use std::path::{Path, PathBuf};
+use std::{
+    io,
+    path::{Path, PathBuf},
+};
 use stream::StreamExporter;
 use tokio::sync::{mpsc, oneshot};
 use url::Url;
@@ -397,10 +400,28 @@ fn format_directory_label(value: &str) -> String {
 
 fn estimated_bulk_item_bytes<T: Serialize>(index: &str, doc: &T) -> Result<usize> {
     const BULK_ACTION_OVERHEAD_BYTES: usize = 128;
-    let doc_bytes = serde_json::to_vec(doc)?.len();
+    let mut writer = CountingWriter::default();
+    serde_json::to_writer(&mut writer, doc)?;
+    let doc_bytes = writer.bytes;
     Ok(doc_bytes
         .saturating_add(index.len())
         .saturating_add(BULK_ACTION_OVERHEAD_BYTES))
+}
+
+#[derive(Default)]
+struct CountingWriter {
+    bytes: usize,
+}
+
+impl io::Write for CountingWriter {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.bytes = self.bytes.saturating_add(buf.len());
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
 }
 
 fn path_to_file_uri(path: &Path, is_dir: bool) -> String {

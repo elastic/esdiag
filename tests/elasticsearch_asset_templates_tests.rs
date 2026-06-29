@@ -3,7 +3,9 @@ use std::fs;
 use std::path::Path;
 
 fn template_dataset(file_name: &str) -> String {
-    let path = Path::new("assets/elasticsearch/index_templates").join(file_name);
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("assets/elasticsearch/index_templates")
+        .join(file_name);
     let content = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read {}: {}", path.display(), err));
     let template: Value =
         serde_json::from_str(&content).unwrap_or_else(|err| panic!("parse {}: {}", path.display(), err));
