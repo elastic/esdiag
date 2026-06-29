@@ -717,4 +717,41 @@ mod tests {
         assert_eq!(result.unwrap().batch_count, 3);
         assert_eq!(*call_count.lock().await, 3, "expected three bulk requests");
     }
+
+    #[tokio::test]
+    async fn exporter_send_allows_disabling_byte_splitting() {
+        let _lock = ENV_LOCK.lock().await;
+        let _env = BulkBytesEnvGuard::set("0");
+        let (url, call_count) = mock_bulk_server(vec![200]).await;
+        let exporter =
+            crate::exporter::Exporter::Elasticsearch(ElasticsearchExporter::try_new(url, Auth::None).unwrap());
+        let docs = vec![json!({"x": "a"}), json!({"x": "b"}), json!({"x": "c"})];
+
+        let result = exporter.send("test-index".to_string(), docs).await;
+
+        assert!(result.is_ok(), "expected byte-disabled send to succeed");
+        assert_eq!(result.unwrap().batch_count, 1);
+        assert_eq!(*call_count.lock().await, 1, "expected one bulk request");
+    }
+
+    #[tokio::test]
+    async fn exporter_send_reports_single_batch_send_failure() {
+        let _lock = ENV_LOCK.lock().await;
+        let _env = BulkBytesEnvGuard::set("0");
+        let (url, call_count) = mock_bulk_server(vec![413]).await;
+        let exporter =
+            crate::exporter::Exporter::Elasticsearch(ElasticsearchExporter::try_new(url, Auth::None).unwrap());
+        let docs = vec![json!({"x": "a"}), json!({"x": "b"})];
+
+        let response = exporter
+            .send("test-index".to_string(), docs)
+            .await
+            .expect("send failures should be recorded in the batch response");
+
+        assert_eq!(response.docs, 0);
+        assert_eq!(response.errors, 2);
+        assert_eq!(response.batch_count, 1);
+        assert_eq!(response.status_code, 0);
+        assert_eq!(*call_count.lock().await, 1, "expected one bulk request");
+    }
 }

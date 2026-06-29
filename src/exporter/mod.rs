@@ -163,10 +163,7 @@ impl Exporter {
             .unwrap_or(crate::env::ESDIAG_ES_BULK_SIZE)
             .max(1);
         let bulk_bytes = match self {
-            Exporter::Elasticsearch(_) => crate::env::get_int("ESDIAG_ES_BULK_BYTES")
-                .ok()
-                .filter(|bytes| *bytes > 0)
-                .or(Some(crate::env::ESDIAG_ES_BULK_BYTES)),
+            Exporter::Elasticsearch(_) => elasticsearch_bulk_bytes_limit(),
             _ => None,
         };
         if docs.is_empty() {
@@ -179,7 +176,7 @@ impl Exporter {
         }
 
         if docs.len() <= bulk_size && bulk_bytes.is_none() {
-            return self.send_batch(index, docs).await;
+            return self.send_batch_with_failed_response(index, docs).await;
         }
 
         let mut summary = crate::processor::BatchResponse::aggregate();
@@ -198,13 +195,10 @@ impl Exporter {
 
             if would_exceed_count || would_exceed_bytes {
                 let doc_count = batch.len() as u32;
-                match self.send_batch(index.clone(), std::mem::take(&mut batch)).await {
-                    Ok(response) => summary.merge(response),
-                    Err(err) => {
-                        tracing::warn!("Failed to send document batch: {}", err);
-                        summary.merge(BatchResponse::failed(doc_count, 0));
-                    }
-                }
+                summary.merge(
+                    self.send_batch_with_failed_response(index.clone(), std::mem::take(&mut batch))
+                        .await?,
+                );
                 batch = Vec::with_capacity(bulk_size);
                 batch_bytes = 0;
             }
@@ -214,17 +208,28 @@ impl Exporter {
         }
 
         if !batch.is_empty() {
-            let doc_count = batch.len() as u32;
-            match self.send_batch(index, batch).await {
-                Ok(response) => summary.merge(response),
-                Err(err) => {
-                    tracing::warn!("Failed to send final document batch: {}", err);
-                    summary.merge(BatchResponse::failed(doc_count, 0));
-                }
-            }
+            summary.merge(self.send_batch_with_failed_response(index, batch).await?);
         }
 
         Ok(summary)
+    }
+
+    async fn send_batch_with_failed_response<T>(
+        &self,
+        index: String,
+        docs: Vec<T>,
+    ) -> Result<crate::processor::BatchResponse>
+    where
+        T: Serialize + Sized + Send + Sync,
+    {
+        let doc_count = docs.len() as u32;
+        match self.send_batch(index, docs).await {
+            Ok(response) => Ok(response),
+            Err(err) => {
+                tracing::warn!("Failed to send document batch: {}", err);
+                Ok(BatchResponse::failed(doc_count, 0))
+            }
+        }
     }
 
     async fn send_batch<T>(&self, index: String, docs: Vec<T>) -> Result<crate::processor::BatchResponse>
@@ -406,6 +411,17 @@ fn estimated_bulk_item_bytes<T: Serialize>(index: &str, doc: &T) -> Result<usize
     Ok(doc_bytes
         .saturating_add(index.len())
         .saturating_add(BULK_ACTION_OVERHEAD_BYTES))
+}
+
+fn elasticsearch_bulk_bytes_limit() -> Option<usize> {
+    match std::env::var("ESDIAG_ES_BULK_BYTES") {
+        Ok(value) => match value.parse::<usize>() {
+            Ok(0) => None,
+            Ok(bytes) => Some(bytes),
+            Err(_) => Some(crate::env::ESDIAG_ES_BULK_BYTES),
+        },
+        Err(_) => Some(crate::env::ESDIAG_ES_BULK_BYTES),
+    }
 }
 
 #[derive(Default)]
