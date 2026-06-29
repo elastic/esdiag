@@ -31,11 +31,11 @@ The system SHALL apply receiver-stage normalization only to supported JSON/text 
 The system SHALL support implicit auto mode plus explicit control in both CLI and upload channels.
 
 #### Scenario: Auto mode detection
-- **WHEN** `--scrubbed` is not provided and archive filename/path contains `scrubbed`
+- **WHEN** `--scrubbed` is not provided and archive filename/path contains `scrubbed` as a standalone token
 - **THEN** scrub normalization SHALL be enabled
 
 #### Scenario: Auto mode no match
-- **WHEN** `--scrubbed` is not provided and archive filename/path does not contain `scrubbed`
+- **WHEN** `--scrubbed` is not provided and archive filename/path does not contain `scrubbed` as a standalone token
 - **THEN** scrub normalization SHALL remain disabled
 
 ### Requirement: Manual override precedence
@@ -46,7 +46,7 @@ The system SHALL apply manual selection precedence within the active execution c
 - **THEN** normalization SHALL run regardless of filename/path
 
 #### Scenario: Manual off overrides auto match
-- **WHEN** `--scrubbed false` is provided and filename/path contains `scrubbed`
+- **WHEN** `--scrubbed false` is provided and filename/path contains `scrubbed` as a standalone token
 - **THEN** normalization SHALL NOT run
 
 ### Requirement: CLI and UI are independent execution channels

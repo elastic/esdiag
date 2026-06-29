@@ -8,13 +8,13 @@ Normalization runs in the **receiver read path** for archive and directory input
 
 | Channel | Control | Default when unset |
 |---------|---------|-------------------|
-| CLI `process` | `--scrubbed true\|false` | Auto: enabled when the input path contains `scrubbed` (zip **or** extracted directory) |
-| Upload UI | `scrubbed` multipart field (checkbox) | Auto: enabled when the **uploaded** filename contains `scrubbed` (not the temp staging path) |
-| Service link | _(no checkbox yet)_ | Auto: enabled when the **filename** field contains `scrubbed` |
+| CLI `process` | `--scrubbed true\|false` | Auto: enabled when the input path contains `scrubbed` as a standalone token (zip **or** extracted directory) |
+| Upload UI | `scrubbed` multipart field (checkbox) | Auto: enabled when the **uploaded** filename contains `scrubbed` as a standalone token (not the temp staging path) |
+| Service link | _(no checkbox yet)_ | Auto: enabled when the **filename** field contains `scrubbed` as a standalone token |
 
 Precedence is **channel-local**:
 
-- CLI `--scrubbed true` forces normalization even if the filename does not contain `scrubbed`.
+- CLI `--scrubbed true` forces normalization even if the filename does not contain a `scrubbed` token.
 - CLI `--scrubbed false` disables normalization even for `*scrubbed*.zip` inputs.
 - Upload checkbox values `true`, `1`, or `on` enable scrub mode; any other explicit value disables it. If the checkbox field is present but unreadable, scrub mode defaults to enabled.
 

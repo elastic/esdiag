@@ -266,6 +266,14 @@ impl DirectoryReceiver {
         let path = self.path.join(&self.work_dir).join(filename);
         tracing::debug!("Reading bundle file: {}", path.display());
         let file = File::open(path)?;
+        if !should_normalize_file(filename, self.scrubbed) {
+            if self.scrubbed {
+                tracing::debug!("Scrubbed mode read {} (no normalization rules)", filename);
+            }
+            let reader = BufReader::new(file);
+            return serde_json::from_reader(reader).map_err(Into::into);
+        }
+
         let mut reader = BufReader::new(file);
         let mut content = String::new();
         reader.read_to_string(&mut content)?;
