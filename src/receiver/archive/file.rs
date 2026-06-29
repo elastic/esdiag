@@ -2,7 +2,7 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use super::{normalize_supported_content, resolve_archive_path, supports_json_normalization};
+use super::{normalize_supported_content, normalize_supported_reader_to_temp, resolve_archive_path, supports_json_normalization};
 use crate::{
     processor::{DataSource, SourceContext, StreamingDataSource},
     receiver::{RawResponse, Receive, ReceiveMultiple, ReceiveRaw},
@@ -99,16 +99,15 @@ impl Receive for ArchiveFileReceiver {
                     }
                     let file = archive.by_name(&filename)?;
                     let data: T = if self.scrubbed && supports_json_normalization(&filename) {
-                        let mut reader = BufReader::new(file);
-                        let mut content = String::new();
-                        reader.read_to_string(&mut content)?;
-                        let transformed = normalize_supported_content(&filename, content)?;
+                        let reader = BufReader::new(file);
+                        let mut transformed = normalize_supported_reader_to_temp(&filename, reader)?;
                         tracing::debug!(
                             "Unscrubbed {} address fields in {}",
                             transformed.transformed_fields,
                             filename
                         );
-                        serde_json::from_str(&transformed.content)?
+                        let reader = BufReader::new(transformed.file.as_file_mut());
+                        serde_json::from_reader(reader)?
                     } else {
                         if self.scrubbed {
                             tracing::debug!("Scrubbed mode read {} (no normalization rules)", filename);

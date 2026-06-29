@@ -191,11 +191,11 @@ pub struct CpuStats {
 }
 
 impl NodeStats {
-    pub fn node_name(&self) -> Option<String> {
+    pub fn node_name(&self) -> Option<&str> {
         if self.name.is_empty() {
             None
         } else {
-            Some(self.name.clone())
+            Some(&self.name)
         }
     }
 
