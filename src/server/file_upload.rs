@@ -151,10 +151,10 @@ pub async fn submit(State(state): State<Arc<ServerState>>, mut multipart: Multip
         (StatusCode::OK, Html(upload_file_element))
     } else {
         (
-            StatusCode::INTERNAL_SERVER_ERROR,
+            StatusCode::BAD_REQUEST,
             Html(format!(
                 r#"<div id="job-{job_id}" class="status-box history-item status-error">
-                    🛑 Upload Failed
+                    🛑 Missing upload file
                 </div>"#
             )),
         )
