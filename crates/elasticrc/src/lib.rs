@@ -10,12 +10,13 @@ use std::{
     env,
     fmt::Display,
     fs,
+    io::Read,
     path::{Path, PathBuf},
-    process::Command,
+    process::{Command, Stdio},
     str::FromStr,
-    sync::{mpsc, Mutex, OnceLock},
+    sync::{Mutex, OnceLock},
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 use url::Url;
 
@@ -698,62 +699,167 @@ fn resolve_command_expression(command: &str, resolver: &str, field: &str) -> Res
 }
 
 fn parse_command_argv(command: &str, resolver: &str, field: &str) -> Result<Vec<String>, Error> {
-    if command.chars().any(|ch| {
-        matches!(
+    let mut argv = Vec::new();
+    let mut current = String::new();
+    let mut quote = None;
+    let mut escaped = false;
+    let mut token_started = false;
+
+    for ch in command.chars() {
+        if escaped {
+            current.push(ch);
+            token_started = true;
+            escaped = false;
+            continue;
+        }
+
+        if matches!(
             ch,
             '|' | '&' | ';' | '<' | '>' | '(' | ')' | '{' | '}' | '`' | '\n' | '\r'
-        )
-    }) {
-        return Err(Error::ShellSyntaxUnsupported {
+        ) {
+            return Err(Error::ShellSyntaxUnsupported {
+                resolver: resolver.to_string(),
+                field: field.to_string(),
+            });
+        }
+
+        match quote {
+            Some(quote_char) if ch == quote_char => {
+                quote = None;
+            }
+            Some(_) if ch == '\\' => {
+                escaped = true;
+            }
+            Some(_) => {
+                current.push(ch);
+                token_started = true;
+            }
+            None if ch == '\'' || ch == '"' => {
+                quote = Some(ch);
+                token_started = true;
+            }
+            None if ch == '\\' => {
+                escaped = true;
+            }
+            None if ch.is_whitespace() => {
+                if token_started {
+                    argv.push(std::mem::take(&mut current));
+                    token_started = false;
+                }
+            }
+            None => {
+                current.push(ch);
+                token_started = true;
+            }
+        }
+    }
+
+    if escaped {
+        return Err(Error::ResolverFailed {
             resolver: resolver.to_string(),
             field: field.to_string(),
+            message: "command resolver ends with an unfinished escape".to_string(),
         });
     }
-    Ok(command.split_whitespace().map(str::to_string).collect())
+    if quote.is_some() {
+        return Err(Error::ResolverFailed {
+            resolver: resolver.to_string(),
+            field: field.to_string(),
+            message: "command resolver contains an unterminated quote".to_string(),
+        });
+    }
+    if token_started {
+        argv.push(current);
+    }
+    Ok(argv)
 }
 
 fn run_command(program: &str, args: &[String], resolver: &str, field: &str) -> Result<String, Error> {
-    let program = program.to_string();
-    let args = args.to_vec();
-    let (tx, rx) = mpsc::channel();
-    thread::spawn(move || {
-        let result = Command::new(program).args(args).output();
-        let _ = tx.send(result);
+    let mut child = Command::new(program)
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|source| Error::ResolverFailed {
+            resolver: resolver.to_string(),
+            field: field.to_string(),
+            message: source.to_string(),
+        })?;
+    let mut stdout = child.stdout.take().expect("stdout pipe");
+    let mut stderr = child.stderr.take().expect("stderr pipe");
+    let stdout_reader = thread::spawn(move || {
+        let mut output = Vec::new();
+        stdout.read_to_end(&mut output).map(|_| output)
+    });
+    let stderr_reader = thread::spawn(move || {
+        let mut output = Vec::new();
+        stderr.read_to_end(&mut output).map(|_| output)
     });
 
-    let output = match rx.recv_timeout(COMMAND_RESOLVER_TIMEOUT) {
-        Ok(Ok(output)) => output,
-        Ok(Err(source)) => {
-            return Err(Error::ResolverFailed {
-                resolver: resolver.to_string(),
-                field: field.to_string(),
-                message: source.to_string(),
-            });
+    let start = Instant::now();
+    let status = loop {
+        if let Some(status) = child.try_wait().map_err(|source| Error::ResolverFailed {
+            resolver: resolver.to_string(),
+            field: field.to_string(),
+            message: source.to_string(),
+        })? {
+            break status;
         }
-        Err(mpsc::RecvTimeoutError::Timeout) => {
+        if start.elapsed() >= COMMAND_RESOLVER_TIMEOUT {
+            let _ = child.kill();
+            let _ = child.wait();
+            let _ = stdout_reader.join();
+            let _ = stderr_reader.join();
             return Err(Error::ResolverFailed {
                 resolver: resolver.to_string(),
                 field: field.to_string(),
                 message: "command timed out".to_string(),
             });
         }
-        Err(mpsc::RecvTimeoutError::Disconnected) => {
-            return Err(Error::ResolverFailed {
-                resolver: resolver.to_string(),
-                field: field.to_string(),
-                message: "command resolver worker disconnected".to_string(),
-            });
-        }
+        thread::sleep(Duration::from_millis(10));
     };
 
-    if !output.status.success() {
+    let stdout = stdout_reader
+        .join()
+        .map_err(|_| Error::ResolverFailed {
+            resolver: resolver.to_string(),
+            field: field.to_string(),
+            message: "stdout reader panicked".to_string(),
+        })?
+        .map_err(|source| Error::ResolverFailed {
+            resolver: resolver.to_string(),
+            field: field.to_string(),
+            message: source.to_string(),
+        })?;
+    let stderr = stderr_reader
+        .join()
+        .map_err(|_| Error::ResolverFailed {
+            resolver: resolver.to_string(),
+            field: field.to_string(),
+            message: "stderr reader panicked".to_string(),
+        })?
+        .map_err(|source| Error::ResolverFailed {
+            resolver: resolver.to_string(),
+            field: field.to_string(),
+            message: source.to_string(),
+        })?;
+
+    if !status.success() {
+        let stderr = String::from_utf8_lossy(&stderr);
+        let stderr = stderr.trim();
+        let message = if stderr.is_empty() {
+            format!("command exited with {status}")
+        } else {
+            format!("command exited with {status}: {stderr}")
+        };
         return Err(Error::ResolverFailed {
             resolver: resolver.to_string(),
             field: field.to_string(),
-            message: format!("command exited with {}", output.status),
+            message,
         });
     }
-    String::from_utf8(output.stdout).map_err(|source| Error::ResolverFailed {
+    String::from_utf8(stdout).map_err(|source| Error::ResolverFailed {
         resolver: resolver.to_string(),
         field: field.to_string(),
         message: source.to_string(),
@@ -841,8 +947,8 @@ fn resolve_platform_keyring_secret(resolver: &str, _service: &str, _account: &st
 #[cfg(test)]
 mod tests {
     use super::{
-        discover_config_path, inline_secret_permission_warning, ConfigFile, ContextServiceReference, Error,
-        ResolvedAuth, ServiceKind,
+        discover_config_path, inline_secret_permission_warning, parse_command_argv, ConfigFile,
+        ContextServiceReference, Error, ResolvedAuth, ServiceKind,
     };
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
@@ -1214,6 +1320,13 @@ contexts:
             .expect("resolve service");
 
         assert!(matches!(service.auth, ResolvedAuth::ApiKey(ref key) if key.expose_secret() == "cmd-key"));
+    }
+
+    #[test]
+    fn command_argv_parser_supports_quotes_and_escapes() {
+        let argv = parse_command_argv(r#"printf "%s" "my key" escaped\ value"#, "cmd", "field").expect("parse argv");
+
+        assert_eq!(argv, vec!["printf", "%s", "my key", "escaped value"]);
     }
 
     #[test]
