@@ -404,12 +404,12 @@ impl BatchResponse {
         }
     }
 
-    pub fn failed(error_count: u32, status_code: u16) -> Self {
+    pub fn failed(failed_doc_count: u32, status_code: u16) -> Self {
         Self {
             batch_count: 1,
             status_counts: HashMap::new(),
             docs: 0,
-            errors: error_count,
+            errors: failed_doc_count,
             retries: 0,
             size: 0,
             status_code,

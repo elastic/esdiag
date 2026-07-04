@@ -386,14 +386,8 @@ impl std::fmt::Display for ElasticsearchExporter {
 }
 
 fn elasticsearch_bulk_bytes_limit() -> Option<usize> {
-    match std::env::var("ESDIAG_ES_BULK_BYTES") {
-        Ok(value) => match value.parse::<usize>() {
-            Ok(0) => None,
-            Ok(bytes) => Some(bytes),
-            Err(_) => Some(crate::env::ESDIAG_ES_BULK_BYTES),
-        },
-        Err(_) => Some(crate::env::ESDIAG_ES_BULK_BYTES),
-    }
+    let bytes = crate::env::get_int("ESDIAG_ES_BULK_BYTES").unwrap_or(crate::env::ESDIAG_ES_BULK_BYTES);
+    (bytes > 0).then_some(bytes)
 }
 
 fn estimated_bulk_value_bytes(index: &str, value: &Value) -> usize {
