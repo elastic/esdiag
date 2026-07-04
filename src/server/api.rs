@@ -442,7 +442,7 @@ fn diagnostic_result_entries(completed: &Completed) -> Value {
         "status": "success",
         "diagnostic_id": report.diagnostic.metadata.id,
         "kibana_link": report.diagnostic.kibana_link.as_deref().unwrap_or(""),
-        "took": completed.runtime,
+        "took": runtime_millis(completed.runtime),
         "product": report.diagnostic.product.to_string(),
         "source": "parent"
     })];
@@ -455,7 +455,7 @@ fn diagnostic_result_entries(completed: &Completed) -> Value {
                 "status": "success",
                 "diagnostic_id": report.diagnostic.metadata.id,
                 "kibana_link": report.diagnostic.kibana_link.as_deref().unwrap_or(""),
-                "took": runtime,
+                "took": runtime_millis(*runtime),
                 "product": report.diagnostic.product.to_string(),
                 "source": "included_diagnostic",
                 "path": path
@@ -481,9 +481,13 @@ fn diagnostic_result_entries(completed: &Completed) -> Value {
     Value::Array(entries)
 }
 
+fn runtime_millis(runtime: u128) -> u64 {
+    runtime.try_into().unwrap_or(u64::MAX)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::diagnostic_result_entries;
+    use super::{diagnostic_result_entries, runtime_millis};
     use crate::{
         data::Product,
         processor::{Completed, DiagnosticManifest, IncludedDiagnosticOutcome, diagnostic::DiagnosticReportBuilder},
@@ -543,8 +547,10 @@ mod tests {
         assert_eq!(entries.len(), 4);
         assert_eq!(entries[0]["status"], "success");
         assert_eq!(entries[0]["source"], "parent");
+        assert_eq!(entries[0]["took"], 1_000);
         assert_eq!(entries[1]["status"], "success");
         assert_eq!(entries[1]["path"], "child-es");
+        assert_eq!(entries[1]["took"], 500);
         assert_eq!(
             entries[1]["kibana_link"],
             "https://kb.example/app/dashboards#/view/child"
@@ -553,5 +559,10 @@ mod tests {
         assert_eq!(entries[2]["reason"], "Kibana processing is not yet implemented");
         assert_eq!(entries[3]["status"], "failed");
         assert_eq!(entries[3]["error"], "manifest missing");
+    }
+
+    #[test]
+    fn runtime_millis_saturates_at_u64_max() {
+        assert_eq!(runtime_millis(u128::from(u64::MAX) + 1), u64::MAX);
     }
 }

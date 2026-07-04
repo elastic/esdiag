@@ -40,12 +40,15 @@ use futures::{
 };
 use kubernetes_platform::KubernetesPlatformDiagnostic;
 use logstash::LogstashDiagnostic;
-use std::sync::Arc;
-use std::time::UNIX_EPOCH;
+use std::sync::{
+    Arc,
+    atomic::{AtomicU64, Ordering},
+};
 use tokio::{sync::mpsc, time::Instant};
 
 const KIBANA_PROCESSING_NOT_IMPLEMENTED: &str = "Kibana processing is not yet implemented";
 const UNSUPPORTED_PRODUCT_OR_DIAGNOSTIC_BUNDLE: &str = "Unsupported product or diagnostic bundle";
+static NEXT_JOB_ID: AtomicU64 = AtomicU64::new(1);
 
 pub struct Processor<S: State> {
     receiver: Arc<Receiver>,
@@ -763,11 +766,7 @@ trait Metadata {
 }
 
 pub fn new_job_id() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_millis() as u64
-        % 100000
+    NEXT_JOB_ID.fetch_add(1, Ordering::Relaxed)
 }
 
 fn child_job_id(parent_job_id: u64, index: usize) -> u64 {
@@ -928,5 +927,14 @@ mod tests {
     #[test]
     fn child_job_ids_do_not_overlap_across_parent_ranges() {
         assert_ne!(child_job_id(2, 0), child_job_id(1, 1000));
+    }
+
+    #[test]
+    fn job_ids_are_monotonic_and_child_ids_remain_distinct() {
+        let first_parent = new_job_id();
+        let second_parent = new_job_id();
+
+        assert!(second_parent > first_parent);
+        assert_ne!(child_job_id(first_parent, 0), child_job_id(second_parent, 0));
     }
 }
