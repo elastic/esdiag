@@ -4,7 +4,7 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use clap::{ArgAction, Args, Parser, Subcommand, builder::BoolishValueParser, builder::styling};
+use clap::{ArgAction, Args, Parser, Subcommand, builder::BoolishValueParser, builder::styling, error::ErrorKind};
 #[cfg(feature = "server")]
 use esdiag::server::{RuntimeMode, Server};
 #[cfg(feature = "setup")]
@@ -445,7 +445,9 @@ fn main() -> Result<()> {
 
 async fn async_main() -> Result<()> {
     // Parse CLI early to configure execution mode and logging.
-    let cli = Cli::parse();
+    let Some(cli) = parse_cli()? else {
+        return Ok(());
+    };
     let filter = resolve_tracing_filter(&cli);
     init_tracing(filter);
 
@@ -472,6 +474,32 @@ async fn async_main() -> Result<()> {
             Err(eyre!(e))
         }
     }
+}
+
+fn parse_cli() -> Result<Option<Cli>> {
+    match Cli::try_parse() {
+        Ok(cli) => Ok(Some(cli)),
+        Err(err) if err.kind() == ErrorKind::DisplayHelp => {
+            err.print()?;
+            if is_elastic_cli_invocation() {
+                println!("{}", elastic_cli_help_text());
+            }
+            Ok(None)
+        }
+        Err(err) if err.kind() == ErrorKind::DisplayVersion => {
+            err.print()?;
+            Ok(None)
+        }
+        Err(err) => Err(err.into()),
+    }
+}
+
+fn is_elastic_cli_invocation() -> bool {
+    std::env::var("ESDIAG_ELASTIC_CLI").is_ok_and(|value| value == "1")
+}
+
+fn elastic_cli_help_text() -> &'static str {
+    "Elastic CLI extension examples:\n  elastic diag collect .es ./out\n  elastic diag process .prod.es .diag.es\n\nElastic CLI target references:\n  .es, .elasticsearch  Use the active Elasticsearch context\n  .kb, .kibana         Use the active Kibana context\n  .cloud               Use the active Elastic Cloud context\n  .context.service     Use a named context from .elasticrc.yml"
 }
 
 fn init_tracing(filter: EnvFilter) {
@@ -636,7 +664,7 @@ async fn run(cli: Cli) -> Result<CommandResult> {
                 let exporter = resolve_serve_exporter(output, runtime_mode)?;
 
                 let kibana_url = kibana.unwrap_or_else(|| {
-                    esdiag::env::get_string("ESDIAG_KIBANA_URL")
+                    esdiag::env::get_string_with_fallback("ESDIAG_KIBANA_URL", "ELASTIC_KIBANA_URL")
                         .map(|url| esdiag::env::append_kibana_space(&url))
                         .unwrap_or_else(|_| "http://localhost:5601".to_string())
                 });
@@ -1078,7 +1106,7 @@ async fn run(cli: Cli) -> Result<CommandResult> {
                         };
 
                         let kibana_url = settings.kibana_url.unwrap_or_else(|| {
-                            let url = esdiag::env::get_string("ESDIAG_KIBANA_URL")
+                            let url = esdiag::env::get_string_with_fallback("ESDIAG_KIBANA_URL", "ELASTIC_KIBANA_URL")
                                 .unwrap_or_else(|_| "http://localhost:5601".to_string());
                             esdiag::env::append_kibana_space(&url)
                         });
@@ -1700,9 +1728,9 @@ mod tests {
         colorize_keystore_lock_status, format_collect_summary, format_keystore_lock_status,
         format_keystore_lock_status_at, format_keystore_migrate_summary, format_keystore_password_summary,
         format_keystore_secret_summary, format_process_summary, format_remaining_duration_from,
-        host_connection_uses_receiver, is_agent_mode, resolve_host_secret_auth, resolve_secret_input_with_prompt,
-        resolve_tracing_filter, should_error_for_missing_subcommand, upload_collected_archive,
-        write_completion_summary,
+        host_connection_uses_receiver, is_agent_mode, is_elastic_cli_invocation, elastic_cli_help_text,
+        resolve_host_secret_auth, resolve_secret_input_with_prompt, resolve_tracing_filter,
+        should_error_for_missing_subcommand, upload_collected_archive, write_completion_summary,
     };
     #[cfg(feature = "keystore")]
     use super::{derive_collect_job, derive_process_job};
@@ -1761,6 +1789,33 @@ mod tests {
 
         let cli = Cli::parse_from(["esdiag", "-a", "keystore", "status"]);
         assert!(cli.agent, "short -a should enable agent mode");
+    }
+
+    #[test]
+    fn elastic_cli_invocation_marker_requires_one() {
+        let _guard = env_lock().lock().expect("env lock");
+        unsafe {
+            std::env::set_var("ESDIAG_ELASTIC_CLI", "1");
+        }
+        assert!(is_elastic_cli_invocation());
+
+        unsafe {
+            std::env::set_var("ESDIAG_ELASTIC_CLI", "true");
+        }
+        assert!(!is_elastic_cli_invocation());
+
+        unsafe {
+            std::env::remove_var("ESDIAG_ELASTIC_CLI");
+        }
+    }
+
+    #[test]
+    fn elastic_cli_help_text_documents_target_references() {
+        let help = elastic_cli_help_text();
+
+        assert!(help.contains("elastic diag collect .es ./out"));
+        assert!(help.contains(".context.service"));
+        assert!(help.contains(".cloud"));
     }
 
     #[test]

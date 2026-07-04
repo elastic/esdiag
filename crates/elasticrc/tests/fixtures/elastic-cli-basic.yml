@@ -1,0 +1,14 @@
+current_context: local
+contexts:
+  local:
+    elasticsearch:
+      url: https://local-es.example:9200
+      auth:
+        api_key: local-api-key
+    kibana:
+      url: https://local-kb.example:5601
+  diag:
+    cloud:
+      url: https://cloud.elastic.co/deployments/deployment-123
+      auth:
+        api_key: cloud-api-key

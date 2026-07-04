@@ -413,7 +413,7 @@ fn saved_viewer_kibana_base_url(host: &KnownHost) -> Option<String> {
 }
 
 fn kibana_base_url_from_env() -> Option<String> {
-    crate::env::get_string("ESDIAG_KIBANA_URL")
+    crate::env::get_string_with_fallback("ESDIAG_KIBANA_URL", "ELASTIC_KIBANA_URL")
         .ok()
         .map(|url| crate::env::append_kibana_space(&url))
 }
@@ -549,6 +549,7 @@ mod tests {
         KnownHost::write_hosts_yml(&hosts).expect("write hosts");
         unsafe {
             std::env::set_var("ESDIAG_KIBANA_URL", "https://env-kb.example:5601");
+            std::env::remove_var("ELASTIC_KIBANA_URL");
             std::env::remove_var("ESDIAG_KIBANA_SPACE");
         }
 
@@ -561,6 +562,7 @@ mod tests {
 
         unsafe {
             std::env::remove_var("ESDIAG_KIBANA_URL");
+            std::env::remove_var("ELASTIC_KIBANA_URL");
         }
     }
 
@@ -570,6 +572,7 @@ mod tests {
         let _tmp = setup_env();
         unsafe {
             std::env::set_var("ESDIAG_KIBANA_URL", "https://env-kb.example:5601");
+            std::env::remove_var("ELASTIC_KIBANA_URL");
             std::env::set_var("ESDIAG_KIBANA_SPACE", "ops");
         }
 
@@ -582,6 +585,30 @@ mod tests {
 
         unsafe {
             std::env::remove_var("ESDIAG_KIBANA_URL");
+            std::env::remove_var("ELASTIC_KIBANA_URL");
+            std::env::remove_var("ESDIAG_KIBANA_SPACE");
+        }
+    }
+
+    #[test]
+    fn kibana_link_falls_back_to_elastic_kibana_env() {
+        let _guard = env_lock().lock().expect("env lock");
+        let _tmp = setup_env();
+        unsafe {
+            std::env::remove_var("ESDIAG_KIBANA_URL");
+            std::env::set_var("ELASTIC_KIBANA_URL", "https://elastic-kb.example:5601");
+            std::env::set_var("ESDIAG_KIBANA_SPACE", "ops");
+        }
+
+        let exporter = Exporter::default();
+        let kibana_link = exporter
+            .kibana_link("diag-123", 1_700_000_000_000)
+            .expect("kibana link");
+
+        assert!(kibana_link.starts_with("https://elastic-kb.example:5601/s/ops/app/dashboards#/view/"));
+
+        unsafe {
+            std::env::remove_var("ELASTIC_KIBANA_URL");
             std::env::remove_var("ESDIAG_KIBANA_SPACE");
         }
     }
@@ -592,6 +619,7 @@ mod tests {
         let _tmp = setup_env();
         unsafe {
             std::env::set_var("ESDIAG_KIBANA_URL", "https://env-kb.example:5601");
+            std::env::remove_var("ELASTIC_KIBANA_URL");
             std::env::set_var("ESDIAG_KIBANA_SPACE", "");
         }
 
@@ -604,6 +632,7 @@ mod tests {
 
         unsafe {
             std::env::remove_var("ESDIAG_KIBANA_URL");
+            std::env::remove_var("ELASTIC_KIBANA_URL");
             std::env::remove_var("ESDIAG_KIBANA_SPACE");
         }
     }
@@ -614,6 +643,7 @@ mod tests {
         let _tmp = setup_env();
         unsafe {
             std::env::remove_var("ESDIAG_KIBANA_URL");
+            std::env::remove_var("ELASTIC_KIBANA_URL");
             std::env::remove_var("ESDIAG_KIBANA_SPACE");
         }
 
