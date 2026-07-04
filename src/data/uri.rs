@@ -5,7 +5,7 @@
 use crate::{data::Product, env};
 
 use super::{ElasticCloud, KnownHost, KnownHostBuilder};
-use eyre::{OptionExt, Report, Result, eyre};
+use eyre::{eyre, OptionExt, Report, Result};
 use serde::{Deserialize, Deserializer};
 use std::{
     path::{Path, PathBuf},
@@ -62,9 +62,9 @@ fn parse_active_context_service(reference: &str) -> Option<ElasticCliService> {
 
 fn try_from_active_context_service(service: ElasticCliService) -> Result<Uri> {
     match service {
-        ElasticCliService::Elasticsearch => Uri::try_from_output_env(),
-        ElasticCliService::Kibana => Uri::try_from_kibana_env(),
-        ElasticCliService::Cloud => Uri::try_from_cloud_env(),
+        ElasticCliService::Elasticsearch => Uri::try_from_active_elasticsearch_env(),
+        ElasticCliService::Kibana => Uri::try_from_active_kibana_env(),
+        ElasticCliService::Cloud => Uri::try_from_active_cloud_env(),
     }
 }
 
@@ -131,7 +131,62 @@ fn try_get_auth_env(
     Ok((apikey, username, password))
 }
 
+fn try_get_elastic_cli_auth_env(
+    apikey_name: &str,
+    username_name: &str,
+    password_name: &str,
+) -> (Option<String>, Option<String>, Option<String>) {
+    let apikey = std::env::var(apikey_name).ok();
+    if apikey.is_some() {
+        return (apikey, None, None);
+    }
+
+    (
+        None,
+        std::env::var(username_name).ok(),
+        std::env::var(password_name).ok(),
+    )
+}
+
 impl Uri {
+    fn try_from_active_elasticsearch_env() -> Result<Self> {
+        tracing::debug!("Creating URI from active ELASTIC_ES_URL");
+        let url = std::env::var("ELASTIC_ES_URL").map_err(|_| eyre!("ELASTIC_ES_URL is not defined"))?;
+        let (apikey, username, password) =
+            try_get_elastic_cli_auth_env("ELASTIC_ES_API_KEY", "ELASTIC_ES_USERNAME", "ELASTIC_ES_PASSWORD");
+        let host = KnownHostBuilder::new(Url::parse(&url)?)
+            .apikey(apikey)
+            .username(username)
+            .password(password)
+            .build()?;
+        host.try_into()
+    }
+
+    fn try_from_active_kibana_env() -> Result<Self> {
+        tracing::debug!("Creating URI from active ELASTIC_KIBANA_URL");
+        let url = std::env::var("ELASTIC_KIBANA_URL").map_err(|_| eyre!("ELASTIC_KIBANA_URL is not defined"))?;
+        let (apikey, username, password) = try_get_elastic_cli_auth_env(
+            "ELASTIC_KIBANA_API_KEY",
+            "ELASTIC_KIBANA_USERNAME",
+            "ELASTIC_KIBANA_PASSWORD",
+        );
+        let host = KnownHostBuilder::new(Url::parse(&url)?)
+            .product(Product::Kibana)
+            .apikey(apikey)
+            .username(username)
+            .password(password)
+            .build()?;
+        host.try_into()
+    }
+
+    fn try_from_active_cloud_env() -> Result<Self> {
+        tracing::debug!("Creating URI from active ELASTIC_CLOUD_URL");
+        let url = std::env::var("ELASTIC_CLOUD_URL").map_err(|_| eyre!("ELASTIC_CLOUD_URL is not defined"))?;
+        let apikey = std::env::var("ELASTIC_CLOUD_API_KEY").ok();
+        let host = KnownHostBuilder::new(Url::parse(&url)?).apikey(apikey).build()?;
+        host.try_into()
+    }
+
     /// Try creating a new Elasticsearch Uri from the environment variables
     /// - `ESDIAG_OUTPUT_URL` (required): The URL to use for Elasticsearch output.
     /// - `ESDIAG_OUTPUT_APIKEY` (optional): API key for authentication.
@@ -583,6 +638,26 @@ mod tests {
         );
         KnownHost::write_hosts_yml(&hosts).expect("write hosts");
         unsafe {
+            std::env::set_var("ELASTIC_ES_URL", "https://active.example:9200");
+            std::env::set_var("ELASTIC_ES_API_KEY", "active-key");
+        }
+
+        let Uri::KnownHost(host) = Uri::try_from(".es").expect("active context uri") else {
+            panic!("expected known host");
+        };
+
+        assert_eq!(host.get_url().expect("url").as_str(), "https://active.example:9200/");
+        assert!(matches!(host.get_auth().expect("auth"), Auth::Apikey(key) if key == "active-key"));
+        clear_env();
+    }
+
+    #[test]
+    fn active_context_es_alias_prefers_elastic_context_over_esdiag_output() {
+        let _guard = crate::test_env_lock().lock().expect("env lock");
+        clear_env();
+        unsafe {
+            std::env::set_var("ESDIAG_OUTPUT_URL", "https://output.example:9200");
+            std::env::set_var("ESDIAG_OUTPUT_APIKEY", "output-key");
             std::env::set_var("ELASTIC_ES_URL", "https://active.example:9200");
             std::env::set_var("ELASTIC_ES_API_KEY", "active-key");
         }

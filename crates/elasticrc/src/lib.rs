@@ -11,11 +11,11 @@ use std::{
     fmt::Display,
     fs,
     path::{Path, PathBuf},
-    process::{Command, Stdio},
+    process::Command,
     str::FromStr,
-    sync::{Mutex, OnceLock},
+    sync::{mpsc, Mutex, OnceLock},
     thread,
-    time::{Duration, Instant},
+    time::Duration,
 };
 use url::Url;
 
@@ -713,57 +713,51 @@ fn parse_command_argv(command: &str, resolver: &str, field: &str) -> Result<Vec<
 }
 
 fn run_command(program: &str, args: &[String], resolver: &str, field: &str) -> Result<String, Error> {
-    let mut child = Command::new(program)
-        .args(args)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|source| Error::ResolverFailed {
-            resolver: resolver.to_string(),
-            field: field.to_string(),
-            message: source.to_string(),
-        })?;
-    let start = Instant::now();
-    loop {
-        if child
-            .try_wait()
-            .map_err(|source| Error::ResolverFailed {
-                resolver: resolver.to_string(),
-                field: field.to_string(),
-                message: source.to_string(),
-            })?
-            .is_some()
-        {
-            let output = child.wait_with_output().map_err(|source| Error::ResolverFailed {
-                resolver: resolver.to_string(),
-                field: field.to_string(),
-                message: source.to_string(),
-            })?;
-            if !output.status.success() {
-                return Err(Error::ResolverFailed {
-                    resolver: resolver.to_string(),
-                    field: field.to_string(),
-                    message: format!("command exited with {}", output.status),
-                });
-            }
-            return String::from_utf8(output.stdout).map_err(|source| Error::ResolverFailed {
+    let program = program.to_string();
+    let args = args.to_vec();
+    let (tx, rx) = mpsc::channel();
+    thread::spawn(move || {
+        let result = Command::new(program).args(args).output();
+        let _ = tx.send(result);
+    });
+
+    let output = match rx.recv_timeout(COMMAND_RESOLVER_TIMEOUT) {
+        Ok(Ok(output)) => output,
+        Ok(Err(source)) => {
+            return Err(Error::ResolverFailed {
                 resolver: resolver.to_string(),
                 field: field.to_string(),
                 message: source.to_string(),
             });
         }
-        if start.elapsed() >= COMMAND_RESOLVER_TIMEOUT {
-            let _ = child.kill();
-            let _ = child.wait();
+        Err(mpsc::RecvTimeoutError::Timeout) => {
             return Err(Error::ResolverFailed {
                 resolver: resolver.to_string(),
                 field: field.to_string(),
                 message: "command timed out".to_string(),
             });
         }
-        thread::sleep(Duration::from_millis(10));
+        Err(mpsc::RecvTimeoutError::Disconnected) => {
+            return Err(Error::ResolverFailed {
+                resolver: resolver.to_string(),
+                field: field.to_string(),
+                message: "command resolver worker disconnected".to_string(),
+            });
+        }
+    };
+
+    if !output.status.success() {
+        return Err(Error::ResolverFailed {
+            resolver: resolver.to_string(),
+            field: field.to_string(),
+            message: format!("command exited with {}", output.status),
+        });
     }
+    String::from_utf8(output.stdout).map_err(|source| Error::ResolverFailed {
+        resolver: resolver.to_string(),
+        field: field.to_string(),
+        message: source.to_string(),
+    })
 }
 
 fn parse_keyring_params(params: &str, resolver: &str, field: &str) -> Result<(String, String), Error> {
@@ -847,8 +841,8 @@ fn resolve_platform_keyring_secret(resolver: &str, _service: &str, _account: &st
 #[cfg(test)]
 mod tests {
     use super::{
-        ConfigFile, ContextServiceReference, Error, ResolvedAuth, ServiceKind, discover_config_path,
-        inline_secret_permission_warning,
+        discover_config_path, inline_secret_permission_warning, ConfigFile, ContextServiceReference, Error,
+        ResolvedAuth, ServiceKind,
     };
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
