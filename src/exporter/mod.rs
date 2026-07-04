@@ -23,10 +23,7 @@ use elasticsearch::ElasticsearchExporter;
 use eyre::{Result, eyre};
 use file::FileExporter;
 use serde::Serialize;
-use std::{
-    io,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 use stream::StreamExporter;
 use tokio::sync::{mpsc, oneshot};
 use url::Url;
@@ -162,10 +159,6 @@ impl Exporter {
         let bulk_size = crate::env::get_int("ESDIAG_ES_BULK_SIZE")
             .unwrap_or(crate::env::ESDIAG_ES_BULK_SIZE)
             .max(1);
-        let bulk_bytes = match self {
-            Exporter::Elasticsearch(_) => elasticsearch_bulk_bytes_limit(),
-            _ => None,
-        };
         if docs.is_empty() {
             let mut response = crate::processor::BatchResponse::aggregate();
             response.status_code = 200;
@@ -175,34 +168,24 @@ impl Exporter {
             return Err(eyre!("batch send not supported for archive exporter"));
         }
 
-        if docs.len() <= bulk_size && bulk_bytes.is_none() {
+        if docs.len() <= bulk_size {
             return self.send_batch_with_failed_response(index, docs).await;
         }
 
         let mut summary = crate::processor::BatchResponse::aggregate();
         let mut batch = Vec::with_capacity(bulk_size);
-        let mut batch_bytes = 0usize;
 
         for doc in docs {
-            let doc_bytes = match bulk_bytes {
-                Some(_) => estimated_bulk_item_bytes(&index, &doc)?,
-                None => 0,
-            };
-
             let would_exceed_count = batch.len() >= bulk_size;
-            let would_exceed_bytes = bulk_bytes
-                .is_some_and(|max_bytes| !batch.is_empty() && batch_bytes.saturating_add(doc_bytes) > max_bytes);
 
-            if would_exceed_count || would_exceed_bytes {
+            if would_exceed_count {
                 summary.merge(
                     self.send_batch_with_failed_response(index.clone(), std::mem::take(&mut batch))
                         .await?,
                 );
                 batch = Vec::with_capacity(bulk_size);
-                batch_bytes = 0;
             }
 
-            batch_bytes = batch_bytes.saturating_add(doc_bytes);
             batch.push(doc);
         }
 
@@ -399,43 +382,6 @@ fn format_directory_label(value: &str) -> String {
         value.to_string()
     } else {
         format!("{value}{}", std::path::MAIN_SEPARATOR)
-    }
-}
-
-fn estimated_bulk_item_bytes<T: Serialize>(index: &str, doc: &T) -> Result<usize> {
-    const BULK_ACTION_OVERHEAD_BYTES: usize = 128;
-    let mut writer = CountingWriter::default();
-    serde_json::to_writer(&mut writer, doc)?;
-    let doc_bytes = writer.bytes;
-    Ok(doc_bytes
-        .saturating_add(index.len())
-        .saturating_add(BULK_ACTION_OVERHEAD_BYTES))
-}
-
-fn elasticsearch_bulk_bytes_limit() -> Option<usize> {
-    match std::env::var("ESDIAG_ES_BULK_BYTES") {
-        Ok(value) => match value.parse::<usize>() {
-            Ok(0) => None,
-            Ok(bytes) => Some(bytes),
-            Err(_) => Some(crate::env::ESDIAG_ES_BULK_BYTES),
-        },
-        Err(_) => Some(crate::env::ESDIAG_ES_BULK_BYTES),
-    }
-}
-
-#[derive(Default)]
-struct CountingWriter {
-    bytes: usize,
-}
-
-impl io::Write for CountingWriter {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.bytes = self.bytes.saturating_add(buf.len());
-        Ok(buf.len())
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        Ok(())
     }
 }
 
