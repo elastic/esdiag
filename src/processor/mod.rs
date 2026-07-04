@@ -165,7 +165,6 @@ pub enum IncludedDiagnosticJobEvent {
 }
 
 fn spawn_sub_processors(
-    parent_job_id: u64,
     diag_paths: Vec<diagnostic::DiagPath>,
     receiver: Arc<Receiver>,
     exporter: Arc<Exporter>,
@@ -174,8 +173,8 @@ fn spawn_sub_processors(
 ) -> FuturesUnordered<BoxFuture<'static, IncludedDiagnosticOutcome>> {
     let handles = FuturesUnordered::new();
     let identifiers = identifiers.unwrap_or_default();
-    for (index, diag_path) in diag_paths.into_iter().enumerate() {
-        let child_job_id = child_job_id(parent_job_id, index);
+    for diag_path in diag_paths {
+        let child_job_id = new_job_id();
         let path = diag_path.diag_path;
         send_child_event(
             &child_event_tx,
@@ -464,7 +463,6 @@ impl Processor<Ready> {
 
             let sub_processors = if self.state.process_included_diagnostics {
                 spawn_sub_processors(
-                    self.id,
                     included_diagnostics,
                     self.receiver.clone(),
                     self.exporter.clone(),
@@ -769,10 +767,6 @@ pub fn new_job_id() -> u64 {
     NEXT_JOB_ID.fetch_add(1, Ordering::Relaxed)
 }
 
-fn child_job_id(parent_job_id: u64, index: usize) -> u64 {
-    (parent_job_id << 32) | (index as u64 + 1)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -925,16 +919,11 @@ mod tests {
     }
 
     #[test]
-    fn child_job_ids_do_not_overlap_across_parent_ranges() {
-        assert_ne!(child_job_id(2, 0), child_job_id(1, 1000));
-    }
+    fn job_ids_are_monotonic_and_distinct() {
+        let first_job = new_job_id();
+        let second_job = new_job_id();
 
-    #[test]
-    fn job_ids_are_monotonic_and_child_ids_remain_distinct() {
-        let first_parent = new_job_id();
-        let second_parent = new_job_id();
-
-        assert!(second_parent > first_parent);
-        assert_ne!(child_job_id(first_parent, 0), child_job_id(second_parent, 0));
+        assert!(second_job > first_job);
+        assert_ne!(first_job, second_job);
     }
 }
