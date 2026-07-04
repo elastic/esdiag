@@ -13,7 +13,7 @@ use kibana_sync::kibana::{
     saved_objects::{SavedObject, SavedObjectsManifest},
     spaces::{SpaceEntry, SpacesManifest},
 };
-use reqwest::Method;
+use reqwest::{Method, StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -126,6 +126,17 @@ fn should_skip_asset(asset: &Asset, security_enabled: bool) -> bool {
 }
 
 async fn send_asset(client: &Client, asset: &Asset, path: &Path, contents: &[u8], named: bool) -> Result<()> {
+    send_asset_with_allowed_statuses(client, asset, path, contents, named, &[]).await
+}
+
+async fn send_asset_with_allowed_statuses(
+    client: &Client,
+    asset: &Asset,
+    path: &Path,
+    contents: &[u8],
+    named: bool,
+    allowed_statuses: &[StatusCode],
+) -> Result<()> {
     let stem = path.file_stem().unwrap().to_str().unwrap_or("");
     let endpoint = match named {
         true => &format!(
@@ -142,7 +153,7 @@ async fn send_asset(client: &Client, asset: &Asset, path: &Path, contents: &[u8]
     {
         Ok(response) => {
             let status = response.status();
-            match status.is_success() {
+            match status.is_success() || allowed_statuses.contains(&status) {
                 true => {
                     let body = response.text().await?;
                     tracing::info!("{} {} {} {}", &asset.name, &stem, &asset.method, status);
@@ -221,11 +232,13 @@ pub async fn assets(client: &Client) -> Result<()> {
             return Err(eyre!("Asset not found: {}", asset.name));
         }
     }
-    match error_count {
-        0 => tracing::info!("completed setup for {client}"),
-        _ => tracing::error!("{error_count} errors in setup for {client}"),
+    if error_count == 0 {
+        tracing::info!("completed setup for {client}");
+        Ok(())
+    } else {
+        tracing::error!("{error_count} errors in setup for {client}");
+        Err(eyre!("{error_count} errors in setup for {client}"))
     }
-    Ok(())
 }
 
 async fn kibana_assets(client: &Client, embedded_assets: &EmbeddedAssets) -> Result<()> {
@@ -235,7 +248,7 @@ async fn kibana_assets(client: &Client, embedded_assets: &EmbeddedAssets) -> Res
     for space in &spaces_manifest.spaces {
         let space_payload = kibana_space_payload(space, embedded_assets)?;
         let space_asset = Asset {
-            endpoint: "api/spaces".to_string(),
+            endpoint: "api/spaces/space".to_string(),
             method: Method::POST.to_string(),
             name: KIBANA_SPACE_DEFINITION_FILE.to_string(),
             headers: default_headers(),
@@ -244,7 +257,16 @@ async fn kibana_assets(client: &Client, embedded_assets: &EmbeddedAssets) -> Res
             requires_security: false,
         };
         let space_path = kibana_space_definition_path(&space.id);
-        if let Err(e) = send_asset(client, &space_asset, &space_path, &space_payload, false).await {
+        if let Err(e) = send_asset_with_allowed_statuses(
+            client,
+            &space_asset,
+            &space_path,
+            &space_payload,
+            false,
+            &[StatusCode::CONFLICT],
+        )
+        .await
+        {
             tracing::error!("Failed to send Kibana space asset: {e:?}");
             error_count += 1;
         }
@@ -270,11 +292,13 @@ async fn kibana_assets(client: &Client, embedded_assets: &EmbeddedAssets) -> Res
         }
     }
 
-    match error_count {
-        0 => tracing::info!("completed setup for {client}"),
-        _ => tracing::error!("{error_count} errors in setup for {client}"),
+    if error_count == 0 {
+        tracing::info!("completed setup for {client}");
+        Ok(())
+    } else {
+        tracing::error!("{error_count} errors in setup for {client}");
+        Err(eyre!("{error_count} errors in setup for {client}"))
     }
-    Ok(())
 }
 
 /// Parses the assets YAML file for the given exporter. Currently only supports Elasticsearch.
