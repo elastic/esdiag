@@ -3,44 +3,34 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use crate::data::{Auth, KnownHost};
-use base64::Engine;
 use eyre::{Context, Result};
-use reqwest::{Client, Method, multipart};
+use reqwest::Method;
 use std::collections::HashMap;
 use url::Url;
 
+pub(crate) const KIBANA_REQUEST_CONCURRENCY: usize = 5;
+
 /// An exporter that sends requests to an Kibana cluster.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct KibanaClient {
-    client: Client,
-    url: Url,
+    inner: kibana_sync::KibanaClient,
 }
 
 /// A reqwest-based client with authentication for Kibana
 impl KibanaClient {
     /// Create a new KibanaExporter from a URL and Auth
     pub fn try_new(url: Url, auth: Auth) -> Result<Self> {
-        let mut headers = reqwest::header::HeaderMap::new();
-        headers.insert("kbn-xsrf", "true".parse()?);
-        match auth {
-            Auth::Basic(username, password) => {
-                let credentials =
-                    base64::engine::general_purpose::STANDARD.encode(format!("{}:{}", username, password));
-                headers.append(
-                    reqwest::header::AUTHORIZATION,
-                    format!("Basic {}", credentials).parse()?,
-                );
-            }
-            Auth::Apikey(apikey) => {
-                headers.append(reqwest::header::AUTHORIZATION, format!("ApiKey {}", apikey).parse()?);
-            }
-            Auth::None => {
-                headers.append(reqwest::header::AUTHORIZATION, "None".parse()?);
-            }
-        }
-        let client = Client::builder().default_headers(headers).build()?;
+        Self::try_new_with_concurrency(url, auth, KIBANA_REQUEST_CONCURRENCY)
+    }
 
-        Ok(Self { client, url })
+    pub(crate) fn try_new_with_concurrency(url: Url, auth: Auth, max_concurrency: usize) -> Result<Self> {
+        let inner = kibana_sync::KibanaClient::builder(url)
+            .auth(to_kibana_sync_auth(auth))
+            .max_concurrency(max_concurrency)
+            .build()
+            .wrap_err("Failed to build Kibana client")?;
+
+        Ok(Self { inner })
     }
 
     /// Send a request to a given path on the Kibana client
@@ -51,58 +41,20 @@ impl KibanaClient {
         path: &str,
         body: Option<&[u8]>,
     ) -> Result<reqwest::Response> {
-        let mut headers: reqwest::header::HeaderMap = headers
-            .iter()
-            .map(|(k, v)| (k.parse().unwrap(), v.parse().unwrap()))
-            .collect();
-        let use_form_data = match headers.get("Content-Type") {
-            Some(content_type) => {
-                tracing::debug!("Content-Type: {}", content_type.to_str()?);
-                content_type.to_str()?.starts_with("multipart/form-data")
-            }
-            None => false,
-        };
-
-        if use_form_data {
-            // Reqwest inserts its own multipart Content-Type headers,
-            // this removal prevents conflicts
-            headers.remove("Content-Type");
-        }
-
-        let request = match path.split_once('?') {
-            Some((p, query)) => {
-                let query: Vec<_> = query.split('&').filter_map(|s| s.split_once('=')).collect();
-                self.client
-                    .request(method, self.url.join(p)?)
-                    .query(&query)
-                    .headers(headers)
-            }
-            None => self.client.request(method, self.url.join(path)?).headers(headers),
-        };
-
-        match body {
-            Some(body) if use_form_data => {
-                // As of October 2025 we're using a static filename, as the only
-                // use of form data is dashboards.ndjson for the saved objects API
-                tracing::debug!("Sending request with form-data");
-                let part = multipart::Part::bytes(body.to_vec())
-                    .file_name("dashboards.ndjson")
-                    .mime_str("application/x-ndjson")?;
-                let form = multipart::Form::new().part("file", part);
-                request.multipart(form).send().await
-            }
-            Some(body) => {
-                tracing::debug!("Sending request with body");
-                request.body(body.to_vec()).send().await
-            }
-            None => request.send().await,
-        }
-        .wrap_err("Failed to send request")
+        self.inner
+            .request(method, headers, path, body)
+            .await
+            .wrap_err("Failed to send request")
     }
 
     /// Verify the connection and authentication to Kibana
     pub async fn test_connection(&self) -> Result<reqwest::Response> {
         self.request(Method::GET, &HashMap::new(), "/api/status", None).await
+    }
+
+    #[cfg(test)]
+    fn inner(&self) -> &kibana_sync::KibanaClient {
+        &self.inner
     }
 }
 
@@ -118,6 +70,236 @@ impl TryFrom<KnownHost> for KibanaClient {
 
 impl std::fmt::Display for KibanaClient {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.url)
+        write!(f, "{}", self.inner)
+    }
+}
+
+fn to_kibana_sync_auth(auth: Auth) -> kibana_sync::Auth {
+    match auth {
+        Auth::Apikey(apikey) => kibana_sync::Auth::Apikey(apikey),
+        Auth::Basic(username, password) => kibana_sync::Auth::Basic(username, password),
+        Auth::None => kibana_sync::Auth::None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::data::{HostRole, Product};
+    use futures::future::join_all;
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+    use tokio::{
+        io::{AsyncReadExt, AsyncWriteExt},
+        net::{TcpListener, TcpStream},
+        sync::Mutex,
+        time::{Duration, sleep},
+    };
+
+    #[test]
+    fn auth_mapping_preserves_basic_api_key_and_none_modes() {
+        assert!(matches!(
+            to_kibana_sync_auth(Auth::Basic("elastic".to_string(), "secret".to_string())),
+            kibana_sync::Auth::Basic(username, password) if username == "elastic" && password == "secret"
+        ));
+        assert!(matches!(
+            to_kibana_sync_auth(Auth::Apikey("encoded".to_string())),
+            kibana_sync::Auth::Apikey(key) if key == "encoded"
+        ));
+        assert!(matches!(to_kibana_sync_auth(Auth::None), kibana_sync::Auth::None));
+    }
+
+    #[test]
+    fn known_host_conversion_builds_shared_client_with_display_url() {
+        let host = KnownHost::new_no_auth(
+            Product::Kibana,
+            Url::parse("http://localhost:5601").expect("url"),
+            vec![HostRole::Collect],
+            None,
+            false,
+        );
+
+        let client = KibanaClient::try_from(host).expect("client");
+
+        assert_eq!(client.to_string(), "http://localhost:5601/");
+        assert_eq!(client.inner().url().as_str(), "http://localhost:5601/");
+    }
+
+    #[tokio::test]
+    async fn request_headers_map_basic_api_key_and_none_auth() {
+        let basic = capture_single_request(|url| async move {
+            let client =
+                KibanaClient::try_new(url, Auth::Basic("elastic".to_string(), "changeme".to_string())).expect("client");
+            let _ = client.test_connection().await.expect("response");
+        })
+        .await;
+        assert!(
+            basic.contains("authorization: Basic ZWxhc3RpYzpjaGFuZ2VtZQ=="),
+            "unexpected request:\n{basic}"
+        );
+        assert!(basic.contains("kbn-xsrf: true"), "unexpected request:\n{basic}");
+
+        let api_key = capture_single_request(|url| async move {
+            let client = KibanaClient::try_new(url, Auth::Apikey("key-material".to_string())).expect("client");
+            let _ = client.test_connection().await.expect("response");
+        })
+        .await;
+        assert!(
+            api_key.contains("authorization: ApiKey key-material"),
+            "unexpected request:\n{api_key}"
+        );
+
+        let no_auth = capture_single_request(|url| async move {
+            let client = KibanaClient::try_new(url, Auth::None).expect("client");
+            let _ = client.test_connection().await.expect("response");
+        })
+        .await;
+        assert!(
+            !no_auth.to_ascii_lowercase().contains("authorization:"),
+            "no-auth requests must omit Authorization header:\n{no_auth}"
+        );
+    }
+
+    #[tokio::test]
+    async fn client_concurrency_limit_is_enforced() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("listener");
+        let url = Url::parse(&format!("http://{}", listener.local_addr().expect("addr"))).expect("url");
+        let active = Arc::new(AtomicUsize::new(0));
+        let max_active = Arc::new(AtomicUsize::new(0));
+        let active_server = active.clone();
+        let max_server = max_active.clone();
+
+        let server = tokio::spawn(async move {
+            for _ in 0..3 {
+                let (stream, _) = listener.accept().await.expect("accept");
+                let active = active_server.clone();
+                let max_active = max_server.clone();
+                tokio::spawn(async move {
+                    active.fetch_add(1, Ordering::SeqCst);
+                    let current = active.load(Ordering::SeqCst);
+                    max_active.fetch_max(current, Ordering::SeqCst);
+                    sleep(Duration::from_millis(40)).await;
+                    write_ok(stream).await;
+                    active.fetch_sub(1, Ordering::SeqCst);
+                });
+            }
+        });
+
+        let client = KibanaClient::try_new_with_concurrency(url, Auth::None, 1).expect("client");
+        let requests = (0..3).map(|_| client.test_connection());
+        let responses = join_all(requests).await;
+        for response in responses {
+            assert!(response.expect("response").status().is_success());
+        }
+        server.await.expect("server");
+
+        assert_eq!(max_active.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn space_prefixed_paths_are_not_double_prefixed_by_root_client() {
+        let request = capture_single_request(|url| async move {
+            let client = KibanaClient::try_new(url, Auth::None).expect("client");
+            let _ = client
+                .request(
+                    Method::GET,
+                    &HashMap::new(),
+                    "/s/marketing/api/saved_objects/_find",
+                    None,
+                )
+                .await
+                .expect("response");
+        })
+        .await;
+
+        assert!(request.starts_with("GET /s/marketing/api/saved_objects/_find HTTP/1.1"));
+        assert!(!request.contains("/s/marketing/s/marketing/"));
+    }
+
+    #[tokio::test]
+    async fn multipart_request_uses_shared_client_form_upload_shape() {
+        let request = capture_single_request(|url| async move {
+            let client = KibanaClient::try_new(url, Auth::None).expect("client");
+            let mut headers = HashMap::new();
+            headers.insert("Content-Type".to_string(), "multipart/form-data".to_string());
+            let _ = client
+                .request(
+                    Method::POST,
+                    &headers,
+                    "/api/saved_objects/_import",
+                    Some(b"{\"type\":\"dashboard\"}\n"),
+                )
+                .await
+                .expect("response");
+        })
+        .await;
+
+        assert!(
+            request.contains("content-type: multipart/form-data; boundary="),
+            "unexpected request:\n{request}"
+        );
+        assert!(
+            request.contains("name=\"file\"") && request.contains("filename=\"dashboards.ndjson\""),
+            "unexpected request:\n{request}"
+        );
+        assert!(request.contains("Content-Type: application/x-ndjson"));
+        assert!(request.contains("{\"type\":\"dashboard\"}"));
+    }
+
+    async fn capture_single_request<F, Fut>(run: F) -> String
+    where
+        F: FnOnce(Url) -> Fut,
+        Fut: std::future::Future<Output = ()>,
+    {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("listener");
+        let url = Url::parse(&format!("http://{}", listener.local_addr().expect("addr"))).expect("url");
+        let captured = Arc::new(Mutex::new(String::new()));
+        let captured_server = captured.clone();
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.expect("accept");
+            let request = read_http_request(&mut stream).await;
+            *captured_server.lock().await = request;
+            write_ok(stream).await;
+        });
+
+        run(url).await;
+        server.await.expect("server");
+        captured.lock().await.clone()
+    }
+
+    async fn read_http_request(stream: &mut TcpStream) -> String {
+        let mut buf = vec![0_u8; 65536];
+        let mut total = 0;
+        loop {
+            let read = stream.read(&mut buf[total..]).await.expect("read request");
+            assert_ne!(read, 0, "connection closed before request completed");
+            total += read;
+            let request = String::from_utf8_lossy(&buf[..total]);
+            let Some(header_end) = request.find("\r\n\r\n") else {
+                continue;
+            };
+            let content_length = request[..header_end]
+                .lines()
+                .find_map(|line| {
+                    let (name, value) = line.split_once(':')?;
+                    name.eq_ignore_ascii_case("content-length")
+                        .then(|| value.trim().parse::<usize>().ok())
+                        .flatten()
+                })
+                .unwrap_or(0);
+            let expected = header_end + 4 + content_length;
+            if total >= expected {
+                return String::from_utf8_lossy(&buf[..expected]).to_string();
+            }
+        }
+    }
+
+    async fn write_ok(mut stream: TcpStream) {
+        stream
+            .write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 42\r\ncontent-type: application/json\r\n\r\n{\"name\":\"test-kibana\",\"version\":{\"number\":\"9.0.0\"}}")
+            .await
+            .expect("write response");
     }
 }

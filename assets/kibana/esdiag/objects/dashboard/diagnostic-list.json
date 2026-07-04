@@ -1,0 +1,77 @@
+{
+  "attributes": {
+    "controlGroupInput": {
+      "chainingSystem": "HIERARCHICAL",
+      "controlStyle": "oneLine",
+      "ignoreParentSettingsJSON": "{\"ignoreFilters\":false,\"ignoreQuery\":false,\"ignoreTimerange\":false,\"ignoreValidations\":false}",
+      "panelsJSON": "{\"613f8b02-2ce5-4c2c-a1cf-1c91d94974c4\":{\"explicitInput\":{\"dataViewId\":\"a738e381-1538-4fb5-a7c1-eebbdff4623b\",\"exclude\":false,\"existsSelected\":false,\"fieldName\":\"diagnostic.user\",\"searchTechnique\":\"wildcard\",\"selectedOptions\":[],\"sort\":{\"by\":\"_count\",\"direction\":\"desc\"},\"title\":\"User\"},\"grow\":true,\"order\":2,\"type\":\"optionsListControl\",\"width\":\"medium\"},\"947098f6-3bde-4920-a767-2d83e1f3037d\":{\"explicitInput\":{\"dataViewId\":\"a738e381-1538-4fb5-a7c1-eebbdff4623b\",\"exclude\":false,\"existsSelected\":false,\"fieldName\":\"diagnostic.account\",\"searchTechnique\":\"wildcard\",\"selectedOptions\":[],\"sort\":{\"by\":\"_count\",\"direction\":\"desc\"},\"title\":\"Account\"},\"grow\":true,\"order\":0,\"type\":\"optionsListControl\",\"width\":\"medium\"},\"f62d4ef8-d9e6-4f9f-b3a9-000abd0b75f3\":{\"explicitInput\":{\"dataViewId\":\"a738e381-1538-4fb5-a7c1-eebbdff4623b\",\"exclude\":false,\"existsSelected\":false,\"fieldName\":\"diagnostic.case_number\",\"searchTechnique\":\"wildcard\",\"selectedOptions\":[],\"sort\":{\"by\":\"_count\",\"direction\":\"desc\"},\"title\":\"Case Number\"},\"grow\":true,\"order\":1,\"type\":\"optionsListControl\",\"width\":\"medium\"}}",
+      "showApplySelections": false
+    },
+    "description": "What diagnostic were imported recently?",
+    "kibanaSavedObjectMeta": {
+      "searchSourceJSON": "{\"filter\":[],\"query\":{\"language\":\"kuery\",\"query\":\"\"}}"
+    },
+    "optionsJSON": "{\"hidePanelTitles\":false,\"syncColors\":false,\"syncCursor\":true,\"syncTooltips\":false,\"useMargins\":true}",
+    "panelsJSON": "[{\"embeddableConfig\":{\"attributes\":{\"references\":[{\"id\":\"a738e381-1538-4fb5-a7c1-eebbdff4623b\",\"name\":\"indexpattern-datasource-layer-818639cb-15c7-4c35-80fc-011a57946d6c\",\"type\":\"index-pattern\"}],\"state\":{\"adHocDataViews\":{},\"datasourceStates\":{\"formBased\":{\"currentIndexPatternId\":\"a738e381-1538-4fb5-a7c1-eebbdff4623b\",\"layers\":{\"818639cb-15c7-4c35-80fc-011a57946d6c\":{\"columnOrder\":[\"6bce4fc8-9fcf-4e17-bd4f-14b67f8564fa\",\"9321a43d-3461-4504-a68a-33fc6171d355\",\"c7febd28-6f96-431e-974b-c0b666415f59\",\"df178791-e911-43b7-ba9a-2a6c5f736e58\",\"109fafcb-032e-4292-965c-1af6a317398d\",\"183f3e38-858f-4a27-aabd-ff0b31e1cf56\",\"f9008982-cb35-44ef-929e-960d6163ee4c\",\"43e16ec0-86ac-4664-b7a0-6bf46a477b0d\"],\"columns\":{\"109fafcb-032e-4292-965c-1af6a317398d\":{\"customLabel\":true,\"dataType\":\"string\",\"filter\":{\"language\":\"kuery\",\"query\":\"\\\"diagnostic.origin.name\\\": *\"},\"isBucketed\":false,\"label\":\"Origin Name\",\"operationType\":\"last_value\",\"params\":{\"sortField\":\"@timestamp\"},\"scale\":\"ordinal\",\"sourceField\":\"diagnostic.origin.name\"},\"183f3e38-858f-4a27-aabd-ff0b31e1cf56\":{\"customLabel\":true,\"dataType\":\"string\",\"filter\":{\"language\":\"kuery\",\"query\":\"\\\"diagnostic.account\\\": *\"},\"isBucketed\":false,\"label\":\"Account\",\"operationType\":\"last_value\",\"params\":{\"sortField\":\"@timestamp\"},\"scale\":\"ordinal\",\"sourceField\":\"diagnostic.account\"},\"43e16ec0-86ac-4664-b7a0-6bf46a477b0d\":{\"customLabel\":true,\"dataType\":\"string\",\"filter\":{\"language\":\"kuery\",\"query\":\"\\\"diagnostic.case_number\\\": *\"},\"isBucketed\":false,\"label\":\"Case Number\",\"operationType\":\"last_value\",\"params\":{\"sortField\":\"@timestamp\"},\"scale\":\"ordinal\",\"sourceField\":\"diagnostic.case_number\"},\"6bce4fc8-9fcf-4e17-bd4f-14b67f8564fa\":{\"customLabel\":true,\"dataType\":\"string\",\"isBucketed\":true,\"label\":\"diagnostic.id\",\"operationType\":\"terms\",\"params\":{\"exclude\":[],\"excludeIsRegex\":false,\"include\":[],\"includeIsRegex\":false,\"missingBucket\":false,\"orderBy\":{\"columnId\":\"9321a43d-3461-4504-a68a-33fc6171d355\",\"type\":\"column\"},\"orderDirection\":\"desc\",\"otherBucket\":true,\"parentFormat\":{\"id\":\"terms\"},\"secondaryFields\":[],\"size\":20},\"scale\":\"ordinal\",\"sourceField\":\"diagnostic.id\"},\"9321a43d-3461-4504-a68a-33fc6171d355\":{\"customLabel\":true,\"dataType\":\"date\",\"filter\":{\"language\":\"kuery\",\"query\":\"\\\"diagnostic.collection_date\\\": *\"},\"isBucketed\":false,\"label\":\"collection_date\",\"operationType\":\"last_value\",\"params\":{\"sortField\":\"diagnostic.collection_date\"},\"scale\":\"ratio\",\"sourceField\":\"diagnostic.collection_date\"},\"c7febd28-6f96-431e-974b-c0b666415f59\":{\"customLabel\":true,\"dataType\":\"string\",\"filter\":{\"language\":\"kuery\",\"query\":\"\\\"diagnostic.runner\\\": *\"},\"isBucketed\":false,\"label\":\"runner\",\"operationType\":\"last_value\",\"params\":{\"sortField\":\"@timestamp\"},\"scale\":\"ordinal\",\"sourceField\":\"diagnostic.runner\"},\"df178791-e911-43b7-ba9a-2a6c5f736e58\":{\"customLabel\":true,\"dataType\":\"string\",\"filter\":{\"language\":\"kuery\",\"query\":\"\\\"diagnostic.product\\\": *\"},\"isBucketed\":false,\"label\":\"Product\",\"operationType\":\"last_value\",\"params\":{\"sortField\":\"@timestamp\"},\"scale\":\"ordinal\",\"sourceField\":\"diagnostic.product\"},\"f9008982-cb35-44ef-929e-960d6163ee4c\":{\"customLabel\":true,\"dataType\":\"string\",\"filter\":{\"language\":\"kuery\",\"query\":\"\\\"diagnostic.license.issued_to\\\": *\"},\"isBucketed\":false,\"label\":\"Licensee\",\"operationType\":\"last_value\",\"params\":{\"sortField\":\"@timestamp\"},\"scale\":\"ordinal\",\"sourceField\":\"diagnostic.license.issued_to\"}},\"ignoreGlobalFilters\":false,\"incompleteColumns\":{},\"indexPatternId\":\"a738e381-1538-4fb5-a7c1-eebbdff4623b\",\"sampling\":1}}},\"indexpattern\":{\"currentIndexPatternId\":\"a738e381-1538-4fb5-a7c1-eebbdff4623b\",\"layers\":{}},\"textBased\":{\"indexPatternRefs\":[{\"id\":\"a738e381-1538-4fb5-a7c1-eebbdff4623b\",\"timeField\":\"@timestamp\",\"title\":\"metrics-diagnostic-esdiag*\"}],\"layers\":{}}},\"filters\":[],\"internalReferences\":[],\"query\":{\"language\":\"kuery\",\"query\":\"\"},\"visualization\":{\"columns\":[{\"columnId\":\"6bce4fc8-9fcf-4e17-bd4f-14b67f8564fa\",\"isTransposed\":false,\"oneClickFilter\":true,\"width\":309.22833333333347},{\"columnId\":\"c7febd28-6f96-431e-974b-c0b666415f59\",\"isMetric\":true,\"isTransposed\":false,\"width\":95.60000000000002},{\"columnId\":\"9321a43d-3461-4504-a68a-33fc6171d355\",\"isMetric\":true,\"isTransposed\":false,\"width\":225.1},{\"columnId\":\"109fafcb-032e-4292-965c-1af6a317398d\",\"isMetric\":true,\"isTransposed\":false,\"width\":263.895},{\"columnId\":\"183f3e38-858f-4a27-aabd-ff0b31e1cf56\",\"isMetric\":true,\"isTransposed\":false,\"width\":227.22833333333335},{\"columnId\":\"f9008982-cb35-44ef-929e-960d6163ee4c\",\"isMetric\":true,\"isTransposed\":false,\"width\":251.22833333333332},{\"columnId\":\"df178791-e911-43b7-ba9a-2a6c5f736e58\",\"isMetric\":true,\"isTransposed\":false,\"width\":166.075},{\"columnId\":\"43e16ec0-86ac-4664-b7a0-6bf46a477b0d\",\"isMetric\":true,\"isTransposed\":false,\"width\":137.64499999999998}],\"layerId\":\"818639cb-15c7-4c35-80fc-011a57946d6c\",\"layerType\":\"data\"}},\"title\":\"\",\"type\":\"lens\",\"visualizationType\":\"lnsDatatable\"},\"description\":\"List of the 20 most recent diagnostic imports. The Origin Name may be the cluster, node, or platform, depending on the product the diagnostic was collected from.\",\"enhancements\":{\"dynamicActions\":{\"events\":[{\"action\":{\"config\":{\"openInNewTab\":false,\"useCurrentDateRange\":true,\"useCurrentFilters\":true},\"factoryId\":\"DASHBOARD_TO_DASHBOARD_DRILLDOWN\",\"name\":\"Elasticsearch Cluster Report\"},\"eventId\":\"33a5e962-94d4-4d7b-97bc-a33220ebbeed\",\"triggers\":[\"FILTER_TRIGGER\"]},{\"action\":{\"config\":{\"openInNewTab\":false,\"useCurrentDateRange\":true,\"useCurrentFilters\":false},\"factoryId\":\"DASHBOARD_TO_DASHBOARD_DRILLDOWN\",\"name\":\"Support Performance Triage\"},\"eventId\":\"f76cb059-7e1b-4eed-a647-3450bdbd6f24\",\"triggers\":[\"FILTER_TRIGGER\"]}]}},\"filters\":[],\"query\":{\"language\":\"kuery\",\"query\":\"\"},\"syncColors\":false,\"syncCursor\":true,\"syncTooltips\":false,\"title\":\"Diagnostic Report List\"},\"gridData\":{\"h\":31,\"i\":\"6dc50974-d309-4609-95a5-2ed72d239be4\",\"w\":48,\"x\":0,\"y\":0},\"panelIndex\":\"6dc50974-d309-4609-95a5-2ed72d239be4\",\"type\":\"lens\"}]",
+    "timeRestore": false,
+    "title": "Diagnostic List",
+    "version": 3
+  },
+  "coreMigrationVersion": "8.8.0",
+  "id": "diagnostic-list",
+  "managed": true,
+  "references": [
+    {
+      "id": "5e05b9ee-3e49-4efd-8a16-94de208ebb83",
+      "name": "tag-ref-5e05b9ee-3e49-4efd-8a16-94de208ebb83",
+      "type": "tag"
+    },
+    {
+      "id": "8228e4fe-7cfb-4bba-9123-70608082c624",
+      "name": "tag-ref-8228e4fe-7cfb-4bba-9123-70608082c624",
+      "type": "tag"
+    },
+    {
+      "id": "9ae2615e-1d78-42ba-9e84-99290fd5e6be",
+      "name": "tag-ref-9ae2615e-1d78-42ba-9e84-99290fd5e6be",
+      "type": "tag"
+    },
+    {
+      "id": "b210de37-7ebf-4ced-9a28-13c1620db46c",
+      "name": "tag-ref-b210de37-7ebf-4ced-9a28-13c1620db46c",
+      "type": "tag"
+    },
+    {
+      "id": "a738e381-1538-4fb5-a7c1-eebbdff4623b",
+      "name": "6dc50974-d309-4609-95a5-2ed72d239be4:indexpattern-datasource-layer-818639cb-15c7-4c35-80fc-011a57946d6c",
+      "type": "index-pattern"
+    },
+    {
+      "id": "elasticsearch-cluster-report",
+      "name": "6dc50974-d309-4609-95a5-2ed72d239be4:drilldown:DASHBOARD_TO_DASHBOARD_DRILLDOWN:33a5e962-94d4-4d7b-97bc-a33220ebbeed:dashboardId",
+      "type": "dashboard"
+    },
+    {
+      "id": "support-performance-triage",
+      "name": "6dc50974-d309-4609-95a5-2ed72d239be4:drilldown:DASHBOARD_TO_DASHBOARD_DRILLDOWN:f76cb059-7e1b-4eed-a647-3450bdbd6f24:dashboardId",
+      "type": "dashboard"
+    },
+    {
+      "id": "a738e381-1538-4fb5-a7c1-eebbdff4623b",
+      "name": "controlGroup_947098f6-3bde-4920-a767-2d83e1f3037d:optionsListDataView",
+      "type": "index-pattern"
+    },
+    {
+      "id": "a738e381-1538-4fb5-a7c1-eebbdff4623b",
+      "name": "controlGroup_f62d4ef8-d9e6-4f9f-b3a9-000abd0b75f3:optionsListDataView",
+      "type": "index-pattern"
+    },
+    {
+      "id": "a738e381-1538-4fb5-a7c1-eebbdff4623b",
+      "name": "controlGroup_613f8b02-2ce5-4c2c-a1cf-1c91d94974c4:optionsListDataView",
+      "type": "index-pattern"
+    }
+  ],
+  "type": "dashboard",
+  "typeMigrationVersion": "10.3.0"
+}

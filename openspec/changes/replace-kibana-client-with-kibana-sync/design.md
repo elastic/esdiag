@@ -12,12 +12,12 @@ The published `kibana-sync` crate now owns the same low-level Kibana client conc
 - Keep ESDiag's `Receiver` trait boundary stable so collection orchestration and processor type-state flows do not need structural changes.
 - Preserve Kibana collection output, manifest metadata, request retry behavior, response timing, response size accounting, and error status/body reporting.
 - Preserve saved host conversion and existing CLI/Web UI behavior for Kibana connection tests and collection jobs.
-- Establish the base client dependency that a follow-up bundled Kibana assets change can use for `kibana-sync` saved object, space, agent, tool, and workflow support.
+- Establish the base client dependency and use the `kibana-sync` filesystem bundle structure for ESDiag's bundled Kibana assets.
 
 **Non-Goals:**
 
 - Rewriting source catalog resolution, diagnostic type selection, pagination planning, or archive layout.
-- Expanding bundled Kibana assets in this change; that work is explicitly planned as a separate follow-up.
+- Adding a new user-facing Kibana sync command surface.
 - Adding new CLI flags, Web UI controls, or user-facing Kibana sync workflows.
 - Replacing Elasticsearch, Logstash, Elastic Cloud, or upload clients.
 - Depending on external binaries or runtime services beyond the existing Kibana target.
@@ -64,13 +64,13 @@ Transport failures from `kibana-sync` should be mapped so `should_retry_kibana_e
 
 **Alternative considered:** Use `kibana_sync::Error::ApiResponse` for all non-success handling. That loses ESDiag's response timing and size accounting unless wrapped again, so it does not simplify the collection path.
 
-### 5. Pin the dependency first, then expand bundled Kibana assets separately
+### 5. Convert bundled Kibana assets to a generated bundle
 
-Add `kibana-sync = "0.1.0"` to `Cargo.toml` and migrate only the thin-client responsibilities in this change.
+Store `assets/kibana` in the `kibana-sync` filesystem bundle layout, including root `spaces.yml`, per-space manifests, a full ESDiag space definition, and per-object JSON files. During build, create a single `kibana-assets.zip` from that directory and embed the generated bundle, while excluding the raw `kibana/**` files from the generic embedded assets tree.
 
-**Rationale:** The crate was just published, and the immediate goal is reducing duplicated client code. ESDiag will adopt the higher-level saved object, space, agent, tool, and workflow APIs for bundled Kibana assets in a follow-up change after the base dependency is proven in ESDiag's compatibility tests.
+**Rationale:** The repository should keep Kibana assets in a structure that can grow with `kibana-sync` support for saved objects, agents, tools, and workflows, but release binaries should not pay for embedding every split object file as a separate asset. Setup can reconstruct the Kibana saved-object import payload from the bundle while preserving the existing `esdiag setup` user behavior.
 
-**Alternative considered:** Immediately replace ESDiag's saved-object asset setup and all future Kibana workflows with `kibana-sync` modules. That would mix a client refactor with product behavior changes.
+**Alternative considered:** Keep the old flat `dashboards.ndjson` and `assets.yml` files for setup. That would preserve the current implementation shape but would not exercise the new `kibana-sync` bundle layout.
 
 ### 6. Preserve ESDiag's existing Kibana concurrency limit
 
@@ -100,4 +100,4 @@ Keep ESDiag's current Kibana collection concurrency behavior and pass the same l
 
 ## Follow-up Direction
 
-- Create a separate OpenSpec change to expand ESDiag's bundled Kibana assets across the higher-level resource types supported by `kibana-sync`: saved objects, spaces, agents, tools, and workflows.
+- Expand the populated bundled assets over time across the higher-level resource types supported by `kibana-sync`: agents, tools, and workflows.

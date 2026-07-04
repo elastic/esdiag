@@ -1,6 +1,10 @@
 use std::env;
-use std::path::Path;
+use std::fs::File;
+use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
 use std::process::Command;
+use zip::CompressionMethod;
+use zip::write::SimpleFileOptions;
 
 #[cfg(feature = "desktop")]
 use std::fs;
@@ -12,6 +16,8 @@ fn main() {
     println!("cargo:rerun-if-changed=about.hbs");
     println!("cargo:rerun-if-env-changed=ESDIAG_GENERATE_NOTICE");
     println!("cargo:rerun-if-env-changed=ESDIAG_GENERATE_SBOM");
+
+    build_kibana_assets_bundle();
 
     let notice_path = Path::new("NOTICE.txt");
     let sbom_path = Path::new("esdiag.spdx.json");
@@ -98,6 +104,52 @@ fn main() {
                 .codegen(tauri_build::CodegenContext::new().config_path("tauri.conf.json")),
         )
         .expect("failed to build desktop Tauri context");
+    }
+}
+
+fn build_kibana_assets_bundle() {
+    let out_dir = env::var("OUT_DIR").expect("missing OUT_DIR");
+    let output_path = Path::new(&out_dir).join("kibana-assets.zip");
+    let mut output = File::create(&output_path).expect("failed to create Kibana assets bundle");
+    let mut zip = zip::ZipWriter::new(&mut output);
+    let options = SimpleFileOptions::default()
+        .compression_method(CompressionMethod::Deflated)
+        .unix_permissions(0o644);
+
+    let assets_root = Path::new("assets");
+    let kibana_root = assets_root.join("kibana");
+    let mut files = Vec::new();
+    collect_files(&kibana_root, &mut files);
+    files.sort();
+
+    for path in files {
+        let relative_path = path
+            .strip_prefix(assets_root)
+            .expect("Kibana asset should be under assets directory");
+        let archive_path = relative_path.to_string_lossy().replace('\\', "/");
+
+        zip.start_file(archive_path, options)
+            .expect("failed to start Kibana assets bundle entry");
+
+        let mut file = File::open(&path).expect("failed to open Kibana asset");
+        let mut contents = Vec::new();
+        file.read_to_end(&mut contents).expect("failed to read Kibana asset");
+        zip.write_all(&contents)
+            .expect("failed to write Kibana asset to bundle");
+    }
+
+    zip.finish().expect("failed to finish Kibana assets bundle");
+}
+
+fn collect_files(path: &Path, files: &mut Vec<PathBuf>) {
+    for entry in std::fs::read_dir(path).expect("failed to read Kibana asset directory") {
+        let entry = entry.expect("failed to read Kibana asset directory entry");
+        let path = entry.path();
+        if path.is_dir() {
+            collect_files(&path, files);
+        } else {
+            files.push(path);
+        }
     }
 }
 

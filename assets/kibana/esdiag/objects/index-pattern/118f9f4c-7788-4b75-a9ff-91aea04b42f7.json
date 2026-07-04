@@ -1,0 +1,19 @@
+{
+  "attributes": {
+    "allowHidden": false,
+    "fieldAttrs": "{}",
+    "fieldFormatMap": "{}",
+    "fields": "[]",
+    "name": "Logstash Node Settings",
+    "runtimeFieldMap": "{}",
+    "sourceFilters": "[]",
+    "timeFieldName": "@timestamp",
+    "title": "settings-logstash.node-esdiag"
+  },
+  "coreMigrationVersion": "8.8.0",
+  "id": "118f9f4c-7788-4b75-a9ff-91aea04b42f7",
+  "managed": true,
+  "references": [],
+  "type": "index-pattern",
+  "typeMigrationVersion": "8.0.0"
+}

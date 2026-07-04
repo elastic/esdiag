@@ -107,7 +107,7 @@ impl KibanaCollector {
 
             let mut api_stream = stream::iter(apis)
                 .map(|api| async move { self.save_api_with_retry(&api).await })
-                .buffer_unordered(5);
+                .buffer_unordered(crate::client::KIBANA_REQUEST_CONCURRENCY);
 
             let mut requested_apis = BTreeMap::new();
             while let Some(res) = api_stream.next().await {
@@ -522,7 +522,18 @@ fn should_retry_kibana_error(error: &eyre::Report) -> bool {
     if let Some(request_error) = error.downcast_ref::<reqwest::Error>() {
         return is_retryable_reqwest_error(request_error);
     }
+    if let Some(kibana_sync_error) = error.downcast_ref::<kibana_sync::Error>() {
+        return is_retryable_kibana_sync_error(kibana_sync_error);
+    }
     false
+}
+
+fn is_retryable_kibana_sync_error(error: &kibana_sync::Error) -> bool {
+    match error {
+        kibana_sync::Error::Transport(request_error) => is_retryable_reqwest_error(request_error),
+        kibana_sync::Error::Context { source, .. } => is_retryable_kibana_sync_error(source),
+        _ => false,
+    }
 }
 
 fn is_retryable_reqwest_error(error: &reqwest::Error) -> bool {
@@ -658,6 +669,24 @@ mod tests {
         assert!(should_retry_kibana_error(&request_timeout));
         assert!(should_retry_kibana_error(&rate_limit));
         assert!(should_retry_kibana_error(&server_error));
+    }
+
+    #[tokio::test]
+    async fn retry_policy_retries_kibana_sync_transport_errors() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("listener");
+        let url = format!("http://{}", listener.local_addr().expect("addr"));
+        drop(listener);
+        let error = reqwest::Client::builder()
+            .timeout(Duration::from_millis(1))
+            .build()
+            .unwrap()
+            .get(url)
+            .send()
+            .await
+            .expect_err("request should fail");
+        let sync_error = eyre::Report::from(kibana_sync::Error::Transport(error));
+
+        assert!(should_retry_kibana_error(&sync_error));
     }
 
     #[test]

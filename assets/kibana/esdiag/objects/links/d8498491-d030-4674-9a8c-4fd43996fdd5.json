@@ -1,0 +1,82 @@
+{
+  "attributes": {
+    "description": "Navigation links for Elasticsearch ingest overview dashboards",
+    "layout": "horizontal",
+    "links": [
+      {
+        "destinationRefName": "link_4e12df83-4503-49fd-baa7-a9e887b4f9e1_dashboard",
+        "id": "4e12df83-4503-49fd-baa7-a9e887b4f9e1",
+        "label": "Ingest Nodes",
+        "options": {
+          "openInNewTab": false,
+          "useCurrentDateRange": true,
+          "useCurrentFilters": false
+        },
+        "order": 0,
+        "type": "dashboardLink"
+      },
+      {
+        "destinationRefName": "link_86e4c4bc-3ca0-43ca-bc4c-26d474d2f9bf_dashboard",
+        "id": "86e4c4bc-3ca0-43ca-bc4c-26d474d2f9bf",
+        "label": "Ingest Pipelines",
+        "options": {
+          "openInNewTab": false,
+          "useCurrentDateRange": true,
+          "useCurrentFilters": false
+        },
+        "order": 1,
+        "type": "dashboardLink"
+      },
+      {
+        "destinationRefName": "link_04011c03-b603-4e08-8f13-698478068e52_dashboard",
+        "id": "04011c03-b603-4e08-8f13-698478068e52",
+        "options": {
+          "openInNewTab": false,
+          "useCurrentDateRange": true,
+          "useCurrentFilters": false
+        },
+        "order": 2,
+        "type": "dashboardLink"
+      },
+      {
+        "destinationRefName": "link_e9ddfae5-afce-4016-80fe-455137b79bf5_dashboard",
+        "id": "e9ddfae5-afce-4016-80fe-455137b79bf5",
+        "label": "Bulk Tasks",
+        "options": {
+          "openInNewTab": false,
+          "useCurrentDateRange": true,
+          "useCurrentFilters": false
+        },
+        "order": 3,
+        "type": "dashboardLink"
+      }
+    ],
+    "title": "Ingest Overviews"
+  },
+  "coreMigrationVersion": "8.8.0",
+  "id": "d8498491-d030-4674-9a8c-4fd43996fdd5",
+  "managed": true,
+  "references": [
+    {
+      "id": "ingest-nodes-overview",
+      "name": "link_4e12df83-4503-49fd-baa7-a9e887b4f9e1_dashboard",
+      "type": "dashboard"
+    },
+    {
+      "id": "ingest-pipelines-overview",
+      "name": "link_86e4c4bc-3ca0-43ca-bc4c-26d474d2f9bf_dashboard",
+      "type": "dashboard"
+    },
+    {
+      "id": "shard-indexing-hotspots",
+      "name": "link_04011c03-b603-4e08-8f13-698478068e52_dashboard",
+      "type": "dashboard"
+    },
+    {
+      "id": "bulk-tasks-overview",
+      "name": "link_e9ddfae5-afce-4016-80fe-455137b79bf5_dashboard",
+      "type": "dashboard"
+    }
+  ],
+  "type": "links"
+}

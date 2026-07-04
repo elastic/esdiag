@@ -1,0 +1,158 @@
+{
+  "attributes": {
+    "columns": [
+      "diagnostic.id",
+      "index.name",
+      "shard",
+      "ilm.phase",
+      "node.tier",
+      "index.age",
+      "store.size"
+    ],
+    "description": "Any shards allocated to a node where the tier does not match the current ILM phase.",
+    "grid": {
+      "columns": {
+        "diagnostic.id": {
+          "width": 303
+        },
+        "event.ingested": {
+          "width": 242
+        },
+        "ilm.phase": {
+          "width": 96
+        },
+        "index.age": {
+          "width": 124
+        },
+        "index.codec": {
+          "width": 143
+        },
+        "index.creation_date": {
+          "width": 255
+        },
+        "index.mode": {
+          "width": 118
+        },
+        "index.name": {
+          "width": 667
+        },
+        "index.source": {
+          "width": 138
+        },
+        "index.store.config": {
+          "width": 282
+        },
+        "node.tier": {
+          "width": 93
+        },
+        "shard.number": {}
+      }
+    },
+    "hideChart": true,
+    "isTextBasedQuery": true,
+    "kibanaSavedObjectMeta": {
+      "searchSourceJSON": "{\"filter\":[{\"$state\":{\"store\":\"globalState\"},\"meta\":{\"alias\":null,\"disabled\":false,\"field\":\"diagnostic.id\",\"indexRefName\":\"kibanaSavedObjectMeta.searchSourceJSON.filter[0].meta.index\",\"key\":\"diagnostic.id\",\"negate\":false,\"params\":{\"query\":\"elasticsearch-aws-prod@2025-02-10~b94e\"},\"type\":\"phrase\"},\"query\":{\"match_phrase\":{\"diagnostic.id\":\"elasticsearch-aws-prod@2025-02-10~b94e\"}}}],\"index\":{\"allowHidden\":false,\"allowNoIndex\":false,\"fieldFormats\":{},\"id\":\"96e1e8a9834447a3fd183fffb27106f0ee7c1421d916242a4b93b69bc2441f56\",\"name\":\"metrics-shard-esdiag*\",\"runtimeFieldMap\":{},\"sourceFilters\":[],\"timeFieldName\":\"@timestamp\",\"title\":\"metrics-shard-esdiag*\",\"type\":\"esql\"},\"query\":{\"esql\":\"FROM metrics-shard-esdiag* \\n| KEEP index.name, shard.number, index.ilm.phase, node.tier, shard.store.total_data_set_size_in_bytes, index.age, diagnostic.id\\n| WHERE index.ilm.phase IS NOT NULL\\n| WHERE index.age > 0\\n| WHERE index.ilm.phase != node.tier\\n| SORT index.age DESC\\n| RENAME shard.number AS shard, shard.store.total_data_set_size_in_bytes AS store.size, index.ilm.phase AS ilm.phase\\n| LIMIT 100\\n\"}}"
+    },
+    "rowHeight": 0,
+    "sort": [
+      [
+        "index.age",
+        "desc"
+      ]
+    ],
+    "tabs": [
+      {
+        "attributes": {
+          "columns": [
+            "diagnostic.id",
+            "index.name",
+            "shard",
+            "ilm.phase",
+            "node.tier",
+            "index.age",
+            "store.size"
+          ],
+          "grid": {
+            "columns": {
+              "diagnostic.id": {
+                "width": 303
+              },
+              "event.ingested": {
+                "width": 242
+              },
+              "ilm.phase": {
+                "width": 96
+              },
+              "index.age": {
+                "width": 124
+              },
+              "index.codec": {
+                "width": 143
+              },
+              "index.creation_date": {
+                "width": 255
+              },
+              "index.mode": {
+                "width": 118
+              },
+              "index.name": {
+                "width": 667
+              },
+              "index.source": {
+                "width": 138
+              },
+              "index.store.config": {
+                "width": 282
+              },
+              "node.tier": {
+                "width": 93
+              },
+              "shard.number": {}
+            }
+          },
+          "hideChart": true,
+          "isTextBasedQuery": true,
+          "kibanaSavedObjectMeta": {
+            "searchSourceJSON": "{\"filter\":[{\"$state\":{\"store\":\"globalState\"},\"meta\":{\"alias\":null,\"disabled\":false,\"field\":\"diagnostic.id\",\"indexRefName\":\"kibanaSavedObjectMeta.searchSourceJSON.filter[0].meta.index\",\"key\":\"diagnostic.id\",\"negate\":false,\"params\":{\"query\":\"elasticsearch-aws-prod@2025-02-10~b94e\"},\"type\":\"phrase\"},\"query\":{\"match_phrase\":{\"diagnostic.id\":\"elasticsearch-aws-prod@2025-02-10~b94e\"}}}],\"index\":{\"allowHidden\":false,\"allowNoIndex\":false,\"fieldFormats\":{},\"id\":\"96e1e8a9834447a3fd183fffb27106f0ee7c1421d916242a4b93b69bc2441f56\",\"name\":\"metrics-shard-esdiag*\",\"runtimeFieldMap\":{},\"sourceFilters\":[],\"timeFieldName\":\"@timestamp\",\"title\":\"metrics-shard-esdiag*\",\"type\":\"esql\"},\"query\":{\"esql\":\"FROM metrics-shard-esdiag* \\n| KEEP index.name, shard.number, index.ilm.phase, node.tier, shard.store.total_data_set_size_in_bytes, index.age, diagnostic.id\\n| WHERE index.ilm.phase IS NOT NULL\\n| WHERE index.age > 0\\n| WHERE index.ilm.phase != node.tier\\n| SORT index.age DESC\\n| RENAME shard.number AS shard, shard.store.total_data_set_size_in_bytes AS store.size, index.ilm.phase AS ilm.phase\\n| LIMIT 100\\n\"}}"
+          },
+          "rowHeight": 0,
+          "sort": [
+            [
+              "index.age",
+              "desc"
+            ]
+          ],
+          "timeRestore": false,
+          "visContext": {}
+        },
+        "id": "98dbc452-0409-4751-9fdc-7e7e2f87de87",
+        "label": "Untitled"
+      }
+    ],
+    "timeRestore": false,
+    "title": "ESQL Out-of-Phase Shards",
+    "visContext": {}
+  },
+  "coreMigrationVersion": "8.8.0",
+  "id": "0ca20654-0921-465a-a962-7e1d2d925231",
+  "managed": true,
+  "references": [
+    {
+      "id": "590e8f4c-4fe2-4794-9007-29de4d07e489",
+      "name": "kibanaSavedObjectMeta.searchSourceJSON.filter[0].meta.index",
+      "type": "index-pattern"
+    },
+    {
+      "id": "5e05b9ee-3e49-4efd-8a16-94de208ebb83",
+      "name": "tag-ref-5e05b9ee-3e49-4efd-8a16-94de208ebb83",
+      "type": "tag"
+    },
+    {
+      "id": "b210de37-7ebf-4ced-9a28-13c1620db46c",
+      "name": "tag-ref-b210de37-7ebf-4ced-9a28-13c1620db46c",
+      "type": "tag"
+    }
+  ],
+  "type": "search",
+  "typeMigrationVersion": "10.9.0"
+}

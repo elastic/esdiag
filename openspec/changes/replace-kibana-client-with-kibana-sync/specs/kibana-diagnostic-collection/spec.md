@@ -44,3 +44,26 @@ The system SHALL execute Kibana diagnostic collection HTTP requests through the 
 - **WHEN** the request is executed through the `kibana-sync` client
 - **THEN** the payload is sent using Kibana-compatible multipart upload semantics
 - **AND** callers do not need to reimplement multipart request construction in ESDiag
+
+### Requirement: Bundled Kibana asset setup
+The system SHALL store bundled Kibana setup assets in the `kibana-sync` filesystem bundle layout and SHALL embed those assets into release binaries as a single generated bundle artifact.
+
+#### Scenario: Kibana assets use the bundle directory layout
+- **GIVEN** ESDiag's bundled Kibana assets
+- **WHEN** the assets are read with `kibana-sync` filesystem bundle support
+- **THEN** the bundle contains the `esdiag` space definition and saved-object manifest
+- **AND** all manifest-listed saved objects are available as per-object JSON resources under the `esdiag` space
+- **AND** empty agents, tools, and workflows manifests are present for future supported asset families
+
+#### Scenario: Release binaries embed the generated Kibana bundle
+- **GIVEN** ESDiag is built with bundled assets
+- **WHEN** the build script prepares Kibana assets
+- **THEN** it creates one generated Kibana asset bundle from `assets/kibana`
+- **AND** the generic embedded assets tree excludes raw `kibana/**` files
+- **AND** setup reads Kibana manifests and object files from the generated bundle
+
+#### Scenario: Kibana setup imports bundled assets
+- **GIVEN** Elasticsearch and Kibana are reachable by `esdiag setup`
+- **WHEN** setup runs for Kibana assets
+- **THEN** ESDiag creates the `esdiag` Kibana space using the bundled space definition
+- **AND** imports all bundled saved objects into that space through Kibana's saved-object import API

@@ -29,6 +29,7 @@ eyre = "0.6.12"
 futures = "0.3"
 indexmap = { version = "2.14.0", features = ["serde"] }
 json-patch = "4.2"
+kibana-sync = "0.2.0"
 mimalloc = "0.1.52"
 tracing = "0.1"
 tracing-log = "0.2"
@@ -40,7 +41,7 @@ rayon = "1.12"
 regex = "1.12"
 reqwest = { version = "0.12.28", features = ["json", "blocking", "multipart"] }
 rpassword = "7.5.4"
-rust-embed = { version = "8.11.0", features = ["compression"] }
+rust-embed = { version = "8.11.0", features = ["compression", "include-exclude"] }
 semver = { version = "1.0.28", features = ["serde"] }
 serde = { version = "1.0.228", features = ["derive", "rc"] }
 serde_json = { version = "1.0.150", features = ["float_roundtrip", "raw_value"] }
@@ -85,3 +86,4 @@ tempfile = "3.27.0"
 flate2 = { version = "1.1", default-features = false, features = ["rust_backend"] }
 tar = { version = "0.4.46", default-features = false }
 tauri-build = { version = "2.6.2", features = ["codegen"], optional = true }
+zip = { version = "8.6.0", default-features = false, features = ["deflate-flate2"] }

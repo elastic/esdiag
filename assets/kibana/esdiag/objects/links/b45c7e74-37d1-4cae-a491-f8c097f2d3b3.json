@@ -1,0 +1,107 @@
+{
+  "attributes": {
+    "description": "Navigation links for Elasticsearch data overview dashboards",
+    "layout": "horizontal",
+    "links": [
+      {
+        "destinationRefName": "link_62922ad3-3099-4dec-a051-0195238eae70_dashboard",
+        "id": "62922ad3-3099-4dec-a051-0195238eae70",
+        "label": "Daily Indexing",
+        "options": {
+          "openInNewTab": false,
+          "useCurrentDateRange": true,
+          "useCurrentFilters": false
+        },
+        "order": 0,
+        "type": "dashboardLink"
+      },
+      {
+        "destinationRefName": "link_a83ba0e3-3a3c-450b-b300-c6373e793058_dashboard",
+        "id": "a83ba0e3-3a3c-450b-b300-c6373e793058",
+        "label": "Index Settings",
+        "options": {
+          "openInNewTab": false,
+          "useCurrentDateRange": true,
+          "useCurrentFilters": false
+        },
+        "order": 1,
+        "type": "dashboardLink"
+      },
+      {
+        "destinationRefName": "link_658c1457-8fce-44b4-98e7-d17757e6c330_dashboard",
+        "id": "658c1457-8fce-44b4-98e7-d17757e6c330",
+        "label": "Lifecycle",
+        "options": {
+          "openInNewTab": false,
+          "useCurrentDateRange": false,
+          "useCurrentFilters": false
+        },
+        "order": 2,
+        "type": "dashboardLink"
+      },
+      {
+        "destinationRefName": "link_064dd5a4-5865-4288-8402-c8cbc54d96d3_dashboard",
+        "id": "064dd5a4-5865-4288-8402-c8cbc54d96d3",
+        "label": "Shards Size",
+        "options": {
+          "openInNewTab": false,
+          "useCurrentDateRange": true,
+          "useCurrentFilters": false
+        },
+        "order": 3,
+        "type": "dashboardLink"
+      },
+      {
+        "destinationRefName": "link_6a17b984-ccff-4c68-b944-267360a87f7a_dashboard",
+        "id": "6a17b984-ccff-4c68-b944-267360a87f7a",
+        "label": "Index Ops",
+        "order": 4,
+        "type": "dashboardLink"
+      },
+      {
+        "destinationRefName": "link_52b070df-3d0f-4e25-a857-748b3bbc6008_dashboard",
+        "id": "52b070df-3d0f-4e25-a857-748b3bbc6008",
+        "label": "Datastream Ops",
+        "order": 5,
+        "type": "dashboardLink"
+      }
+    ],
+    "title": "Data Overviews"
+  },
+  "coreMigrationVersion": "8.8.0",
+  "id": "b45c7e74-37d1-4cae-a491-f8c097f2d3b3",
+  "managed": true,
+  "references": [
+    {
+      "id": "daily-indexing-overview",
+      "name": "link_62922ad3-3099-4dec-a051-0195238eae70_dashboard",
+      "type": "dashboard"
+    },
+    {
+      "id": "index-settings-overview",
+      "name": "link_a83ba0e3-3a3c-450b-b300-c6373e793058_dashboard",
+      "type": "dashboard"
+    },
+    {
+      "id": "lifecycle-overview",
+      "name": "link_658c1457-8fce-44b4-98e7-d17757e6c330_dashboard",
+      "type": "dashboard"
+    },
+    {
+      "id": "shards-size-overview",
+      "name": "link_064dd5a4-5865-4288-8402-c8cbc54d96d3_dashboard",
+      "type": "dashboard"
+    },
+    {
+      "id": "index-operations-overview",
+      "name": "link_6a17b984-ccff-4c68-b944-267360a87f7a_dashboard",
+      "type": "dashboard"
+    },
+    {
+      "id": "datastream-operations-overview",
+      "name": "link_52b070df-3d0f-4e25-a857-748b3bbc6008_dashboard",
+      "type": "dashboard"
+    }
+  ],
+  "type": "links"
+}

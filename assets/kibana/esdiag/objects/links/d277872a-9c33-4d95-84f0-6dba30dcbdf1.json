@@ -1,0 +1,110 @@
+{
+  "attributes": {
+    "description": "Navigation links for Elasticsearch report and summary dashboards",
+    "layout": "horizontal",
+    "links": [
+      {
+        "destinationRefName": "link_a165098e-1bc2-4900-a09c-044622f8ba2b_dashboard",
+        "id": "a165098e-1bc2-4900-a09c-044622f8ba2b",
+        "label": "Cluster Report",
+        "options": {
+          "openInNewTab": false,
+          "useCurrentDateRange": true,
+          "useCurrentFilters": false
+        },
+        "order": 0,
+        "type": "dashboardLink"
+      },
+      {
+        "destinationRefName": "link_52ee726e-21a5-468c-958a-595d98931e1b_dashboard",
+        "id": "52ee726e-21a5-468c-958a-595d98931e1b",
+        "label": "Data",
+        "options": {
+          "openInNewTab": false,
+          "useCurrentDateRange": true,
+          "useCurrentFilters": false
+        },
+        "order": 1,
+        "type": "dashboardLink"
+      },
+      {
+        "destinationRefName": "link_4c5dbbd3-b976-4c20-ba61-b74225c2e911_dashboard",
+        "id": "4c5dbbd3-b976-4c20-ba61-b74225c2e911",
+        "label": "Nodes",
+        "options": {
+          "openInNewTab": false,
+          "useCurrentDateRange": true,
+          "useCurrentFilters": false
+        },
+        "order": 2,
+        "type": "dashboardLink"
+      },
+      {
+        "destinationRefName": "link_b89b9f02-aebc-48e5-b79e-bbf60c1bc315_dashboard",
+        "id": "b89b9f02-aebc-48e5-b79e-bbf60c1bc315",
+        "label": "Ingest",
+        "options": {
+          "openInNewTab": false,
+          "useCurrentDateRange": true,
+          "useCurrentFilters": false
+        },
+        "order": 3,
+        "type": "dashboardLink"
+      },
+      {
+        "destinationRefName": "link_3f35e2ba-32a3-4976-b98e-358eb98c0ce0_dashboard",
+        "id": "3f35e2ba-32a3-4976-b98e-358eb98c0ce0",
+        "label": "Search",
+        "options": {
+          "openInNewTab": false,
+          "useCurrentDateRange": true,
+          "useCurrentFilters": false
+        },
+        "order": 4,
+        "type": "dashboardLink"
+      }
+    ],
+    "title": "Elasticsearch"
+  },
+  "coreMigrationVersion": "8.8.0",
+  "id": "d277872a-9c33-4d95-84f0-6dba30dcbdf1",
+  "managed": true,
+  "references": [
+    {
+      "id": "elasticsearch-cluster-report",
+      "name": "link_a165098e-1bc2-4900-a09c-044622f8ba2b_dashboard",
+      "type": "dashboard"
+    },
+    {
+      "id": "data-summary",
+      "name": "link_52ee726e-21a5-468c-958a-595d98931e1b_dashboard",
+      "type": "dashboard"
+    },
+    {
+      "id": "nodes-summary",
+      "name": "link_4c5dbbd3-b976-4c20-ba61-b74225c2e911_dashboard",
+      "type": "dashboard"
+    },
+    {
+      "id": "ingest-summary",
+      "name": "link_b89b9f02-aebc-48e5-b79e-bbf60c1bc315_dashboard",
+      "type": "dashboard"
+    },
+    {
+      "id": "search-summary",
+      "name": "link_3f35e2ba-32a3-4976-b98e-358eb98c0ce0_dashboard",
+      "type": "dashboard"
+    },
+    {
+      "id": "5e05b9ee-3e49-4efd-8a16-94de208ebb83",
+      "name": "tag-ref-5e05b9ee-3e49-4efd-8a16-94de208ebb83",
+      "type": "tag"
+    },
+    {
+      "id": "b210de37-7ebf-4ced-9a28-13c1620db46c",
+      "name": "tag-ref-b210de37-7ebf-4ced-9a28-13c1620db46c",
+      "type": "tag"
+    }
+  ],
+  "type": "links"
+}
