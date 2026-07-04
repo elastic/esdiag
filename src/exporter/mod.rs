@@ -117,18 +117,26 @@ impl Exporter {
 
             if accumulator.len() >= batch_size {
                 let batch = std::mem::replace(&mut accumulator, Vec::with_capacity(batch_size));
+                let doc_count = batch.len() as u32;
                 match self.tx(index.clone(), batch).await {
                     Ok(batch_rx) => batch_receivers.push(batch_rx),
-                    Err(err) => tracing::warn!("Failed to send document batch: {}", err),
+                    Err(err) => {
+                        tracing::warn!("Failed to send document batch: {}", err);
+                        summary.add_batch(BatchResponse::failed(doc_count, 0));
+                    }
                 }
             }
         }
 
         // Send final partial batch
         if !accumulator.is_empty() {
+            let doc_count = accumulator.len() as u32;
             match self.tx(index.clone(), accumulator).await {
                 Ok(batch_rx) => batch_receivers.push(batch_rx),
-                Err(err) => tracing::warn!("Failed to send final document batch: {}", err),
+                Err(err) => {
+                    tracing::warn!("Failed to send final document batch: {}", err);
+                    summary.add_batch(BatchResponse::failed(doc_count, 0));
+                }
             }
         }
 
@@ -150,16 +158,39 @@ impl Exporter {
         T: Serialize + Sized + Send + Sync,
     {
         if docs.is_empty() {
-            return Ok(crate::processor::BatchResponse {
-                docs: 0,
-                errors: 0,
-                retries: 0,
-                size: 0,
-                status_code: 200,
-                time: 0,
-            });
+            let mut response = crate::processor::BatchResponse::aggregate();
+            response.status_code = 200;
+            return Ok(response);
+        }
+        if matches!(self, Exporter::Archive(_)) {
+            return Err(eyre!("batch send not supported for archive exporter"));
         }
 
+        self.send_batch_with_failed_response(index, docs).await
+    }
+
+    async fn send_batch_with_failed_response<T>(
+        &self,
+        index: String,
+        docs: Vec<T>,
+    ) -> Result<crate::processor::BatchResponse>
+    where
+        T: Serialize + Sized + Send + Sync,
+    {
+        let doc_count = docs.len() as u32;
+        match self.send_batch(index, docs).await {
+            Ok(response) => Ok(response),
+            Err(err) => {
+                tracing::warn!("Failed to send document batch: {}", err);
+                Ok(BatchResponse::failed(doc_count, 0))
+            }
+        }
+    }
+
+    async fn send_batch<T>(&self, index: String, docs: Vec<T>) -> Result<crate::processor::BatchResponse>
+    where
+        T: Serialize + Sized + Send + Sync,
+    {
         match self {
             Exporter::Archive(_) => Err(eyre!("batch send not supported for archive exporter")),
             Exporter::Directory(exporter) => exporter.batch_send(index, docs).await,
@@ -445,7 +476,28 @@ mod tests {
 
         assert_eq!(response.docs, 0);
         assert_eq!(response.errors, 0);
+        assert_eq!(response.batch_count, 0);
         assert_eq!(response.status_code, 200);
+    }
+
+    #[tokio::test]
+    async fn document_channel_records_actual_failed_batch_count() {
+        let tmp = TempDir::new().expect("temp dir");
+        let exporter = Exporter::Archive(ArchiveExporter::zip(tmp.path().to_path_buf()).expect("archive exporter"));
+        let (tx, rx) = tokio::sync::mpsc::channel(4);
+        tx.send(serde_json::json!({"id": 1})).await.expect("send doc");
+        tx.send(serde_json::json!({"id": 2})).await.expect("send doc");
+        tx.send(serde_json::json!({"id": 3})).await.expect("send doc");
+        drop(tx);
+
+        let summary = exporter
+            .document_channel(rx, "metrics-node-esdiag".to_string(), 0)
+            .await;
+
+        let value = serde_json::to_value(summary).expect("summary json");
+        assert_eq!(value["docs"], 0);
+        assert_eq!(value["doc_errors"], 3);
+        assert_eq!(value["batch"]["count"], 3);
     }
 
     #[test]

@@ -12,12 +12,16 @@ pub struct NodeStats {
     jvm: JvmStats,
     process: ProcessStats,
     events: EventStats,
-    flow: HashMap<String, StatsHistory>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    flow: Option<HashMap<String, StatsHistory>>,
     #[serde(skip_serializing)]
     pipelines: Option<HashMap<String, PipelineStats>>,
-    reloads: ReloadStats,
-    os: OsStats,
-    queue: QueueStats,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reloads: Option<ReloadStats>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    os: Option<OsStats>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    queue: Option<QueueStats>,
 }
 
 impl NodeStats {
@@ -121,12 +125,17 @@ struct EventStats {
 #[derive(Deserialize, Serialize)]
 pub struct PipelineStats {
     r#events: EventStats,
-    flow: HashMap<String, StatsHistory>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    flow: Option<HashMap<String, StatsHistory>>,
     #[serde(skip_serializing)]
     plugins: Option<PipelinePlugins>,
-    reloads: PipelineReloadStats,
-    queue: PipelineQueueStats,
-    hash: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reloads: Option<PipelineReloadStats>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    queue: Option<PipelineQueueStats>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     ephemeral_id: Option<String>,
 }
 
@@ -138,18 +147,24 @@ impl PipelineStats {
 
 #[derive(Deserialize, Serialize)]
 pub struct PipelinePlugins {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub inputs: Vec<InputPlugin>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub codecs: Vec<CodecPlugin>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub filters: Vec<FilterPlugin>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub outputs: Vec<OutputPlugin>,
 }
 
 #[derive(Deserialize, Serialize)]
 pub struct InputPlugin {
     id: String,
-    flow: HashMap<String, StatsHistory>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    flow: Option<HashMap<String, StatsHistory>>,
     name: String,
     events: EventStats,
+    #[serde(skip_serializing_if = "Option::is_none")]
     address: Option<String>,
 }
 
@@ -170,7 +185,8 @@ struct CodecStats {
 #[derive(Deserialize, Serialize)]
 pub struct FilterPlugin {
     id: String,
-    flow: HashMap<String, StatsHistory>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    flow: Option<HashMap<String, StatsHistory>>,
     name: String,
     r#events: EventStats,
 }
@@ -188,10 +204,13 @@ struct StatsHistory {
 #[derive(Deserialize, Serialize)]
 pub struct OutputPlugin {
     id: String,
-    flow: HashMap<String, StatsHistory>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    flow: Option<HashMap<String, StatsHistory>>,
     name: String,
     r#events: EventStats,
+    #[serde(skip_serializing_if = "Option::is_none")]
     documents: Option<OutputDocumentsStats>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     bulk_requests: Option<OutputBulkRequestsStats>,
 }
 
@@ -219,13 +238,20 @@ struct PipelineReloadStats {
 
 #[derive(Deserialize, Serialize)]
 struct PipelineQueueStats {
-    r#type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    r#type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     capacity: Option<QueueCapacityStats>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     events: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     data: Option<QueueDataStats>,
-    events_count: usize,
-    queue_size_in_bytes: usize,
-    max_queue_size_in_bytes: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    events_count: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    queue_size_in_bytes: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_queue_size_in_bytes: Option<usize>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -283,7 +309,8 @@ struct CpuAcctStats {
 
 #[derive(Deserialize, Serialize)]
 struct QueueStats {
-    events_count: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    events_count: Option<usize>,
 }
 
 impl DataSource for NodeStats {

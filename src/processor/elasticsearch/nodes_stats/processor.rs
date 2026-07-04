@@ -275,7 +275,7 @@ impl StreamingDocumentExporter<Lookups, ElasticsearchMetadata> for NodesStats {
         );
 
         let (processors_tx, processors_rx) = mpsc::channel::<ingest_pipelines::IngestDoc>(BUFFER_SIZE);
-        let processors_data_stream = "metrics-ingest.processors-esdiag".to_string();
+        let processors_data_stream = "metrics-ingest.processor-esdiag".to_string();
         let processors_processor = tokio::spawn(exporter.clone().document_channel::<ingest_pipelines::IngestDoc>(
             processors_rx,
             processors_data_stream,
@@ -337,12 +337,12 @@ impl StreamingDocumentExporter<Lookups, ElasticsearchMetadata> for NodesStats {
         );
 
         summary.merge(nodes_stats_result.map_err(|err| eyre::Report::new(err)));
-        summary.merge(actions_result.map_err(|err| eyre::Report::new(err)));
-        summary.merge(http_clients_result.map_err(|err| eyre::Report::new(err)));
-        summary.merge(applier_result.map_err(|err| eyre::Report::new(err)));
-        summary.merge(adaptive_result.map_err(|err| eyre::Report::new(err)));
-        summary.merge(pipelines_result.map_err(|err| eyre::Report::new(err)));
-        summary.merge(processors_result.map_err(|err| eyre::Report::new(err)));
+        summary.add_child(actions_result.map_err(|err| eyre::Report::new(err)));
+        summary.add_child(http_clients_result.map_err(|err| eyre::Report::new(err)));
+        summary.add_child(applier_result.map_err(|err| eyre::Report::new(err)));
+        summary.add_child(adaptive_result.map_err(|err| eyre::Report::new(err)));
+        summary.add_child(pipelines_result.map_err(|err| eyre::Report::new(err)));
+        summary.add_child(processors_result.map_err(|err| eyre::Report::new(err)));
 
         summary
     }

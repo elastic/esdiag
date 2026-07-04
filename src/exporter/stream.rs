@@ -46,6 +46,7 @@ impl Export for StreamExporter {
         let start_time = tokio::time::Instant::now();
         let doc_count = docs.len() as u32;
         let mut batch = BatchResponse::new(doc_count);
+        batch.status_code = 200;
         tracing::debug!("{} wrote {} docs to stdout", index, doc_count);
         for doc in docs {
             serde_json::to_writer(std::io::stdout(), &doc)?;
@@ -63,6 +64,7 @@ impl Export for StreamExporter {
         T: Serialize + Sized + Send + Sync + 'static,
     {
         let (tx, rx) = oneshot::channel();
+        let doc_count = docs.len() as u32;
 
         // Stream exporter writes synchronously, so we just write and send the response
         match self.batch_send(index, docs).await {
@@ -71,7 +73,12 @@ impl Export for StreamExporter {
                     tracing::error!("Failed to send batch response");
                 }
             }
-            Err(e) => tracing::warn!("Stream write failed: {}", e),
+            Err(e) => {
+                tracing::warn!("Stream write failed: {}", e);
+                if tx.send(BatchResponse::failed(doc_count, 0)).is_err() {
+                    tracing::error!("Failed to send failed batch response");
+                }
+            }
         }
 
         Ok(rx)

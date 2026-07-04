@@ -47,6 +47,8 @@ published release notes, maintenance branches, and tagged history.
 
 ### Fixed
 
+- Fixed large Elasticsearch task exports and node-derived metrics ingestion so cluster sends are batched, child streams use their matching templates, and failed sends are recorded in diagnostic reports.
+- Fixed Logstash diagnostic processing across fixture versions and allowed Logstash sub-streams to ingest with their concrete data stream datasets (#338).
 - Fixed Elasticsearch node stats processing to preserve lookup-enriched node identity fields.
 - Fixed Elastic Cloud and GovCloud host normalization to use the documented `_main` single-resource reference.
 - Fixed Service Link curl parsing to remove single, double, and escaped quotes from pasted URLs and values (#326).

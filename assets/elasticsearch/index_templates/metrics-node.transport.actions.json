@@ -1,0 +1,50 @@
+{
+  "_meta": {
+    "description": "ESDiag Elasticsearch node transport action stats"
+  },
+  "index_patterns": ["metrics-node.transport.actions-esdiag*"],
+  "composed_of": [
+    "esdiag@mappings",
+    "esdiag@metadata",
+    "esdiag@settings",
+    "esdiag@node"
+  ],
+  "allow_auto_create": true,
+  "data_stream": {
+    "hidden": false,
+    "allow_custom_routing": false
+  },
+  "priority": 310,
+  "template": {
+    "mappings": {
+      "dynamic": true,
+      "properties": {
+        "data_stream": {
+          "type": "object",
+          "properties": {
+            "dataset": {
+              "type": "constant_keyword",
+              "value": "node.transport.actions"
+            },
+            "type": {
+              "type": "constant_keyword",
+              "value": "metrics"
+            }
+          }
+        },
+        "transport": {
+          "properties": {
+            "action": {
+              "properties": {
+                "name": {
+                  "type": "keyword"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "version": 2
+}

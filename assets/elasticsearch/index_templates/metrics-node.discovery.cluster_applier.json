@@ -1,0 +1,42 @@
+{
+  "_meta": {
+    "description": "ESDiag Elasticsearch node cluster applier stats"
+  },
+  "index_patterns": ["metrics-node.discovery.cluster_applier-esdiag*"],
+  "composed_of": [
+    "esdiag@mappings",
+    "esdiag@metadata",
+    "esdiag@settings",
+    "esdiag@node"
+  ],
+  "allow_auto_create": true,
+  "data_stream": {
+    "hidden": false,
+    "allow_custom_routing": false
+  },
+  "priority": 310,
+  "template": {
+    "mappings": {
+      "properties": {
+        "data_stream": {
+          "type": "object",
+          "properties": {
+            "dataset": {
+              "type": "constant_keyword",
+              "value": "node.discovery.cluster_applier"
+            },
+            "type": {
+              "type": "constant_keyword",
+              "value": "metrics"
+            }
+          }
+        },
+        "cluster_applier_stats": {
+          "type": "object",
+          "enabled": false
+        }
+      }
+    }
+  },
+  "version": 2
+}

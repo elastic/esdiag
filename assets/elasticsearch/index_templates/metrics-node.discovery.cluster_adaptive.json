@@ -1,39 +1,30 @@
 {
   "_meta": {
-    "description": "ESDiag Logstash node stats"
+    "description": "ESDiag Elasticsearch node adaptive selection stats"
   },
-  "index_patterns": ["metrics-logstash*-esdiag*"],
+  "index_patterns": ["metrics-node.discovery.cluster_adaptive-esdiag*"],
   "composed_of": [
-    "esdiag@ls-mappings",
-    "esdiag@ls-metadata",
-    "esdiag@settings"
+    "esdiag@mappings",
+    "esdiag@metadata",
+    "esdiag@settings",
+    "esdiag@node"
   ],
   "allow_auto_create": true,
   "data_stream": {
     "hidden": false,
     "allow_custom_routing": false
   },
-  "priority": 300,
+  "priority": 310,
   "template": {
     "mappings": {
-      "numeric_detection": false,
       "dynamic": true,
-      "dynamic_templates": [
-        {
-          "strings_as_keywords": {
-            "mapping": {
-              "type": "keyword"
-            },
-            "match_mapping_type": "string"
-          }
-        }
-      ],
       "properties": {
         "data_stream": {
           "type": "object",
           "properties": {
             "dataset": {
-              "type": "constant_keyword"
+              "type": "constant_keyword",
+              "value": "node.discovery.cluster_adaptive"
             },
             "type": {
               "type": "constant_keyword",
@@ -43,5 +34,6 @@
         }
       }
     }
-  }
+  },
+  "version": 2
 }
