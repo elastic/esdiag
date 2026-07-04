@@ -156,9 +156,6 @@ impl Exporter {
     where
         T: Serialize + Sized + Send + Sync,
     {
-        let bulk_size = crate::env::get_int("ESDIAG_ES_BULK_SIZE")
-            .unwrap_or(crate::env::ESDIAG_ES_BULK_SIZE)
-            .max(1);
         if docs.is_empty() {
             let mut response = crate::processor::BatchResponse::aggregate();
             response.status_code = 200;
@@ -168,32 +165,7 @@ impl Exporter {
             return Err(eyre!("batch send not supported for archive exporter"));
         }
 
-        if docs.len() <= bulk_size {
-            return self.send_batch_with_failed_response(index, docs).await;
-        }
-
-        let mut summary = crate::processor::BatchResponse::aggregate();
-        let mut batch = Vec::with_capacity(bulk_size);
-
-        for doc in docs {
-            let would_exceed_count = batch.len() >= bulk_size;
-
-            if would_exceed_count {
-                summary.merge(
-                    self.send_batch_with_failed_response(index.clone(), std::mem::take(&mut batch))
-                        .await?,
-                );
-                batch = Vec::with_capacity(bulk_size);
-            }
-
-            batch.push(doc);
-        }
-
-        if !batch.is_empty() {
-            summary.merge(self.send_batch_with_failed_response(index, batch).await?);
-        }
-
-        Ok(summary)
+        self.send_batch_with_failed_response(index, docs).await
     }
 
     async fn send_batch_with_failed_response<T>(
