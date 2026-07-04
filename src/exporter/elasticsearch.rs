@@ -272,8 +272,9 @@ impl Export for ElasticsearchExporter {
             .unwrap_or(crate::env::ESDIAG_ES_BULK_SIZE)
             .max(1);
         let bulk_bytes = elasticsearch_bulk_bytes_limit();
+        let batch_capacity = bulk_size.min(values.len());
         let mut batches = Vec::new();
-        let mut batch = Vec::with_capacity(bulk_size.min(values.len()));
+        let mut batch = Vec::with_capacity(batch_capacity);
         let mut batch_bytes = 0usize;
 
         for value in values {
@@ -286,7 +287,7 @@ impl Export for ElasticsearchExporter {
 
             if would_exceed_count || would_exceed_bytes {
                 batches.push(std::mem::take(&mut batch));
-                batch = Vec::with_capacity(bulk_size);
+                batch = Vec::with_capacity(batch_capacity);
                 batch_bytes = 0;
             }
 

@@ -117,11 +117,12 @@ impl Exporter {
 
             if accumulator.len() >= batch_size {
                 let batch = std::mem::replace(&mut accumulator, Vec::with_capacity(batch_size));
+                let doc_count = batch.len() as u32;
                 match self.tx(index.clone(), batch).await {
                     Ok(batch_rx) => batch_receivers.push(batch_rx),
                     Err(err) => {
                         tracing::warn!("Failed to send document batch: {}", err);
-                        summary.add_batch(BatchResponse::failed(batch_size as u32, 0));
+                        summary.add_batch(BatchResponse::failed(doc_count, 0));
                     }
                 }
             }
@@ -477,6 +478,26 @@ mod tests {
         assert_eq!(response.errors, 0);
         assert_eq!(response.batch_count, 0);
         assert_eq!(response.status_code, 200);
+    }
+
+    #[tokio::test]
+    async fn document_channel_records_actual_failed_batch_count() {
+        let tmp = TempDir::new().expect("temp dir");
+        let exporter = Exporter::Archive(ArchiveExporter::zip(tmp.path().to_path_buf()).expect("archive exporter"));
+        let (tx, rx) = tokio::sync::mpsc::channel(4);
+        tx.send(serde_json::json!({"id": 1})).await.expect("send doc");
+        tx.send(serde_json::json!({"id": 2})).await.expect("send doc");
+        tx.send(serde_json::json!({"id": 3})).await.expect("send doc");
+        drop(tx);
+
+        let summary = exporter
+            .document_channel(rx, "metrics-node-esdiag".to_string(), 0)
+            .await;
+
+        let value = serde_json::to_value(summary).expect("summary json");
+        assert_eq!(value["docs"], 0);
+        assert_eq!(value["doc_errors"], 3);
+        assert_eq!(value["batch"]["count"], 3);
     }
 
     #[test]
