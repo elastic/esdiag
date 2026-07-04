@@ -1,6 +1,6 @@
 use std::env;
 use std::fs::File;
-use std::io::{Read, Write};
+use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use zip::CompressionMethod;
@@ -139,10 +139,7 @@ fn build_kibana_assets_bundle() {
             .expect("failed to start Kibana assets bundle entry");
 
         let mut file = File::open(&path).expect("failed to open Kibana asset");
-        let mut contents = Vec::new();
-        file.read_to_end(&mut contents).expect("failed to read Kibana asset");
-        zip.write_all(&contents)
-            .expect("failed to write Kibana asset to bundle");
+        io::copy(&mut file, &mut zip).expect("failed to write Kibana asset to bundle");
     }
 
     zip.finish().expect("failed to finish Kibana assets bundle");
