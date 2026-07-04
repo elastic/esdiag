@@ -42,6 +42,7 @@ published release notes, maintenance branches, and tagged history.
 - Finalized explicit host lifecycle commands.
 - Improved saved host authentication persistence.
 - Improved agentic CLI summaries and viewer-aware Kibana links.
+- Changed Kibana collection and setup to use the shared `kibana-sync` client and bundled asset layout (#341).
 
 ### Fixed
 
