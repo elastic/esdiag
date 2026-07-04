@@ -419,12 +419,12 @@ impl BatchResponse {
 
     pub fn merge(&mut self, other: Self) {
         let was_empty = self.batch_count == 0;
-        self.batch_count += other.batch_count;
-        self.docs += other.docs;
-        self.errors += other.errors;
-        self.retries += other.retries;
-        self.size += other.size;
-        self.time += other.time;
+        self.batch_count = self.batch_count.saturating_add(other.batch_count);
+        self.docs = self.docs.saturating_add(other.docs);
+        self.errors = self.errors.saturating_add(other.errors);
+        self.retries = self.retries.saturating_add(other.retries);
+        self.size = self.size.saturating_add(other.size);
+        self.time = self.time.saturating_add(other.time);
         self.status_code = match (self.status_code, other.status_code) {
             (0, status) if was_empty => status,
             (status, 0) if other.errors == 0 => status,
@@ -439,7 +439,7 @@ impl BatchResponse {
             if other.batch_count > 0 {
                 self.status_counts
                     .entry(other.status_code)
-                    .and_modify(|count| *count += other.batch_count)
+                    .and_modify(|count| *count = count.saturating_add(other.batch_count))
                     .or_insert(other.batch_count);
             }
             return;
@@ -448,7 +448,7 @@ impl BatchResponse {
         for (status, count) in &other.status_counts {
             self.status_counts
                 .entry(*status)
-                .and_modify(|existing| *existing += count)
+                .and_modify(|existing| *existing = existing.saturating_add(*count))
                 .or_insert(*count);
         }
     }
@@ -488,8 +488,8 @@ impl ProcessorSummary {
         match other {
             Ok(other) => {
                 self.batch.merge(other.batch);
-                self.docs += other.docs;
-                self.doc_errors += other.doc_errors;
+                self.docs = self.docs.saturating_add(other.docs);
+                self.doc_errors = self.doc_errors.saturating_add(other.doc_errors);
             }
             Err(err) => {
                 tracing::warn!("processor summary was err: {}", err);
@@ -538,12 +538,12 @@ pub struct BatchStats {
 
 impl BatchStats {
     pub fn merge(&mut self, other: BatchStats) {
-        self.count += other.count;
-        self.retries += other.retries;
+        self.count = self.count.saturating_add(other.count);
+        self.retries = self.retries.saturating_add(other.retries);
         for (code, count) in other.status_codes {
             self.status_codes
                 .entry(code)
-                .and_modify(|c| *c += count)
+                .and_modify(|c| *c = c.saturating_add(count))
                 .or_insert(count);
         }
         self.responses.extend(other.responses);
@@ -591,25 +591,25 @@ impl ProcessorSummary {
             return;
         }
 
-        self.batch.count += batch.batch_count;
-        self.batch.retries += batch.retries;
+        self.batch.count = self.batch.count.saturating_add(batch.batch_count);
+        self.batch.retries = self.batch.retries.saturating_add(batch.retries);
         if batch.status_counts.is_empty() {
             self.batch
                 .status_codes
                 .entry(batch.status_code)
-                .and_modify(|count| *count += batch.batch_count)
+                .and_modify(|count| *count = count.saturating_add(batch.batch_count))
                 .or_insert(batch.batch_count);
         } else {
             for (status, count) in &batch.status_counts {
                 self.batch
                     .status_codes
                     .entry(*status)
-                    .and_modify(|existing| *existing += count)
+                    .and_modify(|existing| *existing = existing.saturating_add(*count))
                     .or_insert(*count);
             }
         }
-        self.docs += batch.docs;
-        self.doc_errors += batch.errors;
+        self.docs = self.docs.saturating_add(batch.docs);
+        self.doc_errors = self.doc_errors.saturating_add(batch.errors);
         self.batch.responses.push(batch);
     }
 
@@ -758,6 +758,60 @@ user: ada
         assert_eq!(value["batch"]["count"], 2);
         assert_eq!(value["batch"]["status_codes"]["200"], 2);
         assert_eq!(value["docs"], 5);
+    }
+
+    #[test]
+    fn batch_response_merge_saturates_summary_counters() {
+        let mut left = BatchResponse {
+            batch_count: u32::MAX,
+            status_counts: std::collections::HashMap::from([(200, u32::MAX)]),
+            docs: u32::MAX,
+            errors: u32::MAX,
+            retries: u16::MAX,
+            size: u32::MAX,
+            status_code: 200,
+            time: u32::MAX,
+        };
+        let mut right = BatchResponse::new(1);
+        right.errors = 1;
+        right.retries = 1;
+        right.size = 1;
+        right.status_code = 200;
+        right.time = 1;
+        right.status_counts.insert(200, 1);
+
+        left.merge(right);
+
+        assert_eq!(left.batch_count, u32::MAX);
+        assert_eq!(left.docs, u32::MAX);
+        assert_eq!(left.errors, u32::MAX);
+        assert_eq!(left.retries, u16::MAX);
+        assert_eq!(left.size, u32::MAX);
+        assert_eq!(left.time, u32::MAX);
+        assert_eq!(left.status_counts[&200], u32::MAX);
+    }
+
+    #[test]
+    fn processor_summary_add_batch_saturates_summary_counters() {
+        let mut summary = ProcessorSummary::new("metrics-task-esdiag".to_string());
+        summary.batch.count = u32::MAX;
+        summary.batch.retries = u16::MAX;
+        summary.batch.status_codes.insert(200, u32::MAX);
+        summary.docs = u32::MAX;
+        summary.doc_errors = u32::MAX;
+
+        let mut batch = BatchResponse::new(1);
+        batch.errors = 1;
+        batch.retries = 1;
+        batch.status_code = 200;
+
+        summary.add_batch(batch);
+
+        assert_eq!(summary.batch.count, u32::MAX);
+        assert_eq!(summary.batch.retries, u16::MAX);
+        assert_eq!(summary.batch.status_codes[&200], u32::MAX);
+        assert_eq!(summary.docs, u32::MAX);
+        assert_eq!(summary.doc_errors, u32::MAX);
     }
 
     #[test]
