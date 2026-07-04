@@ -162,6 +162,8 @@ impl Export for DirectoryExporter {
     {
         let (tx, rx) = oneshot::channel();
         let doc_count = docs.len() as u32;
+        let target_dir = self.path.display().to_string();
+        let index_for_error = index.clone();
 
         // File exporter writes synchronously, so we just write and send a simple response
         match self.batch_send(index, docs).await {
@@ -171,7 +173,12 @@ impl Export for DirectoryExporter {
                 }
             }
             Err(e) => {
-                tracing::warn!("File write failed: {}", e);
+                tracing::warn!(
+                    "Directory write failed for index {} in {}: {}",
+                    index_for_error,
+                    target_dir,
+                    e
+                );
                 if tx.send(BatchResponse::failed(doc_count, 0)).is_err() {
                     tracing::error!("Failed to send failed batch response");
                 }

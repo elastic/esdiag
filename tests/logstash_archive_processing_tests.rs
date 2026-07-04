@@ -5,9 +5,9 @@ use std::process::Command;
 use tempfile::{TempDir, tempdir};
 
 fn logstash_archive_fixtures() -> Vec<PathBuf> {
-    let archives_dir = Path::new("tests/archives");
+    let archives_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/archives");
     let mut archives = Vec::new();
-    for entry in fs::read_dir(archives_dir).expect("read tests/archives") {
+    for entry in fs::read_dir(&archives_dir).expect("read tests/archives") {
         let entry = entry.expect("archive dir entry");
         let path = entry.path();
         let filename = path.file_name().and_then(|f| f.to_str()).unwrap_or("");
