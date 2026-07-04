@@ -424,10 +424,10 @@ impl KibanaCollector {
 }
 
 fn request_metrics(error: &eyre::Report) -> (Option<u16>, u64, u64) {
-    if let Some(partial_error) = error.downcast_ref::<KibanaPartialCollectError>() {
+    if let Some(partial_error) = find_error_source::<KibanaPartialCollectError>(error) {
         return partial_error.metrics();
     }
-    if let Some(request_error) = error.downcast_ref::<KibanaRequestError>() {
+    if let Some(request_error) = find_error_source::<KibanaRequestError>(error) {
         return (
             Some(request_error.status.as_u16()),
             request_error.response_time_ms,
@@ -511,21 +511,25 @@ fn sanitize_segment(segment: &str) -> String {
 }
 
 fn should_retry_kibana_error(error: &eyre::Report) -> bool {
-    if let Some(partial_error) = error.downcast_ref::<KibanaPartialCollectError>() {
-        return should_retry_kibana_error(&partial_error.source);
-    }
-    if let Some(request_error) = error.downcast_ref::<KibanaRequestError>() {
+    if let Some(request_error) = find_error_source::<KibanaRequestError>(error) {
         return request_error.status.as_u16() == 408
             || request_error.status.as_u16() == 429
             || request_error.status.is_server_error();
     }
-    if let Some(request_error) = error.downcast_ref::<reqwest::Error>() {
+    if let Some(request_error) = find_error_source::<reqwest::Error>(error) {
         return is_retryable_reqwest_error(request_error);
     }
-    if let Some(kibana_sync_error) = error.downcast_ref::<kibana_sync::Error>() {
+    if let Some(kibana_sync_error) = find_error_source::<kibana_sync::Error>(error) {
         return is_retryable_kibana_sync_error(kibana_sync_error);
     }
     false
+}
+
+fn find_error_source<T>(error: &eyre::Report) -> Option<&T>
+where
+    T: std::error::Error + 'static,
+{
+    error.chain().find_map(|source| source.downcast_ref::<T>())
 }
 
 fn is_retryable_kibana_sync_error(error: &kibana_sync::Error) -> bool {
@@ -684,7 +688,8 @@ mod tests {
             .send()
             .await
             .expect_err("request should fail");
-        let sync_error = eyre::Report::from(kibana_sync::Error::Transport(error));
+        let sync_error =
+            eyre::Report::from(kibana_sync::Error::Transport(error)).wrap_err("Failed to send request");
 
         assert!(should_retry_kibana_error(&sync_error));
     }
