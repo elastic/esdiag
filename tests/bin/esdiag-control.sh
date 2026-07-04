@@ -15,7 +15,8 @@ declare tests_passed=0
 declare tests_failed=0
 declare tests_total=0
 declare test_log="target/test-esdiag-control.log"
-truncate -s 0 ${test_log}
+mkdir -p "$(dirname "${test_log}")"
+truncate -s 0 "${test_log}"
 
 # ----- Logging -----
 
@@ -87,6 +88,11 @@ function test_pass() {
 function esdiag_control() {
     local command=$1; shift
     "${esdiag_dir}/bin/esdiag-control" "${command}" --env .env.test "${@}" >> ${test_log} 2>&1
+}
+
+function esdiag_container_count() {
+    "$container" ps -a --format '{{.Names}}' \
+        | grep --extended-regexp --count '^(esdiag|esdiag-elasticsearch|esdiag-kibana)$' || true
 }
 
 # ----- Tests -----
@@ -201,9 +207,9 @@ function command_setup_completes_successfully() {
 
 function command_down_removes_containers {
     test_start "command_down_removes_containers"
-    before=$("$container" ps -a | grep --count esdiag)
+    before=$(esdiag_container_count)
     esdiag_control down
-    after=$("$container" ps -a | grep --count esdiag)
+    after=$(esdiag_container_count)
 
     log_debug "down remaining containers: $(white "${before}")"
     if [[ ${before} -gt 0 && ${after} -eq 0 ]]; then

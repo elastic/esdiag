@@ -560,7 +560,7 @@ function print_help_up () {
 }
 
 function compose_file_select() {
-    if [[ -f "${compose_file}" ]]; then
+    if [[ -f "${compose_file}" && "${regenerate_compose_file}" != "true" ]]; then
         log_debug "$(green found) compose file: $(gray "${compose_file}")"
     elif [[ "${security}" == "false" ]]; then
         log_debug "Using $(yellow insecure) compose file"
@@ -737,6 +737,22 @@ function esdiag_setup() {
         fi
     done
     log_info "$(green serving) $(magenta Kibana) at $(blue "${kibana_url}")"
+
+    local kibana_status_level=""
+    while [[ "${kibana_status_level}" != "available" ]]; do
+        local kibana_status_response
+        kibana_status_response=$(curl --silent \
+            --max-time 5 \
+            --header "${auth_header}" \
+            --header "elastic-api-version: 2023-10-31" \
+            "${kibana_url}/api/status")
+        kibana_status_level=$(echo "${kibana_status_response}" | jq --raw-output '.status.overall.level // empty')
+        if [[ "${kibana_status_level}" != "available" ]]; then
+            log_info "Waiting on $(magenta Kibana) status: $(yellow "${kibana_status_level:-unknown}")"
+            sleep 5
+        fi
+    done
+
     # Kibana's "ready" is overly optimistic and imports may fail, so give it another second
     sleep 1
 
@@ -745,10 +761,11 @@ function esdiag_setup() {
     local compose_status && compose_status=$(${container} inspect esdiag --format '{{.State.Status}}')
     if [[ "${compose_status}" == "running" ]]; then
         log_debug "$(green found) existing $(cyan esdiag) container"
-        ${container} compose --env-file "${env_file}" \
-            --file "${compose_file}" run --rm \
+        # shellcheck disable=SC2086
+        ${container} exec \
             --env ESDIAG_KIBANA_URL="http://esdiag-kibana:5601" \
-            esdiag-webui setup &> /dev/null
+            ${LOG_LEVEL:+--env LOG_LEVEL="${LOG_LEVEL}"} \
+            esdiag /usr/bin/esdiag setup &> /dev/null
     else
         ${container} run --rm --name="esdiag-setup" \
             --env ESDIAG_OUTPUT_URL="${elasticsearch_url}" \
@@ -944,6 +961,7 @@ case $command in
     "up" )
         if [[ $help == true ]]; then print_help_up && exit 0; fi
         declare compose_file="target/docker-compose.yml"
+        declare regenerate_compose_file=true
         compose_file_select
         log_info "$(white up) ${container} compose with $(gray "${compose_file}")"
         command_build && \
