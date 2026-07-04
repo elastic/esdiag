@@ -249,9 +249,10 @@ impl Export for ElasticsearchExporter {
         status_code == 200
     }
 
-    /// Sends a single batch of documents to Elasticsearch, retrying on HTTP 429
-    /// with exponential backoff. Serialises docs to Values upfront so the batch
-    /// can be resent without requiring `T: Clone`.
+    /// Sends documents to Elasticsearch, splitting into bulk sub-batches as needed
+    /// and retrying each sub-batch on HTTP 429 with exponential backoff.
+    /// Serialises docs to Values upfront so sub-batches can be resent without
+    /// requiring `T: Clone`.
     async fn batch_send<T>(&self, index: String, docs: Vec<T>) -> Result<BatchResponse>
     where
         T: Serialize + Sized + Send + Sync,

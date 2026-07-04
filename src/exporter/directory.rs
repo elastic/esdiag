@@ -166,7 +166,7 @@ impl Export for DirectoryExporter {
         let target_dir = self.path.display().to_string();
         let index_for_error = index.clone();
 
-        // File exporter writes synchronously, so we just write and send a simple response
+        // Directory exporter writes synchronously, so we just write and send a simple response.
         match self.batch_send(index, docs).await {
             Ok(batch_response) => {
                 if tx.send(batch_response).is_err() {
