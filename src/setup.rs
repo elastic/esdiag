@@ -507,4 +507,83 @@ mod tests {
         assert_eq!(first["type"], manifest.objects[0].object_type);
         assert_eq!(first["id"], manifest.objects[0].id);
     }
+
+    #[test]
+    fn kibana_saved_objects_have_valid_embedded_json_content() {
+        let embedded_assets = EmbeddedAssets::new().unwrap();
+        let ndjson = kibana_saved_objects_ndjson("esdiag", &embedded_assets).unwrap();
+
+        for line in ndjson.split(|byte| *byte == b'\n').filter(|line| !line.is_empty()) {
+            let object: Value = serde_json::from_slice(line).unwrap();
+            let label = saved_object_label(&object);
+            let attributes = object
+                .get("attributes")
+                .unwrap_or_else(|| panic!("{label} should have attributes"));
+
+            assert_json_string_fields_parse(&label, attributes);
+            assert_vega_spec_parses(&label, attributes);
+        }
+    }
+
+    #[test]
+    fn kibana_readme_dashboard_links_to_esdiag_issues() {
+        let embedded_assets = EmbeddedAssets::new().unwrap();
+        let path = Path::new("kibana/esdiag/objects/dashboard/esdiag-readme.json");
+        let contents = embedded_assets
+            .get_file(path)
+            .expect("readme dashboard should be embedded");
+        let object: Value = serde_json::from_slice(&contents).unwrap();
+        let panels_json = object["attributes"]["panelsJSON"].as_str().unwrap();
+
+        assert!(panels_json.contains("https://github.com/elastic/esdiag/issues"));
+        assert!(!panels_json.contains("https://github.com/elastic/issues)"));
+    }
+
+    fn saved_object_label(object: &Value) -> String {
+        format!(
+            "{}/{}",
+            object["type"].as_str().unwrap_or("<missing-type>"),
+            object["id"].as_str().unwrap_or("<missing-id>")
+        )
+    }
+
+    fn assert_json_string_fields_parse(label: &str, value: &Value) {
+        match value {
+            Value::Object(fields) => {
+                for (key, child) in fields {
+                    if let Some(text) = child.as_str()
+                        && (key == "visState" || key.ends_with("JSON"))
+                    {
+                        serde_json::from_str::<Value>(text)
+                            .unwrap_or_else(|err| panic!("{label}.{key} should parse as JSON: {err}"));
+                    }
+                    assert_json_string_fields_parse(label, child);
+                }
+            }
+            Value::Array(values) => {
+                for child in values {
+                    assert_json_string_fields_parse(label, child);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn assert_vega_spec_parses(label: &str, attributes: &Value) {
+        let Some(vis_state) = attributes.get("visState").and_then(Value::as_str) else {
+            return;
+        };
+        let vis_state: Value = serde_json::from_str(vis_state)
+            .unwrap_or_else(|err| panic!("{label}.visState should parse as JSON: {err}"));
+
+        if vis_state["type"].as_str() != Some("vega") {
+            return;
+        }
+
+        let spec = vis_state["params"]["spec"]
+            .as_str()
+            .unwrap_or_else(|| panic!("{label}.visState.params.spec should be a string"));
+        serde_json::from_str::<Value>(spec)
+            .unwrap_or_else(|err| panic!("{label}.visState.params.spec should parse as JSON: {err}"));
+    }
 }
