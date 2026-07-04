@@ -272,7 +272,7 @@ impl Export for ElasticsearchExporter {
             .unwrap_or(crate::env::ESDIAG_ES_BULK_SIZE)
             .max(1);
         let bulk_bytes = elasticsearch_bulk_bytes_limit();
-        let mut summary = BatchResponse::aggregate();
+        let mut batches = Vec::new();
         let mut batch = Vec::with_capacity(bulk_size.min(values.len()));
         let mut batch_bytes = 0usize;
 
@@ -285,7 +285,7 @@ impl Export for ElasticsearchExporter {
                 .is_some_and(|max_bytes| !batch.is_empty() && batch_bytes.saturating_add(doc_bytes) > max_bytes);
 
             if would_exceed_count || would_exceed_bytes {
-                summary.merge(self.send_value_batch(index.clone(), std::mem::take(&mut batch)).await?);
+                batches.push(std::mem::take(&mut batch));
                 batch = Vec::with_capacity(bulk_size);
                 batch_bytes = 0;
             }
@@ -295,7 +295,29 @@ impl Export for ElasticsearchExporter {
         }
 
         if !batch.is_empty() {
-            summary.merge(self.send_value_batch(index, batch).await?);
+            batches.push(batch);
+        }
+
+        let mut summary = BatchResponse::aggregate();
+        for batch_index in 0..batches.len() {
+            let batch_doc_count = batches[batch_index].len() as u32;
+            let batch = std::mem::take(&mut batches[batch_index]);
+            match self.send_value_batch(index.clone(), batch).await {
+                Ok(response) => summary.merge(response),
+                Err(err) if summary.batch_count == 0 => return Err(err),
+                Err(err) => {
+                    let unsent_docs = batches
+                        .iter()
+                        .skip(batch_index + 1)
+                        .fold(0u32, |count, batch| count.saturating_add(batch.len() as u32));
+                    let failed_docs = batch_doc_count.saturating_add(unsent_docs);
+                    tracing::warn!(
+                        "{index} - bulk sub-batch failed after partial success; recording {failed_docs} failed docs: {err}"
+                    );
+                    summary.merge(BatchResponse::failed(failed_docs, 0));
+                    return Ok(summary);
+                }
+            }
         }
 
         Ok(summary)
@@ -763,6 +785,32 @@ mod tests {
         assert!(
             err.to_string().contains("test-index - http 413 request too large"),
             "unexpected error: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn split_send_preserves_successful_counts_after_later_fatal_error() {
+        let _lock = ENV_LOCK.lock().await;
+        let _env = BulkBytesEnvGuard::set("1");
+        let (url, call_count) = mock_bulk_server(vec![200, 413]).await;
+        let exporter = ElasticsearchExporter::try_new(url, Auth::None).unwrap();
+
+        let result = exporter
+            .batch_send(
+                "test-index".to_string(),
+                vec![json!({"x": "a"}), json!({"x": "b"}), json!({"x": "c"})],
+            )
+            .await
+            .expect("partial success should return an aggregate response");
+
+        assert_eq!(result.docs, 1);
+        assert_eq!(result.errors, 2);
+        assert_eq!(result.batch_count, 2);
+        assert_eq!(result.status_code, 0);
+        assert_eq!(
+            *call_count.lock().await,
+            2,
+            "remaining docs should not be sent after fatal error"
         );
     }
 
