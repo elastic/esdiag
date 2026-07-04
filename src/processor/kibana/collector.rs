@@ -679,15 +679,12 @@ mod tests {
     async fn retry_policy_retries_kibana_sync_transport_errors() {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("listener");
         let url = format!("http://{}", listener.local_addr().expect("addr"));
-        drop(listener);
-        let error = reqwest::Client::builder()
-            .timeout(Duration::from_millis(1))
-            .build()
-            .unwrap()
-            .get(url)
-            .send()
-            .await
-            .expect_err("request should fail");
+        let close_connection = tokio::spawn(async move {
+            let (socket, _) = listener.accept().await.expect("accept connection");
+            drop(socket);
+        });
+        let error = reqwest::Client::new().get(url).send().await.expect_err("request should fail");
+        close_connection.await.expect("connection close task should finish");
         let sync_error =
             eyre::Report::from(kibana_sync::Error::Transport(error)).wrap_err("Failed to send request");
 
