@@ -80,7 +80,9 @@ fn uri_from_elasticrc_service(service: elasticrc::ResolvedService) -> Result<Uri
             builder = builder.apikey(Some(api_key.expose_secret().clone()));
         }
         elasticrc::ResolvedAuth::Basic { username, password } => {
-            builder = builder.username(Some(username)).password(Some(password.expose_secret().clone()));
+            builder = builder
+                .username(Some(username))
+                .password(Some(password.expose_secret().clone()));
         }
         elasticrc::ResolvedAuth::None => {}
     }
@@ -138,7 +140,7 @@ impl Uri {
     pub fn try_from_output_env() -> Result<Self> {
         tracing::debug!("Creating URI from ESDIAG_OUTPUT_URL or ELASTIC_ES_URL");
         let url = env::get_optional_string_with_fallback("ESDIAG_OUTPUT_URL", "ELASTIC_ES_URL")
-            .ok_or_else(|| eyre!("ESDIAG_OUTPUT_URL is not defined"))?;
+            .ok_or_else(|| eyre!("ESDIAG_OUTPUT_URL and ELASTIC_ES_URL are not defined"))?;
         tracing::debug!("output: Env {}", url);
         let (apikey, username, password) =
             try_get_auth_env("ELASTIC_ES_API_KEY", "ELASTIC_ES_USERNAME", "ELASTIC_ES_PASSWORD")?;
@@ -158,7 +160,7 @@ impl Uri {
     pub fn try_from_kibana_env() -> Result<Self> {
         tracing::debug!("Creating URI from ESDIAG_KIBANA_URL or ELASTIC_KIBANA_URL");
         let url = env::get_optional_string_with_fallback("ESDIAG_KIBANA_URL", "ELASTIC_KIBANA_URL")
-            .ok_or_else(|| eyre!("ESDIAG_KIBANA_URL is not defined"))?;
+            .ok_or_else(|| eyre!("ESDIAG_KIBANA_URL and ELASTIC_KIBANA_URL are not defined"))?;
         tracing::debug!("kibana: Env {}", url);
         let (apikey, username, password) = try_get_auth_env(
             "ELASTIC_KIBANA_API_KEY",
@@ -178,7 +180,7 @@ impl Uri {
     pub fn try_from_cloud_env() -> Result<Self> {
         tracing::debug!("Creating URI from ESDIAG_CLOUD_URL or ELASTIC_CLOUD_URL");
         let url = env::get_optional_string_with_fallback("ESDIAG_CLOUD_URL", "ELASTIC_CLOUD_URL")
-            .ok_or_else(|| eyre!("ESDIAG_CLOUD_URL is not defined"))?;
+            .ok_or_else(|| eyre!("ESDIAG_CLOUD_URL and ELASTIC_CLOUD_URL are not defined"))?;
         let apikey = env::get_optional_string_with_fallback("ESDIAG_CLOUD_APIKEY", "ELASTIC_CLOUD_API_KEY");
         let host = KnownHostBuilder::new(Url::parse(&url)?).apikey(apikey).build()?;
         host.try_into()
@@ -543,7 +545,10 @@ mod tests {
         let _guard = crate::test_env_lock().lock().expect("env lock");
         clear_env();
         unsafe {
-            std::env::set_var("ELASTIC_CLOUD_URL", "https://cloud.elastic.co/deployments/deployment-123");
+            std::env::set_var(
+                "ELASTIC_CLOUD_URL",
+                "https://cloud.elastic.co/deployments/deployment-123",
+            );
             std::env::set_var("ELASTIC_CLOUD_API_KEY", "cloud-key");
         }
 
@@ -613,7 +618,10 @@ mod tests {
         let _guard = crate::test_env_lock().lock().expect("env lock");
         clear_env();
         unsafe {
-            std::env::set_var("ELASTIC_CLOUD_URL", "https://cloud.elastic.co/deployments/deployment-123");
+            std::env::set_var(
+                "ELASTIC_CLOUD_URL",
+                "https://cloud.elastic.co/deployments/deployment-123",
+            );
             std::env::set_var("ELASTIC_CLOUD_API_KEY", "cloud-key");
         }
 

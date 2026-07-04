@@ -3,19 +3,20 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use serde::{Deserialize, Serialize};
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use std::{
     collections::BTreeMap,
     env,
     fmt::Display,
     fs,
+    path::{Path, PathBuf},
     process::{Command, Stdio},
+    str::FromStr,
+    sync::{Mutex, OnceLock},
     thread,
     time::{Duration, Instant},
-    path::{Path, PathBuf},
-    str::FromStr,
 };
-#[cfg(unix)]
-use std::os::unix::fs::PermissionsExt;
 use url::Url;
 
 pub type SecretString = redact::Secret<String>;
@@ -174,7 +175,12 @@ impl ServiceBlock {
                 value: self.url.clone(),
                 source,
             })?,
-            auth: self.auth.as_ref().map(AuthBlock::resolve).transpose()?.unwrap_or_default(),
+            auth: self
+                .auth
+                .as_ref()
+                .map(AuthBlock::resolve)
+                .transpose()?
+                .unwrap_or_default(),
         })
     }
 
@@ -327,7 +333,10 @@ pub struct ResolvedService {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum ResolvedAuth {
     ApiKey(SecretString),
-    Basic { username: String, password: SecretString },
+    Basic {
+        username: String,
+        password: SecretString,
+    },
     #[default]
     None,
 }
@@ -417,7 +426,11 @@ impl Display for Error {
                 write!(f, "no Elastic CLI config file found in {}", home_dir.display())
             }
             Self::ExecutableConfigUnsupported { path } => {
-                write!(f, "executable Elastic CLI config format is not supported: {}", path.display())
+                write!(
+                    f,
+                    "executable Elastic CLI config format is not supported: {}",
+                    path.display()
+                )
             }
             Self::HomeDirectoryUnavailable => write!(f, "home directory is unavailable"),
             Self::Io { path, source } => write!(f, "failed to read {}: {source}", path.display()),
@@ -439,7 +452,10 @@ impl Display for Error {
                 service,
                 value,
                 source,
-            } => write!(f, "invalid URL for Elastic CLI context '{context}' service '{service}' ({value}): {source}"),
+            } => write!(
+                f,
+                "invalid URL for Elastic CLI context '{context}' service '{service}' ({value}): {source}"
+            ),
             Self::InvalidServiceUrlScheme {
                 context,
                 service,
@@ -452,7 +468,10 @@ impl Display for Error {
                 context,
                 service,
                 message,
-            } => write!(f, "invalid auth for Elastic CLI context '{context}' service '{service}': {message}"),
+            } => write!(
+                f,
+                "invalid auth for Elastic CLI context '{context}' service '{service}': {message}"
+            ),
             Self::InvalidResolverExpression { field, value } => {
                 write!(f, "invalid resolver expression in field '{field}': {value}")
             }
@@ -679,10 +698,12 @@ fn resolve_command_expression(command: &str, resolver: &str, field: &str) -> Res
 }
 
 fn parse_command_argv(command: &str, resolver: &str, field: &str) -> Result<Vec<String>, Error> {
-    if command
-        .chars()
-        .any(|ch| matches!(ch, '|' | '&' | ';' | '<' | '>' | '(' | ')' | '{' | '}' | '`' | '\n' | '\r'))
-    {
+    if command.chars().any(|ch| {
+        matches!(
+            ch,
+            '|' | '&' | ';' | '<' | '>' | '(' | ')' | '{' | '}' | '`' | '\n' | '\r'
+        )
+    }) {
         return Err(Error::ShellSyntaxUnsupported {
             resolver: resolver.to_string(),
             field: field.to_string(),
@@ -705,11 +726,14 @@ fn run_command(program: &str, args: &[String], resolver: &str, field: &str) -> R
         })?;
     let start = Instant::now();
     loop {
-        if child.try_wait().map_err(|source| Error::ResolverFailed {
-            resolver: resolver.to_string(),
-            field: field.to_string(),
-            message: source.to_string(),
-        })?.is_some()
+        if child
+            .try_wait()
+            .map_err(|source| Error::ResolverFailed {
+                resolver: resolver.to_string(),
+                field: field.to_string(),
+                message: source.to_string(),
+            })?
+            .is_some()
         {
             let output = child.wait_with_output().map_err(|source| Error::ResolverFailed {
                 resolver: resolver.to_string(),
@@ -767,12 +791,18 @@ fn resolve_keyring_expression(params: &str, resolver: &str, field: &str) -> Resu
     })
 }
 
+fn keyring_store_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}
+
 #[cfg(target_os = "macos")]
 fn resolve_platform_keyring_secret(resolver: &str, service: &str, account: &str) -> Result<String, String> {
     if resolver != "keychain" {
         return Err(format!("resolver '{resolver}' is not supported on macOS"));
     }
     use apple_native_keyring_store::keychain;
+    let _guard = keyring_store_lock().lock().map_err(|err| err.to_string())?;
     keyring_core::set_default_store(keychain::Store::new().map_err(|err| err.to_string())?);
     let result = keyring_core::Entry::new(service, account)
         .and_then(|entry| entry.get_password())
@@ -786,6 +816,7 @@ fn resolve_platform_keyring_secret(resolver: &str, service: &str, account: &str)
     if resolver != "secret_service" {
         return Err(format!("resolver '{resolver}' is not supported on Linux"));
     }
+    let _guard = keyring_store_lock().lock().map_err(|err| err.to_string())?;
     keyring_core::set_default_store(zbus_secret_service_keyring_store::Store::new().map_err(|err| err.to_string())?);
     let result = keyring_core::Entry::new(service, account)
         .and_then(|entry| entry.get_password())
@@ -799,6 +830,7 @@ fn resolve_platform_keyring_secret(resolver: &str, service: &str, account: &str)
     if resolver != "credential_manager" {
         return Err(format!("resolver '{resolver}' is not supported on Windows"));
     }
+    let _guard = keyring_store_lock().lock().map_err(|err| err.to_string())?;
     keyring_core::set_default_store(windows_native_keyring_store::Store::new().map_err(|err| err.to_string())?);
     let result = keyring_core::Entry::new(service, account)
         .and_then(|entry| entry.get_password())
@@ -818,9 +850,14 @@ mod tests {
         ConfigFile, ContextServiceReference, Error, ResolvedAuth, ServiceKind, discover_config_path,
         inline_secret_permission_warning,
     };
-    use std::{fs, path::Path, str::FromStr, sync::{Mutex, OnceLock}};
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
+    use std::{
+        fs,
+        path::Path,
+        str::FromStr,
+        sync::{Mutex, OnceLock},
+    };
     use tempfile::TempDir;
 
     fn write(path: &Path, contents: &str) {
@@ -898,7 +935,10 @@ mod tests {
     #[test]
     fn discovers_default_config_in_elastic_cli_order() {
         let tmp = TempDir::new().expect("temp dir");
-        write(&tmp.path().join(".elasticrc.yml"), "current_context: later\ncontexts: {}\n");
+        write(
+            &tmp.path().join(".elasticrc.yml"),
+            "current_context: later\ncontexts: {}\n",
+        );
         write(&tmp.path().join(".elasticrc"), "current_context: first\ncontexts: {}\n");
 
         assert_eq!(discover_config_path(tmp.path()), Some(tmp.path().join(".elasticrc")));
@@ -955,7 +995,9 @@ contexts:
         );
 
         let config = ConfigFile::load(&path).expect("load config");
-        let service = config.resolve_current_service(ServiceKind::Elasticsearch).expect("resolve service");
+        let service = config
+            .resolve_current_service(ServiceKind::Elasticsearch)
+            .expect("resolve service");
 
         assert!(matches!(
             service.auth,
@@ -1068,7 +1110,13 @@ contexts:
             .resolve_service("prod", ServiceKind::Kibana)
             .expect_err("missing service should fail");
 
-        assert!(matches!(err, Error::MissingService { service: ServiceKind::Kibana, .. }));
+        assert!(matches!(
+            err,
+            Error::MissingService {
+                service: ServiceKind::Kibana,
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -1082,7 +1130,13 @@ contexts:
 
         let err = ConfigFile::load(&path).expect_err("invalid url should fail");
 
-        assert!(matches!(err, Error::InvalidServiceUrlScheme { service: ServiceKind::Elasticsearch, .. }));
+        assert!(matches!(
+            err,
+            Error::InvalidServiceUrlScheme {
+                service: ServiceKind::Elasticsearch,
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -1096,7 +1150,13 @@ contexts:
 
         let err = ConfigFile::load(&path).expect_err("invalid auth should fail");
 
-        assert!(matches!(err, Error::InvalidAuth { service: ServiceKind::Elasticsearch, .. }));
+        assert!(matches!(
+            err,
+            Error::InvalidAuth {
+                service: ServiceKind::Elasticsearch,
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -1113,7 +1173,9 @@ contexts:
         );
 
         let config = ConfigFile::load(&path).expect("load config");
-        let service = config.resolve_current_service(ServiceKind::Elasticsearch).expect("resolve service");
+        let service = config
+            .resolve_current_service(ServiceKind::Elasticsearch)
+            .expect("resolve service");
 
         assert!(matches!(service.auth, ResolvedAuth::ApiKey(ref key) if key.expose_secret() == "env-key"));
         unsafe {
@@ -1136,7 +1198,9 @@ contexts:
         );
 
         let config = ConfigFile::load(&config).expect("load config");
-        let service = config.resolve_current_service(ServiceKind::Elasticsearch).expect("resolve service");
+        let service = config
+            .resolve_current_service(ServiceKind::Elasticsearch)
+            .expect("resolve service");
 
         assert!(matches!(service.auth, ResolvedAuth::ApiKey(ref key) if key.expose_secret() == "file-key"));
     }
@@ -1151,7 +1215,9 @@ contexts:
         );
 
         let config = ConfigFile::load(&path).expect("load config");
-        let service = config.resolve_current_service(ServiceKind::Elasticsearch).expect("resolve service");
+        let service = config
+            .resolve_current_service(ServiceKind::Elasticsearch)
+            .expect("resolve service");
 
         assert!(matches!(service.auth, ResolvedAuth::ApiKey(ref key) if key.expose_secret() == "cmd-key"));
     }
@@ -1215,7 +1281,8 @@ contexts:
             "current_context: prod\ncontexts:\n  prod:\n    elasticsearch:\n      url: https://es.example:9200\n      auth:\n        api_key: $(env:ELASTICRC_TEST_API_KEY)\n",
         );
         fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).expect("set permissions");
-        let config: ConfigFile = yaml_serde::from_str(&fs::read_to_string(&path).expect("read config")).expect("parse config");
+        let config: ConfigFile =
+            yaml_serde::from_str(&fs::read_to_string(&path).expect("read config")).expect("parse config");
 
         assert_eq!(inline_secret_permission_warning(&path, &config), None);
         unsafe {

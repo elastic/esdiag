@@ -1,6 +1,5 @@
 use std::{
-    env,
-    fs,
+    env, fs,
     path::{Path, PathBuf},
     process::Command,
 };
@@ -10,9 +9,12 @@ use std::os::unix::fs::PermissionsExt;
 
 fn node_path() -> Option<PathBuf> {
     env::var_os("PATH").and_then(|path| {
-        env::split_paths(&path)
-            .map(|dir| dir.join("node"))
-            .find(|candidate| candidate.is_file())
+        env::split_paths(&path).find_map(|dir| {
+            ["node", "node.exe"]
+                .into_iter()
+                .map(|name| dir.join(name))
+                .find(|candidate| candidate.is_file())
+        })
     })
 }
 
