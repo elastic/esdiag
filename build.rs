@@ -119,8 +119,15 @@ fn build_kibana_assets_bundle() {
     let assets_root = Path::new("assets");
     let kibana_root = assets_root.join("kibana");
     let mut files = Vec::new();
-    collect_files(&kibana_root, &mut files);
+    let mut watched_paths = Vec::new();
+    collect_kibana_asset_paths(&kibana_root, &mut files, &mut watched_paths);
     files.sort();
+    watched_paths.sort();
+    watched_paths.dedup();
+
+    for path in watched_paths {
+        println!("cargo:rerun-if-changed={}", path.display());
+    }
 
     for path in files {
         let relative_path = path
@@ -141,13 +148,16 @@ fn build_kibana_assets_bundle() {
     zip.finish().expect("failed to finish Kibana assets bundle");
 }
 
-fn collect_files(path: &Path, files: &mut Vec<PathBuf>) {
+fn collect_kibana_asset_paths(path: &Path, files: &mut Vec<PathBuf>, watched_paths: &mut Vec<PathBuf>) {
+    watched_paths.push(path.to_path_buf());
+
     for entry in std::fs::read_dir(path).expect("failed to read Kibana asset directory") {
         let entry = entry.expect("failed to read Kibana asset directory entry");
         let path = entry.path();
         if path.is_dir() {
-            collect_files(&path, files);
+            collect_kibana_asset_paths(&path, files, watched_paths);
         } else {
+            watched_paths.push(path.clone());
             files.push(path);
         }
     }
