@@ -1,0 +1,366 @@
+{
+  "objects": [
+    {
+      "type": "dashboard",
+      "id": "allocation-overview"
+    },
+    {
+      "type": "dashboard",
+      "id": "bulk-tasks-overview"
+    },
+    {
+      "type": "dashboard",
+      "id": "daily-indexing-overview"
+    },
+    {
+      "type": "dashboard",
+      "id": "data-summary"
+    },
+    {
+      "type": "dashboard",
+      "id": "datastream-operations-overview"
+    },
+    {
+      "type": "dashboard",
+      "id": "diagnostic-list"
+    },
+    {
+      "type": "dashboard",
+      "id": "elasticsearch-cluster-report"
+    },
+    {
+      "type": "dashboard",
+      "id": "elasticsearch-index-operations-change"
+    },
+    {
+      "type": "dashboard",
+      "id": "esdiag-readme"
+    },
+    {
+      "type": "dashboard",
+      "id": "f1821606-4f08-4848-986a-e7b68bb94328"
+    },
+    {
+      "type": "dashboard",
+      "id": "hosts-overview"
+    },
+    {
+      "type": "dashboard",
+      "id": "index-operations-overview"
+    },
+    {
+      "type": "dashboard",
+      "id": "index-settings-overview"
+    },
+    {
+      "type": "dashboard",
+      "id": "index-workload-balance"
+    },
+    {
+      "type": "dashboard",
+      "id": "indexing-activity-overview"
+    },
+    {
+      "type": "dashboard",
+      "id": "indexing-pressure"
+    },
+    {
+      "type": "dashboard",
+      "id": "indices-overview"
+    },
+    {
+      "type": "dashboard",
+      "id": "ingest-nodes-overview"
+    },
+    {
+      "type": "dashboard",
+      "id": "ingest-pipelines-overview"
+    },
+    {
+      "type": "dashboard",
+      "id": "ingest-summary"
+    },
+    {
+      "type": "dashboard",
+      "id": "kubernetes-hosts"
+    },
+    {
+      "type": "dashboard",
+      "id": "kubernetes-operations-overview"
+    },
+    {
+      "type": "dashboard",
+      "id": "lifecycle-overview"
+    },
+    {
+      "type": "dashboard",
+      "id": "logstash-pipeline-summary"
+    },
+    {
+      "type": "dashboard",
+      "id": "node-tasks-overview"
+    },
+    {
+      "type": "dashboard",
+      "id": "nodes-configuration-overview"
+    },
+    {
+      "type": "dashboard",
+      "id": "nodes-summary"
+    },
+    {
+      "type": "dashboard",
+      "id": "search-activity-alias"
+    },
+    {
+      "type": "dashboard",
+      "id": "search-activity-data-stream"
+    },
+    {
+      "type": "dashboard",
+      "id": "search-hot-spotting-overview"
+    },
+    {
+      "type": "dashboard",
+      "id": "search-nodes-overview"
+    },
+    {
+      "type": "dashboard",
+      "id": "search-summary"
+    },
+    {
+      "type": "dashboard",
+      "id": "shard-indexing-hotspots"
+    },
+    {
+      "type": "dashboard",
+      "id": "shards-size-overview"
+    },
+    {
+      "type": "dashboard",
+      "id": "shared-cache-stats-overview"
+    },
+    {
+      "type": "dashboard",
+      "id": "support-performance-triage"
+    },
+    {
+      "type": "index-pattern",
+      "id": "07f20cf1-21c4-4383-a522-573cc8f0fab3"
+    },
+    {
+      "type": "index-pattern",
+      "id": "118f9f4c-7788-4b75-a9ff-91aea04b42f7"
+    },
+    {
+      "type": "index-pattern",
+      "id": "2a1a6f44-179d-4073-b23a-f75ba717cc65"
+    },
+    {
+      "type": "index-pattern",
+      "id": "2c649b57-9257-4901-8208-3a88ccbbb1d8"
+    },
+    {
+      "type": "index-pattern",
+      "id": "2d800d85-51ca-4850-b004-612e068c9090"
+    },
+    {
+      "type": "index-pattern",
+      "id": "3b8a2e00-d223-49cd-b14f-2a957629f276"
+    },
+    {
+      "type": "index-pattern",
+      "id": "4319ebc4-df81-4b18-b8bd-6aaa55a1fd13"
+    },
+    {
+      "type": "index-pattern",
+      "id": "590e8f4c-4fe2-4794-9007-29de4d07e489"
+    },
+    {
+      "type": "index-pattern",
+      "id": "6fc6f2b7-0198-46ef-b3bd-bd30f28f08ef"
+    },
+    {
+      "type": "index-pattern",
+      "id": "837271ec-b73e-4fb3-b7e4-190dba34bbf5"
+    },
+    {
+      "type": "index-pattern",
+      "id": "a738e381-1538-4fb5-a7c1-eebbdff4623b"
+    },
+    {
+      "type": "index-pattern",
+      "id": "ae7c2db0-8c40-4a7a-b7e7-8bc7953edfa6"
+    },
+    {
+      "type": "index-pattern",
+      "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672"
+    },
+    {
+      "type": "index-pattern",
+      "id": "df03c736-ee97-4755-a981-895f886770cc"
+    },
+    {
+      "type": "index-pattern",
+      "id": "e1cb9752-74e4-478b-8fa0-2935b41cbd96"
+    },
+    {
+      "type": "index-pattern",
+      "id": "e4c191cb-6ea1-4850-a83a-73d1a5173d2b"
+    },
+    {
+      "type": "index-pattern",
+      "id": "e8de195c-287f-45ed-bbfd-45eace1e037c"
+    },
+    {
+      "type": "index-pattern",
+      "id": "ecd4a41f-0c1c-49a1-a4ba-fe906a5ea79d"
+    },
+    {
+      "type": "lens",
+      "id": "008fc53d-78df-494f-90b4-577b82cc56d4"
+    },
+    {
+      "type": "lens",
+      "id": "079f5c13-c76e-45ca-8e6b-08631a506dc3"
+    },
+    {
+      "type": "lens",
+      "id": "1987309d-dabf-4fa8-bd65-9bdda34936af"
+    },
+    {
+      "type": "lens",
+      "id": "298b2575-7373-4c2a-b2fc-e8e0c2c073d9"
+    },
+    {
+      "type": "lens",
+      "id": "2c2fea8c-c913-4e0c-8510-baf110a77b30"
+    },
+    {
+      "type": "lens",
+      "id": "347969ce-73cc-4f87-a71e-db3ecd85dee6"
+    },
+    {
+      "type": "lens",
+      "id": "4594ff0f-437e-46b6-9483-f8a025ffd1d4"
+    },
+    {
+      "type": "lens",
+      "id": "50cd8017-fff2-461b-9367-3833251a2b39"
+    },
+    {
+      "type": "lens",
+      "id": "5446eb45-98ed-4de9-bc23-de7fc4dc0a49"
+    },
+    {
+      "type": "lens",
+      "id": "a5cc7d26-5275-4f35-ba0e-808565403489"
+    },
+    {
+      "type": "lens",
+      "id": "ec099e6f-ee27-4de9-8b38-0f5c8d6fa3a1"
+    },
+    {
+      "type": "lens",
+      "id": "f8d32fb3-86e7-48d9-9db6-fdb61ab9228b"
+    },
+    {
+      "type": "lens",
+      "id": "fdb125e4-036c-471b-a73d-9dcd66fb5409"
+    },
+    {
+      "type": "links",
+      "id": "2b54a9e5-0ef5-4e6d-b293-1ed2e9075369"
+    },
+    {
+      "type": "links",
+      "id": "b45c7e74-37d1-4cae-a491-f8c097f2d3b3"
+    },
+    {
+      "type": "links",
+      "id": "d277872a-9c33-4d95-84f0-6dba30dcbdf1"
+    },
+    {
+      "type": "links",
+      "id": "d8498491-d030-4674-9a8c-4fd43996fdd5"
+    },
+    {
+      "type": "links",
+      "id": "e38aefc8-2e13-4bc6-b56f-b104670c4d28"
+    },
+    {
+      "type": "search",
+      "id": "0448c3f3-6866-4b81-9bdb-d9e886428dba"
+    },
+    {
+      "type": "search",
+      "id": "0ca20654-0921-465a-a962-7e1d2d925231"
+    },
+    {
+      "type": "search",
+      "id": "63548edd-4a86-4ba6-a1b0-6e10c3cd1103"
+    },
+    {
+      "type": "search",
+      "id": "6812f916-9554-463b-bab6-e74abb2a5f43"
+    },
+    {
+      "type": "search",
+      "id": "9dfd5b05-c0e3-4ca0-8ae0-9fc193f53b2b"
+    },
+    {
+      "type": "search",
+      "id": "b3e99137-707c-44eb-af6f-7698bf938fe5"
+    },
+    {
+      "type": "search",
+      "id": "b48ede49-ed29-4b82-acda-5f7a3682f687"
+    },
+    {
+      "type": "search",
+      "id": "bbab2d2c-b957-4cdb-9026-9544ae929864"
+    },
+    {
+      "type": "search",
+      "id": "d08bac14-4df9-416f-b503-f87a6681eb00"
+    },
+    {
+      "type": "tag",
+      "id": "11ffb732-bed1-4aa4-8867-189e74792cdd"
+    },
+    {
+      "type": "tag",
+      "id": "5e05b9ee-3e49-4efd-8a16-94de208ebb83"
+    },
+    {
+      "type": "tag",
+      "id": "8228e4fe-7cfb-4bba-9123-70608082c624"
+    },
+    {
+      "type": "tag",
+      "id": "9ae2615e-1d78-42ba-9e84-99290fd5e6be"
+    },
+    {
+      "type": "tag",
+      "id": "b210de37-7ebf-4ced-9a28-13c1620db46c"
+    },
+    {
+      "type": "visualization",
+      "id": "16b2d778-10ff-4570-9e7f-0a771c539097"
+    },
+    {
+      "type": "visualization",
+      "id": "2c9ea3e3-4fb3-453f-961a-770cbe394260"
+    },
+    {
+      "type": "visualization",
+      "id": "b0888642-7ddc-4dd5-a2df-8c81aed5e0dd"
+    },
+    {
+      "type": "visualization",
+      "id": "d50b68db-ef54-472c-ac14-92b72b16caff"
+    }
+  ],
+  "excludeExportDetails": true,
+  "includeReferencesDeep": true
+}

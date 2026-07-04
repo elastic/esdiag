@@ -1,0 +1,19 @@
+{
+  "attributes": {
+    "allowHidden": false,
+    "fieldAttrs": "{}",
+    "fieldFormatMap": "{}",
+    "fields": "[]",
+    "name": "Elasticsearch Health Impacts",
+    "runtimeFieldMap": "{}",
+    "sourceFilters": "[]",
+    "timeFieldName": "@timestamp",
+    "title": "health-impact-esdiag*"
+  },
+  "coreMigrationVersion": "8.8.0",
+  "id": "6fc6f2b7-0198-46ef-b3bd-bd30f28f08ef",
+  "managed": true,
+  "references": [],
+  "type": "index-pattern",
+  "typeMigrationVersion": "8.0.0"
+}

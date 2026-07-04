@@ -1,0 +1,229 @@
+{
+  "attributes": {
+    "state": {
+      "adHocDataViews": {},
+      "datasourceStates": {
+        "formBased": {
+          "currentIndexPatternId": "4319ebc4-df81-4b18-b8bd-6aaa55a1fd13",
+          "layers": {
+            "7b017c20-9cde-4654-9c81-c0e5e3de1c18": {
+              "columnOrder": [
+                "18234971-8603-4266-a73e-bae8818352f4"
+              ],
+              "columns": {
+                "18234971-8603-4266-a73e-bae8818352f4": {
+                  "customLabel": true,
+                  "dataType": "number",
+                  "isBucketed": false,
+                  "label": "90%",
+                  "operationType": "static_value",
+                  "params": {
+                    "emptyAsNull": true,
+                    "format": {
+                      "id": "percent",
+                      "params": {
+                        "decimals": 0
+                      }
+                    },
+                    "value": "90"
+                  },
+                  "references": []
+                }
+              },
+              "ignoreGlobalFilters": false,
+              "incompleteColumns": {},
+              "indexPatternId": "4319ebc4-df81-4b18-b8bd-6aaa55a1fd13",
+              "linkToLayers": [],
+              "sampling": 1
+            },
+            "811ecea9-ad2b-446d-a850-58883ae06420": {
+              "columnOrder": [
+                "e93f58d8-3099-46f9-9032-da7e91cc2b26",
+                "43469754-e111-4930-939e-bba72707344e"
+              ],
+              "columns": {
+                "43469754-e111-4930-939e-bba72707344e": {
+                  "customLabel": true,
+                  "dataType": "number",
+                  "isBucketed": false,
+                  "label": "CPU Utilization",
+                  "operationType": "median",
+                  "params": {
+                    "emptyAsNull": true,
+                    "format": {
+                      "id": "number",
+                      "params": {
+                        "decimals": 0,
+                        "suffix": "%"
+                      }
+                    }
+                  },
+                  "scale": "ratio",
+                  "sourceField": "node.os.cpu.percent"
+                },
+                "e93f58d8-3099-46f9-9032-da7e91cc2b26": {
+                  "customLabel": true,
+                  "dataType": "string",
+                  "isBucketed": true,
+                  "label": "node.name",
+                  "operationType": "terms",
+                  "params": {
+                    "exclude": [],
+                    "excludeIsRegex": false,
+                    "include": [],
+                    "includeIsRegex": false,
+                    "missingBucket": false,
+                    "orderBy": {
+                      "columnId": "43469754-e111-4930-939e-bba72707344e",
+                      "type": "column"
+                    },
+                    "orderDirection": "desc",
+                    "otherBucket": false,
+                    "parentFormat": {
+                      "id": "terms"
+                    },
+                    "size": 50
+                  },
+                  "scale": "ordinal",
+                  "sourceField": "node.name"
+                }
+              },
+              "incompleteColumns": {},
+              "indexPatternId": "837271ec-b73e-4fb3-b7e4-190dba34bbf5",
+              "sampling": 1
+            }
+          }
+        },
+        "indexpattern": {
+          "currentIndexPatternId": "837271ec-b73e-4fb3-b7e4-190dba34bbf5",
+          "layers": {}
+        },
+        "textBased": {
+          "indexPatternRefs": [
+            {
+              "id": "837271ec-b73e-4fb3-b7e4-190dba34bbf5",
+              "timeField": "@timestamp",
+              "title": "metrics-node-esdiag*"
+            },
+            {
+              "id": "4319ebc4-df81-4b18-b8bd-6aaa55a1fd13",
+              "timeField": "@timestamp",
+              "title": "settings-node*"
+            }
+          ],
+          "layers": {}
+        }
+      },
+      "filters": [],
+      "internalReferences": [],
+      "query": {
+        "language": "kuery",
+        "query": ""
+      },
+      "visualization": {
+        "axisTitlesVisibilitySettings": {
+          "x": true,
+          "yLeft": true,
+          "yRight": true
+        },
+        "fittingFunction": "None",
+        "gridlinesVisibilitySettings": {
+          "x": true,
+          "yLeft": true,
+          "yRight": true
+        },
+        "labelsOrientation": {
+          "x": 0,
+          "yLeft": 0,
+          "yRight": 0
+        },
+        "layers": [
+          {
+            "accessors": [
+              "43469754-e111-4930-939e-bba72707344e"
+            ],
+            "colorMapping": {
+              "assignments": [],
+              "colorMode": {
+                "type": "categorical"
+              },
+              "paletteId": "eui_amsterdam_color_blind",
+              "specialAssignments": [
+                {
+                  "color": {
+                    "type": "loop"
+                  },
+                  "rules": [
+                    {
+                      "type": "other"
+                    }
+                  ],
+                  "touched": false
+                }
+              ]
+            },
+            "layerId": "811ecea9-ad2b-446d-a850-58883ae06420",
+            "layerType": "data",
+            "position": "top",
+            "seriesType": "bar_horizontal",
+            "showGridlines": false,
+            "xAccessor": "e93f58d8-3099-46f9-9032-da7e91cc2b26",
+            "yConfig": []
+          },
+          {
+            "accessors": [
+              "18234971-8603-4266-a73e-bae8818352f4"
+            ],
+            "layerId": "7b017c20-9cde-4654-9c81-c0e5e3de1c18",
+            "layerType": "referenceLine",
+            "yConfig": [
+              {
+                "axisMode": "left",
+                "color": "#d36086",
+                "fill": "above",
+                "forAccessor": "18234971-8603-4266-a73e-bae8818352f4",
+                "iconPosition": "left",
+                "textVisibility": true
+              }
+            ]
+          }
+        ],
+        "legend": {
+          "horizontalAlignment": "right",
+          "isInside": true,
+          "isVisible": false,
+          "position": "right",
+          "showSingleSeries": false,
+          "verticalAlignment": "bottom"
+        },
+        "preferredSeriesType": "bar_horizontal",
+        "tickLabelsVisibilitySettings": {
+          "x": true,
+          "yLeft": true,
+          "yRight": true
+        },
+        "valueLabels": "show"
+      }
+    },
+    "title": "Node CPU utilization percent",
+    "version": 1,
+    "visualizationType": "lnsXY"
+  },
+  "coreMigrationVersion": "8.8.0",
+  "id": "4594ff0f-437e-46b6-9483-f8a025ffd1d4",
+  "managed": true,
+  "references": [
+    {
+      "id": "4319ebc4-df81-4b18-b8bd-6aaa55a1fd13",
+      "name": "indexpattern-datasource-layer-7b017c20-9cde-4654-9c81-c0e5e3de1c18",
+      "type": "index-pattern"
+    },
+    {
+      "id": "837271ec-b73e-4fb3-b7e4-190dba34bbf5",
+      "name": "indexpattern-datasource-layer-811ecea9-ad2b-446d-a850-58883ae06420",
+      "type": "index-pattern"
+    }
+  ],
+  "type": "lens",
+  "typeMigrationVersion": "10.1.0"
+}

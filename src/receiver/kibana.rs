@@ -96,7 +96,7 @@ impl KibanaReceiver {
         self.version
             .get_or_try_init(|| async {
                 let status = self.get_status().await?;
-                semver::Version::parse(&status.version.number)
+                kibana_sync::parse_kibana_version(&status.version.number)
                     .map_err(|e| eyre!("Failed to parse Kibana version: {}", e))
             })
             .await
@@ -265,5 +265,80 @@ impl ReceiveRaw for KibanaReceiver {
 impl std::fmt::Display for KibanaReceiver {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "Kibana {}", self.url)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::data::Auth;
+    use tokio::{
+        io::{AsyncReadExt, AsyncWriteExt},
+        net::{TcpListener, TcpStream},
+    };
+
+    #[tokio::test]
+    async fn version_parsing_uses_kibana_sync_normalization() {
+        let (receiver, server) = receiver_with_single_response(
+            b"HTTP/1.1 200 OK\r\nconnection: close\r\ncontent-type: application/json\r\n\r\n{\"version\":{\"number\":\"v9.6\"}}\n",
+        )
+        .await;
+
+        let version = receiver.get_version().await.expect("version");
+        server.await.expect("server");
+
+        assert_eq!(version, &semver::Version::new(9, 6, 0));
+    }
+
+    #[tokio::test]
+    async fn raw_response_errors_preserve_status_body_and_metrics() {
+        let (receiver, server) = receiver_with_single_response(
+            b"HTTP/1.1 429 Too Many Requests\r\nconnection: close\r\ncontent-type: text/plain\r\n\r\nslow down",
+        )
+        .await;
+
+        let err = receiver
+            .get_raw_response_by_path("/api/saved_objects/_find", ".json")
+            .await
+            .expect_err("429 should be an error");
+        server.await.expect("server");
+        let request_error = err.downcast_ref::<KibanaRequestError>().expect("request error");
+
+        assert_eq!(request_error.status, reqwest::StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(request_error.body, "slow down");
+        assert_eq!(request_error.response_size_bytes, 9);
+        assert!(request_error.response_time_ms < 60_000);
+    }
+
+    async fn receiver_with_single_response(response: &'static [u8]) -> (KibanaReceiver, tokio::task::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("listener");
+        let url = Url::parse(&format!("http://{}", listener.local_addr().expect("addr"))).expect("url");
+        let client = KibanaClient::try_new(url.clone(), Auth::None).expect("client");
+        let receiver = KibanaReceiver::new(url, client);
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.expect("accept");
+            read_request(&mut stream).await;
+            stream.write_all(response).await.expect("write response");
+        });
+        (receiver, server)
+    }
+
+    async fn read_request(stream: &mut TcpStream) {
+        const MAX_TEST_REQUEST_BYTES: usize = 64 * 1024;
+
+        let mut request = Vec::new();
+        let mut buf = [0_u8; 1024];
+        loop {
+            let read = stream.read(&mut buf).await.expect("read");
+            assert_ne!(read, 0, "connection closed before request headers completed");
+            request.extend_from_slice(&buf[..read]);
+            assert!(
+                request.len() <= MAX_TEST_REQUEST_BYTES,
+                "request headers exceeded test helper limit"
+            );
+            if request.windows(4).any(|window| window == b"\r\n\r\n") {
+                break;
+            }
+        }
     }
 }

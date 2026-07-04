@@ -1,0 +1,19 @@
+{
+  "attributes": {
+    "allowHidden": false,
+    "fieldAttrs": "{\"diagnostic.doc_errors\":{\"customLabel\":\"Doc Errors\"},\"diagnostic.docs.created\":{\"customLabel\":\"Docs Created\"},\"diagnostic.docs.errors\":{\"customLabel\":\"Docs Errors\"},\"diagnostic.docs.total\":{\"customLabel\":\"Docs Total\"},\"diagnostic.docs_total\":{\"customLabel\":\"Docs\"},\"diagnostic.id\":{\"count\":3},\"diagnostic.origin.name\":{\"customLabel\":\"Origin Name\"},\"diagnostic.processor.count\":{\"customLabel\":\"Processors\"},\"diagnostic.processor.errors\":{\"customLabel\":\"Processor Errors\"},\"diagnostic.processor.failures\":{\"customLabel\":\"Processor Failures\"},\"diagnostic.product\":{\"customLabel\":\"Product\"},\"diagnostic.user\":{\"count\":2}}",
+    "fieldFormatMap": "{}",
+    "fields": "[]",
+    "name": "Diagnostic Reports",
+    "runtimeFieldMap": "{}",
+    "sourceFilters": "[]",
+    "timeFieldName": "@timestamp",
+    "title": "metrics-diagnostic-esdiag*"
+  },
+  "coreMigrationVersion": "8.8.0",
+  "id": "a738e381-1538-4fb5-a7c1-eebbdff4623b",
+  "managed": true,
+  "references": [],
+  "type": "index-pattern",
+  "typeMigrationVersion": "8.0.0"
+}

@@ -1,0 +1,19 @@
+{
+  "attributes": {
+    "allowHidden": false,
+    "fieldAttrs": "{}",
+    "fieldFormatMap": "{\"index.age\":{\"id\":\"duration\",\"params\":{\"includeSpaceWithSuffix\":true,\"inputFormat\":\"milliseconds\",\"outputFormat\":\"humanizePrecise\",\"outputPrecision\":1,\"parsedUrl\":{\"basePath\":\"\",\"origin\":\"http://localhost:5601\",\"pathname\":\"/app/discover\"},\"useShortSuffix\":true}},\"index.primaries.bulk.est_bytes_per_day\":{\"id\":\"bytes\",\"params\":{}},\"index.primaries.indexing.est_bytes_per_day\":{\"id\":\"bytes\",\"params\":{}},\"index.primaries.store.size_in_bytes\":{\"id\":\"bytes\",\"params\":{}},\"index.primaries.store.total_data_set_size_in_bytes\":{\"id\":\"bytes\",\"params\":{}},\"index.total.store.size_in_bytes\":{\"id\":\"bytes\",\"params\":{}},\"index.total.store.total_data_set_size_in_bytes\":{\"id\":\"bytes\",\"params\":{}}}",
+    "fields": "[]",
+    "name": "Elasticsearch Index Metrics",
+    "runtimeFieldMap": "{}",
+    "sourceFilters": "[]",
+    "timeFieldName": "@timestamp",
+    "title": "metrics-index-esdiag*"
+  },
+  "coreMigrationVersion": "8.8.0",
+  "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+  "managed": true,
+  "references": [],
+  "type": "index-pattern",
+  "typeMigrationVersion": "8.0.0"
+}

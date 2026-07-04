@@ -1,0 +1,19 @@
+{
+  "attributes": {
+    "allowHidden": false,
+    "fieldAttrs": "{}",
+    "fieldFormatMap": "{}",
+    "fields": "[]",
+    "name": "Logstash Pipeline Stats",
+    "runtimeFieldMap": "{}",
+    "sourceFilters": "[]",
+    "timeFieldName": "@timestamp",
+    "title": "metrics-logstash.pipeline-esdiag"
+  },
+  "coreMigrationVersion": "8.8.0",
+  "id": "e1cb9752-74e4-478b-8fa0-2935b41cbd96",
+  "managed": true,
+  "references": [],
+  "type": "index-pattern",
+  "typeMigrationVersion": "8.0.0"
+}

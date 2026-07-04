@@ -107,7 +107,7 @@ impl KibanaCollector {
 
             let mut api_stream = stream::iter(apis)
                 .map(|api| async move { self.save_api_with_retry(&api).await })
-                .buffer_unordered(5);
+                .buffer_unordered(crate::client::KIBANA_REQUEST_CONCURRENCY);
 
             let mut requested_apis = BTreeMap::new();
             while let Some(res) = api_stream.next().await {
@@ -424,10 +424,10 @@ impl KibanaCollector {
 }
 
 fn request_metrics(error: &eyre::Report) -> (Option<u16>, u64, u64) {
-    if let Some(partial_error) = error.downcast_ref::<KibanaPartialCollectError>() {
+    if let Some(partial_error) = find_error_source::<KibanaPartialCollectError>(error) {
         return partial_error.metrics();
     }
-    if let Some(request_error) = error.downcast_ref::<KibanaRequestError>() {
+    if let Some(request_error) = find_error_source::<KibanaRequestError>(error) {
         return (
             Some(request_error.status.as_u16()),
             request_error.response_time_ms,
@@ -511,18 +511,33 @@ fn sanitize_segment(segment: &str) -> String {
 }
 
 fn should_retry_kibana_error(error: &eyre::Report) -> bool {
-    if let Some(partial_error) = error.downcast_ref::<KibanaPartialCollectError>() {
-        return should_retry_kibana_error(&partial_error.source);
-    }
-    if let Some(request_error) = error.downcast_ref::<KibanaRequestError>() {
+    if let Some(request_error) = find_error_source::<KibanaRequestError>(error) {
         return request_error.status.as_u16() == 408
             || request_error.status.as_u16() == 429
             || request_error.status.is_server_error();
     }
-    if let Some(request_error) = error.downcast_ref::<reqwest::Error>() {
+    if let Some(request_error) = find_error_source::<reqwest::Error>(error) {
         return is_retryable_reqwest_error(request_error);
     }
+    if let Some(kibana_sync_error) = find_error_source::<kibana_sync::Error>(error) {
+        return is_retryable_kibana_sync_error(kibana_sync_error);
+    }
     false
+}
+
+fn find_error_source<T>(error: &eyre::Report) -> Option<&T>
+where
+    T: std::error::Error + 'static,
+{
+    error.chain().find_map(|source| source.downcast_ref::<T>())
+}
+
+fn is_retryable_kibana_sync_error(error: &kibana_sync::Error) -> bool {
+    match error {
+        kibana_sync::Error::Transport(request_error) => is_retryable_reqwest_error(request_error),
+        kibana_sync::Error::Context { source, .. } => is_retryable_kibana_sync_error(source),
+        _ => false,
+    }
 }
 
 fn is_retryable_reqwest_error(error: &reqwest::Error) -> bool {
@@ -658,6 +673,22 @@ mod tests {
         assert!(should_retry_kibana_error(&request_timeout));
         assert!(should_retry_kibana_error(&rate_limit));
         assert!(should_retry_kibana_error(&server_error));
+    }
+
+    #[tokio::test]
+    async fn retry_policy_retries_kibana_sync_transport_errors() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("listener");
+        let url = format!("http://{}", listener.local_addr().expect("addr"));
+        let close_connection = tokio::spawn(async move {
+            let (socket, _) = listener.accept().await.expect("accept connection");
+            drop(socket);
+        });
+        let error = reqwest::Client::new().get(url).send().await.expect_err("request should fail");
+        close_connection.await.expect("connection close task should finish");
+        let sync_error =
+            eyre::Report::from(kibana_sync::Error::Transport(error)).wrap_err("Failed to send request");
+
+        assert!(should_retry_kibana_error(&sync_error));
     }
 
     #[test]

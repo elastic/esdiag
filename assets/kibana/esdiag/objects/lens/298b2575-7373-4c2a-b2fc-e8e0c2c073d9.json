@@ -1,0 +1,206 @@
+{
+  "attributes": {
+    "description": "",
+    "state": {
+      "adHocDataViews": {},
+      "datasourceStates": {
+        "formBased": {
+          "layers": {
+            "86727ba3-438c-420a-97ad-199c67ca084c": {
+              "columnOrder": [
+                "8fba7627-b348-4c21-b63b-e5e4b151258f",
+                "0de7b0af-ff19-41cd-b6c1-f65c26def694",
+                "086e487f-d822-446c-a79f-7e858fd10d95"
+              ],
+              "columns": {
+                "086e487f-d822-446c-a79f-7e858fd10d95": {
+                  "customLabel": true,
+                  "dataType": "number",
+                  "isBucketed": false,
+                  "label": "Nodes",
+                  "operationType": "count",
+                  "params": {
+                    "emptyAsNull": true
+                  },
+                  "scale": "ratio",
+                  "sourceField": "___records___"
+                },
+                "0de7b0af-ff19-41cd-b6c1-f65c26def694": {
+                  "customLabel": true,
+                  "dataType": "string",
+                  "isBucketed": true,
+                  "label": "node.tier",
+                  "operationType": "terms",
+                  "params": {
+                    "exclude": [],
+                    "excludeIsRegex": false,
+                    "include": [],
+                    "includeIsRegex": false,
+                    "missingBucket": false,
+                    "orderAgg": {
+                      "dataType": "number",
+                      "isBucketed": false,
+                      "label": "Maximum of node.tier_order",
+                      "operationType": "max",
+                      "params": {
+                        "emptyAsNull": true
+                      },
+                      "scale": "ratio",
+                      "sourceField": "node.tier_order"
+                    },
+                    "orderBy": {
+                      "type": "custom"
+                    },
+                    "orderDirection": "asc",
+                    "otherBucket": true,
+                    "parentFormat": {
+                      "id": "terms"
+                    },
+                    "secondaryFields": [],
+                    "size": 20
+                  },
+                  "scale": "ordinal",
+                  "sourceField": "node.tier"
+                },
+                "8fba7627-b348-4c21-b63b-e5e4b151258f": {
+                  "dataType": "string",
+                  "isBucketed": true,
+                  "label": "Top 20 values of node.role",
+                  "operationType": "terms",
+                  "params": {
+                    "exclude": [],
+                    "excludeIsRegex": false,
+                    "include": [],
+                    "includeIsRegex": false,
+                    "missingBucket": false,
+                    "orderAgg": {
+                      "dataType": "number",
+                      "isBucketed": false,
+                      "label": "Maximum of node.tier_order",
+                      "operationType": "max",
+                      "params": {
+                        "emptyAsNull": true
+                      },
+                      "scale": "ratio",
+                      "sourceField": "node.tier_order"
+                    },
+                    "orderBy": {
+                      "type": "custom"
+                    },
+                    "orderDirection": "asc",
+                    "otherBucket": true,
+                    "parentFormat": {
+                      "id": "terms"
+                    },
+                    "secondaryFields": [],
+                    "size": 20
+                  },
+                  "scale": "ordinal",
+                  "sourceField": "node.role"
+                }
+              },
+              "incompleteColumns": {},
+              "sampling": 1
+            }
+          }
+        },
+        "indexpattern": {
+          "layers": {}
+        },
+        "textBased": {
+          "layers": {}
+        }
+      },
+      "filters": [],
+      "internalReferences": [],
+      "query": {
+        "language": "kuery",
+        "query": ""
+      },
+      "visualization": {
+        "axisTitlesVisibilitySettings": {
+          "x": false,
+          "yLeft": false,
+          "yRight": true
+        },
+        "fittingFunction": "None",
+        "gridlinesVisibilitySettings": {
+          "x": true,
+          "yLeft": true,
+          "yRight": true
+        },
+        "labelsOrientation": {
+          "x": 0,
+          "yLeft": 0,
+          "yRight": 0
+        },
+        "layers": [
+          {
+            "accessors": [
+              "086e487f-d822-446c-a79f-7e858fd10d95"
+            ],
+            "colorMapping": {
+              "assignments": [],
+              "colorMode": {
+                "type": "categorical"
+              },
+              "paletteId": "eui_amsterdam_color_blind",
+              "specialAssignments": [
+                {
+                  "color": {
+                    "type": "loop"
+                  },
+                  "rule": {
+                    "type": "other"
+                  },
+                  "touched": false
+                }
+              ]
+            },
+            "layerId": "86727ba3-438c-420a-97ad-199c67ca084c",
+            "layerType": "data",
+            "seriesType": "bar_horizontal_stacked",
+            "splitAccessor": "8fba7627-b348-4c21-b63b-e5e4b151258f",
+            "xAccessor": "0de7b0af-ff19-41cd-b6c1-f65c26def694"
+          }
+        ],
+        "legend": {
+          "isVisible": false,
+          "position": "right",
+          "showSingleSeries": false
+        },
+        "preferredSeriesType": "bar_horizontal_stacked",
+        "tickLabelsVisibilitySettings": {
+          "x": true,
+          "yLeft": false,
+          "yRight": true
+        },
+        "valueLabels": "show"
+      }
+    },
+    "title": "Nodes by Role",
+    "visualizationType": "lnsXY"
+  },
+  "coreMigrationVersion": "8.8.0",
+  "id": "298b2575-7373-4c2a-b2fc-e8e0c2c073d9",
+  "managed": true,
+  "references": [
+    {
+      "id": "4319ebc4-df81-4b18-b8bd-6aaa55a1fd13",
+      "name": "indexpattern-datasource-layer-86727ba3-438c-420a-97ad-199c67ca084c",
+      "type": "index-pattern"
+    },
+    {
+      "id": "5e05b9ee-3e49-4efd-8a16-94de208ebb83",
+      "name": "tag-ref-5e05b9ee-3e49-4efd-8a16-94de208ebb83",
+      "type": "tag"
+    },
+    {
+      "id": "b210de37-7ebf-4ced-9a28-13c1620db46c",
+      "name": "tag-ref-b210de37-7ebf-4ced-9a28-13c1620db46c",
+      "type": "tag"
+    }
+  ],
+  "type": "lens",
+  "typeMigrationVersion": "10.1.0"
+}

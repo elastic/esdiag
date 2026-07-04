@@ -5,8 +5,8 @@ Copyright 2012-2025 Elasticsearch B.V.
 This document lists the licenses of the projects used in esdiag.
 
 ## Overview of licenses
-- [Apache License 2.0](#Apache-2.0) (224)
-- [MIT License](#MIT) (70)
+- [Apache License 2.0](#Apache-2.0) (227)
+- [MIT License](#MIT) (72)
 - [Unicode License v3](#Unicode-3.0) (19)
 - [BSD 3-Clause "New" or "Revised" License](#BSD-3-Clause) (3)
 - [zlib License](#Zlib) (2)
@@ -3475,6 +3475,7 @@ Apache License 2.0
 - [autocfg]( https://github.com/cuviper/autocfg ) 1.5.0
 - [base64]( https://github.com/marshallpierce/rust-base64 ) 0.22.1
 - [bitflags]( https://github.com/bitflags/bitflags ) 2.11.1
+- [bstr]( https://github.com/BurntSushi/bstr ) 1.12.1
 - [bumpalo]( https://github.com/fitzgen/bumpalo ) 3.20.2
 - [cc]( https://github.com/rust-lang/cc-rs ) 1.2.62
 - [cfg-if]( https://github.com/rust-lang/cfg-if ) 1.0.4
@@ -5470,6 +5471,7 @@ Apache License 2.0
 - [include-flate-compress]( https://github.com/SOF3/include-flate.git ) 0.3.2
 - [indenter]( https://github.com/yaahc/indenter ) 0.3.4
 - [itoa]( https://github.com/dtolnay/itoa ) 1.0.18
+- [kibana-sync]( https://github.com/VimCommando/kibana-object-manager ) 0.2.0
 - [libc]( https://github.com/rust-lang/libc ) 0.2.186
 - [miniz_oxide]( https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide ) 0.8.9
 - [pin-project-lite]( https://github.com/taiki-e/pin-project-lite ) 0.2.17
@@ -5503,6 +5505,7 @@ Apache License 2.0
 - [utf8parse]( https://github.com/alacritty/vte ) 0.2.2
 - [wasip2]( https://github.com/bytecodealliance/wasi-rs ) 1.0.2+wasi-0.2.9
 - [wasip3]( https://github.com/bytecodealliance/wasi-rs ) 0.4.0+wasi-0.3.0-rc-2026-01-06
+- [yaml_serde]( https://github.com/yaml/yaml-serde ) 0.10.4
 - [zstd-safe]( https://github.com/gyscos/zstd-rs ) 7.2.4
 - [zstd-sys]( https://github.com/gyscos/zstd-rs ) 2.0.16+zstd.1.5.7
 
@@ -7068,6 +7071,7 @@ SOFTWARE.
 MIT License
 
 #### Used by
+- [libyaml-rs]( https://github.com/yaml/libyaml-rs ) 0.3.0
 - [unsafe-libyaml]( https://github.com/dtolnay/unsafe-libyaml ) 0.2.11
 - [zmij]( https://github.com/dtolnay/zmij ) 1.0.21
 
@@ -7256,6 +7260,7 @@ MIT License
 
 #### Used by
 - [aho-corasick]( https://github.com/BurntSushi/aho-corasick ) 1.1.4
+- [globset]( https://github.com/BurntSushi/ripgrep/tree/master/crates/globset ) 0.4.18
 - [memchr]( https://github.com/BurntSushi/memchr ) 2.8.0
 - [walkdir]( https://github.com/BurntSushi/walkdir ) 2.5.0
 

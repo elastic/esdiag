@@ -1,0 +1,184 @@
+{
+  "attributes": {
+    "description": "",
+    "state": {
+      "adHocDataViews": {},
+      "datasourceStates": {
+        "formBased": {
+          "layers": {
+            "2790396a-7702-4bd3-82c2-76c13e11fa72": {
+              "columnOrder": [
+                "aab8f3e9-ad85-481a-8de6-37693d3eb5d7",
+                "7ad1b24a-05fc-4ee9-a9bc-a47f01e6b869",
+                "04ea469a-022d-4f46-95ec-28b869caf410"
+              ],
+              "columns": {
+                "04ea469a-022d-4f46-95ec-28b869caf410": {
+                  "customLabel": true,
+                  "dataType": "number",
+                  "isBucketed": false,
+                  "label": "Tasks",
+                  "operationType": "unique_count",
+                  "params": {
+                    "emptyAsNull": true,
+                    "format": {
+                      "id": "number",
+                      "params": {
+                        "decimals": 0
+                      }
+                    }
+                  },
+                  "scale": "ratio",
+                  "sourceField": "task.id"
+                },
+                "7ad1b24a-05fc-4ee9-a9bc-a47f01e6b869": {
+                  "dataType": "string",
+                  "isBucketed": true,
+                  "label": "Top 25 values of task.action",
+                  "operationType": "terms",
+                  "params": {
+                    "exclude": [],
+                    "excludeIsRegex": false,
+                    "include": [],
+                    "includeIsRegex": false,
+                    "missingBucket": false,
+                    "orderBy": {
+                      "columnId": "04ea469a-022d-4f46-95ec-28b869caf410",
+                      "type": "column"
+                    },
+                    "orderDirection": "desc",
+                    "otherBucket": true,
+                    "parentFormat": {
+                      "id": "terms"
+                    },
+                    "size": 25
+                  },
+                  "scale": "ordinal",
+                  "sourceField": "task.action"
+                },
+                "aab8f3e9-ad85-481a-8de6-37693d3eb5d7": {
+                  "customLabel": true,
+                  "dataType": "string",
+                  "isBucketed": true,
+                  "label": "Node Name",
+                  "operationType": "terms",
+                  "params": {
+                    "accuracyMode": true,
+                    "exclude": [],
+                    "excludeIsRegex": false,
+                    "include": [],
+                    "includeIsRegex": false,
+                    "missingBucket": false,
+                    "orderBy": {
+                      "columnId": "04ea469a-022d-4f46-95ec-28b869caf410",
+                      "type": "column"
+                    },
+                    "orderDirection": "desc",
+                    "otherBucket": true,
+                    "parentFormat": {
+                      "id": "terms"
+                    },
+                    "size": 50
+                  },
+                  "scale": "ordinal",
+                  "sourceField": "node.name"
+                }
+              },
+              "ignoreGlobalFilters": false,
+              "incompleteColumns": {},
+              "sampling": 1
+            }
+          }
+        },
+        "indexpattern": {
+          "layers": {}
+        },
+        "textBased": {
+          "layers": {}
+        }
+      },
+      "filters": [],
+      "internalReferences": [],
+      "query": {
+        "language": "kuery",
+        "query": ""
+      },
+      "visualization": {
+        "axisTitlesVisibilitySettings": {
+          "x": false,
+          "yLeft": true,
+          "yRight": true
+        },
+        "fittingFunction": "None",
+        "gridlinesVisibilitySettings": {
+          "x": true,
+          "yLeft": true,
+          "yRight": true
+        },
+        "labelsOrientation": {
+          "x": 0,
+          "yLeft": 0,
+          "yRight": 0
+        },
+        "layers": [
+          {
+            "accessors": [
+              "04ea469a-022d-4f46-95ec-28b869caf410"
+            ],
+            "colorMapping": {
+              "assignments": [],
+              "colorMode": {
+                "type": "categorical"
+              },
+              "paletteId": "eui_amsterdam_color_blind",
+              "specialAssignments": [
+                {
+                  "color": {
+                    "type": "loop"
+                  },
+                  "rule": {
+                    "type": "other"
+                  },
+                  "touched": false
+                }
+              ]
+            },
+            "layerId": "2790396a-7702-4bd3-82c2-76c13e11fa72",
+            "layerType": "data",
+            "position": "top",
+            "seriesType": "bar_horizontal_stacked",
+            "showGridlines": false,
+            "splitAccessor": "7ad1b24a-05fc-4ee9-a9bc-a47f01e6b869",
+            "xAccessor": "aab8f3e9-ad85-481a-8de6-37693d3eb5d7"
+          }
+        ],
+        "legend": {
+          "isVisible": true,
+          "legendSize": "xlarge",
+          "position": "right"
+        },
+        "preferredSeriesType": "bar_horizontal_stacked",
+        "tickLabelsVisibilitySettings": {
+          "x": true,
+          "yLeft": true,
+          "yRight": true
+        },
+        "valueLabels": "hide"
+      }
+    },
+    "title": "Node Task Count",
+    "visualizationType": "lnsXY"
+  },
+  "coreMigrationVersion": "8.8.0",
+  "id": "5446eb45-98ed-4de9-bc23-de7fc4dc0a49",
+  "managed": true,
+  "references": [
+    {
+      "id": "2a1a6f44-179d-4073-b23a-f75ba717cc65",
+      "name": "indexpattern-datasource-layer-2790396a-7702-4bd3-82c2-76c13e11fa72",
+      "type": "index-pattern"
+    }
+  ],
+  "type": "lens",
+  "typeMigrationVersion": "10.1.0"
+}
