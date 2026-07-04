@@ -324,13 +324,19 @@ mod tests {
     }
 
     async fn read_request(stream: &mut TcpStream) {
-        let mut buf = [0_u8; 4096];
-        let mut total = 0;
+        const MAX_TEST_REQUEST_BYTES: usize = 64 * 1024;
+
+        let mut request = Vec::new();
+        let mut buf = [0_u8; 1024];
         loop {
-            let read = stream.read(&mut buf[total..]).await.expect("read");
+            let read = stream.read(&mut buf).await.expect("read");
             assert_ne!(read, 0, "connection closed before request headers completed");
-            total += read;
-            if buf[..total].windows(4).any(|window| window == b"\r\n\r\n") {
+            request.extend_from_slice(&buf[..read]);
+            assert!(
+                request.len() <= MAX_TEST_REQUEST_BYTES,
+                "request headers exceeded test helper limit"
+            );
+            if request.windows(4).any(|window| window == b"\r\n\r\n") {
                 break;
             }
         }

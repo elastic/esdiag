@@ -270,17 +270,24 @@ mod tests {
     }
 
     async fn read_http_request(stream: &mut TcpStream) -> String {
-        let mut buf = vec![0_u8; 65536];
-        let mut total = 0;
+        const MAX_TEST_REQUEST_BYTES: usize = 64 * 1024;
+
+        let mut request = Vec::new();
+        let mut buf = [0_u8; 1024];
         loop {
-            let read = stream.read(&mut buf[total..]).await.expect("read request");
+            let read = stream.read(&mut buf).await.expect("read request");
             assert_ne!(read, 0, "connection closed before request completed");
-            total += read;
-            let request = String::from_utf8_lossy(&buf[..total]);
-            let Some(header_end) = request.find("\r\n\r\n") else {
+            request.extend_from_slice(&buf[..read]);
+            assert!(
+                request.len() <= MAX_TEST_REQUEST_BYTES,
+                "request exceeded test helper limit"
+            );
+
+            let request_text = String::from_utf8_lossy(&request);
+            let Some(header_end) = request_text.find("\r\n\r\n") else {
                 continue;
             };
-            let content_length = request[..header_end]
+            let content_length = request_text[..header_end]
                 .lines()
                 .find_map(|line| {
                     let (name, value) = line.split_once(':')?;
@@ -290,8 +297,12 @@ mod tests {
                 })
                 .unwrap_or(0);
             let expected = header_end + 4 + content_length;
-            if total >= expected {
-                return String::from_utf8_lossy(&buf[..expected]).to_string();
+            assert!(
+                expected <= MAX_TEST_REQUEST_BYTES,
+                "request content exceeded test helper limit"
+            );
+            if request.len() >= expected {
+                return String::from_utf8_lossy(&request[..expected]).to_string();
             }
         }
     }
