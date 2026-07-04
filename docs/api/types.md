@@ -107,18 +107,36 @@ Response from the `/api/api_key` endpoint when `wait_for_completion` is `false` 
 Response from `/api/api_key` or `/api/service_link` when `wait_for_completion` is `true`.
 
 ```json
-{
-  "diagnostic_id": "string",
-  "kibana_link": "string",
-  "took": integer
-}
+[
+  {
+    "status": "success",
+    "diagnostic_id": "string",
+    "kibana_link": "string",
+    "took": 12345,
+    "product": "Elasticsearch",
+    "source": "parent"
+  },
+  {
+    "status": "info",
+    "product": "Kibana",
+    "source": "included_diagnostic",
+    "path": "namespace/kibana/instance",
+    "reason": "Kibana processing is not yet implemented"
+  }
+]
 ```
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `diagnostic_id` | String | Unique identifier for the processed diagnostic |
-| `kibana_link` | String | URL to view the diagnostic in Kibana dashboard (empty string if `ESDIAG_KIBANA_URL` is not configured) |
-| `took` | Integer | Processing time in milliseconds |
+| `status` | String | `success`, `info`, or `failed` |
+| `diagnostic_id` | String | Present for `status: "success"` entries. Unique identifier for a successfully processed diagnostic |
+| `kibana_link` | String | Present for `status: "success"` entries. URL to view a successful diagnostic in Kibana dashboard (empty string if `ESDIAG_KIBANA_URL` is not configured) |
+| `took` | Integer | Present for `status: "success"` entries. Processing time in milliseconds |
+| `product` | String | Product associated with the result entry when known |
+| `source` | String | `parent` or `included_diagnostic` |
+| `path` | String | Present for `source: "included_diagnostic"` entries. Included diagnostic path for child entries |
+| `reason` | String | Present for `status: "info"` entries. Explanation for informational skipped entries |
+| `error` | String | Present for `status: "failed"` child entries. Error message for failed child entries |
 
 ### Error Response
 

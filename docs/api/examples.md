@@ -78,11 +78,16 @@ curl -X POST 'http://localhost:2501/api/service_link?wait_for_completion' \
 
 ### Successful Response
 ```json
-{
-  "diagnostic_id": "elasticsearch-diagnostic-2024-01-15-abc123",
-  "kibana_link": "https://kibana.example.com/app/dashboards#/view/4e0a26b2-e5f8-4b2c-a5c8-1a3f2c4d5e6f",
-  "took": 42000
-}
+[
+  {
+    "status": "success",
+    "diagnostic_id": "elasticsearch-diagnostic-2024-01-15-abc123",
+    "kibana_link": "https://kibana.example.com/app/dashboards#/view/4e0a26b2-e5f8-4b2c-a5c8-1a3f2c4d5e6f",
+    "took": 42000,
+    "product": "Elasticsearch",
+    "source": "parent"
+  }
+]
 ```
 
 ### Error Response - Processing failure
@@ -142,7 +147,7 @@ curl -X POST http://localhost:2501/api/api_key \
 
 ### Synchronous Processing with `wait_for_completion`
 
-Process the diagnostic synchronously and wait for completion. The response includes the diagnostic ID, Kibana URL, and processing time.
+Process the diagnostic synchronously and wait for completion. The response is a JSON array with one entry for the parent diagnostic and one entry for each included diagnostic outcome.
 
 ### Request (with parameter but no value)
 ```bash
@@ -178,18 +183,26 @@ curl -X POST 'http://localhost:2501/api/api_key?wait_for_completion=true' \
 
 ### Successful Response
 ```json
-{
-  "diagnostic_id": "elasticsearch-diagnostic-2024-01-15-abc123",
-  "kibana_link": "https://kibana.example.com/app/dashboards#/view/4e0a26b2-e5f8-4b58-b617-86f5cdd0edad?_g=...",
-  "took": 12345
-}
+[
+  {
+    "status": "success",
+    "diagnostic_id": "elasticsearch-diagnostic-2024-01-15-abc123",
+    "kibana_link": "https://kibana.example.com/app/dashboards#/view/4e0a26b2-e5f8-4b58-b617-86f5cdd0edad?_g=...",
+    "took": 12345,
+    "product": "Elasticsearch",
+    "source": "parent"
+  }
+]
 ```
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `diagnostic_id` | String | Unique identifier for the processed diagnostic |
-| `kibana_link` | String | URL to view the diagnostic in Kibana (empty string if not configured) |
-| `took` | Number | Processing time in milliseconds |
+| `status` | String | `success`, `info`, or `failed` |
+| `diagnostic_id` | String | Unique identifier for a successfully processed diagnostic |
+| `kibana_link` | String | URL to view a successful diagnostic in Kibana (empty string if not configured) |
+| `took` | Number | Processing time in milliseconds for successful entries |
+| `product` | String | Product associated with the result entry when known |
+| `source` | String | `parent` or `included_diagnostic` |
 
 ### Error Response - Processing Failed
 ```json

@@ -287,6 +287,15 @@ pub struct JobCompleted<'a> {
 }
 
 #[derive(Template)]
+#[template(path = "job/skipped.html")]
+pub struct JobSkipped<'a> {
+    pub job_id: u64,
+    pub source: &'a str,
+    pub product: &'a str,
+    pub reason: &'a str,
+}
+
+#[derive(Template)]
 #[template(path = "job/collection_processing.html")]
 pub struct JobCollectionProcessing<'a> {
     pub job_id: u64,
@@ -442,7 +451,7 @@ fn output_target_label(target: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{Jobs, active_output_requires_keystore, build_footer_output_context};
+    use super::{JobCompleted, JobSkipped, Jobs, active_output_requires_keystore, build_footer_output_context};
     use crate::{
         data::{HostRole, KnownHost, Product, Uri},
         exporter::Exporter,
@@ -614,5 +623,53 @@ mod tests {
             !html.contains(r#"data-signals:job="{}""#),
             "jobs page should not seed a top-level job object that overrides nested job signals"
         );
+    }
+
+    #[test]
+    fn job_templates_render_child_completion_and_skipped_results() {
+        let docs_created = 42;
+        let completed = JobCompleted {
+            job_id: 100,
+            diagnostic_id: "elasticsearch_diagnostic@2026-01-01~abcd",
+            docs_created: &docs_created,
+            duration: "0.500",
+            source: "Included diagnostic: child-es",
+            kibana_link: "https://kb.example/app/dashboards#/view/child",
+            product: "Elasticsearch",
+        }
+        .render()
+        .expect("completed template renders");
+
+        assert!(completed.contains("elasticsearch_diagnostic@2026-01-01~abcd"));
+        assert!(completed.contains("https://kb.example/app/dashboards#/view/child"));
+        assert!(completed.contains("Included diagnostic: child-es"));
+
+        let no_link = JobCompleted {
+            job_id: 102,
+            diagnostic_id: "elasticsearch_diagnostic@2026-01-01~efgh",
+            docs_created: &docs_created,
+            duration: "0.500",
+            source: "Included diagnostic: child-es",
+            kibana_link: "",
+            product: "Elasticsearch",
+        }
+        .render()
+        .expect("completed template without Kibana link renders");
+
+        assert!(no_link.contains("elasticsearch_diagnostic@2026-01-01~efgh"));
+        assert!(!no_link.contains(r#"href="""#));
+
+        let skipped = JobSkipped {
+            job_id: 101,
+            source: "Included diagnostic: child-kibana",
+            product: "Kibana",
+            reason: "Kibana processing is not yet implemented",
+        }
+        .render()
+        .expect("skipped template renders");
+
+        assert!(skipped.contains("status-info"));
+        assert!(skipped.contains("Included diagnostic: child-kibana"));
+        assert!(skipped.contains("Kibana processing is not yet implemented"));
     }
 }

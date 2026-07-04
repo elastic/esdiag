@@ -181,6 +181,16 @@ impl std::fmt::Display for ArchiveFileReceiver {
 }
 
 impl ArchiveFileReceiver {
+    pub(crate) fn clone_for_subdir(&self, work_dir: &str) -> Self {
+        Self {
+            archive: self.archive.clone(),
+            filename: self.filename.clone(),
+            subdir: Some(PathBuf::from(work_dir)),
+            modified_date: self.modified_date,
+            source_product: Arc::new(OnceLock::new()),
+        }
+    }
+
     pub async fn read_bundle_json<T>(&self, filename: &str) -> Result<T>
     where
         T: DeserializeOwned,

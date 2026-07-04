@@ -19,7 +19,10 @@ use esdiag::{
     },
     env::LOG_LEVEL,
     exporter::Exporter,
-    processor::{CollectionResult, Collector, DiagnosticReport, Identifiers, Processor, default_collect_archive_name},
+    processor::{
+        CollectionResult, Collector, Completed, Identifiers, IncludedDiagnosticOutcome, Processor,
+        default_collect_archive_name,
+    },
     receiver::Receiver,
     uploader,
 };
@@ -553,15 +556,49 @@ fn emit_completion_summary(summary: &str) -> Result<()> {
     Ok(())
 }
 
-fn format_process_summary(report: &DiagnosticReport, runtime_ms: u128) -> String {
+fn format_process_summary(completed: &Completed) -> String {
+    let report = &completed.report;
     let mut summary = format!(
         "process complete in {:.3} seconds: {} documents for {}",
-        runtime_ms as f64 / 1000.0,
+        completed.runtime as f64 / 1000.0,
         report.diagnostic.docs.created,
         report.diagnostic.metadata.id
     );
     if let Some(kibana_link) = report.diagnostic.kibana_link.as_deref() {
         summary.push_str(&format!("\nKibana Link: {kibana_link}"));
+    }
+    for outcome in &completed.included_diagnostics {
+        match outcome {
+            IncludedDiagnosticOutcome::Completed {
+                path, report, runtime, ..
+            } => {
+                summary.push_str(&format!(
+                    "\n\nincluded diagnostic complete in {:.3} seconds: {} documents for {} ({})",
+                    *runtime as f64 / 1000.0,
+                    report.diagnostic.docs.created,
+                    report.diagnostic.metadata.id,
+                    report.diagnostic.product
+                ));
+                summary.push_str(&format!("\nSource: {path}"));
+                if let Some(kibana_link) = report.diagnostic.kibana_link.as_deref() {
+                    summary.push_str(&format!("\nKibana Link: {kibana_link}"));
+                }
+            }
+            IncludedDiagnosticOutcome::Skipped {
+                path, product, reason, ..
+            } => {
+                let product = product
+                    .as_ref()
+                    .map(ToString::to_string)
+                    .unwrap_or_else(|| "unknown".to_string());
+                summary.push_str(&format!(
+                    "\n\nincluded diagnostic skipped: {path} ({product})\nReason: {reason}"
+                ));
+            }
+            IncludedDiagnosticOutcome::Failed { path, error, .. } => {
+                summary.push_str(&format!("\n\nincluded diagnostic failed: {path}\nError: {error}"));
+            }
+        }
     }
     summary
 }
@@ -943,7 +980,7 @@ async fn run(cli: Cli) -> Result<CommandResult> {
 
                 match processor.process().await {
                     Ok(processor) => {
-                        let summary = format_process_summary(&processor.state.report, processor.state.runtime);
+                        let summary = format_process_summary(&processor.state);
                         Ok(CommandResult::with_summary("process", summary))
                     }
                     Err(processor) => {
@@ -1674,7 +1711,7 @@ mod tests {
     use clap::Parser;
     use esdiag::data::{HostRole, JobAction, KnownHost, Product, SecretAuth, UnlockStatus, Uri, upsert_secret_auth};
     use esdiag::processor::diagnostic::DiagnosticReportBuilder;
-    use esdiag::processor::{CollectionResult, DiagnosticManifest, Identifiers};
+    use esdiag::processor::{CollectionResult, Completed, DiagnosticManifest, Identifiers, IncludedDiagnosticOutcome};
     #[cfg(feature = "server")]
     use esdiag::server::RuntimeMode;
     use std::sync::{
@@ -2298,7 +2335,12 @@ mod tests {
             .build()
             .expect("report");
         report.add_kibana_link("https://kb.example/app/dashboards#/view/report".to_string());
-        let summary = format_process_summary(&report, 1_234);
+        let completed = Completed {
+            report,
+            runtime: 1_234,
+            included_diagnostics: vec![],
+        };
+        let summary = format_process_summary(&completed);
 
         let mut buffer = Vec::new();
         write_completion_summary(&mut buffer, &summary).expect("write summary");
@@ -2306,6 +2348,79 @@ mod tests {
         let stderr = String::from_utf8(buffer).expect("utf8");
         assert!(stderr.contains("process complete in 1.234 seconds"));
         assert!(stderr.contains("Kibana Link: https://kb.example/app/dashboards#/view/report"));
+    }
+
+    #[test]
+    fn process_summary_includes_child_outcomes_for_parent_bundles() {
+        let parent_manifest = DiagnosticManifest::new(
+            "2024-01-01T00:00:00Z".to_string(),
+            Some("esdiag-test".to_string()),
+            None,
+            None,
+            Some("support".to_string()),
+            Product::ECK,
+            Some("eck-diagnostics".to_string()),
+            Some("esdiag".to_string()),
+            Some("3.0.0".to_string()),
+        );
+        let parent_report = DiagnosticReportBuilder::try_from(parent_manifest)
+            .expect("parent report builder")
+            .receiver("Directory /tmp/eck".to_string())
+            .product(Product::ECK)
+            .build()
+            .expect("parent report");
+
+        let child_manifest = DiagnosticManifest::new(
+            "2024-01-01T00:00:00Z".to_string(),
+            Some("esdiag-test".to_string()),
+            None,
+            None,
+            Some("standard".to_string()),
+            Product::Elasticsearch,
+            Some("elasticsearch_diagnostic".to_string()),
+            Some("esdiag".to_string()),
+            Some("9.3.3".to_string()),
+        );
+        let mut child_report = DiagnosticReportBuilder::try_from(child_manifest)
+            .expect("child report builder")
+            .receiver("Directory /tmp/eck/child".to_string())
+            .product(Product::Elasticsearch)
+            .build()
+            .expect("child report");
+        child_report.diagnostic.docs.created = 42;
+        child_report.add_kibana_link("https://kb.example/app/dashboards#/view/child".to_string());
+
+        let completed = Completed {
+            report: parent_report,
+            runtime: 2_000,
+            included_diagnostics: vec![
+                IncludedDiagnosticOutcome::Completed {
+                    job_id: 1,
+                    path: "child-es".to_string(),
+                    report: Box::new(child_report),
+                    runtime: 500,
+                },
+                IncludedDiagnosticOutcome::Skipped {
+                    job_id: 2,
+                    path: "child-kibana".to_string(),
+                    product: Some(Product::Kibana),
+                    reason: "Kibana processing is not yet implemented".to_string(),
+                },
+                IncludedDiagnosticOutcome::Failed {
+                    job_id: 3,
+                    path: "child-missing".to_string(),
+                    error: "manifest missing".to_string(),
+                },
+            ],
+        };
+
+        let summary = format_process_summary(&completed);
+
+        assert!(summary.contains("included diagnostic complete in 0.500 seconds: 42 documents"));
+        assert!(summary.contains("child-es"));
+        assert!(summary.contains("https://kb.example/app/dashboards#/view/child"));
+        assert!(summary.contains("included diagnostic skipped: child-kibana (Kibana)"));
+        assert!(summary.contains("included diagnostic failed: child-missing"));
     }
 
     #[test]
