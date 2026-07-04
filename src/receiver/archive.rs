@@ -18,6 +18,10 @@ use zip::ZipArchive;
 // Real files larger than this still work — read_to_end grows the Vec organically.
 pub(crate) const MAX_PREALLOC: usize = 256 * 1024 * 1024;
 
+pub(crate) fn capped_prealloc_capacity(zip_size: u64) -> usize {
+    zip_size.min(MAX_PREALLOC as u64) as usize
+}
+
 mod bytes;
 mod file;
 
@@ -63,7 +67,7 @@ where
                     return;
                 }
             };
-            let mut buf = Vec::with_capacity((file.size() as usize).min(MAX_PREALLOC));
+            let mut buf = Vec::with_capacity(capped_prealloc_capacity(file.size()));
             if let Err(e) = std::io::Read::read_to_end(&mut file, &mut buf) {
                 let _ = tx.blocking_send(Err(eyre::eyre!(e)));
                 return;
@@ -72,8 +76,8 @@ where
         };
         drop(archive_guard);
         let mut deserializer = serde_json::Deserializer::from_slice(&buf);
-        let stream_result = T::deserialize_stream(&mut deserializer, tx.clone())
-            .map_err(|e| eyre::eyre!(e.to_string()));
+        let stream_result =
+            T::deserialize_stream(&mut deserializer, tx.clone()).map_err(|e| eyre::eyre!(e.to_string()));
 
         if let Err(e) = stream_result {
             tracing::error!("Error deserializing stream from archive: {}", e);
@@ -257,6 +261,12 @@ mod tests {
         let mut archive = ZipArchive::new(Cursor::new(archive_data)).unwrap();
         let result = resolve_archive_path(None, &mut archive, "missing.json");
         assert!(result.unwrap_err().to_string().contains("File not found"));
+    }
+
+    #[test]
+    fn capped_prealloc_capacity_caps_before_casting_to_usize() {
+        assert_eq!(capped_prealloc_capacity(42), 42);
+        assert_eq!(capped_prealloc_capacity(u64::MAX), MAX_PREALLOC);
     }
 
     #[test]

@@ -67,7 +67,7 @@ impl Receive for ArchiveBytesReceiver {
                         Ok(file) => file,
                         Err(_) => return Err(eyre!("Failed to read file {filename} from archive")),
                     };
-                    let mut buf = Vec::with_capacity((file.size() as usize).min(super::MAX_PREALLOC));
+                    let mut buf = Vec::with_capacity(super::capped_prealloc_capacity(file.size()));
                     std::io::Read::read_to_end(&mut file, &mut buf)?;
                     let data: T = serde_json::from_slice(&buf)?;
                     return Ok(data);
@@ -92,8 +92,7 @@ impl Receive for ArchiveBytesReceiver {
     {
         let ctx = self.source_context()?;
         let archive = Arc::new(tokio::sync::RwLock::new(self.open_archive()?));
-        super::get_stream_from_archive::<BufReader<Cursor<Bytes>>, T>(archive, self.subdir.clone(), ctx)
-            .await
+        super::get_stream_from_archive::<BufReader<Cursor<Bytes>>, T>(archive, self.subdir.clone(), ctx).await
     }
 }
 
@@ -145,7 +144,7 @@ impl ArchiveBytesReceiver {
             Ok(file) => file,
             Err(_) => return Err(eyre!("Failed to read file {filename} from archive")),
         };
-        let mut buf = Vec::with_capacity((file.size() as usize).min(super::MAX_PREALLOC));
+        let mut buf = Vec::with_capacity(super::capped_prealloc_capacity(file.size()));
         std::io::Read::read_to_end(&mut file, &mut buf)?;
         serde_json::from_slice(&buf).map_err(Into::into)
     }

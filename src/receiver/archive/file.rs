@@ -73,14 +73,16 @@ impl Receive for ArchiveFileReceiver {
             Ok(archive) => {
                 let is_empty = archive.is_empty();
                 if tracing::enabled!(tracing::Level::TRACE) {
-                    let file_names: Vec<String> =
-                        archive.file_names().map(|name| name.to_string()).collect();
+                    let file_names: Vec<String> = archive.file_names().map(|name| name.to_string()).collect();
                     tracing::trace!("Files in archive: {:?}", file_names);
                 }
                 tracing::debug!("Archive {} is valid: {}", &self.filename, !is_empty);
                 !is_empty
             }
-            Err(_) => false,
+            Err(e) => {
+                tracing::debug!("Archive {} is not connected: {}", &self.filename, e);
+                false
+            }
         }
     }
 
@@ -103,7 +105,7 @@ impl Receive for ArchiveFileReceiver {
                 Ok(filename) => {
                     tracing::debug!("Reading {}", filename);
                     let mut file = archive.by_name(&filename)?;
-                    let mut buf = Vec::with_capacity((file.size() as usize).min(super::MAX_PREALLOC));
+                    let mut buf = Vec::with_capacity(super::capped_prealloc_capacity(file.size()));
                     std::io::Read::read_to_end(&mut file, &mut buf)?;
                     let data: T = serde_json::from_slice(&buf)?;
                     return Ok(data);
@@ -212,7 +214,7 @@ impl ArchiveFileReceiver {
         let filename = resolve_archive_path(self.subdir.as_ref(), &mut archive, filename)?;
         tracing::debug!("Reading bundle file {}", filename);
         let mut file = archive.by_name(&filename)?;
-        let mut buf = Vec::with_capacity((file.size() as usize).min(super::MAX_PREALLOC));
+        let mut buf = Vec::with_capacity(super::capped_prealloc_capacity(file.size()));
         std::io::Read::read_to_end(&mut file, &mut buf)?;
         serde_json::from_slice(&buf).map_err(Into::into)
     }
