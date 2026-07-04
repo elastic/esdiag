@@ -761,6 +761,20 @@ user: ada
     }
 
     #[test]
+    fn processor_summary_records_successful_local_batch_as_status_200() {
+        let mut summary = ProcessorSummary::new("metrics-node-esdiag".to_string());
+        let mut batch = BatchResponse::new(3);
+        batch.status_code = 200;
+
+        summary.add_batch(batch);
+
+        let value = serde_json::to_value(summary).expect("summary json");
+        assert_eq!(value["batch"]["status_codes"]["200"], 1);
+        assert_eq!(value["batch"]["status_codes"].get("0"), None);
+        assert_eq!(value["docs"], 3);
+    }
+
+    #[test]
     fn batch_response_merge_saturates_summary_counters() {
         let mut left = BatchResponse {
             batch_count: u32::MAX,

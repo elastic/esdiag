@@ -134,6 +134,7 @@ impl Export for DirectoryExporter {
     {
         let start_time = tokio::time::Instant::now();
         let mut batch = BatchResponse::new(docs.len() as u32);
+        batch.status_code = 200;
         let mut doc_count = 0;
         {
             let writer = get_writer(self.writers.clone(), &self.path, &index).await?;
