@@ -128,7 +128,7 @@ impl std::fmt::Display for ArchiveBytesReceiver {
 impl ArchiveBytesReceiver {
     pub(crate) fn clone_for_subdir(&self, work_dir: &str) -> Self {
         Self {
-            archive: self.archive.clone(),
+            bytes: self.bytes.clone(),
             subdir: Some(PathBuf::from(work_dir)),
             source_product: Arc::new(OnceLock::new()),
         }

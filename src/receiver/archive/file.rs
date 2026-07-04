@@ -196,7 +196,7 @@ impl std::fmt::Display for ArchiveFileReceiver {
 impl ArchiveFileReceiver {
     pub(crate) fn clone_for_subdir(&self, work_dir: &str) -> Self {
         Self {
-            archive: self.archive.clone(),
+            path: self.path.clone(),
             filename: self.filename.clone(),
             subdir: Some(PathBuf::from(work_dir)),
             modified_date: self.modified_date,
