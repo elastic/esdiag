@@ -17,7 +17,9 @@ fn main() {
     println!("cargo:rerun-if-env-changed=ESDIAG_GENERATE_NOTICE");
     println!("cargo:rerun-if-env-changed=ESDIAG_GENERATE_SBOM");
 
-    build_kibana_assets_bundle();
+    if setup_feature_enabled() {
+        build_kibana_assets_bundle();
+    }
 
     let notice_path = Path::new("NOTICE.txt");
     let sbom_path = Path::new("esdiag.spdx.json");
@@ -143,6 +145,10 @@ fn build_kibana_assets_bundle() {
     }
 
     zip.finish().expect("failed to finish Kibana assets bundle");
+}
+
+fn setup_feature_enabled() -> bool {
+    env::var_os("CARGO_FEATURE_SETUP").is_some()
 }
 
 fn collect_kibana_asset_paths(path: &Path, files: &mut Vec<PathBuf>, watched_paths: &mut Vec<PathBuf>) {

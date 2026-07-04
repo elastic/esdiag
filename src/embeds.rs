@@ -11,6 +11,7 @@ use rust_embed::RustEmbed;
 pub struct Assets;
 
 /// Generated Kibana asset bundle built from `assets/kibana`.
+#[cfg(feature = "setup")]
 pub static KIBANA_ASSETS_BUNDLE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/kibana-assets.zip"));
 
 /// Documentation assets in the `docs/` directory
