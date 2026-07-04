@@ -556,6 +556,8 @@ mod tests {
             .expect("absolute path should be rejected");
 
         assert!(err.to_string().contains("must be relative and stay within the bundle"));
+    }
+
     #[test]
     fn upload_temp_path_auto_detects_from_original_filename_hint() {
         let temp = "esdiag-upload-1-550e8400-e29b-41d4-a716-446655440000.zip";

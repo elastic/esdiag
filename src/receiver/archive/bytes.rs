@@ -211,6 +211,7 @@ impl ArchiveBytesReceiver {
             archive: self.archive.clone(),
             subdir: Some(PathBuf::from(work_dir)),
             source_product: Arc::new(OnceLock::new()),
+            scrubbed: self.scrubbed,
         }
     }
 

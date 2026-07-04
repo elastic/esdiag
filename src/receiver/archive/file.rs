@@ -228,6 +228,7 @@ impl ArchiveFileReceiver {
             subdir: Some(PathBuf::from(work_dir)),
             modified_date: self.modified_date,
             source_product: Arc::new(OnceLock::new()),
+            scrubbed: self.scrubbed,
         }
     }
 
