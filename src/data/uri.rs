@@ -98,7 +98,13 @@ fn try_from_elasticrc_reference(reference: &str) -> Result<Option<Uri>> {
         return Ok(None);
     };
 
-    let config = elasticrc::ConfigFile::load_with_options(None, None)?;
+    let config = match elasticrc::ConfigFile::load_with_options(None, None) {
+        Ok(config) => config,
+        Err(elasticrc::Error::ConfigNotFound { .. }) | Err(elasticrc::Error::HomeDirectoryUnavailable) => {
+            return Ok(None);
+        }
+        Err(err) => return Err(err.into()),
+    };
     let service = config.resolve_service(&context, reference.service)?;
     Ok(Some(uri_from_elasticrc_service(service)?))
 }
@@ -994,6 +1000,45 @@ contexts:
 
         assert_eq!(host.get_url().expect("url").as_str(), "https://config.example:9200/");
         clear_env();
+    }
+
+    #[cfg(feature = "elasticrc")]
+    #[test]
+    fn named_elasticrc_reference_without_config_falls_through_to_saved_host() {
+        let _guard = crate::test_env_lock().lock().expect("env lock");
+        clear_env();
+        let previous_home = std::env::var_os("HOME");
+        let _tmp = setup_hosts_env();
+        let home = TempDir::new().expect("home temp dir");
+        let mut hosts = BTreeMap::new();
+        hosts.insert(
+            ".prod.es".to_string(),
+            KnownHost::new_no_auth(
+                Product::Elasticsearch,
+                url::Url::parse("https://saved.example:9200").expect("saved url"),
+                vec![HostRole::Collect],
+                None,
+                false,
+            ),
+        );
+        KnownHost::write_hosts_yml(&hosts).expect("write hosts");
+        unsafe {
+            std::env::set_var("HOME", home.path());
+        }
+
+        let Uri::KnownHost(host) = Uri::try_from(".prod.es").expect("saved host uri") else {
+            panic!("expected known host");
+        };
+
+        assert_eq!(host.get_url().expect("url").as_str(), "https://saved.example:9200/");
+        clear_env();
+        unsafe {
+            if let Some(previous_home) = previous_home {
+                std::env::set_var("HOME", previous_home);
+            } else {
+                std::env::remove_var("HOME");
+            }
+        }
     }
 
     #[cfg(feature = "elasticrc")]

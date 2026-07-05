@@ -709,23 +709,21 @@ fn parse_command_argv(command: &str, resolver: &str, field: &str) -> Result<Vec<
     let mut argv = Vec::new();
     let mut current = String::new();
     let mut quote = None;
-    let mut escaped = false;
     let mut token_started = false;
 
-    for ch in command.chars() {
-        if escaped {
-            current.push(ch);
-            token_started = true;
-            escaped = false;
-            continue;
-        }
-
+    let mut chars = command.chars().peekable();
+    while let Some(ch) = chars.next() {
         match quote {
             Some(quote_char) if ch == quote_char => {
                 quote = None;
             }
             Some(_) if ch == '\\' => {
-                escaped = true;
+                if let Some(next) = chars.next_if(|next| next.is_whitespace() || matches!(next, '\'' | '"' | '\\')) {
+                    current.push(next);
+                } else {
+                    current.push(ch);
+                }
+                token_started = true;
             }
             Some(_) => {
                 current.push(ch);
@@ -736,7 +734,12 @@ fn parse_command_argv(command: &str, resolver: &str, field: &str) -> Result<Vec<
                 token_started = true;
             }
             None if ch == '\\' => {
-                escaped = true;
+                if let Some(next) = chars.next_if(|next| next.is_whitespace() || matches!(next, '\'' | '"' | '\\')) {
+                    current.push(next);
+                } else {
+                    current.push(ch);
+                }
+                token_started = true;
             }
             None if matches!(
                 ch,
@@ -761,13 +764,6 @@ fn parse_command_argv(command: &str, resolver: &str, field: &str) -> Result<Vec<
         }
     }
 
-    if escaped {
-        return Err(Error::ResolverFailed {
-            resolver: resolver.to_string(),
-            field: field.to_string(),
-            message: "command resolver ends with an unfinished escape".to_string(),
-        });
-    }
     if quote.is_some() {
         return Err(Error::ResolverFailed {
             resolver: resolver.to_string(),
@@ -1378,6 +1374,14 @@ contexts:
         let argv = parse_command_argv(r#"printf "%s" "my key" escaped\ value"#, "cmd", "field").expect("parse argv");
 
         assert_eq!(argv, vec!["printf", "%s", "my key", "escaped value"]);
+    }
+
+    #[test]
+    fn command_argv_parser_preserves_literal_backslashes() {
+        let argv =
+            parse_command_argv(r#""C:\Program Files\tool.exe" --path=C:\tmp\x"#, "cmd", "field").expect("parse argv");
+
+        assert_eq!(argv, vec![r#"C:\Program Files\tool.exe"#, r#"--path=C:\tmp\x"#]);
     }
 
     #[test]
