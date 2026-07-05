@@ -506,7 +506,7 @@ pub fn discover_config_path(home_dir: &Path) -> Option<PathBuf> {
     [".elasticrc", ".elasticrc.json", ".elasticrc.yaml", ".elasticrc.yml"]
         .into_iter()
         .map(|name| home_dir.join(name))
-        .find(|path| path.is_file())
+        .find(|path| path.is_file() && fs::File::open(path).is_ok())
 }
 
 fn load_config_file(path: impl AsRef<Path>) -> Result<ConfigFile, Error> {
@@ -1055,6 +1055,19 @@ mod tests {
         write(&tmp.path().join(".elasticrc"), "current_context: first\ncontexts: {}\n");
 
         assert_eq!(discover_config_path(tmp.path()), Some(tmp.path().join(".elasticrc")));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn discovery_skips_unreadable_config_candidate() {
+        let tmp = TempDir::new().expect("temp dir");
+        let unreadable = tmp.path().join(".elasticrc");
+        let readable = tmp.path().join(".elasticrc.yml");
+        write(&unreadable, "current_context: first\ncontexts: {}\n");
+        write(&readable, "current_context: later\ncontexts: {}\n");
+        fs::set_permissions(&unreadable, fs::Permissions::from_mode(0o000)).expect("set permissions");
+
+        assert_eq!(discover_config_path(tmp.path()), Some(readable));
     }
 
     #[test]
