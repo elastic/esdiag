@@ -7,6 +7,12 @@ use crate::{data::Product, env};
 use super::{ElasticCloud, KnownHost, KnownHostBuilder};
 use eyre::{OptionExt, Report, Result, eyre};
 use serde::{Deserialize, Deserializer};
+#[cfg(feature = "elasticrc")]
+use std::{
+    collections::HashMap,
+    ffi::OsString,
+    sync::{Mutex, OnceLock},
+};
 use std::{
     path::{Path, PathBuf},
     str::FromStr,
@@ -69,6 +75,73 @@ fn try_from_active_context_service(service: ElasticCliService) -> Result<Uri> {
 }
 
 #[cfg(feature = "elasticrc")]
+#[derive(Clone, Eq, Hash, PartialEq)]
+struct ElasticrcCacheKey {
+    config_file: Option<OsString>,
+    home: Option<OsString>,
+    user_profile: Option<OsString>,
+}
+
+#[cfg(feature = "elasticrc")]
+#[derive(Clone)]
+enum CachedElasticrc {
+    Loaded(Box<elasticrc::ConfigFile>),
+    NotFound,
+    Failed(String),
+}
+
+#[cfg(feature = "elasticrc")]
+fn elasticrc_cache() -> &'static Mutex<HashMap<ElasticrcCacheKey, CachedElasticrc>> {
+    static CACHE: OnceLock<Mutex<HashMap<ElasticrcCacheKey, CachedElasticrc>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+#[cfg(feature = "elasticrc")]
+fn elasticrc_cache_key() -> ElasticrcCacheKey {
+    ElasticrcCacheKey {
+        config_file: std::env::var_os("ELASTIC_CLI_CONFIG_FILE"),
+        home: std::env::var_os("HOME"),
+        user_profile: std::env::var_os("USERPROFILE"),
+    }
+}
+
+#[cfg(feature = "elasticrc")]
+fn load_elasticrc_config_cached() -> Result<Option<elasticrc::ConfigFile>> {
+    let key = elasticrc_cache_key();
+    {
+        let cache = elasticrc_cache().lock().expect("elasticrc cache lock");
+        if let Some(cached) = cache.get(&key) {
+            return cached.clone().into_result();
+        }
+    }
+
+    let cached = match elasticrc::ConfigFile::load_with_options(None, None) {
+        Ok(config) => CachedElasticrc::Loaded(Box::new(config)),
+        Err(elasticrc::Error::ConfigNotFound { .. }) | Err(elasticrc::Error::HomeDirectoryUnavailable) => {
+            CachedElasticrc::NotFound
+        }
+        Err(err) => CachedElasticrc::Failed(err.to_string()),
+    };
+    let result = cached.clone().into_result();
+    elasticrc_cache()
+        .lock()
+        .expect("elasticrc cache lock")
+        .insert(key, cached);
+    result
+}
+
+#[cfg(feature = "elasticrc")]
+impl CachedElasticrc {
+    fn into_result(self) -> Result<Option<elasticrc::ConfigFile>> {
+        match self {
+            Self::Loaded(config) => Ok(Some(*config)),
+            Self::NotFound => Ok(None),
+            Self::Failed(message) => Err(eyre!(message)),
+        }
+    }
+}
+
+#[cfg(feature = "elasticrc")]
 fn uri_from_elasticrc_service(service: elasticrc::ResolvedService) -> Result<Uri> {
     let product = match service.kind {
         elasticrc::ServiceKind::Elasticsearch | elasticrc::ServiceKind::Cloud => Product::Elasticsearch,
@@ -98,12 +171,8 @@ fn try_from_elasticrc_reference(reference: &str) -> Result<Option<Uri>> {
         return Ok(None);
     };
 
-    let config = match elasticrc::ConfigFile::load_with_options(None, None) {
-        Ok(config) => config,
-        Err(elasticrc::Error::ConfigNotFound { .. }) | Err(elasticrc::Error::HomeDirectoryUnavailable) => {
-            return Ok(None);
-        }
-        Err(err) => return Err(err.into()),
+    let Some(config) = load_elasticrc_config_cached()? else {
+        return Ok(None);
     };
     let service = config.resolve_service(&context, reference.service)?;
     Ok(Some(uri_from_elasticrc_service(service)?))
@@ -118,12 +187,8 @@ fn try_from_current_elasticrc_reference(reference: &str) -> Result<Option<Uri>> 
         return Ok(None);
     }
 
-    let config = match elasticrc::ConfigFile::load_with_options(None, None) {
-        Ok(config) => config,
-        Err(elasticrc::Error::ConfigNotFound { .. }) | Err(elasticrc::Error::HomeDirectoryUnavailable) => {
-            return Ok(None);
-        }
-        Err(err) => return Err(err.into()),
+    let Some(config) = load_elasticrc_config_cached()? else {
+        return Ok(None);
     };
     let service = config.resolve_current_service(reference.service)?;
     Ok(Some(uri_from_elasticrc_service(service)?))
