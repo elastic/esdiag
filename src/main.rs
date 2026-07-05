@@ -502,7 +502,15 @@ fn parse_cli() -> Result<Option<Cli>> {
 }
 
 fn elastic_cli_help_text() -> &'static str {
-    "Elastic CLI extension examples:\n  elastic diag collect .es ./out\n  elastic diag process .prod.es .diag.es\n\nElastic CLI target references:\n  .es, .elasticsearch  Use the active Elasticsearch context\n  .kb, .kibana         Use the active Kibana context\n  .cloud               Use the active Elastic Cloud context\n  .context.service     Use a named context from .elasticrc, .elasticrc.json, .elasticrc.yaml, .elasticrc.yml, or ELASTIC_CLI_CONFIG_FILE"
+    r#"Elastic CLI extension examples:
+  elastic diag collect .es ./out
+  elastic diag process .prod.es .diag.es
+
+Elastic CLI target references:
+  .es, .elasticsearch  Use the active Elasticsearch context
+  .kb, .kibana         Use the active Kibana context
+  .cloud               Use the active Elastic Cloud context
+  .context.service     Use a named context from .elasticrc, .elasticrc.json, .elasticrc.yaml, .elasticrc.yml, or ELASTIC_CLI_CONFIG_FILE"#
 }
 
 fn init_tracing(filter: EnvFilter) {

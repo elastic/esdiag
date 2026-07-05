@@ -202,21 +202,13 @@ fn try_get_auth_env(
     fallback_password: &str,
 ) -> Result<(Option<String>, Option<String>, Option<String>)> {
     let esdiag_apikey = std::env::var("ESDIAG_OUTPUT_APIKEY").ok();
-    if esdiag_apikey.is_some() {
-        return Ok((esdiag_apikey, None, None));
-    }
-
     let esdiag_username = std::env::var("ESDIAG_OUTPUT_USERNAME").ok();
     let esdiag_password = std::env::var("ESDIAG_OUTPUT_PASSWORD").ok();
-    if esdiag_username.is_some() || esdiag_password.is_some() {
-        return Ok((None, esdiag_username, esdiag_password));
+    if esdiag_apikey.is_some() || esdiag_username.is_some() || esdiag_password.is_some() {
+        return Ok((esdiag_apikey, esdiag_username, esdiag_password));
     }
 
     let apikey = std::env::var(fallback_apikey).ok();
-    if apikey.is_some() {
-        return Ok((apikey, None, None));
-    }
-
     let username = std::env::var(fallback_username).ok();
     let password = std::env::var(fallback_password).ok();
     Ok((apikey, username, password))
@@ -228,15 +220,9 @@ fn try_get_elastic_cli_auth_env(
     password_name: &str,
 ) -> (Option<String>, Option<String>, Option<String>) {
     let apikey = std::env::var(apikey_name).ok();
-    if apikey.is_some() {
-        return (apikey, None, None);
-    }
-
-    (
-        None,
-        std::env::var(username_name).ok(),
-        std::env::var(password_name).ok(),
-    )
+    let username = std::env::var(username_name).ok();
+    let password = std::env::var(password_name).ok();
+    (apikey, username, password)
 }
 
 impl Uri {
@@ -649,6 +635,46 @@ mod tests {
             host.get_auth().expect("auth"),
             Auth::Basic(user, password) if user == "elastic" && password == "changeme"
         ));
+        clear_env();
+    }
+
+    #[test]
+    fn output_env_rejects_mixed_esdiag_auth_values() {
+        let _guard = crate::test_env_lock().lock().expect("env lock");
+        clear_env();
+        unsafe {
+            std::env::set_var("ESDIAG_OUTPUT_URL", "https://esdiag.example:9200");
+            std::env::set_var("ESDIAG_OUTPUT_APIKEY", "esdiag-key");
+            std::env::set_var("ESDIAG_OUTPUT_USERNAME", "elastic");
+            std::env::set_var("ESDIAG_OUTPUT_PASSWORD", "changeme");
+        }
+
+        let err = match Uri::try_from_output_env() {
+            Ok(_) => panic!("mixed auth should fail"),
+            Err(err) => err,
+        };
+
+        assert!(err.to_string().contains("Invalid KnownHost configuration"));
+        clear_env();
+    }
+
+    #[test]
+    fn output_env_rejects_mixed_elastic_auth_fallbacks() {
+        let _guard = crate::test_env_lock().lock().expect("env lock");
+        clear_env();
+        unsafe {
+            std::env::set_var("ELASTIC_ES_URL", "https://elastic.example:9200");
+            std::env::set_var("ELASTIC_ES_API_KEY", "elastic-key");
+            std::env::set_var("ELASTIC_ES_USERNAME", "elastic");
+            std::env::set_var("ELASTIC_ES_PASSWORD", "changeme");
+        }
+
+        let err = match Uri::try_from_output_env() {
+            Ok(_) => panic!("mixed auth should fail"),
+            Err(err) => err,
+        };
+
+        assert!(err.to_string().contains("Invalid KnownHost configuration"));
         clear_env();
     }
 

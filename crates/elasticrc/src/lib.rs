@@ -560,7 +560,7 @@ pub fn inline_secret_permission_warning(path: &Path, config: &ConfigFile) -> Opt
     }
     loose_permissions(path).then(|| {
         format!(
-            "Warning: Elastic CLI config {} contains inline secrets and has permissions broader than 0600/0400.",
+            "Elastic CLI config {} contains inline secrets and has permissions broader than 0600/0400.",
             path.display()
         )
     })
