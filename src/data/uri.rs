@@ -5,7 +5,7 @@
 use crate::{data::Product, env};
 
 use super::{ElasticCloud, KnownHost, KnownHostBuilder};
-use eyre::{eyre, OptionExt, Report, Result};
+use eyre::{OptionExt, Report, Result, eyre};
 use serde::{Deserialize, Deserializer};
 use std::{
     path::{Path, PathBuf},
@@ -66,10 +66,6 @@ fn try_from_active_context_service(service: ElasticCliService) -> Result<Uri> {
         ElasticCliService::Kibana => Uri::try_from_active_kibana_env(),
         ElasticCliService::Cloud => Uri::try_from_active_cloud_env(),
     }
-}
-
-fn is_elastic_cli_invocation() -> bool {
-    std::env::var("ESDIAG_ELASTIC_CLI").is_ok_and(|value| value == "1")
 }
 
 #[cfg(feature = "elasticrc")]
@@ -323,7 +319,7 @@ impl TryFrom<&str> for Uri {
 
         if let Some(service) = parse_active_context_service(uri) {
             tracing::debug!("Creating Uri from active Elastic CLI context reference: {uri}");
-            if is_elastic_cli_invocation() {
+            if env::is_elastic_cli_invocation() {
                 match try_from_active_context_service(service) {
                     Ok(uri) => return Ok(uri),
                     Err(active_context_error) => {

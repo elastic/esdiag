@@ -520,7 +520,7 @@ fn load_config_file(path: impl AsRef<Path>) -> Result<ConfigFile, Error> {
         })?
     };
     if let Some(warning) = inline_secret_permission_warning(path, &config) {
-        eprintln!("{warning}");
+        tracing::warn!("{warning}");
     }
     config.resolve_expressions()?;
     config.validate()?;
@@ -947,8 +947,8 @@ fn resolve_platform_keyring_secret(resolver: &str, _service: &str, _account: &st
 #[cfg(test)]
 mod tests {
     use super::{
-        discover_config_path, inline_secret_permission_warning, parse_command_argv, ConfigFile,
-        ContextServiceReference, Error, ResolvedAuth, ServiceKind,
+        ConfigFile, ContextServiceReference, Error, ResolvedAuth, ServiceKind, discover_config_path,
+        inline_secret_permission_warning, parse_command_argv,
     };
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;

@@ -481,7 +481,7 @@ fn parse_cli() -> Result<Option<Cli>> {
         Ok(cli) => Ok(Some(cli)),
         Err(err) if err.kind() == ErrorKind::DisplayHelp => {
             err.print()?;
-            if is_elastic_cli_invocation() {
+            if esdiag::env::is_elastic_cli_invocation() {
                 println!("{}", elastic_cli_help_text());
             }
             Ok(None)
@@ -492,10 +492,6 @@ fn parse_cli() -> Result<Option<Cli>> {
         }
         Err(err) => Err(err.into()),
     }
-}
-
-fn is_elastic_cli_invocation() -> bool {
-    std::env::var("ESDIAG_ELASTIC_CLI").is_ok_and(|value| value == "1")
 }
 
 fn elastic_cli_help_text() -> &'static str {
@@ -1725,12 +1721,12 @@ fn resolve_serve_exporter(output: Option<String>, runtime_mode: RuntimeMode) -> 
 mod tests {
     use super::{
         Cli, CommandResult, Commands, HostCommands, KeystoreCommands, collect_with_optional_upload,
-        colorize_keystore_lock_status, format_collect_summary, format_keystore_lock_status,
+        colorize_keystore_lock_status, elastic_cli_help_text, format_collect_summary, format_keystore_lock_status,
         format_keystore_lock_status_at, format_keystore_migrate_summary, format_keystore_password_summary,
         format_keystore_secret_summary, format_process_summary, format_remaining_duration_from,
-        host_connection_uses_receiver, is_agent_mode, is_elastic_cli_invocation, elastic_cli_help_text,
-        resolve_host_secret_auth, resolve_secret_input_with_prompt, resolve_tracing_filter,
-        should_error_for_missing_subcommand, upload_collected_archive, write_completion_summary,
+        host_connection_uses_receiver, is_agent_mode, resolve_host_secret_auth, resolve_secret_input_with_prompt,
+        resolve_tracing_filter, should_error_for_missing_subcommand, upload_collected_archive,
+        write_completion_summary,
     };
     #[cfg(feature = "keystore")]
     use super::{derive_collect_job, derive_process_job};
@@ -1797,12 +1793,12 @@ mod tests {
         unsafe {
             std::env::set_var("ESDIAG_ELASTIC_CLI", "1");
         }
-        assert!(is_elastic_cli_invocation());
+        assert!(esdiag::env::is_elastic_cli_invocation());
 
         unsafe {
             std::env::set_var("ESDIAG_ELASTIC_CLI", "true");
         }
-        assert!(!is_elastic_cli_invocation());
+        assert!(!esdiag::env::is_elastic_cli_invocation());
 
         unsafe {
             std::env::remove_var("ESDIAG_ELASTIC_CLI");
@@ -2651,7 +2647,10 @@ mod tests {
             Err(err) => err,
         };
 
-        assert!(err.to_string().contains("ESDIAG_OUTPUT_URL is not defined"));
+        assert!(
+            err.to_string()
+                .contains("ESDIAG_OUTPUT_URL and ELASTIC_ES_URL are not defined")
+        );
     }
 }
 

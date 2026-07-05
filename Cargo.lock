@@ -1303,6 +1303,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "tracing",
  "url",
  "windows-native-keyring-store",
  "yaml_serde",
