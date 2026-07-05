@@ -85,6 +85,9 @@ impl ConfigFile {
             context: context_name.to_string(),
             service: kind,
         })?;
+        let mut service = service.clone();
+        service.resolve_expressions(context_name, kind)?;
+        service.validate(context_name, kind)?;
         service.resolve(kind)
     }
 
@@ -522,8 +525,9 @@ fn load_config_file(path: impl AsRef<Path>) -> Result<ConfigFile, Error> {
     if let Some(warning) = inline_secret_permission_warning(path, &config) {
         tracing::warn!("{warning}");
     }
-    config.resolve_expressions()?;
-    config.validate()?;
+    let mut resolved_config = config.clone();
+    resolved_config.resolve_expressions()?;
+    resolved_config.validate()?;
     Ok(config)
 }
 
@@ -832,7 +836,7 @@ fn run_command(program: &str, args: &[String], resolver: &str, field: &str) -> R
             field: field.to_string(),
             message: source.to_string(),
         })?;
-    let stderr = stderr_reader
+    let _stderr = stderr_reader
         .join()
         .map_err(|_| Error::ResolverFailed {
             resolver: resolver.to_string(),
@@ -846,17 +850,10 @@ fn run_command(program: &str, args: &[String], resolver: &str, field: &str) -> R
         })?;
 
     if !status.success() {
-        let stderr = String::from_utf8_lossy(&stderr);
-        let stderr = stderr.trim();
-        let message = if stderr.is_empty() {
-            format!("command exited with {status}")
-        } else {
-            format!("command exited with {status}: {stderr}")
-        };
         return Err(Error::ResolverFailed {
             resolver: resolver.to_string(),
             field: field.to_string(),
-            message,
+            message: format!("command exited with {status}"),
         });
     }
     String::from_utf8(stdout).map_err(|source| Error::ResolverFailed {
@@ -1278,6 +1275,34 @@ contexts:
             .expect("resolve service");
 
         assert!(matches!(service.auth, ResolvedAuth::ApiKey(ref key) if key.expose_secret() == "env-key"));
+        unsafe {
+            std::env::remove_var("ELASTICRC_TEST_API_KEY");
+        }
+    }
+
+    #[test]
+    fn loaded_config_keeps_resolver_backed_secret_raw() {
+        let _guard = env_lock().lock().expect("env lock");
+        let tmp = TempDir::new().expect("temp dir");
+        let path = tmp.path().join(".elasticrc.yml");
+        unsafe {
+            std::env::set_var("ELASTICRC_TEST_API_KEY", "env-key");
+        }
+        write(
+            &path,
+            "current_context: prod\ncontexts:\n  prod:\n    elasticsearch:\n      url: https://es.example:9200\n      auth:\n        api_key: $(env:ELASTICRC_TEST_API_KEY)\n",
+        );
+
+        let config = ConfigFile::load(&path).expect("load config");
+        let api_key = config
+            .contexts
+            .get("prod")
+            .and_then(|context| context.elasticsearch.as_ref())
+            .and_then(|service| service.auth.as_ref())
+            .and_then(|auth| auth.api_key.as_deref());
+
+        assert_eq!(api_key, Some("$(env:ELASTICRC_TEST_API_KEY)"));
+        assert!(!format!("{config:?}").contains("env-key"));
         unsafe {
             std::env::remove_var("ELASTICRC_TEST_API_KEY");
         }
