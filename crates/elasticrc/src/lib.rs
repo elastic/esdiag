@@ -680,7 +680,32 @@ fn resolve_file_expression(path: &str, resolver: &str, field: &str) -> Result<St
             message: format!("{} exceeds resolver size limit", path.display()),
         });
     }
-    fs::read_to_string(path)
+    let file = fs::File::open(path).map_err(|source| Error::ResolverFailed {
+        resolver: resolver.to_string(),
+        field: field.to_string(),
+        message: source.to_string(),
+    })?;
+    read_file_resolver_value(file, path, resolver, field)
+}
+
+fn read_file_resolver_value(reader: impl Read, path: &Path, resolver: &str, field: &str) -> Result<String, Error> {
+    let mut contents = Vec::new();
+    let bytes_read = reader
+        .take(FILE_RESOLVER_MAX_BYTES + 1)
+        .read_to_end(&mut contents)
+        .map_err(|source| Error::ResolverFailed {
+            resolver: resolver.to_string(),
+            field: field.to_string(),
+            message: source.to_string(),
+        })?;
+    if bytes_read as u64 > FILE_RESOLVER_MAX_BYTES {
+        return Err(Error::ResolverFailed {
+            resolver: resolver.to_string(),
+            field: field.to_string(),
+            message: format!("{} exceeds resolver size limit", path.display()),
+        });
+    }
+    String::from_utf8(contents)
         .map(|value| value.trim().to_string())
         .map_err(|source| Error::ResolverFailed {
             resolver: resolver.to_string(),
@@ -961,6 +986,7 @@ mod tests {
     use super::{
         ConfigFile, ContextServiceReference, Error, FILE_RESOLVER_MAX_BYTES, ResolvedAuth, ServiceKind,
         discover_config_path, inline_secret_permission_warning, parse_command_argv, read_command_output,
+        read_file_resolver_value,
     };
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
@@ -1413,6 +1439,23 @@ contexts:
 
         assert_eq!(err.kind(), ErrorKind::InvalidData);
         assert!(err.to_string().contains("command stdout exceeded"));
+    }
+
+    #[test]
+    fn file_resolver_reader_limits_captured_bytes() {
+        let output = vec![b'x'; FILE_RESOLVER_MAX_BYTES as usize + 1];
+
+        let err = read_file_resolver_value(
+            std::io::Cursor::new(output),
+            Path::new("secret.txt"),
+            "file",
+            "auth.api_key",
+        )
+        .expect_err("oversized output should fail");
+
+        assert!(
+            matches!(err, Error::ResolverFailed { message, .. } if message.contains("exceeds resolver size limit"))
+        );
     }
 
     #[test]

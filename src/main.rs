@@ -489,7 +489,7 @@ fn parse_cli() -> Result<Option<Cli>> {
         Err(err) if err.kind() == ErrorKind::DisplayHelp => {
             err.print()?;
             if esdiag::env::is_elastic_cli_invocation() {
-                println!("{}", elastic_cli_help_text());
+                println!("\n{}", elastic_cli_help_text());
             }
             Ok(None)
         }
