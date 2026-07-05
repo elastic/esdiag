@@ -136,8 +136,8 @@ ESDiag reads Elastic CLI config files in read-only mode. Inline secrets are supp
 Several commands accept an optional output target. The current resolution rules are:
 
 - `-` means stdout
-- A string matching a saved host name resolves to that known host
 - A leading-dot Elastic CLI target reference resolves before saved hosts when it names a supported service
+- A string matching a saved host name resolves to that known host
 - Any other non-empty string is treated as a local filesystem target
 - If output is omitted entirely, `esdiag` falls back to `ESDIAG_OUTPUT_URL` plus optional auth env vars, then Elastic CLI `ELASTIC_ES_*` fallbacks
 

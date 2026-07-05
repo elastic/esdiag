@@ -68,6 +68,10 @@ fn try_from_active_context_service(service: ElasticCliService) -> Result<Uri> {
     }
 }
 
+fn is_elastic_cli_invocation() -> bool {
+    std::env::var("ESDIAG_ELASTIC_CLI").is_ok_and(|value| value == "1")
+}
+
 #[cfg(feature = "elasticrc")]
 fn uri_from_elasticrc_service(service: elasticrc::ResolvedService) -> Result<Uri> {
     let product = match service.kind {
@@ -94,12 +98,32 @@ fn try_from_elasticrc_reference(reference: &str) -> Result<Option<Uri>> {
     let Some(reference) = elasticrc::ContextServiceReference::parse(reference) else {
         return Ok(None);
     };
+    let Some(context) = reference.context else {
+        return Ok(None);
+    };
 
     let config = elasticrc::ConfigFile::load_with_options(None, None)?;
-    let service = match reference.context {
-        Some(context) => config.resolve_service(&context, reference.service)?,
-        None => config.resolve_current_service(reference.service)?,
+    let service = config.resolve_service(&context, reference.service)?;
+    Ok(Some(uri_from_elasticrc_service(service)?))
+}
+
+#[cfg(feature = "elasticrc")]
+fn try_from_current_elasticrc_reference(reference: &str) -> Result<Option<Uri>> {
+    let Some(reference) = elasticrc::ContextServiceReference::parse(reference) else {
+        return Ok(None);
     };
+    if reference.context.is_some() {
+        return Ok(None);
+    }
+
+    let config = match elasticrc::ConfigFile::load_with_options(None, None) {
+        Ok(config) => config,
+        Err(elasticrc::Error::ConfigNotFound { .. }) | Err(elasticrc::Error::HomeDirectoryUnavailable) => {
+            return Ok(None);
+        }
+        Err(err) => return Err(err.into()),
+    };
+    let service = config.resolve_current_service(reference.service)?;
     Ok(Some(uri_from_elasticrc_service(service)?))
 }
 
@@ -299,16 +323,24 @@ impl TryFrom<&str> for Uri {
 
         if let Some(service) = parse_active_context_service(uri) {
             tracing::debug!("Creating Uri from active Elastic CLI context reference: {uri}");
-            match try_from_active_context_service(service) {
-                Ok(uri) => return Ok(uri),
-                Err(active_context_error) => {
-                    #[cfg(feature = "elasticrc")]
-                    if let Some(uri) = try_from_elasticrc_reference(uri)? {
-                        tracing::debug!("Creating Uri from Elastic CLI current context reference: {uri}");
-                        return Ok(uri);
+            if is_elastic_cli_invocation() {
+                match try_from_active_context_service(service) {
+                    Ok(uri) => return Ok(uri),
+                    Err(active_context_error) => {
+                        #[cfg(feature = "elasticrc")]
+                        if let Some(uri) = try_from_current_elasticrc_reference(uri)? {
+                            tracing::debug!("Creating Uri from Elastic CLI current context reference: {uri}");
+                            return Ok(uri);
+                        }
+                        return Err(active_context_error);
                     }
-                    return Err(active_context_error);
                 }
+            }
+
+            #[cfg(feature = "elasticrc")]
+            if let Some(uri) = try_from_current_elasticrc_reference(uri)? {
+                tracing::debug!("Creating Uri from Elastic CLI current context reference: {uri}");
+                return Ok(uri);
             }
         }
 
@@ -461,6 +493,7 @@ mod tests {
         "ELASTIC_KIBANA_PASSWORD",
         "ELASTIC_CLOUD_URL",
         "ELASTIC_CLOUD_API_KEY",
+        "ESDIAG_ELASTIC_CLI",
         "ESDIAG_HOSTS",
         "ELASTIC_CLI_CONFIG_FILE",
     ];
@@ -638,6 +671,7 @@ mod tests {
         );
         KnownHost::write_hosts_yml(&hosts).expect("write hosts");
         unsafe {
+            std::env::set_var("ESDIAG_ELASTIC_CLI", "1");
             std::env::set_var("ELASTIC_ES_URL", "https://active.example:9200");
             std::env::set_var("ELASTIC_ES_API_KEY", "active-key");
         }
@@ -656,6 +690,7 @@ mod tests {
         let _guard = crate::test_env_lock().lock().expect("env lock");
         clear_env();
         unsafe {
+            std::env::set_var("ESDIAG_ELASTIC_CLI", "1");
             std::env::set_var("ESDIAG_OUTPUT_URL", "https://output.example:9200");
             std::env::set_var("ESDIAG_OUTPUT_APIKEY", "output-key");
             std::env::set_var("ELASTIC_ES_URL", "https://active.example:9200");
@@ -672,10 +707,50 @@ mod tests {
     }
 
     #[test]
+    fn standalone_active_context_alias_falls_through_to_saved_host() {
+        let _guard = crate::test_env_lock().lock().expect("env lock");
+        clear_env();
+        let previous_home = std::env::var_os("HOME");
+        let _tmp = setup_hosts_env();
+        let home = TempDir::new().expect("home temp dir");
+        let mut hosts = BTreeMap::new();
+        hosts.insert(
+            ".es".to_string(),
+            KnownHost::new_no_auth(
+                Product::Elasticsearch,
+                url::Url::parse("https://saved.example:9200").expect("saved url"),
+                vec![HostRole::Collect],
+                None,
+                false,
+            ),
+        );
+        KnownHost::write_hosts_yml(&hosts).expect("write hosts");
+        unsafe {
+            std::env::set_var("HOME", home.path());
+            std::env::set_var("ELASTIC_ES_URL", "https://active.example:9200");
+        }
+
+        let Uri::KnownHost(host) = Uri::try_from(".es").expect("saved host uri") else {
+            panic!("expected known host");
+        };
+
+        assert_eq!(host.get_url().expect("url").as_str(), "https://saved.example:9200/");
+        clear_env();
+        unsafe {
+            if let Some(previous_home) = previous_home {
+                std::env::set_var("HOME", previous_home);
+            } else {
+                std::env::remove_var("HOME");
+            }
+        }
+    }
+
+    #[test]
     fn active_context_kibana_alias_resolves() {
         let _guard = crate::test_env_lock().lock().expect("env lock");
         clear_env();
         unsafe {
+            std::env::set_var("ESDIAG_ELASTIC_CLI", "1");
             std::env::set_var("ELASTIC_KIBANA_URL", "https://active-kb.example:5601");
         }
 
@@ -693,6 +768,7 @@ mod tests {
         let _guard = crate::test_env_lock().lock().expect("env lock");
         clear_env();
         unsafe {
+            std::env::set_var("ESDIAG_ELASTIC_CLI", "1");
             std::env::set_var(
                 "ELASTIC_CLOUD_URL",
                 "https://cloud.elastic.co/deployments/deployment-123",
