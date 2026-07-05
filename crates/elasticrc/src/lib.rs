@@ -10,7 +10,7 @@ use std::{
     env,
     fmt::Display,
     fs,
-    io::Read,
+    io::{self, Read},
     path::{Path, PathBuf},
     process::{Command, Stdio},
     str::FromStr,
@@ -516,7 +516,7 @@ fn load_config_file(path: impl AsRef<Path>) -> Result<ConfigFile, Error> {
         path: path.to_path_buf(),
         source,
     })?;
-    let mut config: ConfigFile = if path.extension().and_then(|ext| ext.to_str()) == Some("json") {
+    let config: ConfigFile = if path.extension().and_then(|ext| ext.to_str()) == Some("json") {
         serde_json::from_str(&contents).map_err(|source| Error::Json {
             path: path.to_path_buf(),
             source,
@@ -720,16 +720,6 @@ fn parse_command_argv(command: &str, resolver: &str, field: &str) -> Result<Vec<
             continue;
         }
 
-        if matches!(
-            ch,
-            '|' | '&' | ';' | '<' | '>' | '(' | ')' | '{' | '}' | '`' | '\n' | '\r'
-        ) {
-            return Err(Error::ShellSyntaxUnsupported {
-                resolver: resolver.to_string(),
-                field: field.to_string(),
-            });
-        }
-
         match quote {
             Some(quote_char) if ch == quote_char => {
                 quote = None;
@@ -747,6 +737,16 @@ fn parse_command_argv(command: &str, resolver: &str, field: &str) -> Result<Vec<
             }
             None if ch == '\\' => {
                 escaped = true;
+            }
+            None if matches!(
+                ch,
+                '|' | '&' | ';' | '<' | '>' | '(' | ')' | '{' | '}' | '`' | '\n' | '\r'
+            ) =>
+            {
+                return Err(Error::ShellSyntaxUnsupported {
+                    resolver: resolver.to_string(),
+                    field: field.to_string(),
+                });
             }
             None if ch.is_whitespace() => {
                 if token_started {
@@ -781,6 +781,26 @@ fn parse_command_argv(command: &str, resolver: &str, field: &str) -> Result<Vec<
     Ok(argv)
 }
 
+fn read_command_output(mut reader: impl Read, stream: &str) -> io::Result<Vec<u8>> {
+    let mut output = Vec::new();
+    let mut buffer = [0; 8192];
+    let max_bytes = FILE_RESOLVER_MAX_BYTES as usize;
+
+    loop {
+        let bytes_read = reader.read(&mut buffer)?;
+        if bytes_read == 0 {
+            return Ok(output);
+        }
+        if output.len().saturating_add(bytes_read) > max_bytes {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("command {stream} exceeded {max_bytes} bytes"),
+            ));
+        }
+        output.extend_from_slice(&buffer[..bytes_read]);
+    }
+}
+
 fn run_command(program: &str, args: &[String], resolver: &str, field: &str) -> Result<String, Error> {
     let mut child = Command::new(program)
         .args(args)
@@ -793,16 +813,10 @@ fn run_command(program: &str, args: &[String], resolver: &str, field: &str) -> R
             field: field.to_string(),
             message: source.to_string(),
         })?;
-    let mut stdout = child.stdout.take().expect("stdout pipe");
-    let mut stderr = child.stderr.take().expect("stderr pipe");
-    let stdout_reader = thread::spawn(move || {
-        let mut output = Vec::new();
-        stdout.read_to_end(&mut output).map(|_| output)
-    });
-    let stderr_reader = thread::spawn(move || {
-        let mut output = Vec::new();
-        stderr.read_to_end(&mut output).map(|_| output)
-    });
+    let stdout = child.stdout.take().expect("stdout pipe");
+    let stderr = child.stderr.take().expect("stderr pipe");
+    let stdout_reader = thread::spawn(move || read_command_output(stdout, "stdout"));
+    let stderr_reader = thread::spawn(move || read_command_output(stderr, "stderr"));
 
     let start = Instant::now();
     let status = loop {
@@ -949,13 +963,14 @@ fn resolve_platform_keyring_secret(resolver: &str, _service: &str, _account: &st
 #[cfg(test)]
 mod tests {
     use super::{
-        ConfigFile, ContextServiceReference, Error, ResolvedAuth, ServiceKind, discover_config_path,
-        inline_secret_permission_warning, parse_command_argv,
+        ConfigFile, ContextServiceReference, Error, FILE_RESOLVER_MAX_BYTES, ResolvedAuth, ServiceKind,
+        discover_config_path, inline_secret_permission_warning, parse_command_argv, read_command_output,
     };
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
     use std::{
         fs,
+        io::ErrorKind,
         path::Path,
         str::FromStr,
         sync::{Mutex, OnceLock},
@@ -1363,6 +1378,24 @@ contexts:
         let argv = parse_command_argv(r#"printf "%s" "my key" escaped\ value"#, "cmd", "field").expect("parse argv");
 
         assert_eq!(argv, vec!["printf", "%s", "my key", "escaped value"]);
+    }
+
+    #[test]
+    fn command_argv_parser_allows_quoted_metacharacters() {
+        let argv = parse_command_argv(r#"printf "%s" "a|b" "x>y""#, "cmd", "field").expect("parse argv");
+
+        assert_eq!(argv, vec!["printf", "%s", "a|b", "x>y"]);
+    }
+
+    #[test]
+    fn command_output_reader_limits_captured_bytes() {
+        let output = vec![b'x'; FILE_RESOLVER_MAX_BYTES as usize + 1];
+
+        let err =
+            read_command_output(std::io::Cursor::new(output), "stdout").expect_err("oversized output should fail");
+
+        assert_eq!(err.kind(), ErrorKind::InvalidData);
+        assert!(err.to_string().contains("command stdout exceeded"));
     }
 
     #[test]
