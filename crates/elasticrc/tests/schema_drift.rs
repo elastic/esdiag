@@ -12,12 +12,17 @@ fn supported_elastic_cli_fixture_resolves_expected_services() {
     let kb = config
         .resolve_current_service(ServiceKind::Kibana)
         .expect("current kb service");
-    let cloud = config.resolve_service("diag", ServiceKind::Cloud).expect("diag cloud service");
+    let cloud = config
+        .resolve_service("diag", ServiceKind::Cloud)
+        .expect("diag cloud service");
 
     assert_eq!(es.url.as_str(), "https://local-es.example:9200/");
     assert!(matches!(es.auth, ResolvedAuth::ApiKey(ref key) if key.expose_secret() == "local-api-key"));
     assert_eq!(kb.url.as_str(), "https://local-kb.example:5601/");
-    assert_eq!(cloud.url.as_str(), "https://cloud.elastic.co/deployments/deployment-123");
+    assert_eq!(
+        cloud.url.as_str(),
+        "https://cloud.elastic.co/deployments/deployment-123"
+    );
 }
 
 #[test]
@@ -33,7 +38,10 @@ fn platform_specific_keyring_resolver_rejects_unsupported_platform() {
     )
     .expect("write config");
 
-    let err = ConfigFile::load(&path).expect_err("unsupported resolver should fail");
+    let config = ConfigFile::load(&path).expect("load config");
+    let err = config
+        .resolve_current_service(ServiceKind::Elasticsearch)
+        .expect_err("unsupported resolver should fail");
 
     assert!(matches!(err, Error::ResolverFailed { resolver: actual, .. } if actual == resolver));
 }

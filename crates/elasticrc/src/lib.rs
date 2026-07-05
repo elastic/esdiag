@@ -57,14 +57,19 @@ impl ConfigFile {
     }
 
     pub fn validate(&self) -> Result<(), Error> {
+        self.validate_shape()?;
+        for (context_name, context) in &self.contexts {
+            context.validate(context_name)?;
+        }
+        Ok(())
+    }
+
+    fn validate_shape(&self) -> Result<(), Error> {
         if self.current_context.trim().is_empty() {
             return Err(Error::InvalidShape("current_context must not be empty".to_string()));
         }
         if self.contexts.is_empty() {
             return Err(Error::InvalidShape("contexts must not be empty".to_string()));
-        }
-        for (context_name, context) in &self.contexts {
-            context.validate(context_name)?;
         }
         Ok(())
     }
@@ -525,9 +530,7 @@ fn load_config_file(path: impl AsRef<Path>) -> Result<ConfigFile, Error> {
     if let Some(warning) = inline_secret_permission_warning(path, &config) {
         tracing::warn!("{warning}");
     }
-    let mut resolved_config = config.clone();
-    resolved_config.resolve_expressions()?;
-    resolved_config.validate()?;
+    config.validate_shape()?;
     Ok(config)
 }
 
@@ -601,7 +604,7 @@ fn is_resolver_expression(value: &str) -> bool {
 #[cfg(unix)]
 fn loose_permissions(path: &Path) -> bool {
     fs::metadata(path)
-        .map(|metadata| metadata.permissions().mode() & 0o077 != 0)
+        .map(|metadata| !matches!(metadata.permissions().mode() & 0o777, 0o400 | 0o600))
         .unwrap_or(false)
 }
 
@@ -853,7 +856,9 @@ fn run_command(program: &str, args: &[String], resolver: &str, field: &str) -> R
         return Err(Error::ResolverFailed {
             resolver: resolver.to_string(),
             field: field.to_string(),
-            message: format!("command exited with {status}"),
+            message: format!(
+                "command exited with {status}; stderr omitted because resolver output may contain secrets"
+            ),
         });
     }
     String::from_utf8(stdout).map_err(|source| Error::ResolverFailed {
@@ -1225,7 +1230,10 @@ contexts:
             "current_context: prod\ncontexts:\n  prod:\n    elasticsearch:\n      url: file:///tmp/es\n",
         );
 
-        let err = ConfigFile::load(&path).expect_err("invalid url should fail");
+        let config = ConfigFile::load(&path).expect("load config");
+        let err = config
+            .resolve_current_service(ServiceKind::Elasticsearch)
+            .expect_err("invalid url should fail");
 
         assert!(matches!(
             err,
@@ -1245,7 +1253,10 @@ contexts:
             "current_context: prod\ncontexts:\n  prod:\n    elasticsearch:\n      url: https://es.example:9200\n      auth:\n        username: elastic\n",
         );
 
-        let err = ConfigFile::load(&path).expect_err("invalid auth should fail");
+        let config = ConfigFile::load(&path).expect("load config");
+        let err = config
+            .resolve_current_service(ServiceKind::Elasticsearch)
+            .expect_err("invalid auth should fail");
 
         assert!(matches!(
             err,
@@ -1363,7 +1374,10 @@ contexts:
             "current_context: prod\ncontexts:\n  prod:\n    elasticsearch:\n      url: https://es.example:9200\n      auth:\n        api_key: $(cmd:printf secret | cat)\n",
         );
 
-        let err = ConfigFile::load(&path).expect_err("shell syntax should fail");
+        let config = ConfigFile::load(&path).expect("load config");
+        let err = config
+            .resolve_current_service(ServiceKind::Elasticsearch)
+            .expect_err("shell syntax should fail");
 
         assert!(matches!(err, Error::ShellSyntaxUnsupported { .. }));
     }
@@ -1377,7 +1391,10 @@ contexts:
             "current_context: prod\ncontexts:\n  prod:\n    elasticsearch:\n      url: https://es.example:9200\n      auth:\n        api_key: $(unknown:value)\n",
         );
 
-        let err = ConfigFile::load(&path).expect_err("unknown resolver should fail");
+        let config = ConfigFile::load(&path).expect("load config");
+        let err = config
+            .resolve_current_service(ServiceKind::Elasticsearch)
+            .expect_err("unknown resolver should fail");
 
         assert!(matches!(err, Error::UnknownResolver { resolver, .. } if resolver == "unknown"));
     }
@@ -1397,6 +1414,23 @@ contexts:
         let warning = inline_secret_permission_warning(&path, &config).expect("warning");
 
         assert!(warning.contains("contains inline secrets"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn executable_inline_secret_config_warns() {
+        let tmp = TempDir::new().expect("temp dir");
+        let path = tmp.path().join(".elasticrc.yml");
+        write(
+            &path,
+            "current_context: prod\ncontexts:\n  prod:\n    elasticsearch:\n      url: https://es.example:9200\n      auth:\n        api_key: inline-key\n",
+        );
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o700)).expect("set permissions");
+        let config = ConfigFile::load(&path).expect("load config");
+
+        let warning = inline_secret_permission_warning(&path, &config).expect("warning");
+
+        assert!(warning.contains("broader than 0600/0400"));
     }
 
     #[cfg(unix)]
