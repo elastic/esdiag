@@ -478,6 +478,13 @@ async fn async_main() -> Result<()> {
 
 fn parse_cli() -> Result<Option<Cli>> {
     match Cli::try_parse() {
+        Ok(cli) if esdiag::env::is_elastic_cli_invocation() && cli.command.is_none() => {
+            use clap::CommandFactory;
+            let mut cmd = Cli::command();
+            cmd.print_help()?;
+            println!("\n{}", elastic_cli_help_text());
+            Ok(None)
+        }
         Ok(cli) => Ok(Some(cli)),
         Err(err) if err.kind() == ErrorKind::DisplayHelp => {
             err.print()?;
