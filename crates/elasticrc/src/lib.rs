@@ -604,7 +604,7 @@ fn is_resolver_expression(value: &str) -> bool {
 #[cfg(unix)]
 fn loose_permissions(path: &Path) -> bool {
     fs::metadata(path)
-        .map(|metadata| !matches!(metadata.permissions().mode() & 0o777, 0o400 | 0o600))
+        .map(|metadata| metadata.permissions().mode() & 0o177 != 0)
         .unwrap_or(false)
 }
 
@@ -1431,6 +1431,21 @@ contexts:
         let warning = inline_secret_permission_warning(&path, &config).expect("warning");
 
         assert!(warning.contains("broader than 0600/0400"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn restrictive_inline_secret_config_does_not_warn() {
+        let tmp = TempDir::new().expect("temp dir");
+        let path = tmp.path().join(".elasticrc.yml");
+        write(
+            &path,
+            "current_context: prod\ncontexts:\n  prod:\n    elasticsearch:\n      url: https://es.example:9200\n      auth:\n        api_key: inline-key\n",
+        );
+        let config = ConfigFile::load(&path).expect("load config");
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o000)).expect("set permissions");
+
+        assert_eq!(inline_secret_permission_warning(&path, &config), None);
     }
 
     #[cfg(unix)]
