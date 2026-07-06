@@ -647,8 +647,14 @@ fn resolve_expression(expression: &str, field: &str) -> Result<String, Error> {
             message: source.to_string(),
         }),
         "file" => resolve_file_expression(params, resolver, field),
-        "cmd" => resolve_command_expression(params, resolver, field).map(|output| output.trim().to_string()),
-        "pass" => resolve_pass_expression(params, resolver, field),
+        "cmd" => {
+            tracing::warn!("Elastic CLI config is executing a command-backed resolver for {field}");
+            resolve_command_expression(params, resolver, field).map(|output| output.trim().to_string())
+        }
+        "pass" => {
+            tracing::warn!("Elastic CLI config is executing a command-backed resolver for {field}");
+            resolve_pass_expression(params, resolver, field)
+        }
         "keychain" => resolve_keyring_expression(params, resolver, field),
         "secret_service" => resolve_keyring_expression(params, resolver, field),
         "credential_manager" => resolve_keyring_expression(params, resolver, field),

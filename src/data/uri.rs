@@ -204,8 +204,19 @@ fn try_get_auth_env(
     let esdiag_apikey = std::env::var("ESDIAG_OUTPUT_APIKEY").ok();
     let esdiag_username = std::env::var("ESDIAG_OUTPUT_USERNAME").ok();
     let esdiag_password = std::env::var("ESDIAG_OUTPUT_PASSWORD").ok();
-    if esdiag_apikey.is_some() || esdiag_username.is_some() || esdiag_password.is_some() {
+    let esdiag_basic = esdiag_username.is_some() || esdiag_password.is_some();
+    if esdiag_apikey.is_some() && esdiag_basic {
         return Ok((esdiag_apikey, esdiag_username, esdiag_password));
+    }
+    if esdiag_apikey.is_some() {
+        return Ok((esdiag_apikey, None, None));
+    }
+    if esdiag_basic {
+        return Ok((
+            None,
+            esdiag_username.or_else(|| std::env::var(fallback_username).ok()),
+            esdiag_password.or_else(|| std::env::var(fallback_password).ok()),
+        ));
     }
 
     let apikey = std::env::var(fallback_apikey).ok();
@@ -675,6 +686,47 @@ mod tests {
         };
 
         assert!(err.to_string().contains("Invalid KnownHost configuration"));
+        clear_env();
+    }
+
+    #[test]
+    fn output_env_uses_elastic_password_fallback_for_esdiag_basic_auth() {
+        let _guard = crate::test_env_lock().lock().expect("env lock");
+        clear_env();
+        unsafe {
+            std::env::set_var("ESDIAG_OUTPUT_URL", "https://esdiag.example:9200");
+            std::env::set_var("ESDIAG_OUTPUT_USERNAME", "elastic");
+            std::env::set_var("ELASTIC_ES_API_KEY", "elastic-key");
+            std::env::set_var("ELASTIC_ES_PASSWORD", "changeme");
+        }
+
+        let Uri::KnownHost(host) = Uri::try_from_output_env().expect("output env uri") else {
+            panic!("expected known host");
+        };
+
+        assert!(matches!(
+            host.get_auth().expect("auth"),
+            Auth::Basic(user, password) if user == "elastic" && password == "changeme"
+        ));
+        clear_env();
+    }
+
+    #[test]
+    fn output_env_esdiag_api_key_ignores_elastic_basic_fallbacks() {
+        let _guard = crate::test_env_lock().lock().expect("env lock");
+        clear_env();
+        unsafe {
+            std::env::set_var("ESDIAG_OUTPUT_URL", "https://esdiag.example:9200");
+            std::env::set_var("ESDIAG_OUTPUT_APIKEY", "esdiag-key");
+            std::env::set_var("ELASTIC_ES_USERNAME", "elastic");
+            std::env::set_var("ELASTIC_ES_PASSWORD", "changeme");
+        }
+
+        let Uri::KnownHost(host) = Uri::try_from_output_env().expect("output env uri") else {
+            panic!("expected known host");
+        };
+
+        assert!(matches!(host.get_auth().expect("auth"), Auth::Apikey(key) if key == "esdiag-key"));
         clear_env();
     }
 
