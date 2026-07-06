@@ -11,7 +11,7 @@ use serde::{Deserialize, Deserializer};
 use std::{
     collections::HashMap,
     ffi::OsString,
-    sync::{Mutex, OnceLock},
+    sync::{Mutex, MutexGuard, OnceLock},
 };
 use std::{
     path::{Path, PathBuf},
@@ -97,6 +97,13 @@ fn elasticrc_cache() -> &'static Mutex<HashMap<ElasticrcCacheKey, CachedElasticr
 }
 
 #[cfg(feature = "elasticrc")]
+fn elasticrc_cache_lock() -> Result<MutexGuard<'static, HashMap<ElasticrcCacheKey, CachedElasticrc>>> {
+    elasticrc_cache()
+        .lock()
+        .map_err(|err| eyre!("elasticrc cache lock poisoned: {err}"))
+}
+
+#[cfg(feature = "elasticrc")]
 fn elasticrc_cache_key() -> ElasticrcCacheKey {
     ElasticrcCacheKey {
         config_file: std::env::var_os("ELASTIC_CLI_CONFIG_FILE"),
@@ -109,7 +116,7 @@ fn elasticrc_cache_key() -> ElasticrcCacheKey {
 fn load_elasticrc_config_cached() -> Result<Option<elasticrc::ConfigFile>> {
     let key = elasticrc_cache_key();
     {
-        let cache = elasticrc_cache().lock().expect("elasticrc cache lock");
+        let cache = elasticrc_cache_lock()?;
         if let Some(cached) = cache.get(&key) {
             return cached.clone().into_result();
         }
@@ -123,10 +130,7 @@ fn load_elasticrc_config_cached() -> Result<Option<elasticrc::ConfigFile>> {
         Err(err) => CachedElasticrc::Failed(err.to_string()),
     };
     let result = cached.clone().into_result();
-    elasticrc_cache()
-        .lock()
-        .expect("elasticrc cache lock")
-        .insert(key, cached);
+    elasticrc_cache_lock()?.insert(key, cached);
     result
 }
 
