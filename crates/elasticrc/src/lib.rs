@@ -14,7 +14,7 @@ use std::{
     path::{Path, PathBuf},
     process::{Command, Stdio},
     str::FromStr,
-    sync::{Mutex, OnceLock},
+    sync::{Arc, Mutex, OnceLock},
     thread,
     time::{Duration, Instant},
 };
@@ -939,6 +939,21 @@ fn keyring_store_lock() -> &'static Mutex<()> {
     LOCK.get_or_init(|| Mutex::new(()))
 }
 
+struct KeyringDefaultStoreGuard;
+
+impl KeyringDefaultStoreGuard {
+    fn set(store: Arc<keyring_core::CredentialStore>) -> Self {
+        keyring_core::set_default_store(store);
+        Self
+    }
+}
+
+impl Drop for KeyringDefaultStoreGuard {
+    fn drop(&mut self) {
+        keyring_core::unset_default_store();
+    }
+}
+
 #[cfg(target_os = "macos")]
 fn resolve_platform_keyring_secret(resolver: &str, service: &str, account: &str) -> Result<String, String> {
     if resolver != "keychain" {
@@ -946,12 +961,10 @@ fn resolve_platform_keyring_secret(resolver: &str, service: &str, account: &str)
     }
     use apple_native_keyring_store::keychain;
     let _guard = keyring_store_lock().lock().map_err(|err| err.to_string())?;
-    keyring_core::set_default_store(keychain::Store::new().map_err(|err| err.to_string())?);
-    let result = keyring_core::Entry::new(service, account)
+    let _default_store = KeyringDefaultStoreGuard::set(keychain::Store::new().map_err(|err| err.to_string())?);
+    keyring_core::Entry::new(service, account)
         .and_then(|entry| entry.get_password())
-        .map_err(|err| err.to_string());
-    keyring_core::unset_default_store();
-    result
+        .map_err(|err| err.to_string())
 }
 
 #[cfg(target_os = "linux")]
@@ -960,12 +973,11 @@ fn resolve_platform_keyring_secret(resolver: &str, service: &str, account: &str)
         return Err(format!("resolver '{resolver}' is not supported on Linux"));
     }
     let _guard = keyring_store_lock().lock().map_err(|err| err.to_string())?;
-    keyring_core::set_default_store(zbus_secret_service_keyring_store::Store::new().map_err(|err| err.to_string())?);
-    let result = keyring_core::Entry::new(service, account)
+    let _default_store =
+        KeyringDefaultStoreGuard::set(zbus_secret_service_keyring_store::Store::new().map_err(|err| err.to_string())?);
+    keyring_core::Entry::new(service, account)
         .and_then(|entry| entry.get_password())
-        .map_err(|err| err.to_string());
-    keyring_core::unset_default_store();
-    result
+        .map_err(|err| err.to_string())
 }
 
 #[cfg(target_os = "windows")]
@@ -974,12 +986,11 @@ fn resolve_platform_keyring_secret(resolver: &str, service: &str, account: &str)
         return Err(format!("resolver '{resolver}' is not supported on Windows"));
     }
     let _guard = keyring_store_lock().lock().map_err(|err| err.to_string())?;
-    keyring_core::set_default_store(windows_native_keyring_store::Store::new().map_err(|err| err.to_string())?);
-    let result = keyring_core::Entry::new(service, account)
+    let _default_store =
+        KeyringDefaultStoreGuard::set(windows_native_keyring_store::Store::new().map_err(|err| err.to_string())?);
+    keyring_core::Entry::new(service, account)
         .and_then(|entry| entry.get_password())
-        .map_err(|err| err.to_string());
-    keyring_core::unset_default_store();
-    result
+        .map_err(|err| err.to_string())
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]

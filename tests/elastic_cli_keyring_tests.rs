@@ -1,6 +1,5 @@
 use std::{
-    env,
-    fs,
+    env, fs,
     io::{Read, Write},
     net::{TcpListener, TcpStream},
     path::{Path, PathBuf},
@@ -26,6 +25,7 @@ fn elastic_path() -> Option<PathBuf> {
 
 fn handle_mock_request(mut stream: TcpStream, auth_headers: &Arc<Mutex<Vec<String>>>) {
     let mut buffer = [0; 8192];
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
     let Ok(size) = stream.read(&mut buffer) else {
         return;
     };
@@ -62,9 +62,7 @@ fn handle_mock_request(mut stream: TcpStream, auth_headers: &Arc<Mutex<Vec<Strin
 fn start_mock_elasticsearch(auth_headers: Arc<Mutex<Vec<String>>>) -> (u16, Arc<AtomicBool>, thread::JoinHandle<()>) {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind mock server");
     let port = listener.local_addr().expect("local addr").port();
-    listener
-        .set_nonblocking(true)
-        .expect("set mock server nonblocking");
+    listener.set_nonblocking(true).expect("set mock server nonblocking");
     let stop = Arc::new(AtomicBool::new(false));
     let stop_server = stop.clone();
     let handle = thread::spawn(move || {
@@ -101,14 +99,7 @@ fn elastic_cli_keyring_context_can_be_read_by_elasticrc_collect() {
     let (port, stop_server, server) = start_mock_elasticsearch(auth_headers.clone());
 
     let add = Command::new(&elastic)
-        .args([
-            "config",
-            "context",
-            "add",
-            "test",
-            "--force",
-            "--config-file",
-        ])
+        .args(["config", "context", "add", "test", "--force", "--config-file"])
         .arg(&config)
         .args([
             "--es-url",
