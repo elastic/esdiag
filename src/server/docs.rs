@@ -385,7 +385,13 @@ fn split_okf_frontmatter(markdown: &str) -> Option<(&str, &str)> {
         .strip_prefix("---\r\n")
         .or_else(|| markdown.strip_prefix("---\n"))?;
 
-    for delimiter in ["---\r\n", "---\n", "\r\n---\r\n", "\n---\n", "\r\n---\n", "\n---\r\n"] {
+    for delimiter in ["---\r\n", "---\n"] {
+        if let Some(body) = body_start.strip_prefix(delimiter) {
+            return Some(("", body));
+        }
+    }
+
+    for delimiter in ["\r\n---\r\n", "\n---\n", "\r\n---\n", "\n---\r\n"] {
         if let Some(frontmatter_end) = body_start.find(delimiter) {
             let frontmatter = &body_start[..frontmatter_end];
             let body = &body_start[frontmatter_end + delimiter.len()..];
@@ -603,6 +609,15 @@ mod tests {
         let (frontmatter, body) = split_okf_frontmatter(markdown).expect("frontmatter should split");
 
         assert_eq!(frontmatter, "");
+        assert_eq!(body, "# Example\n");
+    }
+
+    #[test]
+    fn okf_frontmatter_ignores_mid_line_delimiters() {
+        let markdown = "---\ntype: Reference\ndescription: contains --- marker\n---\n# Example\n";
+        let (frontmatter, body) = split_okf_frontmatter(markdown).expect("frontmatter should split");
+
+        assert!(frontmatter.contains("contains --- marker"));
         assert_eq!(body, "# Example\n");
     }
 
