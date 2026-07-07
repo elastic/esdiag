@@ -46,9 +46,9 @@ This change implements the last two rows.
 - `diagnostic.application` **replaces** `diagnostic.product`, bridged by ES field aliases
   in **both directions** in the `esdiag@*` templates, so dashboards querying either name
   work on both old and new indices during the transition.
-- `diagnostic.platform` **replaces** the unused `diagnostic.orchestration` with **no
-  alias** — nothing queries `orchestration` (no platform-level dashboards), so the rename
-  is non-breaking on the index side.
+- `diagnostic.platform` **replaces** `diagnostic.orchestration`, with
+  `diagnostic.orchestration` kept as a transitional alias to the new platform field
+  until dashboards migrate and old indices age out.
 
 ### Output data-stream naming contract (ADR-0015)
 

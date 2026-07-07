@@ -23,12 +23,19 @@ pub struct RequestedApi {
     pub response_size_bytes: u64,
 }
 
+/// Bundle root descriptor.
+///
+/// This is a read-only interchange artifact shared with support-diagnostics and
+/// older ESDiag releases. Per ADR-0010, evolution is additive-only: do not
+/// remove, rename, or repurpose existing fields; add new ESDiag-specific data as
+/// optional/defaulted fields and infer missing values at read time.
 #[derive(Deserialize, Serialize)]
 pub struct DiagnosticManifest {
     /// Diagnostic bundle variation
     pub mode: Option<String>,
     /// Elastic Stack component name (legacy single-axis value; kept on the
     /// wire for read/write compatibility — see `platform`/`application`)
+    #[serde(default = "unknown_product")]
     pub product: Product,
     /// Deployment platform the diagnostic was collected from (ADR-0001).
     /// Absent in older manifests; resolve through [`Self::platform`].
@@ -68,6 +75,10 @@ pub struct DiagnosticManifest {
     /// Deprecated compatibility list of API names collected during this run.
     #[serde(default)]
     pub collected_apis: Option<Vec<String>>,
+}
+
+fn unknown_product() -> Product {
+    Product::Unknown
 }
 
 impl Clone for DiagnosticManifest {
@@ -326,7 +337,7 @@ impl From<Manifest> for DiagnosticManifest {
 
 #[cfg(test)]
 mod tests {
-    use super::{DiagnosticManifest, RequestedApi};
+    use super::{DiagnosticManifest, Manifest, RequestedApi};
     use crate::data::{Application, Platform, Product};
     use std::collections::BTreeMap;
 
@@ -418,6 +429,75 @@ mod tests {
         assert!(!manifest.has_explicit_platform());
         assert_eq!(manifest.platform(), Platform::Unknown);
         assert_eq!(manifest.application(), Some(Application::Elasticsearch));
+    }
+
+    #[test]
+    fn older_esdiag_manifest_with_unknown_and_absent_esdiag_fields_deserializes() {
+        let manifest: DiagnosticManifest = serde_json::from_str(
+            r#"{
+              "mode": "support",
+              "diagnostic": "esdiag-0.12.0",
+              "type": "elasticsearch_diagnostic",
+              "runner": "esdiag",
+              "version": "8.11.0",
+              "timestamp": "2024-02-03T04:05:06.000Z",
+              "future_field": "ignored"
+            }"#,
+        )
+        .expect("older ESDiag manifest should deserialize");
+
+        assert_eq!(manifest.product, Product::Unknown);
+        assert_eq!(manifest.platform(), Platform::Unknown);
+        assert_eq!(manifest.application(), None);
+        assert_eq!(manifest.collection_date_in_millis(), 1_706_933_106_000);
+    }
+
+    #[test]
+    fn support_diagnostics_manifest_converts_with_tolerant_inference() {
+        let manifest: Manifest = serde_json::from_str(
+            r#"{
+              "diagType": "elasticsearch_diagnostic",
+              "diagnosticInputs": "--diagnostic elasticsearch",
+              "diagVersion": "support-diagnostics-8.19.0",
+              "runner": "ece",
+              "collectionDate": "2024-02-03T04:05:06.000Z",
+              "Product Version": {
+                "originalValue": "8.19.0",
+                "value": "8.19.0",
+                "major": 8,
+                "minor": 19,
+                "patch": 0,
+                "stable": true
+              },
+              "supportDiagnosticsOnlyField": "ignored"
+            }"#,
+        )
+        .expect("support-diagnostics manifest should deserialize");
+
+        let manifest = DiagnosticManifest::from(manifest);
+        assert_eq!(manifest.platform(), Platform::ECE);
+        assert_eq!(manifest.application(), Some(Application::Elasticsearch));
+        assert!(!manifest.has_explicit_platform());
+    }
+
+    #[test]
+    fn platform_inference_does_not_rewrite_manifest() {
+        let manifest: DiagnosticManifest = serde_json::from_str(
+            r#"{
+              "mode": "support",
+              "product": "elasticsearch",
+              "diagnostic": "esdiag-0.16.0-SNAPSHOT",
+              "type": "elasticsearch_diagnostic",
+              "runner": "ece",
+              "version": "8.19.3",
+              "timestamp": "2026-04-25T20:52:09.948Z"
+            }"#,
+        )
+        .expect("legacy manifest should deserialize");
+
+        assert_eq!(manifest.platform(), Platform::ECE);
+        let value = serde_json::to_value(&manifest).expect("serialize manifest");
+        assert!(value.get("platform").is_none());
     }
 
     #[test]

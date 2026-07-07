@@ -1,6 +1,7 @@
 {
   "_meta": {
-    "description": "ESDiag processing stats"
+    "description": "ESDiag processing stats",
+    "compatibility_debt": "Remove diagnostic.product/application and diagnostic.orchestration/platform aliases after dashboards migrate and old indices age out."
   },
   "index_patterns": ["metrics-diagnostic-esdiag"],
   "composed_of": ["esdiag@metadata", "esdiag@mappings", "esdiag@settings"],
@@ -451,12 +452,20 @@
               }
             },
             "product": {
-              "type": "keyword"
+              "type": "alias",
+              "path": "diagnostic.application"
             },
             "parent_id": {
               "type": "keyword"
             },
+            "platform": {
+              "type": "keyword"
+            },
             "orchestration": {
+              "type": "alias",
+              "path": "diagnostic.platform"
+            },
+            "application": {
               "type": "keyword"
             }
           }

@@ -33,8 +33,8 @@ split deliberately left out:
 - **The provenance-field rename is bridged by Elasticsearch field aliases.**
   `diagnostic.application` and legacy `diagnostic.product` resolve to the same underlying
   field via aliases in *both directions*, so old and new dashboards work across old and
-  new indices. `diagnostic.platform` replaces the unused `diagnostic.orchestration`
-  with **no alias** (nothing queries it — no platform-level dashboards). Aliases are
+  new indices. `diagnostic.platform` replaces `diagnostic.orchestration`, with the old
+  name resolving through a transitional alias for dashboard compatibility. Aliases are
   transitional and removable once dashboards are updated and old indices age out.
 - **The output data-stream naming contract is verified where ESDiag owns both ends.**
   A single convention `{class}-{subtype}-esdiag` (class ∈ `metrics | settings | logs |

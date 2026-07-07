@@ -1,6 +1,7 @@
 {
   "_meta": {
-    "description": "ESDiag common cluster and diagnostic metadata mappings"
+    "description": "ESDiag common cluster and diagnostic metadata mappings",
+    "compatibility_debt": "Remove diagnostic.product/application and diagnostic.orchestration/platform aliases after dashboards migrate and old indices age out."
   },
   "template": {
     "mappings": {
@@ -98,8 +99,19 @@
             "parent_id": {
               "type": "keyword"
             },
-            "orchestration": {
+            "platform": {
               "type": "keyword"
+            },
+            "orchestration": {
+              "type": "alias",
+              "path": "diagnostic.platform"
+            },
+            "application": {
+              "type": "keyword"
+            },
+            "product": {
+              "type": "alias",
+              "path": "diagnostic.application"
             }
           }
         },

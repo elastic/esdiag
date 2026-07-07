@@ -965,6 +965,8 @@ mod tests {
         let root = tempfile::tempdir().expect("bundle dir");
         extract_archive("elasticsearch-api-diagnostics-9.3.3.zip", root.path());
         std::fs::create_dir_all(root.path().join("syscalls")).expect("create syscalls dir");
+        let manifest_path = root.path().join(DiagnosticManifest::FILENAME);
+        let manifest_before = std::fs::read_to_string(&manifest_path).expect("read manifest before processing");
 
         let receiver = Arc::new(Receiver::try_from(Uri::Directory(root.path().to_path_buf())).expect("receiver"));
         let output = tempfile::tempdir().expect("output dir");
@@ -975,6 +977,8 @@ mod tests {
 
         assert_eq!(processor.state.manifest.platform(), Platform::SelfManaged);
         assert_eq!(processor.state.identifiers.platform, Some(Platform::SelfManaged));
+        let manifest_after = std::fs::read_to_string(&manifest_path).expect("read manifest after processing");
+        assert_eq!(manifest_after, manifest_before);
     }
 
     #[tokio::test(flavor = "multi_thread")]

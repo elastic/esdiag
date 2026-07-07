@@ -46,10 +46,10 @@ rather than reindexing, because indexed data is semi-owned: it controls the `esd
 templates going forward but cannot rewrite historical indices. `diagnostic.application`
 SHALL replace `diagnostic.product`, with both names resolving to the same underlying
 field via aliases in **both directions**, so a dashboard querying either name works on
-both old and new indices. `diagnostic.platform` SHALL replace the unused
-`diagnostic.orchestration` with **no alias**, because nothing queries `orchestration`.
-The `product`/`application` aliases SHALL be transitional and removable once dashboards
-are updated and old indices age out of retention.
+both old and new indices. `diagnostic.platform` SHALL replace
+`diagnostic.orchestration`, with `diagnostic.orchestration` resolving to the new platform
+field through a transitional alias. The provenance aliases SHALL be transitional and
+removable once dashboards are updated and old indices age out of retention.
 
 #### Scenario: Old dashboard queries the legacy field on a new index
 - **WHEN** a dashboard queries `diagnostic.product` against an index written with the new schema
@@ -59,10 +59,10 @@ are updated and old indices age out of retention.
 - **WHEN** a dashboard queries `diagnostic.application` against a historical index written with `diagnostic.product`
 - **THEN** the query MUST resolve via the alias to the stored `product` field
 
-#### Scenario: Platform rename needs no alias
+#### Scenario: Old dashboard queries the legacy platform field on a new index
 - **WHEN** the templates replace `diagnostic.orchestration` with `diagnostic.platform`
-- **THEN** no alias MUST be installed for it, because nothing queries `orchestration`
+- **THEN** the query MUST resolve via the alias to the same field as `diagnostic.platform`
 
 #### Scenario: Aliases are removable
-- **WHEN** dashboards have been migrated and historical indices carrying `diagnostic.product` have aged out of retention
-- **THEN** the `product`/`application` aliases MUST be removable without breaking remaining dashboards
+- **WHEN** dashboards have been migrated and historical indices carrying legacy provenance fields have aged out of retention
+- **THEN** the provenance aliases MUST be removable without breaking remaining dashboards
