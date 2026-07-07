@@ -41,6 +41,10 @@ impl Input {
     pub fn is_collect(&self) -> bool {
         matches!(self, Input::Collect { .. })
     }
+
+    pub fn is_sendable_bundle(&self) -> bool {
+        matches!(self, Input::Load { uri: Uri::File(_) } | Input::Collect { .. })
+    }
 }
 
 /// Phase 2a: write freshly collected raw API responses to a bundle.
@@ -115,6 +119,8 @@ pub enum JobValidationError {
     SaveRequiresCollect,
     /// `send` ⟹ a bundle exists: a `Load` input, or `save` set.
     SendRequiresBundle,
+    /// `send` over `Load` currently requires a local bundle archive file.
+    SendRequiresArchiveFile,
     /// A job must do something: at least one of `save`/`process`/`send`.
     NoWork,
 }
@@ -129,6 +135,10 @@ impl std::fmt::Display for JobValidationError {
             Self::SendRequiresBundle => write!(
                 f,
                 "`send` requires a bundle: a `Load` input, or `save` on a `Collect` input"
+            ),
+            Self::SendRequiresArchiveFile => write!(
+                f,
+                "`send` with `Load` requires a local bundle archive file; provide a .zip bundle or collect with `save` enabled"
             ),
             Self::NoWork => write!(f, "a job must select at least one of `save`, `process`, or `send`"),
         }
@@ -164,6 +174,9 @@ impl Job {
         }
         if send.is_some() && input.is_collect() && save.is_none() {
             return Err(JobValidationError::SendRequiresBundle);
+        }
+        if send.is_some() && save.is_none() && !input.is_sendable_bundle() {
+            return Err(JobValidationError::SendRequiresArchiveFile);
         }
         if save.is_none() && process.is_none() && send.is_none() {
             return Err(JobValidationError::NoWork);
@@ -265,8 +278,20 @@ mod tests {
             .expect_err("collect+send without save must be rejected");
         assert_eq!(err, JobValidationError::SendRequiresBundle);
 
-        // Load input: the loaded bundle satisfies send
+        // Load input: a local bundle archive satisfies send
         Job::try_new(Identifiers::default(), load_input(), None, None, Some(send())).expect("load+send is valid");
+
+        let err = Job::try_new(
+            Identifiers::default(),
+            Input::Load {
+                uri: Uri::Directory(PathBuf::from("/tmp/bundle")),
+            },
+            None,
+            None,
+            Some(send()),
+        )
+        .expect_err("load+send requires a local archive file");
+        assert_eq!(err, JobValidationError::SendRequiresArchiveFile);
 
         // Collect with save: the materialised bundle satisfies send
         Job::try_new(

@@ -25,7 +25,10 @@ use std::{path::PathBuf, sync::Arc};
 /// What one job execution produced.
 #[derive(Debug, Default)]
 pub struct JobOutcome {
-    /// The materialised bundle, when the job saved or loaded one.
+    /// A retained local bundle archive path available after execution.
+    ///
+    /// Temporary staging bundles are omitted because their directory is removed
+    /// before the outcome reaches the caller.
     pub bundle_path: Option<PathBuf>,
     /// Whether that bundle outlives the job (a retained `save`, or a `Load`
     /// input) as opposed to a temporary staging bundle.
@@ -93,7 +96,9 @@ pub async fn execute(job: Job) -> Result<JobOutcome> {
                         outcome.upload_slug = Some(run_send(&bundle_path, send).await?);
                     }
 
-                    outcome.bundle_path = Some(bundle_path);
+                    if outcome.bundle_retained {
+                        outcome.bundle_path = Some(bundle_path);
+                    }
                     drop(cleanup);
                 }
                 ExecutionMode::Streaming => {
@@ -108,6 +113,10 @@ pub async fn execute(job: Job) -> Result<JobOutcome> {
             }
         }
         Input::Load { uri } => {
+            if let Uri::File(path) = uri {
+                outcome.bundle_path = Some(path.clone());
+                outcome.bundle_retained = true;
+            }
             if let Some(process) = job.process() {
                 run_process(Receiver::try_from(uri.clone())?, process, job.identifiers.clone()).await?;
                 outcome.processed = true;
@@ -117,13 +126,11 @@ pub async fn execute(job: Job) -> Result<JobOutcome> {
                     Uri::File(path) => path.clone(),
                     other => {
                         return Err(eyre!(
-                            "`send` requires a bundle archive file; input '{other}' is not sendable"
+                            "`send` requires a local bundle archive file; input '{other}' is not sendable. Provide a .zip bundle path or collect with `save` enabled."
                         ));
                     }
                 };
                 outcome.upload_slug = Some(run_send(&bundle_path, send).await?);
-                outcome.bundle_path = Some(bundle_path);
-                outcome.bundle_retained = true;
             }
         }
     }
@@ -228,11 +235,11 @@ mod tests {
         assert!(produced > 0, "expected exported document files");
     }
 
-    #[tokio::test(flavor = "multi_thread")]
-    async fn load_send_job_requires_an_archive_file() {
+    #[test]
+    fn load_send_job_requires_an_archive_file() {
         let bundle = tempfile::tempdir().expect("bundle dir");
 
-        let job = Job::try_new(
+        let err = Job::try_new(
             Identifiers::default(),
             Input::Load {
                 uri: Uri::Directory(bundle.path().to_path_buf()),
@@ -243,9 +250,7 @@ mod tests {
                 upload_id: "abc123".to_string(),
             }),
         )
-        .expect("valid load+send job shape");
-
-        let err = execute(job).await.expect_err("directory input is not sendable");
-        assert!(err.to_string().contains("not sendable"));
+        .expect_err("directory input is not sendable");
+        assert!(err.to_string().contains("requires a local bundle archive file"));
     }
 }
