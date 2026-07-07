@@ -135,13 +135,13 @@ pub async fn handler(
     let is_datastar = headers.contains_key("datastar-request");
     let docs_visibility = DocsVisibility::current();
 
+    if !docs_visibility.is_path_visible(&file_path) {
+        return (StatusCode::NOT_FOUND, "Document not found").into_response();
+    }
+
     match DocsAssets::get(&file_path) {
         Some(content) => {
             let markdown_content = String::from_utf8_lossy(&content.data);
-            if !docs_visibility.is_path_visible(&file_path) {
-                return (StatusCode::NOT_FOUND, "Document not found").into_response();
-            }
-
             let markdown_body = strip_okf_frontmatter(&markdown_content);
 
             // Set up pulldown-cmark parser with options
@@ -522,8 +522,8 @@ fn inject_heading_ids(html: &str) -> String {
 #[allow(clippy::await_holding_lock)]
 mod tests {
     use super::{
-        DocsVisibility, generate_toc, handler, handler_index, parse_tag_list, split_okf_frontmatter,
-        strip_okf_frontmatter,
+        DOCS_EXCLUDED_TAGS_ENV, DocsVisibility, generate_toc, handler, handler_index, parse_tag_list,
+        split_okf_frontmatter, strip_okf_frontmatter,
     };
     use crate::embeds::DocsAssets;
     use crate::server::{RuntimeMode, ServerPolicy, test_server_state};
@@ -652,7 +652,7 @@ mod tests {
         let _guard = env_lock().lock().expect("env lock");
         let (_tmp, _hosts_path, _settings_path) = setup_env();
         unsafe {
-            std::env::set_var("ESDIAG_DOCS_EXCLUDED_TAGS", "repository");
+            std::env::set_var(DOCS_EXCLUDED_TAGS_ENV, "repository");
         }
 
         let state = test_server_state();
@@ -667,7 +667,7 @@ mod tests {
             .into_response();
 
         unsafe {
-            std::env::remove_var("ESDIAG_DOCS_EXCLUDED_TAGS");
+            std::env::remove_var(DOCS_EXCLUDED_TAGS_ENV);
         }
 
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
