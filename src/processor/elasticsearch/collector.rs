@@ -2,15 +2,8 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use super::super::{
-    SourceContext,
-    collector::{ApiCollectOutcome, CollectOptions, CollectionResult, default_collect_archive_name},
-};
-use super::{
-    AliasList, Cluster, ClusterSettings, DataSource, DataStreams, DiagnosticManifest, HealthReport, IlmExplain,
-    IlmPolicies, IndicesSettings, IndicesStats, Licenses, MappingStats, Nodes, NodesStats, PendingTasks, Repositories,
-    SearchableSnapshotsCacheStats, SearchableSnapshotsStats, SlmPolicies, Snapshots, Tasks,
-};
+use super::super::collector::{ApiCollectOutcome, CollectOptions, CollectionResult, default_collect_archive_name};
+use super::DiagnosticManifest;
 use crate::{
     data::Product,
     exporter::ArchiveExporter,
@@ -21,7 +14,7 @@ use eyre::{Result, WrapErr};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use crate::processor::api::{ApiResolver, ApiWeight, DiagnosticType, ElasticsearchApi};
+use crate::processor::api::{ApiResolver, CollectConcurrencyPolicy, DiagnosticType, source_weight};
 use futures::stream::{self, StreamExt};
 use std::str::FromStr;
 use std::time::Duration;
@@ -57,8 +50,7 @@ impl ElasticsearchCollector {
             let apis =
                 ApiResolver::resolve_es(&diag_type, self.options.include.as_ref(), self.options.exclude.as_ref())?;
 
-            let api_names: Vec<&str> = apis.iter().map(|a| a.as_str()).collect();
-            tracing::debug!("Resolved APIs for collection: {:?}", api_names);
+            tracing::debug!("Resolved APIs for collection: {:?}", apis);
             let stack_version = self
                 .receiver
                 .source_context()
@@ -72,21 +64,24 @@ impl ElasticsearchCollector {
                 total: apis.len() + 1, // +1 for manifest
             };
 
+            // Source weight governs collect concurrency (ADR-0017); the
+            // weight -> concurrency mapping is tunable policy (ADR-0018).
+            let policy = CollectConcurrencyPolicy::from_env();
             let mut heavy_apis = Vec::new();
             let mut light_apis = Vec::new();
 
             for api in apis {
-                if api.weight() == ApiWeight::Heavy {
+                if policy.is_sequential(source_weight("elasticsearch", &api)) {
                     heavy_apis.push(api);
                 } else {
                     light_apis.push(api);
                 }
             }
 
-            // Concurrent fetch for Light APIs
+            // Concurrent fetch for light-weight sources
             let mut light_stream = stream::iter(light_apis)
                 .map(|api| async move { self.save_api_with_retry(&api).await })
-                .buffer_unordered(5);
+                .buffer_unordered(policy.concurrent_pool);
 
             let mut requested_apis = BTreeMap::new();
             while let Some(res) = light_stream.next().await {
@@ -123,7 +118,7 @@ impl ElasticsearchCollector {
         }
     }
 
-    async fn save_api_with_retry(&self, api: &ElasticsearchApi) -> ApiCollectOutcome {
+    async fn save_api_with_retry(&self, api: &str) -> ApiCollectOutcome {
         let max_duration = Duration::from_secs(300); // 5 minutes
         let start_time = std::time::Instant::now();
         let mut attempt = 1;
@@ -153,9 +148,9 @@ impl ElasticsearchCollector {
                     retried_response_time_ms += response_time_ms;
                     retried_response_size_bytes += response_size_bytes;
                     if !should_retry_elasticsearch_error(&e) {
-                        tracing::warn!("Skipping non-retriable failure for {}: {}", api.as_str(), e);
+                        tracing::warn!("Skipping non-retriable failure for {}: {}", api, e);
                         return ApiCollectOutcome::failed(
-                            api.as_str(),
+                            api,
                             status,
                             retries,
                             retried_response_time_ms,
@@ -165,12 +160,12 @@ impl ElasticsearchCollector {
                     if start_time.elapsed() > max_duration {
                         tracing::error!(
                             "Failed to save {} after {} attempts (5 min timeout): {}",
-                            api.as_str(),
+                            api,
                             attempt,
                             e
                         );
                         return ApiCollectOutcome::failed(
-                            api.as_str(),
+                            api,
                             status,
                             retries,
                             retried_response_time_ms,
@@ -180,7 +175,7 @@ impl ElasticsearchCollector {
                     tracing::warn!(
                         "Attempt {} failed for {}: {}. Retrying in {:?}...",
                         attempt,
-                        api.as_str(),
+                        api,
                         e,
                         delay
                     );
@@ -193,33 +188,14 @@ impl ElasticsearchCollector {
         }
     }
 
-    async fn save_api(&self, api: &ElasticsearchApi) -> Result<ApiCollectOutcome> {
-        let response = match api {
-            ElasticsearchApi::AliasList => self.save::<AliasList>().await?,
-            ElasticsearchApi::Cluster => self.save::<Cluster>().await?,
-            ElasticsearchApi::ClusterSettings => self.save::<ClusterSettings>().await?,
-            ElasticsearchApi::DataStreams => self.save::<DataStreams>().await?,
-            ElasticsearchApi::HealthReport => self.save::<HealthReport>().await?,
-            ElasticsearchApi::IlmExplain => self.save::<IlmExplain>().await?,
-            ElasticsearchApi::IlmPolicies => self.save::<IlmPolicies>().await?,
-            ElasticsearchApi::IndicesSettings => self.save::<IndicesSettings>().await?,
-            ElasticsearchApi::IndicesStats => self.save::<IndicesStats>().await?,
-            ElasticsearchApi::Licenses => self.save::<Licenses>().await?,
-            ElasticsearchApi::MappingStats => self.save::<MappingStats>().await?,
-            ElasticsearchApi::Nodes => self.save::<Nodes>().await?,
-            ElasticsearchApi::NodesStats => self.save::<NodesStats>().await?,
-            ElasticsearchApi::PendingTasks => self.save::<PendingTasks>().await?,
-            ElasticsearchApi::Repositories => self.save::<Repositories>().await?,
-            ElasticsearchApi::SearchableSnapshotsCacheStats => self.save::<SearchableSnapshotsCacheStats>().await?,
-            ElasticsearchApi::SearchableSnapshotsStats => self.save::<SearchableSnapshotsStats>().await?,
-            ElasticsearchApi::Snapshots => self.save::<Snapshots>().await?,
-            ElasticsearchApi::SlmPolicies => self.save::<SlmPolicies>().await?,
-            ElasticsearchApi::Tasks => self.save::<Tasks>().await?,
-            ElasticsearchApi::Raw(name, _) => self.save_raw(name).await?,
-        };
+    async fn save_api(&self, api: &str) -> Result<ApiCollectOutcome> {
+        // Every source resolves through the registry by its canonical key
+        // (ADR-0005) — the registry is the collect authority; the typed
+        // structs exist only for processing.
+        let response = self.save_raw(api).await?;
 
         match response {
-            Some((requested_api, saved)) => Ok(ApiCollectOutcome::success(api.as_str(), requested_api, 0, saved)),
+            Some((requested_api, saved)) => Ok(ApiCollectOutcome::success(api, requested_api, 0, saved)),
             None => Ok(ApiCollectOutcome::skipped()),
         }
     }
@@ -279,42 +255,6 @@ impl ElasticsearchCollector {
         };
 
         match self.exporter.save(file_path, response.body).await {
-            Ok(()) => {
-                tracing::info!("Saved {filename}");
-                Ok(Some((requested_api, 1)))
-            }
-            Err(e) => {
-                tracing::error!("Failed to save {filename}: {e}");
-                Ok(Some((requested_api, 0)))
-            }
-        }
-    }
-
-    async fn save<T>(&self) -> Result<Option<(RequestedApi, usize)>>
-    where
-        T: DataSource,
-    {
-        let response = match self.receiver.get_raw_response::<T>().await {
-            Ok(response) => response,
-            Err(e) => {
-                if let Some(ds_err) = e.downcast_ref::<crate::processor::diagnostic::data_source::DataSourceError>() {
-                    tracing::debug!("Skipping {} collection: {}", T::name(), ds_err);
-                    return Ok(None);
-                }
-                return Err(e);
-            }
-        };
-        let ctx = SourceContext::new("elasticsearch", None);
-        let path = PathBuf::from(T::resolve_source_file_path(&ctx)?);
-        let filename = format!("{}", path.display());
-        let requested_api = RequestedApi {
-            status: response.status,
-            retries: 0,
-            response_time_ms: response.response_time_ms,
-            response_size_bytes: response.response_size_bytes,
-        };
-
-        match self.exporter.save(path, response.body).await {
             Ok(()) => {
                 tracing::info!("Saved {filename}");
                 Ok(Some((requested_api, 1)))

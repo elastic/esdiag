@@ -2,13 +2,12 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use super::{node::Node, node_stats::NodeStats};
 use crate::{
     data::Product,
     exporter::ArchiveExporter,
     processor::{
-        DataSource, DiagnosticManifest, RequestedApi, SourceContext,
-        api::{ApiResolver, ApiWeight, DiagnosticType, LogstashApi},
+        DiagnosticManifest, RequestedApi,
+        api::{ApiResolver, CollectConcurrencyPolicy, DiagnosticType, source_weight},
         collector::{ApiCollectOutcome, CollectOptions, CollectionResult, default_collect_archive_name},
     },
     receiver::{LogstashRequestError, Receiver},
@@ -51,8 +50,7 @@ impl LogstashCollector {
             let apis =
                 ApiResolver::resolve_ls(&diag_type, self.options.include.as_ref(), self.options.exclude.as_ref())?;
 
-            let api_names: Vec<&str> = apis.iter().map(|a| a.as_str()).collect();
-            tracing::debug!("Resolved Logstash APIs for collection: {:?}", api_names);
+            tracing::debug!("Resolved Logstash APIs for collection: {:?}", apis);
             let stack_version = self
                 .receiver
                 .source_context()
@@ -66,11 +64,14 @@ impl LogstashCollector {
                 total: apis.len() + 1,
             };
 
+            // Source weight governs collect concurrency (ADR-0017); the
+            // weight -> concurrency mapping is tunable policy (ADR-0018).
+            let policy = CollectConcurrencyPolicy::from_env();
             let mut heavy_apis = Vec::new();
             let mut light_apis = Vec::new();
 
             for api in apis {
-                if api.weight() == ApiWeight::Heavy {
+                if policy.is_sequential(source_weight("logstash", &api)) {
                     heavy_apis.push(api);
                 } else {
                     light_apis.push(api);
@@ -79,7 +80,7 @@ impl LogstashCollector {
 
             let mut light_stream = stream::iter(light_apis)
                 .map(|api| async move { self.save_api_with_retry(&api).await })
-                .buffer_unordered(5);
+                .buffer_unordered(policy.concurrent_pool);
 
             let mut requested_apis = BTreeMap::new();
             while let Some(res) = light_stream.next().await {
@@ -115,7 +116,7 @@ impl LogstashCollector {
         }
     }
 
-    async fn save_api_with_retry(&self, api: &LogstashApi) -> ApiCollectOutcome {
+    async fn save_api_with_retry(&self, api: &str) -> ApiCollectOutcome {
         let max_duration = Duration::from_secs(300);
         let start_time = std::time::Instant::now();
         let mut attempt = 1;
@@ -145,9 +146,9 @@ impl LogstashCollector {
                     retried_response_time_ms += response_time_ms;
                     retried_response_size_bytes += response_size_bytes;
                     if !should_retry_logstash_error(&e) {
-                        tracing::warn!("Skipping non-retriable failure for {}: {}", api.as_str(), e);
+                        tracing::warn!("Skipping non-retriable failure for {}: {}", api, e);
                         return ApiCollectOutcome::failed(
-                            api.as_str(),
+                            api,
                             status,
                             retries,
                             retried_response_time_ms,
@@ -157,12 +158,12 @@ impl LogstashCollector {
                     if start_time.elapsed() > max_duration {
                         tracing::error!(
                             "Failed to save {} after {} attempts (5 min timeout): {}",
-                            api.as_str(),
+                            api,
                             attempt,
                             e
                         );
                         return ApiCollectOutcome::failed(
-                            api.as_str(),
+                            api,
                             status,
                             retries,
                             retried_response_time_ms,
@@ -172,7 +173,7 @@ impl LogstashCollector {
                     tracing::warn!(
                         "Attempt {} failed for {}: {}. Retrying in {:?}...",
                         attempt,
-                        api.as_str(),
+                        api,
                         e,
                         delay
                     );
@@ -185,15 +186,14 @@ impl LogstashCollector {
         }
     }
 
-    async fn save_api(&self, api: &LogstashApi) -> Result<ApiCollectOutcome> {
-        let response = match api {
-            LogstashApi::Node => self.save::<Node>().await?,
-            LogstashApi::NodeStats => self.save::<NodeStats>().await?,
-            LogstashApi::Raw(name, _) => self.save_raw(name).await?,
-        };
+    async fn save_api(&self, api: &str) -> Result<ApiCollectOutcome> {
+        // Every source resolves through the registry by its canonical key
+        // (ADR-0005) — the registry is the collect authority; the typed
+        // structs exist only for processing.
+        let response = self.save_raw(api).await?;
 
         match response {
-            Some((requested_api, saved)) => Ok(ApiCollectOutcome::success(api.as_str(), requested_api, 0, saved)),
+            Some((requested_api, saved)) => Ok(ApiCollectOutcome::success(api, requested_api, 0, saved)),
             None => Ok(ApiCollectOutcome::skipped()),
         }
     }
@@ -246,43 +246,6 @@ impl LogstashCollector {
         };
 
         match self.exporter.save(file_path, response.body).await {
-            Ok(()) => {
-                tracing::info!("Saved {filename}");
-                Ok(Some((requested_api, 1)))
-            }
-            Err(e) => {
-                tracing::error!("Failed to save {filename}: {e}");
-                Ok(Some((requested_api, 0)))
-            }
-        }
-    }
-
-    async fn save<T>(&self) -> Result<Option<(RequestedApi, usize)>>
-    where
-        T: DataSource,
-    {
-        let response = match self.receiver.get_raw_response::<T>().await {
-            Ok(response) => response,
-            Err(e) => {
-                if let Some(ds_err) = e.downcast_ref::<crate::processor::diagnostic::data_source::DataSourceError>() {
-                    tracing::debug!("Skipping {} collection: {}", T::name(), ds_err);
-                    return Ok(None);
-                }
-                return Err(e);
-            }
-        };
-
-        let ctx = SourceContext::new("logstash", None);
-        let path = PathBuf::from(T::resolve_source_file_path(&ctx)?);
-        let filename = format!("{}", path.display());
-        let requested_api = RequestedApi {
-            status: response.status,
-            retries: 0,
-            response_time_ms: response.response_time_ms,
-            response_size_bytes: response.response_size_bytes,
-        };
-
-        match self.exporter.save(path, response.body).await {
             Ok(()) => {
                 tracing::info!("Saved {filename}");
                 Ok(Some((requested_api, 1)))

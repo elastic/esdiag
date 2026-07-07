@@ -139,7 +139,8 @@ async fn index_embeds_processing_option_catalog() {
     assert!(body.contains("\"elasticsearch\""));
     assert!(body.contains("\"cluster_settings_defaults\""));
     assert!(body.contains("\"logstash\""));
-    assert!(body.contains("\"plugins\""));
+    // Processing options carry canonical registry keys (ADR-0005)
+    assert!(body.contains("\"logstash_plugins\""));
 
     server.shutdown().await;
 }
