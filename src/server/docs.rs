@@ -99,7 +99,17 @@ impl DocsVisibility {
     }
 
     fn is_visible(&self, markdown: &str) -> bool {
-        self.include_excluded || self.excluded_tags.is_empty() || doc_tags(markdown).is_disjoint(&self.excluded_tags)
+        self.is_tag_set_visible(&doc_tags(markdown))
+    }
+
+    fn is_path_visible(&self, path: &str) -> bool {
+        doc_tag_cache()
+            .get(path)
+            .is_none_or(|tags| self.is_tag_set_visible(tags))
+    }
+
+    fn is_tag_set_visible(&self, tags: &HashSet<String>) -> bool {
+        self.include_excluded || self.excluded_tags.is_empty() || tags.is_disjoint(&self.excluded_tags)
     }
 }
 
@@ -132,7 +142,7 @@ pub async fn handler(
     match DocsAssets::get(&file_path) {
         Some(content) => {
             let markdown_content = String::from_utf8_lossy(&content.data);
-            if !docs_visibility.is_visible(&markdown_content) {
+            if !docs_visibility.is_path_visible(&file_path) {
                 return (StatusCode::NOT_FOUND, "Document not found").into_response();
             }
 
@@ -290,11 +300,8 @@ fn generate_toc(docs_visibility: &DocsVisibility) -> Vec<TocEntry> {
             continue;
         }
 
-        if let Some(content) = DocsAssets::get(&file) {
-            let markdown = String::from_utf8_lossy(&content.data);
-            if !docs_visibility.is_visible(&markdown) {
-                continue;
-            }
+        if !docs_visibility.is_path_visible(&file) {
+            continue;
         }
 
         let path = PathBuf::from(&file);
@@ -378,12 +385,19 @@ fn slugify(s: &str) -> String {
 }
 
 fn split_okf_frontmatter(markdown: &str) -> Option<(&str, &str)> {
-    let body_start = markdown.strip_prefix("---\n")?;
-    let delimiter = "\n---\n";
-    let frontmatter_end = body_start.find(delimiter)?;
-    let frontmatter = &body_start[..frontmatter_end];
-    let body = &body_start[frontmatter_end + delimiter.len()..];
-    Some((frontmatter, body))
+    let body_start = markdown
+        .strip_prefix("---\r\n")
+        .or_else(|| markdown.strip_prefix("---\n"))?;
+
+    for delimiter in ["\r\n---\r\n", "\n---\n", "\r\n---\n", "\n---\r\n"] {
+        if let Some(frontmatter_end) = body_start.find(delimiter) {
+            let frontmatter = &body_start[..frontmatter_end];
+            let body = &body_start[frontmatter_end + delimiter.len()..];
+            return Some((frontmatter, body));
+        }
+    }
+
+    None
 }
 
 fn strip_okf_frontmatter(markdown: &str) -> &str {
@@ -400,8 +414,28 @@ fn parse_tag_list(tags: &str) -> HashSet<String> {
 fn configured_excluded_doc_tags() -> HashSet<String> {
     match std::env::var(DOCS_EXCLUDED_TAGS_ENV) {
         Ok(tags) => parse_tag_list(&tags),
-        Err(_) => DEFAULT_EXCLUDED_DOC_TAGS.iter().map(|tag| tag.to_string()).collect(),
+        Err(_) => DEFAULT_EXCLUDED_DOC_TAGS
+            .iter()
+            .map(|tag| tag.trim().to_ascii_lowercase())
+            .filter(|tag| !tag.is_empty())
+            .collect(),
     }
+}
+
+fn doc_tag_cache() -> &'static BTreeMap<String, HashSet<String>> {
+    static DOC_TAGS: OnceLock<BTreeMap<String, HashSet<String>>> = OnceLock::new();
+    DOC_TAGS.get_or_init(|| {
+        DocsAssets::iter()
+            .map(|path| path.into_owned())
+            .filter(|path| path.ends_with(".md"))
+            .filter_map(|path| {
+                DocsAssets::get(&path).map(|content| {
+                    let markdown = String::from_utf8_lossy(&content.data);
+                    (path, doc_tags(&markdown))
+                })
+            })
+            .collect()
+    })
 }
 
 fn doc_tags(markdown: &str) -> HashSet<String> {
@@ -556,6 +590,15 @@ mod tests {
         let markdown = "---\ntype: Reference\ntitle: Example\n---\n\n# Example\n";
 
         assert_eq!(strip_okf_frontmatter(markdown), "\n# Example\n");
+    }
+
+    #[test]
+    fn okf_frontmatter_supports_crlf_line_endings() {
+        let markdown = "---\r\ntype: Reference\r\ntitle: Example\r\n---\r\n\r\n# Example\r\n";
+        let (frontmatter, body) = split_okf_frontmatter(markdown).expect("frontmatter should split");
+
+        assert!(frontmatter.contains("type: Reference"));
+        assert_eq!(body, "\r\n# Example\r\n");
     }
 
     #[test]
