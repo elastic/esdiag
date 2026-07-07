@@ -368,7 +368,11 @@ impl ApiResolver {
     ) -> Result<Vec<String>> {
         use std::str::FromStr;
 
-        let diag_type = DiagnosticType::from_str(diagnostic_type)?;
+        let diag_type = if diagnostic_type.eq_ignore_ascii_case("custom") {
+            DiagnosticType::Support
+        } else {
+            DiagnosticType::from_str(diagnostic_type)?
+        };
         let collected = match product {
             "elasticsearch" => Self::resolve_es(&diag_type, include, exclude)?,
             "logstash" => Self::resolve_ls(&diag_type, include, exclude)?,
@@ -777,6 +781,20 @@ mod tests {
 
         assert!(err.to_string().contains("cluster_settings_defaults"));
         assert!(err.to_string().contains("remove the matching exclusions"));
+    }
+
+    #[test]
+    fn test_processing_selection_with_collect_filters_supports_custom() {
+        let selected = ApiResolver::resolve_processing_selection_with_collect_filters(
+            "elasticsearch",
+            "custom",
+            Some(&vec!["nodes_stats".to_string()]),
+            None,
+        )
+        .unwrap();
+
+        assert!(selected.contains(&"nodes_stats".to_string()));
+        assert!(selected.contains(&"cluster_settings_defaults".to_string()));
     }
 
     #[test]
