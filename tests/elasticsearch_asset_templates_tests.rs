@@ -70,13 +70,14 @@ fn collect_rs_files(root: &Path, files: &mut Vec<std::path::PathBuf>) {
 }
 
 fn emitted_output_streams() -> BTreeSet<String> {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/processor");
     let mut files = Vec::new();
-    collect_rs_files(&root, &mut files);
+    for root in ["src/processor", "src/exporter"] {
+        collect_rs_files(&Path::new(env!("CARGO_MANIFEST_DIR")).join(root), &mut files);
+    }
 
     let stream_re =
         regex::Regex::new(r#""((?:metrics|settings|logs|health)-[A-Za-z0-9_.]+-esdiag)""#).expect("stream regex");
-    let mut streams = BTreeSet::from(["metrics-diagnostic-esdiag".to_string()]);
+    let mut streams = BTreeSet::new();
     for path in files {
         let content = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read {}: {}", path.display(), err));
         for capture in stream_re.captures_iter(&content) {
@@ -116,8 +117,28 @@ fn index_template_patterns() -> BTreeSet<String> {
 }
 
 fn wildcard_matches(pattern: &str, stream: &str) -> bool {
-    let regex = format!("^{}$", regex::escape(pattern).replace("\\*", ".*"));
-    regex::Regex::new(&regex).expect("wildcard regex").is_match(stream)
+    let Some((first, rest)) = pattern.split_once('*') else {
+        return pattern == stream;
+    };
+    if !stream.starts_with(first) {
+        return false;
+    }
+
+    let mut remaining = &stream[first.len()..];
+    let mut parts = rest.split('*').peekable();
+    while let Some(part) = parts.next() {
+        if part.is_empty() {
+            continue;
+        }
+        let Some(index) = remaining.find(part) else {
+            return false;
+        };
+        remaining = &remaining[index + part.len()..];
+        if parts.peek().is_none() && !pattern.ends_with('*') {
+            return remaining.is_empty();
+        }
+    }
+    pattern.ends_with('*') || remaining.is_empty()
 }
 
 fn stream_template_drift(streams: &BTreeSet<String>, patterns: &BTreeSet<String>) -> Vec<String> {
