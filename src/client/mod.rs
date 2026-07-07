@@ -9,7 +9,7 @@ mod kibana;
 /// Client for Logstash APIs
 mod logstash;
 
-pub use elasticsearch::{ElasticsearchBuilder, ElasticsearchClient};
+pub use elasticsearch::{ElasticsearchBuilder, ElasticsearchClient, elasticsearch_client_from_output_host};
 pub use kibana::KibanaClient;
 pub use logstash::LogstashClient;
 

@@ -39,6 +39,8 @@ const KEY_SIZE: usize = 32;
 const SALT_SIZE: usize = 16;
 const NONCE_SIZE: usize = 12;
 const ENCRYPTED_ENVELOPE_VERSION: u8 = 2;
+// ADR-0011/0012 keep this as the User-mode file backend for now; OS-native
+// custody is intentionally deferred to a future backend ADR.
 const KEYSTORE_FILE: &str = "secrets.yml";
 const UNLOCK_FILE: &str = "keystore.unlock";
 const DEFAULT_UNLOCK_TTL_SECS: u64 = 24 * 60 * 60;
@@ -598,7 +600,7 @@ pub fn get_keystore_password() -> Result<String> {
     ))
 }
 
-pub fn get_password_from_unlock_file() -> Result<Option<String>> {
+pub(crate) fn get_active_unlock_keystore_password() -> Result<Option<String>> {
     Ok(read_unlock_lease()?.map(|lease| lease.password))
 }
 
@@ -1144,6 +1146,50 @@ mod tests {
             serde_yaml::from_reader(BufReader::new(unlock_file)).expect("unlock envelope");
         assert_eq!(unlock.version, ENCRYPTED_ENVELOPE_VERSION);
         assert_eq!(unlock.kdf, KdfParams::current());
+    }
+
+    #[test]
+    fn unlock_file_and_keystore_envelope_do_not_disclose_plaintext_material() {
+        let _guard = test_env_lock().lock().expect("env lock");
+        let (_tmp, keystore_path, unlock_path) = setup_env();
+
+        create_keystore("keystore-password").expect("create keystore");
+        add_secret(
+            "saved-collect",
+            None,
+            None,
+            Some("saved-api-key-value".to_string()),
+            "keystore-password",
+        )
+        .expect("add saved secret");
+        write_unlock_lease("keystore-password", Duration::from_secs(300)).expect("write unlock lease");
+
+        let raw_unlock = std::fs::read_to_string(&unlock_path).expect("read unlock file");
+        let raw_keystore = std::fs::read_to_string(&keystore_path).expect("read keystore file");
+
+        for raw in [&raw_unlock, &raw_keystore] {
+            assert!(!raw.contains("keystore-password"));
+            assert!(!raw.contains("saved-api-key-value"));
+            assert!(!raw.contains("saved-collect"));
+        }
+    }
+
+    #[test]
+    fn saved_secret_entries_are_role_agnostic_without_direction_field() {
+        let _guard = test_env_lock().lock().expect("env lock");
+        let (_tmp, _keystore_path, _unlock_path) = setup_env();
+
+        create_keystore("pw").expect("create keystore");
+        add_secret("input-secret", None, None, Some("input-key".to_string()), "pw").expect("add input secret");
+        add_secret("output-secret", None, None, Some("output-key".to_string()), "pw").expect("add output secret");
+
+        let entries = list_secret_entries("pw").expect("list secret entries");
+        let rendered = serde_yaml::to_string(&entries).expect("serialize decrypted test entries");
+
+        assert!(rendered.contains("input-secret"));
+        assert!(rendered.contains("output-secret"));
+        assert!(!rendered.contains("direction"));
+        assert!(!rendered.contains("CredentialDirection"));
     }
 
     #[test]

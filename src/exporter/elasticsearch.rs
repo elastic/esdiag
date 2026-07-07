@@ -4,8 +4,8 @@
 
 use super::Export;
 use crate::{
-    client::{ElasticsearchBuilder, ElasticsearchClient},
-    data::{self, Auth, KnownHost},
+    client::{ElasticsearchBuilder, ElasticsearchClient, elasticsearch_client_from_output_host},
+    data::{self, Auth, CredentialDirection, KnownHost},
     processor::{BatchResponse, DiagnosticReport},
 };
 use elasticsearch::{
@@ -197,9 +197,9 @@ impl TryFrom<KnownHost> for ElasticsearchExporter {
 
     fn try_from(host: KnownHost) -> Result<Self> {
         let kibana_base_url = super::saved_viewer_kibana_base_url(&host).or_else(super::kibana_base_url_from_env);
-        let requires_secret = !matches!(host.get_auth()?, Auth::None);
+        let requires_secret = !matches!(host.get_auth_for_direction(CredentialDirection::Output)?, Auth::None);
         let url = host.get_url()?;
-        let client = ElasticsearchClient::try_from(host)?;
+        let client = elasticsearch_client_from_output_host(host)?;
         let limit = std::env::var("ESDIAG_OUTPUT_TASK_LIMIT")
             .ok()
             .and_then(|s| s.parse::<usize>().ok())

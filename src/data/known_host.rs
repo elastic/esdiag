@@ -32,6 +32,21 @@ pub enum HostRole {
     View,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CredentialDirection {
+    Input,
+    Output,
+}
+
+impl CredentialDirection {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Input => "input",
+            Self::Output => "output",
+        }
+    }
+}
+
 impl std::fmt::Display for HostRole {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -51,6 +66,15 @@ impl FromStr for HostRole {
             "send" => Ok(Self::Send),
             "view" => Ok(Self::View),
             _ => Err(eyre!("Unknown host role '{s}'")),
+        }
+    }
+}
+
+impl From<HostRole> for CredentialDirection {
+    fn from(role: HostRole) -> Self {
+        match role {
+            HostRole::Collect => Self::Input,
+            HostRole::Send | HostRole::View => Self::Output,
         }
     }
 }
@@ -858,6 +882,19 @@ impl KnownHost {
     }
 
     pub fn get_auth(&self) -> Result<Auth> {
+        self.get_auth_for_direction(CredentialDirection::Input)
+    }
+
+    pub fn get_auth_for_direction(&self, direction: CredentialDirection) -> Result<Auth> {
+        tracing::debug!(
+            "Resolving {} credential for known host role(s): {}",
+            direction.as_str(),
+            self.roles()
+                .iter()
+                .map(std::string::ToString::to_string)
+                .collect::<Vec<_>>()
+                .join(",")
+        );
         resolve_auth_with_precedence(
             &self.secret,
             self.legacy_apikey.clone(),
@@ -1879,6 +1916,51 @@ mod tests {
         let host = KnownHost::get_known(&"prod-es".to_string()).expect("host");
         let auth = host.get_auth().expect("auth from unlock lease");
         assert!(matches!(auth, Auth::Apikey(key) if key == "unlock-key"));
+    }
+
+    #[test]
+    fn credential_direction_is_derived_from_referencing_role() {
+        assert_eq!(CredentialDirection::from(HostRole::Collect), CredentialDirection::Input);
+        assert_eq!(CredentialDirection::from(HostRole::Send), CredentialDirection::Output);
+        assert_eq!(CredentialDirection::from(HostRole::View), CredentialDirection::Output);
+    }
+
+    #[test]
+    fn saved_hosts_resolve_input_and_output_credentials_from_same_role_agnostic_store() {
+        let _guard = env_lock().lock().expect("env lock");
+        let (_tmp, _hosts, _keystore) = setup_env();
+        unsafe {
+            std::env::set_var("ESDIAG_KEYSTORE_PASSWORD", "pw");
+        }
+        upsert_secret_auth(
+            "shared-secret",
+            SecretAuth::ApiKey {
+                apikey: "shared-api-key".to_string(),
+            },
+            "pw",
+        )
+        .expect("upsert shared secret");
+
+        let collect_host = KnownHostBuilder::new(Url::parse("http://collect.example:9200").expect("url"))
+            .roles(vec![HostRole::Collect])
+            .secret(Some("shared-secret".to_string()))
+            .build()
+            .expect("collect host");
+        let send_host = KnownHostBuilder::new(Url::parse("http://send.example:9200").expect("url"))
+            .roles(vec![HostRole::Send])
+            .secret(Some("shared-secret".to_string()))
+            .build()
+            .expect("send host");
+
+        let input = collect_host
+            .get_auth_for_direction(CredentialDirection::Input)
+            .expect("input auth");
+        let output = send_host
+            .get_auth_for_direction(CredentialDirection::Output)
+            .expect("output auth");
+
+        assert!(matches!(input, Auth::Apikey(key) if key == "shared-api-key"));
+        assert!(matches!(output, Auth::Apikey(key) if key == "shared-api-key"));
     }
 
     #[test]

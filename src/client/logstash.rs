@@ -2,7 +2,7 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use crate::data::{Auth, KnownHost};
+use crate::data::{Auth, CredentialDirection, KnownHost};
 use base64::Engine;
 use eyre::Result;
 use reqwest::{Client, Method};
@@ -96,7 +96,7 @@ impl TryFrom<KnownHost> for LogstashClient {
     fn try_from(host: KnownHost) -> Result<Self> {
         let url = host.get_url()?;
         let ignore_certs = host.accept_invalid_certs();
-        let auth = host.get_auth()?;
+        let auth = host.get_auth_for_direction(CredentialDirection::Input)?;
         LogstashClient::try_new(url, auth, ignore_certs)
     }
 }

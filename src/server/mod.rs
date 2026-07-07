@@ -1766,11 +1766,13 @@ mod tests {
         ServerState, Stats, event_visible_to_user, receiver_stream, replace_job_event, signal_event, stats_event,
         targeted_signal_event, test_server_state,
     };
+    use crate::data::{Auth, KnownHostBuilder};
     #[cfg(feature = "keystore")]
     use crate::data::{
         SecretAuth, authenticate, create_keystore, resolve_secret_auth, upsert_secret_auth, write_unlock_lease,
     };
     use crate::exporter::Exporter;
+    use crate::processor::Identifiers;
     use axum::http::HeaderMap;
     use futures::StreamExt;
     #[cfg(feature = "keystore")]
@@ -1801,6 +1803,30 @@ mod tests {
             stats_updates_tx,
             stats_updates_rx,
         }
+    }
+
+    #[tokio::test]
+    async fn queued_ad_hoc_input_key_is_consumed_once() {
+        let state = test_state(RuntimeMode::Service);
+        let ad_hoc_key = "one-time-ad-hoc-api-key";
+        let host = KnownHostBuilder::new(url::Url::parse("http://cluster.example:9200").expect("url"))
+            .apikey(Some(ad_hoc_key.to_string()))
+            .build()
+            .expect("ad-hoc host");
+        let mut identifiers = Identifiers::default();
+        identifiers.user = Some("alice@example.com".to_string());
+
+        state.push_key(42, identifiers, host, "standard".to_string()).await;
+
+        let first = state.pop_job_request(42).await.expect("queued job request");
+        let super::JobInput::FromRemoteHost { host, .. } = first.input else {
+            panic!("expected remote host job input");
+        };
+        assert!(matches!(host.get_auth(), Ok(Auth::Apikey(key)) if key == ad_hoc_key));
+        assert!(
+            state.pop_job_request(42).await.is_none(),
+            "ad-hoc input key must not survive the execution handoff"
+        );
     }
 
     struct WebFeaturesEnvGuard {

@@ -2,7 +2,7 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use crate::data::{Auth, KnownHost};
+use crate::data::{Auth, CredentialDirection, KnownHost};
 use base64::{Engine, engine::general_purpose::STANDARD};
 use elasticsearch::{
     cert::CertificateValidation,
@@ -91,13 +91,28 @@ impl TryFrom<KnownHost> for ElasticsearchClient {
     type Error = eyre::Report;
 
     fn try_from(host: KnownHost) -> Result<ElasticsearchClient> {
-        let url = host.get_url()?;
-        let ignore_certs = host.accept_invalid_certs();
-        let auth = host.get_auth()?;
-        let client = ElasticsearchBuilder::new(url)
-            .auth(auth)
-            .insecure(ignore_certs)
-            .build()?;
-        Ok(client)
+        elasticsearch_client_from_input_host(host)
     }
+}
+
+pub fn elasticsearch_client_from_input_host(host: KnownHost) -> Result<ElasticsearchClient> {
+    let url = host.get_url()?;
+    let ignore_certs = host.accept_invalid_certs();
+    let auth = host.get_auth_for_direction(CredentialDirection::Input)?;
+    elasticsearch_client_from_host_parts(url, ignore_certs, auth)
+}
+
+pub fn elasticsearch_client_from_output_host(host: KnownHost) -> Result<ElasticsearchClient> {
+    let url = host.get_url()?;
+    let ignore_certs = host.accept_invalid_certs();
+    let auth = host.get_auth_for_direction(CredentialDirection::Output)?;
+    elasticsearch_client_from_host_parts(url, ignore_certs, auth)
+}
+
+fn elasticsearch_client_from_host_parts(url: Url, ignore_certs: bool, auth: Auth) -> Result<ElasticsearchClient> {
+    let client = ElasticsearchBuilder::new(url)
+        .auth(auth)
+        .insecure(ignore_certs)
+        .build()?;
+    Ok(client)
 }

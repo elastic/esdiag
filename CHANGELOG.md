@@ -48,6 +48,10 @@ published release notes, maintenance branches, and tagged history.
 - Added documentation viewer tag filtering with debug-mode visibility for developer-only docs (#345).
 - Changed service-mode web authentication, event delivery, and job admission to use a pluggable auth provider, owner-scoped UI events, and service job caps (#351).
 
+### Security
+
+- Clarified credential custody so saved credentials are mediated by the user-mode keystore, service-mode outputs use runtime-provided credentials, and ad-hoc input API keys remain transient (#352).
+
 ### Fixed
 
 - Fixed large Elasticsearch task exports and node-derived metrics ingestion so cluster sends are batched, child streams use their matching templates, and failed sends are recorded in diagnostic reports.
