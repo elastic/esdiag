@@ -1,3 +1,9 @@
+---
+type: Maintainer Guide
+title: "Domain Docs"
+tags: [repository, agents]
+---
+
 # Domain Docs
 
 How the engineering skills should consume this repo's domain documentation when exploring the codebase. This repo is **single-context**.

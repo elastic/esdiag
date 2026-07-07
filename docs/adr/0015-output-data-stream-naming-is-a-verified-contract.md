@@ -1,5 +1,8 @@
 ---
+type: Reference
+title: "Output data-stream naming is a verified contract, not a single source of truth"
 status: accepted
+tags: [repository, adr]
 ---
 
 # Output data-stream naming is a verified contract, not a single source of truth

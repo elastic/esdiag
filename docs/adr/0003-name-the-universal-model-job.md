@@ -1,5 +1,8 @@
 ---
+type: Reference
+title: "Name the universal execution model \"Job\""
 status: accepted
+tags: [repository, adr]
 ---
 
 # Name the universal execution model "Job"

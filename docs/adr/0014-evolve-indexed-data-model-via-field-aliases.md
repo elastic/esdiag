@@ -1,5 +1,8 @@
 ---
+type: Reference
+title: "Evolve the indexed data model via field aliases"
 status: accepted
+tags: [repository, adr]
 ---
 
 # Evolve the indexed data model via field aliases

@@ -1,5 +1,8 @@
 ---
+type: Reference
+title: "ESDiag owns its collection definitions; support-diagnostics is a reconciliation input"
 status: accepted
+tags: [repository, adr]
 ---
 
 # ESDiag owns its collection definitions; support-diagnostics is a reconciliation input

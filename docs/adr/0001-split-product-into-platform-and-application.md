@@ -1,5 +1,8 @@
 ---
+type: Reference
+title: "Split the flat `Product` enum into orthogonal `Platform` and `Application` axes"
 status: accepted
+tags: [repository, adr]
 ---
 
 # Split the flat `Product` enum into orthogonal `Platform` and `Application` axes

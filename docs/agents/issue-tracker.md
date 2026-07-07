@@ -1,3 +1,9 @@
+---
+type: Maintainer Guide
+title: "Issue tracker: GitHub"
+tags: [repository, agents]
+---
+
 # Issue tracker: GitHub
 
 Issues and PRDs for this repo live as GitHub issues on the **`upstream` remote, `elastic/esdiag`** — not the `origin` fork (`VimCommando/esdiag`). Use the `gh` CLI for all operations.

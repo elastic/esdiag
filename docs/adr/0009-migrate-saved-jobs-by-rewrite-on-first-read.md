@@ -1,5 +1,8 @@
 ---
+type: Reference
+title: "Migrate `saved_jobs.yml` by rewrite-on-first-read, versioned"
 status: accepted
+tags: [repository, adr]
 ---
 
 # Migrate `saved_jobs.yml` by rewrite-on-first-read, versioned

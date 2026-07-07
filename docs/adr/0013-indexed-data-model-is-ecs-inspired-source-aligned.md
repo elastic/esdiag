@@ -1,5 +1,8 @@
 ---
+type: Reference
+title: "The indexed data model is ECS-inspired but source-API-aligned"
 status: accepted
+tags: [repository, adr]
 ---
 
 # The indexed data model is ECS-inspired but source-API-aligned

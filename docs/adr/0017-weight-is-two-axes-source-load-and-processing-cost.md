@@ -1,5 +1,8 @@
 ---
+type: Reference
+title: "Weight is two axes: source load and processing cost"
 status: accepted
+tags: [repository, adr]
 ---
 
 # Weight is two axes: source load and processing cost

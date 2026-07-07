@@ -1,5 +1,8 @@
 ---
+type: Reference
+title: "Runtime mode bundles tenancy and capability; authentication is a separate axis"
 status: accepted
+tags: [repository, adr]
 ---
 
 # Runtime mode bundles tenancy and capability; authentication is a separate axis

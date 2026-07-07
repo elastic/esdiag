@@ -1,5 +1,8 @@
 ---
+type: Reference
+title: "Universal `Job` model and stage-aligned module layout"
 status: accepted
+tags: [repository, adr]
 ---
 
 # Universal `Job` model and stage-aligned module layout

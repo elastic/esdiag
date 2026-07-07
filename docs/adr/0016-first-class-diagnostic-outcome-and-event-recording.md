@@ -1,5 +1,8 @@
 ---
+type: Reference
+title: "Diagnostics have a first-class outcome; the report records all events"
 status: accepted
+tags: [repository, adr]
 ---
 
 # Diagnostics have a first-class outcome; the report records all events

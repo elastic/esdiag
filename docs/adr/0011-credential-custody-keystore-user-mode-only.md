@@ -1,5 +1,8 @@
 ---
+type: Reference
+title: "Credential custody: the app persists secrets only in User mode"
 status: accepted
+tags: [repository, adr]
 ---
 
 # Credential custody: the app persists secrets only in User mode

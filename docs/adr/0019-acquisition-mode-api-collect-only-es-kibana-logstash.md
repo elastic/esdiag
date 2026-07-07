@@ -1,5 +1,8 @@
 ---
+type: Reference
+title: "ESDiag API-collects only Elasticsearch/Kibana/Logstash; everything else is product-provided"
 status: accepted
+tags: [repository, adr]
 ---
 
 # ESDiag API-collects only Elasticsearch/Kibana/Logstash; everything else is product-provided

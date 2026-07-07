@@ -1,5 +1,8 @@
 ---
+type: Reference
+title: "Per-user isolation is structural: owner-scoped by default, aggregate stats broadcast"
 status: accepted
+tags: [repository, adr]
 ---
 
 # Per-user isolation is structural: owner-scoped by default, aggregate stats broadcast

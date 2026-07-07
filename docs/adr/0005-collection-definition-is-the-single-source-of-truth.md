@@ -1,5 +1,8 @@
 ---
+type: Reference
+title: "The collection definition is the single source of truth for data sources"
 status: accepted
+tags: [repository, adr]
 ---
 
 # The collection definition is the single source of truth for data sources

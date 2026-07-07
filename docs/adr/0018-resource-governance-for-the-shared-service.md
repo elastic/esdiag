@@ -1,5 +1,8 @@
 ---
+type: Reference
+title: "Resource governance for the shared service"
 status: accepted
+tags: [repository, adr]
 ---
 
 # Resource governance for the shared service

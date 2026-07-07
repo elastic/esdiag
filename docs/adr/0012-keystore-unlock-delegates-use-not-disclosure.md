@@ -1,5 +1,8 @@
 ---
+type: Reference
+title: "Keystore unlock delegates time-limited credential *use*, not disclosure"
 status: accepted
+tags: [repository, adr]
 ---
 
 # Keystore unlock delegates time-limited credential *use*, not disclosure

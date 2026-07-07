@@ -1,5 +1,8 @@
 ---
+type: Reference
+title: "Model every diagnostic job as one composable set of six stages"
 status: accepted
+tags: [repository, adr]
 ---
 
 # Model every diagnostic job as one composable set of six stages

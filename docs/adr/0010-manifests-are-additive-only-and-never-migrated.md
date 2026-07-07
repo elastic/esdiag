@@ -1,5 +1,8 @@
 ---
+type: Reference
+title: "Manifests are additive-only and read-compatible forever; never migrated"
 status: accepted
+tags: [repository, adr]
 ---
 
 # Manifests are additive-only and read-compatible forever; never migrated
