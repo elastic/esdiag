@@ -548,23 +548,10 @@ mod tests {
         server::test_server_state,
     };
     use std::collections::BTreeMap;
-    use tempfile::TempDir;
     use url::Url;
 
-    fn env_lock() -> &'static std::sync::Mutex<()> {
-        crate::test_env_lock()
-    }
-
-    fn setup_hosts() -> TempDir {
-        let tmp = TempDir::new().expect("temp dir");
-        let config_dir = tmp.path().join(".esdiag");
-        std::fs::create_dir_all(&config_dir).expect("create config dir");
-        let hosts_path = config_dir.join("hosts.yml");
-        unsafe {
-            std::env::set_var("HOME", tmp.path());
-            std::env::set_var("USERPROFILE", tmp.path());
-            std::env::set_var("ESDIAG_HOSTS", &hosts_path);
-        }
+    fn setup_hosts() -> crate::TestEnv {
+        let env = crate::TestEnv::new();
 
         let mut hosts = BTreeMap::new();
         hosts.insert(
@@ -592,12 +579,11 @@ mod tests {
                 .expect("kb host"),
         );
         KnownHost::write_hosts_yml(&hosts).expect("write hosts");
-        tmp
+        env
     }
 
     #[test]
     fn job_host_options_only_offer_elasticsearch_send_hosts() {
-        let _guard = env_lock().lock().expect("env lock");
         let _tmp = setup_hosts();
         let state = test_server_state();
 

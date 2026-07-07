@@ -1219,8 +1219,7 @@ impl KnownHost {
                 Ok(hosts)
             }
             false => {
-                tracing::info!("No hosts, file creating {:?}", path);
-                File::create(path)?;
+                tracing::info!("No hosts file found at {:?}", path);
                 Ok(BTreeMap::new())
             }
         }
