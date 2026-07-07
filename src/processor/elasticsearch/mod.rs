@@ -57,8 +57,11 @@ pub use {
 use super::{
     DataSource, DiagnosticManifest, DiagnosticProcessor, DiagnosticReport, DocumentExporter, Metadata,
     ProcessorSummary,
-    api::ProcessSelection,
-    diagnostic::{DiagnosticReportBuilder, Lookup},
+    api::{ProcessSelection, ProcessingConcurrencyPolicy, is_streamable, processing_weight},
+    diagnostic::{
+        DiagnosticReportBuilder, Lookup,
+        data_source::{ProcessableClaim, validate_processable_registry},
+    },
     elasticsearch::health_report::HealthReport,
 };
 use crate::{
@@ -67,6 +70,7 @@ use crate::{
     receiver::Receiver,
 };
 use eyre::{Result, eyre};
+use futures::stream::FuturesUnordered;
 use serde::{Serialize, de::DeserializeOwned};
 use std::{collections::HashSet, sync::Arc};
 use {
@@ -100,11 +104,158 @@ pub struct ElasticsearchDiagnostic {
     receiver: Arc<Receiver>,
 }
 
+/// The registry-keyed dispatch table (ADR-0005): each entry binds one
+/// processable source (by its canonical registry key) to its typed processor.
+/// An entry may carry sibling keys handled by the same processor (the
+/// cluster-settings pair). Validated against the registry at process time by
+/// [`validate_es_dispatch_registry`].
+struct EsDispatchEntry {
+    /// Canonical registry keys handled by this entry; the first is primary.
+    keys: &'static [&'static str],
+}
+
+const ES_DISPATCH: &[EsDispatchEntry] = &[
+    EsDispatchEntry {
+        keys: &["indices_stats"],
+    },
+    EsDispatchEntry { keys: &["nodes_stats"] },
+    EsDispatchEntry {
+        keys: &["cluster_settings", "cluster_settings_defaults"],
+    },
+    EsDispatchEntry {
+        keys: &["health_report"],
+    },
+    EsDispatchEntry {
+        keys: &["ilm_policies"],
+    },
+    EsDispatchEntry {
+        keys: &["indices_settings"],
+    },
+    EsDispatchEntry { keys: &["nodes"] },
+    EsDispatchEntry {
+        keys: &["cluster_pending_tasks"],
+    },
+    EsDispatchEntry {
+        keys: &["slm_policies"],
+    },
+    EsDispatchEntry {
+        keys: &["repositories"],
+    },
+    EsDispatchEntry { keys: &["snapshot"] },
+    EsDispatchEntry { keys: &["tasks"] },
+];
+
+/// Fail fast if the dispatch table and the collection registry disagree
+/// (ADR-0005 key alignment): every table key must be a registry entry marked
+/// `processable`, matching its impl's `DataSource::name()`, and every
+/// `processable` registry entry must appear in the table. Runs once.
+fn validate_es_dispatch_registry() -> Result<()> {
+    static VALIDATED: std::sync::OnceLock<std::result::Result<(), String>> = std::sync::OnceLock::new();
+    VALIDATED
+        .get_or_init(|| {
+            let claims = vec![
+                ProcessableClaim {
+                    key: "indices_stats",
+                    datasource_name: IndicesStats::name(),
+                },
+                ProcessableClaim {
+                    key: "nodes_stats",
+                    datasource_name: NodesStats::name(),
+                },
+                ProcessableClaim {
+                    key: "cluster_settings",
+                    datasource_name: ClusterSettings::name(),
+                },
+                ProcessableClaim {
+                    key: "cluster_settings_defaults",
+                    datasource_name: ClusterSettingsDefaults::name(),
+                },
+                ProcessableClaim {
+                    key: "health_report",
+                    datasource_name: HealthReport::name(),
+                },
+                ProcessableClaim {
+                    key: "ilm_policies",
+                    datasource_name: IlmPolicies::name(),
+                },
+                ProcessableClaim {
+                    key: "indices_settings",
+                    datasource_name: IndicesSettings::name(),
+                },
+                ProcessableClaim {
+                    key: "nodes",
+                    datasource_name: Nodes::name(),
+                },
+                ProcessableClaim {
+                    key: "cluster_pending_tasks",
+                    datasource_name: PendingTasks::name(),
+                },
+                ProcessableClaim {
+                    key: "slm_policies",
+                    datasource_name: SlmPolicies::name(),
+                },
+                ProcessableClaim {
+                    key: "repositories",
+                    datasource_name: Repositories::name(),
+                },
+                ProcessableClaim {
+                    key: "snapshot",
+                    datasource_name: Snapshots::name(),
+                },
+                ProcessableClaim {
+                    key: "tasks",
+                    datasource_name: Tasks::name(),
+                },
+            ];
+            validate_processable_registry("elasticsearch", &claims).map_err(|err| err.to_string())
+        })
+        .clone()
+        .map_err(|err| eyre!(err))
+}
+
 impl ElasticsearchDiagnostic {
     fn should_process(&self, key: &str) -> bool {
         self.selected_processors
             .as_ref()
             .is_none_or(|selected| selected.contains(key))
+    }
+
+    /// Route one canonical registry key to its typed processor. The
+    /// `streamable` registry flag gates the streaming path (ADR-0005).
+    async fn dispatch(&self, key: &'static str, summary_tx: mpsc::Sender<ProcessorSummary>) -> Result<()> {
+        match key {
+            "indices_stats" => self.process_maybe_streaming::<IndicesStats>(summary_tx).await,
+            "nodes_stats" => self.process_maybe_streaming::<NodesStats>(summary_tx).await,
+            "cluster_settings" => self.process_cluster_settings(summary_tx).await,
+            "health_report" => self.process_datasource::<HealthReport>(summary_tx).await,
+            "ilm_policies" => self.process_datasource::<IlmPolicies>(summary_tx).await,
+            "indices_settings" => self.process_datasource::<IndicesSettings>(summary_tx).await,
+            "nodes" => self.process_datasource::<Nodes>(summary_tx).await,
+            "cluster_pending_tasks" => self.process_datasource::<PendingTasks>(summary_tx).await,
+            "slm_policies" => self.process_datasource::<SlmPolicies>(summary_tx).await,
+            "repositories" => self.process_datasource::<Repositories>(summary_tx).await,
+            "snapshot" => self.process_maybe_streaming::<Snapshots>(summary_tx).await,
+            "tasks" => self.process_datasource::<Tasks>(summary_tx).await,
+            other => Err(eyre!("No Elasticsearch processor registered for '{other}'")),
+        }
+    }
+
+    async fn process_maybe_streaming<T>(&self, summary_tx: mpsc::Sender<ProcessorSummary>) -> Result<()>
+    where
+        T: DataSource
+            + StreamingDataSource
+            + StreamingDocumentExporter<Lookups, ElasticsearchMetadata>
+            + DocumentExporter<Lookups, ElasticsearchMetadata>
+            + DeserializeOwned
+            + Send
+            + Sync,
+        T::Item: DeserializeOwned + Send + 'static,
+    {
+        if is_streamable("elasticsearch", &T::name()) {
+            self.process_streaming_datasource::<T>(summary_tx).await
+        } else {
+            self.process_datasource::<T>(summary_tx).await
+        }
     }
 
     async fn process_cluster_settings(&self, summary_tx: mpsc::Sender<ProcessorSummary>) -> Result<()> {
@@ -280,66 +431,48 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
             data::save_file("diagnostic.json", &self)?;
         }
 
+        validate_es_dispatch_registry()?;
+
         let diag = Arc::new(self);
-        // Future 1: IndicesStats
-        let (diag_idx, summary_tx_idx) = (diag.clone(), summary_tx.clone());
-        let thread1 = async move {
-            if diag_idx.should_process("indices_stats") {
-                diag_idx
-                    .process_streaming_datasource::<IndicesStats>(summary_tx_idx)
-                    .await?;
+        // Processing weight governs processing concurrency (ADR-0017): the
+        // heaviest sources run as their own concurrent tasks; the rest run
+        // sequentially. The weight -> concurrency mapping is tunable policy
+        // (ADR-0018).
+        let policy = ProcessingConcurrencyPolicy::from_env();
+        let mut concurrent = FuturesUnordered::new();
+        let mut sequential = Vec::new();
+        for entry in ES_DISPATCH {
+            if !entry.keys.iter().any(|key| diag.should_process(key)) {
+                continue;
+            }
+            let weight = entry
+                .keys
+                .iter()
+                .map(|key| processing_weight("elasticsearch", key))
+                .max()
+                .unwrap_or(1);
+            if policy.is_concurrent(weight) {
+                let (diag, tx) = (diag.clone(), summary_tx.clone());
+                concurrent.push(async move { diag.dispatch(entry.keys[0], tx).await });
+            } else {
+                sequential.push(entry.keys[0]);
+            }
+        }
+
+        let sequential_task = async {
+            for key in sequential {
+                diag.dispatch(key, summary_tx.clone()).await?;
+            }
+            Ok::<(), eyre::Error>(())
+        };
+        let concurrent_task = async {
+            while let Some(result) = futures::StreamExt::next(&mut concurrent).await {
+                result?;
             }
             Ok::<(), eyre::Error>(())
         };
 
-        // Future 2: NodesStats
-        let (diag_nodes, summary_tx_nodes) = (diag.clone(), summary_tx.clone());
-        let thread2 = async move {
-            if diag_nodes.should_process("nodes_stats") {
-                diag_nodes
-                    .process_streaming_datasource::<NodesStats>(summary_tx_nodes)
-                    .await?;
-            }
-            Ok::<(), eyre::Error>(())
-        };
-
-        // Future 3: Everything else
-        let thread3 = async move {
-            if diag.should_process("cluster_settings") || diag.should_process("cluster_settings_defaults") {
-                diag.process_cluster_settings(summary_tx.clone()).await?;
-            }
-            if diag.should_process("health_report") {
-                diag.process_datasource::<HealthReport>(summary_tx.clone()).await?;
-            }
-            if diag.should_process("ilm_policies") {
-                diag.process_datasource::<IlmPolicies>(summary_tx.clone()).await?;
-            }
-            if diag.should_process("indices_settings") {
-                diag.process_datasource::<IndicesSettings>(summary_tx.clone()).await?;
-            }
-            if diag.should_process("nodes") {
-                diag.process_datasource::<Nodes>(summary_tx.clone()).await?;
-            }
-            if diag.should_process("pending_tasks") {
-                diag.process_datasource::<PendingTasks>(summary_tx.clone()).await?;
-            }
-            if diag.should_process("slm_policies") {
-                diag.process_datasource::<SlmPolicies>(summary_tx.clone()).await?;
-            }
-            if diag.should_process("repositories") {
-                diag.process_datasource::<Repositories>(summary_tx.clone()).await?;
-            }
-            if diag.should_process("snapshot") {
-                diag.process_streaming_datasource::<Snapshots>(summary_tx.clone())
-                    .await?;
-            }
-            if diag.should_process("tasks") {
-                diag.process_datasource::<Tasks>(summary_tx.clone()).await?;
-            }
-            Ok::<(), eyre::Error>(())
-        };
-
-        let _ = tokio::try_join!(thread1, thread2, thread3)?;
+        let _ = tokio::try_join!(sequential_task, concurrent_task)?;
         Ok(())
     }
 

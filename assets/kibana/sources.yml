@@ -34,7 +34,7 @@ kibana_alerts:
 
 kibana_alerts_health:
   versions:
-    ">= 7.11.0 < 7.13.0": "/api/alerts/_health"
+    ">= 7.11.0, < 7.13.0": "/api/alerts/_health"
     ">= 7.13.0": "/api/alerting/_health"
 
 kibana_data_views:
@@ -73,8 +73,8 @@ kibana_detection_engine_rules_installed:
 # Scope: current/default Kibana space.
 kibana_detection_engine_rules_prebuilt_status:
   versions:
-    ">= 7.10.0 < 7.15.0": "/api/detection_engine/prepackaged"
-    ">= 7.15.0 < 8.9.0": "/api/detection_engine/rules/prepackaged/_status"
+    ">= 7.10.0, < 7.15.0": "/api/detection_engine/prepackaged"
+    ">= 7.15.0, < 8.9.0": "/api/detection_engine/rules/prepackaged/_status"
     ">= 8.9.0": "/internal/detection_engine/prebuilt_rules/status"
 
 kibana_fleet_agents:
@@ -95,7 +95,7 @@ kibana_fleet_packages:
 
 kibana_fleet_agent_status:
   versions:
-    ">= 7.11.0 < 8.0.0": "/api/fleet/agent-status"
+    ">= 7.11.0, < 8.0.0": "/api/fleet/agent-status"
     ">= 8.0.0": "/api/fleet/agent_status"
 
 kibana_fleet_agents_current_upgrades:
@@ -145,7 +145,7 @@ kibana_security_endpoint_metadata:
 
 kibana_security_endpoint_trusted_apps:
   versions:
-    ">= 7.10.0 < 7.14.0": "/api/endpoint/trusted_apps"
+    ">= 7.10.0, < 7.14.0": "/api/endpoint/trusted_apps"
     ">= 7.14.0":
       url: "/api/exception_lists/items/_find?list_id=endpoint_trusted_apps&namespace_type=agnostic"
       paginate: per_page
@@ -162,7 +162,7 @@ kibana_security_packages:
 
 kibana_settings:
   versions:
-    ">= 6.5.0 < 8.0.0": "/api/settings"
+    ">= 6.5.0, < 8.0.0": "/api/settings"
 
 kibana_spaces:
   versions:
@@ -215,7 +215,7 @@ kibana_uptime_settings:
 kibana_user:
   versions:
     ">= 7.6.0": "/internal/security/me"
-    ">= 5.0.0 < 7.6.0": "/api/security/v1/me"
+    ">= 5.0.0, < 7.6.0": "/api/security/v1/me"
 
 kibana_stack_monitoring_health:
   versions:

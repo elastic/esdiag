@@ -8,37 +8,60 @@
 #     * versions - one or more attributes of the format "version rule: "query string". Each set of version/query key pairs
 #       should evaluate to exactly one that is appropriate for the version of the server being queried. Therefor rules should
 #       be structured in such a way that only a valid query can be executed against a given version. Required.
-#   NPM mode is the only one used: https://github.com/vdurmont/semver4j
-#   NPM Versioning rules are documented here: https://github.com/npm/node-semver
+#   Version ranges are native Rust `semver` ranges (comma-separated clauses);
+#   upstream NPM/Java dialect ranges are normalized at reconciliation (ADR-0006).
+#   ESDiag enrichment fields (weights, tags, streamable, processable,
+#   required/dependencies) are preserved across reconciliation.
 #
 #   Note to those adding entries: within each group, cat API's, json API's, and commercial, they are in alphabetical order.
 #   Please adhere to this convention when submitting pull requests.
 
 logstash_health_report:
+  source_weight: 1
   versions:
     ">= 8.16.0": "/_health_report"
 
 logstash_node:
+  tags: minimal,standard,light
+  source_weight: 1
+  processable: true
+  required: true
+  dependencies: [logstash_version]
+  collect_dependencies: [logstash_version, logstash_plugins]
   versions:
     "> 5.0.0": "/_node"
 
 logstash_nodes_hot_threads:
+  source_weight: 1
   versions:
     "> 5.0.0": "/_node/hot_threads?threads=10000"
 
 logstash_nodes_hot_threads_human:
   extension: .txt
+  source_weight: 1
   versions:
     "> 5.0.0": "/_node/hot_threads?human&threads=10000"
 
 logstash_node_stats:
+  tags: standard,light
+  source_weight: 3
+  processable: true
+  required: false
+  dependencies: [logstash_node, logstash_version]
+  collect_dependencies: [logstash_node]
   versions:
     "> 5.0.0": "/_node/stats"
 
 logstash_plugins:
+  source_weight: 1
+  processable: true
+  required: true
+  dependencies: [logstash_version]
   versions:
     "> 5.0.0": "/_node/plugins"
 
 logstash_version:
+  source_weight: 1
+  required: true
   versions:
     "> 5.0.0": "/"

@@ -271,7 +271,8 @@ mod tests {
             .expect("saved selection");
 
         assert_eq!(selection.product, "logstash");
-        assert!(selection.selected.iter().any(|item| item == "node"));
+        // Legacy short keys canonicalize to registry keys (ADR-0005)
+        assert!(selection.selected.iter().any(|item| item == "logstash_node"));
     }
 
     #[test]

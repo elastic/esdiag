@@ -28,10 +28,10 @@ struct Pipeline {
 
 impl DataSource for Version {
     fn name() -> String {
-        "version".to_string()
+        "logstash_version".to_string()
     }
 
     fn aliases() -> Vec<&'static str> {
-        vec!["logstash_version"]
+        vec!["version"]
     }
 }

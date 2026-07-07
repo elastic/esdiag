@@ -23,7 +23,10 @@ pub use metadata::LogstashMetadata;
 use super::{
     DiagnosticProcessor, DocumentExporter, Metadata, ProcessorSummary,
     api::ProcessSelection,
-    diagnostic::{DataSource, DiagnosticManifest, DiagnosticReport, DiagnosticReportBuilder},
+    diagnostic::{
+        DataSource, DiagnosticManifest, DiagnosticReport, DiagnosticReportBuilder,
+        data_source::{ProcessableClaim, validate_processable_registry},
+    },
 };
 use crate::{
     data::{self, Application},
@@ -37,6 +40,32 @@ use plugins::Plugins;
 use serde::{Serialize, de::DeserializeOwned};
 use std::{collections::HashSet, sync::Arc};
 use tokio::sync::mpsc;
+
+/// Fail fast if the dispatch keys and the collection registry disagree
+/// (ADR-0005 key alignment). Runs once.
+fn validate_ls_dispatch_registry() -> Result<()> {
+    static VALIDATED: std::sync::OnceLock<std::result::Result<(), String>> = std::sync::OnceLock::new();
+    VALIDATED
+        .get_or_init(|| {
+            let claims = vec![
+                ProcessableClaim {
+                    key: "logstash_node",
+                    datasource_name: Node::name(),
+                },
+                ProcessableClaim {
+                    key: "logstash_node_stats",
+                    datasource_name: NodeStats::name(),
+                },
+                ProcessableClaim {
+                    key: "logstash_plugins",
+                    datasource_name: Plugins::name(),
+                },
+            ];
+            validate_processable_registry("logstash", &claims).map_err(|err| err.to_string())
+        })
+        .clone()
+        .map_err(|err| eyre!(err))
+}
 
 #[derive(Serialize)]
 pub struct LogstashDiagnostic {
@@ -110,13 +139,17 @@ impl DiagnosticProcessor for LogstashDiagnostic {
             data::save_file("diagnostic.json", &self)?;
         }
 
-        if self.should_process("node") {
+        validate_ls_dispatch_registry()?;
+
+        // Canonical registry keys (ADR-0005): the dispatch keys are the
+        // registry keys.
+        if self.should_process("logstash_node") {
             self.process_datasource::<Node>(summary_tx.clone()).await?;
         }
-        if self.should_process("node_stats") {
+        if self.should_process("logstash_node_stats") {
             self.process_datasource::<NodeStats>(summary_tx.clone()).await?;
         }
-        if self.should_process("plugins") {
+        if self.should_process("logstash_plugins") {
             self.process_datasource::<Plugins>(summary_tx.clone()).await?;
         }
         Ok(())
