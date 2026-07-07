@@ -2,7 +2,7 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use crate::data::{Auth, KnownHost};
+use crate::data::{Auth, CredentialDirection, KnownHost};
 use eyre::{Context, Result};
 use reqwest::Method;
 use std::collections::HashMap;
@@ -63,7 +63,7 @@ impl TryFrom<KnownHost> for KibanaClient {
 
     fn try_from(host: KnownHost) -> Result<Self> {
         let url = host.get_url()?;
-        let auth = host.get_auth()?;
+        let auth = host.get_auth_for_direction(CredentialDirection::Input)?;
         KibanaClient::try_new(url, auth)
     }
 }

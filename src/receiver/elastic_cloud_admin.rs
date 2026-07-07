@@ -4,7 +4,7 @@
 
 use super::super::processor::{DataSource, DiagnosticManifest, ElasticsearchCluster, ManifestBuilder, SourceContext};
 use super::{LONG_RUNNING_REQUEST_TIMEOUT, RawResponse, Receive, ReceiveRaw};
-use crate::data::{Auth, KnownHost};
+use crate::data::{Auth, CredentialDirection, KnownHost};
 use eyre::{Result, eyre};
 use reqwest::header::{ACCEPT, ACCEPT_ENCODING, AUTHORIZATION};
 use reqwest::{Client, ClientBuilder, header::HeaderMap};
@@ -159,7 +159,7 @@ impl TryFrom<KnownHost> for ElasticCloudAdminReceiver {
 
     fn try_from(host: KnownHost) -> Result<Self> {
         let url = host.get_url()?;
-        match host.get_auth()? {
+        match host.get_auth_for_direction(CredentialDirection::Input)? {
             Auth::Apikey(apikey) => Ok(ElasticCloudAdminReceiver::new(url, apikey)?),
             _ => Err(eyre::eyre!("Elastic Cloud Admin requires a URL and ApiKey")),
         }

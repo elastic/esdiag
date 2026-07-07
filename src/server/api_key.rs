@@ -245,8 +245,9 @@ mod tests {
     #[tokio::test]
     #[allow(clippy::await_holding_lock)]
     async fn run_api_key_form_rejects_locked_secure_output_before_job_start() {
-        let _tmp = setup_env();
+        let env = setup_env();
         authenticate("pw").expect("create keystore");
+        let ad_hoc_key = "ad-hoc-input-api-key";
 
         let mut hosts = BTreeMap::new();
         hosts.insert(
@@ -281,7 +282,7 @@ mod tests {
         let mut signals = ApiKeyFormSignals::default();
         signals.archive.download_token = "token-1".to_string();
         signals.es_api.url = Uri::try_from("http://cluster.example:9200".to_string()).expect("api url");
-        signals.es_api.key = "api-key".to_string();
+        signals.es_api.key = ad_hoc_key.to_string();
         let (tx, mut rx) = mpsc::channel(8);
 
         run_api_key_form(
@@ -296,6 +297,11 @@ mod tests {
         let mut saw_failure = false;
         let mut saw_terminal = false;
         while let Ok(event) = rx.try_recv() {
+            let event_text = format!("{event:?}");
+            assert!(
+                !event_text.contains(ad_hoc_key),
+                "ad-hoc input key must not appear in server events"
+            );
             match event {
                 ServerEvent::JobFeed { html, .. }
                     if html.contains("output target")
@@ -323,5 +329,16 @@ mod tests {
             Some("Keystore is locked. Unlock it before processing secure outputs.")
         );
         assert_eq!(retained.owner, "Anonymous");
+
+        for path in [&env.hosts_path, &env.keystore_path, &env.settings_path] {
+            if path.exists() {
+                let raw = std::fs::read_to_string(path).unwrap_or_default();
+                assert!(
+                    !raw.contains(ad_hoc_key),
+                    "ad-hoc input key must not be persisted to {}",
+                    path.display()
+                );
+            }
+        }
     }
 }

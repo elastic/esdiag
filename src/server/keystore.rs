@@ -188,10 +188,7 @@ impl ServerState {
         if !self.can_use_keystore_session() {
             return None;
         }
-        match crate::data::get_password_from_unlock_file() {
-            Ok(Some(password)) => Some(password),
-            _ => None,
-        }
+        crate::data::get_active_unlock_keystore_password().ok().flatten()
     }
 
     #[cfg(test)]
@@ -465,7 +462,7 @@ mod tests {
     use super::KeystoreRateLimit;
     use super::{
         KeystoreForm, bootstrap, ensure_unlocked_for_active_output, get_process_unlock_modal, get_unlock_modal, lock,
-        unlock,
+        status, unlock,
     };
     use crate::{
         data::{KnownHost, Settings, authenticate},
@@ -473,6 +470,7 @@ mod tests {
         server::{RuntimeMode, ServerEvent, ServerPolicy, ServerState, Stats, test_server_state},
     };
     use axum::{
+        body::to_bytes,
         extract::{Form, State},
         http::StatusCode,
         response::IntoResponse,
@@ -847,6 +845,31 @@ mod tests {
             .expect("lease should exist");
         let now = chrono::Utc::now().timestamp();
         assert!(lease.expires_at_epoch > now, "lease should expire in the future");
+    }
+
+    #[tokio::test]
+    async fn unlock_status_response_never_discloses_plaintext_password() {
+        let _guard = env_lock().lock().expect("env lock");
+        let (_tmp, _hosts_path, _keystore_path) = setup_env();
+        authenticate("pw").expect("create keystore");
+
+        let state = test_server_state();
+        unlock(
+            State(state.clone()),
+            Form(KeystoreForm {
+                password: "pw".to_string(),
+                confirm: None,
+            }),
+        )
+        .await;
+
+        let response = status(State(state)).await.into_response();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), usize::MAX).await.expect("response body");
+        let body = String::from_utf8(body.to_vec()).expect("utf8 body");
+        assert!(body.contains(r#""locked":false"#));
+        assert!(!body.contains("pw"));
+        assert!(!body.contains("password"));
     }
 
     #[tokio::test]
