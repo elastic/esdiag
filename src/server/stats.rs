@@ -2,7 +2,7 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use super::{ServerEvent, ServerState, signal_event};
+use super::{ServerEvent, ServerState, stats_event};
 use std::sync::Arc;
 use tokio::sync::broadcast;
 
@@ -29,7 +29,7 @@ async fn run_stats_events_loop(state: Arc<ServerState>, tx: broadcast::Sender<Se
                 let stats = state.stats.read().await;
                 match serde_json::to_string(&*stats) {
                     Ok(json) => {
-                        let _ = tx.send(signal_event(format!(r#"{{"stats":{}}}"#, json)));
+                        let _ = tx.send(stats_event(format!(r#"{{"stats":{}}}"#, json)));
                     }
                     Err(err) => {
                         tracing::error!("Failed to serialize stats: {}", err);
@@ -52,14 +52,14 @@ mod tests {
         let state = test_server_state();
         let (tx, mut rx) = broadcast::channel(4);
         let handle = tokio::spawn(run_stats_events_loop(state.clone(), tx));
-        state.record_success(1, 0).await;
+        state.record_success("test@example.com", 1, 0).await;
         let first = timeout(Duration::from_secs(2), rx.recv())
             .await
             .expect("receive timeout")
             .expect("event should be present");
 
         match first {
-            crate::server::ServerEvent::Signals(payload) => {
+            crate::server::ServerEvent::Signals { payload, .. } => {
                 assert!(payload.contains(r#""stats""#));
             }
             _ => panic!("expected signals payload"),
@@ -74,7 +74,7 @@ mod tests {
         let handle = tokio::spawn(run_stats_events_loop(state.clone(), tx.clone()));
 
         // First subscriber receives an update, then disconnects.
-        state.record_success(1, 0).await;
+        state.record_success("test@example.com", 1, 0).await;
         let _first_event = timeout(Duration::from_secs(2), first_rx.recv())
             .await
             .expect("first receive timeout")
@@ -85,14 +85,14 @@ mod tests {
         let mut resumed_rx = tx.subscribe();
 
         // A subsequent stats mutation should still be published.
-        state.record_failure().await;
+        state.record_failure("test@example.com").await;
         let resumed_event = timeout(Duration::from_secs(2), resumed_rx.recv())
             .await
             .expect("resumed receive timeout")
             .expect("resumed event should be present");
 
         match resumed_event {
-            crate::server::ServerEvent::Signals(payload) => {
+            crate::server::ServerEvent::Signals { payload, .. } => {
                 assert!(payload.contains(r#""stats""#));
             }
             _ => panic!("expected stats signals payload"),

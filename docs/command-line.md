@@ -95,6 +95,11 @@ These environment variables change where local state is read and written:
 - `ESDIAG_KIBANA_URL`: Kibana URL used by `serve`, processing metadata, and host-omitted setup flows
 - `ESDIAG_KIBANA_SPACE`: optional Kibana space appended to generated Kibana links
 - `ESDIAG_MODE`: runtime mode for `serve` when `--mode` is omitted; valid values are `user` and `service`
+- `ESDIAG_AUTH_PROVIDER`: authentication provider for `serve` when `--auth-provider` is omitted; valid values are `google-iap` and `none`
+- `ESDIAG_SERVICE_JOB_CAP`: global concurrent job cap enforced in `service` mode
+- `ESDIAG_SERVICE_OWNER_JOB_CAP`: per-owner concurrent job cap enforced in `service` mode
+- `ESDIAG_COLLECT_POOL`: concurrent collection pool for API data sources
+- `ESDIAG_COLLECT_SEQUENTIAL_THRESHOLD`: source-weight threshold at or above which collection runs sequentially
 - `ESDIAG_DOCS_EXCLUDED_TAGS`: comma-separated OKF tags to hide from the documentation viewer unless debug logging is enabled; defaults to `repository`
 - `ESDIAG_OUTPUT_TASK_LIMIT`: task concurrency limit used by the Elasticsearch exporter
 
@@ -571,6 +576,9 @@ Options:
       --web-features <FEATURES>
           Optional comma-separated web feature allowlist (advanced, job-builder)
 
+      --auth-provider <AUTH_PROVIDER>
+          Request authentication provider for the server (google-iap or none)
+
       --kibana <KIBANA>
           Kibana URL to display in the web interface. If not provided, will use the ESDIAG_KIBANA_URL environment variable.
 
@@ -586,6 +594,19 @@ Options:
 - `service`
 
 If omitted, `serve` checks `ESDIAG_MODE`. Invalid values fail clearly.
+
+### Authentication provider
+
+`--auth-provider` controls request authentication independently from runtime mode. Valid values are:
+
+- `google-iap`
+- `none`
+
+If omitted, `serve` checks `ESDIAG_AUTH_PROVIDER`. Without either setting, `service` mode defaults to `google-iap` and `user` mode defaults to `none`.
+
+### Service job caps
+
+`service` mode enforces a global concurrent job cap and a per-owner concurrent job cap. Override the defaults with `ESDIAG_SERVICE_JOB_CAP` and `ESDIAG_SERVICE_OWNER_JOB_CAP`.
 
 ### Web features
 

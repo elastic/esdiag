@@ -81,7 +81,7 @@ impl ServerState {
     }
 
     pub(crate) fn can_use_keystore_session(&self) -> bool {
-        self.server_policy.allows_local_runtime_features() && !self.server_policy.requires_iap_headers()
+        self.server_policy.allows_local_runtime_features() && !self.server_policy.requires_authentication()
     }
 
     pub async fn keystore_status(&self) -> (bool, i64) {
@@ -505,6 +505,7 @@ mod tests {
             server_policy: ServerPolicy::new(runtime_mode).expect("test server policy"),
             keystore_rate_limit: Arc::new(std::sync::Mutex::new(KeystoreRateLimit::default())),
             stats: Arc::new(RwLock::new(Stats::default())),
+            active_jobs_by_owner: Arc::new(RwLock::new(HashMap::new())),
             shutdown: watch::channel(false).1,
             event_tx: broadcast::channel(16).0,
             stats_updates_tx,
@@ -538,7 +539,7 @@ mod tests {
 
         let first = events.recv().await.expect("unlock signal");
         match first {
-            ServerEvent::Signals(payload) => {
+            ServerEvent::Signals { payload, .. } => {
                 assert!(payload.contains(r#""keystore":{"locked":false"#));
             }
             other => panic!("expected keystore signal, got {other:?}"),
@@ -630,7 +631,7 @@ mod tests {
 
         let first = events.recv().await.expect("migration message event");
         match first {
-            ServerEvent::Signals(payload) => {
+            ServerEvent::Signals { payload, .. } => {
                 assert!(payload.contains("Migrate hosts to a new keystore before unlocking."));
             }
             other => panic!("expected migration message signal, got {other:?}"),
@@ -638,7 +639,7 @@ mod tests {
 
         let second = events.recv().await.expect("bootstrap modal event");
         match second {
-            ServerEvent::AppendBody(html) => {
+            ServerEvent::AppendBody { html, .. } => {
                 assert!(html.contains("keystore-bootstrap-modal"));
                 assert!(html.contains("Migrate to Keystore"));
             }
@@ -659,7 +660,7 @@ mod tests {
 
         let event = events.recv().await.expect("bootstrap modal event");
         match event {
-            ServerEvent::AppendBody(html) => {
+            ServerEvent::AppendBody { html, .. } => {
                 assert!(html.contains("keystore-bootstrap-modal"));
                 assert!(html.contains("Create Keystore"));
             }
@@ -680,7 +681,7 @@ mod tests {
 
         let event = events.recv().await.expect("bootstrap modal event");
         match event {
-            ServerEvent::AppendBody(html) => {
+            ServerEvent::AppendBody { html, .. } => {
                 assert!(html.contains("keystore-bootstrap-modal"));
                 assert!(html.contains("Create Keystore"));
             }
@@ -704,7 +705,7 @@ mod tests {
 
         let event = events.recv().await.expect("bootstrap modal event");
         match event {
-            ServerEvent::AppendBody(html) => {
+            ServerEvent::AppendBody { html, .. } => {
                 assert!(html.contains("keystore-bootstrap-modal"));
                 assert!(html.contains("Create Keystore"));
                 assert!(!html.contains("Migrate to Keystore"));
@@ -741,7 +742,7 @@ mod tests {
 
         let event = events.recv().await.expect("bootstrap modal event");
         match event {
-            ServerEvent::AppendBody(html) => {
+            ServerEvent::AppendBody { html, .. } => {
                 assert!(html.contains("keystore-bootstrap-modal"));
                 assert!(html.contains("Migrate to Keystore"));
             }
@@ -1007,7 +1008,7 @@ mod tests {
 
         let mut saw_invalid = false;
         while let Ok(event) = events.try_recv() {
-            if let ServerEvent::Signals(payload) = event
+            if let ServerEvent::Signals { payload, .. } = event
                 && payload.contains(r#""keystore":{"password":"","invalid":true}"#)
             {
                 saw_invalid = true;

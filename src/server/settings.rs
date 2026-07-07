@@ -13,7 +13,11 @@ use axum::{
 use serde::Deserialize;
 use std::sync::Arc;
 
-pub async fn get_modal(State(state): State<Arc<ServerState>>) -> impl IntoResponse {
+pub async fn get_modal(State(state): State<Arc<ServerState>>, headers: HeaderMap) -> impl IntoResponse {
+    let owner = state
+        .resolve_user_email(&headers)
+        .map(|(_, user)| user)
+        .unwrap_or_else(|_| super::DEFAULT_OWNER.to_string());
     let can_update_exporter = state.server_policy.allows_exporter_updates();
     let allows_local_runtime_features = state.server_policy.allows_local_runtime_features();
     let settings = if allows_local_runtime_features {
@@ -57,8 +61,8 @@ pub async fn get_modal(State(state): State<Arc<ServerState>>) -> impl IntoRespon
     };
 
     match modal.render() {
-        Ok(html) => state.publish_event(append_body_event(html)),
-        Err(err) => state.publish_event(html_event(format!("<div>Error: {}</div>", err))),
+        Ok(html) => state.publish_event_for_owner(&owner, append_body_event(html)),
+        Err(err) => state.publish_event_for_owner(&owner, html_event(format!("<div>Error: {}</div>", err))),
     }
     StatusCode::NO_CONTENT
 }
@@ -74,28 +78,31 @@ pub async fn update_settings(
     headers: HeaderMap,
     datastar::axum::ReadSignals(signals): datastar::axum::ReadSignals<super::SettingsUpdateSignals>,
 ) -> Response {
-    match state.resolve_user_email(&headers) {
-        Ok(_) => {}
-        Err(err) if state.server_policy.requires_iap_headers() => {
+    let owner = match state.resolve_user_email(&headers) {
+        Ok((_, user)) => user,
+        Err(err) if state.server_policy.requires_authentication() => {
             tracing::warn!("Settings update denied: {}", err);
             return StatusCode::UNAUTHORIZED.into_response();
         }
-        Err(_) => {}
-    }
+        Err(_) => super::DEFAULT_OWNER.to_string(),
+    };
 
     if !state.server_policy.allows_local_runtime_features() {
         let form = signals.settings;
         if let Some(kibana) = form.kibana_url {
             *state.kibana_url.write().await = kibana;
         }
-        clear_settings_errors(&state);
-        state.publish_event(html_event(
-            r#"
+        clear_settings_errors(&state, &owner);
+        state.publish_event_for_owner(
+            &owner,
+            html_event(
+                r#"
             <div id="settings-modal" data-init="window.location.reload();">
                 Reloading...
             </div>
             "#,
-        ));
+            ),
+        );
         return StatusCode::NO_CONTENT.into_response();
     }
 
@@ -115,7 +122,7 @@ pub async fn update_settings(
         let err_msg =
             "Inline host creation from output settings is no longer supported. Use /settings instead.".to_string();
         tracing::warn!("{}", err_msg);
-        return settings_error_response(&state, prior_active_target.as_deref(), err_msg).await;
+        return settings_error_response(&state, &owner, prior_active_target.as_deref(), err_msg).await;
     } else if target_changed {
         match KnownHost::get_known(&target) {
             Some(host) if host.has_role(HostRole::Send) => {
@@ -124,7 +131,7 @@ pub async fn update_settings(
             Some(_) => {
                 let err_msg = format!("Output target '{}' is not a send-capable host.", target);
                 tracing::warn!("{}", err_msg);
-                return settings_error_response(&state, prior_active_target.as_deref(), err_msg).await;
+                return settings_error_response(&state, &owner, prior_active_target.as_deref(), err_msg).await;
             }
             None => {
                 next_settings.active_target = None;
@@ -152,6 +159,7 @@ pub async fn update_settings(
             if host_requires_keystore(&host) && keystore_password.is_none() {
                 return secure_host_unlock_required_response(
                     &state,
+                    &owner,
                     headers.clone(),
                     prior_active_target.as_deref(),
                     secure_saved_output_error_message(),
@@ -182,7 +190,7 @@ pub async fn update_settings(
                 Err(e) => {
                     let err_msg = format!("Invalid output target: {}", e);
                     tracing::error!("{}", err_msg);
-                    return settings_error_response(&state, prior_active_target.as_deref(), err_msg).await;
+                    return settings_error_response(&state, &owner, prior_active_target.as_deref(), err_msg).await;
                 }
             };
             Exporter::try_from(exporter_uri).map_err(|e| format!("Failed to construct exporter: {}", e))
@@ -194,7 +202,7 @@ pub async fn update_settings(
             }
             Err(err_msg) => {
                 tracing::error!("{}", err_msg);
-                return settings_error_response(&state, prior_active_target.as_deref(), err_msg).await;
+                return settings_error_response(&state, &owner, prior_active_target.as_deref(), err_msg).await;
             }
         }
     }
@@ -203,7 +211,7 @@ pub async fn update_settings(
     if let Err(e) = next_settings.save() {
         let err_msg = format!("Failed to save settings: {}", e);
         tracing::error!("{}", err_msg);
-        return settings_error_response(&state, prior_active_target.as_deref(), err_msg).await;
+        return settings_error_response(&state, &owner, prior_active_target.as_deref(), err_msg).await;
     }
 
     if let Some(kibana_url) = next_settings.kibana_url.clone() {
@@ -215,31 +223,34 @@ pub async fn update_settings(
     }
 
     // 5. Build response to remove modal and update exporter text
-    clear_settings_errors(&state);
+    clear_settings_errors(&state, &owner);
     let html = r#"
         <div id="settings-modal" data-init="window.location.reload();">
             Reloading...
         </div>
         "#;
-    state.publish_event(html_event(html));
+    state.publish_event_for_owner(&owner, html_event(html));
 
     StatusCode::NO_CONTENT.into_response()
 }
 
 async fn settings_error_response(
     state: &Arc<ServerState>,
+    owner: &str,
     prior_active_target: Option<&str>,
     err_msg: String,
 ) -> Response {
-    state.publish_event(signal_event(
-        footer_selection_signal_payload(state, prior_active_target).await,
-    ));
-    state.publish_event(execute_script_event(render_settings_error_script(&err_msg)));
+    state.publish_event_for_owner(
+        owner,
+        signal_event(footer_selection_signal_payload(state, prior_active_target).await),
+    );
+    state.publish_event_for_owner(owner, execute_script_event(render_settings_error_script(&err_msg)));
     StatusCode::NO_CONTENT.into_response()
 }
 
 async fn secure_host_unlock_required_response(
     state: &Arc<ServerState>,
+    owner: &str,
     headers: HeaderMap,
     prior_active_target: Option<&str>,
     err_msg: String,
@@ -251,11 +262,11 @@ async fn secure_host_unlock_required_response(
     }
     #[cfg(not(feature = "keystore"))]
     let _ = headers;
-    settings_error_response(state, prior_active_target, err_msg).await
+    settings_error_response(state, owner, prior_active_target, err_msg).await
 }
 
-fn clear_settings_errors(state: &Arc<ServerState>) {
-    state.publish_event(execute_script_event(render_settings_error_script("")));
+fn clear_settings_errors(state: &Arc<ServerState>, owner: &str) {
+    state.publish_event_for_owner(owner, execute_script_event(render_settings_error_script("")));
 }
 
 fn host_requires_keystore(host: &KnownHost) -> bool {
@@ -386,7 +397,7 @@ mod tests {
         let mut saw_secure_revert = false;
         while let Ok(event) = events.try_recv() {
             match event {
-                ServerEvent::Signals(payload) => {
+                ServerEvent::Signals { payload, .. } => {
                     if payload.contains(&format!(r#""settings":{{"target":"{}"}}"#, expected_target)) {
                         saw_target_revert = true;
                     }
@@ -394,10 +405,10 @@ mod tests {
                         saw_secure_revert = true;
                     }
                 }
-                ServerEvent::AppendBody(html) if html.contains("keystore-unlock-modal") => {
+                ServerEvent::AppendBody { html, .. } if html.contains("keystore-unlock-modal") => {
                     saw_unlock_modal = true;
                 }
-                ServerEvent::ExecuteScript(script)
+                ServerEvent::ExecuteScript { script, .. }
                     if script.contains("Unlock it before selecting secure saved outputs") =>
                 {
                     saw_unlock_message = true;
@@ -435,11 +446,11 @@ mod tests {
             Exporter::try_from(Uri::Directory(PathBuf::from("/tmp/output"))).expect("directory exporter");
         let mut events = state.subscribe_events();
 
-        let response = get_modal(State(state)).await.into_response();
+        let response = get_modal(State(state), HeaderMap::new()).await.into_response();
 
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
         let event = events.try_recv().expect("modal render event");
-        let ServerEvent::AppendBody(html) = event else {
+        let ServerEvent::AppendBody { html, .. } = event else {
             panic!("expected modal html");
         };
         assert!(html.contains(r#"option value="file:///tmp/output/" selected"#));
@@ -484,7 +495,7 @@ mod tests {
         let mut saw_error = false;
         while let Ok(event) = events.try_recv() {
             match event {
-                ServerEvent::Signals(payload) => {
+                ServerEvent::Signals { payload, .. } => {
                     if payload.contains(&format!(r#""settings":{{"target":"{}"}}"#, expected_target)) {
                         saw_target_revert = true;
                     }
@@ -492,7 +503,7 @@ mod tests {
                         saw_secure_revert = true;
                     }
                 }
-                ServerEvent::ExecuteScript(script)
+                ServerEvent::ExecuteScript { script, .. }
                     if script.contains("collector-only") && script.contains("send-capable host") =>
                 {
                     saw_error = true;
@@ -517,7 +528,7 @@ mod tests {
         state_mut.server_policy = ServerPolicy::defaults(RuntimeMode::Service);
         let mut events = state.subscribe_events();
 
-        let response = get_modal(State(state)).await.into_response();
+        let response = get_modal(State(state), HeaderMap::new()).await.into_response();
 
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
         let _ = events.try_recv().expect("modal render event");
@@ -640,7 +651,7 @@ mod tests {
 
         let mut saw_unlock_modal = false;
         while let Ok(event) = events.try_recv() {
-            if let ServerEvent::AppendBody(html) = event
+            if let ServerEvent::AppendBody { html, .. } = event
                 && html.contains("keystore-unlock-modal")
             {
                 saw_unlock_modal = true;
