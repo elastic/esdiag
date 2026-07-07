@@ -14,7 +14,7 @@ use std::{
 
 use url::Url;
 /// The different types of supported URIs
-#[derive(Clone, Default)]
+#[derive(Clone, Debug, Default)]
 pub enum Uri {
     /// Known host saved in the ~/.esdiag/hosts.yml by default
     KnownHost(KnownHost),
