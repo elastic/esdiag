@@ -43,7 +43,7 @@ impl Input {
     }
 
     pub fn is_sendable_bundle(&self) -> bool {
-        matches!(self, Input::Load { uri: Uri::File(_) } | Input::Collect { .. })
+        matches!(self, Input::Load { uri: Uri::File(_) })
     }
 }
 

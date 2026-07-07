@@ -375,14 +375,9 @@ impl ApiResolver {
             .cloned()
             .collect();
 
-        Self::validate_processing_selection_with_collect_filters(
-            product,
-            diagnostic_type,
-            include,
-            exclude,
-            &selected,
-        )?;
-        Self::resolve_processing_selection(product, diagnostic_type, &selected)
+        let resolved = Self::resolve_processing_selection(product, diagnostic_type, &selected)?;
+        Self::validate_resolved_processing_selection(&collected, &resolved)?;
+        Ok(resolved)
     }
 
     pub fn validate_processing_selection_with_collect_filters(
@@ -393,8 +388,12 @@ impl ApiResolver {
         selected: &[String],
     ) -> Result<()> {
         let collected = Self::resolve_collected_keys(product, diagnostic_type, include, exclude)?;
-        let collected_keys: HashSet<&str> = collected.iter().map(String::as_str).collect();
         let resolved = Self::resolve_processing_selection(product, diagnostic_type, selected)?;
+        Self::validate_resolved_processing_selection(&collected, &resolved)
+    }
+
+    fn validate_resolved_processing_selection(collected: &[String], resolved: &[String]) -> Result<()> {
+        let collected_keys: HashSet<&str> = collected.iter().map(String::as_str).collect();
         let missing: Vec<String> = resolved
             .iter()
             .filter(|key| !collected_keys.contains(key.as_str()))
