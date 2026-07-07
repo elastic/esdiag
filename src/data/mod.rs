@@ -2,13 +2,17 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
+/// Elastic Stack application components (the application axis)
+mod application;
 /// Authentication methods
 mod auth;
 /// Encrypted secret storage
 mod keystore;
 /// Manage saving and loading hosts from a YAML file
 mod known_host;
-/// Elastic stack products
+/// Deployment platforms (the platform axis)
+mod platform;
+/// Elastic stack products (legacy flattened axis)
 mod product;
 /// Saved job configurations
 pub mod saved_jobs;
@@ -17,6 +21,7 @@ pub mod settings;
 /// Universal resource identifiers
 mod uri;
 
+pub use application::Application;
 pub use auth::{Auth, AuthType};
 pub(crate) use keystore::list_secret_entries;
 pub use keystore::{
@@ -29,6 +34,7 @@ pub use keystore::{
 #[cfg(test)]
 pub(crate) use known_host::write_hosts_yml_for_tests;
 pub use known_host::{ElasticCloud, HostRole, KnownHost, KnownHostBuilder, KnownHostCliUpdate};
+pub use platform::Platform;
 pub use product::Product;
 pub use saved_jobs::{
     CollectMode, CollectSource, Job, JobAction, JobBuilder, JobCollect, JobOutput, JobProcessSelection, JobSignals,

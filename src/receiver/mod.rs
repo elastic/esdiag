@@ -272,6 +272,29 @@ impl Receiver {
         }
     }
 
+    /// A platform the receiver itself can vouch for, independent of manifest
+    /// indicators (ADR-0001: platform is determined best-effort at the
+    /// receiver). Collecting through the Elastic Cloud admin API implies
+    /// Elastic Cloud Hosted.
+    pub fn platform_hint(&self) -> Option<crate::data::Platform> {
+        match self {
+            Receiver::ElasticCloudAdmin(_) => Some(crate::data::Platform::ElasticCloudHosted),
+            _ => None,
+        }
+    }
+
+    /// Whether the received bundle contains `dir` as a directory. Only local
+    /// (archive/directory) receivers can answer; remote receivers report
+    /// `false`. Used for platform indicators such as the `syscalls` folder.
+    pub async fn has_bundle_dir(&self, dir: &str) -> bool {
+        match self {
+            Receiver::ArchiveBytes(receiver) => receiver.has_bundle_dir(dir).await,
+            Receiver::ArchiveFile(receiver) => receiver.has_bundle_dir(dir).await,
+            Receiver::Directory(receiver) => receiver.has_bundle_dir(dir),
+            _ => false,
+        }
+    }
+
     pub async fn try_get_manifest(&self) -> Result<DiagnosticManifest> {
         let manifest = match self {
             Receiver::ArchiveBytes(_) | Receiver::ArchiveFile(_) | Receiver::Directory(_) => {

@@ -577,7 +577,7 @@ fn format_process_summary(completed: &Completed) -> String {
                     *runtime as f64 / 1000.0,
                     report.diagnostic.docs.created,
                     report.diagnostic.metadata.id,
-                    report.diagnostic.product
+                    report.diagnostic.display_label()
                 ));
                 summary.push_str(&format!("\nSource: {path}"));
                 if let Some(kibana_link) = report.diagnostic.kibana_link.as_deref() {
@@ -585,12 +585,13 @@ fn format_process_summary(completed: &Completed) -> String {
                 }
             }
             IncludedDiagnosticOutcome::Skipped {
-                path, product, reason, ..
+                path,
+                application,
+                platform,
+                reason,
+                ..
             } => {
-                let product = product
-                    .as_ref()
-                    .map(ToString::to_string)
-                    .unwrap_or_else(|| "unknown".to_string());
+                let product = esdiag::processor::display_label(*application, *platform);
                 summary.push_str(&format!(
                     "\n\nincluded diagnostic skipped: {path} ({product})\nReason: {reason}"
                 ));
@@ -2331,7 +2332,6 @@ mod tests {
         let mut report = DiagnosticReportBuilder::try_from(manifest)
             .expect("report builder")
             .receiver("Elasticsearch http://localhost:9200".to_string())
-            .product(Product::Elasticsearch)
             .build()
             .expect("report");
         report.add_kibana_link("https://kb.example/app/dashboards#/view/report".to_string());
@@ -2366,7 +2366,6 @@ mod tests {
         let parent_report = DiagnosticReportBuilder::try_from(parent_manifest)
             .expect("parent report builder")
             .receiver("Directory /tmp/eck".to_string())
-            .product(Product::ECK)
             .build()
             .expect("parent report");
 
@@ -2384,7 +2383,6 @@ mod tests {
         let mut child_report = DiagnosticReportBuilder::try_from(child_manifest)
             .expect("child report builder")
             .receiver("Directory /tmp/eck/child".to_string())
-            .product(Product::Elasticsearch)
             .build()
             .expect("child report");
         child_report.diagnostic.docs.created = 42;
@@ -2403,7 +2401,8 @@ mod tests {
                 IncludedDiagnosticOutcome::Skipped {
                     job_id: 2,
                     path: "child-kibana".to_string(),
-                    product: Some(Product::Kibana),
+                    application: Some(esdiag::data::Application::Kibana),
+                    platform: esdiag::data::Platform::ECK,
                     reason: "Kibana processing is not yet implemented".to_string(),
                 },
                 IncludedDiagnosticOutcome::Failed {

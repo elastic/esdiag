@@ -96,6 +96,45 @@ pub fn trim_to_working_directory(path: &mut PathBuf) {
     }
 }
 
+/// Whether the archive contains `dir` as a directory component, scoped to the
+/// receiver's working subdirectory when one is set. Used for platform
+/// indicators such as the `syscalls` folder.
+pub(crate) fn archive_has_dir<'a>(
+    mut file_names: impl Iterator<Item = &'a str>,
+    subdir: Option<&PathBuf>,
+    dir: &str,
+) -> bool {
+    let subdir_components: Vec<String> = subdir
+        .map(|subdir| {
+            subdir
+                .to_string_lossy()
+                .replace('\\', "/")
+                .split('/')
+                .filter(|c| !c.is_empty())
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default();
+
+    file_names.any(|name| {
+        let components: Vec<&str> = name.split('/').filter(|c| !c.is_empty()).collect();
+        // The directory must appear as a non-terminal component (i.e. an
+        // actual directory), after the subdir components when scoped.
+        let start = if subdir_components.is_empty() {
+            0
+        } else {
+            match components
+                .windows(subdir_components.len())
+                .position(|window| window.iter().zip(&subdir_components).all(|(a, b)| a == b))
+            {
+                Some(pos) => pos + subdir_components.len(),
+                None => return false,
+            }
+        };
+        components.len() > start + 1 && components[start..components.len() - 1].contains(&dir)
+    })
+}
+
 pub fn resolve_archive_path<A: Read + Seek>(
     subdir: Option<&PathBuf>,
     archive: &mut ZipArchive<A>,

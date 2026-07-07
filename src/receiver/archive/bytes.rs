@@ -143,6 +143,14 @@ impl ArchiveBytesReceiver {
         serde_json::from_reader(reader).map_err(Into::into)
     }
 
+    /// Whether the bundle contains `dir` as a directory component within the
+    /// receiver's working subdirectory. Used for platform indicators such as
+    /// the `syscalls` folder.
+    pub async fn has_bundle_dir(&self, dir: &str) -> bool {
+        let archive = self.archive.read().await;
+        super::archive_has_dir(archive.file_names(), self.subdir.as_ref(), dir)
+    }
+
     pub fn set_source_product(&self, product: &'static str) -> Result<()> {
         match self.source_product.get() {
             Some(existing) if *existing != product => Err(eyre!(
