@@ -780,7 +780,7 @@ user: ada
     fn identifiers_platform_serializes_as_typed_platform_key() {
         let identifiers = Identifiers::default().with_platform(crate::data::Platform::ECK);
         let value = serde_json::to_value(&identifiers).expect("serialize identifiers");
-        assert_eq!(value["platform"], "eck");
+        assert_eq!(value["platform"], "elastic-cloud-kubernetes");
         assert!(value.get("orchestration").is_none());
     }
 
