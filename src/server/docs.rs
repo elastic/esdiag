@@ -98,10 +98,6 @@ impl DocsVisibility {
         }
     }
 
-    fn is_visible(&self, markdown: &str) -> bool {
-        self.is_tag_set_visible(&doc_tags(markdown))
-    }
-
     fn is_path_visible(&self, path: &str) -> bool {
         doc_tag_cache()
             .get(path)
@@ -389,7 +385,7 @@ fn split_okf_frontmatter(markdown: &str) -> Option<(&str, &str)> {
         .strip_prefix("---\r\n")
         .or_else(|| markdown.strip_prefix("---\n"))?;
 
-    for delimiter in ["\r\n---\r\n", "\n---\n", "\r\n---\n", "\n---\r\n"] {
+    for delimiter in ["---\r\n", "---\n", "\r\n---\r\n", "\n---\n", "\r\n---\n", "\n---\r\n"] {
         if let Some(frontmatter_end) = body_start.find(delimiter) {
             let frontmatter = &body_start[..frontmatter_end];
             let body = &body_start[frontmatter_end + delimiter.len()..];
@@ -599,6 +595,15 @@ mod tests {
 
         assert!(frontmatter.contains("type: Reference"));
         assert_eq!(body, "\r\n# Example\r\n");
+    }
+
+    #[test]
+    fn okf_frontmatter_supports_empty_blocks() {
+        let markdown = "---\n---\n# Example\n";
+        let (frontmatter, body) = split_okf_frontmatter(markdown).expect("frontmatter should split");
+
+        assert_eq!(frontmatter, "");
+        assert_eq!(body, "# Example\n");
     }
 
     #[test]
