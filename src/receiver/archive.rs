@@ -321,6 +321,20 @@ mod tests {
     }
 
     #[test]
+    fn archive_has_dir_matches_implicit_directory_child_entries() {
+        assert!(archive_has_dir(
+            ["syscalls/processes.txt"].into_iter(),
+            None,
+            "syscalls"
+        ));
+        assert!(archive_has_dir(
+            ["root/cluster/syscalls/processes.txt"].into_iter(),
+            Some(&PathBuf::from("cluster")),
+            "syscalls"
+        ));
+    }
+
+    #[test]
     fn archive_has_dir_rejects_terminal_file_entries() {
         assert!(!archive_has_dir(["syscalls"].into_iter(), None, "syscalls"));
         assert!(!archive_has_dir(
