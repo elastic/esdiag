@@ -173,7 +173,12 @@ async fn run_process(
     derived_selection: Option<ProcessSelection>,
 ) -> Result<()> {
     let exporter = export_target_exporter(&process.export)?;
-    let selection: Option<ProcessSelection> = process.selection.clone().or(derived_selection);
+    let selection: Option<ProcessSelection> = process
+        .selection
+        .clone()
+        .or(derived_selection)
+        .map(canonicalize_process_selection)
+        .transpose()?;
     let processor =
         Processor::try_new_with_selection(Arc::new(receiver), Arc::new(exporter), identifiers, selection).await?;
     let processing = processor.start().await.map_err(|failed| eyre!("{}", failed))?;
@@ -184,6 +189,12 @@ async fn run_process(
         }
         Err(failed) => Err(eyre!("{}", failed)),
     }
+}
+
+fn canonicalize_process_selection(selection: ProcessSelection) -> Result<ProcessSelection> {
+    let selected =
+        ApiResolver::resolve_processing_selection(&selection.product, &selection.diagnostic_type, &selection.selected)?;
+    Ok(ProcessSelection { selected, ..selection })
 }
 
 fn collect_process_selection(
@@ -314,5 +325,19 @@ mod tests {
         )
         .expect_err("directory input is not sendable");
         assert!(err.to_string().contains("requires a local bundle archive file"));
+    }
+
+    #[test]
+    fn process_selection_is_canonicalized_before_execution() {
+        let selection = canonicalize_process_selection(ProcessSelection {
+            product: "logstash".to_string(),
+            diagnostic_type: "standard".to_string(),
+            selected: vec!["node_stats".to_string()],
+        })
+        .expect("canonical selection");
+
+        assert!(selection.selected.contains(&"logstash_node_stats".to_string()));
+        assert!(selection.selected.contains(&"logstash_node".to_string()));
+        assert!(selection.selected.contains(&"logstash_version".to_string()));
     }
 }
