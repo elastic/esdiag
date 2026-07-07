@@ -513,6 +513,7 @@ async fn run_processor_job(ctx: ProcessorJobContext<'_>) -> Result<()> {
             state
                 .record_success(report.diagnostic.docs.total, report.diagnostic.docs.errors)
                 .await;
+            let product = report.diagnostic.display_label();
             send_event(
                 tx,
                 terminal_job_event(
@@ -525,7 +526,7 @@ async fn run_processor_job(ctx: ProcessorJobContext<'_>) -> Result<()> {
                         duration: &format!("{:.3}", report.diagnostic.processing_duration as f64 / 1000.0),
                         source: job.source,
                         kibana_link: report.diagnostic.kibana_link.as_deref().unwrap_or(""),
-                        product: &report.diagnostic.display_label(),
+                        product: &product,
                     },
                 ),
             )

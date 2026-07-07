@@ -84,7 +84,7 @@ impl<'de> Deserialize<'de> for Platform {
         D: Deserializer<'de>,
     {
         let s: String = Deserialize::deserialize(deserializer)?;
-        Platform::from_str(&s).map_err(|e| serde::de::Error::custom(format!("Unknown platform: {}", e)))
+        Platform::from_str(&s).map_err(|_| serde::de::Error::custom(format!("Unknown platform: {s}")))
     }
 }
 
@@ -132,5 +132,14 @@ mod tests {
             let parsed: Platform = serde_json::from_str(&json).expect("deserialize");
             assert_eq!(parsed, platform);
         }
+    }
+
+    #[test]
+    fn deserialize_error_includes_input() {
+        let error = serde_json::from_str::<Platform>(r#""not-a-platform""#).expect_err("invalid platform");
+        assert!(
+            error.to_string().contains("Unknown platform: not-a-platform"),
+            "unexpected error: {error}"
+        );
     }
 }
