@@ -376,12 +376,27 @@ impl ApiResolver {
         };
         let defs = Self::processing_defs(product)?;
         let processing_keys: HashSet<&str> = defs.iter().map(|def| def.key.as_str()).collect();
+        let collected_keys: HashSet<&str> = collected.iter().map(String::as_str).collect();
         let selected: Vec<String> = collected
-            .into_iter()
+            .iter()
             .filter(|key| processing_keys.contains(key.as_str()))
+            .cloned()
             .collect();
 
-        Self::resolve_processing_selection(product, diagnostic_type, &selected)
+        let resolved = Self::resolve_processing_selection(product, diagnostic_type, &selected)?;
+        let missing: Vec<String> = resolved
+            .iter()
+            .filter(|key| !collected_keys.contains(key.as_str()))
+            .cloned()
+            .collect();
+        if !missing.is_empty() {
+            return Err(eyre!(
+                "processing selection requires sources that were not collected: {}; remove the matching exclusions or include those sources",
+                missing.join(", ")
+            ));
+        }
+
+        Ok(resolved)
     }
 
     pub fn processing_catalog() -> Result<HashMap<String, HashMap<String, Vec<ProcessingOption>>>> {
@@ -738,7 +753,7 @@ mod tests {
     fn test_processing_selection_applies_collect_filters() {
         let selected = ApiResolver::resolve_processing_selection_with_collect_filters(
             "elasticsearch",
-            "minimal",
+            "light",
             Some(&vec!["pending_tasks".to_string()]),
             Some(&vec!["nodes_stats".to_string()]),
         )
@@ -746,7 +761,22 @@ mod tests {
 
         assert!(selected.contains(&"cluster_pending_tasks".to_string()));
         assert!(!selected.contains(&"nodes_stats".to_string()));
+        assert!(selected.contains(&"cluster_settings_defaults".to_string()));
         assert!(selected.contains(&"version".to_string()));
+    }
+
+    #[test]
+    fn test_processing_selection_rejects_sources_not_collected() {
+        let err = ApiResolver::resolve_processing_selection_with_collect_filters(
+            "elasticsearch",
+            "minimal",
+            Some(&vec!["pending_tasks".to_string()]),
+            Some(&vec!["nodes_stats".to_string()]),
+        )
+        .expect_err("minimal collection lacks a processing-required source");
+
+        assert!(err.to_string().contains("cluster_settings_defaults"));
+        assert!(err.to_string().contains("remove the matching exclusions"));
     }
 
     #[test]
