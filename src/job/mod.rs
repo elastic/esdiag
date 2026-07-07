@@ -12,12 +12,8 @@ pub mod executor;
 /// The phase-structured `Job` model with validated construction.
 pub mod model;
 
-use crate::{
-    data::{Job as SavedJob, JobAction, JobOutput, JobProcessSelection, KnownHost, load_saved_jobs, save_saved_jobs},
-    processor::api::{ApiResolver, ProcessSelection},
-};
+use crate::data::{Job as SavedJob, KnownHost, load_saved_jobs, save_saved_jobs};
 use eyre::{Result, eyre};
-use model::{ExportTarget, Input, Job, Process, SaveTarget, SendTarget};
 use std::io::IsTerminal;
 
 pub fn handle_job_list() -> Result<()> {
@@ -69,16 +65,16 @@ pub async fn handle_job_run(name: &str) -> Result<()> {
     }
 
     let hosts = KnownHost::parse_hosts_yml()?;
-    let host = hosts.get(host_name).cloned().ok_or_else(|| {
-        eyre!(
+    if !hosts.contains_key(host_name) {
+        return Err(eyre!(
             "Host '{}' referenced by job '{}' not found in hosts.yml",
             host_name,
             name
-        )
-    })?;
+        ));
+    }
 
     tracing::info!("Running saved job '{name}'");
-    run_job(job.clone(), host).await?;
+    run_job(job.clone()).await?;
     tracing::info!("Saved job '{name}' completed successfully");
     Ok(())
 }
@@ -116,174 +112,71 @@ pub fn validate_saved_job_name(name: &str) -> Result<()> {
     Ok(())
 }
 
-/// Run a saved job definition: build the unified phase-structured [`Job`]
-/// from the legacy `{collect, action}` shape and hand it to the one executor.
-///
-/// (The on-disk migration of `jobs.yml` to the phase shape is owned by
-/// `saved-job-migration`; this converts at the execution boundary.)
-pub async fn run_job(job: SavedJob, host: KnownHost) -> Result<()> {
-    let host_url = host.get_url()?.to_string();
-    tracing::info!("Running saved job against {host_url}");
+/// Run a saved phase-structured job definition with the one executor.
+pub async fn run_job(job: SavedJob) -> Result<()> {
+    let host_name = job.collect_host();
+    tracing::info!("Running saved job against {host_name}");
 
-    let unified = unify_saved_job(&job, host)?;
-    let outcome = executor::execute(unified).await?;
+    let outcome = executor::execute(job).await?;
     if let (Some(bundle_path), true) = (&outcome.bundle_path, outcome.bundle_retained) {
         tracing::info!("Retained collected bundle: {}", bundle_path.display());
     }
     Ok(())
 }
 
-/// Map the legacy `{collect, action}` saved-job shape onto the unified
-/// phase-structured model. Every legacy action collects and materialises a
-/// bundle first (always staged) — that behavior is preserved here; streaming
-/// shapes become expressible for newly authored jobs.
-fn unify_saved_job(job: &SavedJob, host: KnownHost) -> Result<Job> {
-    let input = Input::Collect {
-        host: Box::new(host),
-        diagnostic_type: job.collect.diagnostic_type.clone(),
-        include: None,
-        exclude: None,
-    };
-
-    let retained_save = job.collect.save_dir.clone().map(SaveTarget::retained);
-
-    let (save, process, send) = match &job.action {
-        JobAction::Collect { output_dir } => (Some(SaveTarget::retained(output_dir.clone())), None, None),
-        JobAction::Upload { upload_id } => (
-            Some(retained_save.unwrap_or_else(SaveTarget::temporary)),
-            None,
-            Some(SendTarget {
-                upload_id: upload_id.clone(),
-            }),
-        ),
-        JobAction::Process { output, selection } => (
-            Some(retained_save.unwrap_or_else(SaveTarget::temporary)),
-            Some(Process {
-                selection: explicit_process_selection(selection.as_ref())?,
-                export: export_target(output),
-            }),
-            None,
-        ),
-    };
-
-    Job::try_new(job.identifiers.clone(), input, save, process, send).map_err(Into::into)
-}
-
-fn export_target(output: &JobOutput) -> ExportTarget {
-    match output {
-        JobOutput::KnownHost { name } => ExportTarget::KnownHost { name: name.clone() },
-        JobOutput::File { path } => ExportTarget::File { path: path.clone() },
-        JobOutput::Directory { output_dir } => ExportTarget::Directory {
-            dir: output_dir.clone(),
-        },
-        JobOutput::Stdout => ExportTarget::Stdout,
-    }
-}
-
-fn explicit_process_selection(selection: Option<&JobProcessSelection>) -> Result<Option<ProcessSelection>> {
-    let Some(selection) = selection else {
-        return Ok(None);
-    };
-    let selected =
-        ApiResolver::resolve_processing_selection(&selection.product, &selection.diagnostic_type, &selection.selected)?;
-
-    Ok(Some(ProcessSelection {
-        product: selection.product.clone(),
-        diagnostic_type: selection.diagnostic_type.clone(),
-        selected,
-    }))
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{explicit_process_selection, unify_saved_job, validate_saved_job_name};
-    use crate::data::{Job as SavedJob, JobProcessSelection, KnownHostBuilder};
-    use crate::job::model::{ExecutionMode, Input};
+    use super::{run_job, validate_saved_job_name};
+    use crate::data::Job as SavedJob;
+    use crate::job::model::{ExecutionMode, ExportTarget, Input, Process, SaveTarget};
     use std::path::PathBuf;
-    use url::Url;
 
-    fn host() -> crate::data::KnownHost {
-        KnownHostBuilder::new(Url::parse("http://localhost:9200").expect("url"))
-            .build()
-            .expect("host")
+    fn saved_collect_job() -> SavedJob {
+        SavedJob::try_new(
+            Default::default(),
+            Input::Collect {
+                host: "prod".to_string(),
+                diagnostic_type: "standard".to_string(),
+                include: None,
+                exclude: None,
+            },
+            Some(SaveTarget::retained(PathBuf::from("/tmp/esdiag-saved-jobs"))),
+            None,
+            None,
+        )
+        .expect("valid saved job")
     }
 
     #[test]
     fn job_builder_creates_collect_job() {
-        let job = SavedJob {
-            identifiers: Default::default(),
-            collect: crate::data::JobCollect {
-                host: "prod".to_string(),
-                diagnostic_type: "standard".to_string(),
-                save_dir: None,
-            },
-            action: crate::data::JobAction::Collect {
-                output_dir: PathBuf::from("/tmp/esdiag-saved-jobs"),
-            },
-        };
+        let job = saved_collect_job();
 
         assert_eq!(job.send_target_label(), "dir:/tmp/esdiag-saved-jobs");
     }
 
     #[test]
-    fn explicit_process_selection_uses_job_values() {
-        let selection = JobProcessSelection {
-            product: "logstash".to_string(),
-            diagnostic_type: "standard".to_string(),
-            selected: vec!["node".to_string()],
-        };
-
-        let selection = explicit_process_selection(Some(&selection))
-            .expect("selection")
-            .expect("saved selection");
-
-        assert_eq!(selection.product, "logstash");
-        // Legacy short keys canonicalize to registry keys (ADR-0005)
-        assert!(selection.selected.iter().any(|item| item == "logstash_node"));
-    }
-
-    #[test]
-    fn legacy_process_action_unifies_to_staged_collect_save_process() {
-        let job = SavedJob {
-            identifiers: Default::default(),
-            collect: crate::data::JobCollect {
+    fn process_job_without_save_is_streaming() {
+        let job = SavedJob::try_new(
+            Default::default(),
+            Input::Collect {
                 host: "prod".to_string(),
                 diagnostic_type: "standard".to_string(),
-                save_dir: None,
+                include: None,
+                exclude: None,
             },
-            action: crate::data::JobAction::Process {
-                output: crate::data::JobOutput::Stdout,
+            None,
+            Some(Process {
                 selection: None,
-            },
-        };
+                export: ExportTarget::Stdout,
+            }),
+            None,
+        )
+        .expect("streaming process job");
 
-        let unified = unify_saved_job(&job, host()).expect("unified job");
-        assert!(matches!(unified.input(), Input::Collect { .. }));
-        // Legacy actions always stage through a bundle; without a save_dir
-        // the bundle is temporary (not retained)
-        assert!(!unified.save().expect("save stage").is_retained());
-        assert!(unified.process().is_some());
-        assert_eq!(unified.execution_mode(), ExecutionMode::Staged);
-    }
-
-    #[test]
-    fn legacy_upload_action_unifies_to_collect_save_send() {
-        let job = SavedJob {
-            identifiers: Default::default(),
-            collect: crate::data::JobCollect {
-                host: "prod".to_string(),
-                diagnostic_type: "standard".to_string(),
-                save_dir: Some(PathBuf::from("/tmp/keep")),
-            },
-            action: crate::data::JobAction::Upload {
-                upload_id: "abc123".to_string(),
-            },
-        };
-
-        let unified = unify_saved_job(&job, host()).expect("unified job");
-        assert!(unified.save().expect("save stage").is_retained());
-        assert!(unified.process().is_none());
-        assert_eq!(unified.send().expect("send stage").upload_id, "abc123");
+        assert!(matches!(job.input(), Input::Collect { .. }));
+        assert!(job.save().is_none());
+        assert!(job.process().is_some());
+        assert_eq!(job.execution_mode(), ExecutionMode::Streaming);
     }
 
     #[test]

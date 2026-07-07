@@ -1710,7 +1710,7 @@ mod tests {
     #[cfg(feature = "server")]
     use super::{resolve_serve_exporter, resolve_serve_runtime_mode};
     use clap::Parser;
-    use esdiag::data::{HostRole, JobAction, KnownHost, Product, SecretAuth, UnlockStatus, Uri, upsert_secret_auth};
+    use esdiag::data::{HostRole, KnownHost, Product, SecretAuth, UnlockStatus, Uri, upsert_secret_auth};
     use esdiag::processor::diagnostic::DiagnosticReportBuilder;
     use esdiag::processor::{CollectionResult, Completed, DiagnosticManifest, Identifiers, IncludedDiagnosticOutcome};
     #[cfg(feature = "server")]
@@ -2035,13 +2035,12 @@ mod tests {
         let job = derive_collect_job("prod-es", "/tmp/esdiag-output", "support", None, Identifiers::default())
             .expect("derive collect job");
 
-        assert_eq!(job.collect.save_dir, None);
-        match job.action {
-            JobAction::Collect { output_dir } => {
-                assert_eq!(output_dir, std::path::PathBuf::from("/tmp/esdiag-output"));
-            }
-            _ => panic!("expected collect action"),
-        }
+        assert!(job.process().is_none());
+        assert!(job.send().is_none());
+        assert_eq!(
+            job.save().and_then(|save| save.dir.as_ref()),
+            Some(&std::path::PathBuf::from("/tmp/esdiag-output"))
+        );
     }
 
     #[cfg(feature = "keystore")]

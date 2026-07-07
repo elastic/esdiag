@@ -17,20 +17,24 @@
 //! barrier): see [`Job::execution_mode`].
 
 use crate::{
-    data::{KnownHost, Uri},
+    data::Uri,
     processor::{Identifiers, api::ProcessSelection},
 };
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 /// Phase 1: where the diagnostic comes from — exactly one of a *new*
 /// collection from live product APIs, or an *existing* bundle.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(tag = "type", rename_all = "kebab-case")]
 pub enum Input {
     /// Call live product APIs to acquire a new diagnostic.
     Collect {
-        host: Box<KnownHost>,
+        host: String,
         diagnostic_type: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         include: Option<Vec<String>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         exclude: Option<Vec<String>>,
     },
     /// Read an existing diagnostic from a directory, bundle, or download.
@@ -48,8 +52,9 @@ impl Input {
 /// `dir: None` materialises the bundle in a temporary directory that is not
 /// retained after the job — the bundle still exists during execution (it is
 /// the staged-mode serialization barrier and the `Send` source).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct SaveTarget {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dir: Option<PathBuf>,
 }
 
@@ -69,27 +74,29 @@ impl SaveTarget {
 
 /// Phase 2b: transform the diagnostic into documents, exporting them to
 /// `export`. `Export` ⟺ `Process` is structural: the sink lives here.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Process {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub selection: Option<ProcessSelection>,
     pub export: ExportTarget,
 }
 
 /// The destination for *processed* documents (the `Export` stage).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(tag = "type", rename_all = "kebab-case")]
 pub enum ExportTarget {
     /// A saved known host (an Elasticsearch output cluster).
     KnownHost { name: String },
     /// A local newline-delimited JSON file.
     File { path: PathBuf },
     /// A local directory of per-stream files.
-    Directory { dir: PathBuf },
+    Directory { output_dir: PathBuf },
     /// Standard output.
     Stdout,
 }
 
 /// Phase 3: transmit an existing bundle to the Elastic Uploader service.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct SendTarget {
     pub upload_id: String,
 }
@@ -142,12 +149,16 @@ impl std::error::Error for JobValidationError {}
 ///
 /// Constructed only through [`Job::try_new`], which enforces the phase
 /// invariants; the accessors expose the validated stages read-only.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Job {
+    #[serde(default, skip_serializing_if = "Identifiers::is_empty")]
     pub identifiers: Identifiers,
     input: Input,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     save: Option<SaveTarget>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     process: Option<Process>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     send: Option<SendTarget>,
 }
 
@@ -207,20 +218,10 @@ impl Job {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::data::KnownHostBuilder;
-    use url::Url;
-
-    fn host() -> Box<KnownHost> {
-        Box::new(
-            KnownHostBuilder::new(Url::parse("http://localhost:9200").expect("url"))
-                .build()
-                .expect("host"),
-        )
-    }
 
     fn collect_input() -> Input {
         Input::Collect {
-            host: host(),
+            host: "prod".to_string(),
             diagnostic_type: "standard".to_string(),
             include: None,
             exclude: None,
