@@ -13,7 +13,7 @@
 
 use super::model::{ExecutionMode, ExportTarget, Input, Job, Process, SendTarget};
 use crate::{
-    data::Uri,
+    data::{Application, Product, Uri},
     exporter::Exporter,
     processor::{Collector, Identifiers, Processor, api::ProcessSelection},
     receiver::Receiver,
@@ -64,7 +64,7 @@ pub async fn execute(job: Job) -> Result<JobOutcome> {
                     outcome.bundle_retained = save.is_retained();
 
                     let receiver = Receiver::try_from((**host).clone())?;
-                    let product = host.app().clone();
+                    let product = collect_product(host.app())?;
                     let collect_exporter = Exporter::for_collect_archive(output_dir)?;
                     let collector = Collector::try_new(
                         receiver,
@@ -102,6 +102,7 @@ pub async fn execute(job: Job) -> Result<JobOutcome> {
                     let process = job
                         .process()
                         .ok_or_else(|| eyre!("streaming job without process (unreachable by construction)"))?;
+                    let _ = collect_product(host.app())?;
                     run_process(Receiver::try_from((**host).clone())?, process, job.identifiers.clone()).await?;
                     outcome.processed = true;
                 }
@@ -129,6 +130,20 @@ pub async fn execute(job: Job) -> Result<JobOutcome> {
     }
 
     Ok(outcome)
+}
+
+fn collect_product(app: Option<Application>) -> Result<Product> {
+    match app {
+        Some(application @ (Application::Elasticsearch | Application::Kibana | Application::Logstash)) => {
+            Ok(Product::from(application))
+        }
+        Some(Application::Agent) => Err(eyre!(
+            "Collect is out of scope by design for Elastic Agent. Elastic Agent provides its own diagnostic bundle; use `read`/Load instead."
+        )),
+        None => Err(eyre!(
+            "Collect is out of scope by design for platform diagnostics. Load the platform-generated bundle with `read`/Load instead."
+        )),
+    }
 }
 
 /// Run the `Process` stage (with its `Export` sink) over the given input

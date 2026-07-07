@@ -3,7 +3,7 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::{ServerState, get_theme_dark, template};
-use crate::data::{HostRole, KnownHost, Product, Settings};
+use crate::data::{Application, HostRole, KnownHost, Settings};
 #[cfg(feature = "keystore")]
 use crate::data::{Job, load_saved_jobs_async};
 use crate::exporter::Exporter;
@@ -490,14 +490,19 @@ fn job_host_options(state: &Arc<ServerState>) -> JobHostOptions {
     let mut send_secure_hosts = Vec::new();
 
     for (name, host) in hosts_by_name {
-        if host.has_role(HostRole::Collect) {
+        if host.has_role(HostRole::Collect)
+            && matches!(
+                host.app(),
+                Some(Application::Elasticsearch | Application::Kibana | Application::Logstash)
+            )
+        {
             collect_hosts.push(name.clone());
             if host.requires_keystore_secret() {
                 collect_secure_hosts.push(name.clone());
             }
         }
 
-        if host.has_role(HostRole::Send) && host.app() == &Product::Elasticsearch {
+        if host.has_role(HostRole::Send) && host.app() == Some(Application::Elasticsearch) {
             send_remote_hosts.push(name.clone());
             if host.requires_keystore_secret() {
                 send_secure_hosts.push(name.clone());
@@ -544,7 +549,7 @@ fn default_downloads_dir() -> PathBuf {
 mod tests {
     use super::job_host_options;
     use crate::{
-        data::{HostRole, KnownHost, KnownHostBuilder, Product},
+        data::{Application, HostRole, KnownHost, KnownHostBuilder, Product},
         server::test_server_state,
     };
     use std::collections::BTreeMap;
@@ -591,6 +596,21 @@ mod tests {
                 .build()
                 .expect("kb host"),
         );
+        hosts.insert(
+            "agent-collect".to_string(),
+            KnownHostBuilder::new(Url::parse("https://agent.example.com:8220").expect("agent url"))
+                .application(Application::Agent)
+                .roles(vec![HostRole::Collect])
+                .build()
+                .expect("agent host"),
+        );
+        hosts.insert(
+            "platform-template".to_string(),
+            KnownHostBuilder::new_template("https://platform.example/{id}".to_string())
+                .roles(vec![HostRole::Collect])
+                .build()
+                .expect("platform host"),
+        );
         KnownHost::write_hosts_yml(&hosts).expect("write hosts");
         tmp
     }
@@ -608,6 +628,8 @@ mod tests {
         assert!(options.send_remote_hosts.contains(&"es-local".to_string()));
         assert_eq!(options.send_local_hosts, vec!["es-local".to_string()]);
         assert!(options.collect_hosts.contains(&"kb-collect".to_string()));
+        assert!(!options.collect_hosts.contains(&"agent-collect".to_string()));
+        assert!(!options.collect_hosts.contains(&"platform-template".to_string()));
         assert!(!options.send_remote_hosts.contains(&"kb-collect".to_string()));
         assert!(!options.send_local_hosts.contains(&"kb-collect".to_string()));
         assert!(!options.send_secure_hosts.contains(&"kb-collect".to_string()));

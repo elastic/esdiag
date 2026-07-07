@@ -19,7 +19,7 @@
 - [x] 4.1 In `spawn_sub_processors`, set each child's `Platform` from the parent explicitly (typed), preserving the application-layer invariant for children.
 
 ## 5. Migration of call sites
-- [ ] 5.1 Migrate `Product` call sites (~90) to `Platform`/`Application`; remove the legacy alias once clear.
+- [x] 5.1 Migrate `Product` call sites (~90) to `Platform`/`Application`; remove the legacy alias once clear.
   > **Staged (see QUESTIONS.md):** the processor/report/manifest/display axes are fully
   > migrated. The remaining `Product` sites are the known-host `app` axis (KnownHost,
   > client/receiver dispatch, CLI host flags, server host forms) plus the legacy wire

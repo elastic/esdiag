@@ -17,7 +17,7 @@
 //! barrier): see [`Job::execution_mode`].
 
 use crate::{
-    data::{KnownHost, Uri},
+    data::{Application, KnownHost, Uri},
     processor::{Identifiers, api::ProcessSelection},
 };
 use std::path::PathBuf;
@@ -111,6 +111,8 @@ pub enum ExecutionMode {
 /// invalid is unrepresentable in the type.
 #[derive(Debug, PartialEq, Eq)]
 pub enum JobValidationError {
+    /// `Collect` is scoped to live APIs for Elasticsearch/Kibana/Logstash.
+    CollectOutOfScope { app: Option<Application> },
     /// `save` ⟹ `input` is `Collect`: you save only what you newly collected.
     SaveRequiresCollect,
     /// `send` ⟹ a bundle exists: a `Load` input, or `save` set.
@@ -122,6 +124,19 @@ pub enum JobValidationError {
 impl std::fmt::Display for JobValidationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::CollectOutOfScope {
+                app: Some(Application::Agent),
+            } => write!(
+                f,
+                "`Collect` is out of scope by design for Elastic Agent: use `Load`/`read` for the Agent-provided diagnostic bundle"
+            ),
+            Self::CollectOutOfScope { app: None } => write!(
+                f,
+                "`Collect` is out of scope by design for platform diagnostics: use `Load`/`read` for the platform-generated bundle"
+            ),
+            Self::CollectOutOfScope { app: Some(app) } => {
+                write!(f, "`Collect` is not supported for application {app}")
+            }
             Self::SaveRequiresCollect => write!(
                 f,
                 "`save` requires a `Collect` input: only newly collected diagnostics are saved"
@@ -159,6 +174,14 @@ impl Job {
         process: Option<Process>,
         send: Option<SendTarget>,
     ) -> Result<Self, JobValidationError> {
+        if let Input::Collect { host, .. } = &input
+            && !matches!(
+                host.app(),
+                Some(Application::Elasticsearch | Application::Kibana | Application::Logstash)
+            )
+        {
+            return Err(JobValidationError::CollectOutOfScope { app: host.app() });
+        }
         if save.is_some() && !input.is_collect() {
             return Err(JobValidationError::SaveRequiresCollect);
         }
@@ -207,7 +230,7 @@ impl Job {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::data::KnownHostBuilder;
+    use crate::data::{Application, KnownHostBuilder};
     use url::Url;
 
     fn host() -> Box<KnownHost> {
@@ -221,6 +244,15 @@ mod tests {
     fn collect_input() -> Input {
         Input::Collect {
             host: host(),
+            diagnostic_type: "standard".to_string(),
+            include: None,
+            exclude: None,
+        }
+    }
+
+    fn collect_input_for(host: KnownHost) -> Input {
+        Input::Collect {
+            host: Box::new(host),
             diagnostic_type: "standard".to_string(),
             include: None,
             exclude: None,
@@ -284,6 +316,50 @@ mod tests {
         let err = Job::try_new(Identifiers::default(), collect_input(), None, None, None)
             .expect_err("no-op job must be rejected");
         assert_eq!(err, JobValidationError::NoWork);
+    }
+
+    #[test]
+    fn collect_refuses_agent_by_design() {
+        let agent_host = KnownHostBuilder::new(Url::parse("http://localhost:8220").expect("url"))
+            .application(Application::Agent)
+            .build()
+            .expect("host");
+
+        let err = Job::try_new(
+            Identifiers::default(),
+            collect_input_for(agent_host),
+            Some(SaveTarget::temporary()),
+            None,
+            None,
+        )
+        .expect_err("agent collect is out of scope");
+
+        assert_eq!(
+            err,
+            JobValidationError::CollectOutOfScope {
+                app: Some(Application::Agent)
+            }
+        );
+        assert!(err.to_string().contains("out of scope by design"));
+    }
+
+    #[test]
+    fn collect_refuses_platform_by_design() {
+        let platform_host = KnownHostBuilder::new_template("https://example.com/{id}".to_string())
+            .build()
+            .expect("host");
+
+        let err = Job::try_new(
+            Identifiers::default(),
+            collect_input_for(platform_host),
+            Some(SaveTarget::temporary()),
+            None,
+            None,
+        )
+        .expect_err("platform collect is out of scope");
+
+        assert_eq!(err, JobValidationError::CollectOutOfScope { app: None });
+        assert!(err.to_string().contains("platform-generated bundle"));
     }
 
     #[test]

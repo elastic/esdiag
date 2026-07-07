@@ -464,6 +464,7 @@ fn diagnostic_result_entries(completed: &Completed) -> Value {
                 path,
                 application,
                 platform,
+                kind,
                 reason,
                 ..
             } => entries.push(json!({
@@ -471,6 +472,7 @@ fn diagnostic_result_entries(completed: &Completed) -> Value {
                 "product": crate::processor::display_label(*application, *platform),
                 "source": "included_diagnostic",
                 "path": path,
+                "skip_kind": kind.to_string(),
                 "reason": reason
             })),
             IncludedDiagnosticOutcome::Failed { path, error, .. } => entries.push(json!({
@@ -494,7 +496,9 @@ mod tests {
     use super::{diagnostic_result_entries, runtime_millis};
     use crate::{
         data::{Application, Platform, Product},
-        processor::{Completed, DiagnosticManifest, IncludedDiagnosticOutcome, diagnostic::DiagnosticReportBuilder},
+        processor::{
+            Completed, DiagnosticManifest, IncludedDiagnosticOutcome, SkipKind, diagnostic::DiagnosticReportBuilder,
+        },
     };
 
     fn report(product: Product, id_type: &str) -> crate::processor::DiagnosticReport {
@@ -535,6 +539,7 @@ mod tests {
                     path: "child-kibana".to_string(),
                     application: Some(Application::Kibana),
                     platform: Platform::ECK,
+                    kind: SkipKind::NotImplemented,
                     reason: "Kibana processing is not yet implemented".to_string(),
                 },
                 IncludedDiagnosticOutcome::Failed {
