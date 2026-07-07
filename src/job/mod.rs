@@ -116,8 +116,10 @@ pub fn validate_saved_job_name(name: &str) -> Result<()> {
 
 /// Run a saved phase-structured job definition with the one executor.
 pub async fn run_job(job: SavedJob) -> Result<()> {
-    let host_name = job.collect_host();
-    tracing::info!("Running saved job against {host_name}");
+    match job.input() {
+        Input::Collect { host, .. } => tracing::info!("Running saved collect job against {host}"),
+        Input::Load { uri } => tracing::info!("Running saved load job from {uri}"),
+    }
 
     let outcome = executor::execute(job).await?;
     if let (Some(bundle_path), true) = (&outcome.bundle_path, outcome.bundle_retained) {
