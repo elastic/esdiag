@@ -282,7 +282,11 @@ impl ElasticsearchDiagnostic {
                             defaults_err,
                             settings_err
                         );
-                        ProcessorSummary::new(ClusterSettings::name())
+                        if missing_source_error(&defaults_err) && missing_source_error(&settings_err) {
+                            ProcessorSummary::missing(ClusterSettings::name())
+                        } else {
+                            ProcessorSummary::new(ClusterSettings::name())
+                        }
                     }
                 }
             }
@@ -311,7 +315,11 @@ impl ElasticsearchDiagnostic {
             }
             Err(err) => {
                 tracing::warn!("{}", err);
-                let summary = ProcessorSummary::new(T::name());
+                let summary = if missing_source_error(&err) {
+                    ProcessorSummary::missing(T::name())
+                } else {
+                    ProcessorSummary::new(T::name())
+                };
                 summary_tx.send(summary).await.map_err(|err| {
                     tracing::error!("Failed to send summary: {}", err);
                     eyre!(err)
@@ -353,6 +361,32 @@ impl ElasticsearchDiagnostic {
     }
 }
 
+pub(super) fn missing_source_error(err: &eyre::Report) -> bool {
+    if err
+        .downcast_ref::<std::io::Error>()
+        .is_some_and(|io_err| io_err.kind() == std::io::ErrorKind::NotFound)
+    {
+        return true;
+    }
+
+    err.to_string().starts_with("File not found in archive: ")
+}
+
+fn lookup_from_result<T, U>(result: Result<U>, label: &str) -> Lookup<T>
+where
+    T: Clone + Serialize,
+    Lookup<T>: From<U>,
+{
+    match result {
+        Ok(value) => Lookup::<T>::from_parsed(value),
+        Err(err) if missing_source_error(&err) => Lookup::missing(),
+        Err(err) => {
+            tracing::warn!("Failed to parse {}: {}", label, err);
+            Lookup::new()
+        }
+    }
+}
+
 impl DiagnosticProcessor for ElasticsearchDiagnostic {
     async fn try_new(
         receiver: Arc<Receiver>,
@@ -385,17 +419,20 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
         tracing::debug!("ElasticsearchDiagnostic::try_new built report");
 
         let lookups = Lookups {
-            alias: Lookup::from(receiver.get::<AliasList>().await),
-            data_stream: Lookup::from(receiver.get::<DataStreams>().await),
-            index_settings: Lookup::from(receiver.get::<IndicesSettings>().await),
-            node: Lookup::from(receiver.get::<Nodes>().await),
-            ilm_explain: Lookup::from(receiver.get::<IlmExplain>().await),
-            shared_cache: Lookup::from(receiver.get::<SearchableSnapshotsCacheStats>().await),
+            alias: lookup_from_result(receiver.get::<AliasList>().await, "AliasList"),
+            data_stream: lookup_from_result(receiver.get::<DataStreams>().await, "DataStreams"),
+            index_settings: lookup_from_result(receiver.get::<IndicesSettings>().await, "IndicesSettings"),
+            node: lookup_from_result(receiver.get::<Nodes>().await, "Nodes"),
+            ilm_explain: lookup_from_result(receiver.get::<IlmExplain>().await, "IlmExplain"),
+            shared_cache: lookup_from_result(
+                receiver.get::<SearchableSnapshotsCacheStats>().await,
+                "SearchableSnapshotsCacheStats",
+            ),
             mapping_stats: match receiver.get_stream::<MappingStats>().await {
                 Ok(stream) => Lookup::<MappingSummary>::from_stream(stream).await,
                 Err(e) => {
                     tracing::debug!("Streaming mappings failed: {}, falling back to full load", e);
-                    Lookup::from(receiver.get::<MappingStats>().await)
+                    lookup_from_result(receiver.get::<MappingStats>().await, "MappingStats")
                 }
             },
         };

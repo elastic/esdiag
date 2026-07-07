@@ -459,24 +459,11 @@ mod tests {
         exporter::Exporter,
     };
     use askama::Template;
-    use std::{collections::BTreeMap, path::PathBuf, sync::Mutex};
-    use tempfile::TempDir;
+    use std::{collections::BTreeMap, path::PathBuf};
     use url::Url;
 
-    fn env_lock() -> &'static Mutex<()> {
-        crate::test_env_lock()
-    }
-
-    fn setup_hosts() -> TempDir {
-        let tmp = TempDir::new().expect("temp dir");
-        let config_dir = tmp.path().join(".esdiag");
-        std::fs::create_dir_all(&config_dir).expect("create config dir");
-        let hosts_path = config_dir.join("hosts.yml");
-        unsafe {
-            std::env::set_var("HOME", tmp.path());
-            std::env::set_var("USERPROFILE", tmp.path());
-            std::env::set_var("ESDIAG_HOSTS", &hosts_path);
-        }
+    fn setup_hosts() -> crate::TestEnv {
+        let env = crate::TestEnv::new();
 
         let mut hosts = BTreeMap::new();
         hosts.insert(
@@ -502,12 +489,11 @@ mod tests {
             ),
         );
         KnownHost::write_hosts_yml(&hosts).expect("write hosts");
-        tmp
+        env
     }
 
     #[test]
     fn footer_context_prefers_live_cli_output_over_saved_host_override() {
-        let _guard = env_lock().lock().expect("env lock");
         let _tmp = setup_hosts();
         let send_hosts = vec!["localhost".to_string(), "secure-prod".to_string()];
         let exporter = Exporter::try_from(Uri::Directory(PathBuf::from("/tmp/output"))).expect("directory exporter");
@@ -529,7 +515,6 @@ mod tests {
 
     #[test]
     fn active_output_security_tracks_selected_host_or_matching_exporter() {
-        let _guard = env_lock().lock().expect("env lock");
         let _tmp = setup_hosts();
         let send_hosts = vec!["localhost".to_string(), "secure-prod".to_string()];
 

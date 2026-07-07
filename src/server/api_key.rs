@@ -227,36 +227,17 @@ mod tests {
         exporter::Exporter,
         server::{ApiKeyFormSignals, ServerEvent, test_server_state},
     };
-    use std::{collections::BTreeMap, sync::Mutex};
-    use tempfile::TempDir;
+    use std::collections::BTreeMap;
     use tokio::sync::mpsc;
     use url::Url;
 
-    fn env_lock() -> &'static Mutex<()> {
-        crate::test_env_lock()
-    }
-
-    fn setup_env() -> TempDir {
-        let tmp = TempDir::new().expect("temp dir");
-        let config_dir = tmp.path().join(".esdiag");
-        std::fs::create_dir_all(&config_dir).expect("create config dir");
-        let hosts_path = config_dir.join("hosts.yml");
-        let keystore_path = config_dir.join("secrets.yml");
-        let settings_path = config_dir.join("settings.yml");
-        unsafe {
-            std::env::set_var("HOME", tmp.path());
-            std::env::set_var("USERPROFILE", tmp.path());
-            std::env::set_var("ESDIAG_HOSTS", &hosts_path);
-            std::env::set_var("ESDIAG_KEYSTORE", &keystore_path);
-            std::env::set_var("ESDIAG_SETTINGS", &settings_path);
-        }
-        tmp
+    fn setup_env() -> crate::TestEnv {
+        crate::TestEnv::new()
     }
 
     #[tokio::test]
     #[allow(clippy::await_holding_lock)]
     async fn run_api_key_form_rejects_locked_secure_output_before_job_start() {
-        let _guard = env_lock().lock().expect("env lock");
         let _tmp = setup_env();
         authenticate("pw").expect("create keystore");
 

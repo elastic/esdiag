@@ -1742,15 +1742,14 @@ mod tests {
     #[cfg(feature = "server")]
     use esdiag::server::RuntimeMode;
     use std::sync::{
-        Mutex, OnceLock,
+        Mutex,
         atomic::{AtomicUsize, Ordering},
     };
     use tempfile::TempDir;
     use url::Url;
 
     fn env_lock() -> &'static Mutex<()> {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(()))
+        esdiag::test_env_lock()
     }
 
     fn setup_env() -> TempDir {

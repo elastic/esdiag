@@ -906,13 +906,9 @@ mod tests {
             .collect::<HashSet<_>>();
         assert_eq!(child_job_ids.len(), 2);
         for child in &completed.state.included_diagnostics {
-            // Real fixture bundles lack some selectable sources, so the child
-            // verdict is honestly Partial (missing sources are now recorded
-            // events, not silent warns) — but it produced documents
-            assert!(matches!(
-                child.outcome,
-                DiagnosticOutcome::Complete | DiagnosticOutcome::Partial
-            ));
+            // Fixture bundles may omit optional selectable sources; absence in
+            // an imported bundle is not a processing failure.
+            assert_eq!(child.outcome, DiagnosticOutcome::Complete);
             let report = child.report.as_ref().expect("completed child carries its report");
             assert_eq!(report.diagnostic.application, Some(Application::Elasticsearch));
             assert!(report.diagnostic.docs.created > 0);

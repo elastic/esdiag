@@ -480,29 +480,13 @@ mod tests {
     use std::{
         collections::{BTreeMap, HashMap},
         path::PathBuf,
-        sync::{Arc, Mutex},
+        sync::Arc,
     };
-    use tempfile::TempDir;
     use tokio::sync::{RwLock, broadcast, watch};
     use url::Url;
 
-    fn env_lock() -> &'static Mutex<()> {
-        crate::test_env_lock()
-    }
-
-    fn setup_env() -> (TempDir, PathBuf, PathBuf) {
-        let tmp = TempDir::new().expect("temp dir");
-        let config_dir = tmp.path().join(".esdiag");
-        std::fs::create_dir_all(&config_dir).expect("create config dir");
-        let hosts_path = config_dir.join("hosts.yml");
-        let keystore_path = config_dir.join("secrets.yml");
-        unsafe {
-            std::env::set_var("HOME", tmp.path());
-            std::env::set_var("USERPROFILE", tmp.path());
-            std::env::set_var("ESDIAG_HOSTS", &hosts_path);
-            std::env::set_var("ESDIAG_KEYSTORE", &keystore_path);
-        }
-        (tmp, hosts_path, keystore_path)
+    fn setup_env() -> crate::TestEnv {
+        crate::TestEnv::new()
     }
 
     fn write_hosts(hosts: BTreeMap<String, KnownHost>) {
@@ -530,8 +514,8 @@ mod tests {
 
     #[tokio::test]
     async fn unlock_is_idempotent_and_emits_signal_updates() {
-        let _guard = env_lock().lock().expect("env lock");
-        let (_tmp, _hosts_path, keystore_path) = setup_env();
+        let env = setup_env();
+        let keystore_path = env.keystore_path.clone();
         authenticate("pw").expect("create keystore");
         assert!(keystore_path.is_file(), "keystore should exist");
 
@@ -574,8 +558,7 @@ mod tests {
 
     #[tokio::test]
     async fn unlock_rejects_invalid_password_with_401_and_stays_locked() {
-        let _guard = env_lock().lock().expect("env lock");
-        let (_tmp, _hosts_path, _keystore_path) = setup_env();
+        let _tmp = setup_env();
         authenticate("pw").expect("create keystore");
 
         let state = test_server_state();
@@ -594,8 +577,8 @@ mod tests {
 
     #[tokio::test]
     async fn unlock_requires_existing_keystore() {
-        let _guard = env_lock().lock().expect("env lock");
-        let (_tmp, _hosts_path, keystore_path) = setup_env();
+        let env = setup_env();
+        let keystore_path = env.keystore_path.clone();
         assert!(!keystore_path.exists(), "keystore should start missing");
 
         let state = test_server_state();
@@ -613,8 +596,8 @@ mod tests {
 
     #[tokio::test]
     async fn unlock_missing_keystore_with_plaintext_hosts_prompts_migration() {
-        let _guard = env_lock().lock().expect("env lock");
-        let (_tmp, _hosts_path, keystore_path) = setup_env();
+        let env = setup_env();
+        let keystore_path = env.keystore_path.clone();
         assert!(!keystore_path.exists(), "keystore should start missing");
 
         let mut hosts = BTreeMap::new();
@@ -665,8 +648,8 @@ mod tests {
 
     #[tokio::test]
     async fn missing_keystore_unlock_modal_falls_back_to_bootstrap_modal() {
-        let _guard = env_lock().lock().expect("env lock");
-        let (_tmp, _hosts_path, keystore_path) = setup_env();
+        let env = setup_env();
+        let keystore_path = env.keystore_path.clone();
         assert!(!keystore_path.exists(), "keystore should start missing");
 
         let state = test_server_state();
@@ -686,8 +669,8 @@ mod tests {
 
     #[tokio::test]
     async fn missing_keystore_process_unlock_modal_falls_back_to_bootstrap_modal() {
-        let _guard = env_lock().lock().expect("env lock");
-        let (_tmp, _hosts_path, keystore_path) = setup_env();
+        let env = setup_env();
+        let keystore_path = env.keystore_path.clone();
         assert!(!keystore_path.exists(), "keystore should start missing");
 
         let state = test_server_state();
@@ -707,8 +690,9 @@ mod tests {
 
     #[tokio::test]
     async fn bootstrap_modal_uses_create_prompt_when_hosts_have_no_plaintext_secrets() {
-        let _guard = env_lock().lock().expect("env lock");
-        let (_tmp, hosts_path, keystore_path) = setup_env();
+        let env = setup_env();
+        let hosts_path = env.hosts_path.clone();
+        let keystore_path = env.keystore_path.clone();
         assert!(!keystore_path.exists(), "keystore should start missing");
         assert!(!hosts_path.exists(), "hosts file should start missing");
 
@@ -716,7 +700,7 @@ mod tests {
         let mut events = state.subscribe_events();
         let response = get_unlock_modal(State(state)).await;
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
-        assert!(hosts_path.is_file(), "hosts file should be created when inspected");
+        assert!(!hosts_path.exists(), "host inspection should not create hosts.yml");
 
         let event = events.recv().await.expect("bootstrap modal event");
         match event {
@@ -731,8 +715,8 @@ mod tests {
 
     #[tokio::test]
     async fn bootstrap_modal_uses_migrate_prompt_only_when_plaintext_secrets_exist() {
-        let _guard = env_lock().lock().expect("env lock");
-        let (_tmp, _hosts_path, keystore_path) = setup_env();
+        let env = setup_env();
+        let keystore_path = env.keystore_path.clone();
         assert!(!keystore_path.exists(), "keystore should start missing");
 
         let mut hosts = BTreeMap::new();
@@ -767,8 +751,8 @@ mod tests {
 
     #[tokio::test]
     async fn bootstrap_migrates_plaintext_hosts_into_new_keystore() {
-        let _guard = env_lock().lock().expect("env lock");
-        let (_tmp, _hosts_path, keystore_path) = setup_env();
+        let env = setup_env();
+        let keystore_path = env.keystore_path.clone();
         assert!(!keystore_path.exists(), "keystore should start missing");
 
         let mut hosts = BTreeMap::new();
@@ -809,8 +793,7 @@ mod tests {
 
     #[tokio::test]
     async fn lock_is_idempotent_and_preserves_locked_state() {
-        let _guard = env_lock().lock().expect("env lock");
-        let (_tmp, _hosts_path, _keystore_path) = setup_env();
+        let _tmp = setup_env();
         let state = test_server_state();
         state.set_keystore_unlocked("pw".to_string()).await;
 
@@ -825,8 +808,7 @@ mod tests {
 
     #[tokio::test]
     async fn keystore_lock_time_stays_stable_without_state_transition() {
-        let _guard = env_lock().lock().expect("env lock");
-        let (_tmp, _hosts_path, _keystore_path) = setup_env();
+        let _tmp = setup_env();
         let state = test_server_state();
 
         let first_status = state.keystore_status().await;
@@ -843,8 +825,7 @@ mod tests {
 
     #[tokio::test]
     async fn unlock_writes_file_based_lease() {
-        let _guard = env_lock().lock().expect("env lock");
-        let (_tmp, _hosts_path, _keystore_path) = setup_env();
+        let _tmp = setup_env();
         authenticate("pw").expect("create keystore");
 
         let state = test_server_state();
@@ -869,8 +850,7 @@ mod tests {
 
     #[tokio::test]
     async fn secure_output_requests_refresh_session_and_noauth_bypasses_unlock() {
-        let _guard = env_lock().lock().expect("env lock");
-        let (_tmp, _hosts_path, _keystore_path) = setup_env();
+        let _tmp = setup_env();
 
         let noauth_host = KnownHost::new_no_auth(
             crate::data::Product::Elasticsearch,
@@ -948,12 +928,9 @@ mod tests {
 
     #[tokio::test]
     async fn service_mode_secure_output_bypasses_unlock_and_does_not_touch_local_runtime_features() {
-        let _guard = env_lock().lock().expect("env lock");
-        let (tmp, hosts_path, _keystore_path) = setup_env();
-        let settings_path = tmp.path().join(".esdiag").join("settings.yml");
-        unsafe {
-            std::env::set_var("ESDIAG_SETTINGS", &settings_path);
-        }
+        let env = setup_env();
+        let hosts_path = env.hosts_path.clone();
+        let settings_path = env.settings_path.clone();
 
         let state = test_service_state();
         *state.exporter.write().await = crate::exporter::Exporter::try_from(KnownHost::new_legacy_apikey(
@@ -1012,8 +989,7 @@ mod tests {
 
     #[tokio::test]
     async fn unlock_empty_password_marks_field_invalid() {
-        let _guard = env_lock().lock().expect("env lock");
-        let (_tmp, _hosts_path, _keystore_path) = setup_env();
+        let _tmp = setup_env();
         authenticate("pw").expect("create keystore");
 
         let state = test_server_state();

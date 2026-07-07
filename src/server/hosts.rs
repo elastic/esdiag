@@ -1751,32 +1751,15 @@ mod tests {
     };
     use datastar::axum::ReadSignals;
     use serde_json::json;
-    use std::{collections::BTreeMap, sync::Mutex};
-    use tempfile::TempDir;
+    use std::collections::BTreeMap;
     use url::Url;
 
-    fn env_lock() -> &'static Mutex<()> {
-        crate::test_env_lock()
-    }
-
-    fn setup_env() -> TempDir {
-        let tmp = TempDir::new().expect("temp dir");
-        let config_dir = tmp.path().join(".esdiag");
-        std::fs::create_dir_all(&config_dir).expect("create config dir");
-        let hosts_path = config_dir.join("hosts.yml");
-        let keystore_path = config_dir.join("secrets.yml");
-        unsafe {
-            std::env::set_var("HOME", tmp.path());
-            std::env::set_var("USERPROFILE", tmp.path());
-            std::env::set_var("ESDIAG_HOSTS", &hosts_path);
-            std::env::set_var("ESDIAG_KEYSTORE", &keystore_path);
-        }
-        tmp
+    fn setup_env() -> crate::TestEnv {
+        crate::TestEnv::new()
     }
 
     #[tokio::test]
     async fn renaming_active_host_updates_settings_target() {
-        let _guard = env_lock().lock().expect("env lock");
         let _tmp = setup_env();
 
         let mut hosts = BTreeMap::new();
@@ -1823,12 +1806,9 @@ mod tests {
 
     #[tokio::test]
     async fn host_upsert_infers_auth_from_selected_secret() {
-        let _guard = env_lock().lock().expect("env lock");
-        let _tmp = setup_env();
+        let mut _tmp = setup_env();
         authenticate("pw").expect("create keystore");
-        unsafe {
-            std::env::set_var("ESDIAG_KEYSTORE_PASSWORD", "pw");
-        }
+        _tmp.set("ESDIAG_KEYSTORE_PASSWORD", "pw");
         upsert_secret_auth(
             "api-secret",
             SecretAuth::ApiKey {
@@ -1866,7 +1846,6 @@ mod tests {
 
     #[tokio::test]
     async fn host_upsert_persists_template_hosts_and_rejects_invalid_templates() {
-        let _guard = env_lock().lock().expect("env lock");
         let _tmp = setup_env();
         let state = test_server_state();
 
@@ -1980,7 +1959,6 @@ mod tests {
 
     #[tokio::test]
     async fn secret_cancel_after_lock_timeout_uses_draft_without_keystore_read() {
-        let _guard = env_lock().lock().expect("env lock");
         let _tmp = setup_env();
         authenticate("pw").expect("create keystore");
         upsert_secret_auth(
@@ -2037,7 +2015,6 @@ mod tests {
 
     #[tokio::test]
     async fn persisted_secret_row_delete_requires_secret_id_endpoint() {
-        let _guard = env_lock().lock().expect("env lock");
         let _tmp = setup_env();
         authenticate("pw").expect("create keystore");
         upsert_secret_auth(
@@ -2067,7 +2044,6 @@ mod tests {
 
     #[tokio::test]
     async fn delete_secret_by_id_removes_matching_secret() {
-        let _guard = env_lock().lock().expect("env lock");
         let _tmp = setup_env();
         authenticate("pw").expect("create keystore");
         upsert_secret_auth(
@@ -2091,7 +2067,6 @@ mod tests {
 
     #[tokio::test]
     async fn delete_secret_by_id_returns_reference_error_patch_when_secret_is_in_use() {
-        let _guard = env_lock().lock().expect("env lock");
         let _tmp = setup_env();
         authenticate("pw").expect("create keystore");
         upsert_secret_auth(
@@ -2141,7 +2116,6 @@ mod tests {
 
     #[test]
     fn paired_send_and_view_hosts_render_as_diagnostic_cluster_rows() {
-        let _guard = env_lock().lock().expect("env lock");
         let _tmp = setup_env();
 
         let mut hosts = BTreeMap::new();
@@ -2195,7 +2169,6 @@ mod tests {
 
     #[tokio::test]
     async fn renaming_active_cluster_updates_both_hosts_and_settings_target() {
-        let _guard = env_lock().lock().expect("env lock");
         let _tmp = setup_env();
 
         let mut hosts = BTreeMap::new();
@@ -2259,12 +2232,9 @@ mod tests {
 
     #[test]
     fn rendered_secret_rows_expose_metadata_but_not_persisted_secret_values() {
-        let _guard = env_lock().lock().expect("env lock");
-        let _tmp = setup_env();
+        let mut _tmp = setup_env();
         authenticate("pw").expect("create keystore");
-        unsafe {
-            std::env::set_var("ESDIAG_KEYSTORE_PASSWORD", "pw");
-        }
+        _tmp.set("ESDIAG_KEYSTORE_PASSWORD", "pw");
         upsert_secret_auth(
             "api-secret",
             SecretAuth::ApiKey {

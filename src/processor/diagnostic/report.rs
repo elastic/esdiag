@@ -503,7 +503,10 @@ impl DiagnosticReport {
         // Drain the summary's recorded events into the persisted report and
         // record this source's verdict as an event (ADR-0016).
         self.diagnostic.events.append(&mut summary.events);
-        if !summary.source.parsed {
+        if summary.source.missing {
+            // Source was not present in an imported bundle; that is not a
+            // processing failure and should not affect the derived outcome.
+        } else if !summary.source.parsed {
             self.diagnostic.processor.errors += 1;
             self.diagnostic.processor.failures.push(summary.index.clone());
             self.diagnostic.events.push(DiagnosticEvent::error(
@@ -536,7 +539,10 @@ impl DiagnosticReport {
     where
         T: Clone + Serialize,
     {
-        if !lookup.parsed && !self.diagnostic.lookup.failures.iter().any(|f| f == name) {
+        if lookup.missing {
+            // Optional lookup source was absent from an imported bundle; this
+            // should not affect the derived diagnostic outcome.
+        } else if !lookup.parsed && !self.diagnostic.lookup.failures.iter().any(|f| f == name) {
             self.diagnostic.lookup.errors += 1;
             self.diagnostic.lookup.failures.push(name.to_string());
             self.diagnostic
@@ -819,6 +825,8 @@ impl BatchStats {
 #[derive(Serialize, Clone)]
 pub struct Source {
     pub parsed: bool,
+    #[serde(skip_serializing_if = "is_false")]
+    pub missing: bool,
 }
 
 impl std::fmt::Display for Source {
@@ -834,6 +842,10 @@ impl Source {
     }
 }
 
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
 impl ProcessorSummary {
     pub fn new(name: String) -> Self {
         Self {
@@ -847,9 +859,22 @@ impl ProcessorSummary {
             docs: 0,
             doc_errors: 0,
             processor: name,
-            source: Source { parsed: false },
+            source: Source {
+                parsed: false,
+                missing: false,
+            },
             children: Vec::new(),
             events: Vec::new(),
+        }
+    }
+
+    pub fn missing(name: String) -> Self {
+        Self {
+            source: Source {
+                parsed: false,
+                missing: true,
+            },
+            ..Self::new(name)
         }
     }
 
@@ -881,7 +906,10 @@ impl ProcessorSummary {
     }
 
     pub fn was_parsed(mut self) -> Self {
-        self.source = Source { parsed: true };
+        self.source = Source {
+            parsed: true,
+            missing: false,
+        };
         self.children = self.children.into_iter().map(ProcessorSummary::was_parsed).collect();
         self
     }
@@ -1062,6 +1090,40 @@ user: ada
         assert_eq!(summary.events.len(), 2);
         assert!(summary.events.iter().all(|e| e.severity == EventSeverity::Error));
         assert!(summary.events.iter().any(|e| e.reason.contains("boom")));
+    }
+
+    #[test]
+    fn missing_source_summary_does_not_change_outcome() {
+        let metadata = DiagnosticMetadata {
+            id: "test".to_string(),
+            collection_date: 0,
+            runner: "test".to_string(),
+            uuid: "test".to_string(),
+        };
+        let mut report =
+            DiagnosticReport::try_from(DiagnosticReportBuilder::from(metadata).receiver("file path".to_string()))
+                .unwrap();
+
+        let mut parsed = ProcessorSummary::new("metrics-nodes-esdiag".to_string());
+        let mut batch = BatchResponse::new(2);
+        batch.status_code = 200;
+        parsed.add_batch(batch);
+        report.add_processor_summary(parsed.was_parsed());
+        report.add_processor_summary(ProcessorSummary::missing("metrics-tasks-esdiag".to_string()));
+
+        assert_eq!(report.outcome(), DiagnosticOutcome::Complete);
+        assert_eq!(report.diagnostic.processor.errors(), 0);
+        assert_eq!(report.diagnostic.events.len(), 1);
+        assert!(
+            report
+                .diagnostic
+                .processor
+                .stats()
+                .get("metrics-tasks-esdiag")
+                .expect("missing source summary")
+                .source
+                .missing
+        );
     }
 
     #[test]
