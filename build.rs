@@ -89,8 +89,7 @@ fn main() {
 
     #[cfg(feature = "desktop")]
     {
-        let manifest_dir =
-            env::var("CARGO_MANIFEST_DIR").expect("missing CARGO_MANIFEST_DIR for desktop build");
+        let manifest_dir = env::var("CARGO_MANIFEST_DIR").expect("missing CARGO_MANIFEST_DIR for desktop build");
         let manifest_path = Path::new(&manifest_dir);
         let desktop_dir = manifest_path.join("desktop");
 

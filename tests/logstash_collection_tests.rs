@@ -174,10 +174,7 @@ fn run_external_logstash_collect_test(
     ];
 
     if let Some(apikey) = &config.apikey {
-        let secret = run_esdiag(
-            &["keystore", "add", &secret_id, "--apikey", apikey],
-            &test_home,
-        );
+        let secret = run_esdiag(&["keystore", "add", &secret_id, "--apikey", apikey], &test_home);
         assert_success(&secret, &format!("{env_prefix} api key secret setup"));
         host_args.push("--secret".to_string());
         host_args.push(secret_id.clone());
@@ -240,9 +237,7 @@ fn run_external_logstash_collect_test(
     assert_eq!(manifest["product"].as_str(), Some("logstash"));
     assert_eq!(manifest["mode"].as_str(), Some("support"));
 
-    let requested_apis = manifest["requested_apis"]
-        .as_object()
-        .expect("requested_apis object");
+    let requested_apis = manifest["requested_apis"].as_object().expect("requested_apis object");
     let api_names: Vec<&str> = requested_apis.keys().map(String::as_str).collect();
     for required in [
         "logstash_node",
@@ -266,8 +261,14 @@ fn run_external_logstash_collect_test(
             .get(required)
             .and_then(|value| value["response_size_bytes"].as_u64());
         assert!(retries.is_some(), "{env_prefix} missing retries for {required}");
-        assert!(response_time_ms.is_some(), "{env_prefix} missing response time for {required}");
-        assert!(response_size_bytes.is_some(), "{env_prefix} missing response size for {required}");
+        assert!(
+            response_time_ms.is_some(),
+            "{env_prefix} missing response time for {required}"
+        );
+        assert!(
+            response_size_bytes.is_some(),
+            "{env_prefix} missing response size for {required}"
+        );
     }
     assert_eq!(
         api_names.contains(&"logstash_health_report"),
