@@ -7,7 +7,7 @@ use super::{
     job_feed_event, replace_job_event, signal_event, template, template_event,
 };
 use crate::{
-    data::{HostRole, Product, Uri},
+    data::{Application, HostRole, Product, Uri},
     exporter::Exporter,
     processor::{
         Collector, Identifiers, IncludedDiagnosticJobEvent, Processor,
@@ -612,6 +612,7 @@ async fn render_child_diagnostic_events(
                 path,
                 application,
                 platform,
+                kind: _kind,
                 reason,
             } => {
                 let source = child_source(&path);
@@ -890,7 +891,7 @@ fn validate_remote_send_uri(uri: &Uri) -> Result<()> {
         if !host.has_role(HostRole::Send) {
             return Err(eyre!("Remote known-host send targets must have the `send` role"));
         }
-        if host.app() != &Product::Elasticsearch {
+        if host.app() != Some(Application::Elasticsearch) {
             return Err(eyre!("Remote known-host send targets must be Elasticsearch hosts"));
         }
     }
@@ -918,7 +919,7 @@ async fn collect_remote_archive(
     let collector = Collector::try_new(
         receiver,
         exporter,
-        host.app().clone(),
+        collect_product(host.app())?,
         diagnostic_type.to_string(),
         None,
         None,
@@ -942,6 +943,20 @@ async fn collect_remote_archive(
             cleanup_path,
         },
     })
+}
+
+fn collect_product(app: Option<Application>) -> Result<Product> {
+    match app {
+        Some(application @ (Application::Elasticsearch | Application::Kibana | Application::Logstash)) => {
+            Ok(Product::from(application))
+        }
+        Some(Application::Agent) => Err(eyre!(
+            "Collect is out of scope by design for Elastic Agent. Elastic Agent provides its own diagnostic bundle; use `read`/Load instead."
+        )),
+        None => Err(eyre!(
+            "Collect is out of scope by design for platform diagnostics. Load the platform-generated bundle with `read`/Load instead."
+        )),
+    }
 }
 
 async fn collect_service_link_archive(

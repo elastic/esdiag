@@ -14,7 +14,7 @@ mod file;
 mod stream;
 
 use crate::{
-    data::{KnownHost, Product, Uri},
+    data::{Application, KnownHost, Uri},
     processor::{BatchResponse, DiagnosticReport, ProcessorSummary},
 };
 pub use archive::ArchiveExporter;
@@ -379,8 +379,8 @@ impl TryFrom<KnownHost> for Exporter {
     type Error = eyre::Report;
     fn try_from(host: KnownHost) -> std::result::Result<Self, Self::Error> {
         match host.app() {
-            Product::Elasticsearch => Ok(Exporter::Elasticsearch(ElasticsearchExporter::try_from(host)?)),
-            _ => Err(eyre!("Unsupported product")),
+            Some(Application::Elasticsearch) => Ok(Exporter::Elasticsearch(ElasticsearchExporter::try_from(host)?)),
+            _ => Err(eyre!("Export requires an Elasticsearch application host")),
         }
     }
 }
@@ -399,7 +399,7 @@ fn saved_viewer_kibana_base_url(host: &KnownHost) -> Option<String> {
         }
     };
 
-    if !viewer_host.has_role(crate::data::HostRole::View) || viewer_host.app() != &Product::Kibana {
+    if !viewer_host.has_role(crate::data::HostRole::View) || viewer_host.app() != Some(Application::Kibana) {
         tracing::warn!(
             "Output host viewer '{}' is not a valid Kibana view target; falling back to environment Kibana URL",
             viewer_name

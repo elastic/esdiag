@@ -1,7 +1,7 @@
 use super::{ServerState, get_theme_dark, template};
 use crate::data::{
-    HostRole, KnownHost, KnownHostBuilder, Product, SecretAuth, Settings, keystore_exists, list_secret_entries,
-    remove_secret, resolve_secret_auth, upsert_secret_auth,
+    Application, HostRole, KnownHost, KnownHostBuilder, Product, SecretAuth, Settings, keystore_exists,
+    list_secret_entries, remove_secret, resolve_secret_auth, upsert_secret_auth,
 };
 use askama::Template;
 use axum::{
@@ -738,7 +738,10 @@ fn host_row_from_known_host(name: String, host: KnownHost) -> template::HostsTab
     let mut row = template::HostsTableRow {
         name,
         auth: "none".to_string(),
-        app: host.app().to_string(),
+        app: host
+            .app()
+            .map(|app| app.to_string())
+            .unwrap_or_else(|| "None".to_string()),
         url: host.transport_display(),
         url_template: host.is_template(),
         roles: host
@@ -767,7 +770,7 @@ fn diagnostic_cluster_row(
     host: &KnownHost,
     hosts: &BTreeMap<String, KnownHost>,
 ) -> Option<template::DiagnosticClusterTableRow> {
-    if host.app() != &Product::Elasticsearch || !host.has_role(HostRole::Send) {
+    if host.app() != Some(Application::Elasticsearch) || !host.has_role(HostRole::Send) {
         return None;
     }
 
@@ -776,7 +779,7 @@ fn diagnostic_cluster_row(
         return None;
     }
     let kibana_host = hosts.get(&kibana_name)?;
-    if kibana_host.app() != &Product::Kibana || !kibana_host.has_role(HostRole::View) {
+    if kibana_host.app() != Some(Application::Kibana) || !kibana_host.has_role(HostRole::View) {
         return None;
     }
 
@@ -1145,7 +1148,7 @@ async fn apply_upsert_host(state: &Arc<ServerState>, form: HostUpsertForm) -> Re
         return Err("Host URL or URL template is required.".to_string());
     }
     let use_url_template = form.url_template.is_some();
-    let app = parse_product(form.app.trim())?;
+    let app = parse_application(form.app.trim())?;
     let roles = parse_roles(&form.roles)?;
     let viewer = to_opt(form.viewer);
     let secret = to_opt(form.secret);
@@ -1158,10 +1161,12 @@ async fn apply_upsert_host(state: &Arc<ServerState>, form: HostUpsertForm) -> Re
         let url = Url::parse(target).map_err(|err| format!("Invalid URL: {err}"))?;
         KnownHostBuilder::new(url)
     }
-    .product(app)
     .accept_invalid_certs(accept_invalid_certs)
     .roles(roles)
     .viewer(viewer);
+    if let Some(app) = app {
+        builder = builder.application(app);
+    }
     let host = match auth.as_str() {
         "none" => builder.build().map_err(to_message)?,
         "apikey" | "basic" | "secret" => {
@@ -1675,14 +1680,14 @@ fn parse_roles(value: &str) -> Result<Vec<HostRole>, String> {
     }
 }
 
-fn parse_product(value: &str) -> Result<Product, String> {
+fn parse_application(value: &str) -> Result<Option<Application>, String> {
     let normalized = value.trim().to_ascii_lowercase();
-    let mapped = match normalized.as_str() {
-        "elasticcloudhosted" => "elastic-cloud-hosted",
-        "kubernetesplatform" => "mki",
-        other => other,
-    };
-    Product::from_str(mapped).map_err(|err| format!("Invalid product: {err}"))
+    if normalized.is_empty() || normalized == "none" {
+        return Ok(None);
+    }
+    Application::from_str(&normalized)
+        .map(Some)
+        .map_err(|err| format!("Invalid application: {err}"))
 }
 
 async fn infer_auth_from_secret_selection(
@@ -1969,7 +1974,7 @@ mod tests {
         assert!(editing_html.contains("class=\"switch\""));
         assert!(editing_html.contains("Template URL"));
         assert!(editing_html.contains("Concrete URL"));
-        assert!(editing_html.contains(r#"<option value="Unknown""#));
+        assert!(editing_html.contains(r#"<option value="None""#));
 
         let template_readonly_html = render_host_row(1, &template_row, &[], false, false, true);
         let concrete_readonly_html = render_host_row(2, &concrete_row, &[], false, false, true);

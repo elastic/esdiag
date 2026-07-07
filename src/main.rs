@@ -12,10 +12,11 @@ use esdiag::setup;
 use esdiag::{
     client::Client,
     data::{
-        HostRole, KnownHost, KnownHostBuilder, KnownHostCliUpdate, Product, SecretAuth, Settings, Uri, add_secret,
-        clear_unlock_lease, create_keystore, default_unlock_ttl, get_keystore_path, get_password_for_secret_commands,
-        get_unlock_status, keystore_exists, parse_unlock_ttl, remove_secret, resolve_secret_auth,
-        rotate_keystore_password, update_secret, validate_existing_keystore_password, write_unlock_lease,
+        Application, HostRole, KnownHost, KnownHostBuilder, KnownHostCliUpdate, Product, SecretAuth, Settings, Uri,
+        add_secret, clear_unlock_lease, create_keystore, default_unlock_ttl, get_keystore_path,
+        get_password_for_secret_commands, get_unlock_status, keystore_exists, parse_unlock_ttl, remove_secret,
+        resolve_secret_auth, rotate_keystore_password, update_secret, validate_existing_keystore_password,
+        write_unlock_lease,
     },
     env::LOG_LEVEL,
     exporter::Exporter,
@@ -244,7 +245,7 @@ enum HostCommands {
         target: String,
         /// Application of this host when the target cannot infer it
         #[arg(help = "Application of this host when the target cannot infer it", long)]
-        app: Option<Product>,
+        app: Option<Application>,
         /// Treat <target> as a saved host URL template instead of a concrete URL
         #[arg(help = "Persist <target> as a saved host URL template", long, action = ArgAction::SetTrue)]
         url_template: bool,
@@ -588,12 +589,13 @@ fn format_process_summary(completed: &Completed) -> String {
                 path,
                 application,
                 platform,
+                kind,
                 reason,
                 ..
             } => {
                 let product = esdiag::processor::display_label(*application, *platform);
                 summary.push_str(&format!(
-                    "\n\nincluded diagnostic skipped: {path} ({product})\nReason: {reason}"
+                    "\n\nincluded diagnostic skipped: {path} ({product})\nKind: {kind}\nReason: {reason}"
                 ));
             }
             IncludedDiagnosticOutcome::Failed { path, error, .. } => {
@@ -684,7 +686,7 @@ async fn run(cli: Cli) -> Result<CommandResult> {
                 match known_host {
                     Uri::KnownHost(host) | Uri::ElasticCloudAdmin(host) | Uri::ElasticGovCloudAdmin(host) => {
                         ensure_host_role(&host, HostRole::Collect, "collect")?;
-                        let product = host.app().clone();
+                        let product = collect_product(host.app())?;
                         if let Some(sources) = sources {
                             esdiag::processor::init_sources(sources_product_key(&product)?, sources)?;
                         }
@@ -1213,15 +1215,32 @@ async fn upload_collected_archive(file_path: PathBuf, upload_id: String) -> Resu
 fn sources_product_key(product: &Product) -> Result<&'static str> {
     esdiag::processor::diagnostic::data_source::source_product_key(product).map_err(|_| {
         eyre!(
-            "--sources is only supported for Elasticsearch and Logstash inputs, got {}",
+            "--sources is only supported for Elasticsearch, Kibana, and Logstash inputs, got {}",
             product
         )
     })
 }
 
+fn collect_product(app: Option<Application>) -> Result<Product> {
+    match app {
+        Some(application @ (Application::Elasticsearch | Application::Kibana | Application::Logstash)) => {
+            Ok(Product::from(application))
+        }
+        Some(Application::Agent) => Err(eyre!(
+            "Collect is out of scope by design for Elastic Agent. Elastic Agent provides its own diagnostic bundle; use `read`/Load instead."
+        )),
+        None => Err(eyre!(
+            "Collect is out of scope by design for platform diagnostics. Load the platform-generated bundle with `read`/Load instead."
+        )),
+    }
+}
+
 async fn detect_sources_product_for_process(input_uri: &Uri, receiver: &Receiver) -> Result<Product> {
     match input_uri {
-        Uri::KnownHost(host) | Uri::ElasticCloudAdmin(host) | Uri::ElasticGovCloudAdmin(host) => Ok(host.app().clone()),
+        Uri::KnownHost(host) | Uri::ElasticCloudAdmin(host) | Uri::ElasticGovCloudAdmin(host) => host
+            .app()
+            .map(Product::from)
+            .ok_or_else(|| eyre!("--sources is only supported for application diagnostics")),
         _ => Ok(receiver.try_get_manifest_from_files().await?.product),
     }
 }
@@ -1274,11 +1293,11 @@ fn build_host_cli_update(args: HostMutationArgs) -> KnownHostCliUpdate {
     args.into()
 }
 
-fn infer_product_from_url(url: &Url) -> Option<Product> {
+fn infer_product_from_url(url: &Url) -> Option<Application> {
     match url.port_or_known_default() {
-        Some(9200) => Some(Product::Elasticsearch),
-        Some(5601) => Some(Product::Kibana),
-        Some(9600) => Some(Product::Logstash),
+        Some(9200) => Some(Application::Elasticsearch),
+        Some(5601) => Some(Application::Kibana),
+        Some(9600) => Some(Application::Logstash),
         _ => {
             let mut segments = url.path_segments()?.filter(|segment| !segment.is_empty());
             if matches!(segments.next(), Some("api"))
@@ -1286,7 +1305,7 @@ fn infer_product_from_url(url: &Url) -> Option<Product> {
                 && matches!(segments.next(), Some("deployments"))
             {
                 let _deployment_id = segments.next()?;
-                return Product::from_str(segments.next()?).ok();
+                return Application::from_str(segments.next()?).ok();
             }
             None
         }
@@ -1294,7 +1313,7 @@ fn infer_product_from_url(url: &Url) -> Option<Product> {
 }
 
 fn build_host_from_definition(
-    app: Option<Product>,
+    app: Option<Application>,
     target: &str,
     use_url_template: bool,
     update: &KnownHostCliUpdate,
@@ -1306,10 +1325,9 @@ fn build_host_from_definition(
         let url = Url::parse(target).map_err(|err| eyre!("Invalid host target URL: {err}"))?;
         let inferred_app = infer_product_from_url(&url);
         let app = app
-            .clone()
             .or(inferred_app)
             .ok_or_else(|| eyre!("Target '{target}' does not determine the app. Rerun with `--app <app>`."))?;
-        KnownHostBuilder::new(url).product(app)
+        KnownHostBuilder::new(url).application(app)
     }
     .accept_invalid_certs(update.accept_invalid_certs.unwrap_or(false))
     .apikey(update.apikey.clone())
@@ -1317,7 +1335,7 @@ fn build_host_from_definition(
     .password(update.password.clone())
     .secret(update.secret.clone());
     if let Some(app) = app {
-        builder = builder.product(app);
+        builder = builder.application(app);
     }
     if let Some(roles) = update.roles.clone() {
         builder = builder.roles(roles);
@@ -2403,6 +2421,7 @@ mod tests {
                     path: "child-kibana".to_string(),
                     application: Some(esdiag::data::Application::Kibana),
                     platform: esdiag::data::Platform::ECK,
+                    kind: esdiag::processor::SkipKind::NotImplemented,
                     reason: "Kibana processing is not yet implemented".to_string(),
                 },
                 IncludedDiagnosticOutcome::Failed {

@@ -54,6 +54,21 @@ const KIBANA_PROCESSING_NOT_IMPLEMENTED: &str = "Kibana processing is not yet im
 const UNSUPPORTED_PRODUCT_OR_DIAGNOSTIC_BUNDLE: &str = "Unsupported product or diagnostic bundle";
 static NEXT_JOB_ID: AtomicU64 = AtomicU64::new(1);
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SkipKind {
+    ByDesign,
+    NotImplemented,
+}
+
+impl std::fmt::Display for SkipKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::ByDesign => write!(f, "by-design"),
+            Self::NotImplemented => write!(f, "not-implemented"),
+        }
+    }
+}
+
 pub struct Processor<S: State> {
     receiver: Arc<Receiver>,
     exporter: Arc<Exporter>,
@@ -114,6 +129,7 @@ pub enum IncludedDiagnosticOutcome {
         path: String,
         application: Option<Application>,
         platform: Platform,
+        kind: SkipKind,
         reason: String,
     },
     Failed {
@@ -162,6 +178,7 @@ pub enum IncludedDiagnosticJobEvent {
         path: String,
         application: Option<Application>,
         platform: Platform,
+        kind: SkipKind,
         reason: String,
     },
     Failed {
@@ -270,6 +287,7 @@ fn spawn_sub_processors(
                         path,
                         application,
                         platform,
+                        kind: skip_kind_for(&failed.state.error),
                         reason: failed.state.error,
                     };
                     send_child_outcome_event(&event_tx, &outcome);
@@ -342,12 +360,14 @@ fn send_child_outcome_event(
             path,
             application,
             platform,
+            kind,
             reason,
         } => IncludedDiagnosticJobEvent::Skipped {
             job_id: *job_id,
             path: path.clone(),
             application: *application,
             platform: *platform,
+            kind: *kind,
             reason: reason.clone(),
         },
         IncludedDiagnosticOutcome::Failed { job_id, path, error } => IncludedDiagnosticJobEvent::Failed {
@@ -392,6 +412,13 @@ fn is_unsupported_child_processor(error: &str) -> bool {
         error,
         KIBANA_PROCESSING_NOT_IMPLEMENTED | UNSUPPORTED_PRODUCT_OR_DIAGNOSTIC_BUNDLE
     )
+}
+
+fn skip_kind_for(error: &str) -> SkipKind {
+    match error {
+        KIBANA_PROCESSING_NOT_IMPLEMENTED | UNSUPPORTED_PRODUCT_OR_DIAGNOSTIC_BUNDLE => SkipKind::NotImplemented,
+        _ => SkipKind::ByDesign,
+    }
 }
 
 impl Processor<Ready> {
@@ -924,6 +951,7 @@ mod tests {
         let IncludedDiagnosticOutcome::Skipped {
             application,
             platform,
+            kind,
             reason,
             ..
         } = &completed.state.included_diagnostics[0]
@@ -932,6 +960,7 @@ mod tests {
         };
         assert_eq!(*application, Some(Application::Kibana));
         assert_eq!(*platform, Platform::ECK);
+        assert_eq!(*kind, SkipKind::NotImplemented);
         assert!(reason.contains("Kibana processing is not yet implemented"));
     }
 

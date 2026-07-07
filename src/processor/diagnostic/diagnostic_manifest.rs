@@ -381,6 +381,15 @@ mod tests {
     }
 
     #[test]
+    fn ece_manifest_carries_no_application_or_included_diagnostics() {
+        let manifest = manifest_with(Product::ECE, Some("diagnostic"), Some("ece"));
+
+        assert_eq!(manifest.platform(), Platform::ECE);
+        assert_eq!(manifest.application(), None);
+        assert!(manifest.included_diagnostics.is_none());
+    }
+
+    #[test]
     fn set_platform_overrides_detection_and_wins_for_children() {
         let mut manifest = manifest_with(Product::Elasticsearch, Some("api"), Some("unknown"));
         manifest.set_platform(Platform::ECK);
