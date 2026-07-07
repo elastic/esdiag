@@ -126,7 +126,12 @@ pub(super) async fn run_known_host_form(
         Err(e) => {
             let error_message = format!("Failed to resolve host URL: {}", e);
             state
-                .reject_retained_bundle(&download_token, &request_user, error_message.clone(), DOWNLOAD_REJECTION_TTL)
+                .reject_retained_bundle(
+                    &download_token,
+                    &request_user,
+                    error_message.clone(),
+                    DOWNLOAD_REJECTION_TTL,
+                )
                 .await;
             state.record_failure().await;
             send_event(

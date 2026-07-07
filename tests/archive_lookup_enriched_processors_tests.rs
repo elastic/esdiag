@@ -101,7 +101,13 @@ fn read_required_lookup_docs(output_dir: &Path, file_name: &str, archive: &Path)
     }
 }
 
-fn find_required_doc<'a, P>(docs: &'a [Value], archive: &Path, stream: &str, description: &str, predicate: P) -> &'a Value
+fn find_required_doc<'a, P>(
+    docs: &'a [Value],
+    archive: &Path,
+    stream: &str,
+    description: &str,
+    predicate: P,
+) -> &'a Value
 where
     P: Fn(&Value) -> bool,
 {
@@ -328,7 +334,8 @@ fn test_archive_index_settings_lookup_enrichment_for_index_metrics() {
                     && doc["index"]["number_of_replicas"].is_number()
                     && doc["index"]["refresh_interval"].is_string()
             };
-            if metrics_index_docs.iter().any(has_index_settings_lookup) || archive_requires_lookup_enrichment(&archive) {
+            if metrics_index_docs.iter().any(has_index_settings_lookup) || archive_requires_lookup_enrichment(&archive)
+            {
                 let metrics_index_doc = find_required_doc(
                     &metrics_index_docs,
                     &archive,
@@ -349,7 +356,8 @@ fn test_archive_index_settings_lookup_enrichment_for_index_metrics() {
                     && doc["index"]["number_of_replicas"].is_number()
                     && doc["index"]["refresh_interval"].is_string()
             };
-            if metrics_shard_docs.iter().any(has_index_settings_lookup) || archive_requires_lookup_enrichment(&archive) {
+            if metrics_shard_docs.iter().any(has_index_settings_lookup) || archive_requires_lookup_enrichment(&archive)
+            {
                 let metrics_shard_doc = find_required_doc(
                     &metrics_shard_docs,
                     &archive,

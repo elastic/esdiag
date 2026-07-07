@@ -683,10 +683,13 @@ mod tests {
             let (socket, _) = listener.accept().await.expect("accept connection");
             drop(socket);
         });
-        let error = reqwest::Client::new().get(url).send().await.expect_err("request should fail");
+        let error = reqwest::Client::new()
+            .get(url)
+            .send()
+            .await
+            .expect_err("request should fail");
         close_connection.await.expect("connection close task should finish");
-        let sync_error =
-            eyre::Report::from(kibana_sync::Error::Transport(error)).wrap_err("Failed to send request");
+        let sync_error = eyre::Report::from(kibana_sync::Error::Transport(error)).wrap_err("Failed to send request");
 
         assert!(should_retry_kibana_error(&sync_error));
     }
