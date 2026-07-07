@@ -75,7 +75,7 @@ pub async fn execute(job: Job) -> Result<JobOutcome> {
                     let collector = Collector::try_new(
                         receiver,
                         collect_exporter,
-                        product,
+                        product.clone(),
                         diagnostic_type.clone(),
                         include.clone(),
                         exclude.clone(),
@@ -87,11 +87,18 @@ pub async fn execute(job: Job) -> Result<JobOutcome> {
                     tracing::info!("Collected bundle: {}", bundle_path.display());
 
                     if let Some(process) = job.process() {
+                        let selection = collect_process_selection(
+                            &product,
+                            diagnostic_type,
+                            include.as_ref(),
+                            exclude.as_ref(),
+                            process,
+                        )?;
                         run_process(
                             Receiver::try_from(Uri::File(bundle_path.clone()))?,
                             process,
                             job.identifiers.clone(),
-                            None,
+                            selection,
                         )
                         .await?;
                         outcome.processed = true;
@@ -112,7 +119,7 @@ pub async fn execute(job: Job) -> Result<JobOutcome> {
                         .process()
                         .ok_or_else(|| eyre!("streaming job without process (unreachable by construction)"))?;
                     let product = host.app().clone();
-                    let selection = streaming_process_selection(
+                    let selection = collect_process_selection(
                         &product,
                         diagnostic_type,
                         include.as_ref(),
@@ -179,7 +186,7 @@ async fn run_process(
     }
 }
 
-fn streaming_process_selection(
+fn collect_process_selection(
     product: &Product,
     diagnostic_type: &str,
     include: Option<&Vec<String>>,

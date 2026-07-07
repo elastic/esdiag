@@ -4,7 +4,7 @@ use crate::processor::diagnostic::data_source::{
 use eyre::{Result, eyre};
 use indexmap::IndexSet;
 use serde::Serialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DiagnosticType {
@@ -375,9 +375,10 @@ impl ApiResolver {
             _ => return Err(eyre!("Unsupported processing product: {}", product)),
         };
         let defs = Self::processing_defs(product)?;
+        let processing_keys: HashSet<&str> = defs.iter().map(|def| def.key.as_str()).collect();
         let selected: Vec<String> = collected
             .into_iter()
-            .filter(|key| defs.iter().any(|def| def.key == *key))
+            .filter(|key| processing_keys.contains(key.as_str()))
             .collect();
 
         Self::resolve_processing_selection(product, diagnostic_type, &selected)
