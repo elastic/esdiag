@@ -20,8 +20,7 @@ use esdiag::{
     env::LOG_LEVEL,
     exporter::Exporter,
     processor::{
-        CollectionResult, Collector, Completed, Identifiers, IncludedDiagnosticOutcome, Processor,
-        default_collect_archive_name,
+        CollectionResult, Collector, Completed, DiagnosticOutcome, Identifiers, Processor, default_collect_archive_name,
     },
     receiver::Receiver,
     uploader,
@@ -559,7 +558,8 @@ fn emit_completion_summary(summary: &str) -> Result<()> {
 fn format_process_summary(completed: &Completed) -> String {
     let report = &completed.report;
     let mut summary = format!(
-        "process complete in {:.3} seconds: {} documents for {}",
+        "process {} in {:.3} seconds: {} documents for {}",
+        report.outcome(),
         completed.runtime as f64 / 1000.0,
         report.diagnostic.docs.created,
         report.diagnostic.metadata.id
@@ -567,41 +567,59 @@ fn format_process_summary(completed: &Completed) -> String {
     if let Some(kibana_link) = report.diagnostic.kibana_link.as_deref() {
         summary.push_str(&format!("\nKibana Link: {kibana_link}"));
     }
-    for outcome in &completed.included_diagnostics {
-        match outcome {
-            IncludedDiagnosticOutcome::Completed {
-                path, report, runtime, ..
-            } => {
+    summary.push_str(&format_report_events(report));
+    for child in &completed.included_diagnostics {
+        match (&child.outcome, &child.report) {
+            (DiagnosticOutcome::Skipped(_), _) => {
+                let product = esdiag::processor::display_label(child.application, child.platform);
                 summary.push_str(&format!(
-                    "\n\nincluded diagnostic complete in {:.3} seconds: {} documents for {} ({})",
-                    *runtime as f64 / 1000.0,
+                    "\n\nincluded diagnostic {}: {} ({product})\nReason: {}",
+                    child.outcome,
+                    child.path,
+                    child.reason.as_deref().unwrap_or_default()
+                ));
+            }
+            (_, Some(report)) => {
+                summary.push_str(&format!(
+                    "\n\nincluded diagnostic {} in {:.3} seconds: {} documents for {} ({})",
+                    child.outcome,
+                    child.runtime.unwrap_or_default() as f64 / 1000.0,
                     report.diagnostic.docs.created,
                     report.diagnostic.metadata.id,
                     report.diagnostic.display_label()
                 ));
-                summary.push_str(&format!("\nSource: {path}"));
+                summary.push_str(&format!("\nSource: {}", child.path));
                 if let Some(kibana_link) = report.diagnostic.kibana_link.as_deref() {
                     summary.push_str(&format!("\nKibana Link: {kibana_link}"));
                 }
+                summary.push_str(&format_report_events(report));
             }
-            IncludedDiagnosticOutcome::Skipped {
-                path,
-                application,
-                platform,
-                reason,
-                ..
-            } => {
-                let product = esdiag::processor::display_label(*application, *platform);
+            (_, None) => {
                 summary.push_str(&format!(
-                    "\n\nincluded diagnostic skipped: {path} ({product})\nReason: {reason}"
+                    "\n\nincluded diagnostic failed: {}\nError: {}",
+                    child.path,
+                    child.reason.as_deref().unwrap_or_default()
                 ));
-            }
-            IncludedDiagnosticOutcome::Failed { path, error, .. } => {
-                summary.push_str(&format!("\n\nincluded diagnostic failed: {path}\nError: {error}"));
             }
         }
     }
     summary
+}
+
+/// Render the report's recorded error/warning events (source + reason) — the
+/// persisted record, not tracing logs (ADR-0016). Success events are elided
+/// from the CLI summary to keep it scannable.
+fn format_report_events(report: &esdiag::processor::DiagnosticReport) -> String {
+    let mut rendered = String::new();
+    for event in &report.diagnostic.events {
+        match event.severity {
+            esdiag::processor::EventSeverity::Success => {}
+            severity => {
+                rendered.push_str(&format!("\n  [{severity:?}] {}: {}", event.source, event.reason));
+            }
+        }
+    }
+    rendered
 }
 
 fn format_collect_summary(result: &CollectionResult) -> String {
@@ -982,6 +1000,11 @@ async fn run(cli: Cli) -> Result<CommandResult> {
                 match processor.process().await {
                     Ok(processor) => {
                         let summary = format_process_summary(&processor.state);
+                        // The exit code reads the single derived outcome
+                        // (ADR-0016): a Failed report is a failed command.
+                        if processor.state.report.outcome() == DiagnosticOutcome::Failed {
+                            return Err(eyre!("{summary}"));
+                        }
                         Ok(CommandResult::with_summary("process", summary))
                     }
                     Err(processor) => {
@@ -1712,7 +1735,10 @@ mod tests {
     use clap::Parser;
     use esdiag::data::{HostRole, JobAction, KnownHost, Product, SecretAuth, UnlockStatus, Uri, upsert_secret_auth};
     use esdiag::processor::diagnostic::DiagnosticReportBuilder;
-    use esdiag::processor::{CollectionResult, Completed, DiagnosticManifest, Identifiers, IncludedDiagnosticOutcome};
+    use esdiag::processor::{
+        CollectionResult, Completed, DiagnosticManifest, DiagnosticOutcome, Identifiers, IncludedDiagnosticOutcome,
+        SkipKind,
+    };
     #[cfg(feature = "server")]
     use esdiag::server::RuntimeMode;
     use std::sync::{
@@ -2392,23 +2418,35 @@ mod tests {
             report: parent_report,
             runtime: 2_000,
             included_diagnostics: vec![
-                IncludedDiagnosticOutcome::Completed {
+                IncludedDiagnosticOutcome {
                     job_id: 1,
                     path: "child-es".to_string(),
-                    report: Box::new(child_report),
-                    runtime: 500,
+                    outcome: child_report.outcome(),
+                    application: child_report.diagnostic.application,
+                    platform: child_report.diagnostic.platform(),
+                    report: Some(Box::new(child_report)),
+                    reason: None,
+                    runtime: Some(500),
                 },
-                IncludedDiagnosticOutcome::Skipped {
+                IncludedDiagnosticOutcome {
                     job_id: 2,
                     path: "child-kibana".to_string(),
+                    outcome: DiagnosticOutcome::Skipped(SkipKind::NotImplemented),
+                    report: None,
                     application: Some(esdiag::data::Application::Kibana),
                     platform: esdiag::data::Platform::ECK,
-                    reason: "Kibana processing is not yet implemented".to_string(),
+                    reason: Some("Kibana processing is not yet implemented".to_string()),
+                    runtime: None,
                 },
-                IncludedDiagnosticOutcome::Failed {
+                IncludedDiagnosticOutcome {
                     job_id: 3,
                     path: "child-missing".to_string(),
-                    error: "manifest missing".to_string(),
+                    outcome: DiagnosticOutcome::Failed,
+                    report: None,
+                    application: None,
+                    platform: esdiag::data::Platform::Unknown,
+                    reason: Some("manifest missing".to_string()),
+                    runtime: None,
                 },
             ],
         };
@@ -2418,7 +2456,7 @@ mod tests {
         assert!(summary.contains("included diagnostic complete in 0.500 seconds: 42 documents"));
         assert!(summary.contains("child-es"));
         assert!(summary.contains("https://kb.example/app/dashboards#/view/child"));
-        assert!(summary.contains("included diagnostic skipped: child-kibana (Kibana)"));
+        assert!(summary.contains("included diagnostic skipped (not implemented): child-kibana (Kibana)"));
         assert!(summary.contains("included diagnostic failed: child-missing"));
     }
 

@@ -17,6 +17,9 @@ pub struct DiagnosticReportBuilder {
     application: Option<Application>,
     metadata: DiagnosticMetadata,
     origin: Option<Origin>,
+    /// Collection-stage events carried in from the manifest's per-request
+    /// record — collection failures persist in the report, not only in logs.
+    collection_events: Vec<DiagnosticEvent>,
 }
 
 impl DiagnosticReportBuilder {
@@ -54,6 +57,7 @@ impl From<DiagnosticMetadata> for DiagnosticReportBuilder {
             processors: HashMap::new(),
             application: None,
             origin: None,
+            collection_events: Vec::new(),
         }
     }
 }
@@ -63,6 +67,24 @@ impl TryFrom<DiagnosticManifest> for DiagnosticReportBuilder {
 
     fn try_from(manifest: DiagnosticManifest) -> Result<Self> {
         let application = manifest.application();
+        // Collection failures recorded at collect time persist as report
+        // events (ADR-0016): a non-2xx request is a warning with its source.
+        let collection_events = manifest
+            .requested_apis
+            .as_ref()
+            .map(|apis| {
+                apis.iter()
+                    .filter(|(_, api)| !api.status.is_some_and(|status| (200..300).contains(&status)))
+                    .map(|(name, api)| {
+                        let reason = match api.status {
+                            Some(status) => format!("collection failed with HTTP {status}"),
+                            None => "collection failed without an HTTP response".to_string(),
+                        };
+                        DiagnosticEvent::warning(name.clone(), reason)
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
         let metadata = DiagnosticMetadata::try_from(manifest)?;
         Ok(Self {
             cluster: None,
@@ -70,6 +92,7 @@ impl TryFrom<DiagnosticManifest> for DiagnosticReportBuilder {
             processors: HashMap::new(),
             application,
             origin: None,
+            collection_events,
         })
     }
 }
@@ -202,6 +225,114 @@ fn normalize_identifier(value: Option<String>) -> Option<String> {
     })
 }
 
+/// The verdict of a diagnostic — one type for any diagnostic, parent or
+/// child (ADR-0016). Derived from the report's recorded events, never set
+/// imperatively; `Skipped` is constructed only where a diagnostic is
+/// rejected before a report exists.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DiagnosticOutcome {
+    /// Everything selected was captured and processed.
+    Complete,
+    /// The common real case: some sources captured or exported, some failed.
+    Partial,
+    /// Nothing was produced.
+    Failed,
+    /// The diagnostic was not processed at all.
+    Skipped(SkipKind),
+}
+
+/// Why a diagnostic was skipped (ADR-0019): deliberately out of scope, or
+/// simply not implemented yet.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SkipKind {
+    ByDesign,
+    NotImplemented,
+}
+
+impl DiagnosticOutcome {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Complete => "complete",
+            Self::Partial => "partial",
+            Self::Failed => "failed",
+            Self::Skipped(_) => "skipped",
+        }
+    }
+
+    pub fn skip_kind(&self) -> Option<SkipKind> {
+        match self {
+            Self::Skipped(kind) => Some(*kind),
+            _ => None,
+        }
+    }
+}
+
+impl std::fmt::Display for DiagnosticOutcome {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Skipped(SkipKind::ByDesign) => write!(f, "skipped (by design)"),
+            Self::Skipped(SkipKind::NotImplemented) => write!(f, "skipped (not implemented)"),
+            other => write!(f, "{}", other.as_str()),
+        }
+    }
+}
+
+impl Serialize for DiagnosticOutcome {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+/// Severity of a recorded diagnostic event.
+#[derive(Serialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum EventSeverity {
+    Error,
+    Warning,
+    Success,
+}
+
+/// One recorded event in a diagnostic's report: what happened, to which
+/// source, and why. Failures are collected here, never dropped to logs
+/// (ADR-0016). Events are source-grained (one per data source / processor /
+/// exporter batch class), not per document.
+#[derive(Serialize, Clone, Debug)]
+pub struct DiagnosticEvent {
+    pub severity: EventSeverity,
+    /// The data source / processor / exporter the event pertains to.
+    pub source: String,
+    pub reason: String,
+}
+
+impl DiagnosticEvent {
+    pub fn error(source: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self {
+            severity: EventSeverity::Error,
+            source: source.into(),
+            reason: reason.into(),
+        }
+    }
+
+    pub fn warning(source: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self {
+            severity: EventSeverity::Warning,
+            source: source.into(),
+            reason: reason.into(),
+        }
+    }
+
+    pub fn success(source: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self {
+            severity: EventSeverity::Success,
+            source: source.into(),
+            reason: reason.into(),
+        }
+    }
+}
+
 #[derive(Serialize, Clone)]
 #[serde(untagged)]
 pub enum License {
@@ -240,6 +371,32 @@ pub struct DiagnosticStats {
     #[serde(flatten)]
     pub identifiers: Identifiers,
     pub processing_duration: u128,
+    /// All recorded error/warning/success events (source + reason) — the
+    /// persisted record failures land in, never only a log line (ADR-0016).
+    pub events: Vec<DiagnosticEvent>,
+    /// The derived verdict; kept equal to `derive_outcome(&events, &docs)` by
+    /// construction (recomputed whenever events/doc counts change).
+    pub outcome: DiagnosticOutcome,
+}
+
+/// Derive the diagnostic outcome from the recorded events and document
+/// counts (ADR-0016): this is the only way an outcome is computed. Any error
+/// with nothing produced is `Failed`; any error/warning or rejected document
+/// alongside produced output is `Partial`; otherwise `Complete`. (`Skipped`
+/// is constructed only where a diagnostic is rejected before a report
+/// exists — a skip records no report at all.)
+pub fn derive_outcome(events: &[DiagnosticEvent], docs: &Docs) -> DiagnosticOutcome {
+    let has_error = events.iter().any(|event| event.severity == EventSeverity::Error);
+    let has_warning = events.iter().any(|event| event.severity == EventSeverity::Warning);
+    let produced = docs.created > 0 || events.iter().any(|event| event.severity == EventSeverity::Success);
+
+    if has_error && !produced {
+        DiagnosticOutcome::Failed
+    } else if has_error || has_warning || docs.errors > 0 {
+        DiagnosticOutcome::Partial
+    } else {
+        DiagnosticOutcome::Complete
+    }
 }
 
 impl DiagnosticStats {
@@ -247,6 +404,10 @@ impl DiagnosticStats {
     /// construction: unresolved provenance is `Unknown`.
     pub fn platform(&self) -> Platform {
         self.identifiers.platform.unwrap_or_default()
+    }
+
+    fn refresh_outcome(&mut self) {
+        self.outcome = derive_outcome(&self.events, &self.docs);
     }
 
     /// Display label per ADR-0001: the application when present, else the
@@ -262,6 +423,18 @@ impl DiagnosticStats {
 impl DiagnosticReport {
     pub fn add_kibana_link(&mut self, link: String) {
         self.diagnostic.kibana_link = Some(link);
+    }
+
+    /// Record an event (source + reason) in the persisted report and keep the
+    /// derived outcome in sync.
+    pub fn record_event(&mut self, event: DiagnosticEvent) {
+        self.diagnostic.events.push(event);
+        self.diagnostic.refresh_outcome();
+    }
+
+    /// The derived verdict of this diagnostic.
+    pub fn outcome(&self) -> DiagnosticOutcome {
+        self.diagnostic.outcome
     }
 
     pub fn add_identifiers(&mut self, identifiers: Identifiers) {
@@ -326,15 +499,37 @@ impl DiagnosticReport {
         }
     }
 
-    fn add_single_processor_summary(&mut self, summary: ProcessorSummary) {
+    fn add_single_processor_summary(&mut self, mut summary: ProcessorSummary) {
+        // Drain the summary's recorded events into the persisted report and
+        // record this source's verdict as an event (ADR-0016).
+        self.diagnostic.events.append(&mut summary.events);
         if !summary.source.parsed {
             self.diagnostic.processor.errors += 1;
             self.diagnostic.processor.failures.push(summary.index.clone());
+            self.diagnostic.events.push(DiagnosticEvent::error(
+                summary.processor.clone(),
+                "source could not be read or parsed".to_string(),
+            ));
+        } else if summary.doc_errors > 0 {
+            self.diagnostic.events.push(DiagnosticEvent::warning(
+                summary.processor.clone(),
+                format!(
+                    "{} of {} documents rejected",
+                    summary.doc_errors,
+                    summary.docs + summary.doc_errors
+                ),
+            ));
+        } else {
+            self.diagnostic.events.push(DiagnosticEvent::success(
+                summary.processor.clone(),
+                format!("{} documents exported", summary.docs),
+            ));
         }
         self.diagnostic.docs.created += summary.docs;
         self.diagnostic.docs.errors += summary.doc_errors;
         self.diagnostic.docs.total += summary.docs + summary.doc_errors;
         self.diagnostic.processor.push(summary.processor.clone(), summary);
+        self.diagnostic.refresh_outcome();
     }
 
     pub fn add_lookup<T>(&mut self, name: &str, lookup: &Lookup<T>)
@@ -344,6 +539,10 @@ impl DiagnosticReport {
         if !lookup.parsed && !self.diagnostic.lookup.failures.iter().any(|f| f == name) {
             self.diagnostic.lookup.errors += 1;
             self.diagnostic.lookup.failures.push(name.to_string());
+            self.diagnostic
+                .events
+                .push(DiagnosticEvent::warning(name.to_string(), "lookup could not be parsed"));
+            self.diagnostic.refresh_outcome();
         }
 
         self.diagnostic.lookup.push(
@@ -392,6 +591,15 @@ impl TryFrom<DiagnosticReportBuilder> for DiagnosticReport {
                 kibana_link: None,
                 identifiers: Identifiers::default(),
                 processing_duration: 0,
+                outcome: derive_outcome(
+                    &builder.collection_events,
+                    &Docs {
+                        created: 0,
+                        errors: 0,
+                        total: 0,
+                    },
+                ),
+                events: builder.collection_events,
             },
         })
     }
@@ -438,6 +646,12 @@ impl BatchResponse {
         }
     }
 
+    /// Request status recorded when an HTTP exporter's request never
+    /// completed (connection failure, serialization error). Status `0` is
+    /// reserved exclusively for non-HTTP exporters (ADR-0016), so HTTP
+    /// failures without a response use this sentinel instead.
+    pub const HTTP_REQUEST_NOT_COMPLETED: u16 = 599;
+
     pub fn failed(failed_doc_count: u32, status_code: u16) -> Self {
         Self {
             batch_count: 1,
@@ -459,11 +673,20 @@ impl BatchResponse {
         self.retries = self.retries.saturating_add(other.retries);
         self.size = self.size.saturating_add(other.size);
         self.time = self.time.saturating_add(other.time);
+        // The scalar code is the transport verdict; `status_counts` is
+        // authoritative for document outcomes. Mixed HTTP request codes are
+        // never collapsed to 0 — 0 is reserved for non-HTTP exporters
+        // (ADR-0016). A mixed aggregate keeps the most severe request code.
         self.status_code = match (self.status_code, other.status_code) {
             (0, status) if was_empty => status,
             (status, 0) if other.errors == 0 => status,
             (left, right) if left == right => left,
-            _ => 0,
+            (left, right) => match (left >= 400, right >= 400) {
+                (true, true) => left.max(right),
+                (true, false) => left,
+                (false, true) => right,
+                (false, false) => left.max(right),
+            },
         };
         self.merge_status_counts(&other);
     }
@@ -515,6 +738,10 @@ pub struct ProcessorSummary {
     pub source: Source,
     #[serde(skip_serializing)]
     children: Vec<ProcessorSummary>,
+    /// Events recorded while producing this summary; drained into the
+    /// diagnostic report's event log (ADR-0016).
+    #[serde(skip_serializing)]
+    events: Vec<DiagnosticEvent>,
 }
 
 impl ProcessorSummary {
@@ -524,9 +751,13 @@ impl ProcessorSummary {
                 self.batch.merge(other.batch);
                 self.docs = self.docs.saturating_add(other.docs);
                 self.doc_errors = self.doc_errors.saturating_add(other.doc_errors);
+                self.events.extend(other.events);
             }
             Err(err) => {
-                tracing::warn!("processor summary was err: {}", err);
+                // A whole-source failure is a recorded event, never only a
+                // log line (ADR-0016).
+                self.events
+                    .push(DiagnosticEvent::error(self.processor.clone(), err.to_string()));
             }
         }
     }
@@ -535,7 +766,8 @@ impl ProcessorSummary {
         match other {
             Ok(other) => self.children.push(other),
             Err(err) => {
-                tracing::warn!("processor summary was err: {}", err);
+                self.events
+                    .push(DiagnosticEvent::error(self.processor.clone(), err.to_string()));
             }
         }
     }
@@ -617,6 +849,7 @@ impl ProcessorSummary {
             processor: name,
             source: Source { parsed: false },
             children: Vec::new(),
+            events: Vec::new(),
         }
     }
 
@@ -756,6 +989,108 @@ user: ada
         assert_eq!(identifiers.account, None);
         assert_eq!(identifiers.case_number, None);
         assert_eq!(identifiers.user.as_deref(), Some("ada"));
+    }
+
+    #[test]
+    fn outcome_derives_complete_from_all_success_events() {
+        let events = vec![DiagnosticEvent::success("nodes", "5 documents exported")];
+        let docs = Docs {
+            created: 5,
+            errors: 0,
+            total: 5,
+        };
+        assert_eq!(derive_outcome(&events, &docs), DiagnosticOutcome::Complete);
+    }
+
+    #[test]
+    fn outcome_derives_partial_from_a_failure_alongside_output() {
+        let events = vec![
+            DiagnosticEvent::success("nodes", "5 documents exported"),
+            DiagnosticEvent::error("tasks", "source could not be read or parsed"),
+        ];
+        let docs = Docs {
+            created: 5,
+            errors: 0,
+            total: 5,
+        };
+        assert_eq!(derive_outcome(&events, &docs), DiagnosticOutcome::Partial);
+    }
+
+    #[test]
+    fn outcome_derives_partial_from_rejected_documents() {
+        // A 200 request with per-doc rejections is Partial: the per-doc
+        // histogram is authoritative, not the transport code (ADR-0016)
+        let events = vec![DiagnosticEvent::warning("nodes", "2 of 7 documents rejected")];
+        let docs = Docs {
+            created: 5,
+            errors: 2,
+            total: 7,
+        };
+        assert_eq!(derive_outcome(&events, &docs), DiagnosticOutcome::Partial);
+    }
+
+    #[test]
+    fn outcome_derives_failed_from_total_failure() {
+        let events = vec![
+            DiagnosticEvent::error("nodes", "connection refused"),
+            DiagnosticEvent::error("tasks", "connection refused"),
+        ];
+        let docs = Docs {
+            created: 0,
+            errors: 0,
+            total: 0,
+        };
+        assert_eq!(derive_outcome(&events, &docs), DiagnosticOutcome::Failed);
+    }
+
+    #[test]
+    fn skipped_outcome_distinguishes_by_design_from_not_implemented() {
+        let by_design = DiagnosticOutcome::Skipped(SkipKind::ByDesign);
+        let wip = DiagnosticOutcome::Skipped(SkipKind::NotImplemented);
+        assert_eq!(by_design.as_str(), "skipped");
+        assert_eq!(by_design.to_string(), "skipped (by design)");
+        assert_eq!(wip.to_string(), "skipped (not implemented)");
+        assert_eq!(by_design.skip_kind(), Some(SkipKind::ByDesign));
+    }
+
+    #[test]
+    fn merged_err_records_a_failure_event_not_a_dropped_log() {
+        let mut summary = ProcessorSummary::new("metrics-nodes-esdiag".to_string());
+        summary.merge(Err(eyre!("boom")));
+        summary.add_child(Err(eyre!("child boom")));
+
+        assert_eq!(summary.events.len(), 2);
+        assert!(summary.events.iter().all(|e| e.severity == EventSeverity::Error));
+        assert!(summary.events.iter().any(|e| e.reason.contains("boom")));
+    }
+
+    #[test]
+    fn mixed_http_request_codes_are_not_collapsed_to_zero() {
+        let mut aggregate = BatchResponse::aggregate();
+        let mut ok = BatchResponse::new(5);
+        ok.status_code = 200;
+        let mut rejected = BatchResponse::failed(2, 429);
+        rejected.status_code = 429;
+        aggregate.merge(ok);
+        aggregate.merge(rejected);
+
+        // The most severe request code wins; 0 is reserved for non-HTTP
+        // exporters (ADR-0016)
+        assert_eq!(aggregate.status_code, 429);
+        assert!(aggregate.status_counts.contains_key(&200));
+        assert!(aggregate.status_counts.contains_key(&429));
+    }
+
+    #[test]
+    fn non_http_exporter_status_stays_zero() {
+        let mut aggregate = BatchResponse::aggregate();
+        let mut local_a = BatchResponse::new(5);
+        local_a.status_code = 0;
+        let mut local_b = BatchResponse::new(3);
+        local_b.status_code = 0;
+        aggregate.merge(local_a);
+        aggregate.merge(local_b);
+        assert_eq!(aggregate.status_code, 0);
     }
 
     #[test]

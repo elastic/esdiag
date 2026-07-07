@@ -526,6 +526,7 @@ async fn run_processor_job(ctx: ProcessorJobContext<'_>) -> Result<()> {
                         source: job.source,
                         kibana_link: report.diagnostic.kibana_link.as_deref().unwrap_or(""),
                         product: &report.diagnostic.display_label(),
+                        outcome: &report.outcome().to_string(),
                     },
                 ),
             )
@@ -579,6 +580,7 @@ async fn render_child_diagnostic_events(
             IncludedDiagnosticJobEvent::Completed {
                 job_id,
                 path,
+                outcome,
                 application,
                 platform,
                 diagnostic_id,
@@ -602,6 +604,7 @@ async fn render_child_diagnostic_events(
                             source: &source,
                             kibana_link: &kibana_link,
                             product: &product,
+                            outcome: &outcome.to_string(),
                         },
                     ),
                 )
@@ -610,6 +613,7 @@ async fn render_child_diagnostic_events(
             IncludedDiagnosticJobEvent::Skipped {
                 job_id,
                 path,
+                outcome: _,
                 application,
                 platform,
                 reason,

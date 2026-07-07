@@ -5,7 +5,7 @@
 use super::{ApiKeyRequest, ServerState, UploadServiceRequest};
 use crate::{
     data::{KnownHostBuilder, Uri},
-    processor::{Completed, IncludedDiagnosticOutcome, Processor, new_job_id},
+    processor::{Completed, DiagnosticOutcome, Processor, new_job_id},
     receiver::Receiver,
 };
 use axum::{
@@ -440,6 +440,7 @@ fn diagnostic_result_entries(completed: &Completed) -> Value {
     let report = &completed.report;
     let mut entries = vec![json!({
         "status": "success",
+        "outcome": report.outcome().as_str(),
         "diagnostic_id": report.diagnostic.metadata.id,
         "kibana_link": report.diagnostic.kibana_link.as_deref().unwrap_or(""),
         "took": runtime_millis(completed.runtime),
@@ -447,39 +448,36 @@ fn diagnostic_result_entries(completed: &Completed) -> Value {
         "source": "parent"
     })];
 
-    for outcome in &completed.included_diagnostics {
-        match outcome {
-            IncludedDiagnosticOutcome::Completed {
-                path, report, runtime, ..
-            } => entries.push(json!({
+    for child in &completed.included_diagnostics {
+        // Children carry the unified DiagnosticOutcome (ADR-0016)
+        let entry = match (&child.outcome, &child.report) {
+            (DiagnosticOutcome::Skipped(_), _) => json!({
+                "status": "info",
+                "outcome": child.outcome.as_str(),
+                "product": crate::processor::display_label(child.application, child.platform),
+                "source": "included_diagnostic",
+                "path": child.path,
+                "reason": child.reason.as_deref().unwrap_or_default()
+            }),
+            (_, Some(report)) => json!({
                 "status": "success",
+                "outcome": child.outcome.as_str(),
                 "diagnostic_id": report.diagnostic.metadata.id,
                 "kibana_link": report.diagnostic.kibana_link.as_deref().unwrap_or(""),
-                "took": runtime_millis(*runtime),
+                "took": runtime_millis(child.runtime.unwrap_or_default()),
                 "product": report.diagnostic.display_label(),
                 "source": "included_diagnostic",
-                "path": path
-            })),
-            IncludedDiagnosticOutcome::Skipped {
-                path,
-                application,
-                platform,
-                reason,
-                ..
-            } => entries.push(json!({
-                "status": "info",
-                "product": crate::processor::display_label(*application, *platform),
-                "source": "included_diagnostic",
-                "path": path,
-                "reason": reason
-            })),
-            IncludedDiagnosticOutcome::Failed { path, error, .. } => entries.push(json!({
+                "path": child.path
+            }),
+            (_, None) => json!({
                 "status": "failed",
+                "outcome": child.outcome.as_str(),
                 "source": "included_diagnostic",
-                "path": path,
-                "error": error
-            })),
-        }
+                "path": child.path,
+                "error": child.reason.as_deref().unwrap_or_default()
+            }),
+        };
+        entries.push(entry);
     }
 
     Value::Array(entries)
@@ -494,7 +492,10 @@ mod tests {
     use super::{diagnostic_result_entries, runtime_millis};
     use crate::{
         data::{Application, Platform, Product},
-        processor::{Completed, DiagnosticManifest, IncludedDiagnosticOutcome, diagnostic::DiagnosticReportBuilder},
+        processor::{
+            Completed, DiagnosticManifest, DiagnosticOutcome, IncludedDiagnosticOutcome, SkipKind,
+            diagnostic::DiagnosticReportBuilder,
+        },
     };
 
     fn report(product: Product, id_type: &str) -> crate::processor::DiagnosticReport {
@@ -524,23 +525,35 @@ mod tests {
             report: report(Product::ECK, "eck-diagnostics"),
             runtime: 1_000,
             included_diagnostics: vec![
-                IncludedDiagnosticOutcome::Completed {
+                IncludedDiagnosticOutcome {
                     job_id: 11,
                     path: "child-es".to_string(),
-                    report: Box::new(child_report),
-                    runtime: 500,
+                    outcome: child_report.outcome(),
+                    application: child_report.diagnostic.application,
+                    platform: child_report.diagnostic.platform(),
+                    report: Some(Box::new(child_report)),
+                    reason: None,
+                    runtime: Some(500),
                 },
-                IncludedDiagnosticOutcome::Skipped {
+                IncludedDiagnosticOutcome {
                     job_id: 12,
                     path: "child-kibana".to_string(),
+                    outcome: DiagnosticOutcome::Skipped(SkipKind::NotImplemented),
+                    report: None,
                     application: Some(Application::Kibana),
                     platform: Platform::ECK,
-                    reason: "Kibana processing is not yet implemented".to_string(),
+                    reason: Some("Kibana processing is not yet implemented".to_string()),
+                    runtime: None,
                 },
-                IncludedDiagnosticOutcome::Failed {
+                IncludedDiagnosticOutcome {
                     job_id: 13,
                     path: "child-missing".to_string(),
-                    error: "manifest missing".to_string(),
+                    outcome: DiagnosticOutcome::Failed,
+                    report: None,
+                    application: None,
+                    platform: Platform::Unknown,
+                    reason: Some("manifest missing".to_string()),
+                    runtime: None,
                 },
             ],
         };

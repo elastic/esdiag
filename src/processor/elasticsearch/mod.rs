@@ -35,6 +35,9 @@ mod pending_tasks;
 /// The `_searchable_snapshots_cache/stats` API
 mod searchable_snapshots_cache_stats;
 /// The `_searchable_snapshots/stats` API
+// Collect-only today (registry entry without `processable`); the typed
+// structs remain for a future processing implementation.
+#[allow(dead_code)]
 mod searchable_snapshots_stats;
 /// The `_slm/policy` API
 mod slm_policies;
@@ -87,7 +90,6 @@ use {
     nodes_stats::NodesStats,
     pending_tasks::PendingTasks,
     searchable_snapshots_cache_stats::{SearchableSnapshotsCacheStats, SharedCacheStats},
-    searchable_snapshots_stats::SearchableSnapshotsStats,
     slm_policies::SlmPolicies,
     snapshots::{Repositories, Snapshots},
     tasks::Tasks,

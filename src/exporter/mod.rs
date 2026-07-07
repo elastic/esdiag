@@ -122,7 +122,7 @@ impl Exporter {
                     Ok(batch_rx) => batch_receivers.push(batch_rx),
                     Err(err) => {
                         tracing::warn!("Failed to send document batch: {}", err);
-                        summary.add_batch(BatchResponse::failed(doc_count, 0));
+                        summary.add_batch(BatchResponse::failed(doc_count, self.failed_request_status()));
                     }
                 }
             }
@@ -135,7 +135,7 @@ impl Exporter {
                 Ok(batch_rx) => batch_receivers.push(batch_rx),
                 Err(err) => {
                     tracing::warn!("Failed to send final document batch: {}", err);
-                    summary.add_batch(BatchResponse::failed(doc_count, 0));
+                    summary.add_batch(BatchResponse::failed(doc_count, self.failed_request_status()));
                 }
             }
         }
@@ -182,8 +182,18 @@ impl Exporter {
             Ok(response) => Ok(response),
             Err(err) => {
                 tracing::warn!("Failed to send document batch: {}", err);
-                Ok(BatchResponse::failed(doc_count, 0))
+                Ok(BatchResponse::failed(doc_count, self.failed_request_status()))
             }
+        }
+    }
+
+    /// The request status recorded when this exporter fails without a
+    /// response: HTTP exporters use the 599 sentinel; status `0` is reserved
+    /// for non-HTTP exporters (file, stream, directory) — ADR-0016.
+    fn failed_request_status(&self) -> u16 {
+        match self {
+            Exporter::Elasticsearch(_) => BatchResponse::HTTP_REQUEST_NOT_COMPLETED,
+            _ => 0,
         }
     }
 
