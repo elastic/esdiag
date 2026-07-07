@@ -2,7 +2,7 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use super::resolve_archive_path;
+use super::{normalize_supported_content, normalize_supported_reader_to_temp, resolve_archive_path, supports_json_normalization};
 use crate::{
     processor::{DataSource, SourceContext, StreamingDataSource},
     receiver::{RawResponse, Receive, ReceiveMultiple, ReceiveRaw},
@@ -28,6 +28,7 @@ pub struct ArchiveFileReceiver {
     subdir: Option<PathBuf>,
     modified_date: SystemTime,
     source_product: Arc<OnceLock<&'static str>>,
+    scrubbed: bool,
 }
 
 impl TryFrom<PathBuf> for ArchiveFileReceiver {
@@ -47,6 +48,7 @@ impl TryFrom<PathBuf> for ArchiveFileReceiver {
                     filename,
                     subdir: None,
                     source_product: Arc::new(OnceLock::new()),
+                    scrubbed: false,
                 })
             }
             false => {
@@ -90,10 +92,29 @@ impl Receive for ArchiveFileReceiver {
         for source_path in source_paths {
             match resolve_archive_path(self.subdir.as_ref(), &mut *archive, &source_path) {
                 Ok(filename) => {
-                    tracing::debug!("Reading {}", filename);
+                    if self.scrubbed {
+                        tracing::debug!("Reading {} (scrubbed mode)", filename);
+                    } else {
+                        tracing::debug!("Reading {}", filename);
+                    }
                     let file = archive.by_name(&filename)?;
-                    let reader = BufReader::new(file);
-                    let data: T = serde_json::from_reader(reader)?;
+                    let data: T = if self.scrubbed && supports_json_normalization(&filename) {
+                        let reader = BufReader::new(file);
+                        let mut transformed = normalize_supported_reader_to_temp(&filename, reader)?;
+                        tracing::debug!(
+                            "Unscrubbed {} address fields in {}",
+                            transformed.transformed_fields,
+                            filename
+                        );
+                        let reader = BufReader::new(transformed.file.as_file_mut());
+                        serde_json::from_reader(reader)?
+                    } else {
+                        if self.scrubbed {
+                            tracing::debug!("Scrubbed mode read {} (no normalization rules)", filename);
+                        }
+                        let reader = BufReader::new(file);
+                        serde_json::from_reader(reader)?
+                    };
                     return Ok(data);
                 }
                 Err(e) => {
@@ -115,7 +136,7 @@ impl Receive for ArchiveFileReceiver {
         T::Item: DeserializeOwned + Send + 'static,
     {
         let ctx = self.source_context()?;
-        super::get_stream_from_archive::<File, T>(self.archive.clone(), self.subdir.clone(), ctx).await
+        super::get_stream_from_archive::<File, T>(self.archive.clone(), self.subdir.clone(), ctx, self.scrubbed).await
     }
 }
 
@@ -139,14 +160,33 @@ impl ReceiveRaw for ArchiveFileReceiver {
         for source_path in source_paths {
             match resolve_archive_path(self.subdir.as_ref(), &mut *archive, &source_path) {
                 Ok(filename) => {
-                    tracing::debug!("Reading {}", filename);
+                    if self.scrubbed {
+                        tracing::debug!("Reading {} (scrubbed mode)", filename);
+                    } else {
+                        tracing::debug!("Reading {}", filename);
+                    }
                     let file = archive.by_name(&filename)?;
                     let mut reader = BufReader::new(file);
                     let mut data = String::new();
                     reader.read_to_string(&mut data)?;
-                    let response_size_bytes = data.len() as u64;
+                    let body = if self.scrubbed {
+                        let transformed = normalize_supported_content(&filename, data)?;
+                        if transformed.supported {
+                            tracing::debug!(
+                                "Unscrubbed {} address fields in {}",
+                                transformed.transformed_fields,
+                                filename
+                            );
+                        } else {
+                            tracing::debug!("Scrubbed mode read {} (no normalization rules)", filename);
+                        }
+                        transformed.content
+                    } else {
+                        data
+                    };
+                    let response_size_bytes = body.len() as u64;
                     return Ok(RawResponse {
-                        body: data,
+                        body,
                         status: None,
                         response_time_ms: 0,
                         response_size_bytes,
@@ -188,6 +228,7 @@ impl ArchiveFileReceiver {
             subdir: Some(PathBuf::from(work_dir)),
             modified_date: self.modified_date,
             source_product: Arc::new(OnceLock::new()),
+            scrubbed: self.scrubbed,
         }
     }
 
@@ -227,5 +268,150 @@ impl ArchiveFileReceiver {
 
     pub fn source_context(&self) -> Result<SourceContext> {
         Ok(SourceContext::new(self.source_product()?, None))
+    }
+
+    pub fn set_scrubbed(&mut self, scrubbed: bool) {
+        self.scrubbed = scrubbed;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::scrub::synthetic_vectors as v;
+    use super::ArchiveFileReceiver;
+    use crate::processor::DataSource;
+    use crate::receiver::{ReceiveRaw, ScrubMode, should_enable_scrubbed};
+    use std::io::Write;
+    use std::path::PathBuf;
+    use zip::{ZipWriter, write::SimpleFileOptions};
+
+    struct NodesSource;
+
+    impl DataSource for NodesSource {
+        fn name() -> String {
+            "nodes".to_string()
+        }
+    }
+
+    fn write_test_archive(base_dir: &str, nodes_json: &str) -> (tempfile::TempDir, PathBuf) {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let zip_path = dir.path().join("scrubbed-api-diagnostics-test.zip");
+        let file = std::fs::File::create(&zip_path).expect("create zip");
+        let mut zip = ZipWriter::new(file);
+        let options = SimpleFileOptions::default();
+
+        let prefix = format!("{base_dir}/");
+        zip.start_file(format!("{prefix}diagnostic_manifest.json"), options)
+            .expect("manifest");
+        zip.write_all(
+            br#"{
+  "mode": "full",
+  "product": "elasticsearch",
+  "type": "elasticsearch_diagnostic",
+  "runner": "cli",
+  "version": "9.1.3",
+  "timestamp": "2025-09-18T00:18:07.432Z"
+}"#,
+        )
+        .expect("manifest body");
+
+        zip.start_file(format!("{prefix}version.json"), options)
+            .expect("version");
+        zip.write_all(
+            br#"{
+  "name": "esdiag-node",
+  "cluster_name": "esdiag-cluster",
+  "cluster_uuid": "aukedefkRcGa0BT16uuuNQ",
+  "version": {
+    "number": "9.1.3",
+    "build_flavor": "default",
+    "build_type": "docker",
+    "build_hash": "abc",
+    "build_date": "2025-01-01T00:00:00.000000000Z",
+    "build_snapshot": false,
+    "lucene_version": "10.2.2",
+    "minimum_wire_compatibility_version": "8.19.0",
+    "minimum_index_compatibility_version": "8.0.0"
+  },
+  "tagline": "You Know, for Search"
+}"#,
+        )
+        .expect("version body");
+
+        zip.start_file(format!("{prefix}nodes.json"), options).expect("nodes");
+        zip.write_all(nodes_json.as_bytes()).expect("nodes body");
+
+        zip.finish().expect("finish zip");
+        (dir, zip_path)
+    }
+
+    #[tokio::test]
+    async fn non_scrubbed_archive_passes_nodes_json_unchanged() {
+        let archive_path =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/archives/elasticsearch-api-diagnostics-9.3.3.zip");
+        if !archive_path.exists() {
+            return;
+        }
+
+        let file = std::fs::File::open(&archive_path).expect("open archive");
+        let mut archive = zip::ZipArchive::new(file).expect("read archive");
+        let entry_path = "nodes.json";
+        let mut expected = String::new();
+        let mut zip_entry = archive.by_name(entry_path).expect("nodes.json");
+        std::io::Read::read_to_string(&mut zip_entry, &mut expected).expect("read nodes.json");
+
+        let mut receiver = ArchiveFileReceiver::try_from(archive_path).expect("receiver");
+        receiver.set_scrubbed(false);
+        receiver.set_source_product("elasticsearch").expect("source product");
+
+        assert!(!should_enable_scrubbed(
+            ScrubMode::Auto,
+            Some("elasticsearch-api-diagnostics-9.3.3.zip")
+        ));
+
+        let actual = receiver.get_raw::<NodesSource>().await.expect("get raw nodes");
+        assert_eq!(actual, expected);
+    }
+
+    #[tokio::test]
+    async fn scrubbed_receiver_normalizes_malformed_nodes_json() {
+        let nodes_json = format!(
+            r#"{{
+  "_nodes": {{"total": 1, "successful": 1, "failed": 0}},
+  "nodes": {{
+    "{node_id}": {{
+      "name": "{node_id}",
+      "transport_address": "{malformed_port}",
+      "host": "{malformed}",
+      "ip": "{malformed}",
+      "version": "9.1.3",
+      "build_flavor": "default",
+      "build_hash": "abc",
+      "build_type": "docker",
+      "roles": ["data_hot", "master"],
+      "os": {{
+        "refresh_interval_in_millis": 1000,
+        "available_processors": 8,
+        "allocated_processors": 8
+      }},
+      "jvm": {{}},
+      "process": {{}},
+      "thread_pool": {{}}
+    }}
+  }}
+}}"#,
+            node_id = v::SYNTHETIC_HEX_NODE_ID,
+            malformed = v::MALFORMED_IP,
+            malformed_port = v::MALFORMED_IP_WITH_PORT,
+        );
+        let (_dir, zip_path) = write_test_archive("api-diagnostics-scrubbed-test", &nodes_json);
+        let mut receiver = ArchiveFileReceiver::try_from(zip_path).expect("receiver");
+        receiver.set_scrubbed(true);
+        receiver.set_source_product("elasticsearch").expect("source product");
+
+        let raw = receiver.get_raw::<NodesSource>().await.expect("get raw nodes");
+        assert!(raw.contains(&format!("\"ip\":\"{}\"", v::NORMALIZED_IP)));
+        assert!(raw.contains(&format!("\"host\":\"{}\"", v::NORMALIZED_IP)));
+        assert!(raw.contains(&format!("\"transport_address\":\"{}\"", v::NORMALIZED_IP_WITH_PORT)));
     }
 }

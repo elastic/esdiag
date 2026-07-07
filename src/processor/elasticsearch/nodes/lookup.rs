@@ -147,9 +147,19 @@ fn get_tier_node_name(node_name: String, tier: &str) -> String {
         // Renames `instance-0000000001` into `tier-00001`
         let number = number.trim_start_matches("000000");
         format!("{}-{}", tier, number)
+    } else if is_scrubbed_hex_node_name(&node_name) {
+        let suffix = &node_name[node_name.len() - 4..];
+        format!("{tier}-{suffix}")
     } else {
         node_name
     }
+}
+
+fn is_scrubbed_hex_node_name(node_name: &str) -> bool {
+    node_name.len() == 19
+        && node_name
+            .chars()
+            .all(|ch| ch.is_ascii_hexdigit() && !ch.is_ascii_uppercase())
 }
 
 /// Collects single-character abbreviations for roles into a string.
@@ -181,5 +191,26 @@ fn get_roles_abbreviation(role_list: &HashSet<String>) -> String {
             roles.sort_unstable();
             roles.iter().collect()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::get_tier_node_name;
+
+    #[test]
+    fn preserves_existing_instance_rename_behavior() {
+        assert_eq!(
+            get_tier_node_name("instance-0000000001".to_string(), "hot"),
+            "hot-0001"
+        );
+    }
+
+    #[test]
+    fn humanizes_scrubbed_hex_name_with_last_four_chars() {
+        assert_eq!(
+            get_tier_node_name("aaaabbbbccccddddee0".to_string(), "hot"),
+            "hot-dee0"
+        );
     }
 }

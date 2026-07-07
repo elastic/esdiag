@@ -48,6 +48,8 @@ struct LocalArchiveJobContext<'a> {
     signals: &'a JobRunSignals,
     job: JobDescriptor<'a>,
     path: PathBuf,
+    filename: String,
+    scrubbed_override: Option<bool>,
     identifiers: Identifiers,
     tx: &'a mpsc::Sender<ServerEvent>,
     replace_existing_entry: bool,
@@ -117,7 +119,12 @@ pub async fn run_job(
     );
 
     let result = match &job.input {
-        JobInput::LocalArchive { path, .. } => {
+        JobInput::LocalArchive {
+            path,
+            filename,
+            scrubbed_override,
+            ..
+        } => {
             execute_local_archive_job(LocalArchiveJobContext {
                 state: state.clone(),
                 signals: &signals,
@@ -126,6 +133,8 @@ pub async fn run_job(
                     source: &source,
                 },
                 path: path.clone(),
+                filename: filename.clone(),
+                scrubbed_override: *scrubbed_override,
                 identifiers,
                 tx: &tx,
                 replace_existing_entry,
@@ -208,6 +217,8 @@ async fn execute_local_archive_job(ctx: LocalArchiveJobContext<'_>) -> Result<()
         signals,
         job,
         path,
+        filename,
+        scrubbed_override,
         identifiers,
         tx,
         replace_existing_entry,
@@ -215,7 +226,11 @@ async fn execute_local_archive_job(ctx: LocalArchiveJobContext<'_>) -> Result<()
 
     match signals.job.process.mode {
         ProcessMode::Process => {
-            let receiver = Arc::new(Receiver::try_from(Uri::File(path))?);
+            let receiver = Arc::new(Receiver::try_from_with_scrub(
+                Uri::File(path),
+                scrubbed_override,
+                Some(&filename),
+            )?);
             let exporter = Arc::new(select_processed_exporter(state.clone(), signals).await?);
             let process_selection = explicit_process_selection(signals)?;
             run_processor_job(ProcessorJobContext {
@@ -293,6 +308,8 @@ async fn execute_service_link_job(ctx: JobExecutionContext<'_>, uri: Uri) -> Res
                     source,
                 },
                 path,
+                filename: archive_filename,
+                scrubbed_override: None,
                 identifiers: collected.identifiers,
                 tx,
                 replace_existing_entry: false,
@@ -305,7 +322,7 @@ async fn execute_service_link_job(ctx: JobExecutionContext<'_>, uri: Uri) -> Res
 
     match signals.job.process.mode {
         ProcessMode::Process => {
-            let receiver = Arc::new(Receiver::try_from(uri)?);
+            let receiver = Arc::new(Receiver::try_from_with_scrub(uri, None, Some(source))?);
             let exporter = Arc::new(select_processed_exporter(state.clone(), signals).await?);
             let process_selection = explicit_process_selection(signals)?;
             run_processor_job(ProcessorJobContext {
@@ -394,7 +411,14 @@ async fn execute_remote_collection_job(
         }
     };
 
-    let result = if let JobInput::LocalArchive { path, cleanup_path, .. } = collected.input {
+    let result = if let JobInput::LocalArchive {
+        path,
+        cleanup_path,
+        filename,
+        scrubbed_override,
+        ..
+    } = collected.input
+    {
         if signals.job.collect.save {
             let archive_filename = path
                 .file_name()
@@ -432,6 +456,8 @@ async fn execute_remote_collection_job(
                     source: &source,
                 },
                 path,
+                filename: archive_filename,
+                scrubbed_override,
                 identifiers: collected.identifiers,
                 tx,
                 replace_existing_entry: false,
@@ -446,6 +472,8 @@ async fn execute_remote_collection_job(
                     source: &source,
                 },
                 path,
+                filename,
+                scrubbed_override,
                 identifiers: collected.identifiers,
                 tx,
                 replace_existing_entry,
@@ -940,6 +968,7 @@ async fn collect_remote_archive(
             filename,
             path,
             cleanup_path,
+            scrubbed_override: None,
         },
     })
 }
@@ -968,6 +997,7 @@ async fn collect_service_link_archive(
             filename,
             path,
             cleanup_path,
+            scrubbed_override: None,
         },
     })
 }
@@ -1186,6 +1216,7 @@ mod tests {
                 filename: "upload.zip".to_string(),
                 path: "/tmp/upload.zip".into(),
                 cleanup_path: None,
+                scrubbed_override: None,
             },
         };
 
@@ -1223,6 +1254,7 @@ mod tests {
                 filename: "upload.zip".to_string(),
                 path: "/tmp/upload.zip".into(),
                 cleanup_path: Some("/tmp/upload.zip".into()),
+                scrubbed_override: None,
             },
         };
 

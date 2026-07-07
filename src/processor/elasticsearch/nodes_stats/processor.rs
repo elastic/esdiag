@@ -41,7 +41,19 @@ async fn process_node(node_id: String, mut node_stats: super::data::NodeStats, c
     let lookup_node = &ctx.lookups.node;
     let lookup_shared_cache = &ctx.lookups.shared_cache;
 
-    let node_metadata = lookup_node.by_id(&node_id);
+    let node_metadata = lookup_node.by_id(&node_id).or_else(|| {
+        node_stats.node_name().and_then(|node_name| {
+            let by_name = lookup_node.by_name(&node_name);
+            if by_name.is_some() {
+                tracing::debug!(
+                    "Resolved node lookup by name fallback: node_id={} node_name={}",
+                    node_id,
+                    node_name
+                );
+            }
+            by_name
+        })
+    });
     let allocated_processors = node_metadata.map(|node| node.os.allocated_processors).unwrap_or(1);
     node_stats.calculate_stats(allocated_processors);
     if let Some(node) = node_metadata {

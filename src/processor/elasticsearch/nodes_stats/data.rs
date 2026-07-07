@@ -191,6 +191,14 @@ pub struct CpuStats {
 }
 
 impl NodeStats {
+    pub fn node_name(&self) -> Option<&str> {
+        if self.name.is_empty() {
+            None
+        } else {
+            Some(&self.name)
+        }
+    }
+
     pub fn calculate_stats(&mut self, processors: usize) {
         self.fs.total.used_in_bytes = self.fs.total.total_in_bytes - self.fs.total.free_in_bytes;
         self.fs.total.used_percent = (self.fs.total.used_in_bytes * 100) / self.fs.total.total_in_bytes;
