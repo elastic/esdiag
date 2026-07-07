@@ -388,11 +388,12 @@ pub struct DiagnosticStats {
 pub fn derive_outcome(events: &[DiagnosticEvent], docs: &Docs) -> DiagnosticOutcome {
     let has_error = events.iter().any(|event| event.severity == EventSeverity::Error);
     let has_warning = events.iter().any(|event| event.severity == EventSeverity::Warning);
+    let has_failure_signal = has_error || has_warning || docs.errors > 0;
     let produced = docs.created > 0 || events.iter().any(|event| event.severity == EventSeverity::Success);
 
-    if has_error && !produced {
+    if has_failure_signal && !produced {
         DiagnosticOutcome::Failed
-    } else if has_error || has_warning || docs.errors > 0 {
+    } else if has_failure_signal {
         DiagnosticOutcome::Partial
     } else {
         DiagnosticOutcome::Complete
@@ -1063,6 +1064,20 @@ user: ada
             DiagnosticEvent::error("nodes", "connection refused"),
             DiagnosticEvent::error("tasks", "connection refused"),
         ];
+        let docs = Docs {
+            created: 0,
+            errors: 0,
+            total: 0,
+        };
+        assert_eq!(derive_outcome(&events, &docs), DiagnosticOutcome::Failed);
+    }
+
+    #[test]
+    fn outcome_derives_failed_from_warning_without_output() {
+        let events = vec![DiagnosticEvent::warning(
+            "nodes",
+            "collection failed without an HTTP response",
+        )];
         let docs = Docs {
             created: 0,
             errors: 0,
