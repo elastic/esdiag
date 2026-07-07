@@ -252,10 +252,7 @@ impl DiagnosticStats {
     /// Display label per ADR-0001: the application when present, else the
     /// platform.
     pub fn display_label(&self) -> String {
-        match self.application {
-            Some(application) => application.to_string(),
-            None => self.platform().to_string(),
-        }
+        crate::processor::display_label(self.application, self.platform())
     }
 }
 
