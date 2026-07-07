@@ -62,7 +62,7 @@ use super::{
     elasticsearch::health_report::HealthReport,
 };
 use crate::{
-    data::{self, Product},
+    data::{self, Application},
     exporter::Exporter,
     receiver::Receiver,
 };
@@ -226,7 +226,7 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
 
         let mut report = DiagnosticReportBuilder::from(metadata.diagnostic.clone())
             .cluster(metadata.cluster.clone())
-            .product(Product::Elasticsearch)
+            .application(Application::Elasticsearch)
             .receiver(receiver.to_string())
             .build()?;
         tracing::debug!("ElasticsearchDiagnostic::try_new built report");

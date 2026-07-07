@@ -4,7 +4,7 @@
 
 use super::super::Identifiers;
 use super::{DiagPath, Manifest};
-use crate::data::Product;
+use crate::data::{Application, Platform, Product};
 use chrono::{DateTime, SecondsFormat, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -27,8 +27,18 @@ pub struct RequestedApi {
 pub struct DiagnosticManifest {
     /// Diagnostic bundle variation
     pub mode: Option<String>,
-    /// Elastic Stack component name
+    /// Elastic Stack component name (legacy single-axis value; kept on the
+    /// wire for read/write compatibility — see `platform`/`application`)
     pub product: Product,
+    /// Deployment platform the diagnostic was collected from (ADR-0001).
+    /// Absent in older manifests; resolve through [`Self::platform`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    platform: Option<Platform>,
+    /// Application component the diagnostic pertains to (ADR-0001). Absent
+    /// for platform-only diagnostics and in older manifests; resolve through
+    /// [`Self::application`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    application: Option<Application>,
     /// Command-line flags used when running the diagnostic collector
     pub flags: Option<String>,
     /// Diagnostic collector version
@@ -70,6 +80,8 @@ impl Clone for DiagnosticManifest {
         Self {
             mode: self.mode.clone(),
             product: self.product.clone(),
+            platform: self.platform,
+            application: self.application,
             flags: self.flags.clone(),
             diagnostic: self.diagnostic.clone(),
             r#type: self.r#type.clone(),
@@ -127,6 +139,10 @@ impl DiagnosticManifest {
         let diagnostic_id = RwLock::new(None);
         let name = r#type.clone().unwrap_or("diagnostic".to_string());
 
+        let (platform, application) = product.split();
+        // Unknown is not an explicit platform: leave it unset so receiver-level
+        // detection (syscalls folder, cloud hints) can still resolve it.
+        let platform = (platform != Platform::Unknown).then_some(platform);
         Self {
             collection_date,
             collection_date_millis,
@@ -140,10 +156,74 @@ impl DiagnosticManifest {
             mode,
             name,
             product,
+            platform,
+            application,
             r#type,
             runner,
             version,
         }
+    }
+
+    /// The deployment platform this diagnostic was collected from.
+    ///
+    /// Prefers the explicit manifest field (esdiag-written bundles); falls
+    /// back to indicator-based detection for older or third-party manifests.
+    pub fn platform(&self) -> Platform {
+        self.platform.unwrap_or_else(|| self.detect_platform_from_indicators())
+    }
+
+    /// The application component this diagnostic pertains to, if any.
+    ///
+    /// Prefers the explicit manifest field; falls back to the legacy
+    /// single-axis `product` value for older manifests.
+    pub fn application(&self) -> Option<Application> {
+        self.application.or_else(|| self.product.application())
+    }
+
+    /// Set the resolved deployment platform, keeping the legacy `product`
+    /// value coherent for older readers of written manifests.
+    pub fn set_platform(&mut self, platform: Platform) {
+        self.platform = Some(platform);
+        if self.product == Product::Unknown && self.application.is_none() {
+            self.product = Product::from(platform);
+        }
+    }
+
+    /// Whether the manifest carries an explicit platform (as opposed to one
+    /// that must be detected from indicators).
+    pub fn has_explicit_platform(&self) -> bool {
+        self.platform.is_some()
+    }
+
+    /// The stable key naming this diagnostic's type: the application key when
+    /// present, else the platform key (the display-label rule of ADR-0001).
+    pub fn type_key(&self) -> String {
+        match self.application() {
+            Some(application) => application.key().to_string(),
+            None => self.platform().key().to_string(),
+        }
+    }
+
+    /// Best-effort platform detection from manifest indicators (ADR-0001):
+    /// a `runner` of `ece` implies ECE, the platform collectors' diagnostic
+    /// types imply ECK / KubernetesPlatform, and the legacy single-axis
+    /// `product` may itself carry a platform value. Anything indeterminate is
+    /// `Unknown` — callers must tolerate it.
+    fn detect_platform_from_indicators(&self) -> Platform {
+        if let Some(runner) = self.runner.as_deref() {
+            match runner.to_lowercase().as_str() {
+                "ece" | "elastic-cloud-enterprise" => return Platform::ECE,
+                "eck" | "eck-diagnostics" => return Platform::ECK,
+                _ => {}
+            }
+        }
+        match self.r#type.as_deref() {
+            Some("eck-diagnostics") => return Platform::ECK,
+            Some("k8s-platform-diagnostics") => return Platform::KubernetesPlatform,
+            _ => {}
+        }
+        let (platform, _) = self.product.split();
+        platform
     }
 
     pub fn collection_date_in_millis(&self) -> u64 {
@@ -247,8 +327,98 @@ impl From<Manifest> for DiagnosticManifest {
 #[cfg(test)]
 mod tests {
     use super::{DiagnosticManifest, RequestedApi};
-    use crate::data::Product;
+    use crate::data::{Application, Platform, Product};
     use std::collections::BTreeMap;
+
+    fn manifest_with(product: Product, r#type: Option<&str>, runner: Option<&str>) -> DiagnosticManifest {
+        DiagnosticManifest::new(
+            "2026-04-25T20:18:43.610Z".to_string(),
+            Some("esdiag-test".to_string()),
+            None,
+            None,
+            Some("support".to_string()),
+            product,
+            r#type.map(str::to_string),
+            runner.map(str::to_string),
+            Some("8.19.3".to_string()),
+        )
+    }
+
+    #[test]
+    fn detects_ece_platform_from_runner_indicator() {
+        let manifest = manifest_with(Product::Unknown, Some("api"), Some("ece"));
+        assert_eq!(manifest.platform(), Platform::ECE);
+        assert!(!manifest.has_explicit_platform());
+    }
+
+    #[test]
+    fn detects_eck_platform_from_diag_type_indicator() {
+        let manifest = manifest_with(Product::Unknown, Some("eck-diagnostics"), Some("unknown"));
+        assert_eq!(manifest.platform(), Platform::ECK);
+    }
+
+    #[test]
+    fn detects_kubernetes_platform_from_diag_type_indicator() {
+        let manifest = manifest_with(Product::Unknown, Some("k8s-platform-diagnostics"), Some("unknown"));
+        assert_eq!(manifest.platform(), Platform::KubernetesPlatform);
+    }
+
+    #[test]
+    fn indeterminate_provenance_is_unknown() {
+        // A legacy support-diagnostics bundle: no platform indicators at all
+        let manifest = manifest_with(Product::Elasticsearch, Some("api"), Some("unknown"));
+        assert_eq!(manifest.platform(), Platform::Unknown);
+        assert_eq!(manifest.application(), Some(Application::Elasticsearch));
+    }
+
+    #[test]
+    fn platform_product_yields_platform_only_classification() {
+        let manifest = manifest_with(Product::ECK, Some("eck-diagnostics"), Some("esdiag"));
+        assert!(manifest.has_explicit_platform());
+        assert_eq!(manifest.platform(), Platform::ECK);
+        assert_eq!(manifest.application(), None);
+        assert_eq!(manifest.type_key(), "elastic-cloud-kubernetes");
+    }
+
+    #[test]
+    fn set_platform_overrides_detection_and_wins_for_children() {
+        let mut manifest = manifest_with(Product::Elasticsearch, Some("api"), Some("unknown"));
+        manifest.set_platform(Platform::ECK);
+        assert_eq!(manifest.platform(), Platform::ECK);
+        // The application axis is untouched by platform propagation
+        assert_eq!(manifest.application(), Some(Application::Elasticsearch));
+        assert_eq!(manifest.type_key(), "elasticsearch");
+    }
+
+    #[test]
+    fn explicit_platform_round_trips_through_serde() {
+        let mut manifest = manifest_with(Product::Elasticsearch, Some("api"), Some("unknown"));
+        manifest.set_platform(Platform::SelfManaged);
+        let json = serde_json::to_string(&manifest).expect("serialize manifest");
+        let parsed: DiagnosticManifest = serde_json::from_str(&json).expect("deserialize manifest");
+        assert!(parsed.has_explicit_platform());
+        assert_eq!(parsed.platform(), Platform::SelfManaged);
+        assert_eq!(parsed.application(), Some(Application::Elasticsearch));
+    }
+
+    #[test]
+    fn legacy_manifest_without_platform_fields_still_deserializes() {
+        let manifest: DiagnosticManifest = serde_json::from_str(
+            r#"{
+              "mode": "support",
+              "product": "elasticsearch",
+              "diagnostic": "esdiag-0.16.0-SNAPSHOT",
+              "type": "elasticsearch_diagnostic",
+              "runner": "esdiag",
+              "version": "8.19.3",
+              "timestamp": "2026-04-25T20:52:09.948Z"
+            }"#,
+        )
+        .expect("legacy manifest should deserialize");
+        assert!(!manifest.has_explicit_platform());
+        assert_eq!(manifest.platform(), Platform::Unknown);
+        assert_eq!(manifest.application(), Some(Application::Elasticsearch));
+    }
 
     #[test]
     fn new_sets_collection_date_millis_from_timestamp() {

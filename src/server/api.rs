@@ -443,7 +443,7 @@ fn diagnostic_result_entries(completed: &Completed) -> Value {
         "diagnostic_id": report.diagnostic.metadata.id,
         "kibana_link": report.diagnostic.kibana_link.as_deref().unwrap_or(""),
         "took": runtime_millis(completed.runtime),
-        "product": report.diagnostic.product.to_string(),
+        "product": report.diagnostic.display_label(),
         "source": "parent"
     })];
 
@@ -456,15 +456,19 @@ fn diagnostic_result_entries(completed: &Completed) -> Value {
                 "diagnostic_id": report.diagnostic.metadata.id,
                 "kibana_link": report.diagnostic.kibana_link.as_deref().unwrap_or(""),
                 "took": runtime_millis(*runtime),
-                "product": report.diagnostic.product.to_string(),
+                "product": report.diagnostic.display_label(),
                 "source": "included_diagnostic",
                 "path": path
             })),
             IncludedDiagnosticOutcome::Skipped {
-                path, product, reason, ..
+                path,
+                application,
+                platform,
+                reason,
+                ..
             } => entries.push(json!({
                 "status": "info",
-                "product": product.as_ref().map(ToString::to_string).unwrap_or_else(|| "unknown".to_string()),
+                "product": crate::processor::display_label(*application, *platform),
                 "source": "included_diagnostic",
                 "path": path,
                 "reason": reason
@@ -489,7 +493,7 @@ fn runtime_millis(runtime: u128) -> u64 {
 mod tests {
     use super::{diagnostic_result_entries, runtime_millis};
     use crate::{
-        data::Product,
+        data::{Application, Platform, Product},
         processor::{Completed, DiagnosticManifest, IncludedDiagnosticOutcome, diagnostic::DiagnosticReportBuilder},
     };
 
@@ -500,14 +504,13 @@ mod tests {
             None,
             None,
             Some("standard".to_string()),
-            product.clone(),
+            product,
             Some(id_type.to_string()),
             Some("esdiag".to_string()),
             Some("9.3.3".to_string()),
         ))
         .expect("report builder")
         .receiver("Directory /tmp/diag".to_string())
-        .product(product)
         .build()
         .expect("report")
     }
@@ -530,7 +533,8 @@ mod tests {
                 IncludedDiagnosticOutcome::Skipped {
                     job_id: 12,
                     path: "child-kibana".to_string(),
-                    product: Some(Product::Kibana),
+                    application: Some(Application::Kibana),
+                    platform: Platform::ECK,
                     reason: "Kibana processing is not yet implemented".to_string(),
                 },
                 IncludedDiagnosticOutcome::Failed {

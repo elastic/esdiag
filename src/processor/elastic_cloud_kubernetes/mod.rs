@@ -7,7 +7,7 @@ use super::{
     api::ProcessSelection,
     diagnostic::{DiagnosticManifest, DiagnosticMetadata, DiagnosticReport, DiagnosticReportBuilder, Lookup},
 };
-use crate::{data::Product, exporter::Exporter, receiver::Receiver};
+use crate::{exporter::Exporter, receiver::Receiver};
 use eyre::Result;
 use serde::Serialize;
 use std::sync::Arc;
@@ -33,8 +33,9 @@ impl DiagnosticProcessor for ElasticCloudKubernetesDiagnostic {
             k8s_node: Lookup::new(),
         });
 
+        // A platform-only diagnostic: no application axis (ADR-0001); the
+        // platform (ECK) rides on the manifest and identifiers.
         let report = DiagnosticReportBuilder::try_from(manifest.clone())?
-            .product(Product::ECK)
             .receiver(receiver.to_string())
             .build()?;
 
@@ -61,7 +62,7 @@ impl DiagnosticProcessor for ElasticCloudKubernetesDiagnostic {
     }
 
     fn origin(&self) -> (String, String, String) {
-        ("eck".to_string(), "".to_string(), "orchestration".to_string())
+        ("eck".to_string(), "".to_string(), "platform".to_string())
     }
 }
 

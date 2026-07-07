@@ -215,6 +215,13 @@ impl DirectoryReceiver {
         serde_json::from_reader(reader).map_err(Into::into)
     }
 
+    /// Whether the bundle contains `dir` as a directory within the receiver's
+    /// working subdirectory. Used for platform indicators such as the
+    /// `syscalls` folder.
+    pub fn has_bundle_dir(&self, dir: &str) -> bool {
+        self.path.join(&self.work_dir).join(dir).is_dir()
+    }
+
     pub fn set_source_product(&self, product: &'static str) -> Result<()> {
         match self.source_product.get() {
             Some(existing) if *existing != product => Err(eyre!(

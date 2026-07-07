@@ -28,7 +28,11 @@ pub use diagnostic::{
 pub use elasticsearch::Cluster as ElasticsearchCluster;
 
 pub use crate::processor::diagnostic::data_source::StreamingDataSource;
-use crate::{data::Product, exporter::Exporter, receiver::Receiver};
+use crate::{
+    data::{Application, Platform},
+    exporter::Exporter,
+    receiver::Receiver,
+};
 use api::ProcessSelection;
 use elastic_cloud_kubernetes::ElasticCloudKubernetesDiagnostic;
 use elasticsearch::ElasticsearchDiagnostic;
@@ -108,7 +112,8 @@ pub enum IncludedDiagnosticOutcome {
     Skipped {
         job_id: u64,
         path: String,
-        product: Option<Product>,
+        application: Option<Application>,
+        platform: Platform,
         reason: String,
     },
     Failed {
@@ -145,7 +150,8 @@ pub enum IncludedDiagnosticJobEvent {
     Completed {
         job_id: u64,
         path: String,
-        product: Product,
+        application: Option<Application>,
+        platform: Platform,
         diagnostic_id: String,
         docs_created: u32,
         duration_ms: u128,
@@ -154,7 +160,8 @@ pub enum IncludedDiagnosticJobEvent {
     Skipped {
         job_id: u64,
         path: String,
-        product: Option<Product>,
+        application: Option<Application>,
+        platform: Platform,
         reason: String,
     },
     Failed {
@@ -162,6 +169,14 @@ pub enum IncludedDiagnosticJobEvent {
         path: String,
         error: String,
     },
+}
+
+/// Display label per ADR-0001: the application when present, else the platform.
+pub fn display_label(application: Option<Application>, platform: Platform) -> String {
+    match application {
+        Some(application) => application.to_string(),
+        None => platform.to_string(),
+    }
 }
 
 fn spawn_sub_processors(
@@ -224,7 +239,8 @@ fn spawn_sub_processors(
                 }
             };
 
-            let product = processor.state.manifest.product.clone();
+            let application = processor.state.manifest.application();
+            let platform = processor.state.manifest.platform();
             match processor.start().await {
                 Ok(processing) => match processing.process().await {
                     Ok(complete) => {
@@ -252,7 +268,8 @@ fn spawn_sub_processors(
                     let outcome = IncludedDiagnosticOutcome::Skipped {
                         job_id: child_job_id,
                         path,
-                        product: Some(product),
+                        application,
+                        platform,
                         reason: failed.state.error,
                     };
                     send_child_outcome_event(&event_tx, &outcome);
@@ -313,7 +330,8 @@ fn send_child_outcome_event(
         } => IncludedDiagnosticJobEvent::Completed {
             job_id: *job_id,
             path: path.clone(),
-            product: report.diagnostic.product.clone(),
+            application: report.diagnostic.application,
+            platform: report.diagnostic.platform(),
             diagnostic_id: report.diagnostic.metadata.id.clone(),
             docs_created: report.diagnostic.docs.created,
             duration_ms: *runtime,
@@ -322,12 +340,14 @@ fn send_child_outcome_event(
         IncludedDiagnosticOutcome::Skipped {
             job_id,
             path,
-            product,
+            application,
+            platform,
             reason,
         } => IncludedDiagnosticJobEvent::Skipped {
             job_id: *job_id,
             path: path.clone(),
-            product: product.clone(),
+            application: *application,
+            platform: *platform,
             reason: reason.clone(),
         },
         IncludedDiagnosticOutcome::Failed { job_id, path, error } => IncludedDiagnosticJobEvent::Failed {
@@ -337,6 +357,34 @@ fn send_child_outcome_event(
         },
     };
     send_child_event(child_event_tx, event);
+}
+
+/// Resolve the deployment platform for a diagnostic, best-effort (ADR-0001).
+///
+/// Precedence: an explicit platform on the identifiers (a user override, or a
+/// parent diagnostic propagating its platform to a child) wins; then an
+/// explicit manifest field (esdiag-written bundles); then a receiver hint
+/// (e.g. Elastic Cloud admin API); then manifest indicators; then the
+/// `syscalls` folder, which only self-managed collections produce. Anything
+/// indeterminate is `Unknown` — a first-class, non-failing value.
+async fn resolve_platform(manifest: &DiagnosticManifest, receiver: &Receiver, identifiers: &Identifiers) -> Platform {
+    if let Some(platform) = identifiers.platform {
+        return platform;
+    }
+    if manifest.has_explicit_platform() {
+        return manifest.platform();
+    }
+    if let Some(platform) = receiver.platform_hint() {
+        return platform;
+    }
+    let detected = manifest.platform();
+    if detected != Platform::Unknown {
+        return detected;
+    }
+    if receiver.has_bundle_dir("syscalls").await {
+        return Platform::SelfManaged;
+    }
+    Platform::Unknown
 }
 
 fn is_unsupported_child_processor(error: &str) -> bool {
@@ -355,7 +403,10 @@ impl Processor<Ready> {
         child_event_tx: Option<mpsc::UnboundedSender<IncludedDiagnosticJobEvent>>,
         process_included_diagnostics: bool,
     ) -> Result<Self> {
-        let manifest = receiver.try_get_manifest().await?;
+        let mut manifest = receiver.try_get_manifest().await?;
+        let platform = resolve_platform(&manifest, &receiver, &identifiers).await;
+        manifest.set_platform(platform);
+        let identifiers = identifiers.with_platform(platform);
         Ok(Self {
             receiver,
             exporter,
@@ -417,19 +468,10 @@ impl Processor<Ready> {
         tracing::debug!("Transitioned: Processor<Processing>");
         let (summary_tx, summary_rx) = mpsc::channel::<ProcessorSummary>(10);
 
-        let mut identifiers = self.state.identifiers.clone();
-        if identifiers.orchestration.is_none() {
-            let orchestration = match self.state.manifest.product {
-                Product::ECK => Some("elastic-cloud-kubernetes".to_string()),
-                Product::ECE => Some("elastic-cloud-enterprise".to_string()),
-                Product::KubernetesPlatform => Some("kubernetes-platform".to_string()),
-                Product::ElasticCloudHosted => Some("elastic-cloud-hosted".to_string()),
-                _ => None,
-            };
-            if let Some(orch) = orchestration {
-                identifiers = identifiers.with_orchestration(orch);
-            }
-        }
+        // Platform is resolved and set on both the manifest and the
+        // identifiers at construction (`try_new_with_options`); children
+        // inherit it through the identifiers passed to `spawn_sub_processors`.
+        let identifiers = self.state.identifiers.clone();
 
         if let Some(included_diagnostics) = self.state.manifest.included_diagnostics.clone() {
             let (diagnostic, report) = match Diagnostic::try_new(
@@ -599,7 +641,7 @@ impl Processor<Processing> {
         tracing::info!(
             "Created {} documents for {} diagnostic: {}",
             report.diagnostic.docs.created,
-            report.diagnostic.product,
+            report.diagnostic.display_label(),
             report.diagnostic.metadata.id,
         );
 
@@ -662,40 +704,48 @@ impl Diagnostic {
         manifest: DiagnosticManifest,
         process_selection: Option<ProcessSelection>,
     ) -> Result<(Self, DiagnosticReport)> {
-        tracing::info!("Processing {} diagnostic", manifest.product);
+        tracing::info!(
+            "Processing {} diagnostic",
+            display_label(manifest.application(), manifest.platform())
+        );
         tracing::trace!("Diagnostic Manifest: {}", serde_json::to_string(&manifest).unwrap());
         if let Some(selection) = &process_selection
-            && product_key(&manifest.product) != selection.product
+            && manifest.type_key() != selection.product
         {
             return Err(eyre!(
                 "Selected processing product '{}' does not match diagnostic product '{}'",
                 selection.product,
-                product_key(&manifest.product)
+                manifest.type_key()
             ));
         }
-        match manifest.product {
-            Product::Elasticsearch => {
+        match manifest.application() {
+            Some(Application::Elasticsearch) => {
                 let (diagnostic, report) =
                     ElasticsearchDiagnostic::try_new(receiver, exporter, manifest, process_selection).await?;
                 Ok((Self::Elasticsearch(diagnostic), report))
             }
-            Product::ECK => {
-                let (diagnostic, report) =
-                    ElasticCloudKubernetesDiagnostic::try_new(receiver, exporter, manifest, process_selection).await?;
-                Ok((Self::ElasticCloudKubernetes(diagnostic), report))
-            }
-            Product::KubernetesPlatform => {
-                let (diagnostic, report) =
-                    KubernetesPlatformDiagnostic::try_new(receiver, exporter, manifest, process_selection).await?;
-                Ok((Self::KubernetesPlatform(diagnostic), report))
-            }
-            Product::Logstash => {
+            Some(Application::Logstash) => {
                 let (diagnostic, report) =
                     LogstashDiagnostic::try_new(receiver, exporter, manifest, process_selection).await?;
                 Ok((Self::Logstash(diagnostic), report))
             }
-            Product::Kibana => Err(eyre!(KIBANA_PROCESSING_NOT_IMPLEMENTED)),
-            _ => Err(eyre!(UNSUPPORTED_PRODUCT_OR_DIAGNOSTIC_BUNDLE)),
+            Some(Application::Kibana) => Err(eyre!(KIBANA_PROCESSING_NOT_IMPLEMENTED)),
+            Some(Application::Agent) => Err(eyre!(UNSUPPORTED_PRODUCT_OR_DIAGNOSTIC_BUNDLE)),
+            // A platform-only diagnostic: dispatch on the platform axis.
+            None => match manifest.platform() {
+                Platform::ECK => {
+                    let (diagnostic, report) =
+                        ElasticCloudKubernetesDiagnostic::try_new(receiver, exporter, manifest, process_selection)
+                            .await?;
+                    Ok((Self::ElasticCloudKubernetes(diagnostic), report))
+                }
+                Platform::KubernetesPlatform => {
+                    let (diagnostic, report) =
+                        KubernetesPlatformDiagnostic::try_new(receiver, exporter, manifest, process_selection).await?;
+                    Ok((Self::KubernetesPlatform(diagnostic), report))
+                }
+                _ => Err(eyre!(UNSUPPORTED_PRODUCT_OR_DIAGNOSTIC_BUNDLE)),
+            },
         }
     }
 
@@ -746,19 +796,6 @@ trait DiagnosticProcessor {
     fn origin(&self) -> (String, String, String);
 }
 
-fn product_key(product: &Product) -> String {
-    match product {
-        Product::Elasticsearch => "elasticsearch".to_string(),
-        Product::Logstash => "logstash".to_string(),
-        Product::KubernetesPlatform => "kubernetes-platform".to_string(),
-        Product::ECK => "elastic-cloud-kubernetes".to_string(),
-        Product::ECE => "elastic-cloud-enterprise".to_string(),
-        Product::ElasticCloudHosted => "elastic-cloud-hosted".to_string(),
-        Product::Kibana => "kibana".to_string(),
-        other => other.to_string().to_lowercase(),
-    }
-}
-
 trait Metadata {
     fn as_meta_doc(&self) -> serde_json::Value;
 }
@@ -770,11 +807,7 @@ pub fn new_job_id() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        data::{Product, Uri},
-        exporter::Exporter,
-        receiver::Receiver,
-    };
+    use crate::{data::Uri, exporter::Exporter, receiver::Receiver};
     use serde_json::json;
     use std::collections::HashSet;
     use std::{fs::File, path::Path, sync::Arc};
@@ -871,13 +904,13 @@ mod tests {
             let IncludedDiagnosticOutcome::Completed { report, .. } = outcome else {
                 panic!("expected supported child to complete");
             };
-            assert_eq!(report.diagnostic.product, Product::Elasticsearch);
+            assert_eq!(report.diagnostic.application, Some(Application::Elasticsearch));
             assert!(report.diagnostic.docs.created > 0);
             assert!(report.diagnostic.identifiers.parent_id.is_some());
-            assert_eq!(
-                report.diagnostic.identifiers.orchestration.as_deref(),
-                Some("elastic-cloud-kubernetes")
-            );
+            // Child inherits the parent's platform (ADR-0001)
+            assert_eq!(report.diagnostic.identifiers.platform, Some(Platform::ECK));
+            assert_eq!(report.diagnostic.platform(), Platform::ECK);
+            assert_eq!(report.diagnostic.display_label(), "Elasticsearch");
         }
     }
 
@@ -888,11 +921,17 @@ mod tests {
         let completed = process_parent_bundle(root.path()).await;
 
         assert_eq!(completed.state.included_diagnostics.len(), 1);
-        let IncludedDiagnosticOutcome::Skipped { product, reason, .. } = &completed.state.included_diagnostics[0]
+        let IncludedDiagnosticOutcome::Skipped {
+            application,
+            platform,
+            reason,
+            ..
+        } = &completed.state.included_diagnostics[0]
         else {
             panic!("expected unsupported child to be skipped");
         };
-        assert_eq!(product.as_ref(), Some(&Product::Kibana));
+        assert_eq!(*application, Some(Application::Kibana));
+        assert_eq!(*platform, Platform::ECK);
         assert!(reason.contains("Kibana processing is not yet implemented"));
     }
 
@@ -909,13 +948,49 @@ mod tests {
 
         let completed = process_parent_bundle(root.path()).await;
 
-        assert_eq!(completed.state.report.diagnostic.product, Product::ECK);
+        // A platform-only diagnostic: no application, label falls back to platform
+        assert_eq!(completed.state.report.diagnostic.application, None);
+        assert_eq!(completed.state.report.diagnostic.platform(), Platform::ECK);
+        assert_eq!(completed.state.report.diagnostic.display_label(), "ECK");
         assert_eq!(completed.state.included_diagnostics.len(), 1);
         let IncludedDiagnosticOutcome::Failed { path, error, .. } = &completed.state.included_diagnostics[0] else {
             panic!("expected unreadable child to fail independently");
         };
         assert_eq!(path, "missing-child");
         assert!(error.contains("Failed to read included diagnostic manifest"));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn syscalls_folder_implies_self_managed_platform() {
+        let root = tempfile::tempdir().expect("bundle dir");
+        extract_archive("elasticsearch-api-diagnostics-9.3.3.zip", root.path());
+        std::fs::create_dir_all(root.path().join("syscalls")).expect("create syscalls dir");
+
+        let receiver = Arc::new(Receiver::try_from(Uri::Directory(root.path().to_path_buf())).expect("receiver"));
+        let output = tempfile::tempdir().expect("output dir");
+        let exporter = Arc::new(Exporter::try_from(Uri::Directory(output.path().to_path_buf())).expect("exporter"));
+        let processor = Processor::try_new(receiver, exporter, Identifiers::default())
+            .await
+            .expect("ready processor");
+
+        assert_eq!(processor.state.manifest.platform(), Platform::SelfManaged);
+        assert_eq!(processor.state.identifiers.platform, Some(Platform::SelfManaged));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn bundle_without_indicators_resolves_unknown_platform() {
+        let root = tempfile::tempdir().expect("bundle dir");
+        extract_archive("elasticsearch-api-diagnostics-9.3.3.zip", root.path());
+
+        let receiver = Arc::new(Receiver::try_from(Uri::Directory(root.path().to_path_buf())).expect("receiver"));
+        let output = tempfile::tempdir().expect("output dir");
+        let exporter = Arc::new(Exporter::try_from(Uri::Directory(output.path().to_path_buf())).expect("exporter"));
+        let processor = Processor::try_new(receiver, exporter, Identifiers::default())
+            .await
+            .expect("ready processor");
+
+        assert_eq!(processor.state.manifest.platform(), Platform::Unknown);
+        assert_eq!(processor.state.identifiers.platform, Some(Platform::Unknown));
     }
 
     #[test]

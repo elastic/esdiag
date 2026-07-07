@@ -29,3 +29,17 @@ For deeper repository structure see `docs/repository/organization.md`
 - Prefer Datastar server PatchElements instead of JavaScript DOM manipulation.
 - Prefer Datastar signals over Askama conditionals for HTML element state.
 - Prefer semantic HTML and CSS in `templates/`.
+
+## Agent skills
+
+### Issue tracker
+
+Issues and PRDs live in GitHub Issues on `elastic/esdiag` (the `upstream` remote, not the `origin` fork). External PRs are also a triage surface. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Five canonical roles; `wontfix` maps to the existing `Wontfix` label, the other four use their default strings. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.

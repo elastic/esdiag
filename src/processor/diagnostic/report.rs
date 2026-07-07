@@ -4,16 +4,17 @@
 
 use super::super::elasticsearch::{ClusterMetadata, License as ElasticsearchLicense};
 use super::{DiagnosticManifest, DiagnosticMetadata, Lookup};
-use crate::data::Product;
+use crate::data::{Application, Platform};
 use eyre::{OptionExt, Report, Result, eyre};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_with::{NoneAsEmptyString, serde_as, skip_serializing_none};
 use std::collections::HashMap;
+use std::str::FromStr;
 
 pub struct DiagnosticReportBuilder {
     cluster: Option<ClusterMetadata>,
     processors: HashMap<String, ProcessorSummary>,
-    product: Option<Product>,
+    application: Option<Application>,
     metadata: DiagnosticMetadata,
     origin: Option<Origin>,
 }
@@ -23,9 +24,9 @@ impl DiagnosticReportBuilder {
         DiagnosticReport::try_from(self)
     }
 
-    pub fn product(self, product: Product) -> Self {
+    pub fn application(self, application: Application) -> Self {
         Self {
-            product: Some(product),
+            application: Some(application),
             ..self
         }
     }
@@ -51,7 +52,7 @@ impl From<DiagnosticMetadata> for DiagnosticReportBuilder {
             metadata,
             cluster: None,
             processors: HashMap::new(),
-            product: None,
+            application: None,
             origin: None,
         }
     }
@@ -61,12 +62,13 @@ impl TryFrom<DiagnosticManifest> for DiagnosticReportBuilder {
     type Error = eyre::Report;
 
     fn try_from(manifest: DiagnosticManifest) -> Result<Self> {
+        let application = manifest.application();
         let metadata = DiagnosticMetadata::try_from(manifest)?;
         Ok(Self {
             cluster: None,
             metadata,
             processors: HashMap::new(),
-            product: None,
+            application,
             origin: None,
         })
     }
@@ -96,9 +98,21 @@ pub struct Identifiers {
     /// Parent diagnostic identifier
     #[serde_as(as = "NoneAsEmptyString")]
     pub parent_id: Option<String>,
-    /// Orchestration platform
-    #[serde_as(as = "NoneAsEmptyString")]
-    pub orchestration: Option<String>,
+    /// Deployment platform (replaces the legacy untyped `orchestration`
+    /// identifier; legacy keys and identifier strings still deserialize)
+    #[serde(alias = "orchestration", deserialize_with = "deserialize_platform_identifier")]
+    pub platform: Option<Platform>,
+}
+
+/// Tolerant deserializer for the platform identifier: accepts the typed
+/// platform values and the legacy `orchestration` strings; empty or
+/// unrecognized values become `None` rather than failing the whole document.
+fn deserialize_platform_identifier<'de, D>(deserializer: D) -> Result<Option<Platform>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value: Option<String> = Option::deserialize(deserializer)?;
+    Ok(value.and_then(|value| Platform::from_str(value.trim()).ok()))
 }
 impl Identifiers {
     pub fn is_empty(&self) -> bool {
@@ -108,7 +122,7 @@ impl Identifiers {
             && self.opportunity.is_none()
             && self.user.is_none()
             && self.parent_id.is_none()
-            && self.orchestration.is_none()
+            && self.platform.is_none()
     }
 
     pub fn new(
@@ -125,7 +139,7 @@ impl Identifiers {
             opportunity: normalize_identifier(opportunity),
             user: normalize_identifier(user).or_else(|| normalize_identifier(std::env::var("ESDIAG_USER").ok())),
             parent_id: None,
-            orchestration: None,
+            platform: None,
         }
     }
 
@@ -154,9 +168,9 @@ impl Identifiers {
         }
     }
 
-    pub fn with_orchestration(self, orchestration: String) -> Self {
+    pub fn with_platform(self, platform: Platform) -> Self {
         Self {
-            orchestration: normalize_identifier(Some(orchestration)),
+            platform: Some(platform),
             ..self
         }
     }
@@ -172,7 +186,7 @@ impl Default for Identifiers {
             opportunity: None,
             user,
             parent_id: None,
-            orchestration: None,
+            platform: None,
         }
     }
 }
@@ -212,7 +226,10 @@ pub struct Agent {
 #[derive(Serialize)]
 pub struct DiagnosticStats {
     pub docs: Docs,
-    pub product: Product,
+    /// Application component the diagnostic pertains to; absent for
+    /// platform-only diagnostics (the platform rides on `identifiers`)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub application: Option<Application>,
     origin: Origin,
     pub license: Option<License>,
     lookup: NestedStats<LookupSummary>,
@@ -223,6 +240,20 @@ pub struct DiagnosticStats {
     #[serde(flatten)]
     pub identifiers: Identifiers,
     pub processing_duration: u128,
+}
+
+impl DiagnosticStats {
+    /// The deployment platform recorded for this diagnostic. Total by
+    /// construction: unresolved provenance is `Unknown`.
+    pub fn platform(&self) -> Platform {
+        self.identifiers.platform.unwrap_or_default()
+    }
+
+    /// Display label per ADR-0001: the application when present, else the
+    /// platform.
+    pub fn display_label(&self) -> String {
+        crate::processor::display_label(self.application, self.platform())
+    }
 }
 
 impl DiagnosticReport {
@@ -354,7 +385,7 @@ impl TryFrom<DiagnosticReportBuilder> for DiagnosticReport {
                     failures: Vec::new(),
                     stats: builder.processors,
                 },
-                product: builder.product.unwrap_or(Product::Unknown),
+                application: builder.application,
                 kibana_link: None,
                 identifiers: Identifiers::default(),
                 processing_duration: 0,
@@ -722,6 +753,32 @@ user: ada
         assert_eq!(identifiers.account, None);
         assert_eq!(identifiers.case_number, None);
         assert_eq!(identifiers.user.as_deref(), Some("ada"));
+    }
+
+    #[test]
+    fn identifiers_platform_deserializes_from_legacy_orchestration_key() {
+        let identifiers: Identifiers =
+            serde_json::from_str(r#"{"user": "ada", "orchestration": "elastic-cloud-kubernetes"}"#)
+                .expect("deserialize identifiers");
+        assert_eq!(identifiers.platform, Some(crate::data::Platform::ECK));
+    }
+
+    #[test]
+    fn identifiers_platform_tolerates_empty_and_unknown_legacy_values() {
+        let empty: Identifiers = serde_json::from_str(r#"{"orchestration": ""}"#).expect("deserialize identifiers");
+        assert_eq!(empty.platform, None);
+
+        let unknown: Identifiers =
+            serde_json::from_str(r#"{"orchestration": "not-a-platform"}"#).expect("deserialize identifiers");
+        assert_eq!(unknown.platform, None);
+    }
+
+    #[test]
+    fn identifiers_platform_serializes_as_typed_platform_key() {
+        let identifiers = Identifiers::default().with_platform(crate::data::Platform::ECK);
+        let value = serde_json::to_value(&identifiers).expect("serialize identifiers");
+        assert_eq!(value["platform"], "elastic-cloud-kubernetes");
+        assert!(value.get("orchestration").is_none());
     }
 
     #[test]

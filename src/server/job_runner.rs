@@ -12,7 +12,7 @@ use crate::{
     processor::{
         Collector, Identifiers, IncludedDiagnosticJobEvent, Processor,
         api::{ApiResolver, ProcessSelection},
-        new_job_id,
+        display_label, new_job_id,
     },
     receiver::Receiver,
     uploader,
@@ -513,6 +513,7 @@ async fn run_processor_job(ctx: ProcessorJobContext<'_>) -> Result<()> {
             state
                 .record_success(report.diagnostic.docs.total, report.diagnostic.docs.errors)
                 .await;
+            let product = report.diagnostic.display_label();
             send_event(
                 tx,
                 terminal_job_event(
@@ -525,7 +526,7 @@ async fn run_processor_job(ctx: ProcessorJobContext<'_>) -> Result<()> {
                         duration: &format!("{:.3}", report.diagnostic.processing_duration as f64 / 1000.0),
                         source: job.source,
                         kibana_link: report.diagnostic.kibana_link.as_deref().unwrap_or(""),
-                        product: &report.diagnostic.product.to_string(),
+                        product: &product,
                     },
                 ),
             )
@@ -579,14 +580,15 @@ async fn render_child_diagnostic_events(
             IncludedDiagnosticJobEvent::Completed {
                 job_id,
                 path,
-                product,
+                application,
+                platform,
                 diagnostic_id,
                 docs_created,
                 duration_ms,
                 kibana_link,
             } => {
                 let source = child_source(&path);
-                let product = product.to_string();
+                let product = display_label(application, platform);
                 let duration = format!("{:.3}", duration_ms as f64 / 1000.0);
                 let kibana_link = kibana_link.unwrap_or_default();
                 send_event(
@@ -609,13 +611,12 @@ async fn render_child_diagnostic_events(
             IncludedDiagnosticJobEvent::Skipped {
                 job_id,
                 path,
-                product,
+                application,
+                platform,
                 reason,
             } => {
                 let source = child_source(&path);
-                let product = product
-                    .map(|product| product.to_string())
-                    .unwrap_or_else(|| "unknown".to_string());
+                let product = display_label(application, platform);
                 send_event(
                     &tx,
                     replace_job_event(
@@ -1071,8 +1072,8 @@ fn merged_identifiers(
     if overrides.parent_id.is_some() {
         base.parent_id = overrides.parent_id;
     }
-    if overrides.orchestration.is_some() {
-        base.orchestration = overrides.orchestration;
+    if overrides.platform.is_some() {
+        base.platform = overrides.platform;
     }
 
     base.user = Some(request_user);

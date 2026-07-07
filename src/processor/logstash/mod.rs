@@ -26,7 +26,7 @@ use super::{
     diagnostic::{DataSource, DiagnosticManifest, DiagnosticReport, DiagnosticReportBuilder},
 };
 use crate::{
-    data::{self, Product},
+    data::{self, Application},
     exporter::Exporter,
     receiver::Receiver,
 };
@@ -86,7 +86,7 @@ impl DiagnosticProcessor for LogstashDiagnostic {
         let metadata = LogstashMetadata::try_new(manifest, logstash_version)?;
         let plugins = receiver.get::<plugins::Plugins>().await?;
         let report = DiagnosticReportBuilder::from(metadata.diagnostic.clone())
-            .product(Product::Logstash)
+            .application(Application::Logstash)
             .receiver(receiver.to_string())
             .build()?;
 
