@@ -70,8 +70,18 @@ enum LegacyJobAction {
     Process {
         output: JobOutput,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        selection: Option<JobProcessSelection>,
+        selection: Option<LegacyJobProcessSelection>,
     },
+}
+
+#[derive(Clone, Deserialize)]
+struct LegacyJobProcessSelection {
+    #[serde(default = "default_process_product")]
+    product: String,
+    #[serde(default = "default_diagnostic_type")]
+    diagnostic_type: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    selected: Vec<String>,
 }
 
 #[derive(Clone)]
@@ -250,7 +260,7 @@ impl TryFrom<LegacyJob> for Job {
     }
 }
 
-fn canonicalize_legacy_selection(selection: Option<JobProcessSelection>) -> Result<Option<JobProcessSelection>> {
+fn canonicalize_legacy_selection(selection: Option<LegacyJobProcessSelection>) -> Result<Option<ProcessSelection>> {
     let Some(selection) = selection else {
         return Ok(None);
     };
@@ -1020,6 +1030,38 @@ process-job:
             .expect("selection");
 
         assert!(selection.selected.iter().any(|selected| selected == "logstash_node"));
+    }
+
+    #[test]
+    fn legacy_process_selection_defaults_product_and_diagnostic_type() {
+        let _guard = test_env_lock().lock().expect("env lock");
+        let tmp = setup_env();
+        let path = tmp.path().join("jobs.yml");
+        write_jobs(
+            &path,
+            r#"
+process-job:
+  collect:
+    host: prod
+  action: process
+  output:
+    type: stdout
+  selection:
+    selected:
+      - nodes_stats
+"#,
+        );
+
+        let jobs = load_saved_jobs().expect("load and migrate jobs");
+        let selection = jobs
+            .get("process-job")
+            .and_then(|job| job.process())
+            .and_then(|process| process.selection.as_ref())
+            .expect("selection");
+
+        assert_eq!(selection.product, "elasticsearch");
+        assert_eq!(selection.diagnostic_type, "standard");
+        assert!(selection.selected.iter().any(|selected| selected == "nodes_stats"));
     }
 
     #[test]
