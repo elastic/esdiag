@@ -4,7 +4,7 @@ use crate::processor::diagnostic::data_source::{
 use eyre::{Result, eyre};
 use indexmap::IndexSet;
 use serde::Serialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DiagnosticType {
@@ -360,6 +360,76 @@ impl ApiResolver {
         Ok(resolved.into_iter().collect())
     }
 
+    pub fn resolve_processing_selection_with_collect_filters(
+        product: &str,
+        diagnostic_type: &str,
+        include: Option<&Vec<String>>,
+        exclude: Option<&Vec<String>>,
+    ) -> Result<Vec<String>> {
+        let collected = Self::resolve_collected_keys(product, diagnostic_type, include, exclude)?;
+        let defs = Self::processing_defs(product)?;
+        let processing_keys: HashSet<&str> = defs.iter().map(|def| def.key.as_str()).collect();
+        let selected: Vec<String> = collected
+            .iter()
+            .filter(|key| processing_keys.contains(key.as_str()))
+            .cloned()
+            .collect();
+
+        let resolved = Self::resolve_processing_selection(product, diagnostic_type, &selected)?;
+        Self::validate_resolved_processing_selection(&collected, &resolved)?;
+        Ok(resolved)
+    }
+
+    pub fn validate_processing_selection_with_collect_filters(
+        product: &str,
+        diagnostic_type: &str,
+        include: Option<&Vec<String>>,
+        exclude: Option<&Vec<String>>,
+        selected: &[String],
+    ) -> Result<()> {
+        let collected = Self::resolve_collected_keys(product, diagnostic_type, include, exclude)?;
+        let resolved = Self::resolve_processing_selection(product, diagnostic_type, selected)?;
+        Self::validate_resolved_processing_selection(&collected, &resolved)
+    }
+
+    fn validate_resolved_processing_selection(collected: &[String], resolved: &[String]) -> Result<()> {
+        let collected_keys: HashSet<&str> = collected.iter().map(String::as_str).collect();
+        let missing: Vec<String> = resolved
+            .iter()
+            .filter(|key| !collected_keys.contains(key.as_str()))
+            .cloned()
+            .collect();
+        if !missing.is_empty() {
+            return Err(eyre!(
+                "processing selection requires sources that were not collected: {}; remove the matching exclusions or include those sources",
+                missing.join(", ")
+            ));
+        }
+
+        Ok(())
+    }
+
+    fn resolve_collected_keys(
+        product: &str,
+        diagnostic_type: &str,
+        include: Option<&Vec<String>>,
+        exclude: Option<&Vec<String>>,
+    ) -> Result<Vec<String>> {
+        use std::str::FromStr;
+
+        let diag_type = if diagnostic_type.eq_ignore_ascii_case("custom") {
+            DiagnosticType::Support
+        } else {
+            DiagnosticType::from_str(diagnostic_type)?
+        };
+
+        match product {
+            "elasticsearch" => Self::resolve_es(&diag_type, include, exclude),
+            "logstash" => Self::resolve_ls(&diag_type, include, exclude),
+            _ => Err(eyre!("Unsupported processing product: {}", product)),
+        }
+    }
+
     pub fn processing_catalog() -> Result<HashMap<String, HashMap<String, Vec<ProcessingOption>>>> {
         let mut catalog = HashMap::new();
         for product in ["elasticsearch", "logstash"] {
@@ -708,6 +778,65 @@ mod tests {
         let selected =
             ApiResolver::resolve_processing_selection("logstash", "standard", &["node_stats".to_string()]).unwrap();
         assert!(selected.contains(&"logstash_node_stats".to_string()));
+    }
+
+    #[test]
+    fn test_processing_selection_applies_collect_filters() {
+        let selected = ApiResolver::resolve_processing_selection_with_collect_filters(
+            "elasticsearch",
+            "light",
+            Some(&vec!["pending_tasks".to_string()]),
+            Some(&vec!["nodes_stats".to_string()]),
+        )
+        .unwrap();
+
+        assert!(selected.contains(&"cluster_pending_tasks".to_string()));
+        assert!(!selected.contains(&"nodes_stats".to_string()));
+        assert!(selected.contains(&"cluster_settings_defaults".to_string()));
+        assert!(selected.contains(&"version".to_string()));
+    }
+
+    #[test]
+    fn test_processing_selection_rejects_sources_not_collected() {
+        let err = ApiResolver::resolve_processing_selection_with_collect_filters(
+            "elasticsearch",
+            "minimal",
+            Some(&vec!["pending_tasks".to_string()]),
+            Some(&vec!["nodes_stats".to_string()]),
+        )
+        .expect_err("minimal collection lacks a processing-required source");
+
+        assert!(err.to_string().contains("cluster_settings_defaults"));
+        assert!(err.to_string().contains("remove the matching exclusions"));
+    }
+
+    #[test]
+    fn test_explicit_processing_selection_rejects_sources_not_collected() {
+        let err = ApiResolver::validate_processing_selection_with_collect_filters(
+            "elasticsearch",
+            "light",
+            None,
+            Some(&vec!["nodes_stats".to_string()]),
+            &["nodes_stats".to_string()],
+        )
+        .expect_err("explicit selection must be present in collected sources");
+
+        assert!(err.to_string().contains("nodes_stats"));
+        assert!(err.to_string().contains("remove the matching exclusions"));
+    }
+
+    #[test]
+    fn test_processing_selection_with_collect_filters_supports_custom() {
+        let selected = ApiResolver::resolve_processing_selection_with_collect_filters(
+            "elasticsearch",
+            "custom",
+            Some(&vec!["nodes_stats".to_string()]),
+            None,
+        )
+        .unwrap();
+
+        assert!(selected.contains(&"nodes_stats".to_string()));
+        assert!(selected.contains(&"cluster_settings_defaults".to_string()));
     }
 
     #[test]
