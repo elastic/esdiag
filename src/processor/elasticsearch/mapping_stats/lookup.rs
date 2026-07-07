@@ -30,10 +30,11 @@ impl Lookup<MappingSummary> {
                     lookup.add(index_mapping.summarize()).with_name(&index_name);
                 }
                 Err(e) => {
-                    tracing::warn!("Error reading from mapping stats stream: {}", e);
                     if missing_source_error(&e) {
+                        tracing::debug!("Mapping stats source is absent: {}", e);
                         saw_missing_source = true;
                     } else {
+                        tracing::warn!("Error reading from mapping stats stream: {}", e);
                         saw_error = true;
                     }
                 }

@@ -439,7 +439,7 @@ pub async fn api_key(
 fn diagnostic_result_entries(completed: &Completed) -> Value {
     let report = &completed.report;
     let mut entries = vec![json!({
-        "status": "success",
+        "status": status_for_outcome(&report.outcome()),
         "outcome": report.outcome().to_string(),
         "diagnostic_id": report.diagnostic.metadata.id,
         "kibana_link": report.diagnostic.kibana_link.as_deref().unwrap_or(""),
@@ -460,7 +460,7 @@ fn diagnostic_result_entries(completed: &Completed) -> Value {
                 "reason": child.reason.as_deref().unwrap_or_default()
             }),
             (_, Some(report)) => json!({
-                "status": "success",
+                "status": status_for_outcome(&child.outcome),
                 "outcome": child.outcome.to_string(),
                 "diagnostic_id": report.diagnostic.metadata.id,
                 "kibana_link": report.diagnostic.kibana_link.as_deref().unwrap_or(""),
@@ -483,13 +483,21 @@ fn diagnostic_result_entries(completed: &Completed) -> Value {
     Value::Array(entries)
 }
 
+fn status_for_outcome(outcome: &DiagnosticOutcome) -> &'static str {
+    match outcome {
+        DiagnosticOutcome::Failed => "failed",
+        DiagnosticOutcome::Skipped(_) => "info",
+        DiagnosticOutcome::Complete | DiagnosticOutcome::Partial => "success",
+    }
+}
+
 fn runtime_millis(runtime: u128) -> u64 {
     runtime.try_into().unwrap_or(u64::MAX)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{diagnostic_result_entries, runtime_millis};
+    use super::{diagnostic_result_entries, runtime_millis, status_for_outcome};
     use crate::{
         data::{Application, Platform, Product},
         processor::{
@@ -578,6 +586,17 @@ mod tests {
         assert_eq!(entries[3]["status"], "failed");
         assert_eq!(entries[3]["outcome"], "failed");
         assert_eq!(entries[3]["error"], "manifest missing");
+    }
+
+    #[test]
+    fn status_for_outcome_tracks_terminal_outcomes() {
+        assert_eq!(status_for_outcome(&DiagnosticOutcome::Complete), "success");
+        assert_eq!(status_for_outcome(&DiagnosticOutcome::Partial), "success");
+        assert_eq!(status_for_outcome(&DiagnosticOutcome::Failed), "failed");
+        assert_eq!(
+            status_for_outcome(&DiagnosticOutcome::Skipped(SkipKind::ByDesign)),
+            "info"
+        );
     }
 
     #[test]
