@@ -85,11 +85,15 @@ pub trait DataSource {
         paths.push(source_conf.get_file_path(matched_name));
 
         for alias in aliases {
-            if let Ok((matched_name, source_conf)) = get_source(ctx.product, alias, &[]) {
-                let path = source_conf.get_file_path(matched_name);
-                if !paths.contains(&path) {
-                    paths.push(path);
-                }
+            // An alias may be its own registry entry, or a legacy file name
+            // whose registry key was renamed to the canonical key (ADR-0005);
+            // in the latter case derive its path from the canonical entry.
+            let path = match get_source(ctx.product, alias, &[]) {
+                Ok((matched_name, source_conf)) => source_conf.get_file_path(matched_name),
+                Err(_) => source_conf.get_file_path(alias),
+            };
+            if !paths.contains(&path) {
+                paths.push(path);
             }
         }
 
@@ -138,11 +142,51 @@ pub struct ResolvedVersionSource {
     pub paginate: Option<String>,
 }
 
+/// A collection-definition entry: one data source (ADR-0005).
+///
+/// The registry is the single source of truth for what to collect and how to
+/// process it. Fields beyond `versions`/`extension`/`subdir`/`retry` are
+/// ESDiag enrichments preserved across reconciliation from
+/// `support-diagnostics` (ADR-0006).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Eq)]
 pub struct Source {
     pub extension: Option<String>,
     pub subdir: Option<String>,
+    /// Comma-separated tags; diagnostic-type membership (`minimal`,
+    /// `standard`, `light`) derives from these.
     pub tags: Option<String>,
+    /// Retry the request on failure during collect.
+    #[serde(default)]
+    pub retry: bool,
+    /// Legacy upstream flag, currently informational.
+    #[serde(default, rename = "showErrors")]
+    pub show_errors: Option<bool>,
+    /// Load this source imposes on the system it is pulled from (1 = cheap …
+    /// 5 = expensive); governs collect concurrency only (ADR-0017).
+    #[serde(default)]
+    pub source_weight: Option<u8>,
+    /// ESDiag CPU/time to transform this source (1 = cheap … 5 = expensive);
+    /// governs processing concurrency only (ADR-0017).
+    #[serde(default)]
+    pub processing_weight: Option<u8>,
+    /// The processor may consume this source as a stream.
+    #[serde(default)]
+    pub streamable: bool,
+    /// A typed processor is registered for this source (its dispatch key ==
+    /// this registry key == `DataSource::name()`). Absent/false means
+    /// collect-only — a valid role, not a wiring gap.
+    #[serde(default)]
+    pub processable: bool,
+    /// Present iff this source is a user-facing processing option; `true`
+    /// means it cannot be deselected.
+    #[serde(default)]
+    pub required: Option<bool>,
+    /// Processing options that must be selected along with this one.
+    #[serde(default)]
+    pub dependencies: Vec<String>,
+    /// Sources that must be collected along with this one.
+    #[serde(default)]
+    pub collect_dependencies: Vec<String>,
     pub versions: BTreeMap<String, VersionSource>,
 }
 
@@ -152,6 +196,15 @@ impl Default for Source {
             extension: Some(String::from(".json")),
             subdir: None,
             tags: None,
+            retry: false,
+            show_errors: None,
+            source_weight: None,
+            processing_weight: None,
+            streamable: false,
+            processable: false,
+            required: None,
+            dependencies: Vec::new(),
+            collect_dependencies: Vec::new(),
             versions: BTreeMap::new(),
         }
     }
@@ -291,26 +344,88 @@ pub fn get_source_keys_with_tag(product: &str, tag: &str) -> Vec<String> {
         .unwrap_or_default()
 }
 
-fn convert_npm_semver_to_cargo(req: &str) -> String {
-    let parts: Vec<&str> = req.split_whitespace().collect();
-    let mut out = String::new();
-    for i in 0..parts.len() {
-        out.push_str(parts[i]);
-        if i + 1 < parts.len() {
-            // If current part starts with a digit and next starts with an operator, insert comma.
-            if parts[i].chars().next().is_some_and(|c| c.is_ascii_digit())
-                && parts[i + 1]
-                    .chars()
-                    .next()
-                    .is_some_and(|c| c == '<' || c == '>' || c == '=' || c == '~' || c == '^')
-            {
-                out.push_str(", ");
-            } else {
-                out.push(' ');
-            }
+/// Default graded weight when the registry does not set one explicitly: the
+/// legacy binary mapping (ADR-0017 migration) — `light`-tagged sources are 1,
+/// everything else 3, on a 1–5 scale.
+const LEGACY_LIGHT_WEIGHT: u8 = 1;
+const LEGACY_HEAVY_WEIGHT: u8 = 3;
+
+impl Source {
+    /// Load this source imposes on the system it is pulled from (1–5).
+    /// Governs collect concurrency only (ADR-0017).
+    pub fn source_weight(&self) -> u8 {
+        self.source_weight.unwrap_or(if self.has_tag("light") {
+            LEGACY_LIGHT_WEIGHT
+        } else {
+            LEGACY_HEAVY_WEIGHT
+        })
+    }
+
+    /// ESDiag CPU/time to transform this source (1–5). Governs processing
+    /// concurrency only (ADR-0017).
+    pub fn processing_weight(&self) -> u8 {
+        self.processing_weight.unwrap_or(LEGACY_LIGHT_WEIGHT)
+    }
+}
+
+/// A dispatch-table entry claim used by [`validate_processable_registry`]: a
+/// processable source's canonical key and the `DataSource::name()` of its
+/// registered typed impl.
+pub struct ProcessableClaim {
+    pub key: &'static str,
+    pub datasource_name: String,
+}
+
+/// Startup validation of the key-alignment invariant (ADR-0005): every
+/// registry entry marked `processable` has exactly one registered typed impl,
+/// every dispatch-table key exists in the registry marked `processable`, and
+/// each key equals its impl's `DataSource::name()`. A registry entry without
+/// a typed impl must not be marked `processable` — collect-only is a valid
+/// role, never a wiring gap.
+pub fn validate_processable_registry(product: &str, claims: &[ProcessableClaim]) -> Result<()> {
+    let sources =
+        get_product_sources(product).ok_or_else(|| eyre!("No collection definition for product {}", product))?;
+
+    let mut errors = Vec::new();
+    for claim in claims {
+        match sources.get(claim.key) {
+            None => errors.push(format!(
+                "dispatch key '{}' has no {} registry entry",
+                claim.key, product
+            )),
+            Some(source) if !source.processable => errors.push(format!(
+                "dispatch key '{}' is not marked processable in the {} registry",
+                claim.key, product
+            )),
+            Some(_) => {}
+        }
+        if claim.key != claim.datasource_name {
+            errors.push(format!(
+                "dispatch key '{}' != DataSource::name() '{}'",
+                claim.key, claim.datasource_name
+            ));
         }
     }
-    out
+
+    let claimed: Vec<&str> = claims.iter().map(|claim| claim.key).collect();
+    for (key, source) in sources {
+        if source.processable && !claimed.contains(&key.as_str()) {
+            errors.push(format!(
+                "registry entry '{}' is marked processable but has no registered impl",
+                key
+            ));
+        }
+    }
+
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(eyre!(
+            "Collection registry key alignment failed for {}: {}",
+            product,
+            errors.join("; ")
+        ))
+    }
 }
 
 impl Source {
@@ -343,10 +458,11 @@ impl Source {
         let mut clean_version = version.clone();
         clean_version.pre = semver::Prerelease::EMPTY;
 
+        // Ranges are stored in native Rust `semver` form: the upstream
+        // NPM/Java dialect is normalized once, at reconciliation (ADR-0006).
         for (req_str, source) in &self.versions {
-            let cargo_req_str = convert_npm_semver_to_cargo(req_str);
-            let req = VersionReq::parse(&cargo_req_str)
-                .map_err(|e| eyre!("Failed to parse version req '{}': {}", req_str, e))?;
+            let req =
+                VersionReq::parse(req_str).map_err(|e| eyre!("Failed to parse version req '{}': {}", req_str, e))?;
             if req.matches(&clean_version) {
                 return Ok(match source {
                     VersionSource::Url(url) => ResolvedVersionSource {
@@ -372,8 +488,63 @@ impl Source {
 
 #[cfg(test)]
 mod tests {
-    use super::get_sources;
-    use semver::Version;
+    use super::{ProcessableClaim, get_sources, validate_processable_registry};
+    use semver::{Version, VersionReq};
+
+    #[test]
+    fn all_registry_version_ranges_parse_with_stock_semver() {
+        // Ranges are normalized to native `semver` form at reconciliation
+        // (ADR-0006); the runtime has no compatibility shim.
+        for (product, sources) in get_sources() {
+            for (key, source) in sources {
+                for range in source.versions.keys() {
+                    VersionReq::parse(range)
+                        .unwrap_or_else(|e| panic!("{product}/{key} range '{range}' is not native semver: {e}"));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn validate_registry_rejects_unaligned_dispatch_key() {
+        let claims = vec![ProcessableClaim {
+            key: "not_a_registry_key",
+            datasource_name: "not_a_registry_key".to_string(),
+        }];
+        let err = validate_processable_registry("elasticsearch", &claims).expect_err("unaligned key must fail");
+        assert!(err.to_string().contains("no elasticsearch registry entry"));
+    }
+
+    #[test]
+    fn validate_registry_rejects_name_mismatch() {
+        let claims = vec![ProcessableClaim {
+            key: "tasks",
+            datasource_name: "task_list".to_string(),
+        }];
+        let err = validate_processable_registry("elasticsearch", &claims).expect_err("name mismatch must fail");
+        assert!(err.to_string().contains("!= DataSource::name()"));
+    }
+
+    #[test]
+    fn validate_registry_rejects_processable_entry_without_impl() {
+        // Claim only a subset: the remaining processable entries must be
+        // reported as missing impls.
+        let claims = vec![ProcessableClaim {
+            key: "tasks",
+            datasource_name: "tasks".to_string(),
+        }];
+        let err = validate_processable_registry("elasticsearch", &claims).expect_err("missing impls must fail");
+        assert!(err.to_string().contains("has no registered impl"));
+    }
+
+    #[test]
+    fn collect_only_entry_is_not_a_wiring_gap() {
+        let sources = get_sources().get("elasticsearch").unwrap();
+        let cat = sources.get("cat_aliases").unwrap();
+        assert!(!cat.processable);
+        // A collect-only source needs no impl and passes validation implicitly
+        // (it is simply absent from the claims and not marked processable).
+    }
 
     #[test]
     fn test_semver_parsing_and_matching() {

@@ -1,0 +1,15 @@
+# Deliberate divergences from support-diagnostics (ADR-0006).
+# Reconciliation (scripts/reconcile_sources.py) consults this file so it never
+# silently reverts ESDiag's intentional differences.
+
+# upstream key -> esdiag canonical key (ADR-0005 key alignment: registry key ==
+# dispatch key == DataSource::name())
+renames:
+  internal_health: health_report
+  settings: indices_settings
+
+# upstream keys ESDiag intentionally does not carry
+removed: []
+
+# esdiag-only keys with no upstream counterpart (do not flag as drift)
+esdiag_only: []
