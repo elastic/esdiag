@@ -440,7 +440,7 @@ fn diagnostic_result_entries(completed: &Completed) -> Value {
     let report = &completed.report;
     let mut entries = vec![json!({
         "status": "success",
-        "outcome": report.outcome().as_str(),
+        "outcome": report.outcome().to_string(),
         "diagnostic_id": report.diagnostic.metadata.id,
         "kibana_link": report.diagnostic.kibana_link.as_deref().unwrap_or(""),
         "took": runtime_millis(completed.runtime),
@@ -453,7 +453,7 @@ fn diagnostic_result_entries(completed: &Completed) -> Value {
         let entry = match (&child.outcome, &child.report) {
             (DiagnosticOutcome::Skipped(_), _) => json!({
                 "status": "info",
-                "outcome": child.outcome.as_str(),
+                "outcome": child.outcome.to_string(),
                 "product": crate::processor::display_label(child.application, child.platform),
                 "source": "included_diagnostic",
                 "path": child.path,
@@ -461,7 +461,7 @@ fn diagnostic_result_entries(completed: &Completed) -> Value {
             }),
             (_, Some(report)) => json!({
                 "status": "success",
-                "outcome": child.outcome.as_str(),
+                "outcome": child.outcome.to_string(),
                 "diagnostic_id": report.diagnostic.metadata.id,
                 "kibana_link": report.diagnostic.kibana_link.as_deref().unwrap_or(""),
                 "took": runtime_millis(child.runtime.unwrap_or_default()),
@@ -471,7 +471,7 @@ fn diagnostic_result_entries(completed: &Completed) -> Value {
             }),
             (_, None) => json!({
                 "status": "failed",
-                "outcome": child.outcome.as_str(),
+                "outcome": child.outcome.to_string(),
                 "source": "included_diagnostic",
                 "path": child.path,
                 "error": child.reason.as_deref().unwrap_or_default()
@@ -573,8 +573,10 @@ mod tests {
             "https://kb.example/app/dashboards#/view/child"
         );
         assert_eq!(entries[2]["status"], "info");
+        assert_eq!(entries[2]["outcome"], "skipped (not implemented)");
         assert_eq!(entries[2]["reason"], "Kibana processing is not yet implemented");
         assert_eq!(entries[3]["status"], "failed");
+        assert_eq!(entries[3]["outcome"], "failed");
         assert_eq!(entries[3]["error"], "manifest missing");
     }
 

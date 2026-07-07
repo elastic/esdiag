@@ -260,7 +260,13 @@ fn spawn_sub_processors(
                         outcome
                     }
                     Err(failed) => {
-                        let outcome = failed_child_outcome(child_job_id, path, failed.state.error);
+                        let outcome = failed_child_outcome_with_context(
+                            child_job_id,
+                            path,
+                            failed.state.error,
+                            application,
+                            platform,
+                        );
                         send_child_outcome_event(&event_tx, &outcome);
                         outcome
                     }
@@ -277,7 +283,13 @@ fn spawn_sub_processors(
                             reason: Some(failed.state.error),
                             runtime: None,
                         },
-                        None => failed_child_outcome(child_job_id, path, failed.state.error),
+                        None => failed_child_outcome_with_context(
+                            child_job_id,
+                            path,
+                            failed.state.error,
+                            application,
+                            platform,
+                        ),
                     };
                     send_child_outcome_event(&event_tx, &outcome);
                     outcome
@@ -307,13 +319,23 @@ fn spawn_sub_processors(
 }
 
 fn failed_child_outcome(job_id: u64, path: String, error: String) -> IncludedDiagnosticOutcome {
+    failed_child_outcome_with_context(job_id, path, error, None, Platform::Unknown)
+}
+
+fn failed_child_outcome_with_context(
+    job_id: u64,
+    path: String,
+    error: String,
+    application: Option<Application>,
+    platform: Platform,
+) -> IncludedDiagnosticOutcome {
     IncludedDiagnosticOutcome {
         job_id,
         path,
         outcome: DiagnosticOutcome::Failed,
         report: None,
-        application: None,
-        platform: Platform::Unknown,
+        application,
+        platform,
         reason: Some(error),
         runtime: None,
     }
@@ -971,6 +993,22 @@ mod tests {
                 .unwrap_or_default()
                 .contains("Failed to read included diagnostic manifest")
         );
+    }
+
+    #[test]
+    fn failed_child_outcome_preserves_known_child_context() {
+        let outcome = failed_child_outcome_with_context(
+            42,
+            "child-es".to_string(),
+            "processing failed".to_string(),
+            Some(Application::Elasticsearch),
+            Platform::ECK,
+        );
+
+        assert_eq!(outcome.outcome, DiagnosticOutcome::Failed);
+        assert_eq!(outcome.application, Some(Application::Elasticsearch));
+        assert_eq!(outcome.platform, Platform::ECK);
+        assert_eq!(outcome.reason.as_deref(), Some("processing failed"));
     }
 
     #[tokio::test(flavor = "multi_thread")]
