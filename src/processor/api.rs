@@ -366,28 +366,35 @@ impl ApiResolver {
         include: Option<&Vec<String>>,
         exclude: Option<&Vec<String>>,
     ) -> Result<Vec<String>> {
-        use std::str::FromStr;
-
-        let diag_type = if diagnostic_type.eq_ignore_ascii_case("custom") {
-            DiagnosticType::Support
-        } else {
-            DiagnosticType::from_str(diagnostic_type)?
-        };
-        let collected = match product {
-            "elasticsearch" => Self::resolve_es(&diag_type, include, exclude)?,
-            "logstash" => Self::resolve_ls(&diag_type, include, exclude)?,
-            _ => return Err(eyre!("Unsupported processing product: {}", product)),
-        };
+        let collected = Self::resolve_collected_keys(product, diagnostic_type, include, exclude)?;
         let defs = Self::processing_defs(product)?;
         let processing_keys: HashSet<&str> = defs.iter().map(|def| def.key.as_str()).collect();
-        let collected_keys: HashSet<&str> = collected.iter().map(String::as_str).collect();
         let selected: Vec<String> = collected
             .iter()
             .filter(|key| processing_keys.contains(key.as_str()))
             .cloned()
             .collect();
 
-        let resolved = Self::resolve_processing_selection(product, diagnostic_type, &selected)?;
+        Self::validate_processing_selection_with_collect_filters(
+            product,
+            diagnostic_type,
+            include,
+            exclude,
+            &selected,
+        )?;
+        Self::resolve_processing_selection(product, diagnostic_type, &selected)
+    }
+
+    pub fn validate_processing_selection_with_collect_filters(
+        product: &str,
+        diagnostic_type: &str,
+        include: Option<&Vec<String>>,
+        exclude: Option<&Vec<String>>,
+        selected: &[String],
+    ) -> Result<()> {
+        let collected = Self::resolve_collected_keys(product, diagnostic_type, include, exclude)?;
+        let collected_keys: HashSet<&str> = collected.iter().map(String::as_str).collect();
+        let resolved = Self::resolve_processing_selection(product, diagnostic_type, selected)?;
         let missing: Vec<String> = resolved
             .iter()
             .filter(|key| !collected_keys.contains(key.as_str()))
@@ -400,7 +407,28 @@ impl ApiResolver {
             ));
         }
 
-        Ok(resolved)
+        Ok(())
+    }
+
+    fn resolve_collected_keys(
+        product: &str,
+        diagnostic_type: &str,
+        include: Option<&Vec<String>>,
+        exclude: Option<&Vec<String>>,
+    ) -> Result<Vec<String>> {
+        use std::str::FromStr;
+
+        let diag_type = if diagnostic_type.eq_ignore_ascii_case("custom") {
+            DiagnosticType::Support
+        } else {
+            DiagnosticType::from_str(diagnostic_type)?
+        };
+
+        match product {
+            "elasticsearch" => Self::resolve_es(&diag_type, include, exclude),
+            "logstash" => Self::resolve_ls(&diag_type, include, exclude),
+            _ => Err(eyre!("Unsupported processing product: {}", product)),
+        }
     }
 
     pub fn processing_catalog() -> Result<HashMap<String, HashMap<String, Vec<ProcessingOption>>>> {
@@ -780,6 +808,21 @@ mod tests {
         .expect_err("minimal collection lacks a processing-required source");
 
         assert!(err.to_string().contains("cluster_settings_defaults"));
+        assert!(err.to_string().contains("remove the matching exclusions"));
+    }
+
+    #[test]
+    fn test_explicit_processing_selection_rejects_sources_not_collected() {
+        let err = ApiResolver::validate_processing_selection_with_collect_filters(
+            "elasticsearch",
+            "light",
+            None,
+            Some(&vec!["nodes_stats".to_string()]),
+            &["nodes_stats".to_string()],
+        )
+        .expect_err("explicit selection must be present in collected sources");
+
+        assert!(err.to_string().contains("nodes_stats"));
         assert!(err.to_string().contains("remove the matching exclusions"));
     }
 

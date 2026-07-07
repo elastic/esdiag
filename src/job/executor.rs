@@ -193,15 +193,22 @@ fn collect_process_selection(
     exclude: Option<&Vec<String>>,
     process: &Process,
 ) -> Result<Option<ProcessSelection>> {
-    if process.selection.is_some() {
-        return Ok(None);
-    }
-
     let product = match product {
         Product::Elasticsearch => "elasticsearch",
         Product::Logstash => "logstash",
         _ => return Ok(None),
     };
+    if let Some(selection) = &process.selection {
+        ApiResolver::validate_processing_selection_with_collect_filters(
+            product,
+            diagnostic_type,
+            include,
+            exclude,
+            &selection.selected,
+        )?;
+        return Ok(None);
+    }
+
     let selected =
         ApiResolver::resolve_processing_selection_with_collect_filters(product, diagnostic_type, include, exclude)?;
     Ok(Some(ProcessSelection {
