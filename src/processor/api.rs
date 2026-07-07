@@ -360,6 +360,29 @@ impl ApiResolver {
         Ok(resolved.into_iter().collect())
     }
 
+    pub fn resolve_processing_selection_with_collect_filters(
+        product: &str,
+        diagnostic_type: &str,
+        include: Option<&Vec<String>>,
+        exclude: Option<&Vec<String>>,
+    ) -> Result<Vec<String>> {
+        use std::str::FromStr;
+
+        let diag_type = DiagnosticType::from_str(diagnostic_type)?;
+        let collected = match product {
+            "elasticsearch" => Self::resolve_es(&diag_type, include, exclude)?,
+            "logstash" => Self::resolve_ls(&diag_type, include, exclude)?,
+            _ => return Err(eyre!("Unsupported processing product: {}", product)),
+        };
+        let defs = Self::processing_defs(product)?;
+        let selected: Vec<String> = collected
+            .into_iter()
+            .filter(|key| defs.iter().any(|def| def.key == *key))
+            .collect();
+
+        Self::resolve_processing_selection(product, diagnostic_type, &selected)
+    }
+
     pub fn processing_catalog() -> Result<HashMap<String, HashMap<String, Vec<ProcessingOption>>>> {
         let mut catalog = HashMap::new();
         for product in ["elasticsearch", "logstash"] {
@@ -708,6 +731,21 @@ mod tests {
         let selected =
             ApiResolver::resolve_processing_selection("logstash", "standard", &["node_stats".to_string()]).unwrap();
         assert!(selected.contains(&"logstash_node_stats".to_string()));
+    }
+
+    #[test]
+    fn test_processing_selection_applies_collect_filters() {
+        let selected = ApiResolver::resolve_processing_selection_with_collect_filters(
+            "elasticsearch",
+            "minimal",
+            Some(&vec!["pending_tasks".to_string()]),
+            Some(&vec!["nodes_stats".to_string()]),
+        )
+        .unwrap();
+
+        assert!(selected.contains(&"cluster_pending_tasks".to_string()));
+        assert!(!selected.contains(&"nodes_stats".to_string()));
+        assert!(selected.contains(&"version".to_string()));
     }
 
     #[test]

@@ -13,9 +13,12 @@
 
 use super::model::{ExecutionMode, ExportTarget, Input, Job, Process, SendTarget};
 use crate::{
-    data::Uri,
+    data::{Product, Uri},
     exporter::Exporter,
-    processor::{Collector, Identifiers, Processor, api::ProcessSelection},
+    processor::{
+        Collector, Identifiers, Processor,
+        api::{ApiResolver, ProcessSelection},
+    },
     receiver::Receiver,
     uploader,
 };
@@ -30,8 +33,8 @@ pub struct JobOutcome {
     /// Temporary staging bundles are omitted because their directory is removed
     /// before the outcome reaches the caller.
     pub bundle_path: Option<PathBuf>,
-    /// Whether that bundle outlives the job (a retained `save`, or a `Load`
-    /// input) as opposed to a temporary staging bundle.
+    /// Whether `bundle_path` points at a retained archive-file bundle as
+    /// opposed to a temporary staging bundle.
     pub bundle_retained: bool,
     /// The upload slug returned by the Elastic Uploader for a `Send` stage.
     pub upload_slug: Option<String>,
@@ -88,6 +91,7 @@ pub async fn execute(job: Job) -> Result<JobOutcome> {
                             Receiver::try_from(Uri::File(bundle_path.clone()))?,
                             process,
                             job.identifiers.clone(),
+                            None,
                         )
                         .await?;
                         outcome.processed = true;
@@ -107,7 +111,21 @@ pub async fn execute(job: Job) -> Result<JobOutcome> {
                     let process = job
                         .process()
                         .ok_or_else(|| eyre!("streaming job without process (unreachable by construction)"))?;
-                    run_process(Receiver::try_from((**host).clone())?, process, job.identifiers.clone()).await?;
+                    let product = host.app().clone();
+                    let selection = streaming_process_selection(
+                        &product,
+                        diagnostic_type,
+                        include.as_ref(),
+                        exclude.as_ref(),
+                        process,
+                    )?;
+                    run_process(
+                        Receiver::try_from((**host).clone())?,
+                        process,
+                        job.identifiers.clone(),
+                        selection,
+                    )
+                    .await?;
                     outcome.processed = true;
                 }
             }
@@ -118,7 +136,7 @@ pub async fn execute(job: Job) -> Result<JobOutcome> {
                 outcome.bundle_retained = true;
             }
             if let Some(process) = job.process() {
-                run_process(Receiver::try_from(uri.clone())?, process, job.identifiers.clone()).await?;
+                run_process(Receiver::try_from(uri.clone())?, process, job.identifiers.clone(), None).await?;
                 outcome.processed = true;
             }
             if let Some(send) = job.send() {
@@ -141,9 +159,14 @@ pub async fn execute(job: Job) -> Result<JobOutcome> {
 /// Run the `Process` stage (with its `Export` sink) over the given input
 /// receiver — a materialised bundle in staged mode, a live receiver in
 /// streaming mode.
-async fn run_process(receiver: Receiver, process: &Process, identifiers: Identifiers) -> Result<()> {
+async fn run_process(
+    receiver: Receiver,
+    process: &Process,
+    identifiers: Identifiers,
+    derived_selection: Option<ProcessSelection>,
+) -> Result<()> {
     let exporter = export_target_exporter(&process.export)?;
-    let selection: Option<ProcessSelection> = process.selection.clone();
+    let selection: Option<ProcessSelection> = process.selection.clone().or(derived_selection);
     let processor =
         Processor::try_new_with_selection(Arc::new(receiver), Arc::new(exporter), identifiers, selection).await?;
     let processing = processor.start().await.map_err(|failed| eyre!("{}", failed))?;
@@ -154,6 +177,31 @@ async fn run_process(receiver: Receiver, process: &Process, identifiers: Identif
         }
         Err(failed) => Err(eyre!("{}", failed)),
     }
+}
+
+fn streaming_process_selection(
+    product: &Product,
+    diagnostic_type: &str,
+    include: Option<&Vec<String>>,
+    exclude: Option<&Vec<String>>,
+    process: &Process,
+) -> Result<Option<ProcessSelection>> {
+    if process.selection.is_some() {
+        return Ok(None);
+    }
+
+    let product = match product {
+        Product::Elasticsearch => "elasticsearch",
+        Product::Logstash => "logstash",
+        _ => return Ok(None),
+    };
+    let selected =
+        ApiResolver::resolve_processing_selection_with_collect_filters(product, diagnostic_type, include, exclude)?;
+    Ok(Some(ProcessSelection {
+        product: product.to_string(),
+        diagnostic_type: diagnostic_type.to_string(),
+        selected,
+    }))
 }
 
 /// Run the `Send` stage: transmit an existing bundle to the Elastic Uploader.
@@ -167,8 +215,8 @@ async fn run_send(bundle_path: &std::path::Path, send: &SendTarget) -> Result<St
 fn export_target_exporter(target: &ExportTarget) -> Result<Exporter> {
     match target {
         ExportTarget::KnownHost { name } => Exporter::try_from(Uri::try_from(name.clone())?),
-        ExportTarget::File { path } => Exporter::try_from(Uri::try_from(path.display().to_string())?),
-        ExportTarget::Directory { dir } => Exporter::try_from(Uri::try_from(dir.display().to_string())?),
+        ExportTarget::File { path } => Exporter::try_from(Uri::File(path.clone())),
+        ExportTarget::Directory { dir } => Exporter::try_from(Uri::Directory(dir.clone())),
         ExportTarget::Stdout => Exporter::try_from(Uri::Stream),
     }
 }
