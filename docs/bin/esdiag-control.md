@@ -1,3 +1,10 @@
+---
+type: Guide
+title: Elastic Stack Diagnostics Control
+description: Guide to building, configuring, and deploying ESDiag with the esdiag-control helper script.
+tags: [bin, containers, deployment]
+---
+
 Elastic Stack Diagnostics Control
 =================================
 

@@ -1,3 +1,10 @@
+---
+type: Reference
+title: ESDiag API Documentation
+description: Overview of the ESDiag service API for processing Elastic Stack diagnostic bundles.
+tags: [api, reference]
+---
+
 ESDiag API Documentation
 ========================
 

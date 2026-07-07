@@ -1,3 +1,10 @@
+---
+type: Reference
+title: API Usage Examples
+description: Practical request and response examples for the ESDiag service API.
+tags: [api, examples, reference]
+---
+
 # API Usage Examples
 
 This document provides practical examples of how to use the ESDiag API endpoints.

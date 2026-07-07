@@ -1,3 +1,10 @@
+---
+type: Maintainer Guide
+title: Branch Management
+description: Maintainer guide to long-lived branch strategy and release flow.
+tags: [repository, branching, release]
+---
+
 Branch Management
 =================
 

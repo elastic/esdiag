@@ -1,3 +1,10 @@
+---
+type: Guide
+title: Desktop Packaging
+description: Guide to local and CI desktop packaging workflows for macOS, Windows, and Linux.
+tags: [repository, desktop, packaging, build]
+---
+
 # Desktop Packaging
 
 This project supports desktop packaging for:
