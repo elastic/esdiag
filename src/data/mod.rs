@@ -37,9 +37,9 @@ pub use known_host::{ElasticCloud, HostRole, KnownHost, KnownHostBuilder, KnownH
 pub use platform::Platform;
 pub use product::Product;
 pub use saved_jobs::{
-    CollectMode, CollectSource, Job, JobAction, JobBuilder, JobCollect, JobOutput, JobProcessSelection, JobSignals,
-    JobSignalsCollect, JobSignalsProcess, JobSignalsSend, NeedsAction, NeedsCollect, ProcessMode, SavedJobs, SendMode,
-    load_saved_jobs, load_saved_jobs_async, save_saved_jobs, with_saved_jobs_async,
+    CollectMode, CollectSource, Job, JobBuilder, JobOutput, JobProcessSelection, JobSignals, JobSignalsCollect,
+    JobSignalsProcess, JobSignalsSend, NeedsAction, NeedsCollect, ProcessMode, SavedJobs, SendMode, load_saved_jobs,
+    load_saved_jobs_async, save_saved_jobs, with_saved_jobs_async,
 };
 pub use settings::Settings;
 pub use uri::Uri;

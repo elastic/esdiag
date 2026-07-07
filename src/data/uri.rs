@@ -6,7 +6,7 @@ use crate::data::Product;
 
 use super::{ElasticCloud, KnownHost, KnownHostBuilder};
 use eyre::{OptionExt, Report, Result, eyre};
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::{
     path::{Path, PathBuf},
     str::FromStr,
@@ -94,6 +94,15 @@ impl<'de> Deserialize<'de> for Uri {
     {
         let s = String::deserialize(deserializer)?;
         Uri::try_from(&s).map_err(serde::de::Error::custom)
+    }
+}
+
+impl Serialize for Uri {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
     }
 }
 

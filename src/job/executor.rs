@@ -13,7 +13,7 @@
 
 use super::model::{ExecutionMode, ExportTarget, Input, Job, Process, SendTarget};
 use crate::{
-    data::Uri,
+    data::{KnownHost, Uri},
     exporter::Exporter,
     processor::{Collector, Identifiers, Processor, api::ProcessSelection},
     receiver::Receiver,
@@ -44,11 +44,16 @@ pub async fn execute(job: Job) -> Result<JobOutcome> {
 
     match job.input() {
         Input::Collect {
-            host,
+            host: host_name,
             diagnostic_type,
             include,
             exclude,
         } => {
+            let hosts = KnownHost::parse_hosts_yml()?;
+            let host = hosts
+                .get(host_name)
+                .cloned()
+                .ok_or_else(|| eyre!("Host '{host_name}' referenced by job not found in hosts.yml"))?;
             match job.execution_mode() {
                 ExecutionMode::Staged => {
                     // `Save` is the serialization barrier: collection
@@ -63,7 +68,7 @@ pub async fn execute(job: Job) -> Result<JobOutcome> {
                     };
                     outcome.bundle_retained = save.is_retained();
 
-                    let receiver = Receiver::try_from((**host).clone())?;
+                    let receiver = Receiver::try_from(host.clone())?;
                     let product = host.app().clone();
                     let collect_exporter = Exporter::for_collect_archive(output_dir)?;
                     let collector = Collector::try_new(
@@ -102,7 +107,7 @@ pub async fn execute(job: Job) -> Result<JobOutcome> {
                     let process = job
                         .process()
                         .ok_or_else(|| eyre!("streaming job without process (unreachable by construction)"))?;
-                    run_process(Receiver::try_from((**host).clone())?, process, job.identifiers.clone()).await?;
+                    run_process(Receiver::try_from(host)?, process, job.identifiers.clone()).await?;
                     outcome.processed = true;
                 }
             }
@@ -161,7 +166,7 @@ fn export_target_exporter(target: &ExportTarget) -> Result<Exporter> {
     match target {
         ExportTarget::KnownHost { name } => Exporter::try_from(Uri::try_from(name.clone())?),
         ExportTarget::File { path } => Exporter::try_from(Uri::try_from(path.display().to_string())?),
-        ExportTarget::Directory { dir } => Exporter::try_from(Uri::try_from(dir.display().to_string())?),
+        ExportTarget::Directory { output_dir } => Exporter::try_from(Uri::try_from(output_dir.display().to_string())?),
         ExportTarget::Stdout => Exporter::try_from(Uri::Stream),
     }
 }
@@ -213,7 +218,7 @@ mod tests {
             Some(Process {
                 selection: None,
                 export: ExportTarget::Directory {
-                    dir: output.path().to_path_buf(),
+                    output_dir: output.path().to_path_buf(),
                 },
             }),
             None,

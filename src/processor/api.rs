@@ -3,7 +3,7 @@ use crate::processor::diagnostic::data_source::{
 };
 use eyre::{Result, eyre};
 use indexmap::IndexSet;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -181,7 +181,7 @@ pub struct ProcessingOption {
     pub selected: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct ProcessSelection {
     pub product: String,
     pub diagnostic_type: String,

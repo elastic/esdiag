@@ -229,7 +229,7 @@ fn ensure_parent_dir(path: &Path) -> Result<()> {
     Ok(())
 }
 
-fn secure_output_file(path: &Path) -> Result<File> {
+pub(crate) fn secure_output_file(path: &Path) -> Result<File> {
     ensure_parent_dir(path)?;
     let mut options = OpenOptions::new();
     options.create_new(true).write(true);
@@ -256,7 +256,7 @@ fn temp_output_path(path: &Path) -> Result<PathBuf> {
     Ok(parent.join(format!(".{file_name}.tmp-{}-{unique}", std::process::id())))
 }
 
-fn replace_file_atomic(path: &Path, temp_path: &Path) -> Result<()> {
+pub(crate) fn replace_file_atomic(path: &Path, temp_path: &Path) -> Result<()> {
     #[cfg(windows)]
     {
         let backup_path = path.with_extension("bak");
@@ -291,7 +291,7 @@ fn replace_file_atomic(path: &Path, temp_path: &Path) -> Result<()> {
     Ok(())
 }
 
-fn write_yaml_atomic<T: Serialize>(path: &Path, value: &T) -> Result<()> {
+pub(crate) fn write_yaml_atomic<T: Serialize>(path: &Path, value: &T) -> Result<()> {
     let temp_path = temp_output_path(path)?;
     let write_result = (|| -> Result<()> {
         let file = secure_output_file(&temp_path)?;
@@ -919,9 +919,8 @@ fn derive_key(password: &str, salt: &[u8], params: &KdfParams) -> Result<[u8; KE
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::data::{
-        HostRole, Job, JobAction, JobCollect, JobOutput, KnownHostBuilder, Product, SavedJobs, save_saved_jobs,
-    };
+    use crate::data::{HostRole, Job, JobOutput, KnownHostBuilder, Product, SavedJobs, save_saved_jobs};
+    use crate::job::model::{Input, Process, SaveTarget, SendTarget};
     use crate::test_env_lock;
     use tempfile::TempDir;
     use url::Url;
@@ -1230,6 +1229,15 @@ ciphertext: ""
         host.save(host_name).expect("save host");
     }
 
+    fn collect_input(host: &str) -> Input {
+        Input::Collect {
+            host: host.to_string(),
+            diagnostic_type: "standard".to_string(),
+            include: None,
+            exclude: None,
+        }
+    }
+
     #[test]
     fn remove_secret_blocks_direct_host_reference() {
         let _guard = test_env_lock().lock().expect("env lock");
@@ -1271,20 +1279,19 @@ ciphertext: ""
         let mut jobs = SavedJobs::default();
         jobs.insert(
             "nightly-prod".to_string(),
-            Job {
-                identifiers: Default::default(),
-                collect: JobCollect {
-                    host: "prod".to_string(),
-                    diagnostic_type: "standard".to_string(),
-                    save_dir: None,
-                },
-                action: JobAction::Process {
-                    output: JobOutput::KnownHost {
+            Job::try_new(
+                Default::default(),
+                collect_input("prod"),
+                None,
+                Some(Process {
+                    selection: None,
+                    export: JobOutput::KnownHost {
                         name: "prod".to_string(),
                     },
-                    selection: None,
-                },
-            },
+                }),
+                None,
+            )
+            .expect("valid job"),
         );
         save_saved_jobs(&jobs).expect("save jobs");
 
@@ -1316,37 +1323,35 @@ ciphertext: ""
 
     #[test]
     fn referenced_job_hosts_only_uses_active_send_mode_targets() {
-        let job = Job {
-            identifiers: Default::default(),
-            collect: JobCollect {
-                host: "collector".to_string(),
-                diagnostic_type: "standard".to_string(),
-                save_dir: None,
-            },
-            action: JobAction::Process {
-                output: JobOutput::KnownHost {
+        let job = Job::try_new(
+            Default::default(),
+            collect_input("collector"),
+            None,
+            Some(Process {
+                selection: None,
+                export: JobOutput::KnownHost {
                     name: "sender".to_string(),
                 },
-                selection: None,
-            },
-        };
+            }),
+            None,
+        )
+        .expect("valid job");
 
         assert_eq!(referenced_job_hosts(&job), vec!["collector", "sender"]);
     }
 
     #[test]
     fn referenced_job_hosts_ignores_remote_urls() {
-        let job = Job {
-            identifiers: Default::default(),
-            collect: JobCollect {
-                host: "collector".to_string(),
-                diagnostic_type: "standard".to_string(),
-                save_dir: None,
-            },
-            action: JobAction::Upload {
+        let job = Job::try_new(
+            Default::default(),
+            collect_input("collector"),
+            Some(SaveTarget::temporary()),
+            None,
+            Some(SendTarget {
                 upload_id: "https://upload.elastic.co/g/abc123".to_string(),
-            },
-        };
+            }),
+        )
+        .expect("valid job");
 
         assert_eq!(referenced_job_hosts(&job), vec!["collector"]);
     }
