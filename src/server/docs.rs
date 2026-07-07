@@ -544,11 +544,13 @@ mod tests {
         let tmp = TempDir::new().expect("temp dir");
         let config_dir = tmp.path().join(".esdiag");
         let hosts_path = config_dir.join("hosts.yml");
+        let keystore_path = config_dir.join("secrets.yml");
         let settings_path = config_dir.join("settings.yml");
         unsafe {
             std::env::set_var("HOME", tmp.path());
             std::env::set_var("USERPROFILE", tmp.path());
             std::env::set_var("ESDIAG_HOSTS", &hosts_path);
+            std::env::set_var("ESDIAG_KEYSTORE", &keystore_path);
             std::env::set_var("ESDIAG_SETTINGS", &settings_path);
         }
         (tmp, hosts_path, settings_path)

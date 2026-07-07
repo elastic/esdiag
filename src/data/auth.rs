@@ -53,3 +53,17 @@ impl FromStr for AuthType {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::Auth;
+
+    #[test]
+    fn auth_display_redacts_secret_material() {
+        assert_eq!(Auth::Apikey("ad-hoc-api-key".to_string()).to_string(), "Apikey");
+        assert_eq!(
+            Auth::Basic("elastic".to_string(), "super-secret-password".to_string()).to_string(),
+            "Basic"
+        );
+    }
+}
