@@ -1,3 +1,10 @@
+---
+type: Maintainer Guide
+title: Repository Organization
+description: Maintainer guide to the repository layout and major source directories.
+tags: [repository, maintainers]
+---
+
 Repository Organization
 =======================
 

@@ -11,7 +11,11 @@ use axum::{
 };
 use pulldown_cmark::{Event, Options, Parser, html};
 use regex::Regex;
+use serde::Deserialize;
 use std::{collections::BTreeMap, collections::HashSet, path::PathBuf, sync::OnceLock};
+
+const DOCS_EXCLUDED_TAGS_ENV: &str = "ESDIAG_DOCS_EXCLUDED_TAGS";
+const DEFAULT_EXCLUDED_DOC_TAGS: &[&str] = &["repository"];
 
 #[derive(Template)]
 #[template(path = "docs.html")]
@@ -67,6 +71,38 @@ pub struct TocEntry {
     pub is_dir: bool,
 }
 
+#[derive(Default, Deserialize)]
+struct OkfFrontmatter {
+    #[serde(default)]
+    tags: Vec<String>,
+}
+
+struct DocsVisibility {
+    excluded_tags: HashSet<String>,
+    include_excluded: bool,
+}
+
+impl DocsVisibility {
+    fn current() -> Self {
+        Self {
+            excluded_tags: configured_excluded_doc_tags(),
+            include_excluded: tracing::enabled!(tracing::Level::DEBUG),
+        }
+    }
+
+    #[cfg(test)]
+    fn new(excluded_tags: HashSet<String>, include_excluded: bool) -> Self {
+        Self {
+            excluded_tags,
+            include_excluded,
+        }
+    }
+
+    fn is_visible(&self, markdown: &str) -> bool {
+        self.include_excluded || self.excluded_tags.is_empty() || doc_tags(markdown).is_disjoint(&self.excluded_tags)
+    }
+}
+
 pub async fn handler_index(
     headers: HeaderMap,
     state: axum::extract::State<std::sync::Arc<crate::server::ServerState>>,
@@ -91,10 +127,16 @@ pub async fn handler(
     };
 
     let is_datastar = headers.contains_key("datastar-request");
+    let docs_visibility = DocsVisibility::current();
 
     match DocsAssets::get(&file_path) {
         Some(content) => {
             let markdown_content = String::from_utf8_lossy(&content.data);
+            if !docs_visibility.is_visible(&markdown_content) {
+                return (StatusCode::NOT_FOUND, "Document not found").into_response();
+            }
+
+            let markdown_body = strip_okf_frontmatter(&markdown_content);
 
             // Set up pulldown-cmark parser with options
             let mut options = Options::empty();
@@ -105,7 +147,7 @@ pub async fn handler(
             options.insert(Options::ENABLE_HEADING_ATTRIBUTES);
             options.insert(Options::ENABLE_GFM); // GitHub Flavored Markdown
 
-            let parser = Parser::new_ext(&markdown_content, options).map(|event| match event {
+            let parser = Parser::new_ext(markdown_body, options).map(|event| match event {
                 // Do not allow raw HTML from markdown input in rendered docs.
                 Event::Html(text) | Event::InlineHtml(text) => Event::Text(text),
                 _ => event,
@@ -116,7 +158,7 @@ pub async fn handler(
             html::push_html(&mut html_content, parser);
             html_content = inject_heading_ids(&html_content);
 
-            let toc = generate_toc();
+            let toc = generate_toc(&docs_visibility);
 
             // Remove .md suffix for the current_path comparison
             let current_path = if path.ends_with(".md") {
@@ -239,13 +281,20 @@ fn build_nav(entries: &[TocEntry], current_path: &str) -> (Vec<DocsNavLink>, Vec
     (root_items, sections)
 }
 
-fn generate_toc() -> Vec<TocEntry> {
+fn generate_toc(docs_visibility: &DocsVisibility) -> Vec<TocEntry> {
     let mut sections: BTreeMap<String, Vec<String>> = BTreeMap::new();
     let mut root_files = Vec::new();
 
     for file in DocsAssets::iter().map(|p| p.into_owned()) {
         if !file.ends_with(".md") {
             continue;
+        }
+
+        if let Some(content) = DocsAssets::get(&file) {
+            let markdown = String::from_utf8_lossy(&content.data);
+            if !docs_visibility.is_visible(&markdown) {
+                continue;
+            }
         }
 
         let path = PathBuf::from(&file);
@@ -328,6 +377,47 @@ fn slugify(s: &str) -> String {
         .join("-")
 }
 
+fn split_okf_frontmatter(markdown: &str) -> Option<(&str, &str)> {
+    let body_start = markdown.strip_prefix("---\n")?;
+    let delimiter = "\n---\n";
+    let frontmatter_end = body_start.find(delimiter)?;
+    let frontmatter = &body_start[..frontmatter_end];
+    let body = &body_start[frontmatter_end + delimiter.len()..];
+    Some((frontmatter, body))
+}
+
+fn strip_okf_frontmatter(markdown: &str) -> &str {
+    split_okf_frontmatter(markdown).map_or(markdown, |(_, body)| body)
+}
+
+fn parse_tag_list(tags: &str) -> HashSet<String> {
+    tags.split(',')
+        .map(|tag| tag.trim().to_ascii_lowercase())
+        .filter(|tag| !tag.is_empty())
+        .collect()
+}
+
+fn configured_excluded_doc_tags() -> HashSet<String> {
+    match std::env::var(DOCS_EXCLUDED_TAGS_ENV) {
+        Ok(tags) => parse_tag_list(&tags),
+        Err(_) => DEFAULT_EXCLUDED_DOC_TAGS.iter().map(|tag| tag.to_string()).collect(),
+    }
+}
+
+fn doc_tags(markdown: &str) -> HashSet<String> {
+    split_okf_frontmatter(markdown)
+        .and_then(|(frontmatter, _)| serde_yaml::from_str::<OkfFrontmatter>(frontmatter).ok())
+        .map(|frontmatter| {
+            frontmatter
+                .tags
+                .into_iter()
+                .map(|tag| tag.trim().to_ascii_lowercase())
+                .filter(|tag| !tag.is_empty())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 fn extract_existing_ids(html: &str) -> HashSet<String> {
     static ID_ATTR_RE: OnceLock<Regex> = OnceLock::new();
     let re = ID_ATTR_RE
@@ -395,13 +485,18 @@ fn inject_heading_ids(html: &str) -> String {
 #[cfg(test)]
 #[allow(clippy::await_holding_lock)]
 mod tests {
-    use super::handler_index;
+    use super::{
+        DocsVisibility, generate_toc, handler, handler_index, parse_tag_list, split_okf_frontmatter,
+        strip_okf_frontmatter,
+    };
+    use crate::embeds::DocsAssets;
     use crate::server::{RuntimeMode, ServerPolicy, test_server_state};
     use axum::{
-        extract::State,
+        extract::{Path, State},
         http::{HeaderMap, HeaderValue, StatusCode},
         response::IntoResponse,
     };
+    use serde_yaml::Value;
     use std::{sync::Arc, sync::Mutex};
     use tempfile::TempDir;
 
@@ -421,6 +516,98 @@ mod tests {
             std::env::set_var("ESDIAG_SETTINGS", &settings_path);
         }
         (tmp, hosts_path, settings_path)
+    }
+
+    #[test]
+    fn embedded_docs_are_minimally_okf_compliant() {
+        for file in DocsAssets::iter().map(|p| p.into_owned()) {
+            if !file.ends_with(".md") {
+                continue;
+            }
+
+            let filename = std::path::Path::new(&file)
+                .file_name()
+                .and_then(|name| name.to_str())
+                .expect("embedded docs path should have a filename");
+
+            if matches!(filename, "index.md" | "log.md") {
+                continue;
+            }
+
+            let content = DocsAssets::get(&file).unwrap_or_else(|| panic!("embedded docs file should exist: {file}"));
+            let markdown = String::from_utf8_lossy(&content.data);
+            let (frontmatter, body) =
+                split_okf_frontmatter(&markdown).unwrap_or_else(|| panic!("{file} should start with OKF frontmatter"));
+            let frontmatter: Value = serde_yaml::from_str(frontmatter)
+                .unwrap_or_else(|err| panic!("{file} has invalid YAML frontmatter: {err}"));
+            let doc_type = frontmatter
+                .get("type")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .trim();
+
+            assert!(!doc_type.is_empty(), "{file} should have a non-empty OKF type");
+            assert!(!body.trim().is_empty(), "{file} should have markdown body content");
+        }
+    }
+
+    #[test]
+    fn okf_frontmatter_is_not_rendered_as_markdown_body() {
+        let markdown = "---\ntype: Reference\ntitle: Example\n---\n\n# Example\n";
+
+        assert_eq!(strip_okf_frontmatter(markdown), "\n# Example\n");
+    }
+
+    #[test]
+    fn docs_navigation_excludes_documents_with_configured_tags() {
+        let visibility = DocsVisibility::new(parse_tag_list("repository"), false);
+        let toc = generate_toc(&visibility);
+
+        assert!(
+            toc.iter().all(|entry| !entry.path.starts_with("repository/")),
+            "repository-tagged docs should be hidden from navigation"
+        );
+        assert!(
+            toc.iter().any(|entry| entry.path == "command-line"),
+            "untagged-by-filter docs should remain in navigation"
+        );
+    }
+
+    #[test]
+    fn docs_navigation_includes_filtered_tags_when_debug_visible() {
+        let visibility = DocsVisibility::new(parse_tag_list("repository"), true);
+        let toc = generate_toc(&visibility);
+
+        assert!(
+            toc.iter().any(|entry| entry.path == "repository/organization"),
+            "debug visibility should include otherwise filtered docs"
+        );
+    }
+
+    #[tokio::test]
+    async fn direct_docs_request_returns_not_found_for_filtered_tags() {
+        let _guard = env_lock().lock().expect("env lock");
+        let (_tmp, _hosts_path, _settings_path) = setup_env();
+        unsafe {
+            std::env::set_var("ESDIAG_DOCS_EXCLUDED_TAGS", "repository");
+        }
+
+        let state = test_server_state();
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "X-Goog-Authenticated-User-Email",
+            HeaderValue::from_static("accounts.google.com:test@example.com"),
+        );
+
+        let response = handler(headers, State(state), Path("repository/organization".to_string()))
+            .await
+            .into_response();
+
+        unsafe {
+            std::env::remove_var("ESDIAG_DOCS_EXCLUDED_TAGS");
+        }
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
     }
 
     #[tokio::test]

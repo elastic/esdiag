@@ -1,3 +1,10 @@
+---
+type: Guide
+title: Host Keystore Migration
+description: Guide to migrating saved host credentials into the encrypted esdiag keystore.
+tags: [hosts, keystore, migration]
+---
+
 # Host Keystore Migration
 
 `esdiag` supports two host auth models:

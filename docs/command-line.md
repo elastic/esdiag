@@ -1,3 +1,10 @@
+---
+type: Reference
+title: Command-Line Interface Reference
+description: Primary command-line reference for esdiag commands, options, and runtime behavior.
+tags: [cli, reference]
+---
+
 # Command-Line Interface Reference
 
 This document is the primary command-line reference for `esdiag`.
@@ -88,6 +95,7 @@ These environment variables change where local state is read and written:
 - `ESDIAG_KIBANA_URL`: Kibana URL used by `serve`, processing metadata, and host-omitted setup flows
 - `ESDIAG_KIBANA_SPACE`: optional Kibana space appended to generated Kibana links
 - `ESDIAG_MODE`: runtime mode for `serve` when `--mode` is omitted; valid values are `user` and `service`
+- `ESDIAG_DOCS_EXCLUDED_TAGS`: comma-separated OKF tags to hide from the documentation viewer unless debug logging is enabled; defaults to `repository`
 - `ESDIAG_OUTPUT_TASK_LIMIT`: task concurrency limit used by the Elasticsearch exporter
 
 ## Output Resolution Rules

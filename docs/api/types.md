@@ -1,3 +1,10 @@
+---
+type: Reference
+title: Data Types
+description: Data type definitions used by the ESDiag service API.
+tags: [api, types, reference]
+---
+
 # Data Types
 
 This document defines the data types used by the ESDiag API.
