@@ -102,7 +102,17 @@ impl Serialize for Uri {
     where
         S: Serializer,
     {
-        serializer.serialize_str(&self.to_string())
+        match self {
+            Uri::ServiceLink(url) | Uri::ServiceLinkNoAuth(url) | Uri::Url(url) => {
+                serializer.serialize_str(url.as_str())
+            }
+            Uri::Directory(path) | Uri::File(path) => serializer.serialize_str(&path.display().to_string()),
+            Uri::ElasticCloud(host)
+            | Uri::ElasticCloudAdmin(host)
+            | Uri::ElasticGovCloudAdmin(host)
+            | Uri::KnownHost(host) => serializer.serialize_str(&host.to_string()),
+            Uri::Stream => serializer.serialize_str("-"),
+        }
     }
 }
 

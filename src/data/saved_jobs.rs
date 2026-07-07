@@ -11,16 +11,16 @@ use tokio::{sync::Mutex, task};
 
 use super::{HostRole, KnownHost, Uri};
 use crate::{
-    job::model::{ExportTarget, Input, Process, SaveTarget, SendTarget},
+    job::model::{Input, Process, SaveTarget, SendTarget},
     processor::{
         Identifiers,
         api::{ApiResolver, ProcessSelection},
     },
 };
 
+pub use crate::job::model::ExportTarget as JobOutput;
 pub use crate::job::model::Job;
-pub type JobOutput = ExportTarget;
-pub type JobProcessSelection = ProcessSelection;
+pub use crate::processor::api::ProcessSelection as JobProcessSelection;
 pub type SavedJobs = IndexMap<String, Job>;
 
 const CURRENT_SCHEMA_VERSION: u32 = 2;
@@ -292,7 +292,7 @@ impl Job {
             hosts.push(host.as_str());
         }
         if let Some(Process {
-            export: ExportTarget::KnownHost { name },
+            export: JobOutput::KnownHost { name },
             ..
         }) = self.process()
         {
@@ -905,7 +905,7 @@ process-job:
         let process_stage = process.process().expect("process stage");
         assert_eq!(
             process_stage.export,
-            ExportTarget::Directory {
+            JobOutput::Directory {
                 output_dir: PathBuf::from("/tmp/process-output")
             }
         );

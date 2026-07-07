@@ -13,6 +13,7 @@ pub mod executor;
 pub mod model;
 
 use crate::data::{Job as SavedJob, KnownHost, load_saved_jobs, save_saved_jobs};
+use crate::job::model::Input;
 use eyre::{Result, eyre};
 use std::io::IsTerminal;
 
@@ -59,18 +60,19 @@ pub async fn handle_job_run(name: &str) -> Result<()> {
     let jobs = load_saved_jobs()?;
     let job = jobs.get(name).ok_or_else(|| eyre!("Saved job '{}' not found", name))?;
 
-    let host_name = job.collect_host();
-    if host_name.is_empty() {
-        return Err(eyre!("Saved job '{}' has no collection host configured", name));
-    }
+    if let Input::Collect { host, .. } = job.input() {
+        if host.trim().is_empty() {
+            return Err(eyre!("Saved job '{}' has no collection host configured", name));
+        }
 
-    let hosts = KnownHost::parse_hosts_yml()?;
-    if !hosts.contains_key(host_name) {
-        return Err(eyre!(
-            "Host '{}' referenced by job '{}' not found in hosts.yml",
-            host_name,
-            name
-        ));
+        let hosts = KnownHost::parse_hosts_yml()?;
+        if !hosts.contains_key(host.as_str()) {
+            return Err(eyre!(
+                "Host '{}' referenced by job '{}' not found in hosts.yml",
+                host,
+                name
+            ));
+        }
     }
 
     tracing::info!("Running saved job '{name}'");
@@ -126,7 +128,7 @@ pub async fn run_job(job: SavedJob) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{run_job, validate_saved_job_name};
+    use super::validate_saved_job_name;
     use crate::data::Job as SavedJob;
     use crate::job::model::{ExecutionMode, ExportTarget, Input, Process, SaveTarget};
     use std::path::PathBuf;
