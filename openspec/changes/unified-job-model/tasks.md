@@ -1,16 +1,16 @@
 # Tasks
 
 ## 1. Job model (`job/`)
-- [ ] 1.1 Define `Job { identifiers, input, save?, process?, send? }` with `Input` (`Collect | Load`), `SaveTarget`, `Process { selection, export }`, `SendTarget`, and `ExportTarget`.
-- [ ] 1.2 Fuse `Export` into `Process` (Model β) so "process to nowhere" and "export nothing" are unrepresentable.
-- [ ] 1.3 Add a validated constructor enforcing the invariants: `save` ⟹ `Collect`; `send` ⟹ bundle exists (`Load` or `save`); at least one of `save`/`process`/`send`. Return typed construction errors.
-- [ ] 1.4 Derive execution mode (staged vs streaming) from the stage selection; expose it to the executor. Do not store it.
+- [x] 1.1 Define `Job { identifiers, input, save?, process?, send? }` with `Input` (`Collect | Load`), `SaveTarget`, `Process { selection, export }`, `SendTarget`, and `ExportTarget`.
+- [x] 1.2 Fuse `Export` into `Process` (Model β) so "process to nowhere" and "export nothing" are unrepresentable.
+- [x] 1.3 Add a validated constructor enforcing the invariants: `save` ⟹ `Collect`; `send` ⟹ bundle exists (`Load` or `save`); at least one of `save`/`process`/`send`. Return typed construction errors.
+- [x] 1.4 Derive execution mode (staged vs streaming) from the stage selection; expose it to the executor. Do not store it.
 
 ## 2. Executor (`job/executor`)
-- [ ] 2.1 Implement one executor that derives the mode and drives the stages for both staged and streaming jobs.
-- [ ] 2.2 Staged path: run `Collect`, materialise the bundle (serialization barrier), then `Process` reads the bundle.
-- [ ] 2.3 Streaming path: overlap receive, transform, and export using the existing `get_stream` / `StreamingDataSource` / `document_channel` machinery.
-- [ ] 2.4 Compose Phase 3 as *and/or*: run `Export` (inside `Process`) and/or `Send` in one run.
+- [x] 2.1 Implement one executor that derives the mode and drives the stages for both staged and streaming jobs.
+- [x] 2.2 Staged path: run `Collect`, materialise the bundle (serialization barrier), then `Process` reads the bundle.
+- [x] 2.3 Streaming path: overlap receive, transform, and export using the existing `get_stream` / `StreamingDataSource` / `document_channel` machinery.
+- [x] 2.4 Compose Phase 3 as *and/or*: run `Export` (inside `Process`) and/or `Send` in one run.
 
 ## 3. Stage-aligned modules
 - [ ] 3.1 `receiver/` — resolve Phase-1 input uniformly for `Collect` (remote, client) and `Load` (local/download, no client).
@@ -34,9 +34,37 @@
 - [ ] 6.2 Set each child job's `Platform` from the parent as it spawns; keep fan-out one level deep.
 
 ## 7. Verification
-- [ ] 7.1 Unit tests for the constructor invariants (each violation rejected; each valid shape accepted).
-- [ ] 7.2 Test derived mode: `Save`+`Process` ⇒ staged; `Collect`+`Process` without `Save` ⇒ streaming.
-- [ ] 7.3 Test `Load`-input jobs (load→process, load→send) and Save+Process+Export+Send in one run.
+- [x] 7.1 Unit tests for the constructor invariants (each violation rejected; each valid shape accepted).
+- [x] 7.2 Test derived mode: `Save`+`Process` ⇒ staged; `Collect`+`Process` without `Save` ⇒ streaming.
+- [x] 7.3 Test `Load`-input jobs (load→process, load→send) and Save+Process+Export+Send in one run.
 - [ ] 7.4 Regression: streaming concurrency/backpressure preserved after path convergence.
 - [ ] 7.5 Test child diagnostics execute as child jobs with inherited `Platform`, one level deep.
 - [ ] 7.6 Confirm the delta spec scenarios in `specs/collection-execution`, `specs/diagnostic-workflow`, and `specs/included-diagnostic-jobs` are covered.
+
+---
+
+## Implementation staging note (2026-07-07 session)
+
+Landed per the design's phased strategy ("land the `job/` executor behind the
+existing surfaces first, then remove the old paths once both drive the
+executor"):
+
+- **Done:** the `job/` module — phase-structured `Job` model with validated
+  construction and typed errors (1.x), derived execution mode, and the one
+  executor (2.x) driving staged (Collect→Save barrier→Process), streaming
+  (Collect+Process, no Save), Load-input, and and/or Phase-3 (Export+Send)
+  shapes. `esdiag job run` (CLI and saved jobs) now converts the legacy
+  `{collect, action}` shape at the boundary and runs through the executor;
+  the legacy fused actions map to staged jobs preserving behavior. Model,
+  invariant, mode, and Load-input executor tests (7.1–7.3).
+- **Semantics already present for 6.x:** included diagnostics run as child
+  executions with their own child job IDs and parent `Platform` propagation
+  (`spawn_sub_processors` + platform-application-split); restructuring them as
+  literal child `model::Job`s is part of the phase-2 retirement below.
+- **Deferred to the phase-2 pass (see QUESTIONS.md):** retiring
+  `Collector`/`Processor`/`JobAction`/`into_collect_exporter` (4.x), the
+  stage-aligned module split of `receiver/`/`processor/`/`exporter/` (3.x),
+  routing `collect`/`process`/`read` in `main.rs` and the web `job_runner`
+  through the executor (5.x), and the remaining verification items
+  (7.4–7.6). These are wide, regression-prone refactors of a 99KB `main.rs`
+  and the web runner, deliberately staged after review of the model.
