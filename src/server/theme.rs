@@ -31,8 +31,13 @@ pub struct ClientTheme {
 
 pub async fn set_theme(
     State(state): State<Arc<ServerState>>,
+    headers: HeaderMap,
     ReadSignals(signals): ReadSignals<ThemeSignals>,
 ) -> impl IntoResponse {
+    let owner = state
+        .resolve_user_email(&headers)
+        .map(|(_, user)| user)
+        .unwrap_or_else(|_| super::DEFAULT_OWNER.to_string());
     let dark = signals.theme.dark;
     let payload = json!({
         "theme": {
@@ -40,12 +45,12 @@ pub async fn set_theme(
         }
     })
     .to_string();
-    state.publish_event(signal_event(payload));
+    state.publish_event_for_owner(&owner, signal_event(payload));
 
     #[cfg(feature = "desktop")]
     {
         // In desktop mode, we need a hard reload so the Tauri window frame reads the new theme_dark cookie
-        state.publish_event(execute_script_event("window.location.reload();"));
+        state.publish_event_for_owner(&owner, execute_script_event("window.location.reload();"));
     }
 
     let mut headers = HeaderMap::new();

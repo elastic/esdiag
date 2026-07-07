@@ -100,8 +100,8 @@ pub async fn service_link(
         );
     }
 
-    let request_user = match state.resolve_user_email(&headers) {
-        Ok((_, user)) => user,
+    let identity = match state.resolve_identity(&headers) {
+        Ok(identity) => identity,
         Err(err) => {
             tracing::warn!("Rejecting service_link request due to auth policy: {err}");
             return (
@@ -119,9 +119,21 @@ pub async fn service_link(
         .clone()
         .unwrap_or_else(|| "Elastic Upload Service".to_string());
     let mut metadata = payload.metadata;
-    metadata.user = Some(request_user);
+    let owner = identity.user;
+    metadata.user = Some(owner.clone());
+    if metadata.account.is_none() {
+        metadata.account = identity.account;
+    }
 
     if params.wait_for_completion {
+        if let Err(err) = state.record_job_started(&owner).await {
+            return (
+                StatusCode::TOO_MANY_REQUESTS,
+                Json(json!({
+                    "error": err.to_string()
+                })),
+            );
+        }
         tracing::info!("Processing service link synchronously: {}", job_id);
         tracing::debug!("[fsm][api.service_link] queued -> processing(sync): job_id={job_id}");
 
@@ -132,7 +144,7 @@ pub async fn service_link(
             }
             Err(e) => {
                 tracing::error!("Failed to create receiver: {}", e);
-                state.record_failure().await;
+                state.record_failure(&owner).await;
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Json(json!({
@@ -155,7 +167,7 @@ pub async fn service_link(
             }
             Err(error) => {
                 tracing::error!("Failed to create processor: {}", error);
-                state.record_failure().await;
+                state.record_failure(&owner).await;
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Json(json!({
@@ -175,7 +187,7 @@ pub async fn service_link(
             }
             Err(failed) => {
                 tracing::error!("Failed to start processor: {}", failed.state.error);
-                state.record_failure().await;
+                state.record_failure(&owner).await;
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Json(json!({
@@ -193,7 +205,7 @@ pub async fn service_link(
                 );
                 let report = &completed.state.report;
                 state
-                    .record_success(report.diagnostic.docs.total, report.diagnostic.docs.errors)
+                    .record_success(&owner, report.diagnostic.docs.total, report.diagnostic.docs.errors)
                     .await;
 
                 let response = diagnostic_result_entries(&completed.state);
@@ -206,7 +218,7 @@ pub async fn service_link(
             }
             Err(failed) => {
                 tracing::error!("Processing failed: {}", failed.state.error);
-                state.record_failure().await;
+                state.record_failure(&owner).await;
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Json(json!({
@@ -264,8 +276,8 @@ pub async fn api_key(
         params.wait_for_completion
     );
 
-    let request_user = match state.resolve_user_email(&headers) {
-        Ok((_, user)) => user,
+    let identity = match state.resolve_identity(&headers) {
+        Ok(identity) => identity,
         Err(err) => {
             tracing::warn!("Rejecting api_key request due to auth policy: {err}");
             return (
@@ -314,8 +326,18 @@ pub async fn api_key(
         }
     };
 
+    let owner = identity.user.clone();
+
     // If wait_for_completion is true, process the job synchronously
     if params.wait_for_completion {
+        if let Err(err) = state.record_job_started(&owner).await {
+            return (
+                StatusCode::TOO_MANY_REQUESTS,
+                Json(json!({
+                    "error": err.to_string()
+                })),
+            );
+        }
         tracing::info!("Processing job: {}", job_id);
         tracing::debug!("[fsm][api.api_key] queued -> processing(sync): job_id={job_id}");
 
@@ -328,7 +350,7 @@ pub async fn api_key(
             }
             Err(e) => {
                 tracing::error!("Failed to create receiver: {}", e);
-                state.record_failure().await;
+                state.record_failure(&owner).await;
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Json(json!({
@@ -340,7 +362,10 @@ pub async fn api_key(
 
         let exporter = Arc::new(state.exporter.read().await.clone());
         let mut identifiers = payload.metadata;
-        identifiers.user = Some(request_user.clone());
+        identifiers.user = Some(owner.clone());
+        if identifiers.account.is_none() {
+            identifiers.account = identity.account.clone();
+        }
         tracing::debug!("[fsm][api.api_key] ready->try_new: job_id={job_id}");
 
         // Create and start the processor
@@ -354,7 +379,7 @@ pub async fn api_key(
             }
             Err(error) => {
                 tracing::error!("Failed to create processor: {}", error);
-                state.record_failure().await;
+                state.record_failure(&owner).await;
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Json(json!({
@@ -378,7 +403,7 @@ pub async fn api_key(
             }
             Err(failed) => {
                 tracing::error!("Failed to start processor: {}", failed.state.error);
-                state.record_failure().await;
+                state.record_failure(&owner).await;
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Json(json!({
@@ -401,7 +426,7 @@ pub async fn api_key(
                 );
                 let report = &completed.state.report;
                 state
-                    .record_success(report.diagnostic.docs.total, report.diagnostic.docs.errors)
+                    .record_success(&owner, report.diagnostic.docs.total, report.diagnostic.docs.errors)
                     .await;
 
                 let response = diagnostic_result_entries(&completed.state);
@@ -415,7 +440,7 @@ pub async fn api_key(
                     failed.id
                 );
                 tracing::error!("Processing failed: {}", failed.state.error);
-                state.record_failure().await;
+                state.record_failure(&owner).await;
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Json(json!({
@@ -428,7 +453,10 @@ pub async fn api_key(
         // Stash the username and (filename, URI) into the server state for later use
         tracing::debug!("[fsm][api.api_key] queued(in state): job_id={job_id}");
         let mut metadata = payload.metadata;
-        metadata.user = Some(request_user);
+        metadata.user = Some(owner);
+        if metadata.account.is_none() {
+            metadata.account = identity.account;
+        }
         state.push_key(job_id, metadata, host, "standard".to_string()).await;
 
         // Respond with a JSON success

@@ -29,6 +29,7 @@ const RETAINED_BUNDLE_TTL: Duration = Duration::from_secs(3600);
 
 struct JobDescriptor<'a> {
     id: u64,
+    owner: &'a str,
     source: &'a str,
 }
 
@@ -64,6 +65,15 @@ struct ProcessorJobContext<'a> {
     replace_existing_entry: bool,
 }
 
+struct ForwardJobContext<'a> {
+    state: Arc<ServerState>,
+    tx: &'a mpsc::Sender<ServerEvent>,
+    signals: &'a JobRunSignals,
+    job: JobDescriptor<'a>,
+    path: &'a Path,
+    replace_existing_entry: bool,
+}
+
 pub async fn run_job(
     state: Arc<ServerState>,
     signals: JobRunSignals,
@@ -74,6 +84,7 @@ pub async fn run_job(
     replace_existing_entry: bool,
 ) {
     let source = job.source().to_string();
+    let owner = job.owner.clone();
     let download_token = signals.archive.download_token.trim().to_string();
     let should_track_download = signals.job.collect.save && !download_token.is_empty();
     let validation = validate_job_request(&state, &signals, &job).await;
@@ -83,7 +94,7 @@ pub async fn run_job(
                 .reject_retained_bundle(&download_token, &request_user, error.to_string(), RETAINED_BUNDLE_TTL)
                 .await;
         }
-        state.record_failure().await;
+        state.record_failure(&owner).await;
         send_event(
             &tx,
             terminal_job_event(
@@ -123,6 +134,7 @@ pub async fn run_job(
                 signals: &signals,
                 job: JobDescriptor {
                     id: job_id,
+                    owner: &owner,
                     source: &source,
                 },
                 path: path.clone(),
@@ -182,7 +194,7 @@ pub async fn run_job(
                     .await;
             }
         }
-        state.record_failure().await;
+        state.record_failure(&owner).await;
         send_event(
             &tx,
             terminal_job_event(
@@ -231,7 +243,15 @@ async fn execute_local_archive_job(ctx: LocalArchiveJobContext<'_>) -> Result<()
             .await
         }
         ProcessMode::Forward => {
-            run_forward_job(state, tx, signals, job.id, job.source, &path, replace_existing_entry).await
+            run_forward_job(ForwardJobContext {
+                state,
+                tx,
+                signals,
+                job,
+                path: &path,
+                replace_existing_entry,
+            })
+            .await
         }
     }
 }
@@ -249,13 +269,13 @@ async fn execute_service_link_job(ctx: JobExecutionContext<'_>, uri: Uri) -> Res
     } = ctx;
 
     if signals.job.collect.save {
-        state.record_job_started().await;
+        state.record_job_started(request_user).await?;
         if !replace_existing_entry {
             send_event(tx, job_feed_event(template::JobCollectionProcessing { job_id, source })).await;
         }
         send_event(tx, signal_event(r#"{"loading":false,"processing":true}"#)).await;
 
-        let collected = collect_service_link_archive(job_id, uri, source, signals, identifiers).await?;
+        let collected = collect_service_link_archive(job_id, request_user, uri, source, signals, identifiers).await?;
         if let JobInput::LocalArchive { path, .. } = collected.input {
             let archive_filename = path
                 .file_name()
@@ -271,7 +291,7 @@ async fn execute_service_link_job(ctx: JobExecutionContext<'_>, uri: Uri) -> Res
                 None,
             )
             .await?;
-            state.record_success(0, 0).await;
+            state.record_success(request_user, 0, 0).await;
             send_event(
                 tx,
                 replace_job_event(
@@ -290,6 +310,7 @@ async fn execute_service_link_job(ctx: JobExecutionContext<'_>, uri: Uri) -> Res
                 signals,
                 job: JobDescriptor {
                     id: handoff_job_id,
+                    owner: request_user,
                     source,
                 },
                 path,
@@ -315,14 +336,30 @@ async fn execute_service_link_job(ctx: JobExecutionContext<'_>, uri: Uri) -> Res
                 exporter,
                 identifiers,
                 process_selection,
-                job: JobDescriptor { id: job_id, source },
+                job: JobDescriptor {
+                    id: job_id,
+                    owner: request_user,
+                    source,
+                },
                 replace_existing_entry: false,
             })
             .await
         }
         ProcessMode::Forward => {
             let path = download_service_link_to_temp(&uri, job_id, source).await?;
-            let result = run_forward_job(state, tx, signals, job_id, source, &path, false).await;
+            let result = run_forward_job(ForwardJobContext {
+                state,
+                tx,
+                signals,
+                job: JobDescriptor {
+                    id: job_id,
+                    owner: request_user,
+                    source,
+                },
+                path: &path,
+                replace_existing_entry: false,
+            })
+            .await;
             cleanup_local_path(&path).await;
             result
         }
@@ -359,6 +396,7 @@ async fn execute_remote_collection_job(
             process_selection,
             job: JobDescriptor {
                 id: job_id,
+                owner: request_user,
                 source: &source,
             },
             replace_existing_entry,
@@ -367,7 +405,7 @@ async fn execute_remote_collection_job(
     }
 
     if signals.job.collect.save {
-        state.record_job_started().await;
+        state.record_job_started(request_user).await?;
         if !replace_existing_entry {
             send_event(
                 tx,
@@ -381,7 +419,7 @@ async fn execute_remote_collection_job(
         send_event(tx, signal_event(r#"{"loading":false,"processing":true}"#)).await;
     }
 
-    let collected = collect_remote_archive(job_id, host, &diagnostic_type, signals, identifiers).await?;
+    let collected = collect_remote_archive(job_id, request_user, host, &diagnostic_type, signals, identifiers).await?;
     let cleanup_path = if signals.job.collect.save {
         None
     } else {
@@ -410,7 +448,7 @@ async fn execute_remote_collection_job(
                 cleanup_path,
             )
             .await?;
-            state.record_success(0, 0).await;
+            state.record_success(request_user, 0, 0).await;
             send_event(
                 tx,
                 replace_job_event(
@@ -429,6 +467,7 @@ async fn execute_remote_collection_job(
                 signals,
                 job: JobDescriptor {
                     id: handoff_job_id,
+                    owner: request_user,
                     source: &source,
                 },
                 path,
@@ -443,6 +482,7 @@ async fn execute_remote_collection_job(
                 signals,
                 job: JobDescriptor {
                     id: job_id,
+                    owner: request_user,
                     source: &source,
                 },
                 path,
@@ -479,7 +519,11 @@ async fn run_processor_job(ctx: ProcessorJobContext<'_>) -> Result<()> {
     let processor =
         Processor::try_new_with_child_events(receiver, exporter, identifiers, process_selection, child_event_tx)
             .await?;
-    let child_event_task = tokio::spawn(render_child_diagnostic_events(tx.clone(), child_event_rx));
+    let child_event_task = tokio::spawn(render_child_diagnostic_events(
+        tx.clone(),
+        job.owner.to_string(),
+        child_event_rx,
+    ));
     let processor = match processor.start().await {
         Ok(processor) => processor,
         Err(failed) => {
@@ -489,7 +533,7 @@ async fn run_processor_job(ctx: ProcessorJobContext<'_>) -> Result<()> {
             return Err(eyre!(error));
         }
     };
-    state.record_job_started().await;
+    state.record_job_started(job.owner).await?;
 
     if !replace_existing_entry {
         send_event(
@@ -511,7 +555,7 @@ async fn run_processor_job(ctx: ProcessorJobContext<'_>) -> Result<()> {
         Ok(completed) => {
             let report = &completed.state.report;
             state
-                .record_success(report.diagnostic.docs.total, report.diagnostic.docs.errors)
+                .record_success(job.owner, report.diagnostic.docs.total, report.diagnostic.docs.errors)
                 .await;
             send_event(
                 tx,
@@ -547,6 +591,7 @@ async fn run_processor_job(ctx: ProcessorJobContext<'_>) -> Result<()> {
 
 async fn render_child_diagnostic_events(
     tx: mpsc::Sender<ServerEvent>,
+    owner: String,
     mut child_event_rx: mpsc::UnboundedReceiver<IncludedDiagnosticJobEvent>,
 ) {
     while let Some(event) = child_event_rx.recv().await {
@@ -558,7 +603,8 @@ async fn render_child_diagnostic_events(
                     job_feed_event(template::JobProcessing {
                         job_id,
                         source: &source,
-                    }),
+                    })
+                    .for_owner(owner.clone()),
                 )
                 .await;
             }
@@ -572,7 +618,8 @@ async fn render_child_diagnostic_events(
                             job_id,
                             source: &source,
                         },
-                    ),
+                    )
+                    .for_owner(owner.clone()),
                 )
                 .await;
             }
@@ -603,7 +650,8 @@ async fn render_child_diagnostic_events(
                             kibana_link: &kibana_link,
                             product: &product,
                         },
-                    ),
+                    )
+                    .for_owner(owner.clone()),
                 )
                 .await;
             }
@@ -626,7 +674,8 @@ async fn render_child_diagnostic_events(
                             product: &product,
                             reason: &reason,
                         },
-                    ),
+                    )
+                    .for_owner(owner.clone()),
                 )
                 .await;
             }
@@ -641,7 +690,8 @@ async fn render_child_diagnostic_events(
                             error: &error,
                             source: &source,
                         },
-                    ),
+                    )
+                    .for_owner(owner.clone()),
                 )
                 .await;
             }
@@ -683,15 +733,18 @@ fn explicit_process_selection(signals: &JobRunSignals) -> Result<Option<ProcessS
     }))
 }
 
-async fn run_forward_job(
-    state: Arc<ServerState>,
-    tx: &mpsc::Sender<ServerEvent>,
-    signals: &JobRunSignals,
-    job_id: u64,
-    source: &str,
-    path: &Path,
-    replace_existing_entry: bool,
-) -> Result<()> {
+async fn run_forward_job(ctx: ForwardJobContext<'_>) -> Result<()> {
+    let ForwardJobContext {
+        state,
+        tx,
+        signals,
+        job,
+        path,
+        replace_existing_entry,
+    } = ctx;
+    let job_id = job.id;
+    let owner = job.owner;
+    let source = job.source;
     if signals.job.send.mode == SendMode::Local {
         if !replace_existing_entry {
             send_event(
@@ -704,7 +757,7 @@ async fn run_forward_job(
             )
             .await;
         }
-        state.record_job_started().await;
+        state.record_job_started(owner).await?;
         send_event(tx, signal_event(r#"{"loading":false,"processing":true}"#)).await;
 
         let destination = Path::new(path)
@@ -712,7 +765,7 @@ async fn run_forward_job(
             .and_then(|name| name.to_str())
             .map(|name| format!("Browser download started for {name}"))
             .unwrap_or_else(|| "Browser download started".to_string());
-        state.record_success(0, 0).await;
+        state.record_success(owner, 0, 0).await;
         send_event(
             tx,
             terminal_job_event(
@@ -747,11 +800,11 @@ async fn run_forward_job(
         )
         .await;
     }
-    state.record_job_started().await;
+    state.record_job_started(owner).await?;
     send_event(tx, signal_event(r#"{"loading":false,"processing":true}"#)).await;
 
     let response = uploader::upload_file(path, target, uploader::DEFAULT_UPLOAD_API_URL).await?;
-    state.record_success(0, 0).await;
+    state.record_success(owner, 0, 0).await;
     let destination = format!("https://upload.elastic.co/g/{}", response.slug);
     send_event(
         tx,
@@ -899,6 +952,7 @@ fn validate_remote_send_uri(uri: &Uri) -> Result<()> {
 
 async fn collect_remote_archive(
     job_id: u64,
+    owner: &str,
     host: crate::data::KnownHost,
     diagnostic_type: &str,
     signals: &JobRunSignals,
@@ -934,6 +988,7 @@ async fn collect_remote_archive(
         .to_string();
 
     Ok(JobRequest {
+        owner: owner.to_string(),
         identifiers: identifiers.with_filename(Some(filename.clone())),
         input: JobInput::LocalArchive {
             source,
@@ -946,6 +1001,7 @@ async fn collect_remote_archive(
 
 async fn collect_service_link_archive(
     job_id: u64,
+    owner: &str,
     uri: Uri,
     source: &str,
     signals: &JobRunSignals,
@@ -962,6 +1018,7 @@ async fn collect_service_link_archive(
     download_service_link_to_path(&uri, &path).await?;
 
     Ok(JobRequest {
+        owner: owner.to_string(),
         identifiers: identifiers.with_filename(Some(filename.clone())),
         input: JobInput::LocalArchive {
             source: source.to_string(),
@@ -1120,6 +1177,7 @@ mod tests {
     use crate::{
         data::{HostRole, KnownHostBuilder, Product, Uri},
         exporter::Exporter,
+        processor::IncludedDiagnosticJobEvent,
         server::{
             CollectSource, JobInput, JobRequest, JobRunSignals, ProcessMode, RetainedBundle, RuntimeMode, SendMode,
             ServerEvent, ServerPolicy, ServerState, Stats,
@@ -1145,6 +1203,7 @@ mod tests {
                 crate::server::keystore::KeystoreRateLimit::default(),
             )),
             stats: Arc::new(RwLock::new(Stats::default())),
+            active_jobs_by_owner: Arc::new(RwLock::new(HashMap::new())),
             shutdown: watch::channel(false).1,
             event_tx: broadcast::channel::<ServerEvent>(8).0,
             stats_updates_tx,
@@ -1180,6 +1239,7 @@ mod tests {
         signals.job.collect.save = true;
 
         let job = JobRequest {
+            owner: "test@example.com".to_string(),
             identifiers: Default::default(),
             input: JobInput::LocalArchive {
                 source: "upload.zip".to_string(),
@@ -1199,6 +1259,7 @@ mod tests {
         signals.job.collect.save = true;
 
         let job = JobRequest {
+            owner: "test@example.com".to_string(),
             identifiers: Default::default(),
             input: JobInput::FromServiceLink {
                 source: "downloaded.zip".to_string(),
@@ -1217,6 +1278,7 @@ mod tests {
         signals.job.send.mode = SendMode::Local;
 
         let job = JobRequest {
+            owner: "test@example.com".to_string(),
             identifiers: Default::default(),
             input: JobInput::LocalArchive {
                 source: "upload.zip".to_string(),
@@ -1227,6 +1289,26 @@ mod tests {
         };
 
         assert!(validate_job_request(&state, &signals, &job).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn child_diagnostic_events_inherit_parent_owner() {
+        let (tx, mut rx) = tokio::sync::mpsc::channel(4);
+        let (child_tx, child_rx) = tokio::sync::mpsc::unbounded_channel();
+        let owner = "alice@example.com".to_string();
+
+        let handle = tokio::spawn(super::render_child_diagnostic_events(tx, owner.clone(), child_rx));
+        child_tx
+            .send(IncludedDiagnosticJobEvent::Queued {
+                job_id: 7,
+                path: "elasticsearch".to_string(),
+            })
+            .expect("send child event");
+        drop(child_tx);
+
+        let event = rx.recv().await.expect("child job event");
+        assert_eq!(event.owner(), owner);
+        handle.await.expect("child renderer should complete");
     }
 
     #[tokio::test]

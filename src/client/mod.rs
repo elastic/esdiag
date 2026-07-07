@@ -10,7 +10,6 @@ mod kibana;
 mod logstash;
 
 pub use elasticsearch::{ElasticsearchBuilder, ElasticsearchClient};
-pub(crate) use kibana::KIBANA_REQUEST_CONCURRENCY;
 pub use kibana::KibanaClient;
 pub use logstash::LogstashClient;
 

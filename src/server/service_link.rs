@@ -32,15 +32,20 @@ pub async fn form(
     );
 
     let (tx, rx) = mpsc::channel(64);
-    match state.resolve_user_email(&headers) {
-        Ok((_, request_user)) => {
+    match state.resolve_identity(&headers) {
+        Ok(identity) => {
+            let mut signals = signals;
+            if signals.metadata.account.is_none() {
+                signals.metadata.account = identity.account;
+            }
+            let request_user = identity.user;
             tokio::spawn(async move {
                 run_service_link_form(state, signals, request_user, tx).await;
             });
         }
         Err(err) => {
             tokio::spawn(async move {
-                state.record_failure().await;
+                state.record_failure(super::DEFAULT_OWNER).await;
                 send_event(
                     &tx,
                     job_feed_event(template::JobFailed {
@@ -63,15 +68,16 @@ pub async fn id(
     Path(job_id): Path<u64>,
 ) -> impl IntoResponse {
     let (tx, rx) = mpsc::channel(64);
-    match state.resolve_user_email(&headers) {
-        Ok((_, request_user)) => {
+    match state.resolve_identity(&headers) {
+        Ok(identity) => {
+            let request_user = identity.user;
             tokio::spawn(async move {
                 run_service_link_id(state, job_id, request_user, tx).await;
             });
         }
         Err(err) => {
             tokio::spawn(async move {
-                state.record_failure().await;
+                state.record_failure(super::DEFAULT_OWNER).await;
                 send_event(
                     &tx,
                     template_event(template::JobFailed {
@@ -112,7 +118,7 @@ pub(super) async fn run_service_link_form(
             }),
         )
         .await;
-        state.record_failure().await;
+        state.record_failure(&request_user).await;
         send_event(&tx, signal_event(r#"{"loading":false,"processing":false}"#)).await;
         return;
     }
@@ -191,6 +197,7 @@ pub(super) async fn run_service_link_form(
     tracing::debug!("Tokenized URI: {}", tokenized_uri);
     let job_id = new_job_id();
     let job = super::JobRequest {
+        owner: request_user.clone(),
         identifiers: signals.metadata.clone(),
         input: super::JobInput::FromServiceLink {
             source: signals.service_link.filename.clone(),

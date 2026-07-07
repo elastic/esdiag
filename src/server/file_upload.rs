@@ -92,7 +92,7 @@ pub async fn submit(State(state): State<Arc<ServerState>>, mut multipart: Multip
                     }
                     let error_msg = format!("Failed to stage upload data: {}", e);
                     tracing::error!("{}", error_msg);
-                    state.record_failure().await;
+                    state.record_failure(super::DEFAULT_OWNER).await;
                     return (
                         StatusCode::BAD_REQUEST,
                         Html(format!(
@@ -147,15 +147,20 @@ pub async fn process(
     let job_id = signals.file_upload.job_id;
 
     let (tx, rx) = mpsc::channel(64);
-    match state.resolve_user_email(&headers) {
-        Ok((_, request_user)) => {
+    match state.resolve_identity(&headers) {
+        Ok(identity) => {
+            let mut signals = signals;
+            if signals.metadata.account.is_none() {
+                signals.metadata.account = identity.account;
+            }
+            let request_user = identity.user;
             tokio::spawn(async move {
                 run_upload_job(state, signals, job_id, request_user, tx).await;
             });
         }
         Err(err) => {
             tokio::spawn(async move {
-                state.record_failure().await;
+                state.record_failure(super::DEFAULT_OWNER).await;
                 send_event(
                     &tx,
                     replace_job_event(
@@ -217,7 +222,7 @@ pub(super) async fn run_upload_job(
     }
 
     send_event(&tx, signal_event(r#"{"processing":true}"#)).await;
-    let job = match state.pop_job_request(job_id).await {
+    let mut job = match state.pop_job_request(job_id).await {
         Some(job) => job,
         None => {
             send_event(
@@ -236,6 +241,7 @@ pub(super) async fn run_upload_job(
             return;
         }
     };
+    job.owner = request_user.clone();
     job_runner::run_job(state, signals.into(), job_id, request_user, tx, job, true).await;
 }
 
@@ -257,15 +263,15 @@ mod tests {
         let mut saw_terminal = false;
         while let Some(event) = rx.recv().await {
             match event {
-                ServerEvent::Template(html) if html.contains("Failed to upload file") => {
+                ServerEvent::Template { html, .. } if html.contains("Failed to upload file") => {
                     saw_failure = true;
                 }
-                ServerEvent::ReplaceSelector { selector, html }
+                ServerEvent::ReplaceSelector { selector, html, .. }
                     if selector == "#job-42" && html.contains("Failed to upload file") =>
                 {
                     saw_failure = true;
                 }
-                ServerEvent::Signals(payload) if payload.contains(r#""processing":false"#) => {
+                ServerEvent::Signals { payload, .. } if payload.contains(r#""processing":false"#) => {
                     saw_terminal = true;
                 }
                 _ => {}
@@ -286,7 +292,7 @@ mod tests {
 
         let event = rx.recv().await.expect("expected one terminal signal");
         match event {
-            ServerEvent::Signals(payload) => {
+            ServerEvent::Signals { payload, .. } => {
                 assert!(payload.contains(r#""file_upload":{"job_id":0}"#));
             }
             _ => panic!("expected terminal signal payload"),

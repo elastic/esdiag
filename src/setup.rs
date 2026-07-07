@@ -490,7 +490,7 @@ mod tests {
 
     #[test]
     fn kibana_assets_are_embedded_as_bundle_not_raw_files() {
-        assert!(KIBANA_ASSETS_BUNDLE.len() > 0);
+        assert!(!KIBANA_ASSETS_BUNDLE.is_empty());
         assert!(Assets::get("kibana/spaces.yml").is_none());
 
         let embedded_assets = EmbeddedAssets::new().unwrap();

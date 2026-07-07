@@ -38,15 +38,20 @@ pub async fn form(
 ) -> impl IntoResponse {
     let source = signals.job.collect.known_host.clone();
     let (tx, rx) = mpsc::channel(64);
-    match state.resolve_user_email(&headers) {
-        Ok((_, request_user)) => {
+    match state.resolve_identity(&headers) {
+        Ok(identity) => {
+            let mut signals = signals;
+            if signals.metadata.account.is_none() {
+                signals.metadata.account = identity.account;
+            }
+            let request_user = identity.user;
             tokio::spawn(async move {
                 run_known_host_form(state, signals, request_user, tx).await;
             });
         }
         Err(err) => {
             tokio::spawn(async move {
-                state.record_failure().await;
+                state.record_failure(super::DEFAULT_OWNER).await;
                 send_event(
                     &tx,
                     job_feed_event(template::JobFailed {
@@ -83,7 +88,7 @@ pub(super) async fn run_known_host_form(
                 DOWNLOAD_REJECTION_TTL,
             )
             .await;
-        state.record_failure().await;
+        state.record_failure(&request_user).await;
         send_event(
             &tx,
             job_feed_event(template::JobFailed {
@@ -107,7 +112,7 @@ pub(super) async fn run_known_host_form(
         state
             .reject_retained_bundle(&download_token, &request_user, error_message, DOWNLOAD_REJECTION_TTL)
             .await;
-        state.record_failure().await;
+        state.record_failure(&request_user).await;
         send_event(
             &tx,
             job_feed_event(template::JobFailed {
@@ -133,7 +138,7 @@ pub(super) async fn run_known_host_form(
                     DOWNLOAD_REJECTION_TTL,
                 )
                 .await;
-            state.record_failure().await;
+            state.record_failure(&request_user).await;
             send_event(
                 &tx,
                 job_feed_event(template::JobFailed {
@@ -148,6 +153,7 @@ pub(super) async fn run_known_host_form(
         }
     };
     let job = super::JobRequest {
+        owner: request_user.clone(),
         identifiers: signals.metadata.clone(),
         input: super::JobInput::FromRemoteHost {
             source,

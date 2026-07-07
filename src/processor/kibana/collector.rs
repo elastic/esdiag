@@ -8,7 +8,7 @@ use crate::{
     exporter::ArchiveExporter,
     processor::{
         DiagnosticManifest, RequestedApi,
-        api::{ApiResolver, DiagnosticType},
+        api::{ApiResolver, CollectConcurrencyPolicy, DiagnosticType},
         collector::ApiCollectOutcome,
     },
     receiver::{KibanaReceiver, KibanaRequestError, Receiver},
@@ -105,9 +105,10 @@ impl KibanaCollector {
                 total: apis.len() + 1,
             };
 
+            let policy = CollectConcurrencyPolicy::from_env();
             let mut api_stream = stream::iter(apis)
                 .map(|api| async move { self.save_api_with_retry(&api).await })
-                .buffer_unordered(crate::client::KIBANA_REQUEST_CONCURRENCY);
+                .buffer_unordered(policy.concurrent_pool);
 
             let mut requested_apis = BTreeMap::new();
             while let Some(res) = api_stream.next().await {

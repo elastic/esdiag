@@ -279,42 +279,38 @@ fn test_archive_data_stream_lookup_enrichment_for_index_processors() {
 
         if let Some(settings_index_docs) =
             read_required_lookup_docs(&output_dir, "settings-index-esdiag.ndjson", &archive)
-        {
-            if settings_index_docs
+            && (settings_index_docs
                 .iter()
                 .any(|doc| doc["index"]["data_stream"]["name"].is_string())
-                || archive_requires_lookup_enrichment(&archive)
-            {
-                let settings_index_doc = find_required_doc(
-                    &settings_index_docs,
-                    &archive,
-                    "settings-index-esdiag",
-                    "data stream lookup enrichment",
-                    |doc| doc["index"]["data_stream"]["name"].is_string(),
-                );
-                assert_has_data_stream_lookup(settings_index_doc, &archive, "settings-index-esdiag");
-                checked_streams += 1;
-            }
+                || archive_requires_lookup_enrichment(&archive))
+        {
+            let settings_index_doc = find_required_doc(
+                &settings_index_docs,
+                &archive,
+                "settings-index-esdiag",
+                "data stream lookup enrichment",
+                |doc| doc["index"]["data_stream"]["name"].is_string(),
+            );
+            assert_has_data_stream_lookup(settings_index_doc, &archive, "settings-index-esdiag");
+            checked_streams += 1;
         }
 
         if let Some(metrics_index_docs) =
             read_required_lookup_docs(&output_dir, "metrics-index-esdiag.ndjson", &archive)
-        {
-            if metrics_index_docs
+            && (metrics_index_docs
                 .iter()
                 .any(|doc| doc["index"]["data_stream"]["name"].is_string())
-                || archive_requires_lookup_enrichment(&archive)
-            {
-                let metrics_index_doc = find_required_doc(
-                    &metrics_index_docs,
-                    &archive,
-                    "metrics-index-esdiag",
-                    "data stream lookup enrichment",
-                    |doc| doc["index"]["data_stream"]["name"].is_string(),
-                );
-                assert_has_data_stream_lookup(metrics_index_doc, &archive, "metrics-index-esdiag");
-                checked_streams += 1;
-            }
+                || archive_requires_lookup_enrichment(&archive))
+        {
+            let metrics_index_doc = find_required_doc(
+                &metrics_index_docs,
+                &archive,
+                "metrics-index-esdiag",
+                "data stream lookup enrichment",
+                |doc| doc["index"]["data_stream"]["name"].is_string(),
+            );
+            assert_has_data_stream_lookup(metrics_index_doc, &archive, "metrics-index-esdiag");
+            checked_streams += 1;
         }
     }
     assert!(checked_streams > 0, "no data stream lookup streams were checked");
