@@ -1,3 +1,9 @@
+---
+type: Maintainer Guide
+title: "Collection-definition reconciliation"
+tags: [repository, reconciliation]
+---
+
 # Collection-definition reconciliation
 
 ESDiag owns its per-product collection definitions
