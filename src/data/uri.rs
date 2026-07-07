@@ -110,7 +110,10 @@ impl Serialize for Uri {
             Uri::ElasticCloud(host)
             | Uri::ElasticCloudAdmin(host)
             | Uri::ElasticGovCloudAdmin(host)
-            | Uri::KnownHost(host) => serializer.serialize_str(&host.to_string()),
+            | Uri::KnownHost(host) => {
+                let url = host.get_url().map_err(serde::ser::Error::custom)?;
+                serializer.serialize_str(url.as_str())
+            }
             Uri::Stream => serializer.serialize_str("-"),
         }
     }

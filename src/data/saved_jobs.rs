@@ -212,8 +212,10 @@ pub enum SendMode {
     Local,
 }
 
-impl From<LegacyJob> for Job {
-    fn from(legacy: LegacyJob) -> Self {
+impl TryFrom<LegacyJob> for Job {
+    type Error = eyre::Report;
+
+    fn try_from(legacy: LegacyJob) -> Result<Self> {
         let LegacyJob {
             identifiers,
             collect,
@@ -237,15 +239,28 @@ impl From<LegacyJob> for Job {
             LegacyJobAction::Process { output, selection } => (
                 retained_save,
                 Some(Process {
-                    selection,
+                    selection: canonicalize_legacy_selection(selection)?,
                     export: output,
                 }),
                 None,
             ),
         };
 
-        Job::try_new(identifiers, input, save, process, send).expect("legacy job migration preserves job invariants")
+        Job::try_new(identifiers, input, save, process, send).map_err(Into::into)
     }
+}
+
+fn canonicalize_legacy_selection(selection: Option<JobProcessSelection>) -> Result<Option<JobProcessSelection>> {
+    let Some(selection) = selection else {
+        return Ok(None);
+    };
+    let selected =
+        ApiResolver::resolve_processing_selection(&selection.product, &selection.diagnostic_type, &selection.selected)?;
+    Ok(Some(JobProcessSelection {
+        product: selection.product,
+        diagnostic_type: selection.diagnostic_type,
+        selected,
+    }))
 }
 
 impl Job {
@@ -686,8 +701,8 @@ fn load_saved_jobs_from_path(path: &Path) -> Result<SavedJobs> {
             let should_rewrite = !legacy_jobs.is_empty();
             let jobs = legacy_jobs
                 .into_iter()
-                .map(|(name, job)| (name, Job::from(job)))
-                .collect();
+                .map(|(name, job)| Job::try_from(job).map(|job| (name, job)))
+                .collect::<Result<SavedJobs>>()?;
             if should_rewrite {
                 write_saved_jobs_document(path, &jobs)?;
             }
@@ -702,13 +717,24 @@ fn load_saved_jobs_from_path(path: &Path) -> Result<SavedJobs> {
 }
 
 fn schema_version(content: &str) -> Result<Option<u32>> {
-    #[derive(Deserialize)]
-    struct VersionOnly {
-        schema_version: Option<u32>,
-    }
+    let value: serde_yaml::Value = serde_yaml::from_str(content)?;
+    let Some(mapping) = value.as_mapping() else {
+        return Err(eyre!("Saved jobs file must be a YAML mapping"));
+    };
+    let key = serde_yaml::Value::String("schema_version".to_string());
+    let Some(version) = mapping.get(&key) else {
+        return Ok(None);
+    };
 
-    let version: VersionOnly = serde_yaml::from_str(content)?;
-    Ok(version.schema_version)
+    match version {
+        serde_yaml::Value::Number(number) => number
+            .as_u64()
+            .and_then(|version| u32::try_from(version).ok())
+            .map(Some)
+            .ok_or_else(|| eyre!("Invalid saved jobs schema_version value")),
+        serde_yaml::Value::Mapping(_) => Ok(None),
+        _ => Err(eyre!("Invalid saved jobs schema_version value")),
+    }
 }
 
 pub fn save_saved_jobs(jobs: &SavedJobs) -> Result<()> {
@@ -873,7 +899,7 @@ process-job:
     product: elasticsearch
     diagnostic_type: minimal
     selected:
-      - node
+      - nodes_stats
 "#,
         );
 
@@ -938,6 +964,62 @@ streaming-job:
         assert!(job.save().is_none());
         assert!(job.process().is_some());
         assert_eq!(job.execution_mode(), crate::job::model::ExecutionMode::Streaming);
+    }
+
+    #[test]
+    fn legacy_job_named_schema_version_is_not_treated_as_version_marker() {
+        let _guard = test_env_lock().lock().expect("env lock");
+        let tmp = setup_env();
+        let path = tmp.path().join("jobs.yml");
+        write_jobs(
+            &path,
+            r#"
+schema_version:
+  collect:
+    host: prod
+  action: collect
+  output_dir: /tmp/collect
+"#,
+        );
+
+        let jobs = load_saved_jobs().expect("legacy schema_version job migrates");
+
+        assert!(jobs.contains_key("schema_version"));
+        let migrated = std::fs::read_to_string(&path).expect("read migrated file");
+        assert!(migrated.contains("schema_version: 2"));
+        assert!(migrated.contains("jobs:"));
+    }
+
+    #[test]
+    fn legacy_process_selection_is_canonicalized_during_migration() {
+        let _guard = test_env_lock().lock().expect("env lock");
+        let tmp = setup_env();
+        let path = tmp.path().join("jobs.yml");
+        write_jobs(
+            &path,
+            r#"
+process-job:
+  collect:
+    host: prod
+  action: process
+  output:
+    type: stdout
+  selection:
+    product: logstash
+    diagnostic_type: standard
+    selected:
+      - node
+"#,
+        );
+
+        let jobs = load_saved_jobs().expect("load and migrate jobs");
+        let selection = jobs
+            .get("process-job")
+            .and_then(|job| job.process())
+            .and_then(|process| process.selection.as_ref())
+            .expect("selection");
+
+        assert!(selection.selected.iter().any(|selected| selected == "logstash_node"));
     }
 
     #[test]
