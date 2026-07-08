@@ -477,7 +477,6 @@ mod tests {
     };
     use std::{
         collections::{BTreeMap, HashMap},
-        path::PathBuf,
         sync::Arc,
     };
     use tokio::sync::{RwLock, broadcast, watch};
@@ -849,8 +848,7 @@ mod tests {
 
     #[tokio::test]
     async fn unlock_status_response_never_discloses_plaintext_password() {
-        let _guard = env_lock().lock().expect("env lock");
-        let (_tmp, _hosts_path, _keystore_path) = setup_env();
+        let _env = setup_env();
         authenticate("pw").expect("create keystore");
 
         let state = test_server_state();
