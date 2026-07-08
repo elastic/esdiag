@@ -61,15 +61,16 @@ pub async fn handle_job_run(name: &str) -> Result<()> {
     let job = jobs.get(name).ok_or_else(|| eyre!("Saved job '{}' not found", name))?;
 
     if let Input::Collect { host, .. } = job.input() {
-        if host.trim().is_empty() {
+        let host_key = host.trim();
+        if host_key.is_empty() {
             return Err(eyre!("Saved job '{}' has no collection host configured", name));
         }
 
         let hosts = KnownHost::parse_hosts_yml()?;
-        let Some(known_host) = hosts.get(host.as_str()) else {
+        let Some(known_host) = hosts.get(host_key) else {
             return Err(eyre!(
                 "Host '{}' referenced by job '{}' not found in hosts.yml",
-                host,
+                host_key,
                 name
             ));
         };
@@ -77,7 +78,7 @@ pub async fn handle_job_run(name: &str) -> Result<()> {
             return Err(eyre!(
                 "Host role validation failed for job '{}': host '{}' is missing the collect role",
                 name,
-                host
+                host_key
             ));
         }
     }
