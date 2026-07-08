@@ -10,7 +10,7 @@ use crate::{
     data::{HostRole, Product, Uri},
     exporter::Exporter,
     processor::{
-        Collector, Identifiers, IncludedDiagnosticJobEvent, Processor,
+        Collector, DiagnosticOutcome, Identifiers, IncludedDiagnosticJobEvent, Processor, SkipKind,
         api::{ApiResolver, ProcessSelection},
         display_label, new_job_id,
     },
@@ -510,6 +510,7 @@ async fn run_processor_job(ctx: ProcessorJobContext<'_>) -> Result<()> {
     match processor.process().await {
         Ok(completed) => {
             let report = &completed.state.report;
+            let outcome = report.outcome();
             state
                 .record_success(report.diagnostic.docs.total, report.diagnostic.docs.errors)
                 .await;
@@ -520,13 +521,15 @@ async fn run_processor_job(ctx: ProcessorJobContext<'_>) -> Result<()> {
                     job.id,
                     template::JobCompleted {
                         job_id: job.id,
+                        status_class: completed_status_class(&outcome),
+                        heading: completed_heading(&outcome),
                         diagnostic_id: &report.diagnostic.metadata.id,
                         docs_created: &report.diagnostic.docs.created,
                         duration: &format!("{:.3}", report.diagnostic.processing_duration as f64 / 1000.0),
                         source: job.source,
                         kibana_link: report.diagnostic.kibana_link.as_deref().unwrap_or(""),
                         product: &report.diagnostic.display_label(),
-                        outcome: report.outcome().as_str(),
+                        outcome: outcome.as_str(),
                     },
                 ),
             )
@@ -598,6 +601,8 @@ async fn render_child_diagnostic_events(
                         job_id,
                         template::JobCompleted {
                             job_id,
+                            status_class: completed_status_class(&outcome),
+                            heading: completed_heading(&outcome),
                             diagnostic_id: &diagnostic_id,
                             docs_created: &docs_created,
                             duration: &duration,
@@ -658,8 +663,28 @@ fn child_source(path: &str) -> String {
     format!("Included diagnostic: {path}")
 }
 
-fn skipped_child_reason(reason: &str, outcome: &crate::processor::DiagnosticOutcome) -> String {
-    format!("{reason} ({outcome})")
+fn completed_status_class(outcome: &DiagnosticOutcome) -> &'static str {
+    match outcome {
+        DiagnosticOutcome::Failed => "status-error",
+        DiagnosticOutcome::Partial => "status-info",
+        DiagnosticOutcome::Complete | DiagnosticOutcome::Skipped(_) => "status-success",
+    }
+}
+
+fn completed_heading(outcome: &DiagnosticOutcome) -> &'static str {
+    match outcome {
+        DiagnosticOutcome::Failed => "❌ Processing failed",
+        DiagnosticOutcome::Partial => "⚠️ Processing partially complete",
+        DiagnosticOutcome::Complete | DiagnosticOutcome::Skipped(_) => "✅ Processing complete!",
+    }
+}
+
+fn skipped_child_reason(reason: &str, outcome: &DiagnosticOutcome) -> String {
+    match outcome.skip_kind() {
+        Some(SkipKind::ByDesign) => format!("{reason} (by design)"),
+        Some(SkipKind::NotImplemented) => format!("{reason} (not implemented)"),
+        None => reason.to_string(),
+    }
 }
 
 fn explicit_process_selection(signals: &JobRunSignals) -> Result<Option<ProcessSelection>> {
@@ -1123,8 +1148,8 @@ async fn cleanup_local_path(path: &Path) {
 #[cfg(test)]
 mod tests {
     use super::{
-        download_service_link_to_path, select_processed_exporter, skipped_child_reason, validate_job_request,
-        validate_local_send_uri, validate_remote_send_uri,
+        completed_heading, completed_status_class, download_service_link_to_path, select_processed_exporter,
+        skipped_child_reason, validate_job_request, validate_local_send_uri, validate_remote_send_uri,
     };
     use crate::{
         data::{HostRole, KnownHostBuilder, Product, Uri},
@@ -1279,10 +1304,23 @@ mod tests {
             &DiagnosticOutcome::Skipped(SkipKind::NotImplemented),
         );
 
+        assert_eq!(reason, "Kibana processing is not yet implemented (not implemented)");
+    }
+
+    #[test]
+    fn completed_status_metadata_tracks_outcome() {
+        assert_eq!(completed_status_class(&DiagnosticOutcome::Complete), "status-success");
         assert_eq!(
-            reason,
-            "Kibana processing is not yet implemented (skipped (not implemented))"
+            completed_heading(&DiagnosticOutcome::Complete),
+            "✅ Processing complete!"
         );
+        assert_eq!(completed_status_class(&DiagnosticOutcome::Partial), "status-info");
+        assert_eq!(
+            completed_heading(&DiagnosticOutcome::Partial),
+            "⚠️ Processing partially complete"
+        );
+        assert_eq!(completed_status_class(&DiagnosticOutcome::Failed), "status-error");
+        assert_eq!(completed_heading(&DiagnosticOutcome::Failed), "❌ Processing failed");
     }
 
     #[tokio::test]

@@ -1,5 +1,5 @@
-<div id="job-{{ job_id }}" class="status-box history-item status-success">
-    ✅ Processing complete!
+<div id="job-{{ job_id }}" class="status-box history-item {{ status_class }}">
+    {{ heading }}
     <p>
         <b>Diagnostic ID:</b>
         {% if kibana_link != "" %}
