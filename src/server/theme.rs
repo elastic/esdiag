@@ -57,17 +57,17 @@ pub async fn set_theme(
         state.publish_event_for_owner(&owner, execute_script_event("window.location.reload();"));
     }
 
-    let mut headers = HeaderMap::new();
+    let mut response_headers = HeaderMap::new();
     let dark_cookie = format!(
         "theme_dark={}; Path=/; Max-Age=31536000; SameSite=Lax",
         if dark { "1" } else { "0" }
     );
-    headers.append(
+    response_headers.append(
         SET_COOKIE,
         HeaderValue::from_str(&dark_cookie).expect("valid dark cookie"),
     );
 
-    (StatusCode::NO_CONTENT, headers).into_response()
+    (StatusCode::NO_CONTENT, response_headers).into_response()
 }
 
 #[cfg(test)]

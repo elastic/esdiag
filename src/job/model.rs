@@ -115,6 +115,8 @@ pub enum JobValidationError {
     SaveRequiresCollect,
     /// `send` ⟹ a bundle exists: a `Load` input, or `save` set.
     SendRequiresBundle,
+    /// `send` over a `Load` input requires a bundle archive file.
+    SendRequiresArchiveFile,
     /// A job must do something: at least one of `save`/`process`/`send`.
     NoWork,
 }
@@ -130,6 +132,7 @@ impl std::fmt::Display for JobValidationError {
                 f,
                 "`send` requires a bundle: a `Load` input, or `save` on a `Collect` input"
             ),
+            Self::SendRequiresArchiveFile => write!(f, "`send` requires a bundle archive file for `Load` input"),
             Self::NoWork => write!(f, "a job must select at least one of `save`, `process`, or `send`"),
         }
     }
@@ -164,6 +167,9 @@ impl Job {
         }
         if send.is_some() && input.is_collect() && save.is_none() {
             return Err(JobValidationError::SendRequiresBundle);
+        }
+        if send.is_some() && matches!(&input, Input::Load { uri } if !matches!(uri, Uri::File(_))) {
+            return Err(JobValidationError::SendRequiresArchiveFile);
         }
         if save.is_none() && process.is_none() && send.is_none() {
             return Err(JobValidationError::NoWork);
@@ -233,6 +239,12 @@ mod tests {
         }
     }
 
+    fn load_directory_input() -> Input {
+        Input::Load {
+            uri: Uri::Directory(PathBuf::from("/tmp/bundle")),
+        }
+    }
+
     fn process() -> Process {
         Process {
             selection: None,
@@ -267,6 +279,10 @@ mod tests {
 
         // Load input: the loaded bundle satisfies send
         Job::try_new(Identifiers::default(), load_input(), None, None, Some(send())).expect("load+send is valid");
+
+        let err = Job::try_new(Identifiers::default(), load_directory_input(), None, None, Some(send()))
+            .expect_err("load directory+send must be rejected");
+        assert_eq!(err, JobValidationError::SendRequiresArchiveFile);
 
         // Collect with save: the materialised bundle satisfies send
         Job::try_new(

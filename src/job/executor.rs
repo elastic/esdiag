@@ -230,11 +230,11 @@ mod tests {
         assert!(produced > 0, "expected exported document files");
     }
 
-    #[tokio::test(flavor = "multi_thread")]
-    async fn load_send_job_requires_an_archive_file() {
+    #[test]
+    fn load_send_job_requires_an_archive_file() {
         let bundle = tempfile::tempdir().expect("bundle dir");
 
-        let job = Job::try_new(
+        let err = Job::try_new(
             Identifiers::default(),
             Input::Load {
                 uri: Uri::Directory(bundle.path().to_path_buf()),
@@ -245,9 +245,8 @@ mod tests {
                 upload_id: "abc123".to_string(),
             }),
         )
-        .expect("valid load+send job shape");
+        .expect_err("directory input is not sendable");
 
-        let err = execute(job).await.expect_err("directory input is not sendable");
-        assert!(err.to_string().contains("not sendable"));
+        assert_eq!(err, crate::job::model::JobValidationError::SendRequiresArchiveFile);
     }
 }
