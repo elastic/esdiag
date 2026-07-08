@@ -58,7 +58,7 @@ use std::{
     convert::Infallible,
     net::SocketAddr,
     path::PathBuf,
-    sync::Arc,
+    sync::{Arc, Mutex},
 };
 use tokio::sync::{RwLock, broadcast, mpsc, watch};
 use uuid::Uuid;
@@ -107,7 +107,7 @@ pub enum AuthProvider {
 
 impl AuthProvider {
     pub fn from_env(value: &str) -> Result<Self> {
-        match value.to_ascii_lowercase().replace('_', "-").as_str() {
+        match value.trim().to_ascii_lowercase().replace('_', "-").as_str() {
             "google-iap" | "iap" => Ok(Self::GoogleIap),
             "none" => Ok(Self::None),
             other => Err(eyre!(
@@ -469,7 +469,7 @@ impl Server {
             exporter: Arc::new(RwLock::new(exporter)),
             kibana_url: Arc::new(RwLock::new(kibana_url)),
             stats: Arc::new(RwLock::new(Stats::default())),
-            active_jobs_by_owner: Arc::new(RwLock::new(HashMap::new())),
+            active_jobs_by_owner: Arc::new(std::sync::Mutex::new(HashMap::new())),
             job_requests: Arc::new(RwLock::new(HashMap::new())),
             retained_bundles: Arc::new(RwLock::new(HashMap::new())),
             shutdown: shutdown_rx,
@@ -668,7 +668,7 @@ pub struct ServerState {
     #[cfg(feature = "keystore")]
     pub keystore_rate_limit: Arc<std::sync::Mutex<keystore::KeystoreRateLimit>>,
     stats: Arc<RwLock<Stats>>,
-    active_jobs_by_owner: Arc<RwLock<HashMap<Owner, usize>>>,
+    active_jobs_by_owner: Arc<Mutex<HashMap<Owner, usize>>>,
     shutdown: watch::Receiver<bool>,
     event_tx: broadcast::Sender<ServerEvent>,
     stats_updates_tx: watch::Sender<u64>,
@@ -737,7 +737,7 @@ impl ServerState {
                 ));
             }
 
-            let mut owners = self.active_jobs_by_owner.write().await;
+            let mut owners = self.active_jobs_by_owner.lock().expect("active jobs lock");
             let owner_active = owners.get(owner).copied().unwrap_or(0);
             if owner_active >= caps.per_owner {
                 return Err(eyre!(
@@ -791,7 +791,7 @@ impl ServerState {
         if stats.jobs.active > 0 {
             stats.jobs.active -= 1;
         }
-        self.record_job_finished_for_owner(owner).await;
+        self.record_job_finished_for_owner(owner);
         drop(stats);
         self.notify_stats_changed();
     }
@@ -801,7 +801,7 @@ impl ServerState {
         stats.jobs.total += 1;
         stats.jobs.failed += 1;
         if self.runtime_mode == RuntimeMode::Service {
-            let mut owners = self.active_jobs_by_owner.write().await;
+            let mut owners = self.active_jobs_by_owner.lock().expect("active jobs lock");
             if let Some(active) = owners.get_mut(owner) {
                 if stats.jobs.active > 0 {
                     stats.jobs.active -= 1;
@@ -826,11 +826,11 @@ impl ServerState {
         self.notify_stats_changed();
     }
 
-    async fn record_job_finished_for_owner(&self, owner: &str) {
+    fn record_job_finished_for_owner(&self, owner: &str) {
         if self.runtime_mode != RuntimeMode::Service {
             return;
         }
-        let mut owners = self.active_jobs_by_owner.write().await;
+        let mut owners = self.active_jobs_by_owner.lock().expect("active jobs lock");
         if let Some(active) = owners.get_mut(owner) {
             *active = active.saturating_sub(1);
             if *active == 0 {
@@ -1185,7 +1185,7 @@ pub(crate) fn test_server_state() -> Arc<ServerState> {
         exporter: Arc::new(RwLock::new(Exporter::default())),
         kibana_url: Arc::new(RwLock::new(String::new())),
         stats: Arc::new(RwLock::new(Stats::default())),
-        active_jobs_by_owner: Arc::new(RwLock::new(HashMap::new())),
+        active_jobs_by_owner: Arc::new(Mutex::new(HashMap::new())),
         job_requests: Arc::new(RwLock::new(HashMap::new())),
         retained_bundles: Arc::new(RwLock::new(HashMap::new())),
         runtime_mode,
@@ -1835,7 +1835,7 @@ mod tests {
             #[cfg(feature = "keystore")]
             keystore_rate_limit: Arc::new(std::sync::Mutex::new(super::keystore::KeystoreRateLimit::default())),
             stats: Arc::new(RwLock::new(Stats::default())),
-            active_jobs_by_owner: Arc::new(RwLock::new(HashMap::new())),
+            active_jobs_by_owner: Arc::new(std::sync::Mutex::new(HashMap::new())),
             shutdown: watch::channel(false).1,
             event_tx: broadcast::channel(16).0,
             stats_updates_tx,

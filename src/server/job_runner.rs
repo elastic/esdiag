@@ -1203,7 +1203,7 @@ mod tests {
                 crate::server::keystore::KeystoreRateLimit::default(),
             )),
             stats: Arc::new(RwLock::new(Stats::default())),
-            active_jobs_by_owner: Arc::new(RwLock::new(HashMap::new())),
+            active_jobs_by_owner: Arc::new(std::sync::Mutex::new(HashMap::new())),
             shutdown: watch::channel(false).1,
             event_tx: broadcast::channel::<ServerEvent>(8).0,
             stats_updates_tx,

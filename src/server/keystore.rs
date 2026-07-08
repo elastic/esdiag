@@ -521,7 +521,7 @@ mod tests {
             server_policy: ServerPolicy::new(runtime_mode).expect("test server policy"),
             keystore_rate_limit: Arc::new(std::sync::Mutex::new(KeystoreRateLimit::default())),
             stats: Arc::new(RwLock::new(Stats::default())),
-            active_jobs_by_owner: Arc::new(RwLock::new(HashMap::new())),
+            active_jobs_by_owner: Arc::new(std::sync::Mutex::new(HashMap::new())),
             shutdown: watch::channel(false).1,
             event_tx: broadcast::channel(16).0,
             stats_updates_tx,
