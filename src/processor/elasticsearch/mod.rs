@@ -106,46 +106,41 @@ pub struct ElasticsearchDiagnostic {
 
 /// The registry-keyed dispatch table (ADR-0005): each entry binds one
 /// processable source (by its canonical registry key) to its typed processor.
-/// An entry may carry sibling keys handled by the same processor (the
-/// cluster-settings pair). Validated against the registry at process time by
-/// [`validate_es_dispatch_registry`].
+/// Validated against the registry at process time by [`validate_es_dispatch_registry`].
 struct EsDispatchEntry {
-    /// Canonical registry keys handled by this entry; the first is primary.
-    keys: &'static [&'static str],
+    /// Canonical registry key handled by this entry.
+    key: &'static str,
 }
 
 const ES_DISPATCH: &[EsDispatchEntry] = &[
+    EsDispatchEntry { key: "indices_stats" },
+    EsDispatchEntry { key: "nodes_stats" },
+    EsDispatchEntry { key: "cluster_settings" },
     EsDispatchEntry {
-        keys: &["indices_stats"],
+        key: "cluster_settings_defaults",
     },
-    EsDispatchEntry { keys: &["nodes_stats"] },
+    EsDispatchEntry { key: "health_report" },
     EsDispatchEntry {
-        keys: &["cluster_settings", "cluster_settings_defaults"],
-    },
-    EsDispatchEntry {
-        keys: &["health_report"],
-    },
-    EsDispatchEntry {
-        keys: &["ilm_policies"],
+        key: "ilm_policies",
     },
     EsDispatchEntry {
-        keys: &["indices_settings"],
+        key: "indices_settings",
     },
-    EsDispatchEntry { keys: &["nodes"] },
+    EsDispatchEntry { key: "nodes" },
     EsDispatchEntry {
-        keys: &["cluster_pending_tasks"],
-    },
-    EsDispatchEntry {
-        keys: &["slm_policies"],
+        key: "cluster_pending_tasks",
     },
     EsDispatchEntry {
-        keys: &["repositories"],
+        key: "slm_policies",
     },
     EsDispatchEntry {
-        keys: &["searchable_snapshots_stats"],
+        key: "repositories",
     },
-    EsDispatchEntry { keys: &["snapshot"] },
-    EsDispatchEntry { keys: &["tasks"] },
+    EsDispatchEntry {
+        key: "searchable_snapshots_stats",
+    },
+    EsDispatchEntry { key: "snapshot" },
+    EsDispatchEntry { key: "tasks" },
 ];
 
 /// Fail fast if the dispatch table and the collection registry disagree
@@ -233,7 +228,8 @@ impl ElasticsearchDiagnostic {
         match key {
             "indices_stats" => self.process_maybe_streaming::<IndicesStats>(summary_tx).await,
             "nodes_stats" => self.process_maybe_streaming::<NodesStats>(summary_tx).await,
-            "cluster_settings" => self.process_cluster_settings(summary_tx).await,
+            "cluster_settings" => self.process_datasource::<ClusterSettings>(summary_tx).await,
+            "cluster_settings_defaults" => self.process_datasource::<ClusterSettingsDefaults>(summary_tx).await,
             "health_report" => self.process_datasource::<HealthReport>(summary_tx).await,
             "ilm_policies" => self.process_datasource::<IlmPolicies>(summary_tx).await,
             "indices_settings" => self.process_datasource::<IndicesSettings>(summary_tx).await,
@@ -264,40 +260,6 @@ impl ElasticsearchDiagnostic {
         } else {
             self.process_datasource::<T>(summary_tx).await
         }
-    }
-
-    async fn process_cluster_settings(&self, summary_tx: mpsc::Sender<ProcessorSummary>) -> Result<()> {
-        let summary = match self.receiver.get::<ClusterSettingsDefaults>().await {
-            Ok(settings) => settings
-                .documents_export(&self.exporter, &self.lookups, &self.metadata)
-                .await
-                .was_parsed(),
-            Err(defaults_err) => {
-                tracing::debug!(
-                    "Failed to read cluster_settings_defaults, falling back to cluster_settings: {}",
-                    defaults_err
-                );
-                match self.receiver.get::<ClusterSettings>().await {
-                    Ok(settings) => settings
-                        .documents_export(&self.exporter, &self.lookups, &self.metadata)
-                        .await
-                        .was_parsed(),
-                    Err(settings_err) => {
-                        tracing::warn!(
-                            "Failed to read cluster_settings_defaults and cluster_settings: {}; {}",
-                            defaults_err,
-                            settings_err
-                        );
-                        ProcessorSummary::new(ClusterSettings::name())
-                    }
-                }
-            }
-        };
-
-        summary_tx.send(summary).await.map_err(|err| {
-            tracing::error!("Failed to send summary: {}", err);
-            eyre!(err)
-        })
     }
 
     async fn process_datasource<T>(&self, summary_tx: mpsc::Sender<ProcessorSummary>) -> Result<()>
@@ -450,20 +412,15 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
         let mut concurrent = FuturesUnordered::new();
         let mut sequential = Vec::new();
         for entry in ES_DISPATCH {
-            if !entry.keys.iter().any(|key| diag.should_process(key)) {
+            if !diag.should_process(entry.key) {
                 continue;
             }
-            let weight = entry
-                .keys
-                .iter()
-                .map(|key| processing_weight("elasticsearch", key))
-                .max()
-                .unwrap_or(1);
+            let weight = processing_weight("elasticsearch", entry.key);
             if policy.is_concurrent(weight) {
                 let (diag, tx) = (diag.clone(), summary_tx.clone());
-                concurrent.push(async move { diag.dispatch(entry.keys[0], tx).await });
+                concurrent.push(async move { diag.dispatch(entry.key, tx).await });
             } else {
-                sequential.push(entry.keys[0]);
+                sequential.push(entry.key);
             }
         }
 

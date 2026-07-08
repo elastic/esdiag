@@ -287,7 +287,7 @@ health_report:
   retry: true
   versions:
     ">= 8.2.0, < 8.3.0": "/_internal/_health"
-    ">= 8.3.0, < 8.3.0": "/_internal/_health?explain"
+    ">= 8.3.0, < 8.6.0": "/_internal/_health?explain"
     ">= 8.6.0, < 8.7.0": "/_internal/_health"
     ">=8.7.0": "/_health_report"
 
