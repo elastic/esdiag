@@ -1014,6 +1014,16 @@ impl ServerState {
         self.job_requests.write().await.remove(&id)
     }
 
+    pub async fn pop_job_request_for_owner(&self, id: u64, owner: &str) -> Option<JobRequest> {
+        tracing::debug!("Popping job request id: {id} for owner: {owner}");
+        let mut jobs = self.job_requests.write().await;
+        if jobs.get(&id).is_some_and(|job| job.owner == owner) {
+            jobs.remove(&id)
+        } else {
+            None
+        }
+    }
+
     pub async fn discard_job_request(&self, id: u64) {
         if let Some(job) = self.job_requests.write().await.remove(&id) {
             job.cleanup().await;
@@ -1062,13 +1072,25 @@ impl ServerState {
         .await
     }
 
-    pub async fn push_upload(&self, id: u64, filename: String, path: PathBuf) -> Option<JobRequest> {
+    pub async fn push_upload(
+        &self,
+        id: u64,
+        owner: String,
+        account: Option<String>,
+        filename: String,
+        path: PathBuf,
+    ) -> Option<JobRequest> {
         tracing::debug!("Pushing file upload id: {id}");
+        let identifiers = Identifiers {
+            user: Some(owner.clone()),
+            account,
+            ..Identifiers::default()
+        };
         self.push_job_request(
             id,
             JobRequest {
-                owner: DEFAULT_OWNER.to_string(),
-                identifiers: Identifiers::default(),
+                owner,
+                identifiers,
                 input: JobInput::LocalArchive {
                     source: filename.clone(),
                     filename,

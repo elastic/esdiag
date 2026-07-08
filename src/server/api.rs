@@ -127,6 +127,7 @@ pub async fn service_link(
 
     if params.wait_for_completion {
         if let Err(err) = state.record_job_started(&owner).await {
+            state.record_job_rejected().await;
             return (
                 StatusCode::TOO_MANY_REQUESTS,
                 Json(json!({
@@ -331,6 +332,7 @@ pub async fn api_key(
     // If wait_for_completion is true, process the job synchronously
     if params.wait_for_completion {
         if let Err(err) = state.record_job_started(&owner).await {
+            state.record_job_rejected().await;
             return (
                 StatusCode::TOO_MANY_REQUESTS,
                 Json(json!({

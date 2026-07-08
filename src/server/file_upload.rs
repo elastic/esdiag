@@ -19,9 +19,27 @@ use tokio::sync::mpsc;
 use tokio::{fs::File, io::AsyncWriteExt};
 use uuid::Uuid;
 
-pub async fn submit(State(state): State<Arc<ServerState>>, mut multipart: Multipart) -> impl IntoResponse {
+pub async fn submit(
+    State(state): State<Arc<ServerState>>,
+    headers: HeaderMap,
+    mut multipart: Multipart,
+) -> impl IntoResponse {
     let job_id = new_job_id();
     let can_use_keystore = cfg!(feature = "keystore") && state.server_policy.allows_local_runtime_features();
+    let identity = match state.resolve_identity(&headers) {
+        Ok(identity) => identity,
+        Err(err) => {
+            state.record_job_rejected().await;
+            return (
+                StatusCode::UNAUTHORIZED,
+                Html(format!(
+                    r#"<div id="job-{job_id}" class="status-box history-item status-error">
+                        🛑 Unauthorized request: {err}
+                    </div>"#
+                )),
+            );
+        }
+    };
 
     // Process the multipart form
     if let Ok(Some(field)) = multipart.next_field().await {
@@ -65,7 +83,9 @@ pub async fn submit(State(state): State<Arc<ServerState>>, mut multipart: Multip
             let temp_upload_path = std::env::temp_dir().join(format!("esdiag-upload-{job_id}-{}.zip", Uuid::new_v4()));
             match stage_upload_field(field, &temp_upload_path).await {
                 Ok(()) => {
-                    state.push_upload(job_id, filename, temp_upload_path).await;
+                    state
+                        .push_upload(job_id, identity.user, identity.account, filename, temp_upload_path)
+                        .await;
 
                     // Add a cleanup task to remove abandoned staged uploads.
                     let state_clone = state.clone();
@@ -222,9 +242,10 @@ pub(super) async fn run_upload_job(
     }
 
     send_event(&tx, signal_event(r#"{"processing":true}"#)).await;
-    let mut job = match state.pop_job_request(job_id).await {
+    let job = match state.pop_job_request_for_owner(job_id, &request_user).await {
         Some(job) => job,
         None => {
+            state.record_job_rejected().await;
             send_event(
                 &tx,
                 replace_job_event(
@@ -241,7 +262,6 @@ pub(super) async fn run_upload_job(
             return;
         }
     };
-    job.owner = request_user.clone();
     job_runner::run_job(state, signals.into(), job_id, request_user, tx, job, true).await;
 }
 
@@ -249,6 +269,7 @@ pub(super) async fn run_upload_job(
 mod tests {
     use super::{run_upload_job, send_terminal_signal};
     use crate::server::{ServerEvent, UploadProcessSignals, test_server_state};
+    use std::path::PathBuf;
     use tokio::sync::mpsc;
 
     #[tokio::test]
@@ -297,6 +318,37 @@ mod tests {
             }
             _ => panic!("expected terminal signal payload"),
         }
+    }
+
+    #[tokio::test]
+    async fn upload_job_cannot_be_claimed_by_different_owner() {
+        let state = test_server_state();
+        state
+            .push_upload(
+                7,
+                "alice@example.com".to_string(),
+                Some("accounts.google.com".to_string()),
+                "upload.zip".to_string(),
+                PathBuf::from("/tmp/nonexistent-upload.zip"),
+            )
+            .await;
+        let signals = UploadProcessSignals::default();
+        let (tx, mut rx) = mpsc::channel(8);
+
+        run_upload_job(state.clone(), signals, 7, "bob@example.com".to_string(), tx).await;
+
+        let mut saw_failure = false;
+        while let Some(event) = rx.recv().await {
+            match event {
+                ServerEvent::ReplaceSelector { html, .. } if html.contains("Failed to upload file") => {
+                    saw_failure = true;
+                }
+                _ => {}
+            }
+        }
+
+        assert!(saw_failure, "expected owner mismatch failure");
+        assert!(state.pop_job_request_for_owner(7, "alice@example.com").await.is_some());
     }
 
     #[tokio::test]
