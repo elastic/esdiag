@@ -126,6 +126,8 @@ pub enum JobValidationError {
     NoWork,
     /// A temporary save must feed another stage before the temp dir is removed.
     TemporarySaveRequiresConsumer,
+    /// Collect jobs need a saved-host reference.
+    EmptyCollectHost,
 }
 
 impl std::fmt::Display for JobValidationError {
@@ -144,6 +146,7 @@ impl std::fmt::Display for JobValidationError {
                 f,
                 "temporary `save` requires `process` or `send` so the staged bundle is consumed before cleanup"
             ),
+            Self::EmptyCollectHost => write!(f, "`Collect` input requires a non-empty host"),
         }
     }
 }
@@ -200,6 +203,11 @@ impl Job {
     ) -> Result<Self, JobValidationError> {
         if save.is_some() && !input.is_collect() {
             return Err(JobValidationError::SaveRequiresCollect);
+        }
+        if let Input::Collect { host, .. } = &input
+            && host.trim().is_empty()
+        {
+            return Err(JobValidationError::EmptyCollectHost);
         }
         if send.is_some() && input.is_collect() && save.is_none() {
             return Err(JobValidationError::SendRequiresBundle);
@@ -316,6 +324,24 @@ mod tests {
         let err = Job::try_new(Identifiers::default(), collect_input(), None, None, None)
             .expect_err("no-op job must be rejected");
         assert_eq!(err, JobValidationError::NoWork);
+    }
+
+    #[test]
+    fn collect_input_requires_non_empty_host() {
+        let err = Job::try_new(
+            Identifiers::default(),
+            Input::Collect {
+                host: "  ".to_string(),
+                diagnostic_type: "standard".to_string(),
+                include: None,
+                exclude: None,
+            },
+            Some(SaveTarget::retained("/tmp/esdiag".into())),
+            None,
+            None,
+        )
+        .expect_err("empty collect host must be rejected");
+        assert_eq!(err, JobValidationError::EmptyCollectHost);
     }
 
     #[test]

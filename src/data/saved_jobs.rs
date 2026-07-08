@@ -780,15 +780,17 @@ pub async fn load_saved_jobs_async() -> Result<SavedJobs> {
 pub async fn with_saved_jobs_async<T, F>(operation: F) -> Result<T>
 where
     T: Send + 'static,
-    F: FnOnce(&mut SavedJobs) -> Result<T> + Send + 'static,
+    F: FnOnce(&mut SavedJobs) -> Result<(T, bool)> + Send + 'static,
 {
     task::spawn_blocking(move || {
         let _guard = saved_jobs_io_lock()
             .lock()
             .map_err(|err| eyre!("Saved jobs IO lock poisoned: {err}"))?;
         let mut jobs = load_saved_jobs_unlocked()?;
-        let result = operation(&mut jobs)?;
-        save_saved_jobs_unlocked(&jobs)?;
+        let (result, changed) = operation(&mut jobs)?;
+        if changed {
+            save_saved_jobs_unlocked(&jobs)?;
+        }
         Ok(result)
     })
     .await

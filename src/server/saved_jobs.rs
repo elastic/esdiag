@@ -121,7 +121,7 @@ pub async fn save_job(signals: ReadSignals<SaveJobSignals>) -> Response {
     let name_for_save = name.clone();
     let names = match with_saved_jobs_async(move |jobs| {
         jobs.insert(name_for_save, saved_job);
-        Ok::<Vec<String>, eyre::Report>(jobs.keys().cloned().collect())
+        Ok::<(Vec<String>, bool), eyre::Report>((jobs.keys().cloned().collect(), true))
     })
     .await
     {
@@ -184,9 +184,9 @@ pub async fn delete_saved_job(
     let name_for_delete = name.clone();
     let names = match with_saved_jobs_async(move |jobs| {
         if jobs.shift_remove(&name_for_delete).is_none() {
-            return Ok::<Option<Vec<String>>, eyre::Report>(None);
+            return Ok::<(Option<Vec<String>>, bool), eyre::Report>((None, false));
         }
-        Ok(Some(jobs.keys().cloned().collect()))
+        Ok((Some(jobs.keys().cloned().collect()), true))
     })
     .await
     {
