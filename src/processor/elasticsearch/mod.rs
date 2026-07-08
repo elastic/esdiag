@@ -225,7 +225,7 @@ impl ElasticsearchDiagnostic {
         match key {
             "indices_stats" => self.process_maybe_streaming::<IndicesStats>(summary_tx).await,
             "nodes_stats" => self.process_maybe_streaming::<NodesStats>(summary_tx).await,
-            "cluster_settings" => self.process_cluster_settings(summary_tx).await,
+            "cluster_settings" | "cluster_settings_defaults" => self.process_cluster_settings(summary_tx).await,
             "health_report" => self.process_datasource::<HealthReport>(summary_tx).await,
             "ilm_policies" => self.process_datasource::<IlmPolicies>(summary_tx).await,
             "indices_settings" => self.process_datasource::<IndicesSettings>(summary_tx).await,

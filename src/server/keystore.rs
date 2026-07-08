@@ -81,7 +81,7 @@ impl ServerState {
     }
 
     pub(crate) fn can_use_keystore_session(&self) -> bool {
-        self.server_policy.allows_local_runtime_features() && !self.server_policy.requires_authentication()
+        self.server_policy.allows_local_runtime_features()
     }
 
     pub async fn keystore_status(&self) -> (bool, i64) {
