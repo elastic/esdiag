@@ -27,8 +27,8 @@ use std::{path::PathBuf, sync::Arc};
 pub struct JobOutcome {
     /// The materialised bundle, when it outlives the job.
     pub bundle_path: Option<PathBuf>,
-    /// Whether that bundle outlives the job (a retained `save`, or a `Load`
-    /// input) as opposed to a temporary staging bundle.
+    /// Whether that bundle outlives the job (a retained `save`, or a local
+    /// `Load` input) as opposed to a temporary staging bundle.
     pub bundle_retained: bool,
     /// The upload slug returned by the Elastic Uploader for a `Send` stage.
     pub upload_slug: Option<String>,
@@ -110,6 +110,13 @@ pub async fn execute(job: Job) -> Result<JobOutcome> {
             }
         }
         Input::Load { uri } => {
+            match uri {
+                Uri::File(path) | Uri::Directory(path) => {
+                    outcome.bundle_path = Some(path.clone());
+                    outcome.bundle_retained = true;
+                }
+                _ => {}
+            }
             if let Some(process) = job.process() {
                 run_process(Receiver::try_from(uri.clone())?, process, job.identifiers.clone()).await?;
                 outcome.processed = true;
@@ -124,8 +131,6 @@ pub async fn execute(job: Job) -> Result<JobOutcome> {
                     }
                 };
                 outcome.upload_slug = Some(run_send(&bundle_path, send).await?);
-                outcome.bundle_path = Some(bundle_path);
-                outcome.bundle_retained = true;
             }
         }
     }
@@ -225,6 +230,8 @@ mod tests {
         let outcome = execute(job).await.expect("job executes");
         assert!(outcome.processed);
         assert!(outcome.upload_slug.is_none());
+        assert!(outcome.bundle_retained);
+        assert_eq!(outcome.bundle_path.as_deref(), Some(bundle.path()));
         // Processing produced exported document streams
         let produced = std::fs::read_dir(output.path()).expect("read output dir").count();
         assert!(produced > 0, "expected exported document files");

@@ -344,9 +344,9 @@ pub fn get_source_keys_with_tag(product: &str, tag: &str) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// Default graded weight when the registry does not set one explicitly: the
-/// legacy binary mapping (ADR-0017 migration) — `light`-tagged sources are 1,
-/// everything else 3, on a 1–5 scale.
+/// Default source weight when the registry does not set one explicitly: the
+/// legacy binary mapping (ADR-0017 migration) keeps `light`-tagged sources at
+/// 1 and everything else at 3 on a 1–5 scale.
 const LEGACY_LIGHT_WEIGHT: u8 = 1;
 const LEGACY_HEAVY_WEIGHT: u8 = 3;
 
@@ -364,6 +364,7 @@ impl Source {
     /// ESDiag CPU/time to transform this source (1–5). Governs processing
     /// concurrency only (ADR-0017).
     pub fn processing_weight(&self) -> u8 {
+        // Processing was historically lightweight unless explicitly promoted.
         self.processing_weight.unwrap_or(LEGACY_LIGHT_WEIGHT)
     }
 }
