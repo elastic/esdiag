@@ -7,12 +7,20 @@ use eyre::Result;
 use futures::stream::{self, BoxStream};
 use serde::de::DeserializeOwned;
 use std::{
-    io::{BufReader, Read, Seek},
+    io::{Read, Seek},
     path::PathBuf,
     sync::Arc,
 };
 use tokio::sync::{RwLock, mpsc};
 use zip::ZipArchive;
+
+// Cap pre-allocation from ZipFile::size() to avoid trusting unverified archive metadata.
+// Real files larger than this still work — read_to_end grows the Vec organically.
+pub(crate) const MAX_PREALLOC: usize = 256 * 1024 * 1024;
+
+pub(crate) fn capped_prealloc_capacity(zip_size: u64) -> usize {
+    zip_size.min(MAX_PREALLOC as u64) as usize
+}
 
 mod bytes;
 mod file;
@@ -51,14 +59,25 @@ where
         };
 
         tracing::debug!("Streaming from archive: {}", filename);
-        let stream_result = match archive_guard.by_name(&filename) {
-            Ok(file) => {
-                let reader = BufReader::new(file);
-                let mut deserializer = serde_json::Deserializer::from_reader(reader);
-                T::deserialize_stream(&mut deserializer, tx.clone()).map_err(|e| eyre::eyre!(e.to_string()))
+        let buf = {
+            let mut file = match archive_guard.by_name(&filename) {
+                Ok(f) => f,
+                Err(e) => {
+                    let _ = tx.blocking_send(Err(eyre::eyre!(e)));
+                    return;
+                }
+            };
+            let mut buf = Vec::with_capacity(capped_prealloc_capacity(file.size()));
+            if let Err(e) = std::io::Read::read_to_end(&mut file, &mut buf) {
+                let _ = tx.blocking_send(Err(eyre::eyre!(e)));
+                return;
             }
-            Err(e) => Err(eyre::eyre!(e)),
+            buf
         };
+        drop(archive_guard);
+        let mut deserializer = serde_json::Deserializer::from_slice(&buf);
+        let stream_result =
+            T::deserialize_stream(&mut deserializer, tx.clone()).map_err(|e| eyre::eyre!(e.to_string()));
 
         if let Err(e) = stream_result {
             tracing::error!("Error deserializing stream from archive: {}", e);
@@ -242,6 +261,12 @@ mod tests {
         let mut archive = ZipArchive::new(Cursor::new(archive_data)).unwrap();
         let result = resolve_archive_path(None, &mut archive, "missing.json");
         assert!(result.unwrap_err().to_string().contains("File not found"));
+    }
+
+    #[test]
+    fn capped_prealloc_capacity_caps_before_casting_to_usize() {
+        assert_eq!(capped_prealloc_capacity(42), 42);
+        assert_eq!(capped_prealloc_capacity(u64::MAX), MAX_PREALLOC);
     }
 
     #[test]

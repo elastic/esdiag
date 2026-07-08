@@ -17,17 +17,21 @@ use std::{
     sync::Arc,
     sync::OnceLock,
 };
-use tokio::sync::RwLock;
 use zip::ZipArchive;
 
 type ArchiveCursor = ZipArchive<BufReader<Cursor<Bytes>>>;
-type ArchivePointer = Arc<RwLock<ArchiveCursor>>;
 
 #[derive(Clone)]
 pub struct ArchiveBytesReceiver {
-    archive: ArchivePointer,
+    bytes: Bytes,
     subdir: Option<PathBuf>,
     source_product: Arc<OnceLock<&'static str>>,
+}
+
+impl ArchiveBytesReceiver {
+    fn open_archive(&self) -> Result<ArchiveCursor> {
+        ZipArchive::new(BufReader::new(Cursor::new(self.bytes.clone()))).map_err(Into::into)
+    }
 }
 
 /// A receiver for the Elastic Uploader service (https://upload.elastic.co).
@@ -50,21 +54,22 @@ impl Receive for ArchiveBytesReceiver {
     where
         T: DataSource + DeserializeOwned,
     {
-        let mut archive = self.archive.write().await;
+        let mut archive = self.open_archive()?;
         let ctx = self.source_context()?;
         let source_paths = T::candidate_source_file_paths(&ctx)?;
         let mut last_resolve_error = None;
 
         for source_path in source_paths {
-            match resolve_archive_path(self.subdir.as_ref(), &mut *archive, &source_path) {
+            match resolve_archive_path(self.subdir.as_ref(), &mut archive, &source_path) {
                 Ok(filename) => {
                     tracing::debug!("Reading {}", filename);
-                    let file = match archive.by_name(&filename) {
+                    let mut file = match archive.by_name(&filename) {
                         Ok(file) => file,
                         Err(_) => return Err(eyre!("Failed to read file {filename} from archive")),
                     };
-                    let reader = BufReader::new(file);
-                    let data: T = serde_json::from_reader(reader)?;
+                    let mut buf = Vec::with_capacity(super::capped_prealloc_capacity(file.size()));
+                    std::io::Read::read_to_end(&mut file, &mut buf)?;
+                    let data: T = serde_json::from_slice(&buf)?;
                     return Ok(data);
                 }
                 Err(e) => {
@@ -86,8 +91,8 @@ impl Receive for ArchiveBytesReceiver {
         T::Item: DeserializeOwned + Send + 'static,
     {
         let ctx = self.source_context()?;
-        super::get_stream_from_archive::<BufReader<Cursor<Bytes>>, T>(self.archive.clone(), self.subdir.clone(), ctx)
-            .await
+        let archive = Arc::new(tokio::sync::RwLock::new(self.open_archive()?));
+        super::get_stream_from_archive::<BufReader<Cursor<Bytes>>, T>(archive, self.subdir.clone(), ctx).await
     }
 }
 
@@ -104,9 +109,9 @@ impl TryFrom<Bytes> for ArchiveBytesReceiver {
 
     fn try_from(bytes: Bytes) -> Result<Self> {
         tracing::debug!("Using in-memory archive");
-        let archive = ZipArchive::new(BufReader::new(Cursor::new(bytes)))?;
+        ZipArchive::new(BufReader::new(Cursor::new(bytes.clone())))?;
         Ok(Self {
-            archive: Arc::new(RwLock::new(archive)),
+            bytes,
             subdir: None,
             source_product: Arc::new(OnceLock::new()),
         })
@@ -122,7 +127,7 @@ impl std::fmt::Display for ArchiveBytesReceiver {
 impl ArchiveBytesReceiver {
     pub(crate) fn clone_for_subdir(&self, work_dir: &str) -> Self {
         Self {
-            archive: self.archive.clone(),
+            bytes: self.bytes.clone(),
             subdir: Some(PathBuf::from(work_dir)),
             source_product: Arc::new(OnceLock::new()),
         }
@@ -132,15 +137,16 @@ impl ArchiveBytesReceiver {
     where
         T: DeserializeOwned,
     {
-        let mut archive = self.archive.write().await;
-        let filename = resolve_archive_path(self.subdir.as_ref(), &mut *archive, filename)?;
+        let mut archive = self.open_archive()?;
+        let filename = resolve_archive_path(self.subdir.as_ref(), &mut archive, filename)?;
         tracing::debug!("Reading bundle file {}", filename);
-        let file = match archive.by_name(&filename) {
+        let mut file = match archive.by_name(&filename) {
             Ok(file) => file,
             Err(_) => return Err(eyre!("Failed to read file {filename} from archive")),
         };
-        let reader = BufReader::new(file);
-        serde_json::from_reader(reader).map_err(Into::into)
+        let mut buf = Vec::with_capacity(super::capped_prealloc_capacity(file.size()));
+        std::io::Read::read_to_end(&mut file, &mut buf)?;
+        serde_json::from_slice(&buf).map_err(Into::into)
     }
 
     pub fn set_source_product(&self, product: &'static str) -> Result<()> {

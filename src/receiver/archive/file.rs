@@ -18,16 +18,22 @@ use std::{
     sync::OnceLock,
     time::SystemTime,
 };
-use tokio::sync::RwLock;
 use zip::ZipArchive;
 
 #[derive(Clone)]
 pub struct ArchiveFileReceiver {
-    archive: Arc<RwLock<ZipArchive<File>>>,
+    path: PathBuf,
     filename: String,
     subdir: Option<PathBuf>,
     modified_date: SystemTime,
     source_product: Arc<OnceLock<&'static str>>,
+}
+
+impl ArchiveFileReceiver {
+    fn open_archive(&self) -> Result<ZipArchive<File>> {
+        let file = File::open(&self.path)?;
+        ZipArchive::new(file).map_err(Into::into)
+    }
 }
 
 impl TryFrom<PathBuf> for ArchiveFileReceiver {
@@ -38,11 +44,11 @@ impl TryFrom<PathBuf> for ArchiveFileReceiver {
         match path.is_file() {
             true => {
                 tracing::debug!("File is valid: {}", path.display());
-                let file = File::open(path)?;
+                let file = File::open(&path)?;
                 let modified_date = file.metadata()?.modified()?;
-                let archive = ZipArchive::new(file)?;
+                ZipArchive::new(file)?;
                 Ok(Self {
-                    archive: Arc::new(RwLock::new(archive)),
+                    path,
                     modified_date,
                     filename,
                     subdir: None,
@@ -63,14 +69,21 @@ impl Receive for ArchiveFileReceiver {
     }
 
     async fn is_connected(&self) -> bool {
-        let archive = self.archive.read().await;
-        let is_empty = archive.is_empty();
-        if tracing::enabled!(tracing::Level::TRACE) {
-            let file_names: Vec<String> = archive.file_names().map(|name| name.to_string()).collect();
-            tracing::trace!("Files in archive: {:?}", file_names);
+        match self.open_archive() {
+            Ok(archive) => {
+                let is_empty = archive.is_empty();
+                if tracing::enabled!(tracing::Level::TRACE) {
+                    let file_names: Vec<String> = archive.file_names().map(|name| name.to_string()).collect();
+                    tracing::trace!("Files in archive: {:?}", file_names);
+                }
+                tracing::debug!("Archive {} is valid: {}", &self.filename, !is_empty);
+                !is_empty
+            }
+            Err(e) => {
+                tracing::debug!("Archive {} is not connected: {}", &self.filename, e);
+                false
+            }
         }
-        tracing::debug!("Archive {} is valid: {}", &self.filename, !is_empty);
-        !is_empty
     }
 
     fn filename(&self) -> Option<String> {
@@ -82,18 +95,19 @@ impl Receive for ArchiveFileReceiver {
     where
         T: DeserializeOwned + DataSource,
     {
-        let mut archive = self.archive.write().await;
+        let mut archive = self.open_archive()?;
         let ctx = self.source_context()?;
         let source_paths = T::candidate_source_file_paths(&ctx)?;
         let mut last_resolve_error = None;
 
         for source_path in source_paths {
-            match resolve_archive_path(self.subdir.as_ref(), &mut *archive, &source_path) {
+            match resolve_archive_path(self.subdir.as_ref(), &mut archive, &source_path) {
                 Ok(filename) => {
                     tracing::debug!("Reading {}", filename);
-                    let file = archive.by_name(&filename)?;
-                    let reader = BufReader::new(file);
-                    let data: T = serde_json::from_reader(reader)?;
+                    let mut file = archive.by_name(&filename)?;
+                    let mut buf = Vec::with_capacity(super::capped_prealloc_capacity(file.size()));
+                    std::io::Read::read_to_end(&mut file, &mut buf)?;
+                    let data: T = serde_json::from_slice(&buf)?;
                     return Ok(data);
                 }
                 Err(e) => {
@@ -115,7 +129,8 @@ impl Receive for ArchiveFileReceiver {
         T::Item: DeserializeOwned + Send + 'static,
     {
         let ctx = self.source_context()?;
-        super::get_stream_from_archive::<File, T>(self.archive.clone(), self.subdir.clone(), ctx).await
+        let archive = Arc::new(tokio::sync::RwLock::new(self.open_archive()?));
+        super::get_stream_from_archive::<File, T>(archive, self.subdir.clone(), ctx).await
     }
 }
 
@@ -131,13 +146,13 @@ impl ReceiveRaw for ArchiveFileReceiver {
     where
         T: DataSource,
     {
-        let mut archive = self.archive.write().await;
+        let mut archive = self.open_archive()?;
         let ctx = self.source_context()?;
         let source_paths = T::candidate_source_file_paths(&ctx)?;
         let mut last_resolve_error = None;
 
         for source_path in source_paths {
-            match resolve_archive_path(self.subdir.as_ref(), &mut *archive, &source_path) {
+            match resolve_archive_path(self.subdir.as_ref(), &mut archive, &source_path) {
                 Ok(filename) => {
                     tracing::debug!("Reading {}", filename);
                     let file = archive.by_name(&filename)?;
@@ -183,7 +198,7 @@ impl std::fmt::Display for ArchiveFileReceiver {
 impl ArchiveFileReceiver {
     pub(crate) fn clone_for_subdir(&self, work_dir: &str) -> Self {
         Self {
-            archive: self.archive.clone(),
+            path: self.path.clone(),
             filename: self.filename.clone(),
             subdir: Some(PathBuf::from(work_dir)),
             modified_date: self.modified_date,
@@ -195,12 +210,13 @@ impl ArchiveFileReceiver {
     where
         T: DeserializeOwned,
     {
-        let mut archive = self.archive.write().await;
-        let filename = resolve_archive_path(self.subdir.as_ref(), &mut *archive, filename)?;
+        let mut archive = self.open_archive()?;
+        let filename = resolve_archive_path(self.subdir.as_ref(), &mut archive, filename)?;
         tracing::debug!("Reading bundle file {}", filename);
-        let file = archive.by_name(&filename)?;
-        let reader = BufReader::new(file);
-        serde_json::from_reader(reader).map_err(Into::into)
+        let mut file = archive.by_name(&filename)?;
+        let mut buf = Vec::with_capacity(super::capped_prealloc_capacity(file.size()));
+        std::io::Read::read_to_end(&mut file, &mut buf)?;
+        serde_json::from_slice(&buf).map_err(Into::into)
     }
 
     pub fn set_source_product(&self, product: &'static str) -> Result<()> {

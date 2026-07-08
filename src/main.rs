@@ -436,11 +436,24 @@ enum KeystoreCommands {
 const TOKIO_THREAD_STACK_SIZE: usize = 8 * 1024 * 1024;
 
 fn main() -> Result<()> {
+    configure_allocator();
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .thread_stack_size(TOKIO_THREAD_STACK_SIZE)
         .build()?
         .block_on(async_main())
+}
+
+fn configure_allocator() {
+    // mimalloc v3 option index (not exposed as a constant in the Rust bindings).
+    // Verified against libmimalloc-sys 0.1.49 c_src/mimalloc/v3/include/mimalloc.h.
+    const MI_OPTION_PURGE_DELAY: i32 = 15;
+
+    // Return freed memory to the OS immediately instead of the default delay.
+    // Without this, mimalloc retains large arenas that inflate RSS in containers.
+    unsafe {
+        libmimalloc_sys::mi_option_set(MI_OPTION_PURGE_DELAY, 0);
+    }
 }
 
 async fn async_main() -> Result<()> {
