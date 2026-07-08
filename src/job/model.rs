@@ -17,7 +17,7 @@
 //! barrier): see [`Job::execution_mode`].
 
 use crate::{
-    data::{Application, KnownHost, Uri},
+    data::{Application, KnownHost, Uri, is_collectable_app},
     processor::{Identifiers, api::ProcessSelection},
 };
 use std::path::PathBuf;
@@ -132,7 +132,7 @@ impl std::fmt::Display for JobValidationError {
             ),
             Self::CollectOutOfScope { app: None } => write!(
                 f,
-                "`Collect` is out of scope by design for platform diagnostics: use `read`/`Load` for the platform-generated bundle"
+                "`Collect` is out of scope by design without an application: select Elasticsearch, Kibana, or Logstash for API collection, or use `read`/`Load` for a product-provided diagnostic bundle"
             ),
             Self::CollectOutOfScope { app: Some(app) } => {
                 write!(f, "`Collect` is not supported for application {app}")
@@ -175,10 +175,7 @@ impl Job {
         send: Option<SendTarget>,
     ) -> Result<Self, JobValidationError> {
         if let Input::Collect { host, .. } = &input
-            && !matches!(
-                host.app(),
-                Some(Application::Elasticsearch | Application::Kibana | Application::Logstash)
-            )
+            && !is_collectable_app(host.app())
         {
             return Err(JobValidationError::CollectOutOfScope { app: host.app() });
         }
@@ -359,7 +356,8 @@ mod tests {
         .expect_err("platform collect is out of scope");
 
         assert_eq!(err, JobValidationError::CollectOutOfScope { app: None });
-        assert!(err.to_string().contains("platform-generated bundle"));
+        assert!(err.to_string().contains("without an application"));
+        assert!(err.to_string().contains("product-provided diagnostic bundle"));
     }
 
     #[test]

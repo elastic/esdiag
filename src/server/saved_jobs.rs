@@ -1,6 +1,6 @@
 use super::ServerState;
 use crate::data::{
-    Application, CollectSource, HostRole, Job, JobSignals, KnownHost, load_saved_jobs_async, save_saved_jobs,
+    CollectSource, HostRole, Job, JobSignals, KnownHost, is_collectable_app, load_saved_jobs_async, save_saved_jobs,
     with_saved_jobs_async,
 };
 use crate::processor::Identifiers;
@@ -160,10 +160,7 @@ fn validate_saved_job(signals: &SaveJobSignals) -> Result<(), &'static str> {
     if !host.has_role(HostRole::Collect) {
         return Err("Saved jobs require a known host with the collect role.");
     }
-    if !matches!(
-        host.app(),
-        Some(Application::Elasticsearch | Application::Kibana | Application::Logstash)
-    ) {
+    if !is_collectable_app(host.app()) {
         return Err("Saved jobs require an Elasticsearch, Kibana, or Logstash collect host.");
     }
 

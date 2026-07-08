@@ -3,7 +3,7 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::{ServerState, get_theme_dark, template};
-use crate::data::{Application, HostRole, KnownHost, Settings};
+use crate::data::{Application, HostRole, KnownHost, Settings, is_collectable_app};
 #[cfg(feature = "keystore")]
 use crate::data::{Job, load_saved_jobs_async};
 use crate::exporter::Exporter;
@@ -490,12 +490,7 @@ fn job_host_options(state: &Arc<ServerState>) -> JobHostOptions {
     let mut send_secure_hosts = Vec::new();
 
     for (name, host) in hosts_by_name {
-        if host.has_role(HostRole::Collect)
-            && matches!(
-                host.app(),
-                Some(Application::Elasticsearch | Application::Kibana | Application::Logstash)
-            )
-        {
+        if host.has_role(HostRole::Collect) && is_collectable_app(host.app()) {
             collect_hosts.push(name.clone());
             if host.requires_keystore_secret() {
                 collect_secure_hosts.push(name.clone());

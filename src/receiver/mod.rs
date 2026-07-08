@@ -505,8 +505,8 @@ mod tests {
 
         assert!(
             err.to_string()
-                .contains("out of scope by design for platform diagnostics")
+                .contains("out of scope by design without an application")
         );
-        assert!(err.to_string().contains("platform-generated bundle"));
+        assert!(err.to_string().contains("product-provided diagnostic bundle"));
     }
 }

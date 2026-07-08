@@ -59,9 +59,16 @@ pub fn collect_product(app: Option<Application>) -> Result<Product> {
             "Collect is out of scope by design for Elastic Agent. Elastic Agent provides its own diagnostic bundle; use `read`/`Load` instead."
         )),
         None => Err(eyre!(
-            "Collect is out of scope by design for platform diagnostics. Load the platform-generated bundle with `read`/`Load` instead."
+            "Collect is out of scope by design without an application. Select Elasticsearch, Kibana, or Logstash for API collection, or load a product-provided diagnostic bundle with `read`/`Load`."
         )),
     }
+}
+
+pub fn is_collectable_app(app: Option<Application>) -> bool {
+    matches!(
+        app,
+        Some(Application::Elasticsearch | Application::Kibana | Application::Logstash)
+    )
 }
 
 /// Save an arbitrary serializable object to a file
