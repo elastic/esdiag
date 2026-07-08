@@ -104,7 +104,7 @@ impl Serialize for Uri {
     {
         match self {
             Uri::ServiceLink(url) | Uri::ServiceLinkNoAuth(url) | Uri::Url(url) => {
-                serializer.serialize_str(url.as_str())
+                serializer.serialize_str(redacted_url_string(url).as_str())
             }
             Uri::Directory(path) | Uri::File(path) => serializer.serialize_str(&path.display().to_string()),
             Uri::ElasticCloud(host)
@@ -119,6 +119,13 @@ impl Serialize for Uri {
             Uri::Stream => serializer.serialize_str("-"),
         }
     }
+}
+
+fn redacted_url_string(url: &Url) -> String {
+    let mut url = url.clone();
+    let _ = url.set_username("");
+    let _ = url.set_password(None);
+    url.to_string()
 }
 
 impl From<Uri> for Url {

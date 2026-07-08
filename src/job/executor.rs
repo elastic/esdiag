@@ -50,8 +50,9 @@ pub async fn execute(job: Job) -> Result<JobOutcome> {
             exclude,
         } => {
             let hosts = KnownHost::parse_hosts_yml()?;
+            let host_key = host_name.trim();
             let host = hosts
-                .get(host_name)
+                .get(host_key)
                 .cloned()
                 .ok_or_else(|| eyre!("Host '{host_name}' referenced by job not found in hosts.yml"))?;
             if !host.has_role(HostRole::Collect) {
@@ -101,7 +102,9 @@ pub async fn execute(job: Job) -> Result<JobOutcome> {
                         outcome.upload_slug = Some(run_send(&bundle_path, send).await?);
                     }
 
-                    outcome.bundle_path = Some(bundle_path);
+                    if outcome.bundle_retained {
+                        outcome.bundle_path = Some(bundle_path);
+                    }
                     drop(cleanup);
                 }
                 ExecutionMode::Streaming => {
