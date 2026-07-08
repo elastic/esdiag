@@ -179,15 +179,16 @@ fn export_target_exporter(target: &ExportTarget) -> Result<Exporter> {
     match target {
         ExportTarget::KnownHost { name } => {
             let hosts = KnownHost::parse_hosts_yml()?;
+            let host_key = name.trim();
             let host = hosts
-                .get(name.as_str())
+                .get(host_key)
                 .cloned()
-                .ok_or_else(|| eyre!("Export host '{name}' not found in hosts.yml"))?;
+                .ok_or_else(|| eyre!("Export host '{host_key}' not found in hosts.yml"))?;
             if !host.has_role(HostRole::Send) {
-                return Err(eyre!("Export host '{name}' is missing the send role"));
+                return Err(eyre!("Export host '{host_key}' is missing the send role"));
             }
             if host.app() != &Product::Elasticsearch {
-                return Err(eyre!("Export host '{name}' must be an Elasticsearch host"));
+                return Err(eyre!("Export host '{host_key}' must be an Elasticsearch host"));
             }
             Exporter::try_from(Uri::try_from(host)?)
         }

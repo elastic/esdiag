@@ -356,17 +356,19 @@ impl Job {
                 signals.process.selected = selection.selected.join(",");
             }
             process.export.apply_to_signals(&mut signals);
-        } else if let Some(send) = self.send() {
+        } else if self.send().is_some() {
             signals.process.enabled = false;
             signals.process.mode = ProcessMode::Forward;
-            signals.send.mode = SendMode::Remote;
-            signals.send.remote_target = send.upload_id.clone();
         } else {
             signals.process.enabled = false;
             signals.process.mode = ProcessMode::Forward;
             signals.send.mode = SendMode::Local;
             signals.send.local_target = "directory".to_string();
             signals.send.local_directory = signals.collect.download_dir.clone();
+        }
+        if let Some(send) = self.send() {
+            signals.send.mode = SendMode::Remote;
+            signals.send.remote_target = send.upload_id.clone();
         }
 
         signals
