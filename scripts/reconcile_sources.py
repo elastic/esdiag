@@ -89,6 +89,13 @@ def load_yaml(path: Path) -> dict:
         return yaml.safe_load(fh) or {}
 
 
+def load_upstream_registry(support_diagnostics: Path, product: str) -> dict:
+    upstream = load_yaml(support_diagnostics / UPSTREAM_FILES[product])
+    if product == "elasticsearch":
+        upstream.update(load_yaml(support_diagnostics / UPSTREAM_DIAGS))
+    return upstream
+
+
 def overlay(esdiag: dict, upstream: dict, divergences: dict) -> tuple[dict, list[str]]:
     """Field-level merge of upstream into ESDiag's registry.
 
@@ -146,7 +153,7 @@ def main() -> int:
         esdiag_path = repo_root / "assets" / product / "sources.yml"
         divergences_path = repo_root / "assets" / product / "sources-divergences.yml"
 
-        upstream = load_yaml(upstream_path)
+        upstream = load_upstream_registry(args.support_diagnostics, product)
         if not upstream:
             print(f"[{product}] no upstream file at {upstream_path}, skipping")
             continue

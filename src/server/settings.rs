@@ -13,11 +13,15 @@ use axum::{
 use serde::Deserialize;
 use std::sync::Arc;
 
-pub async fn get_modal(State(state): State<Arc<ServerState>>, headers: HeaderMap) -> impl IntoResponse {
-    let owner = state
-        .resolve_user_email(&headers)
-        .map(|(_, user)| user)
-        .unwrap_or_else(|_| super::DEFAULT_OWNER.to_string());
+pub async fn get_modal(State(state): State<Arc<ServerState>>, headers: HeaderMap) -> Response {
+    let owner = match state.resolve_user_email(&headers) {
+        Ok((_, user)) => user,
+        Err(err) if state.server_policy.requires_authentication() => {
+            tracing::warn!("Settings modal denied: {}", err);
+            return StatusCode::UNAUTHORIZED.into_response();
+        }
+        Err(_) => super::DEFAULT_OWNER.to_string(),
+    };
     let can_update_exporter = state.server_policy.allows_exporter_updates();
     let allows_local_runtime_features = state.server_policy.allows_local_runtime_features();
     let settings = if allows_local_runtime_features {
@@ -64,7 +68,7 @@ pub async fn get_modal(State(state): State<Arc<ServerState>>, headers: HeaderMap
         Ok(html) => state.publish_event_for_owner(&owner, append_body_event(html)),
         Err(err) => state.publish_event_for_owner(&owner, html_event(format!("<div>Error: {}</div>", err))),
     }
-    StatusCode::NO_CONTENT
+    StatusCode::NO_CONTENT.into_response()
 }
 
 #[derive(Deserialize, Default)]
@@ -517,6 +521,20 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn service_mode_settings_modal_requires_iap_header() {
+        let _env = setup_env();
+
+        let mut state = test_server_state();
+        let state_mut = Arc::get_mut(&mut state).expect("unique state");
+        state_mut.runtime_mode = RuntimeMode::Service;
+        state_mut.server_policy = ServerPolicy::defaults(RuntimeMode::Service);
+
+        let response = get_modal(State(state), HeaderMap::new()).await.into_response();
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
     async fn service_mode_settings_modal_does_not_touch_local_runtime_features() {
         let env = setup_env();
         let hosts_path = env.hosts_path.clone();
@@ -527,8 +545,13 @@ mod tests {
         state_mut.runtime_mode = RuntimeMode::Service;
         state_mut.server_policy = ServerPolicy::defaults(RuntimeMode::Service);
         let mut events = state.subscribe_events();
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "X-Goog-Authenticated-User-Email",
+            HeaderValue::from_static("accounts.google.com:test@example.com"),
+        );
 
-        let response = get_modal(State(state), HeaderMap::new()).await.into_response();
+        let response = get_modal(State(state), headers).await.into_response();
 
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
         let _ = events.try_recv().expect("modal render event");
