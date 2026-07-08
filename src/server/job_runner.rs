@@ -512,7 +512,7 @@ async fn run_processor_job(ctx: ProcessorJobContext<'_>) -> Result<()> {
             let report = &completed.state.report;
             let outcome = report.outcome();
             state
-                .record_success(report.diagnostic.docs.total, report.diagnostic.docs.errors)
+                .record_outcome(outcome, report.diagnostic.docs.total, report.diagnostic.docs.errors)
                 .await;
             send_event(
                 tx,

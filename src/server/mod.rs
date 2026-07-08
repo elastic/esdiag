@@ -23,7 +23,7 @@ mod stats;
 mod template;
 mod theme;
 
-use super::processor::Identifiers;
+use super::processor::{DiagnosticOutcome, Identifiers};
 use crate::{
     data::{KnownHost, Uri},
     exporter::Exporter,
@@ -600,6 +600,23 @@ impl ServerState {
         stats.docs.errors += errors as usize;
         stats.jobs.total += 1;
         stats.jobs.success += 1;
+        if stats.jobs.active > 0 {
+            stats.jobs.active -= 1;
+        }
+        drop(stats);
+        self.notify_stats_changed();
+    }
+
+    pub async fn record_outcome(&self, outcome: DiagnosticOutcome, _docs: u32, errors: u32) {
+        if outcome != DiagnosticOutcome::Failed {
+            self.record_success(_docs, errors).await;
+            return;
+        }
+
+        let mut stats = self.stats.write().await;
+        stats.docs.errors += errors as usize;
+        stats.jobs.total += 1;
+        stats.jobs.failed += 1;
         if stats.jobs.active > 0 {
             stats.jobs.active -= 1;
         }
@@ -1434,6 +1451,7 @@ mod tests {
         SecretAuth, authenticate, create_keystore, resolve_secret_auth, upsert_secret_auth, write_unlock_lease,
     };
     use crate::exporter::Exporter;
+    use crate::processor::DiagnosticOutcome;
     use axum::http::HeaderMap;
     use futures::StreamExt;
     #[cfg(feature = "keystore")]
@@ -1464,6 +1482,19 @@ mod tests {
             stats_updates_tx,
             stats_updates_rx,
         }
+    }
+
+    #[tokio::test]
+    async fn record_outcome_counts_failed_outcome_as_failed_job() {
+        let state = test_state(RuntimeMode::User);
+
+        state.record_outcome(DiagnosticOutcome::Failed, 10, 2).await;
+
+        let stats = state.stats.read().await;
+        assert_eq!(stats.jobs.total, 1);
+        assert_eq!(stats.jobs.success, 0);
+        assert_eq!(stats.jobs.failed, 1);
+        assert_eq!(stats.docs.errors, 2);
     }
 
     struct WebFeaturesEnvGuard {

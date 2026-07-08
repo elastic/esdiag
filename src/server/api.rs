@@ -193,7 +193,11 @@ pub async fn service_link(
                 );
                 let report = &completed.state.report;
                 state
-                    .record_success(report.diagnostic.docs.total, report.diagnostic.docs.errors)
+                    .record_outcome(
+                        report.outcome(),
+                        report.diagnostic.docs.total,
+                        report.diagnostic.docs.errors,
+                    )
                     .await;
 
                 let response = diagnostic_result_entries(&completed.state);
@@ -401,7 +405,11 @@ pub async fn api_key(
                 );
                 let report = &completed.state.report;
                 state
-                    .record_success(report.diagnostic.docs.total, report.diagnostic.docs.errors)
+                    .record_outcome(
+                        report.outcome(),
+                        report.diagnostic.docs.total,
+                        report.diagnostic.docs.errors,
+                    )
                     .await;
 
                 let response = diagnostic_result_entries(&completed.state);
