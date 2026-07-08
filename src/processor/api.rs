@@ -692,7 +692,9 @@ mod tests {
 
     #[test]
     fn test_collect_concurrency_env_threshold_is_clamped() {
-        let _guard = crate::test_env_lock().lock().expect("env lock");
+        let _guard = crate::test_env_lock()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         unsafe {
             std::env::set_var("ESDIAG_COLLECT_SEQUENTIAL_THRESHOLD", "0");
         }
@@ -721,7 +723,9 @@ mod tests {
 
     #[test]
     fn test_processing_concurrency_env_threshold_is_clamped() {
-        let _guard = crate::test_env_lock().lock().expect("env lock");
+        let _guard = crate::test_env_lock()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         unsafe {
             std::env::set_var("ESDIAG_PROCESS_CONCURRENT_THRESHOLD", "0");
         }
