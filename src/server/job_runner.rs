@@ -194,7 +194,11 @@ pub async fn run_job(
                     .await;
             }
         }
-        state.record_failure(&owner).await;
+        if is_job_admission_error(&error) {
+            state.record_job_rejected().await;
+        } else {
+            state.record_failure(&owner).await;
+        }
         send_event(
             &tx,
             terminal_job_event(
@@ -587,6 +591,10 @@ async fn run_processor_job(ctx: ProcessorJobContext<'_>) -> Result<()> {
             Err(eyre!(error))
         }
     }
+}
+
+fn is_job_admission_error(error: &eyre::Report) -> bool {
+    error.to_string().contains("concurrent job cap reached")
 }
 
 async fn render_child_diagnostic_events(

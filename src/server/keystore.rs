@@ -298,12 +298,13 @@ fn missing_keystore_unlock_message() -> &'static str {
     }
 }
 
-async fn missing_keystore_response(state: &Arc<ServerState>) -> Response {
-    state.publish_event(signal_event(format!(
-        r#"{{"message":"{}"}}"#,
-        missing_keystore_unlock_message()
-    )));
-    get_bootstrap_modal(State(state.clone()), HeaderMap::new()).await;
+async fn missing_keystore_response(state: &Arc<ServerState>, headers: HeaderMap) -> Response {
+    let owner = request_owner(state, &headers);
+    state.publish_event_for_owner(
+        &owner,
+        signal_event(format!(r#"{{"message":"{}"}}"#, missing_keystore_unlock_message())),
+    );
+    get_bootstrap_modal(State(state.clone()), headers).await;
     axum::http::StatusCode::PRECONDITION_FAILED.into_response()
 }
 
@@ -398,9 +399,13 @@ pub async fn bootstrap(State(state): State<Arc<ServerState>>, Form(form): Form<K
     axum::http::StatusCode::NO_CONTENT.into_response()
 }
 
-pub async fn unlock(State(state): State<Arc<ServerState>>, Form(form): Form<KeystoreForm>) -> Response {
+pub async fn unlock(
+    State(state): State<Arc<ServerState>>,
+    headers: HeaderMap,
+    Form(form): Form<KeystoreForm>,
+) -> Response {
     if !keystore_exists().unwrap_or(false) {
-        return missing_keystore_response(&state).await;
+        return missing_keystore_response(&state, headers).await;
     }
 
     if let Some(response) = blocked_unlock_response(&state).await {
@@ -560,6 +565,7 @@ mod tests {
 
         let response = unlock(
             State(state.clone()),
+            HeaderMap::new(),
             Form(KeystoreForm {
                 password: "pw".to_string(),
                 confirm: None,
@@ -582,6 +588,7 @@ mod tests {
 
         let response = unlock(
             State(state.clone()),
+            HeaderMap::new(),
             Form(KeystoreForm {
                 password: "pw".to_string(),
                 confirm: None,
@@ -601,6 +608,7 @@ mod tests {
         let state = test_server_state();
         let response = unlock(
             State(state.clone()),
+            HeaderMap::new(),
             Form(KeystoreForm {
                 password: "wrong".to_string(),
                 confirm: None,
@@ -621,6 +629,7 @@ mod tests {
         let state = test_server_state();
         let response = unlock(
             State(state),
+            HeaderMap::new(),
             Form(KeystoreForm {
                 password: "pw".to_string(),
                 confirm: None,
@@ -656,6 +665,7 @@ mod tests {
         let mut events = state.subscribe_events();
         let response = unlock(
             State(state),
+            HeaderMap::new(),
             Form(KeystoreForm {
                 password: "pw".to_string(),
                 confirm: None,
@@ -870,6 +880,7 @@ mod tests {
         let state = test_server_state();
         unlock(
             State(state.clone()),
+            HeaderMap::new(),
             Form(KeystoreForm {
                 password: "pw".to_string(),
                 confirm: None,
@@ -1040,6 +1051,7 @@ mod tests {
         let mut events = state.subscribe_events();
         let response = unlock(
             State(state),
+            HeaderMap::new(),
             Form(KeystoreForm {
                 password: "   ".to_string(),
                 confirm: None,
