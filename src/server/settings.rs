@@ -62,7 +62,10 @@ pub async fn get_modal(State(state): State<Arc<ServerState>>, headers: HeaderMap
 
     match modal.render() {
         Ok(html) => state.publish_event_for_owner(&owner, append_body_event(html)),
-        Err(err) => state.publish_event_for_owner(&owner, html_event(format!("<div>Error: {}</div>", err))),
+        Err(err) => {
+            tracing::error!("Failed to render settings modal: {}", err);
+            state.publish_event_for_owner(&owner, html_event("<div>Error rendering settings modal.</div>"));
+        }
     }
     StatusCode::NO_CONTENT
 }

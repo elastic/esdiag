@@ -29,12 +29,13 @@ pub async fn submit(
     let identity = match state.resolve_identity(&headers) {
         Ok(identity) => identity,
         Err(err) => {
+            tracing::warn!("Upload submit denied: {}", err);
             state.record_job_rejected().await;
             return (
                 StatusCode::UNAUTHORIZED,
                 Html(format!(
                     r#"<div id="job-{job_id}" class="status-box history-item status-error">
-                        🛑 Unauthorized request: {err}
+                        🛑 Unauthorized request
                     </div>"#
                 )),
             );
