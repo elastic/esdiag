@@ -4,7 +4,7 @@ use crate::server::template::{self, KeystoreBootstrapModal, KeystoreProcessUnloc
 use askama::Template;
 use axum::{
     extract::{Form, State},
-    http::{HeaderValue, header::RETRY_AFTER},
+    http::{HeaderMap, HeaderValue, header::RETRY_AFTER},
     response::{IntoResponse, Response},
 };
 use serde::{Deserialize, Serialize};
@@ -236,27 +236,42 @@ pub(crate) struct KeystoreForm {
     confirm: Option<String>,
 }
 
-pub async fn get_unlock_modal(State(state): State<Arc<ServerState>>) -> Response {
+fn request_owner(state: &ServerState, headers: &HeaderMap) -> String {
+    state
+        .resolve_user_email(headers)
+        .map(|(_, owner)| owner)
+        .unwrap_or_else(|_| super::DEFAULT_OWNER.to_string())
+}
+
+pub async fn get_unlock_modal(State(state): State<Arc<ServerState>>, headers: HeaderMap) -> Response {
+    let owner = request_owner(&state, &headers);
     if !keystore_exists().unwrap_or(false) {
-        return get_bootstrap_modal(State(state)).await;
+        return get_bootstrap_modal(State(state), headers).await;
     }
     let modal = KeystoreUnlockModal {};
     match modal.render() {
-        Ok(html) => state.publish_event(append_body_event(html)),
-        Err(err) => state.publish_event(html_event(format!("<div>Error: {}</div>", err))),
+        Ok(html) => state.publish_event_for_owner(&owner, append_body_event(html)),
+        Err(err) => {
+            tracing::error!("Failed to render keystore unlock modal: {}", err);
+            state.publish_event_for_owner(&owner, html_event("<div>Error rendering keystore modal.</div>"));
+        }
     }
     axum::http::StatusCode::NO_CONTENT.into_response()
 }
 
-pub async fn get_process_unlock_modal(State(state): State<Arc<ServerState>>) -> Response {
+pub async fn get_process_unlock_modal(State(state): State<Arc<ServerState>>, headers: HeaderMap) -> Response {
+    let owner = request_owner(&state, &headers);
     if !keystore_exists().unwrap_or(false) {
-        return get_bootstrap_modal(State(state)).await;
+        return get_bootstrap_modal(State(state), headers).await;
     }
 
     let modal = KeystoreProcessUnlockModal {};
     match modal.render() {
-        Ok(html) => state.publish_event(append_body_event(html)),
-        Err(err) => state.publish_event(html_event(format!("<div>Error: {}</div>", err))),
+        Ok(html) => state.publish_event_for_owner(&owner, append_body_event(html)),
+        Err(err) => {
+            tracing::error!("Failed to render keystore process unlock modal: {}", err);
+            state.publish_event_for_owner(&owner, html_event("<div>Error rendering keystore modal.</div>"));
+        }
     }
     axum::http::StatusCode::NO_CONTENT.into_response()
 }
@@ -288,7 +303,7 @@ async fn missing_keystore_response(state: &Arc<ServerState>) -> Response {
         r#"{{"message":"{}"}}"#,
         missing_keystore_unlock_message()
     )));
-    get_bootstrap_modal(State(state.clone())).await;
+    get_bootstrap_modal(State(state.clone()), HeaderMap::new()).await;
     axum::http::StatusCode::PRECONDITION_FAILED.into_response()
 }
 
@@ -311,7 +326,8 @@ async fn blocked_unlock_response(state: &Arc<ServerState>) -> Option<Response> {
     Some(response)
 }
 
-pub async fn get_bootstrap_modal(State(state): State<Arc<ServerState>>) -> Response {
+pub async fn get_bootstrap_modal(State(state): State<Arc<ServerState>>, headers: HeaderMap) -> Response {
+    let owner = request_owner(&state, &headers);
     if keystore_exists().unwrap_or(false) {
         return axum::http::StatusCode::NO_CONTENT.into_response();
     }
@@ -320,8 +336,11 @@ pub async fn get_bootstrap_modal(State(state): State<Arc<ServerState>>) -> Respo
         migrate: migration_needed(),
     };
     match modal.render() {
-        Ok(html) => state.publish_event(append_body_event(html)),
-        Err(err) => state.publish_event(html_event(format!("<div>Error: {}</div>", err))),
+        Ok(html) => state.publish_event_for_owner(&owner, append_body_event(html)),
+        Err(err) => {
+            tracing::error!("Failed to render keystore bootstrap modal: {}", err);
+            state.publish_event_for_owner(&owner, html_event("<div>Error rendering keystore modal.</div>"));
+        }
     }
     axum::http::StatusCode::NO_CONTENT.into_response()
 }
@@ -474,7 +493,7 @@ mod tests {
     };
     use axum::{
         extract::{Form, State},
-        http::StatusCode,
+        http::{HeaderMap, StatusCode},
         response::IntoResponse,
     };
     use std::{
@@ -672,7 +691,7 @@ mod tests {
 
         let state = test_server_state();
         let mut events = state.subscribe_events();
-        let response = get_unlock_modal(State(state)).await;
+        let response = get_unlock_modal(State(state), HeaderMap::new()).await;
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
 
         let event = events.recv().await.expect("bootstrap modal event");
@@ -693,7 +712,7 @@ mod tests {
 
         let state = test_server_state();
         let mut events = state.subscribe_events();
-        let response = get_process_unlock_modal(State(state)).await;
+        let response = get_process_unlock_modal(State(state), HeaderMap::new()).await;
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
 
         let event = events.recv().await.expect("bootstrap modal event");
@@ -715,7 +734,7 @@ mod tests {
 
         let state = test_server_state();
         let mut events = state.subscribe_events();
-        let response = get_unlock_modal(State(state)).await;
+        let response = get_unlock_modal(State(state), HeaderMap::new()).await;
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
         assert!(hosts_path.is_file(), "hosts file should be created when inspected");
 
@@ -753,7 +772,7 @@ mod tests {
 
         let state = test_server_state();
         let mut events = state.subscribe_events();
-        let response = get_unlock_modal(State(state)).await;
+        let response = get_unlock_modal(State(state), HeaderMap::new()).await;
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
 
         let event = events.recv().await.expect("bootstrap modal event");

@@ -260,8 +260,7 @@ async fn secure_host_unlock_required_response(
 ) -> Response {
     #[cfg(feature = "keystore")]
     {
-        let _ = headers;
-        let _ = keystore::get_unlock_modal(State(state.clone())).await;
+        let _ = keystore::get_unlock_modal(State(state.clone()), headers).await;
     }
     #[cfg(not(feature = "keystore"))]
     let _ = headers;
