@@ -178,8 +178,11 @@ async fn run_send(bundle_path: &std::path::Path, send: &SendTarget) -> Result<St
 fn export_target_exporter(target: &ExportTarget) -> Result<Exporter> {
     match target {
         ExportTarget::KnownHost { name } => {
-            let host =
-                KnownHost::get_known(name).ok_or_else(|| eyre!("Export host '{name}' not found in hosts.yml"))?;
+            let hosts = KnownHost::parse_hosts_yml()?;
+            let host = hosts
+                .get(name.as_str())
+                .cloned()
+                .ok_or_else(|| eyre!("Export host '{name}' not found in hosts.yml"))?;
             if !host.has_role(HostRole::Send) {
                 return Err(eyre!("Export host '{name}' is missing the send role"));
             }
