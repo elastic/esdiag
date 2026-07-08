@@ -54,7 +54,7 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for SearchableSnapshotsSta
 
 // Serializing data structures
 
-#[allow(dead_code)]
+#[expect(dead_code, reason = "constructed by serde/export serialization shape")]
 #[derive(Clone, Serialize)]
 pub struct SearchableSnapshotStatsDoc {
     #[serde(flatten)]
@@ -63,7 +63,6 @@ pub struct SearchableSnapshotStatsDoc {
     searchable_snapshot: Box<RawValue>,
 }
 
-#[allow(dead_code)]
 #[derive(Clone, Serialize)]
 pub struct IndexName {
     pub name: String,
