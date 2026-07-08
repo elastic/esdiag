@@ -1926,11 +1926,8 @@ mod tests {
 
     #[test]
     fn saved_hosts_resolve_input_and_output_credentials_from_same_role_agnostic_store() {
-        let _guard = env_lock().lock().expect("env lock");
-        let (_tmp, _hosts, _keystore) = setup_env();
-        unsafe {
-            std::env::set_var("ESDIAG_KEYSTORE_PASSWORD", "pw");
-        }
+        let mut env = crate::TestEnv::new();
+        env.set("ESDIAG_KEYSTORE_PASSWORD", "pw");
         upsert_secret_auth(
             "shared-secret",
             SecretAuth::ApiKey {
