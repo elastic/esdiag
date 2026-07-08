@@ -456,6 +456,7 @@ mod tests {
     use crate::{
         data::{HostRole, KnownHost, Product, Uri},
         exporter::Exporter,
+        processor::SkipKind,
     };
     use askama::Template;
     use std::{collections::BTreeMap, path::PathBuf, sync::Mutex};
@@ -660,11 +661,12 @@ mod tests {
         assert!(no_link.contains("elasticsearch_diagnostic@2026-01-01~efgh"));
         assert!(!no_link.contains(r#"href="""#));
 
+        let kind = SkipKind::NotImplemented.to_string();
         let skipped = JobSkipped {
             job_id: 101,
             source: "Included diagnostic: child-kibana",
             product: "Kibana",
-            kind: "not implemented",
+            kind: &kind,
             reason: "Kibana processing is not yet implemented",
         }
         .render()
@@ -672,7 +674,7 @@ mod tests {
 
         assert!(skipped.contains("status-info"));
         assert!(skipped.contains("Included diagnostic: child-kibana"));
-        assert!(skipped.contains("not implemented"));
+        assert!(skipped.contains("not-implemented"));
         assert!(skipped.contains("Kibana processing is not yet implemented"));
     }
 }
