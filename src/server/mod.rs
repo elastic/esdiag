@@ -607,9 +607,9 @@ impl ServerState {
         self.notify_stats_changed();
     }
 
-    pub async fn record_outcome(&self, outcome: DiagnosticOutcome, _docs: u32, errors: u32) {
+    pub async fn record_outcome(&self, outcome: DiagnosticOutcome, errors: u32) {
         if outcome != DiagnosticOutcome::Failed {
-            self.record_success(_docs, errors).await;
+            self.record_success(0, errors).await;
             return;
         }
 
@@ -1488,7 +1488,7 @@ mod tests {
     async fn record_outcome_counts_failed_outcome_as_failed_job() {
         let state = test_state(RuntimeMode::User);
 
-        state.record_outcome(DiagnosticOutcome::Failed, 10, 2).await;
+        state.record_outcome(DiagnosticOutcome::Failed, 2).await;
 
         let stats = state.stats.read().await;
         assert_eq!(stats.jobs.total, 1);

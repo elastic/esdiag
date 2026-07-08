@@ -511,9 +511,7 @@ async fn run_processor_job(ctx: ProcessorJobContext<'_>) -> Result<()> {
         Ok(completed) => {
             let report = &completed.state.report;
             let outcome = report.outcome();
-            state
-                .record_outcome(outcome, report.diagnostic.docs.total, report.diagnostic.docs.errors)
-                .await;
+            state.record_outcome(outcome, report.diagnostic.docs.errors).await;
             send_event(
                 tx,
                 terminal_job_event(

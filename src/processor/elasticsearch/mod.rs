@@ -372,7 +372,8 @@ pub(super) fn missing_source_error(err: &eyre::Report) -> bool {
         return true;
     }
 
-    err.to_string().starts_with("File not found in archive: ")
+    err.to_string()
+        .starts_with(crate::receiver::ARCHIVE_FILE_NOT_FOUND_PREFIX)
 }
 
 fn lookup_from_result<T, U>(result: Result<U>, label: &str) -> Lookup<T>
