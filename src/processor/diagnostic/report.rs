@@ -389,7 +389,7 @@ pub fn derive_outcome(events: &[DiagnosticEvent], docs: &Docs) -> DiagnosticOutc
     let has_error = events.iter().any(|event| event.severity == EventSeverity::Error);
     let has_warning = events.iter().any(|event| event.severity == EventSeverity::Warning);
     let has_failure_signal = has_error || has_warning || docs.errors > 0;
-    let produced = docs.created > 0 || events.iter().any(|event| event.severity == EventSeverity::Success);
+    let produced = docs.total > 0 || events.iter().any(|event| event.severity == EventSeverity::Success);
 
     if has_failure_signal && !produced {
         DiagnosticOutcome::Failed
@@ -1065,6 +1065,17 @@ user: ada
         let docs = Docs {
             created: 5,
             errors: 2,
+            total: 7,
+        };
+        assert_eq!(derive_outcome(&events, &docs), DiagnosticOutcome::Partial);
+    }
+
+    #[test]
+    fn outcome_derives_partial_when_all_attempted_documents_are_rejected() {
+        let events = vec![DiagnosticEvent::warning("nodes", "7 of 7 documents rejected")];
+        let docs = Docs {
+            created: 0,
+            errors: 7,
             total: 7,
         };
         assert_eq!(derive_outcome(&events, &docs), DiagnosticOutcome::Partial);
