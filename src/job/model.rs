@@ -128,6 +128,8 @@ pub enum JobValidationError {
     TemporarySaveRequiresConsumer,
     /// Collect jobs need a saved-host reference.
     EmptyCollectHost,
+    /// Persisted load inputs must keep their wire semantics across a YAML round trip.
+    ResolvedLoadUriNotPersistable,
 }
 
 impl std::fmt::Display for JobValidationError {
@@ -147,6 +149,10 @@ impl std::fmt::Display for JobValidationError {
                 "temporary `save` requires `process` or `send` so the staged bundle is consumed before cleanup"
             ),
             Self::EmptyCollectHost => write!(f, "`Collect` input requires a non-empty host"),
+            Self::ResolvedLoadUriNotPersistable => write!(
+                f,
+                "`Load` input cannot persist resolved host URIs; use a file, directory, URL, or stream reference"
+            ),
         }
     }
 }
@@ -209,13 +215,19 @@ impl Job {
         {
             return Err(JobValidationError::EmptyCollectHost);
         }
+        if let Input::Load {
+            uri: Uri::KnownHost(_) | Uri::ElasticCloud(_) | Uri::ElasticCloudAdmin(_) | Uri::ElasticGovCloudAdmin(_),
+        } = &input
+        {
+            return Err(JobValidationError::ResolvedLoadUriNotPersistable);
+        }
         if send.is_some() && input.is_collect() && save.is_none() {
             return Err(JobValidationError::SendRequiresBundle);
         }
         if save.is_none() && process.is_none() && send.is_none() {
             return Err(JobValidationError::NoWork);
         }
-        if matches!(save, Some(SaveTarget { dir: None })) && process.is_none() && send.is_none() {
+        if matches!(&save, Some(SaveTarget { dir: None })) && process.is_none() && send.is_none() {
             return Err(JobValidationError::TemporarySaveRequiresConsumer);
         }
         Ok(Self {
@@ -342,6 +354,25 @@ mod tests {
         )
         .expect_err("empty collect host must be rejected");
         assert_eq!(err, JobValidationError::EmptyCollectHost);
+    }
+
+    #[test]
+    fn load_input_rejects_resolved_host_uri() {
+        let host = crate::data::KnownHostBuilder::new(url::Url::parse("https://prod.example.com:9200").expect("url"))
+            .build()
+            .expect("known host");
+        let err = Job::try_new(
+            Identifiers::default(),
+            Input::Load {
+                uri: Uri::KnownHost(host),
+            },
+            None,
+            Some(process()),
+            None,
+        )
+        .expect_err("resolved host Uri must not be persisted in jobs.yml");
+
+        assert_eq!(err, JobValidationError::ResolvedLoadUriNotPersistable);
     }
 
     #[test]
