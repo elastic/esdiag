@@ -12,7 +12,7 @@ pub mod executor;
 /// The phase-structured `Job` model with validated construction.
 pub mod model;
 
-use crate::data::{Job as SavedJob, KnownHost, load_saved_jobs, save_saved_jobs};
+use crate::data::{HostRole, Job as SavedJob, KnownHost, load_saved_jobs, save_saved_jobs};
 use crate::job::model::Input;
 use eyre::{Result, eyre};
 use std::io::IsTerminal;
@@ -66,11 +66,18 @@ pub async fn handle_job_run(name: &str) -> Result<()> {
         }
 
         let hosts = KnownHost::parse_hosts_yml()?;
-        if !hosts.contains_key(host.as_str()) {
+        let Some(known_host) = hosts.get(host.as_str()) else {
             return Err(eyre!(
                 "Host '{}' referenced by job '{}' not found in hosts.yml",
                 host,
                 name
+            ));
+        };
+        if !known_host.has_role(HostRole::Collect) {
+            return Err(eyre!(
+                "Host role validation failed for job '{}': host '{}' is missing the collect role",
+                name,
+                host
             ));
         }
     }

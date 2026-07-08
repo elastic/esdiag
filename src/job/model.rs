@@ -150,6 +150,7 @@ impl std::error::Error for JobValidationError {}
 /// Constructed only through [`Job::try_new`], which enforces the phase
 /// invariants; the accessors expose the validated stages read-only.
 #[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(try_from = "JobWire")]
 pub struct Job {
     #[serde(default, skip_serializing_if = "Identifiers::is_empty")]
     pub identifiers: Identifiers,
@@ -160,6 +161,27 @@ pub struct Job {
     process: Option<Process>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     send: Option<SendTarget>,
+}
+
+#[derive(Deserialize)]
+struct JobWire {
+    #[serde(default, skip_serializing_if = "Identifiers::is_empty")]
+    identifiers: Identifiers,
+    input: Input,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    save: Option<SaveTarget>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    process: Option<Process>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    send: Option<SendTarget>,
+}
+
+impl TryFrom<JobWire> for Job {
+    type Error = JobValidationError;
+
+    fn try_from(wire: JobWire) -> Result<Self, Self::Error> {
+        Job::try_new(wire.identifiers, wire.input, wire.save, wire.process, wire.send)
+    }
 }
 
 impl Job {
@@ -285,6 +307,23 @@ mod tests {
         let err = Job::try_new(Identifiers::default(), collect_input(), None, None, None)
             .expect_err("no-op job must be rejected");
         assert_eq!(err, JobValidationError::NoWork);
+    }
+
+    #[test]
+    fn deserialization_rejects_invalid_job_shape() {
+        let err = serde_yaml::from_str::<Job>(
+            r#"
+input:
+  type: collect
+  host: prod
+  diagnostic_type: standard
+send:
+  upload_id: abc123
+"#,
+        )
+        .expect_err("collect+send without save must be rejected");
+
+        assert!(err.to_string().contains("`send` requires a bundle"));
     }
 
     #[test]
