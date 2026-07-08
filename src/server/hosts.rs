@@ -1163,10 +1163,8 @@ async fn apply_upsert_host(state: &Arc<ServerState>, form: HostUpsertForm) -> Re
     }
     .accept_invalid_certs(accept_invalid_certs)
     .roles(roles)
-    .viewer(viewer);
-    if let Some(app) = app {
-        builder = builder.application(app);
-    }
+    .viewer(viewer)
+    .app(app);
     let host = match auth.as_str() {
         "none" => builder.build().map_err(to_message)?,
         "apikey" | "basic" | "secret" => {
@@ -1867,6 +1865,35 @@ mod tests {
         let saved = saved_hosts.get("with-secret").expect("saved host");
         assert_eq!(saved.secret.as_deref(), Some("api-secret"));
         assert!(saved.legacy_apikey.is_none());
+    }
+
+    #[tokio::test]
+    async fn host_upsert_can_persist_no_application_for_concrete_hosts() {
+        let _guard = env_lock().lock().expect("env lock");
+        let _tmp = setup_env();
+        let state = test_server_state();
+
+        apply_upsert_host(
+            &state,
+            HostUpsertForm {
+                original_name: None,
+                name: "platform-host".to_string(),
+                auth: "none".to_string(),
+                app: "none".to_string(),
+                url: "https://platform.example".to_string(),
+                url_template: None,
+                roles: "collect".to_string(),
+                viewer: None,
+                secret: None,
+                accept_invalid_certs: None,
+            },
+        )
+        .await
+        .expect("save platform host");
+
+        let saved_hosts = KnownHost::parse_hosts_yml().expect("reload hosts");
+        let saved = saved_hosts.get("platform-host").expect("saved host");
+        assert_eq!(saved.app(), None);
     }
 
     #[tokio::test]

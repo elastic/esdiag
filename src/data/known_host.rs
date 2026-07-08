@@ -230,6 +230,13 @@ impl KnownHostBuilder {
         Self { app: Some(app), ..self }
     }
 
+    pub fn app(self, app: impl IntoKnownHostApp) -> Self {
+        Self {
+            app: app.into_known_host_app(),
+            ..self
+        }
+    }
+
     pub fn product(self, product: Product) -> Self {
         Self {
             app: app_from_legacy_product(product),
