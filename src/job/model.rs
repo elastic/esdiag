@@ -117,6 +117,8 @@ pub enum JobValidationError {
     SendRequiresBundle,
     /// `send` over a `Load` input requires a bundle archive file.
     SendRequiresArchiveFile,
+    /// Streaming collection cannot yet honor include/exclude filters.
+    FilteredStreamingUnsupported,
     /// A job must do something: at least one of `save`/`process`/`send`.
     NoWork,
 }
@@ -133,6 +135,12 @@ impl std::fmt::Display for JobValidationError {
                 "`send` requires a bundle: a `Load` input, or `save` on a `Collect` input"
             ),
             Self::SendRequiresArchiveFile => write!(f, "`send` requires a bundle archive file for `Load` input"),
+            Self::FilteredStreamingUnsupported => {
+                write!(
+                    f,
+                    "streaming `Collect` + `Process` jobs do not support include/exclude filters"
+                )
+            }
             Self::NoWork => write!(f, "a job must select at least one of `save`, `process`, or `send`"),
         }
     }
@@ -170,6 +178,13 @@ impl Job {
         }
         if send.is_some() && matches!(&input, Input::Load { uri } if !matches!(uri, Uri::File(_))) {
             return Err(JobValidationError::SendRequiresArchiveFile);
+        }
+        if process.is_some()
+            && save.is_none()
+            && let Input::Collect { include, exclude, .. } = &input
+            && (has_filters(include) || has_filters(exclude))
+        {
+            return Err(JobValidationError::FilteredStreamingUnsupported);
         }
         if save.is_none() && process.is_none() && send.is_none() {
             return Err(JobValidationError::NoWork);
@@ -210,6 +225,10 @@ impl Job {
     }
 }
 
+fn has_filters(filters: &Option<Vec<String>>) -> bool {
+    filters.as_ref().is_some_and(|filters| !filters.is_empty())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -229,6 +248,15 @@ mod tests {
             host: host(),
             diagnostic_type: "standard".to_string(),
             include: None,
+            exclude: None,
+        }
+    }
+
+    fn filtered_collect_input() -> Input {
+        Input::Collect {
+            host: host(),
+            diagnostic_type: "standard".to_string(),
+            include: Some(vec!["nodes".to_string()]),
             exclude: None,
         }
     }
@@ -333,6 +361,28 @@ mod tests {
         let job =
             Job::try_new(Identifiers::default(), collect_input(), None, Some(process()), None).expect("streaming job");
         assert_eq!(job.execution_mode(), ExecutionMode::Streaming);
+    }
+
+    #[test]
+    fn filtered_collect_process_requires_staged_save() {
+        let err = Job::try_new(
+            Identifiers::default(),
+            filtered_collect_input(),
+            None,
+            Some(process()),
+            None,
+        )
+        .expect_err("filtered streaming job must be rejected");
+        assert_eq!(err, JobValidationError::FilteredStreamingUnsupported);
+
+        Job::try_new(
+            Identifiers::default(),
+            filtered_collect_input(),
+            Some(SaveTarget::temporary()),
+            Some(process()),
+            None,
+        )
+        .expect("filtered staged job is valid");
     }
 
     #[test]

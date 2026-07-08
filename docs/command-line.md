@@ -100,7 +100,7 @@ These environment variables change where local state is read and written:
 - `ESDIAG_SERVICE_OWNER_JOB_CAP`: per-owner concurrent job cap enforced in `service` mode
 - `ESDIAG_COLLECT_POOL`: concurrent collection pool for API data sources
 - `ESDIAG_COLLECT_SEQUENTIAL_THRESHOLD`: source-weight threshold at or above which collection runs sequentially
-- `ESDIAG_PROCESS_CONCURRENT_THRESHOLD`: source-weight threshold below which processing can run concurrently
+- `ESDIAG_PROCESS_CONCURRENT_THRESHOLD`: processing-weight threshold at or above which processing runs concurrently
 - `ESDIAG_DOCS_EXCLUDED_TAGS`: comma-separated OKF tags to hide from the documentation viewer unless debug logging is enabled; defaults to `repository`
 - `ESDIAG_OUTPUT_TASK_LIMIT`: task concurrency limit used by the Elasticsearch exporter
 
