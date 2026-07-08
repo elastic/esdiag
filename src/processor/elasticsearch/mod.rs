@@ -72,7 +72,10 @@ use crate::{
 use eyre::{Result, eyre};
 use futures::stream::FuturesUnordered;
 use serde::{Serialize, de::DeserializeOwned};
-use std::{collections::HashSet, sync::Arc};
+use std::{
+    collections::{BTreeSet, HashSet},
+    sync::Arc,
+};
 use {
     alias::{Alias, AliasList},
     cluster_settings::{ClusterSettings, ClusterSettingsDefaults},
@@ -115,14 +118,14 @@ struct EsDispatchEntry {
 const ES_DISPATCH: &[EsDispatchEntry] = &[
     EsDispatchEntry { key: "indices_stats" },
     EsDispatchEntry { key: "nodes_stats" },
-    EsDispatchEntry { key: "cluster_settings" },
+    EsDispatchEntry {
+        key: "cluster_settings",
+    },
     EsDispatchEntry {
         key: "cluster_settings_defaults",
     },
     EsDispatchEntry { key: "health_report" },
-    EsDispatchEntry {
-        key: "ilm_policies",
-    },
+    EsDispatchEntry { key: "ilm_policies" },
     EsDispatchEntry {
         key: "indices_settings",
     },
@@ -130,12 +133,8 @@ const ES_DISPATCH: &[EsDispatchEntry] = &[
     EsDispatchEntry {
         key: "cluster_pending_tasks",
     },
-    EsDispatchEntry {
-        key: "slm_policies",
-    },
-    EsDispatchEntry {
-        key: "repositories",
-    },
+    EsDispatchEntry { key: "slm_policies" },
+    EsDispatchEntry { key: "repositories" },
     EsDispatchEntry {
         key: "searchable_snapshots_stats",
     },
@@ -209,6 +208,13 @@ fn validate_es_dispatch_registry() -> Result<()> {
                     datasource_name: Tasks::name(),
                 },
             ];
+            let claim_keys = claims.iter().map(|claim| claim.key).collect::<BTreeSet<_>>();
+            let dispatch_keys = ES_DISPATCH.iter().map(|entry| entry.key).collect::<BTreeSet<_>>();
+            if claim_keys != dispatch_keys {
+                return Err(format!(
+                    "Elasticsearch dispatch keys do not match processable claims: dispatch={dispatch_keys:?}, claims={claim_keys:?}"
+                ));
+            }
             validate_processable_registry("elasticsearch", &claims).map_err(|err| err.to_string())
         })
         .clone()

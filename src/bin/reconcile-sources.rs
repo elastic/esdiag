@@ -78,7 +78,7 @@ const ESDIAG_FIELDS: &[&str] = &[
 
 fn main() -> Result<std::process::ExitCode> {
     let args = Args::parse();
-    let repo_root = std::env::current_dir().wrap_err("failed to resolve current directory")?;
+    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let products = selected_products(&args);
     let mut exit_code = std::process::ExitCode::SUCCESS;
 

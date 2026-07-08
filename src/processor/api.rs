@@ -4,6 +4,9 @@ use indexmap::IndexSet;
 use serde::Serialize;
 use std::collections::HashMap;
 
+const MIN_WEIGHT: u8 = 1;
+const MAX_WEIGHT: u8 = 5;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DiagnosticType {
     Minimal,
@@ -70,6 +73,7 @@ impl CollectConcurrencyPolicy {
             sequential_threshold: std::env::var("ESDIAG_COLLECT_SEQUENTIAL_THRESHOLD")
                 .ok()
                 .and_then(|value| value.parse().ok())
+                .map(|threshold: u8| threshold.clamp(MIN_WEIGHT, MAX_WEIGHT))
                 .unwrap_or(default.sequential_threshold),
         }
     }
@@ -104,6 +108,7 @@ impl ProcessingConcurrencyPolicy {
             concurrent_threshold: std::env::var("ESDIAG_PROCESS_CONCURRENT_THRESHOLD")
                 .ok()
                 .and_then(|value| value.parse().ok())
+                .map(|threshold: u8| threshold.clamp(MIN_WEIGHT, MAX_WEIGHT))
                 .unwrap_or(Self::default().concurrent_threshold),
         }
     }
@@ -686,6 +691,24 @@ mod tests {
     }
 
     #[test]
+    fn test_collect_concurrency_env_threshold_is_clamped() {
+        let _guard = crate::test_env_lock().lock().expect("env lock");
+        unsafe {
+            std::env::set_var("ESDIAG_COLLECT_SEQUENTIAL_THRESHOLD", "0");
+        }
+        assert_eq!(CollectConcurrencyPolicy::from_env().sequential_threshold, MIN_WEIGHT);
+
+        unsafe {
+            std::env::set_var("ESDIAG_COLLECT_SEQUENTIAL_THRESHOLD", "99");
+        }
+        assert_eq!(CollectConcurrencyPolicy::from_env().sequential_threshold, MAX_WEIGHT);
+
+        unsafe {
+            std::env::remove_var("ESDIAG_COLLECT_SEQUENTIAL_THRESHOLD");
+        }
+    }
+
+    #[test]
     fn test_processing_concurrency_policy_uses_processing_weight() {
         let policy = ProcessingConcurrencyPolicy::default();
         assert!(policy.is_concurrent(processing_weight("elasticsearch", "indices_stats")));
@@ -694,6 +717,24 @@ mod tests {
         assert!(!policy.is_concurrent(processing_weight("elasticsearch", "tasks")));
         // Snapshot is streamable but mid-weight: not its own task
         assert!(!policy.is_concurrent(processing_weight("elasticsearch", "snapshot")));
+    }
+
+    #[test]
+    fn test_processing_concurrency_env_threshold_is_clamped() {
+        let _guard = crate::test_env_lock().lock().expect("env lock");
+        unsafe {
+            std::env::set_var("ESDIAG_PROCESS_CONCURRENT_THRESHOLD", "0");
+        }
+        assert_eq!(ProcessingConcurrencyPolicy::from_env().concurrent_threshold, MIN_WEIGHT);
+
+        unsafe {
+            std::env::set_var("ESDIAG_PROCESS_CONCURRENT_THRESHOLD", "99");
+        }
+        assert_eq!(ProcessingConcurrencyPolicy::from_env().concurrent_threshold, MAX_WEIGHT);
+
+        unsafe {
+            std::env::remove_var("ESDIAG_PROCESS_CONCURRENT_THRESHOLD");
+        }
     }
 
     #[test]
