@@ -282,7 +282,7 @@ impl Serialize for DiagnosticOutcome {
     where
         S: serde::Serializer,
     {
-        serializer.serialize_str(self.as_str())
+        serializer.serialize_str(&self.to_string())
     }
 }
 
@@ -503,6 +503,10 @@ impl DiagnosticReport {
     fn add_single_processor_summary(&mut self, mut summary: ProcessorSummary) {
         // Drain the summary's recorded events into the persisted report and
         // record this source's verdict as an event (ADR-0016).
+        let has_recorded_error = summary
+            .events
+            .iter()
+            .any(|event| event.severity == EventSeverity::Error);
         self.diagnostic.events.append(&mut summary.events);
         if summary.source.missing {
             // Source was not present in an imported bundle; that is not a
@@ -510,10 +514,12 @@ impl DiagnosticReport {
         } else if !summary.source.parsed {
             self.diagnostic.processor.errors += 1;
             self.diagnostic.processor.failures.push(summary.index.clone());
-            self.diagnostic.events.push(DiagnosticEvent::error(
-                summary.processor.clone(),
-                "source could not be read or parsed".to_string(),
-            ));
+            if !has_recorded_error {
+                self.diagnostic.events.push(DiagnosticEvent::error(
+                    summary.processor.clone(),
+                    "source could not be read or parsed".to_string(),
+                ));
+            }
         } else if summary.doc_errors > 0 {
             self.diagnostic.events.push(DiagnosticEvent::warning(
                 summary.processor.clone(),
@@ -879,6 +885,12 @@ impl ProcessorSummary {
         }
     }
 
+    pub fn with_error(mut self, reason: impl Into<String>) -> Self {
+        self.events
+            .push(DiagnosticEvent::error(self.processor.clone(), reason.into()));
+        self
+    }
+
     pub fn add_batch(&mut self, batch: BatchResponse) {
         if batch.batch_count == 0 && batch.docs == 0 && batch.errors == 0 {
             return;
@@ -1094,6 +1106,8 @@ user: ada
         assert_eq!(by_design.to_string(), "skipped (by design)");
         assert_eq!(wip.to_string(), "skipped (not implemented)");
         assert_eq!(by_design.skip_kind(), Some(SkipKind::ByDesign));
+        assert_eq!(serde_json::to_value(by_design).unwrap(), "skipped (by design)");
+        assert_eq!(serde_json::to_value(wip).unwrap(), "skipped (not implemented)");
     }
 
     #[test]
@@ -1138,6 +1152,32 @@ user: ada
                 .expect("missing source summary")
                 .source
                 .missing
+        );
+    }
+
+    #[test]
+    fn failed_summary_with_recorded_event_does_not_add_generic_duplicate() {
+        let metadata = DiagnosticMetadata {
+            id: "test".to_string(),
+            collection_date: 0,
+            runner: "test".to_string(),
+            uuid: "test".to_string(),
+        };
+        let mut report =
+            DiagnosticReport::try_from(DiagnosticReportBuilder::from(metadata).receiver("file path".to_string()))
+                .unwrap();
+
+        report.add_processor_summary(
+            ProcessorSummary::new("cluster_settings-esdiag".to_string())
+                .with_error("Failed to read cluster_settings: corrupt payload"),
+        );
+
+        assert_eq!(report.outcome(), DiagnosticOutcome::Failed);
+        assert_eq!(report.diagnostic.processor.errors(), 1);
+        assert_eq!(report.diagnostic.events.len(), 1);
+        assert_eq!(
+            report.diagnostic.events[0].reason,
+            "Failed to read cluster_settings: corrupt payload"
         );
     }
 

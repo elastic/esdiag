@@ -285,7 +285,10 @@ impl ElasticsearchDiagnostic {
                         if missing_source_error(&defaults_err) && missing_source_error(&settings_err) {
                             ProcessorSummary::missing(ClusterSettings::name())
                         } else {
-                            ProcessorSummary::new(ClusterSettings::name())
+                            ProcessorSummary::new(ClusterSettings::name()).with_error(format!(
+                                "Failed to read cluster_settings_defaults and cluster_settings: {}; {}",
+                                defaults_err, settings_err
+                            ))
                         }
                     }
                 }
@@ -318,7 +321,7 @@ impl ElasticsearchDiagnostic {
                 let summary = if missing_source_error(&err) {
                     ProcessorSummary::missing(T::name())
                 } else {
-                    ProcessorSummary::new(T::name())
+                    ProcessorSummary::new(T::name()).with_error(err.to_string())
                 };
                 summary_tx.send(summary).await.map_err(|err| {
                     tracing::error!("Failed to send summary: {}", err);
