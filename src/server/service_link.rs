@@ -228,9 +228,10 @@ async fn run_service_link_id(
     request_user: String,
     tx: mpsc::Sender<ServerEvent>,
 ) {
-    let job = match state.pop_job_request(job_id).await {
+    let job = match state.pop_job_request_for_owner(job_id, &request_user).await {
         Some(job) => job,
         None => {
+            state.record_job_rejected().await;
             send_event(
                 &tx,
                 template_event(template::JobFailed {
