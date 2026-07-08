@@ -7,7 +7,7 @@ use super::{
     job_feed_event, replace_job_event, signal_event, template, template_event,
 };
 use crate::{
-    data::{Application, HostRole, Product, Uri},
+    data::{Application, HostRole, Uri, collect_product},
     exporter::Exporter,
     processor::{
         Collector, Identifiers, IncludedDiagnosticJobEvent, Processor,
@@ -612,11 +612,12 @@ async fn render_child_diagnostic_events(
                 path,
                 application,
                 platform,
-                kind: _kind,
+                kind,
                 reason,
             } => {
                 let source = child_source(&path);
                 let product = display_label(application, platform);
+                let kind = kind.to_string();
                 send_event(
                     &tx,
                     replace_job_event(
@@ -625,6 +626,7 @@ async fn render_child_diagnostic_events(
                             job_id,
                             source: &source,
                             product: &product,
+                            kind: &kind,
                             reason: &reason,
                         },
                     ),
@@ -943,20 +945,6 @@ async fn collect_remote_archive(
             cleanup_path,
         },
     })
-}
-
-fn collect_product(app: Option<Application>) -> Result<Product> {
-    match app {
-        Some(application @ (Application::Elasticsearch | Application::Kibana | Application::Logstash)) => {
-            Ok(Product::from(application))
-        }
-        Some(Application::Agent) => Err(eyre!(
-            "Collect is out of scope by design for Elastic Agent. Elastic Agent provides its own diagnostic bundle; use `read`/Load instead."
-        )),
-        None => Err(eyre!(
-            "Collect is out of scope by design for platform diagnostics. Load the platform-generated bundle with `read`/Load instead."
-        )),
-    }
 }
 
 async fn collect_service_link_archive(

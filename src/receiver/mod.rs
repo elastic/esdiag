@@ -23,7 +23,7 @@ pub use kibana::{KibanaReceiver, KibanaRequestError};
 pub use logstash::{LogstashReceiver, LogstashRequestError};
 
 use super::{
-    data::{Application, KnownHost, Product, Uri},
+    data::{KnownHost, Product, Uri, collect_product},
     processor::{DataSource, DiagnosticManifest, Manifest, SourceContext, StreamingDataSource},
 };
 use archive::{ArchiveBytesReceiver, ArchiveFileReceiver};
@@ -393,20 +393,11 @@ impl TryFrom<Uri> for Receiver {
                 Receiver::ElasticCloudAdmin(ElasticCloudAdminReceiver::try_from(host)?)
             }
             Uri::File(file) => Receiver::ArchiveFile(ArchiveFileReceiver::try_from(file)?),
-            Uri::KnownHost(host) => match host.app() {
-                Some(Application::Elasticsearch) => Receiver::Elasticsearch(ElasticsearchReceiver::try_from(host)?),
-                Some(Application::Logstash) => Receiver::Logstash(LogstashReceiver::try_from(host)?),
-                Some(Application::Kibana) => Receiver::Kibana(KibanaReceiver::try_from(host)?),
-                Some(Application::Agent) => {
-                    return Err(eyre!(
-                        "Collect is out of scope by design for Elastic Agent. Elastic Agent provides its own diagnostic bundle; use `read`/Load instead."
-                    ));
-                }
-                _ => {
-                    return Err(eyre!(
-                        "Collect is out of scope by design for platform diagnostics. Load the platform-generated bundle with `read`/Load instead."
-                    ));
-                }
+            Uri::KnownHost(host) => match collect_product(host.app())? {
+                Product::Elasticsearch => Receiver::Elasticsearch(ElasticsearchReceiver::try_from(host)?),
+                Product::Logstash => Receiver::Logstash(LogstashReceiver::try_from(host)?),
+                Product::Kibana => Receiver::Kibana(KibanaReceiver::try_from(host)?),
+                product => unreachable!("collect_product returned non-collectable product {product}"),
             },
             Uri::ServiceLink(url) => Receiver::ArchiveBytes(UploadServiceDownloader::try_from(url)?.download()?),
             _ => return Err(eyre!("Unsupported URI: {uri}")),
@@ -498,7 +489,7 @@ mod tests {
         let err = Receiver::try_from(host).err().expect("agent collect should be refused");
 
         assert!(err.to_string().contains("out of scope by design for Elastic Agent"));
-        assert!(err.to_string().contains("read`/Load"));
+        assert!(err.to_string().contains("`read`/`Load`"));
     }
 
     #[test]

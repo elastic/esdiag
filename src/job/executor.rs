@@ -13,7 +13,7 @@
 
 use super::model::{ExecutionMode, ExportTarget, Input, Job, Process, SendTarget};
 use crate::{
-    data::{Application, Product, Uri},
+    data::{Uri, collect_product},
     exporter::Exporter,
     processor::{Collector, Identifiers, Processor, api::ProcessSelection},
     receiver::Receiver,
@@ -130,20 +130,6 @@ pub async fn execute(job: Job) -> Result<JobOutcome> {
     }
 
     Ok(outcome)
-}
-
-fn collect_product(app: Option<Application>) -> Result<Product> {
-    match app {
-        Some(application @ (Application::Elasticsearch | Application::Kibana | Application::Logstash)) => {
-            Ok(Product::from(application))
-        }
-        Some(Application::Agent) => Err(eyre!(
-            "Collect is out of scope by design for Elastic Agent. Elastic Agent provides its own diagnostic bundle; use `read`/Load instead."
-        )),
-        None => Err(eyre!(
-            "Collect is out of scope by design for platform diagnostics. Load the platform-generated bundle with `read`/Load instead."
-        )),
-    }
 }
 
 /// Run the `Process` stage (with its `Export` sink) over the given input

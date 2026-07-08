@@ -292,6 +292,7 @@ pub struct JobSkipped<'a> {
     pub job_id: u64,
     pub source: &'a str,
     pub product: &'a str,
+    pub kind: &'a str,
     pub reason: &'a str,
 }
 
@@ -663,6 +664,7 @@ mod tests {
             job_id: 101,
             source: "Included diagnostic: child-kibana",
             product: "Kibana",
+            kind: "not implemented",
             reason: "Kibana processing is not yet implemented",
         }
         .render()
@@ -670,6 +672,7 @@ mod tests {
 
         assert!(skipped.contains("status-info"));
         assert!(skipped.contains("Included diagnostic: child-kibana"));
+        assert!(skipped.contains("not implemented"));
         assert!(skipped.contains("Kibana processing is not yet implemented"));
     }
 }

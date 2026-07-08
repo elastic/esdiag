@@ -13,7 +13,7 @@ use esdiag::{
     client::Client,
     data::{
         Application, HostRole, KnownHost, KnownHostBuilder, KnownHostCliUpdate, Product, SecretAuth, Settings, Uri,
-        add_secret, clear_unlock_lease, create_keystore, default_unlock_ttl, get_keystore_path,
+        add_secret, clear_unlock_lease, collect_product, create_keystore, default_unlock_ttl, get_keystore_path,
         get_password_for_secret_commands, get_unlock_status, keystore_exists, parse_unlock_ttl, remove_secret,
         resolve_secret_auth, rotate_keystore_password, update_secret, validate_existing_keystore_password,
         write_unlock_lease,
@@ -1219,20 +1219,6 @@ fn sources_product_key(product: &Product) -> Result<&'static str> {
             product
         )
     })
-}
-
-fn collect_product(app: Option<Application>) -> Result<Product> {
-    match app {
-        Some(application @ (Application::Elasticsearch | Application::Kibana | Application::Logstash)) => {
-            Ok(Product::from(application))
-        }
-        Some(Application::Agent) => Err(eyre!(
-            "Collect is out of scope by design for Elastic Agent. Elastic Agent provides its own diagnostic bundle; use `read`/Load instead."
-        )),
-        None => Err(eyre!(
-            "Collect is out of scope by design for platform diagnostics. Load the platform-generated bundle with `read`/Load instead."
-        )),
-    }
 }
 
 async fn detect_sources_product_for_process(input_uri: &Uri, receiver: &Receiver) -> Result<Product> {

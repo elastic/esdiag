@@ -107,7 +107,7 @@ where
         return Ok(None);
     };
     let trimmed = value.trim();
-    if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("unknown") {
+    if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("unknown") || trimmed.eq_ignore_ascii_case("none") {
         return Ok(None);
     }
     if let Ok(app) = Application::from_str(trimmed) {
@@ -2468,16 +2468,21 @@ mod tests {
     }
 
     #[test]
-    fn legacy_platform_app_values_deserialize_as_no_application() {
-        let host: KnownHost = serde_yaml::from_str(
+    fn legacy_platform_and_none_app_values_deserialize_as_no_application() {
+        for yaml in [
             r#"
 app: eck
 url: https://platform.example
 "#,
-        )
-        .expect("legacy platform host should deserialize");
+            r#"
+app: none
+url: https://platform.example
+"#,
+        ] {
+            let host: KnownHost = serde_yaml::from_str(yaml).expect("host without application should deserialize");
 
-        assert_eq!(host.app(), None);
+            assert_eq!(host.app(), None);
+        }
     }
 
     #[test]
