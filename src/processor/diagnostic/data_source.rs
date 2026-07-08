@@ -376,7 +376,7 @@ pub struct ProcessableClaim {
     pub datasource_name: String,
 }
 
-/// Startup validation of the key-alignment invariant (ADR-0005): every
+/// Runtime validation of the key-alignment invariant (ADR-0005): every
 /// registry entry marked `processable` has exactly one registered typed impl,
 /// every dispatch-table key exists in the registry marked `processable`, and
 /// each key equals its impl's `DataSource::name()`. A registry entry without
