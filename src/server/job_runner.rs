@@ -94,7 +94,7 @@ pub async fn run_job(
                 .reject_retained_bundle(&download_token, &request_user, error.to_string(), RETAINED_BUNDLE_TTL)
                 .await;
         }
-        state.record_failure(&owner).await;
+        state.record_job_rejected().await;
         send_event(
             &tx,
             terminal_job_event(

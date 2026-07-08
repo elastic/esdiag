@@ -42,7 +42,7 @@ pub async fn form(
         }
         Err(err) => {
             tokio::spawn(async move {
-                state.record_failure(super::DEFAULT_OWNER).await;
+                state.record_job_rejected().await;
                 send_event(
                     &tx,
                     job_feed_event(template::JobFailed {
@@ -74,7 +74,7 @@ pub async fn id(
         }
         Err(err) => {
             tokio::spawn(async move {
-                state.record_failure(super::DEFAULT_OWNER).await;
+                state.record_job_rejected().await;
                 send_event(
                     &tx,
                     template_event(template::JobFailed {
@@ -107,7 +107,7 @@ pub(super) async fn run_api_key_form(
         state
             .reject_retained_bundle(&download_token, &request_user, err.clone(), DOWNLOAD_REJECTION_TTL)
             .await;
-        state.record_failure(&request_user).await;
+        state.record_job_rejected().await;
         send_event(
             &tx,
             job_feed_event(template::JobFailed {
@@ -135,7 +135,7 @@ pub(super) async fn run_api_key_form(
                     DOWNLOAD_REJECTION_TTL,
                 )
                 .await;
-            state.record_failure(&request_user).await;
+            state.record_job_rejected().await;
             let error_msg = format!("Failed to build host: {}", e);
             tracing::error!("Failed to build host: {}", e);
             send_event(
@@ -162,7 +162,7 @@ pub(super) async fn run_api_key_form(
                     DOWNLOAD_REJECTION_TTL,
                 )
                 .await;
-            state.record_failure(&request_user).await;
+            state.record_job_rejected().await;
             let error_msg = format!("Failed to resolve host URL: {}", e);
             tracing::error!("Failed to resolve host URL: {}", e);
             send_event(

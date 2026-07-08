@@ -725,8 +725,9 @@ impl ServerState {
     }
 
     pub async fn record_job_started(&self, owner: &str) -> Result<()> {
+        let mut stats = self.stats.write().await;
         if self.runtime_mode == RuntimeMode::Service {
-            let active = self.stats.read().await.jobs.active;
+            let active = stats.jobs.active;
             let caps = self.server_policy.job_caps();
             if active >= caps.global as u64 {
                 return Err(eyre!(
@@ -749,7 +750,6 @@ impl ServerState {
             drop(owners);
         }
 
-        let mut stats = self.stats.write().await;
         stats.jobs.active += 1;
         drop(stats);
         self.notify_stats_changed();
@@ -791,8 +791,8 @@ impl ServerState {
         if stats.jobs.active > 0 {
             stats.jobs.active -= 1;
         }
-        drop(stats);
         self.record_job_finished_for_owner(owner).await;
+        drop(stats);
         self.notify_stats_changed();
     }
 
@@ -800,11 +800,29 @@ impl ServerState {
         let mut stats = self.stats.write().await;
         stats.jobs.total += 1;
         stats.jobs.failed += 1;
-        if stats.jobs.active > 0 {
+        if self.runtime_mode == RuntimeMode::Service {
+            let mut owners = self.active_jobs_by_owner.write().await;
+            if let Some(active) = owners.get_mut(owner) {
+                if stats.jobs.active > 0 {
+                    stats.jobs.active -= 1;
+                }
+                *active = active.saturating_sub(1);
+                if *active == 0 {
+                    owners.remove(owner);
+                }
+            }
+        } else if stats.jobs.active > 0 {
             stats.jobs.active -= 1;
         }
         drop(stats);
-        self.record_job_finished_for_owner(owner).await;
+        self.notify_stats_changed();
+    }
+
+    pub async fn record_job_rejected(&self) {
+        let mut stats = self.stats.write().await;
+        stats.jobs.total += 1;
+        stats.jobs.failed += 1;
+        drop(stats);
         self.notify_stats_changed();
     }
 
@@ -1699,7 +1717,7 @@ async fn events(
     tracing::debug!("Started events stream");
     let (_, request_user) = state
         .resolve_user_email(&headers)
-        .unwrap_or_else(|_| (false, "Anonymous".to_string()));
+        .unwrap_or_else(|_| (false, DEFAULT_OWNER.to_string()));
     let initial_stats = state.get_stats().await;
     let initial = stats_event(format!(r#"{{"stats":{}}}"#, initial_stats));
     Sse::new(broadcast_receiver_stream(
@@ -2101,6 +2119,35 @@ mod tests {
         state.record_success("alice@example.com", 0, 0).await;
         state
             .record_job_started("carol@example.com")
+            .await
+            .expect("slot released");
+    }
+
+    #[tokio::test]
+    async fn service_rejected_jobs_do_not_release_active_capacity() {
+        let mut state = test_state(RuntimeMode::Service);
+        state.server_policy = ServerPolicy::new_with_options(
+            RuntimeMode::Service,
+            Some(super::AuthProvider::None),
+            Some(JobConcurrencyCaps {
+                global: 1,
+                per_owner: 1,
+            }),
+            None,
+        )
+        .expect("policy");
+
+        state
+            .record_job_started("alice@example.com")
+            .await
+            .expect("first alice");
+        state.record_job_rejected().await;
+        state.record_failure("bob@example.com").await;
+
+        assert!(state.record_job_started("bob@example.com").await.is_err());
+        state.record_failure("alice@example.com").await;
+        state
+            .record_job_started("bob@example.com")
             .await
             .expect("slot released");
     }

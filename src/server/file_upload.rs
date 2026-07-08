@@ -92,7 +92,7 @@ pub async fn submit(State(state): State<Arc<ServerState>>, mut multipart: Multip
                     }
                     let error_msg = format!("Failed to stage upload data: {}", e);
                     tracing::error!("{}", error_msg);
-                    state.record_failure(super::DEFAULT_OWNER).await;
+                    state.record_job_rejected().await;
                     return (
                         StatusCode::BAD_REQUEST,
                         Html(format!(
@@ -160,7 +160,7 @@ pub async fn process(
         }
         Err(err) => {
             tokio::spawn(async move {
-                state.record_failure(super::DEFAULT_OWNER).await;
+                state.record_job_rejected().await;
                 send_event(
                     &tx,
                     replace_job_event(

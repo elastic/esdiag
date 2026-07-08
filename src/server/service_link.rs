@@ -45,7 +45,7 @@ pub async fn form(
         }
         Err(err) => {
             tokio::spawn(async move {
-                state.record_failure(super::DEFAULT_OWNER).await;
+                state.record_job_rejected().await;
                 send_event(
                     &tx,
                     job_feed_event(template::JobFailed {
@@ -77,7 +77,7 @@ pub async fn id(
         }
         Err(err) => {
             tokio::spawn(async move {
-                state.record_failure(super::DEFAULT_OWNER).await;
+                state.record_job_rejected().await;
                 send_event(
                     &tx,
                     template_event(template::JobFailed {
@@ -118,7 +118,7 @@ pub(super) async fn run_service_link_form(
             }),
         )
         .await;
-        state.record_failure(&request_user).await;
+        state.record_job_rejected().await;
         send_event(&tx, signal_event(r#"{"loading":false,"processing":false}"#)).await;
         return;
     }
