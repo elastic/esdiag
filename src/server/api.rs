@@ -470,8 +470,9 @@ fn diagnostic_result_entries(completed: &Completed) -> Value {
                 "path": child.path
             }),
             (_, None) => json!({
-                "status": "failed",
+                "status": status_for_outcome(&child.outcome),
                 "outcome": child.outcome.to_string(),
+                "product": crate::processor::display_label(child.application, child.platform),
                 "source": "included_diagnostic",
                 "path": child.path,
                 "error": child.reason.as_deref().unwrap_or_default()

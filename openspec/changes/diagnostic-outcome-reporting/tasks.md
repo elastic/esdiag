@@ -41,6 +41,7 @@
   carry the unified outcome including `Partial`; per-source event rows in the
   web feed (rendering `diagnostic.events` entries individually) are left for
   the feed rework in `web-multiuser-isolation`.
-- Fixture-based children now derive `Partial` (missing selected sources are
-  recorded error events instead of silent `tracing::warn!`) — the intended
-  silent-behavior change called out in the design's risks.
+- Fixture-based children with only absent optional sources now remain
+  `Complete`; missing imported-bundle sources are tracked separately from
+  unreadable/parse-failed sources so the report event log does not turn benign
+  fixture sparsity into `Partial`.
