@@ -28,8 +28,8 @@ pub mod setup;
 /// Upload raw diagnostic archives to Elastic Upload Service
 pub mod uploader;
 
-#[doc(hidden)]
-pub fn test_env_lock() -> &'static std::sync::Mutex<()> {
+#[cfg(test)]
+pub(crate) fn test_env_lock() -> &'static std::sync::Mutex<()> {
     use std::sync::{Mutex, OnceLock};
 
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();

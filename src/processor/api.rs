@@ -714,15 +714,16 @@ mod tests {
     fn test_processing_options_marks_required_entries() {
         let options = ApiResolver::resolve_processing_options("logstash", "standard", "").unwrap();
 
-        let version = options.iter().find(|option| option.key == "logstash_version").unwrap();
         let plugins = options.iter().find(|option| option.key == "logstash_plugins").unwrap();
+        let node = options.iter().find(|option| option.key == "logstash_node").unwrap();
         let node_stats = options
             .iter()
             .find(|option| option.key == "logstash_node_stats")
             .unwrap();
 
-        assert!(version.required);
+        assert!(options.iter().all(|option| option.key != "logstash_version"));
         assert!(plugins.required);
+        assert!(node.required);
         assert!(node_stats.selected);
     }
 
