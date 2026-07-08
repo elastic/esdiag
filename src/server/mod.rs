@@ -56,11 +56,12 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::{
     collections::{HashMap, HashSet},
     convert::Infallible,
+    fmt,
     net::SocketAddr,
     path::PathBuf,
-    sync::{Arc, Mutex},
+    sync::Arc,
 };
-use tokio::sync::{RwLock, broadcast, mpsc, watch};
+use tokio::sync::{Mutex, RwLock, broadcast, mpsc, watch};
 use uuid::Uuid;
 
 type UploadReceiver = Arc<RwLock<mpsc::Receiver<(Identifiers, Bytes)>>>;
@@ -142,6 +143,30 @@ pub struct JobConcurrencyCaps {
     pub global: usize,
     pub per_owner: usize,
 }
+
+#[derive(Debug)]
+pub enum JobAdmissionError {
+    GlobalCapReached { active: usize, cap: usize },
+    OwnerCapReached { owner: Owner, active: usize, cap: usize },
+}
+
+impl fmt::Display for JobAdmissionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::GlobalCapReached { active, cap } => {
+                write!(f, "Service mode concurrent job cap reached ({active}/{cap})")
+            }
+            Self::OwnerCapReached { owner, active, cap } => {
+                write!(
+                    f,
+                    "Service mode per-owner concurrent job cap reached for {owner} ({active}/{cap})"
+                )
+            }
+        }
+    }
+}
+
+impl std::error::Error for JobAdmissionError {}
 
 impl Default for JobConcurrencyCaps {
     fn default() -> Self {
@@ -469,7 +494,7 @@ impl Server {
             exporter: Arc::new(RwLock::new(exporter)),
             kibana_url: Arc::new(RwLock::new(kibana_url)),
             stats: Arc::new(RwLock::new(Stats::default())),
-            active_jobs_by_owner: Arc::new(std::sync::Mutex::new(HashMap::new())),
+            active_jobs_by_owner: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
             job_requests: Arc::new(RwLock::new(HashMap::new())),
             retained_bundles: Arc::new(RwLock::new(HashMap::new())),
             shutdown: shutdown_rx,
@@ -724,32 +749,29 @@ impl ServerState {
         )
     }
 
-    pub async fn record_job_started(&self, owner: &str) -> Result<()> {
-        let mut stats = self.stats.write().await;
+    pub async fn record_job_started(&self, owner: &str) -> std::result::Result<(), JobAdmissionError> {
         if self.runtime_mode == RuntimeMode::Service {
-            let active = stats.jobs.active;
             let caps = self.server_policy.job_caps();
-            if active >= caps.global as u64 {
-                return Err(eyre!(
-                    "Service mode concurrent job cap reached ({}/{})",
+            let mut owners = self.active_jobs_by_owner.lock().await;
+            let active: usize = owners.values().sum();
+            if active >= caps.global {
+                return Err(JobAdmissionError::GlobalCapReached {
                     active,
-                    caps.global
-                ));
+                    cap: caps.global,
+                });
             }
-
-            let mut owners = self.active_jobs_by_owner.lock().expect("active jobs lock");
             let owner_active = owners.get(owner).copied().unwrap_or(0);
             if owner_active >= caps.per_owner {
-                return Err(eyre!(
-                    "Service mode per-owner concurrent job cap reached for {owner} ({}/{})",
-                    owner_active,
-                    caps.per_owner
-                ));
+                return Err(JobAdmissionError::OwnerCapReached {
+                    owner: owner.to_string(),
+                    active: owner_active,
+                    cap: caps.per_owner,
+                });
             }
             *owners.entry(owner.to_string()).or_insert(0) += 1;
-            drop(owners);
         }
 
+        let mut stats = self.stats.write().await;
         stats.jobs.active += 1;
         drop(stats);
         self.notify_stats_changed();
@@ -791,8 +813,8 @@ impl ServerState {
         if stats.jobs.active > 0 {
             stats.jobs.active -= 1;
         }
-        self.record_job_finished_for_owner(owner);
         drop(stats);
+        self.record_job_finished_for_owner(owner).await;
         self.notify_stats_changed();
     }
 
@@ -800,21 +822,11 @@ impl ServerState {
         let mut stats = self.stats.write().await;
         stats.jobs.total += 1;
         stats.jobs.failed += 1;
-        if self.runtime_mode == RuntimeMode::Service {
-            let mut owners = self.active_jobs_by_owner.lock().expect("active jobs lock");
-            if let Some(active) = owners.get_mut(owner) {
-                if stats.jobs.active > 0 {
-                    stats.jobs.active -= 1;
-                }
-                *active = active.saturating_sub(1);
-                if *active == 0 {
-                    owners.remove(owner);
-                }
-            }
-        } else if stats.jobs.active > 0 {
+        if stats.jobs.active > 0 {
             stats.jobs.active -= 1;
         }
         drop(stats);
+        self.record_job_finished_for_owner(owner).await;
         self.notify_stats_changed();
     }
 
@@ -826,11 +838,11 @@ impl ServerState {
         self.notify_stats_changed();
     }
 
-    fn record_job_finished_for_owner(&self, owner: &str) {
+    async fn record_job_finished_for_owner(&self, owner: &str) {
         if self.runtime_mode != RuntimeMode::Service {
             return;
         }
-        let mut owners = self.active_jobs_by_owner.lock().expect("active jobs lock");
+        let mut owners = self.active_jobs_by_owner.lock().await;
         if let Some(active) = owners.get_mut(owner) {
             *active = active.saturating_sub(1);
             if *active == 0 {
@@ -1835,7 +1847,7 @@ mod tests {
             #[cfg(feature = "keystore")]
             keystore_rate_limit: Arc::new(std::sync::Mutex::new(super::keystore::KeystoreRateLimit::default())),
             stats: Arc::new(RwLock::new(Stats::default())),
-            active_jobs_by_owner: Arc::new(std::sync::Mutex::new(HashMap::new())),
+            active_jobs_by_owner: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
             shutdown: watch::channel(false).1,
             event_tx: broadcast::channel(16).0,
             stats_updates_tx,

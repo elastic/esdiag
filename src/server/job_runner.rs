@@ -3,8 +3,8 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::{
-    CollectSource, JobInput, JobRequest, JobRunSignals, ProcessMode, SendMode, ServerEvent, ServerState,
-    job_feed_event, replace_job_event, signal_event, template, template_event,
+    CollectSource, JobAdmissionError, JobInput, JobRequest, JobRunSignals, ProcessMode, SendMode, ServerEvent,
+    ServerState, job_feed_event, replace_job_event, signal_event, template, template_event,
 };
 use crate::{
     data::{HostRole, Product, Uri},
@@ -594,7 +594,7 @@ async fn run_processor_job(ctx: ProcessorJobContext<'_>) -> Result<()> {
 }
 
 fn is_job_admission_error(error: &eyre::Report) -> bool {
-    error.to_string().contains("concurrent job cap reached")
+    error.downcast_ref::<JobAdmissionError>().is_some()
 }
 
 async fn render_child_diagnostic_events(
@@ -1211,7 +1211,7 @@ mod tests {
                 crate::server::keystore::KeystoreRateLimit::default(),
             )),
             stats: Arc::new(RwLock::new(Stats::default())),
-            active_jobs_by_owner: Arc::new(std::sync::Mutex::new(HashMap::new())),
+            active_jobs_by_owner: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
             shutdown: watch::channel(false).1,
             event_tx: broadcast::channel::<ServerEvent>(8).0,
             stats_updates_tx,
