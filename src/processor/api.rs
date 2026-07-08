@@ -1,6 +1,4 @@
-use crate::processor::diagnostic::data_source::{
-    get_product_sources, get_source, get_source_keys, get_source_keys_with_tag,
-};
+use crate::processor::diagnostic::data_source::{get_product_sources, get_source, get_source_keys_with_tag};
 use eyre::{Result, eyre};
 use indexmap::IndexSet;
 use serde::Serialize;
@@ -29,12 +27,12 @@ impl std::str::FromStr for DiagnosticType {
 }
 
 impl DiagnosticType {
-    fn tag(&self) -> Option<&'static str> {
+    fn tag(&self) -> &'static str {
         match self {
-            DiagnosticType::Minimal => Some("minimal"),
-            DiagnosticType::Standard => Some("standard"),
-            DiagnosticType::Light => Some("light"),
-            DiagnosticType::Support => None,
+            DiagnosticType::Minimal => "minimal",
+            DiagnosticType::Standard => "standard",
+            DiagnosticType::Light => "light",
+            DiagnosticType::Support => "support",
         }
     }
 }
@@ -412,8 +410,7 @@ impl ApiResolver {
     }
 
     /// The base source keys for an Elasticsearch diagnostic type, derived
-    /// entirely from registry tags/membership (ADR-0005): `support` is the
-    /// whole registry; `minimal`/`standard`/`light` are tag-derived.
+    /// entirely from registry tags/membership (ADR-0005).
     pub fn es_base_apis(diag_type: &DiagnosticType) -> Vec<String> {
         Self::base_keys("elasticsearch", diag_type)
     }
@@ -421,7 +418,9 @@ impl ApiResolver {
     pub fn kb_base_apis(diag_type: &DiagnosticType) -> Vec<String> {
         match diag_type {
             DiagnosticType::Minimal => Self::kb_minimum_required().into_iter().map(str::to_string).collect(),
-            DiagnosticType::Standard | DiagnosticType::Support | DiagnosticType::Light => get_source_keys("kibana"),
+            DiagnosticType::Standard | DiagnosticType::Support | DiagnosticType::Light => {
+                Self::base_keys("kibana", diag_type)
+            }
         }
     }
 
@@ -429,19 +428,14 @@ impl ApiResolver {
         match diag_type {
             DiagnosticType::Minimal => vec!["logstash_node".to_string()],
             DiagnosticType::Standard | DiagnosticType::Light => Self::base_keys("logstash", diag_type),
-            DiagnosticType::Support => get_source_keys("logstash"),
+            DiagnosticType::Support => Self::base_keys("logstash", diag_type),
         }
     }
 
     fn base_keys(product: &str, diag_type: &DiagnosticType) -> Vec<String> {
-        match diag_type.tag() {
-            None => get_source_keys(product),
-            Some(tag) => {
-                let mut keys = get_source_keys_with_tag(product, tag);
-                keys.sort();
-                keys
-            }
-        }
+        let mut keys = get_source_keys_with_tag(product, diag_type.tag());
+        keys.sort();
+        keys
     }
 
     fn resolve_keys(
@@ -606,21 +600,38 @@ mod tests {
             "cluster_pending_tasks",
             "repositories",
             "searchable_snapshots_cache_stats",
-            "searchable_snapshots_stats",
             "snapshot",
             "slm_policies",
             "tasks",
         ] {
             assert!(standard.contains(&key.to_string()), "standard missing {key}");
         }
-        assert_eq!(standard.len(), 20);
+        assert!(!standard.contains(&"searchable_snapshots_stats".to_string()));
+        assert_eq!(standard.len(), 19);
     }
 
     #[test]
-    fn test_es_support_derives_from_whole_registry() {
+    fn test_es_support_derives_from_tags() {
         let support = ApiResolver::es_base_apis(&DiagnosticType::Support);
-        assert!(support.len() > 50);
-        assert!(support.contains(&"cat_aliases".to_string()));
+        assert!(!support.is_empty());
+        assert!(support.iter().all(|key| {
+            get_source("elasticsearch", key, &[])
+                .map(|(_, source)| source.has_tag("support"))
+                .unwrap_or(false)
+        }));
+        assert!(support.contains(&"searchable_snapshots_stats".to_string()));
+    }
+
+    #[test]
+    fn test_source_without_type_tag_can_be_explicitly_included() {
+        let apis = ApiResolver::resolve_es(
+            &DiagnosticType::Standard,
+            Some(&vec!["searchable_snapshots_stats".to_string()]),
+            None,
+        )
+        .unwrap();
+
+        assert!(apis.contains(&"searchable_snapshots_stats".to_string()));
     }
 
     #[test]
@@ -732,6 +743,7 @@ mod tests {
 
         assert!(options.iter().all(|option| option.selected));
         assert!(options.iter().any(|option| option.key == "tasks"));
+        assert!(options.iter().any(|option| option.key == "searchable_snapshots_stats"));
         // Processing options derive from the registry, not a hardcoded list
         assert!(options.iter().any(|option| option.key == "cluster_pending_tasks"));
     }

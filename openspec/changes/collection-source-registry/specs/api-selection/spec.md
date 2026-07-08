@@ -1,17 +1,17 @@
 ## MODIFIED Requirements
 
 ### Requirement: Dynamic Diagnostic Type Inclusion
-The system SHALL dynamically map diagnostic types to API inclusions using the keys and tags directly from the target product's embedded `sources.yml` definition, replacing product-specific hardcoded support lists where source catalogs exist. This mapping SHALL be the single mechanism for every diagnostic type: `minimal`, `standard`, `support`, and `light` all resolve from registry tags/membership, and no diagnostic-type set is maintained as a hardcoded list in code. For Elasticsearch specifically, `minimal` and `standard` SHALL derive from registry tags/membership (e.g. `tags: minimal`, `tags: standard`) rather than the hardcoded `es_base_apis` Minimal/Standard `vec!` lists, completing the migration already applied to `support` and `light`. For Kibana, `support`, `standard`, and `light` SHALL resolve to the full Kibana source catalog until curated subsets are defined, while `minimal` SHALL resolve only the bootstrap APIs required to identify the Kibana instance and enumerate spaces.
+The system SHALL dynamically map diagnostic types to API inclusions using the keys and tags directly from the target product's embedded `sources.yml` definition, replacing product-specific hardcoded support lists where source catalogs exist. This mapping SHALL be the single mechanism for every diagnostic type: `minimal`, `standard`, `support`, and `light` all resolve from registry tags/membership, and no diagnostic-type set is maintained as a hardcoded list in code. For Elasticsearch specifically, `minimal` and `standard` SHALL derive from registry tags/membership (e.g. `tags: minimal`, `tags: standard`) rather than the hardcoded `es_base_apis` Minimal/Standard `vec!` lists, completing the migration already applied to `support` and `light`. All upstream-defined sources SHALL carry `tags: support` by default so ESDiag support bundles remain support-diagnostics compatible. For Kibana, `support`, `standard`, and `light` SHALL resolve to the full Kibana source catalog through tags until curated subsets are defined, while `minimal` SHALL resolve only the bootstrap APIs required to identify the Kibana instance and enumerate spaces.
 
 #### Scenario: Evaluating the Kibana support diagnostic type
 - **GIVEN** a user executes `esdiag collect --type support` against a Kibana host
 - **WHEN** the API resolver evaluates the requested endpoints
-- **THEN** it resolves all top-level API keys present in `assets/kibana/sources.yml` to be collected
+- **THEN** it resolves all top-level API keys tagged `support` in `assets/kibana/sources.yml` to be collected
 
 #### Scenario: Evaluating the Kibana default diagnostic type
 - **GIVEN** a user executes `esdiag collect` against a Kibana host without specifying `--type`
 - **WHEN** the API resolver applies the default `standard` diagnostic type
-- **THEN** it resolves the same full Kibana source catalog used by the Kibana `support` type
+- **THEN** it resolves all top-level API keys tagged `standard` in `assets/kibana/sources.yml`
 
 #### Scenario: Evaluating the Elasticsearch light diagnostic type
 - **GIVEN** a user executes `esdiag collect --type light` against an Elasticsearch host

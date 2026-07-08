@@ -1,5 +1,5 @@
 # Deliberate divergences from support-diagnostics (ADR-0006).
-# Reconciliation (scripts/reconcile_sources.py) consults this file so it never
+# Reconciliation (`cargo run --bin reconcile-sources`) consults this file so it never
 # silently reverts ESDiag's intentional differences.
 
 # upstream key -> esdiag canonical key (ADR-0005 key alignment: registry key ==

@@ -17,12 +17,13 @@
 #   Please adhere to this convention when submitting pull requests.
 
 logstash_health_report:
+  tags: support
   source_weight: 1
   versions:
     ">= 8.16.0": "/_health_report"
 
 logstash_node:
-  tags: minimal,standard,light
+  tags: minimal,standard,light,support
   source_weight: 1
   processable: true
   required: true
@@ -32,18 +33,20 @@ logstash_node:
     "> 5.0.0": "/_node"
 
 logstash_nodes_hot_threads:
+  tags: support
   source_weight: 1
   versions:
     "> 5.0.0": "/_node/hot_threads?threads=10000"
 
 logstash_nodes_hot_threads_human:
+  tags: support
   extension: .txt
   source_weight: 1
   versions:
     "> 5.0.0": "/_node/hot_threads?human&threads=10000"
 
 logstash_node_stats:
-  tags: standard,light
+  tags: standard,light,support
   source_weight: 3
   processable: true
   required: false
@@ -53,6 +56,7 @@ logstash_node_stats:
     "> 5.0.0": "/_node/stats"
 
 logstash_plugins:
+  tags: support
   source_weight: 1
   processable: true
   required: true
@@ -61,6 +65,7 @@ logstash_plugins:
     "> 5.0.0": "/_node/plugins"
 
 logstash_version:
+  tags: support
   source_weight: 1
   required: true
   versions:

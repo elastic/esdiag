@@ -22,6 +22,9 @@ For deeper repository structure see `docs/repository/organization.md`
 
 - Update nearby docs when behavior changes
 - Update `CHANGELOG.md` for user-visible changes with `.agents/skills/changelog/SKILL.md`
+- Never introduce Python scripts into this repository. Do not add `.py` files or
+  Python-based tooling. Use Bash for lightweight orchestration and Rust for
+  structured logic that needs parsing, validation, or data transformation.
 
 ## Design Patterns
 

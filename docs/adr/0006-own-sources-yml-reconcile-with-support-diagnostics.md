@@ -32,9 +32,10 @@ ours) but about how tightly we track upstream *content*.
   compatibility knowledge and the OS-command catalogue, which we would then have to
   reproduce and maintain against every release ourselves.
 - **Own the definitions, reconcile from upstream (chosen).** Keep full control of
-  shape and content; pull upstream's version-gating and command updates in through a
-  reconciliation script that *overlays* the upstream files into ESDiag's, as a
-  field-level merge.
+  shape and content; pull upstream's version-gating in through a reconciliation
+  script that *overlays* the upstream REST files into ESDiag's as a field-level
+  merge, while tracking the command catalog as an input for future command-source
+  collection.
 
 ## Consequences
 
@@ -45,11 +46,14 @@ ours) but about how tightly we track upstream *content*.
   Without an owner and a cadence, version-gating silently goes stale — new endpoints
   missed, changed queries not updated — which is the primary risk this decision
   accepts.
-- **Reconciliation is a field-level overlay, never a copy.** The script merges
-  upstream's `versions`/paths and OS-command definitions *into* ESDiag's files while
-  preserving ESDiag-only enrichments (`weight`, platform/application tags,
-  streamable). A blind copy would wipe the hand-tuned concurrency weights (ADR-0005),
-  so the merge must know which fields are ESDiag's.
+- **Reconciliation is a field-level overlay, never a copy.** The tool merges
+  upstream REST `versions`/paths *into* ESDiag's files while preserving ESDiag-only
+  enrichments (`source_weight`, `processing_weight`, `streamable`, `processable`,
+  `required`, dependencies, and platform/application tags). A blind copy would wipe
+  the hand-tuned concurrency weights (ADR-0005), so the merge must know which
+  fields are ESDiag's. Upstream `diags.yml` remains part of the reconciliation
+  input and its path is verified, but OS-command entries are not merged until
+  ESDiag has a command-source transport model.
 - **The overlay normalizes semver at the boundary, letting the runtime drop its
   version-compatibility parser.** Upstream ranges use a Java/NPM semver dialect that
   does not exactly match the Rust `semver` crate, which forced a custom

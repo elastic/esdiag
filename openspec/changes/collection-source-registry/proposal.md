@@ -29,23 +29,31 @@ single source of truth and finishes the migration. Rationale: **ADR-0005**,
   `DataSource`/`DocumentExporter` impl).
 - **PREREQUISITE:** for every processable source its process-selection/dispatch key
   MUST equal its registry key and `DataSource::name()`. Existing drift (e.g.
-  `pending_tasks` vs `cluster_pending_tasks`) is reconciled to one key per source.
+  `pending_tasks` vs `cluster_pending_tasks`) is reconciled to one key per source;
+  legacy names remain accepted as aliases for existing CLI inputs and saved jobs.
 - Move ESDiag execution metadata out of code and into the registry, so the field set
   becomes roughly `{ key, versions, extension, subdir, retry, source_weight,
-  processing_weight, streamable, required, dependencies, tags }`.
+  processing_weight, streamable, processable, required, dependencies,
+  collect_dependencies, tags }`. `dependencies` models process-time prerequisites,
+  and `collect_dependencies` models collect-time prerequisites.
+- Collect resolved REST sources by canonical registry key through the raw request
+  path; typed `DataSource` structs remain processing contracts, not collect
+  dispatch entries.
 - **BREAKING (internal):** replace the binary `ApiWeight { Heavy, Light }` with two
   graded per-source axes — `source_weight` (load on the source cluster, governs
   collect concurrency) and `processing_weight` (ESDiag transform cost, governs
   processing concurrency) — per **ADR-0017**. Make `streamable` an explicit flag
   instead of being implicit in which dispatch fn is called.
-- Treat `support-diagnostics` (`elastic-rest.yml` + `diags.yml`) as a
-  *reconciliation input*, not a runtime authority: a field-level overlay merges
-  upstream `versions`/paths and OS-command definitions into ESDiag's files while
-  **preserving ESDiag enrichments** (weights, tags, streamable), and **normalizes
-  upstream's Java/NPM semver dialect into native Rust `semver` at the boundary** —
-  which lets the runtime drop its custom version-compatibility parser and use stock
-  `semver::VersionReq`. Reconcile on every application release **and** every
-  support-diagnostics release.
+- Treat `support-diagnostics` (`elastic-rest.yml` + `kibana-rest.yml` +
+  `logstash-rest.yml` + `diags.yml`) as a *reconciliation input*, not a runtime
+  authority: a field-level overlay merges upstream REST `versions`/paths into
+  ESDiag's files while **preserving ESDiag enrichments** (weights, tags,
+  streamable), and **normalizes upstream's Java/NPM semver dialect into native
+  Rust `semver` at the boundary** — which lets the runtime drop its custom
+  version-compatibility parser and use stock `semver::VersionReq`. The tool
+  verifies `diags.yml` but defers OS-command overlay until ESDiag has a
+  command-source transport model. Reconcile on every application release **and**
+  every support-diagnostics release.
 
 ## Capabilities
 
@@ -59,10 +67,10 @@ single source of truth and finishes the migration. Rationale: **ADR-0005**,
 ### Modified Capabilities
 
 - `version-dependent-sources`: the registry carries per-source execution metadata
-  (two-axis weight, `streamable`, `required`, `dependencies`, `tags`, role) as the
-  single source of truth; adds the processable-key-alignment invariant; runtime
-  resolves versions with stock `semver::VersionReq` because ranges are normalized
-  during reconciliation.
+  (two-axis weight, `streamable`, `processable`, `required`, `dependencies`,
+  `collect_dependencies`, `tags`, role) as the single source of truth; adds the
+  processable-key-alignment invariant; runtime resolves versions with stock
+  `semver::VersionReq` because ranges are normalized during reconciliation.
 - `api-selection`: Elasticsearch `minimal`/`standard` derive from registry
   tags/membership (finishing the half-done migration); the process dispatch and the
   `ElasticsearchApi` enum are derived from the registry rather than hand-maintained.
@@ -72,13 +80,16 @@ single source of truth and finishes the migration. Rationale: **ADR-0005**,
 - **Core processing:** `api.rs` (`ElasticsearchApi` enum + `weight()` match removed),
   the `should_process` dispatch chain (→ registry table), `es_base_apis`
   Minimal/Standard lists, `ProcessingOptionDef` (`required`/`dependencies` move to
-  registry), `collector.rs` concurrency (reads `source_weight`), the streaming
-  dispatch (`process_streaming_datasource::<T>` gated by an explicit `streamable`
-  flag), and the runtime semver compatibility shim (removed).
+  registry), collect planning (`collect_dependencies` moves to the registry),
+  `collector.rs` concurrency (reads `source_weight`), the streaming dispatch
+  (`process_streaming_datasource::<T>` gated by an explicit `streamable` flag), and
+  the runtime semver compatibility shim (removed).
 - **Assets:** `assets/{elasticsearch,kibana,logstash}/sources.yml` gain the expanded
-  field set and reconciled/aligned keys; a reconciliation script is added.
-- **CLI:** `--type`/`--include`/`--exclude` resolve entirely against registry
-  keys/tags; weight tuning becomes data (overridable via `--sources`, no recompile).
+  field set and reconciled/aligned keys; a reconciliation utility binary is added.
+- **CLI:** `--type`/`--include`/`--exclude` resolve against registry keys/tags, with
+  legacy names canonicalized for compatibility; weight tuning becomes data
+  (overridable via `--sources`, no recompile) and concurrency thresholds can be
+  adjusted with deployment environment variables.
 - **Web UI:** advanced processing options continue to resolve from the authoritative
   registry (no behavioral change beyond the registry now being the sole authority).
 - **Series:** builds on `platform-application-split` (tags carry platform/application

@@ -20,6 +20,7 @@
 ## cat API's
 
 cat_aliases:
+  tags: support
   extension: ".txt"
   subdir: "cat"
   versions:
@@ -27,30 +28,35 @@ cat_aliases:
     ">= 5.1.1": "/_cat/aliases?v&s=alias,index"
 
 cat_allocation:
+  tags: support
   extension: ".txt"
   subdir: "cat"
   versions:
     ">= 0.9.0": "/_cat/allocation?v"
 
 cat_count:
+  tags: support
   extension: ".txt"
   subdir: "cat"
   versions:
     ">= 0.9.0": "/_cat/count"
 
 cat_fielddata:
+  tags: support
   extension: ".txt"
   subdir: "cat"
   versions:
     ">= 0.9.0": "/_cat/fielddata?v"
 
 cat_health:
+  tags: support
   extension: ".txt"
   subdir: "cat"
   versions:
     ">= 0.9.0": "/_cat/health?v"
 
 cat_indices:
+  tags: support
   extension: ".txt"
   subdir: "cat"
   versions:
@@ -60,18 +66,21 @@ cat_indices:
     ">= 7.7.0": "/_cat/indices?v&s=index&h=health,status,index,uuid,pri,rep,docs.count,docs.deleted,store.size,pri.store.size,sth&expand_wildcards=all"
 
 cat_master:
+  tags: support
   extension: ".txt"
   subdir: "cat"
   versions:
     ">= 0.9.0": "/_cat/master"
 
 cat_nodeattrs:
+  tags: support
   extension: ".txt"
   subdir: "cat"
   versions:
     ">= 2.0.0": "/_cat/nodeattrs?v&h=node,id,pid,host,ip,port,attr,value"
 
 cat_nodes:
+  tags: support
   extension: ".txt"
   subdir: "cat"
   versions:
@@ -79,12 +88,14 @@ cat_nodes:
     ">= 6.0.0": "/_cat/nodes?v&h=n,nodeId,i,v,r,m,d,dup,hp,cpu,load_1m,load_5m,load_15m,iic,sfc,sqc,scc&s=n"
 
 cat_pending_tasks:
+  tags: support
   extension: ".txt"
   subdir: "cat"
   versions:
     ">= 0.9.0": "/_cat/pending_tasks?v"
 
 cat_recovery:
+  tags: support
   extension: ".txt"
   subdir: "cat"
   versions:
@@ -92,12 +103,14 @@ cat_recovery:
     ">= 7.7.0": "/_cat/recovery?v&expand_wildcards=all"
 
 cat_repositories:
+  tags: support
   extension: ".txt"
   subdir: "cat"
   versions:
     ">= 2.0.0": "/_cat/repositories?v"
 
 cat_segments:
+  tags: support
   extension: ".txt"
   subdir: "cat"
   versions:
@@ -106,6 +119,7 @@ cat_segments:
     ">= 7.7.0": "/_cat/segments/*,.*?v&s=index"
 
 cat_shards:
+  tags: support
   extension: ".txt"
   subdir: "cat"
   versions:
@@ -119,12 +133,14 @@ cat_shards:
 #    ">= 2.0.0": "/_cat/snapshots"
 
 cat_templates:
+  tags: support
   extension: ".txt"
   subdir: "cat"
   versions:
     ">= 7.8.0": "/_cat/templates?v"
 
 cat_thread_pool:
+  tags: support
   extension: ".txt"
   subdir: "cat"
   versions:
@@ -132,6 +148,7 @@ cat_thread_pool:
 
 ## Non-cat .txt API
 nodes_hot_threads:
+  tags: support
   extension: ".txt"
   retry: true
   versions:
@@ -139,41 +156,46 @@ nodes_hot_threads:
 
 ## Common JSON API's
 alias:
-  tags: standard
+  tags: standard,support
   source_weight: 3
   versions:
     ">= 0.9.0": "/_alias?human"
 
 allocation:
+  tags: support
   versions:
     ">= 0.9.0": "/_cat/allocation?v&format=json"
   showErrors: false
 
 allocation_explain:
-  tags: light
+  tags: light,support
   versions:
     ">= 5.0.0": "/_cluster/allocation/explain"
   showErrors: false
 
 allocation_explain_disk:
+  tags: support
   versions:
     ">= 5.0.0": "/_cluster/allocation/explain?include_disk_info=true"
 
 component_templates:
+  tags: support
   retry: true
   versions:
     ">= 7.8.0": "/_component_template"
 
 count:
+  tags: support
   versions:
     ">= 2.0.0": "/_count"
 
 cluster_health:
+  tags: support
   versions:
     ">= 0.9.0": "/_cluster/health"
 
 cluster_pending_tasks:
-  tags: standard
+  tags: standard,support
   source_weight: 1
   processable: true
   required: false
@@ -182,7 +204,7 @@ cluster_pending_tasks:
     ">= 0.9.0": "/_cluster/pending_tasks?human"
 
 cluster_settings:
-  tags: standard
+  tags: standard,support
   source_weight: 1
   processable: true
   required: false
@@ -195,50 +217,56 @@ cluster_settings_defaults:
   processable: true
   required: true
   dependencies: [version]
-  tags: light
+  tags: light,support
   versions:
     ">= 6.4.0": "/_cluster/settings?include_defaults&flat_settings"
 
 cluster_state:
+  tags: support
   retry: true
   versions:
     ">= 0.9.0": "/_cluster/state?human"
 
 cluster_stats:
-  tags: light
+  tags: light,support
   versions:
     ">= 0.9.0": "/_cluster/stats?human"
 
 dangling_indices:
+  tags: support
   versions:
     ">= 7.9.0": "/_dangling?human"
 
 fielddata:
+  tags: support
   versions:
     ">= 0.9.0": "/_cat/fielddata?format=json&bytes"
 
 fielddata_stats:
+  tags: support
   versions:
     ">= 0.9.0, < 5.0.0": "/_nodes/stats/indices/fielddata?fields=*"
     ">= 5.0.0": "/_nodes/stats/indices/fielddata?level=shards&fields=*"
 
 geoip_stats:
+  tags: support
   versions:
     ">= 7.13.0": "/_ingest/geoip/stats"
 
 index_templates:
-  tags: light
+  tags: light,support
   retry: true
   versions:
     ">= 7.8.0": "/_index_template"
 
 indices:
+  tags: support
   versions:
     ">= 0.9.0, < 5.1.1": "/_cat/indices?format=json&bytes=b&h=index,shard,prirep,state,docs,store,id,node"
     ">= 7.0.0": "/_cat/shards?format=json&bytes=b&s=index&h=index,shard,prirep,state,docs,store,id,node,se,sm,fm,fe,ft,iiti,iito,iitf,idto,idti,ftt,ua,ud,ur"
 
 indices_stats:
-  tags: standard
+  tags: standard,support
   source_weight: 3
   processing_weight: 5
   streamable: true
@@ -255,7 +283,7 @@ health_report:
   processable: true
   required: false
   dependencies: [version]
-  tags: light,standard
+  tags: light,standard,support
   retry: true
   versions:
     ">= 8.2.0, < 8.3.0": "/_internal/_health"
@@ -264,12 +292,13 @@ health_report:
     ">=8.7.0": "/_health_report"
 
 internal_desired_balance:
+  tags: support
   retry: true
   versions:
     ">= 8.6.0": "/_internal/desired_balance"
 
 licenses:
-  tags: standard
+  tags: standard,support
   source_weight: 1
   versions:
     ">= 1.0.0, < 2.0.0": "/_licenses"
@@ -279,12 +308,13 @@ licenses:
 
 mapping:
   source_weight: 3
-  tags: light,standard
+  tags: light,standard,support
   versions:
     ">= 0.9.0, < 7.7.0": "/_mapping"
     ">= 7.7.0": "/_mapping?expand_wildcards=all"
 
 master:
+  tags: support
   versions:
     ">= 0.9.0": "/_cat/master?format=json"
 
@@ -294,12 +324,13 @@ nodes:
   required: false
   dependencies: [version]
   collect_dependencies: [cluster_settings]
-  tags: light,minimal,standard
+  tags: light,minimal,standard,support
   retry: true
   versions:
     ">= 0.9.0": "/_nodes?human"
 
 nodes_short:
+  tags: support
   versions:
     ">= 0.9.0": "/_cat/nodes?format=json&v&full_id&h=name,id,master,ip,role"
 
@@ -311,29 +342,33 @@ nodes_stats:
   required: false
   dependencies: [nodes, cluster_settings_defaults, version]
   collect_dependencies: [nodes]
-  tags: light,standard
+  tags: light,standard,support
   retry: true
   versions:
     ">= 0.9.0": "/_nodes/stats?human"
 
 nodes_usage:
+  tags: support
   versions:
     ">= 6.0.0": "/_nodes/usage"
 
 pipelines:
-  tags: light
+  tags: light,support
   versions:
     ">= 5.0.0": "/_ingest/pipeline/*?human"
 
 plugins:
+  tags: support
   versions:
     ">= 0.9.0": "/_cat/plugins?format=json"
 
 recovery:
+  tags: support
   versions:
     ">= 0.9.0": "/_recovery?human&detailed=true"
 
 remote_cluster_info:
+  tags: support
   versions:
     ">= 6.0.0": "/_remote/info"
 
@@ -342,11 +377,12 @@ repositories:
   processable: true
   required: false
   dependencies: [version]
-  tags: light,standard
+  tags: light,standard,support
   versions:
     ">= 2.0.0": "/_snapshot"
 
 segments:
+  tags: support
   retry: true
   versions:
     ">= 0.9.0": "/_segments?human"
@@ -356,24 +392,25 @@ indices_settings:
   processable: true
   required: false
   dependencies: [version, cluster_settings_defaults]
-  tags: light,standard
+  tags: light,standard,support
   retry: true
   versions:
     ">= 0.9.0, < 7.7.0": "/_settings?human"
     ">= 7.7.0": "/_settings?human&expand_wildcards=all"
 
 shard_stores:
+  tags: support
   versions:
     ">=2.0.0": "/_shard_stores"
 
 shards:
-  tags: light
+  tags: light,support
   retry: true
   versions:
     ">=0.9.0": "/_cat/shards?format=json&bytes=b"
 
 snapshot:
-  tags: standard
+  tags: standard,support
   source_weight: 3
   processing_weight: 3
   streamable: true
@@ -384,7 +421,7 @@ snapshot:
     ">=7.15.0": "/_snapshot/*/*?verbose=false"
 
 ssl_certs:
-  tags: light
+  tags: light,support
   versions:
     ">= 6.2.0, < 7.0.0": "/_xpack/ssl/certificates"
     ">= 7.0.0": "/_ssl/certificates"
@@ -394,17 +431,17 @@ tasks:
   processable: true
   required: false
   dependencies: [nodes, version]
-  tags: light,standard
+  tags: light,standard,support
   versions:
     ">=2.0.0": "/_tasks?human&detailed=true"
 
 templates:
-  tags: light
+  tags: light,support
   versions:
     ">= 0.9.0": "/_template"
 
 version:
-  tags: light,minimal,standard
+  tags: light,minimal,standard,support
   source_weight: 1
   required: true
   retry: true
@@ -413,44 +450,51 @@ version:
 
 ## Commercial Features
 autoscaling_capacity:
+  tags: support
   subdir: "commercial"
   versions:
     ">= 7.11.0": "/_autoscaling/capacity"
 
 ccr_autofollow_patterns:
+  tags: support
   subdir: "commercial"
   versions:
     ">= 6.5.0": "/_ccr/auto_follow"
 
 ccr_follower_info:
+  tags: support
   subdir: "commercial"
   versions:
     ">= 6.7.0": "/_all/_ccr/info"
 
 ccr_stats:
+  tags: support
   subdir: "commercial"
   versions:
     ">= 6.5.0": "/_ccr/stats"
 
 enrich_policies:
+  tags: support
   subdir: "commercial"
   versions:
     ">= 7.5.0": "/_enrich/policy"
 
 enrich_stats:
+  tags: support
   subdir: "commercial"
   versions:
     ">= 7.5.0": "/_enrich/_stats"
 
 ilm_explain:
   source_weight: 1
-  tags: light,standard
+  tags: light,standard,support
   subdir: "commercial"
   versions:
     ">= 6.6.0, < 7.7.0": "/*/_ilm/explain?human"
     ">= 7.7.0": "/*/_ilm/explain?human&expand_wildcards=all"
 
 ilm_explain_only_errors:
+  tags: support
   subdir: "commercial"
   versions:
     ">= 7.4.0, < 7.7.0": "/*/_ilm/explain?only_errors=true&human"
@@ -461,90 +505,102 @@ ilm_policies:
   processable: true
   required: false
   dependencies: [version]
-  tags: light,standard
+  tags: light,standard,support
   subdir: "commercial"
   versions:
     ">= 6.6.0": "/_ilm/policy?human"
 
 ilm_status:
-  tags: light
+  tags: light,support
   subdir: "commercial"
   versions:
     ">= 6.6.0": "/_ilm/status"
 
 logstash_pipeline:
+  tags: support
   subdir: "commercial"
   versions:
     ">= 7.12.0": "/_logstash/pipeline"
 
 ml_anomaly_detectors:
+  tags: support
   subdir: "commercial"
   versions:
     ">= 5.0.0, < 7.0.0": "/_xpack/ml/anomaly_detectors"
     ">= 7.0.0": "/_ml/anomaly_detectors"
 
 ml_datafeeds:
+  tags: support
   subdir: "commercial"
   versions:
     ">= 5.0.0, < 7.0.0": "/_xpack/ml/datafeeds"
     ">= 7.0.0": "/_ml/datafeeds"
 
 ml_datafeeds_stats:
+  tags: support
   subdir: "commercial"
   versions:
     ">= 7.4.0": "/_ml/datafeeds/_stats"
 
 ml_dataframe:
+  tags: support
   subdir: "commercial"
   versions:
     ">= 7.3.0": "/_ml/data_frame/analytics"
 
 ml_dataframe_stats:
+  tags: support
   subdir: "commercial"
   versions:
     ">= 7.3.0": "/_ml/data_frame/analytics/_stats"
 
 ml_info:
+  tags: support
   subdir: "commercial"
   versions:
     ">= 6.3.0, < 7.0.0": "/_xpack/ml/info"
     ">= 7.0.0": "/_ml/info"
 
 ml_stats:
+  tags: support
   subdir: "commercial"
   versions:
     ">= 5.0.0, < 7.0.0": "/_xpack/ml/anomaly_detectors/_stats"
     ">= 7.0.0": "/_ml/anomaly_detectors/_stats"
 
 ml_trained_models:
+  tags: support
   subdir: "commercial"
   versions:
     ">= 7.10.0": "/_ml/trained_models"
 
 ml_trained_models_stats:
+  tags: support
   subdir: "commercial"
   versions:
     ">= 7.10.0": "/_ml/trained_models/_stats"
 
 nodes_shutdown_status:
-  tags: light
+  tags: light,support
   subdir: "commercial"
   versions:
     ">= 7.15.0": "/_nodes/shutdown"
 
 profiling_status:
-  tags: light
+  tags: light,support
   subdir: "commercial"
   versions:
     ">= 8.9.0": "/_profiling/status"
 
 rollup_jobs:
+  tags: support
   subdir: "commercial"
   versions:
     ">= 6.3.0, < 7.0.0": "/_xpack/rollup/job/_all"
     ">= 7.0.0": "/_rollup/job/_all"
 
 rollup_caps:
+  tags: support
   subdir: "commercial"
   versions:
     # This API was introduced in 6.3.0 but may be harmful to clusters prior to
@@ -553,6 +609,7 @@ rollup_caps:
     ">= 8.10.0": "/_rollup/data/_all"
 
 rollup_index_caps:
+  tags: support
   subdir: "commercial"
   versions:
     # This API was introduced in 6.5.0 but may be harmful to clusters prior to
@@ -561,26 +618,31 @@ rollup_index_caps:
     ">= 8.10.0": "/*/_rollup/data"
 
 searchable_snapshots_cache_stats:
-  tags: standard
+  tags: standard,support
   source_weight: 1
   subdir: "commercial"
   versions:
     ">= 7.13.0": "/_searchable_snapshots/cache/stats"
 
 searchable_snapshots_stats:
-  tags: standard
+  tags: support
   source_weight: 3
+  processable: true
+  required: false
+  dependencies: [version]
   subdir: "commercial"
   versions:
     ">= 7.13.0": "/_searchable_snapshots/stats"
 
 security_priv:
+  tags: support
   subdir: "commercial"
   versions:
     ">= 6.5.0, < 7.0.0": "/_xpack/security/privilege"
     ">= 7.0.0": "/_security/privilege"
 
 security_roles:
+  tags: support
   subdir: "commercial"
   versions:
     ">= 2.0.0, < 5.0.0": "/_shield/role"
@@ -588,12 +650,14 @@ security_roles:
     ">= 7.0.0": "/_security/role"
 
 security_role_mappings:
+  tags: support
   subdir: "commercial"
   versions:
     ">= 5.0.0, < 7.0.0": "/_xpack/security/role_mapping"
     ">= 7.0.0": "/_security/role_mapping"
 
 security_users:
+  tags: support
   subdir: "commercial"
   versions:
     ">= 2.0.0, < 5.0.0": "/_shield/user"
@@ -605,40 +669,45 @@ slm_policies:
   processable: true
   required: false
   dependencies: [repositories, version]
-  tags: light,standard
+  tags: light,standard,support
   subdir: "commercial"
   versions:
     ">= 7.4.0": "/_slm/policy?human"
 
 slm_stats:
+  tags: support
   subdir: "commercial"
   versions:
     ">= 7.5.0": "/_slm/stats"
 
 slm_status:
-  tags: light
+  tags: light,support
   subdir: "commercial"
   versions:
     ">= 7.6.0": "/_slm/status"
 
 transform:
+  tags: support
   subdir: "commercial"
   versions:
     ">= 7.2.0, < 7.5.0": "/_data_frame/transforms"
     ">= 7.5.0": "/_transform"
 
 transform_stats:
+  tags: support
   subdir: "commercial"
   versions:
     ">= 7.2.0, < 7.5.0": "/_data_frame/transforms/_stats"
     ">= 7.5.0": "/_transform/_stats"
 
 transform_basic_stats:
+  tags: support
   subdir: "commercial"
   versions:
     ">= 8.13.0": "/_transform/_stats?basic=true"
 
 watcher_stats:
+  tags: support
   subdir: "commercial"
   versions:
     ">= 1.6.0, < 5.0.0": "/_watcher/stats/_all"
@@ -646,6 +715,7 @@ watcher_stats:
     ">= 7.0.0": "/_watcher/stats/_all"
 
 watcher_stack:
+  tags: support
   subdir: "commercial"
   versions:
     ">= 1.6.0, < 5.0.0": "/_watcher/stats?emit_stacktraces=true"
@@ -653,12 +723,13 @@ watcher_stack:
     ">= 7.0.0": "/_watcher/stats?emit_stacktraces=true"
 
 xpack:
+  tags: support
   subdir: "commercial"
   versions:
     ">= 5.0.0": "/_xpack/usage?human"
 
 data_stream:
-  tags: standard
+  tags: standard,support
   source_weight: 3
   subdir: "commercial"
   versions:

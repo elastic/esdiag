@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: ESDiag Owns Its Collection Definitions
-ESDiag's per-product `sources.yml` files SHALL be owned by ESDiag and shaped to its own model. The runtime MUST NOT mirror `support-diagnostics` verbatim or bind to upstream files at runtime; it SHALL read only ESDiag's embedded definitions (or a `--sources` override). `support-diagnostics` (`elastic-rest.yml` for API sources, `diags.yml` for OS-command sources) SHALL be treated only as a reconciliation *input*.
+ESDiag's per-product `sources.yml` files SHALL be owned by ESDiag and shaped to its own model. The runtime MUST NOT mirror `support-diagnostics` verbatim or bind to upstream files at runtime; it SHALL read only ESDiag's embedded definitions (or a `--sources` override). `support-diagnostics` (`elastic-rest.yml`, `kibana-rest.yml`, and `logstash-rest.yml` for REST API sources; `diags.yml` for OS-command sources) SHALL be treated only as a reconciliation *input*.
 
 #### Scenario: Runtime binds to no upstream file
 - **GIVEN** a diagnostic run resolving data sources
@@ -15,19 +15,32 @@ ESDiag's per-product `sources.yml` files SHALL be owned by ESDiag and shaped to 
 - **THEN** the recorded divergence SHALL be preserved and MUST NOT be silently reverted to the upstream definition
 
 ### Requirement: Field-Level Overlay Reconciliation
-Reconciliation SHALL merge upstream definitions into ESDiag's `sources.yml` as a field-level overlay, never a blind copy. It SHALL update upstream-owned fields (`versions`/request paths and OS-command definitions) while preserving ESDiag-only enrichments — at minimum `source_weight`, `processing_weight`, `streamable`, and `tags` (including platform/application tags). The merge MUST know which fields are ESDiag's so that hand-tuned enrichments survive.
+Reconciliation SHALL merge upstream REST API definitions into ESDiag's `sources.yml` as a field-level overlay, never a blind copy. It SHALL update upstream-owned fields (`versions`/request paths) while preserving ESDiag-only enrichments — at minimum `source_weight`, `processing_weight`, `streamable`, `processable`, `required`, `dependencies`, `collect_dependencies`, and `tags` (including platform/application tags). The merge MUST know which fields are ESDiag's so that hand-tuned enrichments survive. Until ESDiag has a command-source transport model, reconciliation SHALL verify the upstream `diags.yml` OS-command catalog path but MUST NOT merge command entries into the HTTP REST registry.
 
 #### Scenario: Upstream path update preserves ESDiag enrichments
-- **GIVEN** an existing source with hand-tuned `source_weight`, `processing_weight`, `streamable`, and `tags`
+- **GIVEN** an existing source with hand-tuned `source_weight`, `processing_weight`, `streamable`, `processable`, `required`, `dependencies`, `collect_dependencies`, and `tags`
 - **WHEN** reconciliation overlays a changed upstream `versions`/path for that source
 - **THEN** the request path is updated
 - **AND** the ESDiag-only enrichment fields are preserved unchanged
 
 #### Scenario: New upstream source is added without clobbering others
-- **GIVEN** upstream introduces a new API or OS-command source
+- **GIVEN** upstream introduces a new REST API source
 - **WHEN** reconciliation runs
 - **THEN** the new source entry is added to ESDiag's `sources.yml`
+- **AND** it is tagged `support` by default
 - **AND** no existing entry's enrichment fields are overwritten
+
+#### Scenario: Existing upstream-backed source keeps support-bundle membership
+- **GIVEN** an existing source is backed by an upstream REST definition
+- **AND** its ESDiag entry is missing the `support` tag
+- **WHEN** reconciliation runs
+- **THEN** the `support` tag is added while preserving the source's other tags
+
+#### Scenario: OS-command catalog layout is verified but not overlaid yet
+- **GIVEN** a support-diagnostics checkout with `src/main/resources/diags.yml`
+- **WHEN** reconciliation runs
+- **THEN** the reconciliation tool verifies the OS-command catalog path exists
+- **AND** it does not merge OS-command entries into `sources.yml`
 
 ### Requirement: Semver Dialect Normalization at the Boundary
 Reconciliation SHALL convert upstream version ranges from the Java/NPM semver dialect into native Rust `semver` form during the overlay, so that ESDiag's stored `sources.yml` is already in its own dialect. The impedance MUST be absorbed once, at reconciliation, so that the runtime can resolve versions with stock `semver::VersionReq` and carry no custom compatibility parser (see `version-dependent-sources`).
