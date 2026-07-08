@@ -164,7 +164,11 @@ async fn run_send(bundle_path: &std::path::Path, send: &SendTarget) -> Result<St
 /// Resolve the `Export` sink for processed documents.
 fn export_target_exporter(target: &ExportTarget) -> Result<Exporter> {
     match target {
-        ExportTarget::KnownHost { name } => Exporter::try_from(Uri::try_from(name.clone())?),
+        ExportTarget::KnownHost { name } => {
+            let host =
+                KnownHost::get_known(name).ok_or_else(|| eyre!("Export host '{name}' not found in hosts.yml"))?;
+            Exporter::try_from(Uri::try_from(host)?)
+        }
         ExportTarget::File { path } => Exporter::try_from(Uri::try_from(path.display().to_string())?),
         ExportTarget::Directory { output_dir } => Exporter::try_from(Uri::try_from(output_dir.display().to_string())?),
         ExportTarget::Stdout => Exporter::try_from(Uri::Stream),

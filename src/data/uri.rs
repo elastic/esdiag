@@ -110,10 +110,10 @@ impl Serialize for Uri {
             Uri::ElasticCloud(host)
             | Uri::ElasticCloudAdmin(host)
             | Uri::ElasticGovCloudAdmin(host)
-            | Uri::KnownHost(host) => {
-                let url = host.get_url().map_err(serde::ser::Error::custom)?;
-                serializer.serialize_str(url.as_str())
-            }
+            | Uri::KnownHost(host) => Err(serde::ser::Error::custom(format!(
+                "resolved known host '{}' is runtime-only and cannot be serialized as a Uri",
+                host.transport_display()
+            ))),
             Uri::Stream => serializer.serialize_str("-"),
         }
     }
