@@ -1747,6 +1747,43 @@ mod tests {
         tmp
     }
 
+    struct EnvVarGuard {
+        previous: Vec<(&'static str, Option<std::ffi::OsString>)>,
+    }
+
+    impl EnvVarGuard {
+        fn new(keys: &[&'static str]) -> Self {
+            Self {
+                previous: keys.iter().map(|key| (*key, std::env::var_os(key))).collect(),
+            }
+        }
+
+        fn set(&self, key: &'static str, value: &str) {
+            unsafe {
+                std::env::set_var(key, value);
+            }
+        }
+
+        fn remove(&self, key: &'static str) {
+            unsafe {
+                std::env::remove_var(key);
+            }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            for (key, value) in self.previous.drain(..).rev() {
+                unsafe {
+                    match value {
+                        Some(value) => std::env::set_var(key, value),
+                        None => std::env::remove_var(key),
+                    }
+                }
+            }
+        }
+    }
+
     #[test]
     fn no_args_and_no_command_allows_desktop_path() {
         assert!(!should_error_for_missing_subcommand(1, true));
@@ -2610,21 +2647,20 @@ mod tests {
     #[test]
     fn serve_service_mode_resolves_output_from_env() {
         let _guard = env_lock().lock().expect("env lock");
-        unsafe {
-            std::env::set_var("ESDIAG_OUTPUT_URL", "http://output.example:9200");
-            std::env::set_var("ESDIAG_OUTPUT_APIKEY", "runtime-output-api-key");
-            std::env::remove_var("ESDIAG_OUTPUT_USERNAME");
-            std::env::remove_var("ESDIAG_OUTPUT_PASSWORD");
-        }
+        let env = EnvVarGuard::new(&[
+            "ESDIAG_OUTPUT_URL",
+            "ESDIAG_OUTPUT_APIKEY",
+            "ESDIAG_OUTPUT_USERNAME",
+            "ESDIAG_OUTPUT_PASSWORD",
+        ]);
+        env.set("ESDIAG_OUTPUT_URL", "http://output.example:9200");
+        env.set("ESDIAG_OUTPUT_APIKEY", "runtime-output-api-key");
+        env.remove("ESDIAG_OUTPUT_USERNAME");
+        env.remove("ESDIAG_OUTPUT_PASSWORD");
 
         let exporter = resolve_serve_exporter(None, RuntimeMode::Service).expect("resolve service output exporter");
 
         assert_eq!(exporter.target_uri(), "http://output.example:9200/");
-
-        unsafe {
-            std::env::remove_var("ESDIAG_OUTPUT_URL");
-            std::env::remove_var("ESDIAG_OUTPUT_APIKEY");
-        }
     }
 }
 
