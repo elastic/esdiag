@@ -277,14 +277,19 @@ impl ElasticsearchDiagnostic {
                         .await
                         .was_parsed(),
                     Err(settings_err) => {
-                        tracing::warn!(
-                            "Failed to read cluster_settings_defaults and cluster_settings: {}; {}",
-                            defaults_err,
-                            settings_err
-                        );
                         if missing_source_error(&defaults_err) && missing_source_error(&settings_err) {
+                            tracing::debug!(
+                                "cluster_settings_defaults and cluster_settings are absent: {}; {}",
+                                defaults_err,
+                                settings_err
+                            );
                             ProcessorSummary::missing(ClusterSettings::name())
                         } else {
+                            tracing::warn!(
+                                "Failed to read cluster_settings_defaults and cluster_settings: {}; {}",
+                                defaults_err,
+                                settings_err
+                            );
                             ProcessorSummary::new(ClusterSettings::name()).with_error(format!(
                                 "Failed to read cluster_settings_defaults and cluster_settings: {}; {}",
                                 defaults_err, settings_err
@@ -317,10 +322,11 @@ impl ElasticsearchDiagnostic {
                 })
             }
             Err(err) => {
-                tracing::warn!("{}", err);
                 let summary = if missing_source_error(&err) {
+                    tracing::debug!("{} is absent: {}", T::name(), err);
                     ProcessorSummary::missing(T::name())
                 } else {
+                    tracing::warn!("{}", err);
                     ProcessorSummary::new(T::name()).with_error(err.to_string())
                 };
                 summary_tx.send(summary).await.map_err(|err| {
