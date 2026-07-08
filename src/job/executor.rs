@@ -25,7 +25,7 @@ use std::{path::PathBuf, sync::Arc};
 /// What one job execution produced.
 #[derive(Debug, Default)]
 pub struct JobOutcome {
-    /// The materialised bundle, when the job saved or loaded one.
+    /// The materialised bundle, when it outlives the job.
     pub bundle_path: Option<PathBuf>,
     /// Whether that bundle outlives the job (a retained `save`, or a `Load`
     /// input) as opposed to a temporary staging bundle.
@@ -93,7 +93,9 @@ pub async fn execute(job: Job) -> Result<JobOutcome> {
                         outcome.upload_slug = Some(run_send(&bundle_path, send).await?);
                     }
 
-                    outcome.bundle_path = Some(bundle_path);
+                    if outcome.bundle_retained {
+                        outcome.bundle_path = Some(bundle_path);
+                    }
                     drop(cleanup);
                 }
                 ExecutionMode::Streaming => {
