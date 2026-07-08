@@ -8,8 +8,8 @@ tags: [repository, adr]
 # Evolve the indexed data model via field aliases
 
 ADR-0001's split lands in the indexed docs as `diagnostic.application` (replacing
-`diagnostic.product`) and `diagnostic.platform` (replacing the unused
-`diagnostic.orchestration`). The `product` → `application` rename is bridged with
+`diagnostic.product`) and `diagnostic.platform` (replacing
+`diagnostic.orchestration`). These provenance-field renames are bridged with
 **Elasticsearch field aliases** so old and new dashboards keep working across old and
 new indices during the transition; the aliases are removed later. This is the third
 compatibility strategy, distinct from owned-file rewrite (ADR-0009) and
@@ -27,13 +27,13 @@ rename without touching stored documents.
 - **`diagnostic.application` replaces `diagnostic.product`.** Both names resolve to the
   same underlying field via aliases in both directions, so dashboards querying either
   name work on both old and new indices during the transition.
-- **`diagnostic.platform` replaces `diagnostic.orchestration`.** Non-breaking:
-  `orchestration` is unused today, and no alias is needed because there are no
-  platform-level dashboards yet — nothing queries it. The rename is not just the
-  indexed field: the `orchestration` term is retired everywhere, including the
-  in-code identifier and its derivation point (`Processor::start`, `mod.rs:420`, which
-  derives it from the product and propagates it to children) — all become `platform`,
-  sourced from the split `Platform` of ADR-0001.
+- **`diagnostic.platform` replaces `diagnostic.orchestration`.** The old field name
+  resolves to the new one through a transitional alias while historical dashboards
+  and retained indices age out. The rename is not just the indexed field: the
+  `orchestration` term is retired everywhere, including the in-code identifier and
+  its derivation point (`Processor::start`, `mod.rs:420`, which derives it from the
+  product and propagates it to children) — all become `platform`, sourced from the
+  split `Platform` of ADR-0001.
 - **Aliases are transitional** and removed once dashboards are updated and old indices
   age out of retention.
 

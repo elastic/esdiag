@@ -1,7 +1,8 @@
 {
   "_meta": {
     "managed": false,
-    "description": "ESDiag common Logstash metadata mappings"
+    "description": "ESDiag common Logstash metadata mappings",
+    "compatibility_debt": "Remove diagnostic.product/application and diagnostic.orchestration/platform aliases after dashboards migrate and old indices age out."
   },
   "template": {
     "mappings": {
@@ -35,6 +36,20 @@
             "uuid": {
               "ignore_above": 1024,
               "type": "keyword"
+            },
+            "platform": {
+              "type": "keyword"
+            },
+            "orchestration": {
+              "type": "alias",
+              "path": "diagnostic.platform"
+            },
+            "application": {
+              "type": "keyword"
+            },
+            "product": {
+              "type": "alias",
+              "path": "diagnostic.application"
             }
           }
         },
