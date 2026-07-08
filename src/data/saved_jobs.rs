@@ -5,9 +5,9 @@ use std::{
     fs,
     marker::PhantomData,
     path::{Path, PathBuf},
-    sync::OnceLock,
+    sync::{Mutex, OnceLock},
 };
-use tokio::{sync::Mutex, task};
+use tokio::task;
 
 use super::{HostRole, KnownHost, Uri};
 use crate::{
@@ -691,6 +691,13 @@ fn saved_jobs_io_lock() -> &'static Mutex<()> {
 }
 
 pub fn load_saved_jobs() -> Result<SavedJobs> {
+    let _guard = saved_jobs_io_lock()
+        .lock()
+        .map_err(|err| eyre!("Saved jobs IO lock poisoned: {err}"))?;
+    load_saved_jobs_unlocked()
+}
+
+fn load_saved_jobs_unlocked() -> Result<SavedJobs> {
     let path = get_jobs_path()?;
     load_saved_jobs_from_path(&path)
 }
@@ -748,6 +755,13 @@ fn schema_version(content: &str) -> Result<Option<u32>> {
 }
 
 pub fn save_saved_jobs(jobs: &SavedJobs) -> Result<()> {
+    let _guard = saved_jobs_io_lock()
+        .lock()
+        .map_err(|err| eyre!("Saved jobs IO lock poisoned: {err}"))?;
+    save_saved_jobs_unlocked(jobs)
+}
+
+fn save_saved_jobs_unlocked(jobs: &SavedJobs) -> Result<()> {
     let path = get_jobs_path()?;
     write_saved_jobs_document(&path, jobs)
 }
@@ -758,7 +772,6 @@ fn write_saved_jobs_document(path: &Path, jobs: &SavedJobs) -> Result<()> {
 }
 
 pub async fn load_saved_jobs_async() -> Result<SavedJobs> {
-    let _guard = saved_jobs_io_lock().lock().await;
     task::spawn_blocking(load_saved_jobs)
         .await
         .map_err(|err| eyre::eyre!("Saved jobs load task failed: {err}"))?
@@ -769,10 +782,14 @@ where
     T: Send + 'static,
     F: FnOnce(&mut SavedJobs) -> Result<T> + Send + 'static,
 {
-    let _guard = saved_jobs_io_lock().lock().await;
     task::spawn_blocking(move || {
-        let mut jobs = load_saved_jobs()?;
-        operation(&mut jobs)
+        let _guard = saved_jobs_io_lock()
+            .lock()
+            .map_err(|err| eyre!("Saved jobs IO lock poisoned: {err}"))?;
+        let mut jobs = load_saved_jobs_unlocked()?;
+        let result = operation(&mut jobs)?;
+        save_saved_jobs_unlocked(&jobs)?;
+        Ok(result)
     })
     .await
     .map_err(|err| eyre::eyre!("Saved jobs update task failed: {err}"))?

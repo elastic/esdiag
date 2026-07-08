@@ -54,9 +54,9 @@ pub async fn execute(job: Job) -> Result<JobOutcome> {
             let host = hosts
                 .get(host_key)
                 .cloned()
-                .ok_or_else(|| eyre!("Host '{host_name}' referenced by job not found in hosts.yml"))?;
+                .ok_or_else(|| eyre!("Host '{host_key}' referenced by job not found in hosts.yml"))?;
             if !host.has_role(HostRole::Collect) {
-                return Err(eyre!("Collect host '{host_name}' is missing the collect role"));
+                return Err(eyre!("Collect host '{host_key}' is missing the collect role"));
             }
             match job.execution_mode() {
                 ExecutionMode::Staged => {

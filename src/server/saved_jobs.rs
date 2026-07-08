@@ -1,7 +1,5 @@
 use super::ServerState;
-use crate::data::{
-    CollectSource, HostRole, Job, JobSignals, KnownHost, load_saved_jobs_async, save_saved_jobs, with_saved_jobs_async,
-};
+use crate::data::{CollectSource, HostRole, Job, JobSignals, KnownHost, load_saved_jobs_async, with_saved_jobs_async};
 use crate::processor::Identifiers;
 use askama::Template;
 use axum::{
@@ -123,7 +121,6 @@ pub async fn save_job(signals: ReadSignals<SaveJobSignals>) -> Response {
     let name_for_save = name.clone();
     let names = match with_saved_jobs_async(move |jobs| {
         jobs.insert(name_for_save, saved_job);
-        save_saved_jobs(jobs)?;
         Ok::<Vec<String>, eyre::Report>(jobs.keys().cloned().collect())
     })
     .await
@@ -189,7 +186,6 @@ pub async fn delete_saved_job(
         if jobs.shift_remove(&name_for_delete).is_none() {
             return Ok::<Option<Vec<String>>, eyre::Report>(None);
         }
-        save_saved_jobs(jobs)?;
         Ok(Some(jobs.keys().cloned().collect()))
     })
     .await
