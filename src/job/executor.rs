@@ -13,7 +13,7 @@
 
 use super::model::{ExecutionMode, ExportTarget, Input, Job, Process, SendTarget};
 use crate::{
-    data::{KnownHost, Uri},
+    data::{HostRole, KnownHost, Product, Uri},
     exporter::Exporter,
     processor::{Collector, Identifiers, Processor, api::ProcessSelection},
     receiver::Receiver,
@@ -167,6 +167,12 @@ fn export_target_exporter(target: &ExportTarget) -> Result<Exporter> {
         ExportTarget::KnownHost { name } => {
             let host =
                 KnownHost::get_known(name).ok_or_else(|| eyre!("Export host '{name}' not found in hosts.yml"))?;
+            if !host.has_role(HostRole::Send) {
+                return Err(eyre!("Export host '{name}' is missing the send role"));
+            }
+            if host.app() != &Product::Elasticsearch {
+                return Err(eyre!("Export host '{name}' must be an Elasticsearch host"));
+            }
             Exporter::try_from(Uri::try_from(host)?)
         }
         ExportTarget::File { path } => Exporter::try_from(Uri::try_from(path.display().to_string())?),

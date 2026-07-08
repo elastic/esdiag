@@ -229,7 +229,7 @@ fn ensure_parent_dir(path: &Path) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn secure_output_file(path: &Path) -> Result<File> {
+fn secure_output_file(path: &Path) -> Result<File> {
     ensure_parent_dir(path)?;
     let mut options = OpenOptions::new();
     options.create_new(true).write(true);
@@ -256,7 +256,7 @@ fn temp_output_path(path: &Path) -> Result<PathBuf> {
     Ok(parent.join(format!(".{file_name}.tmp-{}-{unique}", std::process::id())))
 }
 
-pub(crate) fn replace_file_atomic(path: &Path, temp_path: &Path) -> Result<()> {
+fn replace_file_atomic(path: &Path, temp_path: &Path) -> Result<()> {
     #[cfg(windows)]
     {
         let backup_path = path.with_extension("bak");
