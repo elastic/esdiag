@@ -119,6 +119,13 @@ pub async fn execute(job: Job) -> Result<JobOutcome> {
             }
         }
         Input::Load { uri } => {
+            match uri {
+                Uri::File(path) | Uri::Directory(path) => {
+                    outcome.bundle_path = Some(path.clone());
+                    outcome.bundle_retained = true;
+                }
+                _ => {}
+            }
             if let Some(process) = job.process() {
                 run_process(Receiver::try_from(uri.clone())?, process, job.identifiers.clone()).await?;
                 outcome.processed = true;

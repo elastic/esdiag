@@ -124,6 +124,8 @@ pub enum JobValidationError {
     SendRequiresBundle,
     /// A job must do something: at least one of `save`/`process`/`send`.
     NoWork,
+    /// A temporary save must feed another stage before the temp dir is removed.
+    TemporarySaveRequiresConsumer,
 }
 
 impl std::fmt::Display for JobValidationError {
@@ -138,6 +140,10 @@ impl std::fmt::Display for JobValidationError {
                 "`send` requires a bundle: a `Load` input, or `save` on a `Collect` input"
             ),
             Self::NoWork => write!(f, "a job must select at least one of `save`, `process`, or `send`"),
+            Self::TemporarySaveRequiresConsumer => write!(
+                f,
+                "temporary `save` requires `process` or `send` so the staged bundle is consumed before cleanup"
+            ),
         }
     }
 }
@@ -200,6 +206,9 @@ impl Job {
         }
         if save.is_none() && process.is_none() && send.is_none() {
             return Err(JobValidationError::NoWork);
+        }
+        if matches!(save, Some(SaveTarget { dir: None })) && process.is_none() && send.is_none() {
+            return Err(JobValidationError::TemporarySaveRequiresConsumer);
         }
         Ok(Self {
             identifiers,
@@ -307,6 +316,19 @@ mod tests {
         let err = Job::try_new(Identifiers::default(), collect_input(), None, None, None)
             .expect_err("no-op job must be rejected");
         assert_eq!(err, JobValidationError::NoWork);
+    }
+
+    #[test]
+    fn temporary_save_must_feed_another_stage() {
+        let err = Job::try_new(
+            Identifiers::default(),
+            collect_input(),
+            Some(SaveTarget { dir: None }),
+            None,
+            None,
+        )
+        .expect_err("temporary save without process or send must be rejected");
+        assert_eq!(err, JobValidationError::TemporarySaveRequiresConsumer);
     }
 
     #[test]
