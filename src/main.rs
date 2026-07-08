@@ -1749,7 +1749,8 @@ mod tests {
     use url::Url;
 
     fn env_lock() -> &'static Mutex<()> {
-        esdiag::test_env_lock()
+        static LOCK: std::sync::OnceLock<Mutex<()>> = std::sync::OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
     }
 
     fn setup_env() -> TempDir {
