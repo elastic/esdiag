@@ -82,6 +82,8 @@ fn emitted_output_streams() -> BTreeSet<String> {
         let content = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read {}: {}", path.display(), err));
         for capture in stream_re.captures_iter(&content) {
             let stream = capture[1].to_string();
+            // Metadata builders use this as a placeholder before processors set
+            // their real destination stream; it is never emitted as output.
             if stream != "metrics-default-esdiag" {
                 streams.insert(stream);
             }
