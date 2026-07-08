@@ -128,11 +128,11 @@ impl std::fmt::Display for JobValidationError {
                 app: Some(Application::Agent),
             } => write!(
                 f,
-                "`Collect` is out of scope by design for Elastic Agent: use `Load`/`read` for the Agent-provided diagnostic bundle"
+                "`Collect` is out of scope by design for Elastic Agent: use `read`/`Load` for the Agent-provided diagnostic bundle"
             ),
             Self::CollectOutOfScope { app: None } => write!(
                 f,
-                "`Collect` is out of scope by design for platform diagnostics: use `Load`/`read` for the platform-generated bundle"
+                "`Collect` is out of scope by design for platform diagnostics: use `read`/`Load` for the platform-generated bundle"
             ),
             Self::CollectOutOfScope { app: Some(app) } => {
                 write!(f, "`Collect` is not supported for application {app}")
