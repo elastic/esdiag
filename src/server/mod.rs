@@ -262,7 +262,8 @@ impl ServerPolicy {
 
         let job_caps = match job_caps {
             Some(caps) => caps,
-            None => JobConcurrencyCaps::from_env()?,
+            None if mode == RuntimeMode::Service => JobConcurrencyCaps::from_env()?,
+            None => JobConcurrencyCaps::default(),
         };
 
         Ok(Self {
@@ -1296,7 +1297,7 @@ fn parse_iap_identity(raw: &str) -> (Option<String>, String) {
     (account, user)
 }
 
-fn resolve_optional_identity(headers: &HeaderMap) -> ResolvedIdentity {
+fn resolve_optional_identity(_headers: &HeaderMap) -> ResolvedIdentity {
     if let Ok(user) = std::env::var("ESDIAG_USER") {
         let user = user.trim().to_string();
         if !user.is_empty() {
@@ -1309,20 +1310,6 @@ fn resolve_optional_identity(headers: &HeaderMap) -> ResolvedIdentity {
                     .filter(|value| !value.is_empty()),
             };
         }
-    }
-
-    let header_identity = headers
-        .get(IAP_USER_EMAIL_HEADER)
-        .and_then(|value| value.to_str().ok())
-        .map(parse_iap_identity);
-    if let Some((account, user)) = header_identity
-        && !user.is_empty()
-    {
-        return ResolvedIdentity {
-            authenticated: true,
-            user,
-            account,
-        };
     }
 
     ResolvedIdentity {
@@ -2016,6 +2003,24 @@ mod tests {
     }
 
     #[test]
+    fn user_mode_ignores_invalid_service_job_cap_env() {
+        let _guard = crate::test_env_lock().lock().expect("env lock");
+        unsafe {
+            std::env::set_var("ESDIAG_SERVICE_JOB_CAP", "0");
+            std::env::set_var("ESDIAG_SERVICE_OWNER_JOB_CAP", "0");
+        }
+
+        let policy = ServerPolicy::new(RuntimeMode::User).expect("user policy ignores service caps");
+
+        unsafe {
+            std::env::remove_var("ESDIAG_SERVICE_JOB_CAP");
+            std::env::remove_var("ESDIAG_SERVICE_OWNER_JOB_CAP");
+        }
+        assert_eq!(policy.job_caps().global, JobConcurrencyCaps::default().global);
+        assert_eq!(policy.job_caps().per_owner, JobConcurrencyCaps::default().per_owner);
+    }
+
+    #[test]
     #[cfg(not(feature = "keystore"))]
     fn service_mode_rejects_unsupported_job_builder_feature() {
         let err = ServerPolicy::with_web_features(RuntimeMode::Service, Some("advanced,job-builder"))
@@ -2127,6 +2132,25 @@ mod tests {
         assert!(identity.authenticated);
         assert_eq!(identity.user, "alice@example.com");
         assert_eq!(identity.account.as_deref(), Some("accounts.google.com"));
+    }
+
+    #[test]
+    fn no_auth_provider_ignores_iap_identity_header() {
+        let mut state = test_state(RuntimeMode::Service);
+        state.server_policy =
+            ServerPolicy::new_with_options(RuntimeMode::Service, Some(super::AuthProvider::None), None, None)
+                .expect("policy");
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            super::IAP_USER_EMAIL_HEADER,
+            "accounts.google.com:alice@example.com".parse().expect("valid header"),
+        );
+
+        let identity = state.resolve_identity(&headers).expect("identity");
+
+        assert!(!identity.authenticated);
+        assert_eq!(identity.user, super::DEFAULT_OWNER);
+        assert!(identity.account.is_none());
     }
 
     #[tokio::test]
