@@ -1439,8 +1439,6 @@ mod tests {
     #[cfg(feature = "keystore")]
     use reqwest::Client;
     use std::{collections::HashMap, sync::Arc};
-    #[cfg(feature = "keystore")]
-    use tempfile::TempDir;
     use tokio::{
         sync::{RwLock, broadcast, mpsc, watch},
         time::{Duration, timeout},
@@ -1484,7 +1482,9 @@ mod tests {
 
     fn with_web_features_env<T>(value: Option<&str>, test: impl FnOnce() -> T) -> T {
         let env_guard = WebFeaturesEnvGuard {
-            _guard: crate::test_env_lock().lock().expect("web features env lock"),
+            _guard: crate::test_env_lock()
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()),
             previous: std::env::var("ESDIAG_WEB_FEATURES").ok(),
         };
         match value {
@@ -1633,20 +1633,8 @@ mod tests {
     }
 
     #[cfg(feature = "keystore")]
-    fn setup_keystore_env() -> TempDir {
-        let tmp = TempDir::new().expect("temp dir");
-        let config_dir = tmp.path().join(".esdiag");
-        std::fs::create_dir_all(&config_dir).expect("create config dir");
-        let keystore_path = config_dir.join("secrets.yml");
-        let hosts_path = config_dir.join("hosts.yml");
-        unsafe {
-            std::env::set_var("HOME", tmp.path());
-            std::env::set_var("USERPROFILE", tmp.path());
-            std::env::set_var("ESDIAG_KEYSTORE", &keystore_path);
-            std::env::set_var("ESDIAG_HOSTS", &hosts_path);
-            std::env::remove_var("ESDIAG_KEYSTORE_PASSWORD");
-        }
-        tmp
+    fn setup_keystore_env() -> crate::TestEnv {
+        crate::TestEnv::new()
     }
 
     #[tokio::test]
@@ -1791,7 +1779,6 @@ mod tests {
     #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn user_mode_keystore_session_is_shared_across_request_users() {
-        let _guard = crate::test_env_lock().lock().expect("env lock");
         let _tmp = setup_keystore_env();
 
         let state = Arc::new(test_state(RuntimeMode::User));
@@ -1812,7 +1799,6 @@ mod tests {
     #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn user_mode_reads_cli_unlock_file() {
-        let _guard = crate::test_env_lock().lock().expect("env lock");
         let _tmp = setup_keystore_env();
         create_keystore("pw").expect("create keystore");
         write_unlock_lease("pw", Duration::from_secs(300)).expect("write unlock lease");
@@ -1827,7 +1813,6 @@ mod tests {
     #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn explicit_web_lock_deletes_unlock_file() {
-        let _guard = crate::test_env_lock().lock().expect("env lock");
         let _tmp = setup_keystore_env();
         create_keystore("pw").expect("create keystore");
         write_unlock_lease("pw", Duration::from_secs(300)).expect("write unlock lease");
@@ -1849,7 +1834,6 @@ mod tests {
     #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn service_mode_does_not_read_unlock_file() {
-        let _guard = crate::test_env_lock().lock().expect("env lock");
         let _tmp = setup_keystore_env();
         create_keystore("pw").expect("create keystore");
         write_unlock_lease("pw", Duration::from_secs(300)).expect("write unlock lease");
@@ -1898,7 +1882,6 @@ mod tests {
     #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn secret_delete_path_prefers_secret_id_route_over_generic_action_route() {
-        let _guard = crate::test_env_lock().lock().expect("env lock");
         let _tmp = setup_keystore_env();
         authenticate("secretpw").expect("create keystore");
         upsert_secret_auth(

@@ -23,7 +23,10 @@ pub use metadata::LogstashMetadata;
 use super::{
     DiagnosticProcessor, DocumentExporter, Metadata, ProcessorSummary,
     api::ProcessSelection,
-    diagnostic::{DataSource, DiagnosticManifest, DiagnosticReport, DiagnosticReportBuilder},
+    diagnostic::{
+        DataSource, DiagnosticManifest, DiagnosticReport, DiagnosticReportBuilder,
+        data_source::{ProcessableClaim, validate_processable_registry},
+    },
 };
 use crate::{
     data::{self, Application},
@@ -35,8 +38,61 @@ use node::Node;
 use node_stats::NodeStats;
 use plugins::Plugins;
 use serde::{Serialize, de::DeserializeOwned};
-use std::{collections::HashSet, sync::Arc};
+use std::{
+    collections::{BTreeSet, HashSet},
+    sync::Arc,
+};
 use tokio::sync::mpsc;
+
+/// The registry-keyed dispatch table (ADR-0005): each entry binds one
+/// processable source (by its canonical registry key) to its typed processor.
+struct LsDispatchEntry {
+    /// Canonical registry key handled by this entry.
+    key: &'static str,
+}
+
+const LS_DISPATCH: &[LsDispatchEntry] = &[
+    LsDispatchEntry { key: "logstash_node" },
+    LsDispatchEntry {
+        key: "logstash_node_stats",
+    },
+    LsDispatchEntry {
+        key: "logstash_plugins",
+    },
+];
+
+/// Fail fast if the dispatch keys and the collection registry disagree
+/// (ADR-0005 key alignment). Runs once.
+fn validate_ls_dispatch_registry() -> Result<()> {
+    static VALIDATED: std::sync::OnceLock<std::result::Result<(), String>> = std::sync::OnceLock::new();
+    VALIDATED
+        .get_or_init(|| {
+            let claims = vec![
+                ProcessableClaim {
+                    key: "logstash_node",
+                    datasource_name: Node::name(),
+                },
+                ProcessableClaim {
+                    key: "logstash_node_stats",
+                    datasource_name: NodeStats::name(),
+                },
+                ProcessableClaim {
+                    key: "logstash_plugins",
+                    datasource_name: Plugins::name(),
+                },
+            ];
+            let claim_keys = claims.iter().map(|claim| claim.key).collect::<BTreeSet<_>>();
+            let dispatch_keys = LS_DISPATCH.iter().map(|entry| entry.key).collect::<BTreeSet<_>>();
+            if claim_keys != dispatch_keys {
+                return Err(format!(
+                    "Logstash dispatch keys do not match processable claims: dispatch={dispatch_keys:?}, claims={claim_keys:?}"
+                ));
+            }
+            validate_processable_registry("logstash", &claims).map_err(|err| err.to_string())
+        })
+        .clone()
+        .map_err(|err| eyre!(err))
+}
 
 #[derive(Serialize)]
 pub struct LogstashDiagnostic {
@@ -56,14 +112,30 @@ impl LogstashDiagnostic {
             .is_none_or(|selected| selected.contains(key))
     }
 
-    async fn process_datasource<T>(&mut self, summary_tx: mpsc::Sender<ProcessorSummary>) -> Result<()>
+    async fn dispatch(&self, key: &'static str, summary_tx: mpsc::Sender<ProcessorSummary>) -> Result<()> {
+        match key {
+            "logstash_node" => self.process_datasource::<Node>(summary_tx).await,
+            "logstash_node_stats" => self.process_datasource::<NodeStats>(summary_tx).await,
+            "logstash_plugins" => self.process_datasource::<Plugins>(summary_tx).await,
+            other => Err(eyre!("No Logstash processor registered for '{other}'")),
+        }
+    }
+
+    async fn process_datasource<T>(&self, summary_tx: mpsc::Sender<ProcessorSummary>) -> Result<()>
     where
         T: DataSource + DocumentExporter<Lookups, LogstashMetadata> + DeserializeOwned + Send + Sync,
     {
-        let data = self.receiver.get::<T>().await?;
-        let summary = data
-            .documents_export(&self.exporter, &self.lookups, &self.metadata)
-            .await;
+        let summary = match self.receiver.get::<T>().await {
+            Ok(data) => {
+                data.documents_export(&self.exporter, &self.lookups, &self.metadata)
+                    .await
+            }
+            Err(err) if is_missing_source_error(&err) => {
+                tracing::warn!("{}", err);
+                ProcessorSummary::new(T::name())
+            }
+            Err(err) => return Err(err),
+        };
         summary_tx.send(summary).await.map_err(|err| {
             tracing::error!("Failed to send summary: {}", err);
             eyre!(err)
@@ -104,20 +176,18 @@ impl DiagnosticProcessor for LogstashDiagnostic {
         ))
     }
 
-    async fn process(mut self, summary_tx: mpsc::Sender<ProcessorSummary>) -> Result<()> {
+    async fn process(self, summary_tx: mpsc::Sender<ProcessorSummary>) -> Result<()> {
         tracing::debug!("Running Logstash diagnostic processors");
         if tracing::enabled!(tracing::Level::DEBUG) {
             data::save_file("diagnostic.json", &self)?;
         }
 
-        if self.should_process("node") {
-            self.process_datasource::<Node>(summary_tx.clone()).await?;
-        }
-        if self.should_process("node_stats") {
-            self.process_datasource::<NodeStats>(summary_tx.clone()).await?;
-        }
-        if self.should_process("plugins") {
-            self.process_datasource::<Plugins>(summary_tx.clone()).await?;
+        validate_ls_dispatch_registry()?;
+
+        for entry in LS_DISPATCH {
+            if self.should_process(entry.key) {
+                self.dispatch(entry.key, summary_tx.clone()).await?;
+            }
         }
         Ok(())
     }
@@ -132,6 +202,44 @@ impl DiagnosticProcessor for LogstashDiagnostic {
             self.metadata.node.id.clone(),
             "node".to_string(),
         )
+    }
+}
+
+fn is_missing_source_error(err: &eyre::Report) -> bool {
+    err.chain().any(|cause| {
+        cause
+            .downcast_ref::<std::io::Error>()
+            .is_some_and(|err| err.kind() == std::io::ErrorKind::NotFound)
+    }) || {
+        let message = err.to_string();
+        message.starts_with("No candidate source files available for ")
+            || message.starts_with("File not found in archive: ")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_missing_source_error;
+    use eyre::eyre;
+
+    #[test]
+    fn missing_source_errors_are_tolerated() {
+        let file_error = eyre!(std::io::Error::new(std::io::ErrorKind::NotFound, "missing"));
+        assert!(is_missing_source_error(&file_error));
+
+        let candidate_error = eyre!("No candidate source files available for logstash_plugins");
+        assert!(is_missing_source_error(&candidate_error));
+
+        let archive_error = eyre!("File not found in archive: logstash_plugins.json");
+        assert!(is_missing_source_error(&archive_error));
+    }
+
+    #[test]
+    fn parse_errors_are_not_tolerated_as_missing_sources() {
+        let parse_error = serde_json::from_str::<serde_json::Value>("{bad").unwrap_err();
+        let parse_error = eyre!(parse_error);
+
+        assert!(!is_missing_source_error(&parse_error));
     }
 }
 

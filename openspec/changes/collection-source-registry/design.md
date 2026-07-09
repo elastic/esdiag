@@ -24,12 +24,15 @@ that the Rust `semver` crate does not accept verbatim.
 
 - Extend the per-source schema to the ADR-0005 field set:
   `{ key, versions, extension, subdir, retry, source_weight, processing_weight,
-  streamable, required, dependencies, tags }`. `role` is derivable (a processable
-  source is one with a typed impl registered; a `_cat`/`.txt` entry with none is
-  collect-only) but the schema makes it explicit for validation.
+  streamable, processable, required, dependencies, collect_dependencies, tags }`.
+  `processable` makes the role explicit for validation, and `required` being
+  present marks a user-facing processing option.
 - Replace the `es_base_apis` Minimal/Standard `vec!["…"]` with derivation via
-  tags/membership, exactly as `Support`/`Light` already resolve — so all four ES
-  types come from one mechanism.
+  tags, exactly as `Support`/`Light` already resolve — so all four ES types come
+  from one mechanism.
+- Collection saves every resolved REST source through the registry key and raw
+  request path. Typed `DataSource` structs are no longer part of collect dispatch;
+  they are processing contracts only.
 - Turn `should_process` into a table: iterate the registry, and for each
   *processable* key dispatch to its typed processor via a plain per-product
   registration table (`key -> impl DataSource/DocumentExporter`). The
@@ -39,6 +42,10 @@ that the Rust `semver` crate does not accept verbatim.
 - `weight()` match and the implicit streaming choice are deleted: `collector.rs`
   reads `source_weight` for collect scheduling, and the streaming dispatch
   (`process_streaming_datasource::<T>`) is gated on the explicit `streamable` flag.
+  The collect and processing concurrency thresholds are deployment-tunable policy
+  (`ESDIAG_COLLECT_POOL`, `ESDIAG_COLLECT_SEQUENTIAL_THRESHOLD`,
+  `ESDIAG_PROCESS_CONCURRENT_THRESHOLD`) with defaults that preserve legacy
+  behavior.
 
 ### Key alignment (prerequisite)
 
@@ -47,16 +54,21 @@ that the Rust `semver` crate does not accept verbatim.
   (e.g. `pending_tasks` → `cluster_pending_tasks`) so weight, `streamable`, and
   type-membership attach to one key. This is *not* a namespace merge: `_cat` text
   APIs stay collect-only, their JSON siblings stay processable; a same-stem pair is
-  two roles of one concept, not a conflict.
+  two roles of one concept, not a conflict. Legacy CLI and saved-job names remain
+  accepted through alias canonicalization, but generated catalogs and new manifests
+  use canonical keys.
 
 ### Reconciliation (ADR-0006)
 
-- A reconciliation script overlays `elastic-rest.yml` (API sources) and `diags.yml`
-  (OS-command sources) into ESDiag's `sources.yml` as a **field-level merge**: it
-  updates `versions`/paths and command definitions, and preserves ESDiag-only fields
-  (`source_weight`, `processing_weight`, `streamable`, `tags`). The merge must know
-  which fields are ESDiag's — a blind copy would wipe the hand-tuned weights.
-- The script converts upstream ranges into native Rust `semver` form at the boundary,
+- A reconciliation utility binary overlays the upstream REST API files into ESDiag's
+  `sources.yml` as a **field-level merge**: it updates `versions`/paths and
+  preserves ESDiag-only fields (`source_weight`, `processing_weight`,
+  `streamable`, `processable`, `required`, `dependencies`, `collect_dependencies`,
+  `tags`). The merge must know which fields are ESDiag's — a blind copy would wipe
+  the hand-tuned weights. The tool verifies the upstream
+  `diags.yml` OS-command catalog path, but command entries are not merged until
+  ESDiag has a command-source transport model.
+- The tool converts upstream ranges into native Rust `semver` form at the boundary,
   so stored `sources.yml` is already in ESDiag's dialect. The runtime then uses stock
   `semver::VersionReq` and the compatibility shim is removed — the impedance is
   absorbed once, at reconciliation, not on every parse.
@@ -71,6 +83,8 @@ that the Rust `semver` crate does not accept verbatim.
   wiring gap; a processable source without a registry entry is an error.
 - Diagnostic-type membership is expressed only as tags/membership in the registry —
   no hardcoded type list survives.
+- All upstream-defined sources carry the `support` tag by default so ESDiag's
+  support bundles remain support-diagnostics compatible.
 - `source_weight` governs only collect concurrency; `processing_weight` governs only
   processing concurrency; neither is consulted by the other stage.
 - The runtime binds to no upstream file; it reads only ESDiag's embedded (or
@@ -92,6 +106,6 @@ that the Rust `semver` crate does not accept verbatim.
   is the primary risk the reconciliation posture accepts, mitigated by tying it to
   both release cadences.
 - **Semver normalization errors.** A mistranslated range at the boundary silently
-  mis-gates a source. Mitigation: normalization runs once, in the script, and is
+  mis-gates a source. Mitigation: normalization runs once, in the tool, and is
   covered by tests over known upstream dialect forms before the runtime shim is
   removed.

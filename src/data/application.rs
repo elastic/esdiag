@@ -64,7 +64,7 @@ impl<'de> Deserialize<'de> for Application {
         D: Deserializer<'de>,
     {
         let s: String = Deserialize::deserialize(deserializer)?;
-        Application::from_str(&s).map_err(|e| serde::de::Error::custom(format!("Unknown application: {}", e)))
+        Application::from_str(&s).map_err(|_| serde::de::Error::custom(format!("Unknown application: {s}")))
     }
 }
 
@@ -100,5 +100,14 @@ mod tests {
             let parsed: Application = serde_json::from_str(&json).expect("deserialize");
             assert_eq!(parsed, application);
         }
+    }
+
+    #[test]
+    fn deserialize_error_includes_input() {
+        let error = serde_json::from_str::<Application>(r#""not-an-application""#).expect_err("invalid application");
+        assert!(
+            error.to_string().contains("Unknown application: not-an-application"),
+            "unexpected error: {error}"
+        );
     }
 }

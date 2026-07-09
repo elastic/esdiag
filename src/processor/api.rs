@@ -1,8 +1,11 @@
+use crate::processor::diagnostic::data_source::{get_product_sources, get_source, get_source_keys_with_tag};
 use eyre::{Result, eyre};
 use indexmap::IndexSet;
 use serde::Serialize;
 use std::collections::HashMap;
-use std::str::FromStr;
+
+const MIN_WEIGHT: u8 = 1;
+const MAX_WEIGHT: u8 = 5;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DiagnosticType {
@@ -26,245 +29,150 @@ impl std::str::FromStr for DiagnosticType {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum ApiWeight {
-    Light,
-    Heavy,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum ElasticsearchApi {
-    AliasList,
-    Cluster,
-    ClusterSettings,
-    DataStreams,
-    HealthReport,
-    IlmExplain,
-    IlmPolicies,
-    IndicesSettings,
-    IndicesStats,
-    Licenses,
-    MappingStats,
-    Nodes,
-    NodesStats,
-    PendingTasks,
-    Repositories,
-    SearchableSnapshotsCacheStats,
-    SearchableSnapshotsStats,
-    Snapshots,
-    SlmPolicies,
-    Tasks,
-    Raw(String, ApiWeight),
-}
-
-impl ElasticsearchApi {
-    pub fn weight(&self) -> ApiWeight {
+impl DiagnosticType {
+    fn tag(&self) -> &'static str {
         match self {
-            ElasticsearchApi::AliasList => ApiWeight::Heavy,
-            ElasticsearchApi::Cluster => ApiWeight::Light,
-            ElasticsearchApi::ClusterSettings => ApiWeight::Light,
-            ElasticsearchApi::DataStreams => ApiWeight::Heavy,
-            ElasticsearchApi::HealthReport => ApiWeight::Light,
-            ElasticsearchApi::IlmExplain => ApiWeight::Light,
-            ElasticsearchApi::IlmPolicies => ApiWeight::Light,
-            ElasticsearchApi::IndicesSettings => ApiWeight::Heavy,
-            ElasticsearchApi::IndicesStats => ApiWeight::Heavy,
-            ElasticsearchApi::Licenses => ApiWeight::Light,
-            ElasticsearchApi::MappingStats => ApiWeight::Heavy,
-            ElasticsearchApi::Nodes => ApiWeight::Light,
-            ElasticsearchApi::NodesStats => ApiWeight::Heavy,
-            ElasticsearchApi::PendingTasks => ApiWeight::Light,
-            ElasticsearchApi::Repositories => ApiWeight::Light,
-            ElasticsearchApi::SearchableSnapshotsCacheStats => ApiWeight::Light,
-            ElasticsearchApi::SearchableSnapshotsStats => ApiWeight::Heavy,
-            ElasticsearchApi::Snapshots => ApiWeight::Heavy,
-            ElasticsearchApi::SlmPolicies => ApiWeight::Light,
-            ElasticsearchApi::Tasks => ApiWeight::Heavy,
-            ElasticsearchApi::Raw(_, weight) => weight.clone(),
-        }
-    }
-
-    pub fn as_str(&self) -> &str {
-        match self {
-            ElasticsearchApi::AliasList => "alias",
-            ElasticsearchApi::Cluster => "cluster",
-            ElasticsearchApi::ClusterSettings => "cluster_settings",
-            ElasticsearchApi::DataStreams => "data_streams",
-            ElasticsearchApi::HealthReport => "health_report",
-            ElasticsearchApi::IlmExplain => "ilm_explain",
-            ElasticsearchApi::IlmPolicies => "ilm_policies",
-            ElasticsearchApi::IndicesSettings => "indices_settings",
-            ElasticsearchApi::IndicesStats => "indices_stats",
-            ElasticsearchApi::Licenses => "licenses",
-            ElasticsearchApi::MappingStats => "mapping_stats",
-            ElasticsearchApi::Nodes => "nodes",
-            ElasticsearchApi::NodesStats => "nodes_stats",
-            ElasticsearchApi::PendingTasks => "pending_tasks",
-            ElasticsearchApi::Repositories => "repositories",
-            ElasticsearchApi::SearchableSnapshotsCacheStats => "searchable_snapshots_cache_stats",
-            ElasticsearchApi::SearchableSnapshotsStats => "searchable_snapshots_stats",
-            ElasticsearchApi::Snapshots => "snapshot",
-            ElasticsearchApi::SlmPolicies => "slm_policies",
-            ElasticsearchApi::Tasks => "tasks",
-            ElasticsearchApi::Raw(name, _) => name.as_str(),
-        }
-    }
-
-    pub fn parse(s: &str) -> Result<Self> {
-        match s {
-            "alias" => Ok(ElasticsearchApi::AliasList),
-            "cluster" => Ok(ElasticsearchApi::Cluster),
-            // `version` in sources.yml corresponds to `/` and maps to `version.json`,
-            // which is the same typed datasource used by `cluster`.
-            "version" => Ok(ElasticsearchApi::Cluster),
-            "cluster_settings" => Ok(ElasticsearchApi::ClusterSettings),
-            "data_streams" => Ok(ElasticsearchApi::DataStreams),
-            "health_report" => Ok(ElasticsearchApi::HealthReport),
-            "ilm_explain" => Ok(ElasticsearchApi::IlmExplain),
-            "ilm_policies" => Ok(ElasticsearchApi::IlmPolicies),
-            "indices_settings" => Ok(ElasticsearchApi::IndicesSettings),
-            "indices_stats" => Ok(ElasticsearchApi::IndicesStats),
-            "licenses" => Ok(ElasticsearchApi::Licenses),
-            "mapping_stats" => Ok(ElasticsearchApi::MappingStats),
-            "nodes" => Ok(ElasticsearchApi::Nodes),
-            "nodes_stats" => Ok(ElasticsearchApi::NodesStats),
-            "pending_tasks" => Ok(ElasticsearchApi::PendingTasks),
-            "repositories" => Ok(ElasticsearchApi::Repositories),
-            "searchable_snapshots_cache_stats" => Ok(ElasticsearchApi::SearchableSnapshotsCacheStats),
-            "searchable_snapshots_stats" => Ok(ElasticsearchApi::SearchableSnapshotsStats),
-            "snapshot" => Ok(ElasticsearchApi::Snapshots),
-            "slm_policies" => Ok(ElasticsearchApi::SlmPolicies),
-            "tasks" => Ok(ElasticsearchApi::Tasks),
-            _ => {
-                let weight = match crate::processor::diagnostic::data_source::get_source("elasticsearch", s, &[]) {
-                    Ok((_, source)) => {
-                        if source.has_tag("light") {
-                            ApiWeight::Light
-                        } else {
-                            ApiWeight::Heavy
-                        }
-                    }
-                    Err(_) => return Err(eyre!("Invalid Elasticsearch API: {}", s)),
-                };
-                Ok(ElasticsearchApi::Raw(s.to_string(), weight))
-            }
+            DiagnosticType::Minimal => "minimal",
+            DiagnosticType::Standard => "standard",
+            DiagnosticType::Light => "light",
+            DiagnosticType::Support => "support",
         }
     }
 }
 
-impl std::str::FromStr for ElasticsearchApi {
-    type Err = eyre::Report;
-
-    fn from_str(s: &str) -> Result<Self> {
-        Self::parse(s)
-    }
+/// Deployment-tunable mapping from per-source weight to collect concurrency
+/// (ADR-0017/ADR-0018): sources at or above `sequential_threshold` fetch
+/// sequentially to protect the source cluster; lighter sources fetch
+/// concurrently in a pool of `concurrent_pool`.
+#[derive(Debug, Clone)]
+pub struct CollectConcurrencyPolicy {
+    pub concurrent_pool: usize,
+    pub sequential_threshold: u8,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum KibanaApi {
-    Status,
-    Spaces,
-    Raw(String),
-}
-
-impl KibanaApi {
-    pub fn as_str(&self) -> &str {
-        match self {
-            KibanaApi::Status => "kibana_status",
-            KibanaApi::Spaces => "kibana_spaces",
-            KibanaApi::Raw(name) => name.as_str(),
-        }
-    }
-
-    pub fn parse(s: &str) -> Result<Self> {
-        crate::processor::diagnostic::data_source::get_source("kibana", s, &[])
-            .map_err(|_| eyre!("Invalid Kibana API: {}", s))?;
-        match s {
-            "kibana_status" => Ok(KibanaApi::Status),
-            "kibana_spaces" => Ok(KibanaApi::Spaces),
-            _ => Ok(KibanaApi::Raw(s.to_string())),
+impl Default for CollectConcurrencyPolicy {
+    fn default() -> Self {
+        Self {
+            concurrent_pool: 5,
+            sequential_threshold: 3,
         }
     }
 }
 
-impl std::str::FromStr for KibanaApi {
-    type Err = eyre::Report;
+impl CollectConcurrencyPolicy {
+    /// Resolve the policy, allowing deployment overrides via
+    /// `ESDIAG_COLLECT_POOL` and `ESDIAG_COLLECT_SEQUENTIAL_THRESHOLD`.
+    pub fn from_env() -> Self {
+        let default = Self::default();
+        Self {
+            concurrent_pool: std::env::var("ESDIAG_COLLECT_POOL")
+                .ok()
+                .and_then(|value| value.parse().ok())
+                .filter(|pool| *pool > 0)
+                .unwrap_or(default.concurrent_pool),
+            sequential_threshold: std::env::var("ESDIAG_COLLECT_SEQUENTIAL_THRESHOLD")
+                .ok()
+                .and_then(|value| value.parse().ok())
+                .map(|threshold: u8| threshold.clamp(MIN_WEIGHT, MAX_WEIGHT))
+                .unwrap_or(default.sequential_threshold),
+        }
+    }
 
-    fn from_str(s: &str) -> Result<Self> {
-        Self::parse(s)
+    pub fn is_sequential(&self, source_weight: u8) -> bool {
+        source_weight >= self.sequential_threshold
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum LogstashApi {
-    Node,
-    NodeStats,
-    Raw(String, ApiWeight),
+/// Deployment-tunable mapping from per-source `processing_weight` to
+/// processing concurrency (ADR-0017/ADR-0018): sources at or above
+/// `concurrent_threshold` get their own concurrent processing task; lighter
+/// sources process sequentially.
+#[derive(Debug, Clone)]
+pub struct ProcessingConcurrencyPolicy {
+    pub concurrent_threshold: u8,
 }
 
-impl LogstashApi {
-    fn normalize_name(s: &str) -> Result<String> {
-        let canonical = match s {
-            "node" | "logstash_node" => "logstash_node",
-            "node_stats" | "logstash_node_stats" => "logstash_node_stats",
-            "plugins" | "logstash_plugins" => "logstash_plugins",
-            "version" | "logstash_version" => "logstash_version",
-            "health_report" | "logstash_health_report" => "logstash_health_report",
-            "hot_threads" | "logstash_nodes_hot_threads" => "logstash_nodes_hot_threads",
-            "hot_threads_human" | "logstash_nodes_hot_threads_human" => "logstash_nodes_hot_threads_human",
+impl Default for ProcessingConcurrencyPolicy {
+    fn default() -> Self {
+        Self {
+            concurrent_threshold: 5,
+        }
+    }
+}
+
+impl ProcessingConcurrencyPolicy {
+    /// Resolve the policy, allowing a deployment override via
+    /// `ESDIAG_PROCESS_CONCURRENT_THRESHOLD`.
+    pub fn from_env() -> Self {
+        Self {
+            concurrent_threshold: std::env::var("ESDIAG_PROCESS_CONCURRENT_THRESHOLD")
+                .ok()
+                .and_then(|value| value.parse().ok())
+                .map(|threshold: u8| threshold.clamp(MIN_WEIGHT, MAX_WEIGHT))
+                .unwrap_or(Self::default().concurrent_threshold),
+        }
+    }
+
+    pub fn is_concurrent(&self, processing_weight: u8) -> bool {
+        processing_weight >= self.concurrent_threshold
+    }
+}
+
+/// Map a legacy source name onto its canonical registry key (ADR-0005 key
+/// alignment). Accepts historical CLI/saved-job names so existing inputs keep
+/// working; the canonical key is the registry key.
+fn legacy_key_map<'a>(product: &str, name: &'a str) -> &'a str {
+    match product {
+        "elasticsearch" => match name {
+            "cluster" => "version",
+            "pending_tasks" => "cluster_pending_tasks",
+            "mapping_stats" => "mapping",
+            "data_streams" => "data_stream",
+            "internal_health" => "health_report",
+            "settings" => "indices_settings",
             other => other,
-        };
-
-        crate::processor::diagnostic::data_source::get_source("logstash", canonical, &[])
-            .map_err(|_| eyre!("Invalid Logstash API: {}", s))?;
-        Ok(canonical.to_string())
-    }
-
-    pub fn weight(&self) -> ApiWeight {
-        match self {
-            LogstashApi::Node => ApiWeight::Light,
-            LogstashApi::NodeStats => ApiWeight::Heavy,
-            LogstashApi::Raw(_, weight) => weight.clone(),
-        }
-    }
-
-    pub fn as_str(&self) -> &str {
-        match self {
-            LogstashApi::Node => "logstash_node",
-            LogstashApi::NodeStats => "logstash_node_stats",
-            LogstashApi::Raw(name, _) => name.as_str(),
-        }
-    }
-
-    pub fn parse(s: &str) -> Result<Self> {
-        let canonical = Self::normalize_name(s)?;
-        match canonical.as_str() {
-            "logstash_node" => Ok(LogstashApi::Node),
-            "logstash_node_stats" => Ok(LogstashApi::NodeStats),
-            _ => {
-                let weight =
-                    match crate::processor::diagnostic::data_source::get_source("logstash", canonical.as_str(), &[]) {
-                        Ok((_, source)) => {
-                            if source.tags.as_deref() == Some("light") {
-                                ApiWeight::Light
-                            } else {
-                                ApiWeight::Heavy
-                            }
-                        }
-                        Err(_) => return Err(eyre!("Invalid Logstash API: {}", s)),
-                    };
-                Ok(LogstashApi::Raw(canonical, weight))
-            }
-        }
+        },
+        "logstash" => match name {
+            "node" => "logstash_node",
+            "node_stats" => "logstash_node_stats",
+            "plugins" => "logstash_plugins",
+            "version" => "logstash_version",
+            "health_report" => "logstash_health_report",
+            "hot_threads" => "logstash_nodes_hot_threads",
+            "hot_threads_human" => "logstash_nodes_hot_threads_human",
+            other => other,
+        },
+        _ => name,
     }
 }
 
-impl std::str::FromStr for LogstashApi {
-    type Err = eyre::Report;
+/// Resolve a user-provided source name to its canonical registry key,
+/// validating that the key exists in the product's collection definition.
+pub fn canonical_source_key(product: &str, name: &str) -> Result<String> {
+    let key = legacy_key_map(product, name.trim());
+    get_source(product, key, &[]).map_err(|_| eyre!("Invalid {} API: {}", product, name))?;
+    Ok(key.to_string())
+}
 
-    fn from_str(s: &str) -> Result<Self> {
-        Self::parse(s)
-    }
+/// The source weight (1–5) recorded for `key` in the product's registry.
+pub fn source_weight(product: &str, key: &str) -> u8 {
+    get_source(product, key, &[])
+        .map(|(_, source)| source.source_weight())
+        .unwrap_or(3)
+}
+
+/// Whether the registry marks `key` as streamable for processing.
+pub fn is_streamable(product: &str, key: &str) -> bool {
+    get_source(product, key, &[])
+        .map(|(_, source)| source.streamable)
+        .unwrap_or(false)
+}
+
+/// The processing weight (1–5) recorded for `key` in the product's registry.
+pub fn processing_weight(product: &str, key: &str) -> u8 {
+    get_source(product, key, &[])
+        .map(|(_, source)| source.processing_weight())
+        .unwrap_or(1)
 }
 
 pub struct ApiResolver;
@@ -283,11 +191,13 @@ pub struct ProcessSelection {
     pub selected: Vec<String>,
 }
 
+/// A processing option derived from the registry: an entry carrying a
+/// `required` marker is user-selectable at process time.
 #[derive(Debug, Clone)]
 struct ProcessingOptionDef {
-    key: &'static str,
+    key: String,
     required: bool,
-    dependencies: &'static [&'static str],
+    dependencies: Vec<String>,
 }
 
 impl ApiResolver {
@@ -329,7 +239,7 @@ impl ApiResolver {
     }
 
     pub fn es_minimum_required() -> Vec<&'static str> {
-        vec!["cluster"]
+        vec!["version"]
     }
 
     pub fn kb_minimum_required() -> Vec<&'static str> {
@@ -340,17 +250,24 @@ impl ApiResolver {
         vec!["logstash_node"]
     }
 
-    pub fn es_dependencies() -> HashMap<String, Vec<String>> {
-        let mut deps = HashMap::new();
-        deps.insert("nodes_stats".to_string(), vec!["nodes".to_string()]);
-        deps.insert("nodes".to_string(), vec!["cluster_settings".to_string()]);
-        deps
+    /// Collect-stage dependency graph derived from the registry's
+    /// `collect_dependencies` fields.
+    fn collect_dependencies(product: &str) -> HashMap<String, Vec<String>> {
+        get_product_sources(product)
+            .map(|sources| {
+                sources
+                    .iter()
+                    .filter(|(_, source)| !source.collect_dependencies.is_empty())
+                    .map(|(key, source)| (key.clone(), source.collect_dependencies.clone()))
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 
     pub fn kb_dependencies(requested: &IndexSet<String>) -> HashMap<String, Vec<String>> {
         let mut deps = HashMap::new();
         for api in requested {
-            if let Ok((_, source)) = crate::processor::diagnostic::data_source::get_source("kibana", api, &[])
+            if let Ok((_, source)) = get_source("kibana", api, &[])
                 && source.is_spaceaware()
             {
                 deps.entry(api.clone())
@@ -361,114 +278,26 @@ impl ApiResolver {
         deps
     }
 
-    pub fn ls_dependencies() -> HashMap<String, Vec<String>> {
-        let mut deps = HashMap::new();
-        deps.insert(
-            "logstash_node".to_string(),
-            vec!["logstash_version".to_string(), "logstash_plugins".to_string()],
-        );
-        deps.insert("logstash_node_stats".to_string(), vec!["logstash_node".to_string()]);
-        deps
-    }
-
-    fn es_processing_defs() -> &'static [ProcessingOptionDef] {
-        &[
-            ProcessingOptionDef {
-                key: "version",
-                required: true,
-                dependencies: &[],
-            },
-            ProcessingOptionDef {
-                key: "cluster_settings_defaults",
-                required: true,
-                dependencies: &["version"],
-            },
-            ProcessingOptionDef {
-                key: "cluster_settings",
-                required: false,
-                dependencies: &["version", "cluster_settings_defaults"],
-            },
-            ProcessingOptionDef {
-                key: "health_report",
-                required: false,
-                dependencies: &["version"],
-            },
-            ProcessingOptionDef {
-                key: "ilm_policies",
-                required: false,
-                dependencies: &["version"],
-            },
-            ProcessingOptionDef {
-                key: "indices_settings",
-                required: false,
-                dependencies: &["version", "cluster_settings_defaults"],
-            },
-            ProcessingOptionDef {
-                key: "indices_stats",
-                required: false,
-                dependencies: &["version", "cluster_settings_defaults"],
-            },
-            ProcessingOptionDef {
-                key: "nodes",
-                required: false,
-                dependencies: &["version"],
-            },
-            ProcessingOptionDef {
-                key: "nodes_stats",
-                required: false,
-                dependencies: &["nodes", "cluster_settings_defaults", "version"],
-            },
-            ProcessingOptionDef {
-                key: "pending_tasks",
-                required: false,
-                dependencies: &["version"],
-            },
-            ProcessingOptionDef {
-                key: "repositories",
-                required: false,
-                dependencies: &["version"],
-            },
-            ProcessingOptionDef {
-                key: "slm_policies",
-                required: false,
-                dependencies: &["repositories", "version"],
-            },
-            ProcessingOptionDef {
-                key: "snapshot",
-                required: false,
-                dependencies: &["repositories", "version"],
-            },
-            ProcessingOptionDef {
-                key: "tasks",
-                required: false,
-                dependencies: &["nodes", "version"],
-            },
-        ]
-    }
-
-    fn ls_processing_defs() -> &'static [ProcessingOptionDef] {
-        &[
-            ProcessingOptionDef {
-                key: "version",
-                required: true,
-                dependencies: &[],
-            },
-            ProcessingOptionDef {
-                key: "plugins",
-                required: true,
-                dependencies: &["version"],
-            },
-            ProcessingOptionDef {
-                key: "node",
-                required: true,
-                dependencies: &["version"],
-            },
-            ProcessingOptionDef {
-                key: "node_stats",
-                required: false,
-                dependencies: &["node", "version"],
-            },
-        ]
+    /// Processing options derived from the registry (ADR-0005): every entry
+    /// carrying a `required` marker, ordered required-first then by key.
+    fn processing_defs(product: &str) -> Result<Vec<ProcessingOptionDef>> {
+        let sources =
+            get_product_sources(product).ok_or_else(|| eyre!("Unsupported processing product: {}", product))?;
+        let mut defs: Vec<ProcessingOptionDef> = sources
+            .iter()
+            .filter_map(|(key, source)| {
+                source.required.map(|required| ProcessingOptionDef {
+                    key: key.clone(),
+                    required,
+                    dependencies: source.dependencies.clone(),
+                })
+            })
+            .collect();
+        if defs.is_empty() {
+            return Err(eyre!("Unsupported processing product: {}", product));
+        }
+        defs.sort_by(|a, b| b.required.cmp(&a.required).then(a.key.cmp(&b.key)));
+        Ok(defs)
     }
 
     pub fn resolve_processing_options(
@@ -490,7 +319,7 @@ impl ApiResolver {
             .map(|def| ProcessingOption {
                 key: def.key.to_string(),
                 required: def.required,
-                selected: selected.iter().any(|value| value == def.key),
+                selected: selected.contains(&def.key),
             })
             .collect())
     }
@@ -500,20 +329,26 @@ impl ApiResolver {
         diagnostic_type: &str,
         selected: &[String],
     ) -> Result<Vec<String>> {
+        use std::str::FromStr;
         let defs = Self::processing_defs(product)?;
-        let defaults = if diagnostic_type.eq_ignore_ascii_case("custom") {
+        let defaults: Vec<String> = if diagnostic_type.eq_ignore_ascii_case("custom") {
             defs.iter().map(|def| def.key.to_string()).collect()
         } else {
             let diag_type = DiagnosticType::from_str(diagnostic_type)?;
             Self::default_processing_selection(product, &diag_type)?
         };
+        // Canonicalize user-provided keys so legacy saved selections keep
+        // resolving (ADR-0005 key alignment).
         let mut requested: IndexSet<String> = if selected.is_empty() {
             defaults.into_iter().collect()
         } else {
-            selected.iter().cloned().collect()
+            selected
+                .iter()
+                .map(|key| legacy_key_map(product, key.trim()).to_string())
+                .collect()
         };
 
-        for def in defs {
+        for def in &defs {
             if def.required {
                 requested.insert(def.key.to_string());
             }
@@ -522,7 +357,7 @@ impl ApiResolver {
         let mut resolved: IndexSet<String> = IndexSet::new();
         let mut visited = IndexSet::new();
         for key in requested {
-            Self::resolve_processing_deps(product, &key, &mut resolved, &mut visited)?;
+            Self::resolve_processing_deps(&defs, product, &key, &mut resolved, &mut visited)?;
         }
 
         Ok(resolved.into_iter().collect())
@@ -543,42 +378,21 @@ impl ApiResolver {
         Ok(catalog)
     }
 
-    fn processing_defs(product: &str) -> Result<&'static [ProcessingOptionDef]> {
-        match product {
-            "elasticsearch" => Ok(Self::es_processing_defs()),
-            "logstash" => Ok(Self::ls_processing_defs()),
-            _ => Err(eyre!("Unsupported processing product: {}", product)),
-        }
-    }
-
     fn default_processing_selection(product: &str, diag_type: &DiagnosticType) -> Result<Vec<String>> {
-        match product {
-            "elasticsearch" => {
-                let selected = Self::resolve_es(diag_type, None, None)?
-                    .into_iter()
-                    .map(|api| api.as_str().to_string())
-                    .filter(|key| Self::es_processing_defs().iter().any(|def| def.key == key))
-                    .collect();
-                Ok(selected)
-            }
-            "logstash" => {
-                let selected = Self::resolve_ls(diag_type, None, None)?
-                    .into_iter()
-                    .map(|api| {
-                        api.as_str()
-                            .strip_prefix("logstash_")
-                            .unwrap_or(api.as_str())
-                            .to_string()
-                    })
-                    .filter(|key| Self::ls_processing_defs().iter().any(|def| def.key == key))
-                    .collect();
-                Ok(selected)
-            }
-            _ => Err(eyre!("Unsupported processing product: {}", product)),
-        }
+        let resolved = match product {
+            "elasticsearch" => Self::resolve_es(diag_type, None, None)?,
+            "logstash" => Self::resolve_ls(diag_type, None, None)?,
+            _ => return Err(eyre!("Unsupported processing product: {}", product)),
+        };
+        let defs = Self::processing_defs(product)?;
+        Ok(resolved
+            .into_iter()
+            .filter(|key| defs.iter().any(|def| def.key == *key))
+            .collect())
     }
 
     fn resolve_processing_deps(
+        defs: &[ProcessingOptionDef],
         product: &str,
         key: &str,
         resolved: &mut IndexSet<String>,
@@ -588,187 +402,129 @@ impl ApiResolver {
             return Ok(());
         }
         visited.insert(key.to_string());
-        let def = Self::processing_defs(product)?
+        let def = defs
             .iter()
             .find(|def| def.key == key)
             .ok_or_else(|| eyre!("Unsupported processing option '{}' for {}", key, product))?;
 
-        for dep in def.dependencies {
-            Self::resolve_processing_deps(product, dep, resolved, visited)?;
+        for dep in &def.dependencies {
+            Self::resolve_processing_deps(defs, product, dep, resolved, visited)?;
         }
         resolved.insert(key.to_string());
         Ok(())
     }
 
+    /// The base source keys for an Elasticsearch diagnostic type, derived
+    /// entirely from registry tags/membership (ADR-0005).
     pub fn es_base_apis(diag_type: &DiagnosticType) -> Vec<String> {
-        match diag_type {
-            DiagnosticType::Minimal => vec!["cluster".to_string(), "nodes".to_string()],
-            DiagnosticType::Standard => vec![
-                "alias".to_string(),
-                "cluster".to_string(),
-                "cluster_settings".to_string(),
-                "data_streams".to_string(),
-                "health_report".to_string(),
-                "ilm_explain".to_string(),
-                "ilm_policies".to_string(),
-                "indices_settings".to_string(),
-                "indices_stats".to_string(),
-                "licenses".to_string(),
-                "mapping_stats".to_string(),
-                "nodes".to_string(),
-                "nodes_stats".to_string(),
-                "pending_tasks".to_string(),
-                "repositories".to_string(),
-                "searchable_snapshots_cache_stats".to_string(),
-                "searchable_snapshots_stats".to_string(),
-                "snapshot".to_string(),
-                "slm_policies".to_string(),
-                "tasks".to_string(),
-            ],
-            DiagnosticType::Support => crate::processor::diagnostic::data_source::get_source_keys("elasticsearch"),
-            DiagnosticType::Light => {
-                let mut light_apis =
-                    crate::processor::diagnostic::data_source::get_source_keys_with_tag("elasticsearch", "light");
-                if !light_apis.iter().any(|api| api == "cluster") {
-                    light_apis.push("cluster".to_string());
-                }
-                if !light_apis.iter().any(|api| api == "nodes") {
-                    light_apis.push("nodes".to_string());
-                }
-                light_apis
-            }
-        }
+        Self::base_keys("elasticsearch", diag_type)
     }
 
     pub fn kb_base_apis(diag_type: &DiagnosticType) -> Vec<String> {
         match diag_type {
             DiagnosticType::Minimal => Self::kb_minimum_required().into_iter().map(str::to_string).collect(),
             DiagnosticType::Standard | DiagnosticType::Support | DiagnosticType::Light => {
-                crate::processor::diagnostic::data_source::get_source_keys("kibana")
+                Self::base_keys("kibana", diag_type)
             }
         }
     }
 
-    pub fn resolve_es(
-        diag_type: &DiagnosticType,
+    fn ls_base_apis(diag_type: &DiagnosticType) -> Vec<String> {
+        match diag_type {
+            DiagnosticType::Minimal => vec!["logstash_node".to_string()],
+            DiagnosticType::Standard | DiagnosticType::Light => Self::base_keys("logstash", diag_type),
+            DiagnosticType::Support => Self::base_keys("logstash", diag_type),
+        }
+    }
+
+    fn base_keys(product: &str, diag_type: &DiagnosticType) -> Vec<String> {
+        let mut keys = get_source_keys_with_tag(product, diag_type.tag());
+        keys.sort();
+        keys
+    }
+
+    fn resolve_keys(
+        product: &str,
+        base: Vec<String>,
         include: Option<&Vec<String>>,
         exclude: Option<&Vec<String>>,
-    ) -> Result<Vec<ElasticsearchApi>> {
-        let mut requested: IndexSet<String> = IndexSet::new();
-
-        for api in Self::es_base_apis(diag_type) {
-            requested.insert(api.to_string());
-        }
+        minimum_required: &[&str],
+        dependencies: &HashMap<String, Vec<String>>,
+    ) -> Result<Vec<String>> {
+        let mut requested: IndexSet<String> = base.into_iter().collect();
 
         if let Some(incs) = include {
             for api in incs {
-                ElasticsearchApi::parse(api)?;
-                requested.insert(api.to_string());
+                requested.insert(canonical_source_key(product, api)?);
             }
         }
 
         if let Some(excs) = exclude {
             for api in excs {
-                ElasticsearchApi::parse(api)?;
-                requested.swap_remove(api);
+                let key = canonical_source_key(product, api)?;
+                requested.swap_remove(&key);
             }
         }
 
-        let final_set = Self::resolve_requested(requested, &Self::es_minimum_required(), &Self::es_dependencies());
+        let final_set = Self::resolve_requested(requested, minimum_required, dependencies);
+        Ok(final_set.into_iter().collect())
+    }
 
-        let mut api_set: IndexSet<ElasticsearchApi> = IndexSet::new();
-        for api in final_set.iter() {
-            api_set.insert(ElasticsearchApi::parse(api)?);
-        }
-
-        let apis: Vec<ElasticsearchApi> = api_set.into_iter().collect();
-        Ok(apis)
+    /// Resolve the canonical registry keys to collect for an Elasticsearch
+    /// diagnostic.
+    pub fn resolve_es(
+        diag_type: &DiagnosticType,
+        include: Option<&Vec<String>>,
+        exclude: Option<&Vec<String>>,
+    ) -> Result<Vec<String>> {
+        Self::resolve_keys(
+            "elasticsearch",
+            Self::es_base_apis(diag_type),
+            include,
+            exclude,
+            &Self::es_minimum_required(),
+            &Self::collect_dependencies("elasticsearch"),
+        )
     }
 
     pub fn resolve_kb(
         diag_type: &DiagnosticType,
         include: Option<&Vec<String>>,
         exclude: Option<&Vec<String>>,
-    ) -> Result<Vec<KibanaApi>> {
-        let mut requested: IndexSet<String> = IndexSet::new();
-
-        for api in Self::kb_base_apis(diag_type) {
-            requested.insert(api);
-        }
+    ) -> Result<Vec<String>> {
+        let mut requested: IndexSet<String> = Self::kb_base_apis(diag_type).into_iter().collect();
 
         if let Some(incs) = include {
             for api in incs {
-                KibanaApi::parse(api)?;
-                requested.insert(api.to_string());
+                requested.insert(canonical_source_key("kibana", api)?);
             }
         }
 
         if let Some(excs) = exclude {
             for api in excs {
-                KibanaApi::parse(api)?;
-                requested.swap_remove(api);
+                let key = canonical_source_key("kibana", api)?;
+                requested.swap_remove(&key);
             }
         }
 
         let deps = Self::kb_dependencies(&requested);
         let final_set = Self::resolve_requested(requested, &Self::kb_minimum_required(), &deps);
-
-        let mut api_set: IndexSet<KibanaApi> = IndexSet::new();
-        for api in final_set.iter() {
-            api_set.insert(KibanaApi::parse(api)?);
-        }
-
-        Ok(api_set.into_iter().collect())
+        Ok(final_set.into_iter().collect())
     }
 
     pub fn resolve_ls(
         diag_type: &DiagnosticType,
         include: Option<&Vec<String>>,
         exclude: Option<&Vec<String>>,
-    ) -> Result<Vec<LogstashApi>> {
-        let mut requested: IndexSet<String> = IndexSet::new();
-
-        let base_apis: Vec<String> = match diag_type {
-            DiagnosticType::Minimal => vec!["logstash_node".to_string()],
-            DiagnosticType::Standard | DiagnosticType::Light => {
-                vec!["logstash_node".to_string(), "logstash_node_stats".to_string()]
-            }
-            DiagnosticType::Support => {
-                let sources = crate::processor::diagnostic::data_source::get_sources();
-                if let Some(logstash_sources) = sources.get("logstash") {
-                    logstash_sources.keys().cloned().collect()
-                } else {
-                    vec![]
-                }
-            }
-        };
-
-        for api in base_apis {
-            requested.insert(api);
-        }
-
-        if let Some(incs) = include {
-            for api in incs {
-                let normalized = LogstashApi::normalize_name(api)?;
-                requested.insert(normalized);
-            }
-        }
-
-        if let Some(excs) = exclude {
-            for api in excs {
-                let normalized = LogstashApi::normalize_name(api)?;
-                requested.swap_remove(&normalized);
-            }
-        }
-
-        let final_set = Self::resolve_requested(requested, &Self::ls_minimum_required(), &Self::ls_dependencies());
-
-        let mut apis = Vec::new();
-        for api in final_set.iter() {
-            apis.push(LogstashApi::parse(api)?);
-        }
-
-        Ok(apis)
+    ) -> Result<Vec<String>> {
+        Self::resolve_keys(
+            "logstash",
+            Self::ls_base_apis(diag_type),
+            include,
+            exclude,
+            &Self::ls_minimum_required(),
+            &Self::collect_dependencies("logstash"),
+        )
     }
 }
 
@@ -781,20 +537,19 @@ mod tests {
         let apis =
             ApiResolver::resolve_es(&DiagnosticType::Minimal, Some(&vec!["nodes_stats".to_string()]), None).unwrap();
 
-        let api_strs: Vec<&str> = apis.iter().map(|a| a.as_str()).collect();
-        assert!(api_strs.contains(&"cluster")); // required
-        assert!(api_strs.contains(&"nodes")); // resolved as dependency of nodes_stats
-        assert!(api_strs.contains(&"nodes_stats")); // explicitly included
-        assert!(api_strs.contains(&"cluster_settings")); // resolved as dependency of nodes
+        assert!(apis.contains(&"version".to_string())); // required
+        assert!(apis.contains(&"nodes".to_string())); // resolved as dependency of nodes_stats
+        assert!(apis.contains(&"nodes_stats".to_string())); // explicitly included
+        assert!(!apis.contains(&"cluster_settings".to_string())); // nodes has no collect-time settings dependency
     }
 
     #[test]
     fn test_es_resolve_exclude_required() {
         let apis =
-            ApiResolver::resolve_es(&DiagnosticType::Standard, None, Some(&vec!["cluster".to_string()])).unwrap();
+            ApiResolver::resolve_es(&DiagnosticType::Standard, None, Some(&vec!["version".to_string()])).unwrap();
 
-        let api_strs: Vec<&str> = apis.iter().map(|a| a.as_str()).collect();
-        assert!(api_strs.contains(&"cluster")); // Should still be there because it's required
+        // Should still be there because it's the minimum requirement
+        assert!(apis.contains(&"version".to_string()));
     }
 
     #[test]
@@ -816,19 +571,155 @@ mod tests {
         )
         .unwrap();
 
-        let api_strs: Vec<&str> = apis.iter().map(|a| a.as_str()).collect();
-        assert_eq!(api_strs.iter().filter(|&&x| x == "nodes").count(), 1);
+        assert_eq!(apis.iter().filter(|key| *key == "nodes").count(), 1);
     }
 
     #[test]
-    fn test_es_version_alias_dedupes_to_cluster() {
-        let apis = ApiResolver::resolve_es(&DiagnosticType::Minimal, Some(&vec!["version".to_string()]), None).unwrap();
+    fn test_es_legacy_cluster_alias_dedupes_to_version() {
+        let apis = ApiResolver::resolve_es(&DiagnosticType::Minimal, Some(&vec!["cluster".to_string()]), None).unwrap();
 
-        let cluster_count = apis
-            .iter()
-            .filter(|api| matches!(api, ElasticsearchApi::Cluster))
-            .count();
-        assert_eq!(cluster_count, 1);
+        assert_eq!(apis.iter().filter(|key| *key == "version").count(), 1);
+        assert!(!apis.contains(&"cluster".to_string()));
+    }
+
+    #[test]
+    fn test_es_minimal_and_standard_derive_from_tags() {
+        let minimal = ApiResolver::es_base_apis(&DiagnosticType::Minimal);
+        assert_eq!(minimal, vec!["nodes".to_string(), "version".to_string()]);
+
+        let standard = ApiResolver::es_base_apis(&DiagnosticType::Standard);
+        for key in [
+            "alias",
+            "version",
+            "cluster_settings",
+            "cluster_settings_defaults",
+            "data_stream",
+            "health_report",
+            "ilm_explain",
+            "ilm_policies",
+            "indices_settings",
+            "indices_stats",
+            "licenses",
+            "mapping",
+            "nodes",
+            "nodes_stats",
+            "cluster_pending_tasks",
+            "repositories",
+            "searchable_snapshots_cache_stats",
+            "snapshot",
+            "slm_policies",
+            "tasks",
+        ] {
+            assert!(standard.contains(&key.to_string()), "standard missing {key}");
+        }
+        assert!(!standard.contains(&"searchable_snapshots_stats".to_string()));
+        assert_eq!(standard.len(), 20);
+    }
+
+    #[test]
+    fn test_es_support_derives_from_tags() {
+        let support = ApiResolver::es_base_apis(&DiagnosticType::Support);
+        assert!(!support.is_empty());
+        assert!(support.iter().all(|key| {
+            get_source("elasticsearch", key, &[])
+                .map(|(_, source)| source.has_tag("support"))
+                .unwrap_or(false)
+        }));
+        assert!(support.contains(&"searchable_snapshots_stats".to_string()));
+    }
+
+    #[test]
+    fn test_source_without_type_tag_can_be_explicitly_included() {
+        let apis = ApiResolver::resolve_es(
+            &DiagnosticType::Standard,
+            Some(&vec!["searchable_snapshots_stats".to_string()]),
+            None,
+        )
+        .unwrap();
+
+        assert!(apis.contains(&"searchable_snapshots_stats".to_string()));
+    }
+
+    #[test]
+    fn test_legacy_keys_canonicalize() {
+        assert_eq!(
+            canonical_source_key("elasticsearch", "pending_tasks").unwrap(),
+            "cluster_pending_tasks"
+        );
+        assert_eq!(
+            canonical_source_key("elasticsearch", "mapping_stats").unwrap(),
+            "mapping"
+        );
+        assert_eq!(
+            canonical_source_key("elasticsearch", "data_streams").unwrap(),
+            "data_stream"
+        );
+        assert_eq!(
+            canonical_source_key("elasticsearch", "internal_health").unwrap(),
+            "health_report"
+        );
+        assert_eq!(
+            canonical_source_key("elasticsearch", "settings").unwrap(),
+            "indices_settings"
+        );
+        assert_eq!(canonical_source_key("logstash", "node").unwrap(), "logstash_node");
+        assert!(canonical_source_key("elasticsearch", "not_a_real_api").is_err());
+    }
+
+    #[test]
+    fn test_source_weight_reads_registry_and_legacy_fallback() {
+        // Explicit graded weight
+        assert_eq!(source_weight("elasticsearch", "indices_stats"), 3);
+        assert_eq!(source_weight("elasticsearch", "nodes"), 1);
+        // Legacy fallback: light tag => 1, untagged => 3
+        assert_eq!(source_weight("elasticsearch", "cluster_stats"), 1);
+        assert_eq!(source_weight("elasticsearch", "cluster_state"), 3);
+    }
+
+    #[test]
+    fn test_streamable_flag_reads_registry() {
+        assert!(is_streamable("elasticsearch", "indices_stats"));
+        assert!(is_streamable("elasticsearch", "nodes_stats"));
+        assert!(is_streamable("elasticsearch", "snapshot"));
+        assert!(!is_streamable("elasticsearch", "tasks"));
+    }
+
+    #[test]
+    fn test_collect_concurrency_policy_partitions_by_source_weight() {
+        let policy = CollectConcurrencyPolicy::default();
+        assert!(policy.is_sequential(source_weight("elasticsearch", "indices_stats")));
+        assert!(!policy.is_sequential(source_weight("elasticsearch", "nodes")));
+    }
+
+    #[test]
+    fn test_collect_concurrency_env_threshold_is_clamped() {
+        let mut env = crate::TestEnv::new();
+        env.set("ESDIAG_COLLECT_SEQUENTIAL_THRESHOLD", "0");
+        assert_eq!(CollectConcurrencyPolicy::from_env().sequential_threshold, MIN_WEIGHT);
+
+        env.set("ESDIAG_COLLECT_SEQUENTIAL_THRESHOLD", "99");
+        assert_eq!(CollectConcurrencyPolicy::from_env().sequential_threshold, MAX_WEIGHT);
+    }
+
+    #[test]
+    fn test_processing_concurrency_policy_uses_processing_weight() {
+        let policy = ProcessingConcurrencyPolicy::default();
+        assert!(policy.is_concurrent(processing_weight("elasticsearch", "indices_stats")));
+        assert!(policy.is_concurrent(processing_weight("elasticsearch", "nodes_stats")));
+        // Heavy to fetch but cheap to transform: sequential at process time
+        assert!(!policy.is_concurrent(processing_weight("elasticsearch", "tasks")));
+        // Snapshot is streamable but mid-weight: not its own task
+        assert!(!policy.is_concurrent(processing_weight("elasticsearch", "snapshot")));
+    }
+
+    #[test]
+    fn test_processing_concurrency_env_threshold_is_clamped() {
+        let mut env = crate::TestEnv::new();
+        env.set("ESDIAG_PROCESS_CONCURRENT_THRESHOLD", "0");
+        assert_eq!(ProcessingConcurrencyPolicy::from_env().concurrent_threshold, MIN_WEIGHT);
+
+        env.set("ESDIAG_PROCESS_CONCURRENT_THRESHOLD", "99");
+        assert_eq!(ProcessingConcurrencyPolicy::from_env().concurrent_threshold, MAX_WEIGHT);
     }
 
     #[test]
@@ -844,12 +735,28 @@ mod tests {
     }
 
     #[test]
+    fn test_processing_selection_canonicalizes_legacy_keys() {
+        let selected =
+            ApiResolver::resolve_processing_selection("elasticsearch", "minimal", &["pending_tasks".to_string()])
+                .unwrap();
+        assert!(selected.contains(&"cluster_pending_tasks".to_string()));
+        assert!(!selected.contains(&"pending_tasks".to_string()));
+
+        let selected =
+            ApiResolver::resolve_processing_selection("logstash", "standard", &["node_stats".to_string()]).unwrap();
+        assert!(selected.contains(&"logstash_node_stats".to_string()));
+    }
+
+    #[test]
     fn test_processing_options_marks_required_entries() {
         let options = ApiResolver::resolve_processing_options("logstash", "standard", "").unwrap();
 
-        let version = options.iter().find(|option| option.key == "version").unwrap();
-        let plugins = options.iter().find(|option| option.key == "plugins").unwrap();
-        let node_stats = options.iter().find(|option| option.key == "node_stats").unwrap();
+        let version = options.iter().find(|option| option.key == "logstash_version").unwrap();
+        let plugins = options.iter().find(|option| option.key == "logstash_plugins").unwrap();
+        let node_stats = options
+            .iter()
+            .find(|option| option.key == "logstash_node_stats")
+            .unwrap();
 
         assert!(version.required);
         assert!(plugins.required);
@@ -862,5 +769,8 @@ mod tests {
 
         assert!(options.iter().all(|option| option.selected));
         assert!(options.iter().any(|option| option.key == "tasks"));
+        assert!(options.iter().any(|option| option.key == "searchable_snapshots_stats"));
+        // Processing options derive from the registry, not a hardcoded list
+        assert!(options.iter().any(|option| option.key == "cluster_pending_tasks"));
     }
 }

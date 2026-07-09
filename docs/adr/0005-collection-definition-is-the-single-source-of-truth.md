@@ -31,7 +31,9 @@ The alignment actually needed is narrower than a namespace merge: for a
 key (and `DataSource::name()`). There is existing drift — e.g. dispatch/`es_base_apis`
 use `pending_tasks` while `sources.yml`/`DataSource::name()` use
 `cluster_pending_tasks` — and each such mismatch must be reconciled so weight,
-streamable, and membership attach to one key per processable source.
+streamable, and membership attach to one key per processable source. Legacy input
+names remain accepted as aliases for CLI/saved-job compatibility, but new catalogs,
+dispatch, and bundle manifests use the canonical registry keys.
 
 ## Considered options
 
@@ -62,9 +64,9 @@ streamable, and membership attach to one key per processable source.
   ESDiag-specific per-source value that lives in code today moves into the
   definition, so the full field set becomes roughly:
   `{ key, versions, extension, subdir, retry, source_weight, processing_weight,
-  streamable, required, dependencies, tags }` — where `tags` covers diagnostic-type
-  membership and (per ADR-0001) platform/application. Specifically these move out of
-  code:
+  streamable, processable, required, dependencies, collect_dependencies, tags }` —
+  where `tags` covers diagnostic-type membership and (per ADR-0001)
+  platform/application. Specifically these move out of code:
   - **weight** — from the `api.rs` `weight()` match; today a single `Light`/`Heavy`
     driving collect concurrency (`collector.rs`: Heavy sequential, Light concurrent).
     Per ADR-0017 it becomes two graded per-source axes (`source_weight`,
@@ -73,7 +75,13 @@ streamable, and membership attach to one key per processable source.
   - **streamable** — today *implicit* in which dispatch fn is called
     (`process_streaming_datasource::<T>` for only `IndicesStats`/`NodesStats`/
     `Snapshots`); becomes an explicit flag.
-  - **required** and **dependencies** — from `ProcessingOptionDef`.
+  - **processable** and **required** — encode source role and user-facing processing
+    options: `processable` means a typed implementation is registered; `required`
+    being present means the source appears as a processing option, with `true`
+    making it non-deselectable.
+  - **dependencies** and **collect_dependencies** — from `ProcessingOptionDef` and
+    collect planning respectively. They stay separate because process-time
+    prerequisites and collect-time prerequisites can differ.
   - **diagnostic-type membership** ("bundle type") — from the hardcoded
     `es_base_apis` Minimal/Standard lists; expressed as tags like Light/Support
     already are.

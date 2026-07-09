@@ -46,6 +46,8 @@ published release notes, maintenance branches, and tagged history.
 - Changed Kibana collection and setup to use the shared `kibana-sync` client and bundled asset layout (#341).
 - Made embedded documentation minimally Open Knowledge Format compliant while preserving clean docs viewer rendering (#345).
 - Added documentation viewer tag filtering with debug-mode visibility for developer-only docs (#345).
+- Changed diagnostic platform fields to serialize stable hyphenated platform keys (#347).
+- Changed collection and processing source selection to use canonical registry keys and added a maintainer reconciliation utility for upstream support-diagnostics sources (#348).
 
 ### Fixed
 

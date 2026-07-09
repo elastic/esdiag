@@ -20,10 +20,10 @@ pub struct Plugin {
 
 impl DataSource for Plugins {
     fn name() -> String {
-        "plugins".to_string()
+        "logstash_plugins".to_string()
     }
 
     fn aliases() -> Vec<&'static str> {
-        vec!["logstash_plugins"]
+        vec!["plugins"]
     }
 }

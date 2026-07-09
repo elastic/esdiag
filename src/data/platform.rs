@@ -2,7 +2,7 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::str::FromStr;
 
 /// The deployment environment a diagnostic was collected from.
@@ -12,8 +12,7 @@ use std::str::FromStr;
 /// Determined best-effort from indicators at the receiver; `Unknown` is the
 /// escape hatch for indeterminate provenance (e.g. legacy `support-diagnostics`
 /// bundles) and must be tolerated by every consumer.
-#[derive(Debug, Default, PartialEq, Hash, Clone, Copy, Eq, Serialize)]
-#[serde(rename_all = "lowercase")]
+#[derive(Debug, Default, PartialEq, Hash, Clone, Copy, Eq)]
 pub enum Platform {
     SelfManaged,
     ElasticCloudHosted,
@@ -22,6 +21,15 @@ pub enum Platform {
     KubernetesPlatform,
     #[default]
     Unknown,
+}
+
+impl Serialize for Platform {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(self.key())
+    }
 }
 
 impl Platform {
@@ -76,7 +84,7 @@ impl<'de> Deserialize<'de> for Platform {
         D: Deserializer<'de>,
     {
         let s: String = Deserialize::deserialize(deserializer)?;
-        Platform::from_str(&s).map_err(|e| serde::de::Error::custom(format!("Unknown platform: {}", e)))
+        Platform::from_str(&s).map_err(|_| serde::de::Error::custom(format!("Unknown platform: {s}")))
     }
 }
 
@@ -111,17 +119,27 @@ mod tests {
 
     #[test]
     fn serde_round_trip() {
-        for platform in [
-            Platform::SelfManaged,
-            Platform::ElasticCloudHosted,
-            Platform::ECE,
-            Platform::ECK,
-            Platform::KubernetesPlatform,
-            Platform::Unknown,
+        for (platform, expected) in [
+            (Platform::SelfManaged, "self-managed"),
+            (Platform::ElasticCloudHosted, "elastic-cloud-hosted"),
+            (Platform::ECE, "elastic-cloud-enterprise"),
+            (Platform::ECK, "elastic-cloud-kubernetes"),
+            (Platform::KubernetesPlatform, "kubernetes-platform"),
+            (Platform::Unknown, "unknown"),
         ] {
             let json = serde_json::to_string(&platform).expect("serialize");
+            assert_eq!(json, format!("\"{expected}\""));
             let parsed: Platform = serde_json::from_str(&json).expect("deserialize");
             assert_eq!(parsed, platform);
         }
+    }
+
+    #[test]
+    fn deserialize_error_includes_input() {
+        let error = serde_json::from_str::<Platform>(r#""not-a-platform""#).expect_err("invalid platform");
+        assert!(
+            error.to_string().contains("Unknown platform: not-a-platform"),
+            "unexpected error: {error}"
+        );
     }
 }
