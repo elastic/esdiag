@@ -23,7 +23,9 @@ pub use diagnostic::{
     DataSource, DiagnosticManifest, DiagnosticReport, Manifest, RequestedApi, SourceContext,
     data_source::init_sources,
     manifest::ManifestBuilder,
-    report::{BatchResponse, Identifiers, ProcessorSummary},
+    report::{
+        BatchResponse, DiagnosticEvent, DiagnosticOutcome, EventSeverity, Identifiers, ProcessorSummary, SkipKind,
+    },
 };
 pub use elasticsearch::Cluster as ElasticsearchCluster;
 
@@ -102,38 +104,31 @@ impl State for Processing {}
 impl State for Completed {}
 impl State for Failed {}
 
-pub enum IncludedDiagnosticOutcome {
-    Completed {
-        job_id: u64,
-        path: String,
-        report: Box<DiagnosticReport>,
-        runtime: u128,
-    },
-    Skipped {
-        job_id: u64,
-        path: String,
-        application: Option<Application>,
-        platform: Platform,
-        reason: String,
-    },
-    Failed {
-        job_id: u64,
-        path: String,
-        error: String,
-    },
+/// The preserved result of one included (child) diagnostic execution. The
+/// verdict is the unified [`DiagnosticOutcome`] (ADR-0016) — the same type a
+/// parent derives — so a child can be `Partial`, and a skip carries its
+/// by-design vs not-implemented kind.
+pub struct IncludedDiagnosticOutcome {
+    pub job_id: u64,
+    pub path: String,
+    /// Unified verdict; derived from the child's own report when one exists.
+    pub outcome: DiagnosticOutcome,
+    /// The child's report, when the child ran far enough to produce one.
+    pub report: Option<Box<DiagnosticReport>>,
+    pub application: Option<Application>,
+    pub platform: Platform,
+    /// Skip reason or failure error, when the child did not complete.
+    pub reason: Option<String>,
+    pub runtime: Option<u128>,
 }
 
 impl IncludedDiagnosticOutcome {
     pub fn job_id(&self) -> u64 {
-        match self {
-            Self::Completed { job_id, .. } | Self::Skipped { job_id, .. } | Self::Failed { job_id, .. } => *job_id,
-        }
+        self.job_id
     }
 
     pub fn path(&self) -> &str {
-        match self {
-            Self::Completed { path, .. } | Self::Skipped { path, .. } | Self::Failed { path, .. } => path,
-        }
+        &self.path
     }
 }
 
@@ -150,6 +145,7 @@ pub enum IncludedDiagnosticJobEvent {
     Completed {
         job_id: u64,
         path: String,
+        outcome: DiagnosticOutcome,
         application: Option<Application>,
         platform: Platform,
         diagnostic_id: String,
@@ -160,6 +156,7 @@ pub enum IncludedDiagnosticJobEvent {
     Skipped {
         job_id: u64,
         path: String,
+        outcome: DiagnosticOutcome,
         application: Option<Application>,
         platform: Platform,
         reason: String,
@@ -216,11 +213,11 @@ fn spawn_sub_processors(
             let receiver = match parent_receiver.clone_for_subdir(&path) {
                 Ok(receiver) => Arc::new(receiver),
                 Err(e) => {
-                    let outcome = IncludedDiagnosticOutcome::Failed {
-                        job_id: child_job_id,
+                    let outcome = failed_child_outcome(
+                        child_job_id,
                         path,
-                        error: format!("Failed to clone receiver for included diagnostic: {e}"),
-                    };
+                        format!("Failed to clone receiver for included diagnostic: {e}"),
+                    );
                     send_child_outcome_event(&event_tx, &outcome);
                     return outcome;
                 }
@@ -229,11 +226,11 @@ fn spawn_sub_processors(
             let processor = match Processor::try_new_child(receiver, exporter, ident_clone).await {
                 Ok(processor) => processor,
                 Err(e) => {
-                    let outcome = IncludedDiagnosticOutcome::Failed {
-                        job_id: child_job_id,
+                    let outcome = failed_child_outcome(
+                        child_job_id,
                         path,
-                        error: format!("Failed to read included diagnostic manifest: {e}"),
-                    };
+                        format!("Failed to read included diagnostic manifest: {e}"),
+                    );
                     send_child_outcome_event(&event_tx, &outcome);
                     return outcome;
                 }
@@ -245,41 +242,54 @@ fn spawn_sub_processors(
                 Ok(processing) => match processing.process().await {
                     Ok(complete) => {
                         tracing::info!("Included diagnostic processor complete");
-                        let outcome = IncludedDiagnosticOutcome::Completed {
+                        let report = complete.state.report;
+                        // The child's verdict derives from its own report,
+                        // exactly as the parent's does (ADR-0016) — a child
+                        // can be Partial.
+                        let outcome = IncludedDiagnosticOutcome {
                             job_id: child_job_id,
                             path,
-                            report: Box::new(complete.state.report),
-                            runtime: complete.state.runtime,
+                            outcome: report.outcome(),
+                            application: report.diagnostic.application,
+                            platform: report.diagnostic.platform(),
+                            report: Some(Box::new(report)),
+                            reason: None,
+                            runtime: Some(complete.state.runtime),
                         };
                         send_child_outcome_event(&event_tx, &outcome);
                         outcome
                     }
                     Err(failed) => {
-                        let outcome = IncludedDiagnosticOutcome::Failed {
-                            job_id: child_job_id,
+                        let outcome = failed_child_outcome_with_context(
+                            child_job_id,
                             path,
-                            error: failed.state.error,
-                        };
+                            failed.state.error,
+                            application,
+                            platform,
+                        );
                         send_child_outcome_event(&event_tx, &outcome);
                         outcome
                     }
                 },
-                Err(failed) if is_unsupported_child_processor(&failed.state.error) => {
-                    let outcome = IncludedDiagnosticOutcome::Skipped {
-                        job_id: child_job_id,
-                        path,
-                        application,
-                        platform,
-                        reason: failed.state.error,
-                    };
-                    send_child_outcome_event(&event_tx, &outcome);
-                    outcome
-                }
                 Err(failed) => {
-                    let outcome = IncludedDiagnosticOutcome::Failed {
-                        job_id: child_job_id,
-                        path,
-                        error: failed.state.error,
+                    let outcome = match skip_kind_for(&failed.state.error) {
+                        Some(kind) => IncludedDiagnosticOutcome {
+                            job_id: child_job_id,
+                            path,
+                            outcome: DiagnosticOutcome::Skipped(kind),
+                            report: None,
+                            application,
+                            platform,
+                            reason: Some(failed.state.error),
+                            runtime: None,
+                        },
+                        None => failed_child_outcome_with_context(
+                            child_job_id,
+                            path,
+                            failed.state.error,
+                            application,
+                            platform,
+                        ),
                     };
                     send_child_outcome_event(&event_tx, &outcome);
                     outcome
@@ -292,11 +302,11 @@ fn spawn_sub_processors(
                     Ok(outcome) => outcome,
                     Err(e) => {
                         tracing::error!("Included diagnostic task panicked or failed to join: {}", e);
-                        let outcome = IncludedDiagnosticOutcome::Failed {
-                            job_id: child_job_id,
-                            path: join_path,
-                            error: format!("Included diagnostic task failed to join: {e}"),
-                        };
+                        let outcome = failed_child_outcome(
+                            child_job_id,
+                            join_path,
+                            format!("Included diagnostic task failed to join: {e}"),
+                        );
                         send_child_outcome_event(&join_event_tx, &outcome);
                         outcome
                     }
@@ -306,6 +316,39 @@ fn spawn_sub_processors(
         )
     }
     handles
+}
+
+fn failed_child_outcome(job_id: u64, path: String, error: String) -> IncludedDiagnosticOutcome {
+    failed_child_outcome_with_context(job_id, path, error, None, Platform::Unknown)
+}
+
+fn failed_child_outcome_with_context(
+    job_id: u64,
+    path: String,
+    error: String,
+    application: Option<Application>,
+    platform: Platform,
+) -> IncludedDiagnosticOutcome {
+    IncludedDiagnosticOutcome {
+        job_id,
+        path,
+        outcome: DiagnosticOutcome::Failed,
+        report: None,
+        application,
+        platform,
+        reason: Some(error),
+        runtime: None,
+    }
+}
+
+/// Why an unsupported child is skipped (ADR-0019): platform-only bundles are
+/// out of scope by design; Kibana/Agent processing is work in progress.
+fn skip_kind_for(error: &str) -> Option<SkipKind> {
+    match error {
+        KIBANA_PROCESSING_NOT_IMPLEMENTED => Some(SkipKind::NotImplemented),
+        UNSUPPORTED_PRODUCT_OR_DIAGNOSTIC_BUNDLE => Some(SkipKind::ByDesign),
+        _ => None,
+    }
 }
 
 fn send_child_event(
@@ -321,39 +364,30 @@ fn send_child_outcome_event(
     child_event_tx: &Option<mpsc::UnboundedSender<IncludedDiagnosticJobEvent>>,
     outcome: &IncludedDiagnosticOutcome,
 ) {
-    let event = match outcome {
-        IncludedDiagnosticOutcome::Completed {
-            job_id,
-            path,
-            report,
-            runtime,
-        } => IncludedDiagnosticJobEvent::Completed {
-            job_id: *job_id,
-            path: path.clone(),
+    let event = match (&outcome.outcome, &outcome.report) {
+        (DiagnosticOutcome::Skipped(_), _) => IncludedDiagnosticJobEvent::Skipped {
+            job_id: outcome.job_id,
+            path: outcome.path.clone(),
+            outcome: outcome.outcome,
+            application: outcome.application,
+            platform: outcome.platform,
+            reason: outcome.reason.clone().unwrap_or_default(),
+        },
+        (_, Some(report)) => IncludedDiagnosticJobEvent::Completed {
+            job_id: outcome.job_id,
+            path: outcome.path.clone(),
+            outcome: outcome.outcome,
             application: report.diagnostic.application,
             platform: report.diagnostic.platform(),
             diagnostic_id: report.diagnostic.metadata.id.clone(),
             docs_created: report.diagnostic.docs.created,
-            duration_ms: *runtime,
+            duration_ms: outcome.runtime.unwrap_or_default(),
             kibana_link: report.diagnostic.kibana_link.clone(),
         },
-        IncludedDiagnosticOutcome::Skipped {
-            job_id,
-            path,
-            application,
-            platform,
-            reason,
-        } => IncludedDiagnosticJobEvent::Skipped {
-            job_id: *job_id,
-            path: path.clone(),
-            application: *application,
-            platform: *platform,
-            reason: reason.clone(),
-        },
-        IncludedDiagnosticOutcome::Failed { job_id, path, error } => IncludedDiagnosticJobEvent::Failed {
-            job_id: *job_id,
-            path: path.clone(),
-            error: error.clone(),
+        (_, None) => IncludedDiagnosticJobEvent::Failed {
+            job_id: outcome.job_id,
+            path: outcome.path.clone(),
+            error: outcome.reason.clone().unwrap_or_default(),
         },
     };
     send_child_event(child_event_tx, event);
@@ -385,13 +419,6 @@ async fn resolve_platform(manifest: &DiagnosticManifest, receiver: &Receiver, id
         return Platform::SelfManaged;
     }
     Platform::Unknown
-}
-
-fn is_unsupported_child_processor(error: &str) -> bool {
-    matches!(
-        error,
-        KIBANA_PROCESSING_NOT_IMPLEMENTED | UNSUPPORTED_PRODUCT_OR_DIAGNOSTIC_BUNDLE
-    )
 }
 
 impl Processor<Ready> {
@@ -900,10 +927,11 @@ mod tests {
             .map(IncludedDiagnosticOutcome::job_id)
             .collect::<HashSet<_>>();
         assert_eq!(child_job_ids.len(), 2);
-        for outcome in &completed.state.included_diagnostics {
-            let IncludedDiagnosticOutcome::Completed { report, .. } = outcome else {
-                panic!("expected supported child to complete");
-            };
+        for child in &completed.state.included_diagnostics {
+            // Fixture bundles may omit optional selectable sources; absence in
+            // an imported bundle is not a processing failure.
+            assert_eq!(child.outcome, DiagnosticOutcome::Complete);
+            let report = child.report.as_ref().expect("completed child carries its report");
             assert_eq!(report.diagnostic.application, Some(Application::Elasticsearch));
             assert!(report.diagnostic.docs.created > 0);
             assert!(report.diagnostic.identifiers.parent_id.is_some());
@@ -921,18 +949,20 @@ mod tests {
         let completed = process_parent_bundle(root.path()).await;
 
         assert_eq!(completed.state.included_diagnostics.len(), 1);
-        let IncludedDiagnosticOutcome::Skipped {
-            application,
-            platform,
-            reason,
-            ..
-        } = &completed.state.included_diagnostics[0]
-        else {
-            panic!("expected unsupported child to be skipped");
-        };
-        assert_eq!(*application, Some(Application::Kibana));
-        assert_eq!(*platform, Platform::ECK);
-        assert!(reason.contains("Kibana processing is not yet implemented"));
+        let child = &completed.state.included_diagnostics[0];
+        // Kibana processing is work in progress: skipped as not-implemented
+        // (ADR-0016/0019), while the parent still completes
+        assert_eq!(child.outcome, DiagnosticOutcome::Skipped(SkipKind::NotImplemented));
+        assert_eq!(child.application, Some(Application::Kibana));
+        assert_eq!(child.platform, Platform::ECK);
+        assert!(
+            child
+                .reason
+                .as_deref()
+                .unwrap_or_default()
+                .contains("Kibana processing is not yet implemented")
+        );
+        assert_eq!(completed.state.report.outcome(), DiagnosticOutcome::Complete);
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -953,11 +983,32 @@ mod tests {
         assert_eq!(completed.state.report.diagnostic.platform(), Platform::ECK);
         assert_eq!(completed.state.report.diagnostic.display_label(), "ECK");
         assert_eq!(completed.state.included_diagnostics.len(), 1);
-        let IncludedDiagnosticOutcome::Failed { path, error, .. } = &completed.state.included_diagnostics[0] else {
-            panic!("expected unreadable child to fail independently");
-        };
-        assert_eq!(path, "missing-child");
-        assert!(error.contains("Failed to read included diagnostic manifest"));
+        let child = &completed.state.included_diagnostics[0];
+        assert_eq!(child.outcome, DiagnosticOutcome::Failed);
+        assert_eq!(child.path, "missing-child");
+        assert!(
+            child
+                .reason
+                .as_deref()
+                .unwrap_or_default()
+                .contains("Failed to read included diagnostic manifest")
+        );
+    }
+
+    #[test]
+    fn failed_child_outcome_preserves_known_child_context() {
+        let outcome = failed_child_outcome_with_context(
+            42,
+            "child-es".to_string(),
+            "processing failed".to_string(),
+            Some(Application::Elasticsearch),
+            Platform::ECK,
+        );
+
+        assert_eq!(outcome.outcome, DiagnosticOutcome::Failed);
+        assert_eq!(outcome.application, Some(Application::Elasticsearch));
+        assert_eq!(outcome.platform, Platform::ECK);
+        assert_eq!(outcome.reason.as_deref(), Some("processing failed"));
     }
 
     #[tokio::test(flavor = "multi_thread")]

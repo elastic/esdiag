@@ -278,12 +278,16 @@ pub struct HostsPage {
 #[template(path = "job/completed.html")]
 pub struct JobCompleted<'a> {
     pub job_id: u64,
+    pub status_class: &'a str,
+    pub heading: &'a str,
     pub diagnostic_id: &'a str,
     pub docs_created: &'a u32,
     pub duration: &'a str,
     pub source: &'a str,
     pub kibana_link: &'a str,
     pub product: &'a str,
+    /// The derived diagnostic outcome (ADR-0016), e.g. `complete`/`partial`.
+    pub outcome: &'a str,
 }
 
 #[derive(Template)]
@@ -457,24 +461,11 @@ mod tests {
         exporter::Exporter,
     };
     use askama::Template;
-    use std::{collections::BTreeMap, path::PathBuf, sync::Mutex};
-    use tempfile::TempDir;
+    use std::{collections::BTreeMap, path::PathBuf};
     use url::Url;
 
-    fn env_lock() -> &'static Mutex<()> {
-        crate::test_env_lock()
-    }
-
-    fn setup_hosts() -> TempDir {
-        let tmp = TempDir::new().expect("temp dir");
-        let config_dir = tmp.path().join(".esdiag");
-        std::fs::create_dir_all(&config_dir).expect("create config dir");
-        let hosts_path = config_dir.join("hosts.yml");
-        unsafe {
-            std::env::set_var("HOME", tmp.path());
-            std::env::set_var("USERPROFILE", tmp.path());
-            std::env::set_var("ESDIAG_HOSTS", &hosts_path);
-        }
+    fn setup_hosts() -> crate::TestEnv {
+        let env = crate::TestEnv::new();
 
         let mut hosts = BTreeMap::new();
         hosts.insert(
@@ -500,12 +491,11 @@ mod tests {
             ),
         );
         KnownHost::write_hosts_yml(&hosts).expect("write hosts");
-        tmp
+        env
     }
 
     #[test]
     fn footer_context_prefers_live_cli_output_over_saved_host_override() {
-        let _guard = env_lock().lock().expect("env lock");
         let _tmp = setup_hosts();
         let send_hosts = vec!["localhost".to_string(), "secure-prod".to_string()];
         let exporter = Exporter::try_from(Uri::Directory(PathBuf::from("/tmp/output"))).expect("directory exporter");
@@ -527,7 +517,6 @@ mod tests {
 
     #[test]
     fn active_output_security_tracks_selected_host_or_matching_exporter() {
-        let _guard = env_lock().lock().expect("env lock");
         let _tmp = setup_hosts();
         let send_hosts = vec!["localhost".to_string(), "secure-prod".to_string()];
 
@@ -630,12 +619,15 @@ mod tests {
         let docs_created = 42;
         let completed = JobCompleted {
             job_id: 100,
+            status_class: "status-success",
+            heading: "Processing complete!",
             diagnostic_id: "elasticsearch_diagnostic@2026-01-01~abcd",
             docs_created: &docs_created,
             duration: "0.500",
             source: "Included diagnostic: child-es",
             kibana_link: "https://kb.example/app/dashboards#/view/child",
             product: "Elasticsearch",
+            outcome: "complete",
         }
         .render()
         .expect("completed template renders");
@@ -643,15 +635,20 @@ mod tests {
         assert!(completed.contains("elasticsearch_diagnostic@2026-01-01~abcd"));
         assert!(completed.contains("https://kb.example/app/dashboards#/view/child"));
         assert!(completed.contains("Included diagnostic: child-es"));
+        assert!(completed.contains("status-success"));
+        assert!(completed.contains("Processing complete!"));
 
         let no_link = JobCompleted {
             job_id: 102,
+            status_class: "status-success",
+            heading: "Processing complete!",
             diagnostic_id: "elasticsearch_diagnostic@2026-01-01~efgh",
             docs_created: &docs_created,
             duration: "0.500",
             source: "Included diagnostic: child-es",
             kibana_link: "",
             product: "Elasticsearch",
+            outcome: "complete",
         }
         .render()
         .expect("completed template without Kibana link renders");

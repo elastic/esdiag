@@ -35,6 +35,9 @@ mod pending_tasks;
 /// The `_searchable_snapshots_cache/stats` API
 mod searchable_snapshots_cache_stats;
 /// The `_searchable_snapshots/stats` API
+// Collect-only today (registry entry without `processable`); the typed
+// structs remain for a future processing implementation.
+#[allow(dead_code)]
 mod searchable_snapshots_stats;
 /// The `_slm/policy` API
 mod slm_policies;
@@ -87,7 +90,6 @@ use {
     nodes_stats::NodesStats,
     pending_tasks::PendingTasks,
     searchable_snapshots_cache_stats::{SearchableSnapshotsCacheStats, SharedCacheStats},
-    searchable_snapshots_stats::SearchableSnapshotsStats,
     slm_policies::SlmPolicies,
     snapshots::{Repositories, Snapshots},
     tasks::Tasks,
@@ -275,12 +277,24 @@ impl ElasticsearchDiagnostic {
                         .await
                         .was_parsed(),
                     Err(settings_err) => {
-                        tracing::warn!(
-                            "Failed to read cluster_settings_defaults and cluster_settings: {}; {}",
-                            defaults_err,
-                            settings_err
-                        );
-                        ProcessorSummary::new(ClusterSettings::name())
+                        if missing_source_error(&defaults_err) && missing_source_error(&settings_err) {
+                            tracing::debug!(
+                                "cluster_settings_defaults and cluster_settings are absent: {}; {}",
+                                defaults_err,
+                                settings_err
+                            );
+                            ProcessorSummary::missing(ClusterSettings::name())
+                        } else {
+                            tracing::warn!(
+                                "Failed to read cluster_settings_defaults and cluster_settings: {}; {}",
+                                defaults_err,
+                                settings_err
+                            );
+                            ProcessorSummary::new(ClusterSettings::name()).with_error(format!(
+                                "Failed to read cluster_settings_defaults and cluster_settings: {}; {}",
+                                defaults_err, settings_err
+                            ))
+                        }
                     }
                 }
             }
@@ -308,8 +322,13 @@ impl ElasticsearchDiagnostic {
                 })
             }
             Err(err) => {
-                tracing::warn!("{}", err);
-                let summary = ProcessorSummary::new(T::name());
+                let summary = if missing_source_error(&err) {
+                    tracing::debug!("{} is absent: {}", T::name(), err);
+                    ProcessorSummary::missing(T::name())
+                } else {
+                    tracing::warn!("{}", err);
+                    ProcessorSummary::new(T::name()).with_error(err.to_string())
+                };
                 summary_tx.send(summary).await.map_err(|err| {
                     tracing::error!("Failed to send summary: {}", err);
                     eyre!(err)
@@ -351,6 +370,33 @@ impl ElasticsearchDiagnostic {
     }
 }
 
+pub(super) fn missing_source_error(err: &eyre::Report) -> bool {
+    if err
+        .downcast_ref::<std::io::Error>()
+        .is_some_and(|io_err| io_err.kind() == std::io::ErrorKind::NotFound)
+    {
+        return true;
+    }
+
+    err.to_string()
+        .starts_with(crate::receiver::ARCHIVE_FILE_NOT_FOUND_PREFIX)
+}
+
+fn lookup_from_result<T, U>(result: Result<U>, label: &str) -> Lookup<T>
+where
+    T: Clone + Serialize,
+    Lookup<T>: From<U>,
+{
+    match result {
+        Ok(value) => Lookup::<T>::from_parsed(value),
+        Err(err) if missing_source_error(&err) => Lookup::missing(),
+        Err(err) => {
+            tracing::warn!("Failed to parse {}: {}", label, err);
+            Lookup::new()
+        }
+    }
+}
+
 impl DiagnosticProcessor for ElasticsearchDiagnostic {
     async fn try_new(
         receiver: Arc<Receiver>,
@@ -383,17 +429,20 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
         tracing::debug!("ElasticsearchDiagnostic::try_new built report");
 
         let lookups = Lookups {
-            alias: Lookup::from(receiver.get::<AliasList>().await),
-            data_stream: Lookup::from(receiver.get::<DataStreams>().await),
-            index_settings: Lookup::from(receiver.get::<IndicesSettings>().await),
-            node: Lookup::from(receiver.get::<Nodes>().await),
-            ilm_explain: Lookup::from(receiver.get::<IlmExplain>().await),
-            shared_cache: Lookup::from(receiver.get::<SearchableSnapshotsCacheStats>().await),
+            alias: lookup_from_result(receiver.get::<AliasList>().await, "AliasList"),
+            data_stream: lookup_from_result(receiver.get::<DataStreams>().await, "DataStreams"),
+            index_settings: lookup_from_result(receiver.get::<IndicesSettings>().await, "IndicesSettings"),
+            node: lookup_from_result(receiver.get::<Nodes>().await, "Nodes"),
+            ilm_explain: lookup_from_result(receiver.get::<IlmExplain>().await, "IlmExplain"),
+            shared_cache: lookup_from_result(
+                receiver.get::<SearchableSnapshotsCacheStats>().await,
+                "SearchableSnapshotsCacheStats",
+            ),
             mapping_stats: match receiver.get_stream::<MappingStats>().await {
                 Ok(stream) => Lookup::<MappingSummary>::from_stream(stream).await,
                 Err(e) => {
                     tracing::debug!("Streaming mappings failed: {}, falling back to full load", e);
-                    Lookup::from(receiver.get::<MappingStats>().await)
+                    lookup_from_result(receiver.get::<MappingStats>().await, "MappingStats")
                 }
             },
         };

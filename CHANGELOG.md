@@ -46,6 +46,9 @@ published release notes, maintenance branches, and tagged history.
 - Changed Kibana collection and setup to use the shared `kibana-sync` client and bundled asset layout (#341).
 - Made embedded documentation minimally Open Knowledge Format compliant while preserving clean docs viewer rendering (#345).
 - Added documentation viewer tag filtering with debug-mode visibility for developer-only docs (#345).
+- Changed diagnostic outcome derivation so optional sources absent from imported bundles do not make otherwise successful processing partial (#350).
+- Changed `process` to return a non-zero exit when the derived diagnostic outcome is failed (#350).
+- Changed synchronous API results to include a derived `outcome` field and align failed statuses with failed report outcomes (#350).
 
 ### Fixed
 

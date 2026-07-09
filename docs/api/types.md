@@ -117,6 +117,7 @@ Response from `/api/api_key` or `/api/service_link` when `wait_for_completion` i
 [
   {
     "status": "success",
+    "outcome": "complete",
     "diagnostic_id": "string",
     "kibana_link": "string",
     "took": 12345,
@@ -125,6 +126,7 @@ Response from `/api/api_key` or `/api/service_link` when `wait_for_completion` i
   },
   {
     "status": "info",
+    "outcome": "skipped (not implemented)",
     "product": "Kibana",
     "source": "included_diagnostic",
     "path": "namespace/kibana/instance",
@@ -135,15 +137,16 @@ Response from `/api/api_key` or `/api/service_link` when `wait_for_completion` i
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `status` | String | `success`, `info`, or `failed` |
-| `diagnostic_id` | String | Present for `status: "success"` entries. Unique identifier for a successfully processed diagnostic |
-| `kibana_link` | String | Present for `status: "success"` entries. URL to view a successful diagnostic in Kibana dashboard (empty string if `ESDIAG_KIBANA_URL` is not configured) |
-| `took` | Integer | Present for `status: "success"` entries. Processing time in milliseconds |
+| `status` | String | Result category: `success`, `info`, or `failed`. A report-backed entry can have `status: "failed"` when processing completed but the derived diagnostic outcome is failed |
+| `outcome` | String | Derived diagnostic outcome, such as `complete`, `partial`, `failed`, `skipped (by design)`, or `skipped (not implemented)` |
+| `diagnostic_id` | String | Present for report-backed entries. Unique identifier for the processed diagnostic |
+| `kibana_link` | String | Present for report-backed entries. URL to view the diagnostic in Kibana dashboard (empty string if `ESDIAG_KIBANA_URL` is not configured) |
+| `took` | Integer | Present for report-backed entries. Processing time in milliseconds |
 | `product` | String | Product associated with the result entry when known |
 | `source` | String | `parent` or `included_diagnostic` |
 | `path` | String | Present for `source: "included_diagnostic"` entries. Included diagnostic path for child entries |
 | `reason` | String | Present for `status: "info"` entries. Explanation for informational skipped entries |
-| `error` | String | Present for `status: "failed"` child entries. Error message for failed child entries |
+| `error` | String | Present for failed child entries without a report. Error message for failed child entries |
 
 ### Error Response
 

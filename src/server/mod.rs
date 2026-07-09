@@ -23,7 +23,7 @@ mod stats;
 mod template;
 mod theme;
 
-use super::processor::Identifiers;
+use super::processor::{DiagnosticOutcome, Identifiers};
 use crate::{
     data::{KnownHost, Uri},
     exporter::Exporter,
@@ -600,6 +600,23 @@ impl ServerState {
         stats.docs.errors += errors as usize;
         stats.jobs.total += 1;
         stats.jobs.success += 1;
+        if stats.jobs.active > 0 {
+            stats.jobs.active -= 1;
+        }
+        drop(stats);
+        self.notify_stats_changed();
+    }
+
+    pub async fn record_outcome(&self, outcome: DiagnosticOutcome, errors: u32) {
+        if outcome != DiagnosticOutcome::Failed {
+            self.record_success(0, errors).await;
+            return;
+        }
+
+        let mut stats = self.stats.write().await;
+        stats.docs.errors += errors as usize;
+        stats.jobs.total += 1;
+        stats.jobs.failed += 1;
         if stats.jobs.active > 0 {
             stats.jobs.active -= 1;
         }
@@ -1434,13 +1451,12 @@ mod tests {
         SecretAuth, authenticate, create_keystore, resolve_secret_auth, upsert_secret_auth, write_unlock_lease,
     };
     use crate::exporter::Exporter;
+    use crate::processor::DiagnosticOutcome;
     use axum::http::HeaderMap;
     use futures::StreamExt;
     #[cfg(feature = "keystore")]
     use reqwest::Client;
     use std::{collections::HashMap, sync::Arc};
-    #[cfg(feature = "keystore")]
-    use tempfile::TempDir;
     use tokio::{
         sync::{RwLock, broadcast, mpsc, watch},
         time::{Duration, timeout},
@@ -1468,6 +1484,19 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn record_outcome_counts_failed_outcome_as_failed_job() {
+        let state = test_state(RuntimeMode::User);
+
+        state.record_outcome(DiagnosticOutcome::Failed, 2).await;
+
+        let stats = state.stats.read().await;
+        assert_eq!(stats.jobs.total, 1);
+        assert_eq!(stats.jobs.success, 0);
+        assert_eq!(stats.jobs.failed, 1);
+        assert_eq!(stats.docs.errors, 2);
+    }
+
     struct WebFeaturesEnvGuard {
         previous: Option<String>,
         _guard: std::sync::MutexGuard<'static, ()>,
@@ -1484,7 +1513,9 @@ mod tests {
 
     fn with_web_features_env<T>(value: Option<&str>, test: impl FnOnce() -> T) -> T {
         let env_guard = WebFeaturesEnvGuard {
-            _guard: crate::test_env_lock().lock().expect("web features env lock"),
+            _guard: crate::test_env_lock()
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()),
             previous: std::env::var("ESDIAG_WEB_FEATURES").ok(),
         };
         match value {
@@ -1633,20 +1664,8 @@ mod tests {
     }
 
     #[cfg(feature = "keystore")]
-    fn setup_keystore_env() -> TempDir {
-        let tmp = TempDir::new().expect("temp dir");
-        let config_dir = tmp.path().join(".esdiag");
-        std::fs::create_dir_all(&config_dir).expect("create config dir");
-        let keystore_path = config_dir.join("secrets.yml");
-        let hosts_path = config_dir.join("hosts.yml");
-        unsafe {
-            std::env::set_var("HOME", tmp.path());
-            std::env::set_var("USERPROFILE", tmp.path());
-            std::env::set_var("ESDIAG_KEYSTORE", &keystore_path);
-            std::env::set_var("ESDIAG_HOSTS", &hosts_path);
-            std::env::remove_var("ESDIAG_KEYSTORE_PASSWORD");
-        }
-        tmp
+    fn setup_keystore_env() -> crate::TestEnv {
+        crate::TestEnv::new()
     }
 
     #[tokio::test]
@@ -1791,7 +1810,6 @@ mod tests {
     #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn user_mode_keystore_session_is_shared_across_request_users() {
-        let _guard = crate::test_env_lock().lock().expect("env lock");
         let _tmp = setup_keystore_env();
 
         let state = Arc::new(test_state(RuntimeMode::User));
@@ -1812,7 +1830,6 @@ mod tests {
     #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn user_mode_reads_cli_unlock_file() {
-        let _guard = crate::test_env_lock().lock().expect("env lock");
         let _tmp = setup_keystore_env();
         create_keystore("pw").expect("create keystore");
         write_unlock_lease("pw", Duration::from_secs(300)).expect("write unlock lease");
@@ -1827,7 +1844,6 @@ mod tests {
     #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn explicit_web_lock_deletes_unlock_file() {
-        let _guard = crate::test_env_lock().lock().expect("env lock");
         let _tmp = setup_keystore_env();
         create_keystore("pw").expect("create keystore");
         write_unlock_lease("pw", Duration::from_secs(300)).expect("write unlock lease");
@@ -1849,7 +1865,6 @@ mod tests {
     #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn service_mode_does_not_read_unlock_file() {
-        let _guard = crate::test_env_lock().lock().expect("env lock");
         let _tmp = setup_keystore_env();
         create_keystore("pw").expect("create keystore");
         write_unlock_lease("pw", Duration::from_secs(300)).expect("write unlock lease");
@@ -1898,7 +1913,6 @@ mod tests {
     #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn secret_delete_path_prefers_secret_id_route_over_generic_action_route() {
-        let _guard = crate::test_env_lock().lock().expect("env lock");
         let _tmp = setup_keystore_env();
         authenticate("secretpw").expect("create keystore");
         upsert_secret_auth(

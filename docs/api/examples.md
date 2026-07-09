@@ -88,6 +88,7 @@ curl -X POST 'http://localhost:2501/api/service_link?wait_for_completion' \
 [
   {
     "status": "success",
+    "outcome": "complete",
     "diagnostic_id": "elasticsearch-diagnostic-2024-01-15-abc123",
     "kibana_link": "https://kibana.example.com/app/dashboards#/view/4e0a26b2-e5f8-4b2c-a5c8-1a3f2c4d5e6f",
     "took": 42000,
@@ -193,6 +194,7 @@ curl -X POST 'http://localhost:2501/api/api_key?wait_for_completion=true' \
 [
   {
     "status": "success",
+    "outcome": "complete",
     "diagnostic_id": "elasticsearch-diagnostic-2024-01-15-abc123",
     "kibana_link": "https://kibana.example.com/app/dashboards#/view/4e0a26b2-e5f8-4b58-b617-86f5cdd0edad?_g=...",
     "took": 12345,
@@ -204,10 +206,11 @@ curl -X POST 'http://localhost:2501/api/api_key?wait_for_completion=true' \
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `status` | String | `success`, `info`, or `failed` |
-| `diagnostic_id` | String | Unique identifier for a successfully processed diagnostic |
-| `kibana_link` | String | URL to view a successful diagnostic in Kibana (empty string if not configured) |
-| `took` | Number | Processing time in milliseconds for successful entries |
+| `status` | String | `success`, `info`, or `failed`; report-backed entries can be `failed` when their derived outcome is failed |
+| `outcome` | String | Derived diagnostic outcome, such as `complete`, `partial`, `failed`, `skipped (by design)`, or `skipped (not implemented)` |
+| `diagnostic_id` | String | Unique identifier for report-backed diagnostic entries |
+| `kibana_link` | String | URL to view a report-backed diagnostic in Kibana (empty string if not configured) |
+| `took` | Number | Processing time in milliseconds for report-backed entries |
 | `product` | String | Product associated with the result entry when known |
 | `source` | String | `parent` or `included_diagnostic` |
 
@@ -318,14 +321,20 @@ curl -X POST 'http://localhost:2501/api/api_key?wait_for_completion' \
   }'
 ```
 
-2. Response includes diagnostic ID and Kibana link
+2. Response includes one result entry with diagnostic ID and Kibana link
 
 ```json
-{
-  "diagnostic_id": "elasticsearch-diagnostic-2024-01-15-abc123",
-  "kibana_link": "https://kibana.example.com/app/dashboards#/view/4e0a26b2-e5f8-4b58-b617-86f5cdd0edad?_g=...",
-  "took": 12345
-}
+[
+  {
+    "status": "success",
+    "outcome": "complete",
+    "diagnostic_id": "elasticsearch-diagnostic-2024-01-15-abc123",
+    "kibana_link": "https://kibana.example.com/app/dashboards#/view/4e0a26b2-e5f8-4b58-b617-86f5cdd0edad?_g=...",
+    "took": 12345,
+    "product": "Elasticsearch",
+    "source": "parent"
+  }
+]
 ```
 
 3. Use the diagnostic ID and Kibana URL directly in your application

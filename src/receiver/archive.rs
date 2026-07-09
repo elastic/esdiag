@@ -20,6 +20,8 @@ mod file;
 pub use bytes::*;
 pub use file::*;
 
+pub(crate) const ARCHIVE_FILE_NOT_FOUND_PREFIX: &str = "File not found in archive: ";
+
 pub async fn get_stream_from_archive<R, T>(
     archive: Arc<RwLock<ZipArchive<R>>>,
     subdir: Option<PathBuf>,
@@ -164,7 +166,7 @@ pub fn resolve_archive_path<A: Read + Seek>(
     if archive.by_name(&path).is_ok() {
         Ok(path)
     } else {
-        Err(eyre::eyre!("File not found in archive: {}", path))
+        Err(eyre::eyre!("{ARCHIVE_FILE_NOT_FOUND_PREFIX}{path}"))
     }
 }
 

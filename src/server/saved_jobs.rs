@@ -213,23 +213,11 @@ pub async fn delete_saved_job(
 mod tests {
     use super::*;
     use crate::data::{HostRole, Product};
-    use std::{collections::BTreeMap, sync::Mutex};
-    use tempfile::TempDir;
+    use std::collections::BTreeMap;
     use url::Url;
 
-    fn env_lock() -> &'static Mutex<()> {
-        crate::test_env_lock()
-    }
-
-    fn setup_env() -> TempDir {
-        let tmp = TempDir::new().expect("temp dir");
-        let hosts = tmp.path().join("hosts.yml");
-        let keystore = tmp.path().join("secrets.yml");
-        unsafe {
-            std::env::set_var("ESDIAG_HOSTS", &hosts);
-            std::env::set_var("ESDIAG_KEYSTORE", &keystore);
-        }
-        tmp
+    fn setup_env() -> crate::TestEnv {
+        crate::TestEnv::new()
     }
 
     fn save_signals(collect_source: CollectSource, known_host: &str) -> SaveJobSignals {
@@ -246,7 +234,6 @@ mod tests {
 
     #[test]
     fn validate_saved_job_allows_known_host_without_secret_reference() {
-        let _guard = env_lock().lock().expect("env lock");
         let _tmp = setup_env();
 
         let mut hosts = BTreeMap::new();
@@ -269,7 +256,6 @@ mod tests {
 
     #[test]
     fn validate_saved_job_rejects_known_hosts_without_collect_role() {
-        let _guard = env_lock().lock().expect("env lock");
         let _tmp = setup_env();
 
         let mut hosts = BTreeMap::new();
@@ -295,7 +281,6 @@ mod tests {
 
     #[test]
     fn validate_saved_job_rejects_non_known_host_sources() {
-        let _guard = env_lock().lock().expect("env lock");
         let _tmp = setup_env();
 
         let result = validate_saved_job(&save_signals(CollectSource::ApiKey, ""));
@@ -308,7 +293,6 @@ mod tests {
 
     #[test]
     fn validate_saved_job_rejects_non_collect_mode() {
-        let _guard = env_lock().lock().expect("env lock");
         let _tmp = setup_env();
 
         let mut signals = save_signals(CollectSource::KnownHost, "elasticsearch-local");

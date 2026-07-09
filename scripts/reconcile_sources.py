@@ -3,7 +3,7 @@
 
 ESDiag owns its per-product ``assets/<product>/sources.yml``; upstream
 ``support-diagnostics`` is a *reconciliation input*, not a runtime authority.
-This script overlays the upstream definitions into ESDiag's files as a
+This script overlays upstream REST definitions into ESDiag's files as a
 FIELD-LEVEL merge:
 
 * upstream owns:  ``versions`` (request paths + version gating), ``extension``,
@@ -20,6 +20,11 @@ separated clauses) at this boundary, so the runtime parses ranges with stock
 Deliberate divergences (sources ESDiag renames, adds, removes, or corrects)
 are recorded in ``assets/<product>/sources-divergences.yml`` and are never
 reverted by reconciliation.
+
+``support-diagnostics`` also carries OS-command definitions in ``diags.yml``.
+ESDiag does not yet have an OS-command source transport, so this script verifies
+that upstream input path but deliberately does not merge it into the HTTP REST
+registry. See ``docs/source-reconciliation.md``.
 
 Cadence (ADR-0006): run on EVERY application release (Elasticsearch, Kibana,
 Logstash) AND every support-diagnostics release. See
@@ -64,8 +69,9 @@ UPSTREAM_FILES = {
     "kibana": "src/main/resources/kibana-rest.yml",
     "logstash": "src/main/resources/logstash-rest.yml",
 }
-# OS-command definitions (self-managed syscalls etc.) live in diags.yml and
-# overlay into the elasticsearch registry.
+# OS-command definitions (self-managed syscalls etc.) live here upstream. The
+# path is verified so layout drift is visible, but command entries are not yet
+# overlaid into ESDiag's HTTP-oriented registry.
 UPSTREAM_DIAGS = "src/main/resources/diags.yml"
 
 
@@ -87,6 +93,28 @@ def load_yaml(path: Path) -> dict:
         return {}
     with path.open() as fh:
         return yaml.safe_load(fh) or {}
+
+
+def verify_upstream_layout(support_diagnostics: Path, products: list[str]) -> bool:
+    """Confirm the support-diagnostics checkout uses the expected layout."""
+    missing: list[Path] = []
+    for product in products:
+        path = support_diagnostics / UPSTREAM_FILES[product]
+        if not path.exists():
+            missing.append(path)
+    diags_path = support_diagnostics / UPSTREAM_DIAGS
+    if not diags_path.exists():
+        missing.append(diags_path)
+
+    if missing:
+        print("[layout] missing expected support-diagnostics file(s):", file=sys.stderr)
+        for path in missing:
+            print(f"  - {path}", file=sys.stderr)
+        return False
+
+    print(f"[layout] verified support-diagnostics REST files and OS-command catalog at {diags_path}")
+    print("[layout] NOTE: diags.yml is verified but not overlaid until ESDiag has OS-command sources.")
+    return True
 
 
 def overlay(esdiag: dict, upstream: dict, divergences: dict) -> tuple[dict, list[str]]:
@@ -140,6 +168,9 @@ def main() -> int:
     repo_root = Path(__file__).resolve().parent.parent
     products = args.product or sorted(UPSTREAM_FILES)
     exit_code = 0
+
+    if not verify_upstream_layout(args.support_diagnostics, products):
+        return 2
 
     for product in products:
         upstream_path = args.support_diagnostics / UPSTREAM_FILES[product]

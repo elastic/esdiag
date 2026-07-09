@@ -35,6 +35,8 @@ use std::path::{Component, Path};
 use std::time::Duration;
 use upload_service::UploadServiceDownloader;
 
+pub(crate) use archive::ARCHIVE_FILE_NOT_FOUND_PREFIX;
+
 pub(crate) const LONG_RUNNING_REQUEST_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 
 #[derive(Clone, Debug)]
