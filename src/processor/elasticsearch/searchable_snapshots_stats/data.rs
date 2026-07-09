@@ -7,7 +7,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 use std::collections::HashMap;
 
-#[expect(dead_code, reason = "constructed by serde when parsing diagnostic payloads")]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct SearchableSnapshotsStats {
     pub _shards: Box<RawValue>,

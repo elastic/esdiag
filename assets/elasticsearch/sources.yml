@@ -570,6 +570,7 @@ searchable_snapshots_cache_stats:
 searchable_snapshots_stats:
   tags: standard
   source_weight: 3
+  processable: true
   subdir: "commercial"
   versions:
     ">= 7.13.0": "/_searchable_snapshots/stats"

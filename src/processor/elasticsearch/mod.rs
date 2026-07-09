@@ -87,6 +87,7 @@ use {
     nodes_stats::NodesStats,
     pending_tasks::PendingTasks,
     searchable_snapshots_cache_stats::{SearchableSnapshotsCacheStats, SharedCacheStats},
+    searchable_snapshots_stats::SearchableSnapshotsStats,
     slm_policies::SlmPolicies,
     snapshots::{Repositories, Snapshots},
     tasks::Tasks,
@@ -139,6 +140,9 @@ const ES_DISPATCH: &[EsDispatchEntry] = &[
     },
     EsDispatchEntry {
         keys: &["repositories"],
+    },
+    EsDispatchEntry {
+        keys: &["searchable_snapshots_stats"],
     },
     EsDispatchEntry { keys: &["snapshot"] },
     EsDispatchEntry { keys: &["tasks"] },
@@ -198,6 +202,10 @@ fn validate_es_dispatch_registry() -> Result<()> {
                     datasource_name: Repositories::name(),
                 },
                 ProcessableClaim {
+                    key: "searchable_snapshots_stats",
+                    datasource_name: SearchableSnapshotsStats::name(),
+                },
+                ProcessableClaim {
                     key: "snapshot",
                     datasource_name: Snapshots::name(),
                 },
@@ -233,6 +241,7 @@ impl ElasticsearchDiagnostic {
             "cluster_pending_tasks" => self.process_datasource::<PendingTasks>(summary_tx).await,
             "slm_policies" => self.process_datasource::<SlmPolicies>(summary_tx).await,
             "repositories" => self.process_datasource::<Repositories>(summary_tx).await,
+            "searchable_snapshots_stats" => self.process_datasource::<SearchableSnapshotsStats>(summary_tx).await,
             "snapshot" => self.process_maybe_streaming::<Snapshots>(summary_tx).await,
             "tasks" => self.process_datasource::<Tasks>(summary_tx).await,
             other => Err(eyre!("No Elasticsearch processor registered for '{other}'")),
