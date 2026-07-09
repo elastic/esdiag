@@ -540,7 +540,7 @@ mod tests {
         assert!(apis.contains(&"version".to_string())); // required
         assert!(apis.contains(&"nodes".to_string())); // resolved as dependency of nodes_stats
         assert!(apis.contains(&"nodes_stats".to_string())); // explicitly included
-        assert!(apis.contains(&"cluster_settings".to_string())); // resolved as dependency of nodes
+        assert!(!apis.contains(&"cluster_settings".to_string())); // nodes has no collect-time settings dependency
     }
 
     #[test]

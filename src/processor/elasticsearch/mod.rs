@@ -234,8 +234,7 @@ impl ElasticsearchDiagnostic {
         match key {
             "indices_stats" => self.process_maybe_streaming::<IndicesStats>(summary_tx).await,
             "nodes_stats" => self.process_maybe_streaming::<NodesStats>(summary_tx).await,
-            "cluster_settings" => self.process_datasource::<ClusterSettings>(summary_tx).await,
-            "cluster_settings_defaults" => self.process_datasource::<ClusterSettingsDefaults>(summary_tx).await,
+            "cluster_settings" | "cluster_settings_defaults" => self.process_cluster_settings(summary_tx).await,
             "health_report" => self.process_datasource::<HealthReport>(summary_tx).await,
             "ilm_policies" => self.process_datasource::<IlmPolicies>(summary_tx).await,
             "indices_settings" => self.process_datasource::<IndicesSettings>(summary_tx).await,
@@ -266,6 +265,40 @@ impl ElasticsearchDiagnostic {
         } else {
             self.process_datasource::<T>(summary_tx).await
         }
+    }
+
+    async fn process_cluster_settings(&self, summary_tx: mpsc::Sender<ProcessorSummary>) -> Result<()> {
+        let summary = match self.receiver.get::<ClusterSettingsDefaults>().await {
+            Ok(settings) => settings
+                .documents_export(&self.exporter, &self.lookups, &self.metadata)
+                .await
+                .was_parsed(),
+            Err(defaults_err) => {
+                tracing::debug!(
+                    "Failed to read cluster_settings_defaults, falling back to cluster_settings: {}",
+                    defaults_err
+                );
+                match self.receiver.get::<ClusterSettings>().await {
+                    Ok(settings) => settings
+                        .documents_export(&self.exporter, &self.lookups, &self.metadata)
+                        .await
+                        .was_parsed(),
+                    Err(settings_err) => {
+                        tracing::warn!(
+                            "Failed to read cluster_settings_defaults and cluster_settings: {}; {}",
+                            defaults_err,
+                            settings_err
+                        );
+                        ProcessorSummary::new(ClusterSettings::name())
+                    }
+                }
+            }
+        };
+
+        summary_tx.send(summary).await.map_err(|err| {
+            tracing::error!("Failed to send summary: {}", err);
+            eyre!(err)
+        })
     }
 
     async fn process_datasource<T>(&self, summary_tx: mpsc::Sender<ProcessorSummary>) -> Result<()>
@@ -417,8 +450,14 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
         let policy = ProcessingConcurrencyPolicy::from_env();
         let mut concurrent = FuturesUnordered::new();
         let mut sequential = Vec::new();
+        let process_cluster_settings_defaults = diag.should_process("cluster_settings_defaults");
         for entry in ES_DISPATCH {
             if !diag.should_process(entry.key) {
+                continue;
+            }
+            // Both keys export the same cluster-settings dataset. When both
+            // are selected, run the shared defaults-first processor once.
+            if entry.key == "cluster_settings" && process_cluster_settings_defaults {
                 continue;
             }
             let weight = processing_weight("elasticsearch", entry.key);

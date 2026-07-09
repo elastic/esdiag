@@ -323,7 +323,6 @@ nodes:
   processable: true
   required: false
   dependencies: [version]
-  collect_dependencies: [cluster_settings]
   tags: light,minimal,standard,support
   retry: true
   versions:
