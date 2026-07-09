@@ -693,22 +693,12 @@ mod tests {
 
     #[test]
     fn test_collect_concurrency_env_threshold_is_clamped() {
-        let _guard = crate::test_env_lock()
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        unsafe {
-            std::env::set_var("ESDIAG_COLLECT_SEQUENTIAL_THRESHOLD", "0");
-        }
+        let mut env = crate::TestEnv::new();
+        env.set("ESDIAG_COLLECT_SEQUENTIAL_THRESHOLD", "0");
         assert_eq!(CollectConcurrencyPolicy::from_env().sequential_threshold, MIN_WEIGHT);
 
-        unsafe {
-            std::env::set_var("ESDIAG_COLLECT_SEQUENTIAL_THRESHOLD", "99");
-        }
+        env.set("ESDIAG_COLLECT_SEQUENTIAL_THRESHOLD", "99");
         assert_eq!(CollectConcurrencyPolicy::from_env().sequential_threshold, MAX_WEIGHT);
-
-        unsafe {
-            std::env::remove_var("ESDIAG_COLLECT_SEQUENTIAL_THRESHOLD");
-        }
     }
 
     #[test]
@@ -724,22 +714,12 @@ mod tests {
 
     #[test]
     fn test_processing_concurrency_env_threshold_is_clamped() {
-        let _guard = crate::test_env_lock()
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        unsafe {
-            std::env::set_var("ESDIAG_PROCESS_CONCURRENT_THRESHOLD", "0");
-        }
+        let mut env = crate::TestEnv::new();
+        env.set("ESDIAG_PROCESS_CONCURRENT_THRESHOLD", "0");
         assert_eq!(ProcessingConcurrencyPolicy::from_env().concurrent_threshold, MIN_WEIGHT);
 
-        unsafe {
-            std::env::set_var("ESDIAG_PROCESS_CONCURRENT_THRESHOLD", "99");
-        }
+        env.set("ESDIAG_PROCESS_CONCURRENT_THRESHOLD", "99");
         assert_eq!(ProcessingConcurrencyPolicy::from_env().concurrent_threshold, MAX_WEIGHT);
-
-        unsafe {
-            std::env::remove_var("ESDIAG_PROCESS_CONCURRENT_THRESHOLD");
-        }
     }
 
     #[test]
