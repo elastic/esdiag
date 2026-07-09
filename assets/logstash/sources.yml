@@ -10,8 +10,9 @@
 #       be structured in such a way that only a valid query can be executed against a given version. Required.
 #   Version ranges are native Rust `semver` ranges (comma-separated clauses);
 #   upstream NPM/Java dialect ranges are normalized at reconciliation (ADR-0006).
-#   ESDiag enrichment fields (weights, tags, streamable, processable,
-#   required/dependencies) are preserved across reconciliation.
+#   ESDiag enrichment fields (tags, source_weight, processing_weight,
+#   streamable, processable, required, dependencies, collect_dependencies) are
+#   preserved across reconciliation.
 #
 #   Note to those adding entries: within each group, cat API's, json API's, and commercial, they are in alphabetical order.
 #   Please adhere to this convention when submitting pull requests.
