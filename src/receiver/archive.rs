@@ -7,6 +7,7 @@ use eyre::Result;
 use futures::stream::{self, BoxStream};
 use serde::de::DeserializeOwned;
 use std::{
+    borrow::Cow,
     io::{BufReader, Read, Seek},
     path::PathBuf,
     sync::Arc,
@@ -117,7 +118,11 @@ pub(crate) fn archive_has_dir<'a>(
         .unwrap_or_default();
 
     file_names.any(|name| {
-        let normalized = name.replace('\\', "/");
+        let normalized = if name.contains('\\') {
+            Cow::Owned(name.replace('\\', "/"))
+        } else {
+            Cow::Borrowed(name)
+        };
         let explicit_dir_entry = normalized.ends_with('/');
         let components: Vec<&str> = normalized.split('/').filter(|c| !c.is_empty()).collect();
         // The directory must appear after the subdir components when scoped.
