@@ -47,8 +47,11 @@ until ESDiag has a command-source transport model; adding those entries to the
 HTTP registry now would make broad collection modes try to collect shell
 commands as REST paths.
 
-Upstream-backed REST sources are tagged `support` during reconciliation so
-ESDiag support bundles stay compatible with support-diagnostics coverage.
+Upstream-backed REST sources are tagged during reconciliation so ESDiag bundles
+stay compatible with support-diagnostics coverage. Elasticsearch and Logstash
+sources default to `support`; Kibana sources default to `standard,light,support`
+so Kibana standard/light collection remains full-catalog until curated subsets
+exist.
 
 Upstream semver4j/NPM-dialect ranges are normalized into native Rust `semver`
 form at this boundary, so the runtime resolves versions with stock

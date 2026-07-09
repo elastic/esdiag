@@ -59,6 +59,13 @@ impl Product {
             Self::Logstash => "src/main/resources/logstash-rest.yml",
         }
     }
+
+    fn default_tags(self) -> &'static [&'static str] {
+        match self {
+            Self::Elasticsearch | Self::Logstash => &["support"],
+            Self::Kibana => &["standard", "light", "support"],
+        }
+    }
 }
 
 const UPSTREAM_DIAGS: &str = "src/main/resources/diags.yml";
@@ -104,7 +111,7 @@ fn main() -> Result<std::process::ExitCode> {
 
         let esdiag = load_yaml_mapping(&esdiag_path)?;
         let divergences = load_yaml_mapping(&divergences_path)?;
-        let (merged, changes) = overlay(&esdiag, &upstream, &divergences)?;
+        let (merged, changes) = overlay(product, &esdiag, &upstream, &divergences)?;
 
         if changes.is_empty() {
             println!("[{}] in sync with upstream", product.key());
@@ -187,7 +194,12 @@ fn load_yaml_mapping(path: &Path) -> Result<Mapping> {
     }
 }
 
-fn overlay(esdiag: &Mapping, upstream: &Mapping, divergences: &Mapping) -> Result<(Mapping, Vec<String>)> {
+fn overlay(
+    product: Product,
+    esdiag: &Mapping,
+    upstream: &Mapping,
+    divergences: &Mapping,
+) -> Result<(Mapping, Vec<String>)> {
     let mut changes = Vec::new();
     let mut merged = esdiag.clone();
 
@@ -241,8 +253,8 @@ fn overlay(esdiag: &Mapping, upstream: &Mapping, divergences: &Mapping) -> Resul
             }
         }
 
-        if ensure_support_tag(entry) && !is_new_source {
-            changes.push(format!("{key}: added `support` tag for upstream source"));
+        if ensure_default_tags(entry, product.default_tags()) && !is_new_source {
+            changes.push(format!("{key}: added default tag(s) for upstream source"));
         }
 
         if is_new_source {
@@ -273,16 +285,23 @@ fn has_any_field(entry: &Mapping, fields: &[&str]) -> bool {
         .any(|field| entry.contains_key(Value::String((*field).to_string())))
 }
 
-fn ensure_support_tag(entry: &mut Mapping) -> bool {
+fn ensure_default_tags(entry: &mut Mapping, defaults: &[&str]) -> bool {
     let tags_key = Value::String("tags".to_string());
     let tags = entry.get(&tags_key).and_then(Value::as_str).unwrap_or_default();
     let mut values: Vec<&str> = tags.split(',').map(str::trim).filter(|tag| !tag.is_empty()).collect();
-    if !values.contains(&"support") {
-        values.push("support");
-        entry.insert(tags_key, Value::String(values.join(",")));
-        return true;
+    let mut changed = false;
+
+    for tag in defaults {
+        if !values.contains(tag) {
+            values.push(tag);
+            changed = true;
+        }
     }
-    false
+
+    if changed {
+        entry.insert(tags_key, Value::String(values.join(",")));
+    }
+    changed
 }
 
 fn normalize_versions(value: &Value) -> Result<Value> {
@@ -375,22 +394,22 @@ fn string_set(mapping: &Mapping, field: &str) -> Result<BTreeSet<String>> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Mapping, Value, ensure_support_tag, normalize_semver_range, overlay};
+    use super::{Mapping, Product, Value, ensure_default_tags, normalize_semver_range, overlay};
 
     #[test]
-    fn ensure_support_tag_adds_support_without_clobbering_existing_tags() {
+    fn ensure_default_tags_adds_missing_tags_without_clobbering_existing_tags() {
         let mut entry = Mapping::new();
         entry.insert(
             Value::String("tags".to_string()),
             Value::String("standard,light".to_string()),
         );
 
-        assert!(ensure_support_tag(&mut entry));
+        assert!(ensure_default_tags(&mut entry, &["standard", "light", "support"]));
         assert_eq!(
             entry.get(Value::String("tags".to_string())).and_then(Value::as_str),
             Some("standard,light,support")
         );
-        assert!(!ensure_support_tag(&mut entry));
+        assert!(!ensure_default_tags(&mut entry, &["standard", "light", "support"]));
     }
 
     #[test]
@@ -432,7 +451,8 @@ mod tests {
         let mut upstream = Mapping::new();
         upstream.insert(Value::String("source".to_string()), Value::Mapping(upstream_source));
 
-        let (merged, changes) = overlay(&esdiag, &upstream, &Mapping::new()).expect("overlay succeeds");
+        let (merged, changes) =
+            overlay(Product::Elasticsearch, &esdiag, &upstream, &Mapping::new()).expect("overlay succeeds");
         let source = merged
             .get(Value::String("source".to_string()))
             .and_then(Value::as_mapping)
@@ -456,5 +476,29 @@ mod tests {
                 .iter()
                 .any(|change| change == "source: removed stale upstream-owned `extension`")
         );
+    }
+
+    #[test]
+    fn overlay_adds_kibana_default_collection_tags() {
+        let mut upstream_source = Mapping::new();
+        upstream_source.insert(
+            Value::String("versions".to_string()),
+            Value::Mapping(Mapping::from_iter([(
+                Value::String(">= 8.0.0".to_string()),
+                Value::String("/api/example".to_string()),
+            )])),
+        );
+        let mut upstream = Mapping::new();
+        upstream.insert(Value::String("source".to_string()), Value::Mapping(upstream_source));
+
+        let (merged, _changes) =
+            overlay(Product::Kibana, &Mapping::new(), &upstream, &Mapping::new()).expect("overlay succeeds");
+        let tags = merged
+            .get(Value::String("source".to_string()))
+            .and_then(Value::as_mapping)
+            .and_then(|entry| entry.get(Value::String("tags".to_string())))
+            .and_then(Value::as_str);
+
+        assert_eq!(tags, Some("standard,light,support"));
     }
 }
