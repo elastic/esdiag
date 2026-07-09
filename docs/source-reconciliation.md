@@ -30,6 +30,22 @@ The overlay is a **field-level merge**:
 | upstream (refreshed) | `versions`, `extension`, `subdir`, `retry` |
 | ESDiag (preserved) | `tags`, `source_weight`, `processing_weight`, `streamable`, `processable`, `required`, `dependencies`, `collect_dependencies` |
 
+The expected upstream layout has been verified against
+`elastic/support-diagnostics`:
+
+| product/input | upstream path |
+|---|---|
+| Elasticsearch REST APIs | `src/main/resources/elastic-rest.yml` |
+| Kibana REST APIs | `src/main/resources/kibana-rest.yml` |
+| Logstash REST APIs | `src/main/resources/logstash-rest.yml` |
+| OS-command catalog | `src/main/resources/diags.yml` |
+
+Today the script overlays the REST API files. It verifies `diags.yml` is present
+so upstream layout drift is visible, but it does not merge OS-command entries
+until ESDiag has a command-source transport model; adding those entries to the
+HTTP registry now would make broad collection modes try to collect shell
+commands as REST paths.
+
 Upstream semver4j/NPM-dialect ranges are normalized into native Rust `semver`
 form at this boundary, so the runtime resolves versions with stock
 `semver::VersionReq` — there is no runtime compatibility shim.
@@ -55,5 +71,6 @@ Without this cadence, version gating silently goes stale (new endpoints
 missed, changed queries not updated) — the primary risk the
 own-and-reconcile posture accepts.
 
-**Owner:** _unassigned_ — assign a DRI and wire `--check` into CI or a
-scheduled reminder tied to both release cadences.
+**Owner:** ESDiag maintainers. The release DRI for each Elasticsearch, Kibana,
+Logstash, or support-diagnostics release owns running `--check` until this is
+backed by CI or a scheduled reminder tied to both release cadences.

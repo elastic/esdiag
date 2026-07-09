@@ -38,14 +38,16 @@ single source of truth and finishes the migration. Rationale: **ADR-0005**,
   collect concurrency) and `processing_weight` (ESDiag transform cost, governs
   processing concurrency) — per **ADR-0017**. Make `streamable` an explicit flag
   instead of being implicit in which dispatch fn is called.
-- Treat `support-diagnostics` (`elastic-rest.yml` + `diags.yml`) as a
-  *reconciliation input*, not a runtime authority: a field-level overlay merges
-  upstream `versions`/paths and OS-command definitions into ESDiag's files while
-  **preserving ESDiag enrichments** (weights, tags, streamable), and **normalizes
-  upstream's Java/NPM semver dialect into native Rust `semver` at the boundary** —
-  which lets the runtime drop its custom version-compatibility parser and use stock
-  `semver::VersionReq`. Reconcile on every application release **and** every
-  support-diagnostics release.
+- Treat `support-diagnostics` (`elastic-rest.yml` + `kibana-rest.yml` +
+  `logstash-rest.yml` + `diags.yml`) as a *reconciliation input*, not a runtime
+  authority: a field-level overlay merges upstream REST `versions`/paths into
+  ESDiag's files while **preserving ESDiag enrichments** (weights, tags,
+  streamable), and **normalizes upstream's Java/NPM semver dialect into native
+  Rust `semver` at the boundary** — which lets the runtime drop its custom
+  version-compatibility parser and use stock `semver::VersionReq`. The script
+  verifies `diags.yml` but defers OS-command overlay until ESDiag has a
+  command-source transport model. Reconcile on every application release **and**
+  every support-diagnostics release.
 
 ## Capabilities
 

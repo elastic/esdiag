@@ -22,7 +22,7 @@
 - [x] 4.5 Make `streamable` an explicit flag; gate the streaming dispatch (`process_streaming_datasource::<T>`) on it instead of the hardcoded `IndicesStats`/`NodesStats`/`Snapshots` choice.
 
 ## 5. Reconciliation (ADR-0006)
-- [x] 5.1 Write the reconciliation script that overlays `elastic-rest.yml` (API) and `diags.yml` (OS-command) into ESDiag's `sources.yml` as a field-level merge, preserving `source_weight`/`processing_weight`/`streamable`/`tags`.
+- [x] 5.1 Write the reconciliation script that overlays REST API files into ESDiag's `sources.yml` as a field-level merge, preserving `source_weight`/`processing_weight`/`streamable`/`tags`; verify `diags.yml` exists but defer OS-command overlay until ESDiag has a command-source transport model.
 - [x] 5.2 Normalize upstream Java/NPM semver ranges into native Rust `semver` form during the overlay; store ranges in native form.
 - [x] 5.3 Record deliberate divergences so reconciliation does not revert them.
 - [x] 5.4 Document the required cadence (every application release AND every support-diagnostics release) and assign an owner.

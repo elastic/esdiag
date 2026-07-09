@@ -51,11 +51,13 @@ that the Rust `semver` crate does not accept verbatim.
 
 ### Reconciliation (ADR-0006)
 
-- A reconciliation script overlays `elastic-rest.yml` (API sources) and `diags.yml`
-  (OS-command sources) into ESDiag's `sources.yml` as a **field-level merge**: it
-  updates `versions`/paths and command definitions, and preserves ESDiag-only fields
-  (`source_weight`, `processing_weight`, `streamable`, `tags`). The merge must know
-  which fields are ESDiag's — a blind copy would wipe the hand-tuned weights.
+- A reconciliation script overlays the upstream REST API files into ESDiag's
+  `sources.yml` as a **field-level merge**: it updates `versions`/paths and
+  preserves ESDiag-only fields (`source_weight`, `processing_weight`,
+  `streamable`, `tags`). The merge must know which fields are ESDiag's — a blind
+  copy would wipe the hand-tuned weights. The script verifies the upstream
+  `diags.yml` OS-command catalog path, but command entries are not merged until
+  ESDiag has a command-source transport model.
 - The script converts upstream ranges into native Rust `semver` form at the boundary,
   so stored `sources.yml` is already in ESDiag's dialect. The runtime then uses stock
   `semver::VersionReq` and the compatibility shim is removed — the impedance is

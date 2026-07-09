@@ -46,10 +46,12 @@ ours) but about how tightly we track upstream *content*.
   missed, changed queries not updated — which is the primary risk this decision
   accepts.
 - **Reconciliation is a field-level overlay, never a copy.** The script merges
-  upstream's `versions`/paths and OS-command definitions *into* ESDiag's files while
-  preserving ESDiag-only enrichments (`weight`, platform/application tags,
-  streamable). A blind copy would wipe the hand-tuned concurrency weights (ADR-0005),
-  so the merge must know which fields are ESDiag's.
+  upstream REST `versions`/paths *into* ESDiag's files while preserving ESDiag-only
+  enrichments (`weight`, platform/application tags, streamable). A blind copy would
+  wipe the hand-tuned concurrency weights (ADR-0005), so the merge must know which
+  fields are ESDiag's. Upstream `diags.yml` remains part of the reconciliation
+  input and its path is verified, but OS-command entries are not merged until
+  ESDiag has a command-source transport model.
 - **The overlay normalizes semver at the boundary, letting the runtime drop its
   version-compatibility parser.** Upstream ranges use a Java/NPM semver dialect that
   does not exactly match the Rust `semver` crate, which forced a custom
