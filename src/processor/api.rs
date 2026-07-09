@@ -592,6 +592,7 @@ mod tests {
             "alias",
             "version",
             "cluster_settings",
+            "cluster_settings_defaults",
             "data_stream",
             "health_report",
             "ilm_explain",
@@ -612,7 +613,7 @@ mod tests {
             assert!(standard.contains(&key.to_string()), "standard missing {key}");
         }
         assert!(!standard.contains(&"searchable_snapshots_stats".to_string()));
-        assert_eq!(standard.len(), 19);
+        assert_eq!(standard.len(), 20);
     }
 
     #[test]

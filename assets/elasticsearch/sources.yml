@@ -217,7 +217,7 @@ cluster_settings_defaults:
   processable: true
   required: true
   dependencies: [version]
-  tags: light,support
+  tags: standard,light,support
   versions:
     ">= 6.4.0": "/_cluster/settings?include_defaults&flat_settings"
 

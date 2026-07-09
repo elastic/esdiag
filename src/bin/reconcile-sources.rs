@@ -4,11 +4,9 @@
 
 use clap::{Parser, ValueEnum};
 use eyre::{Result, WrapErr, eyre};
-use regex::Regex;
 use serde_yaml::{Mapping, Value};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
 
 /// Reconcile ESDiag collection definitions from support-diagnostics (ADR-0006).
 ///
@@ -225,6 +223,9 @@ fn overlay(esdiag: &Mapping, upstream: &Mapping, divergences: &Mapping) -> Resul
         for field in UPSTREAM_FIELDS {
             let field_key = Value::String((*field).to_string());
             let Some(value) = upstream_entry.get(&field_key) else {
+                if entry.remove(&field_key).is_some() {
+                    changes.push(format!("{key}: removed stale upstream-owned `{field}`"));
+                }
                 continue;
             };
 
@@ -301,9 +302,32 @@ fn normalize_versions(value: &Value) -> Result<Value> {
 }
 
 fn normalize_semver_range(expr: &str) -> String {
-    static RE: OnceLock<Regex> = OnceLock::new();
-    let re = RE.get_or_init(|| Regex::new(r"(\d)\s+(?=[<>=~^])").expect("valid semver normalization regex"));
-    re.replace_all(expr.trim(), "$1, ").to_string()
+    let expr = expr.trim();
+    let bytes = expr.as_bytes();
+    let mut normalized = String::with_capacity(expr.len());
+    let mut index = 0;
+
+    while index < bytes.len() {
+        if bytes[index].is_ascii_whitespace() {
+            let start = index;
+            while index < bytes.len() && bytes[index].is_ascii_whitespace() {
+                index += 1;
+            }
+            let follows_version = normalized.as_bytes().last().is_some_and(|byte| byte.is_ascii_digit());
+            let starts_next_clause = index < bytes.len() && matches!(bytes[index], b'<' | b'>' | b'=' | b'~' | b'^');
+            if follows_version && starts_next_clause {
+                normalized.push_str(", ");
+            } else {
+                normalized.push_str(&expr[start..index]);
+            }
+            continue;
+        }
+
+        normalized.push(bytes[index] as char);
+        index += 1;
+    }
+
+    normalized
 }
 
 fn string_mapping(mapping: &Mapping, field: &str) -> Result<std::collections::BTreeMap<String, String>> {
@@ -351,7 +375,7 @@ fn string_set(mapping: &Mapping, field: &str) -> Result<BTreeSet<String>> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Mapping, Value, ensure_support_tag};
+    use super::{Mapping, Value, ensure_support_tag, normalize_semver_range, overlay};
 
     #[test]
     fn ensure_support_tag_adds_support_without_clobbering_existing_tags() {
@@ -367,5 +391,70 @@ mod tests {
             Some("standard,light,support")
         );
         assert!(!ensure_support_tag(&mut entry));
+    }
+
+    #[test]
+    fn normalize_semver_range_inserts_clause_commas() {
+        assert_eq!(
+            normalize_semver_range(">= 5.0.0 < 7.0.0 || >= 8.0.0"),
+            ">= 5.0.0, < 7.0.0 || >= 8.0.0"
+        );
+    }
+
+    #[test]
+    fn overlay_removes_stale_upstream_owned_fields() {
+        let mut source = Mapping::new();
+        source.insert(Value::String("tags".to_string()), Value::String("standard".to_string()));
+        source.insert(Value::String("retry".to_string()), Value::Bool(true));
+        source.insert(Value::String("subdir".to_string()), Value::String("old".to_string()));
+        source.insert(
+            Value::String("extension".to_string()),
+            Value::String(".txt".to_string()),
+        );
+        source.insert(
+            Value::String("versions".to_string()),
+            Value::Mapping(Mapping::from_iter([(
+                Value::String(">= 8.0.0".to_string()),
+                Value::String("/old".to_string()),
+            )])),
+        );
+        let mut esdiag = Mapping::new();
+        esdiag.insert(Value::String("source".to_string()), Value::Mapping(source));
+
+        let mut upstream_source = Mapping::new();
+        upstream_source.insert(
+            Value::String("versions".to_string()),
+            Value::Mapping(Mapping::from_iter([(
+                Value::String(">= 8.0.0".to_string()),
+                Value::String("/new".to_string()),
+            )])),
+        );
+        let mut upstream = Mapping::new();
+        upstream.insert(Value::String("source".to_string()), Value::Mapping(upstream_source));
+
+        let (merged, changes) = overlay(&esdiag, &upstream, &Mapping::new()).expect("overlay succeeds");
+        let source = merged
+            .get(Value::String("source".to_string()))
+            .and_then(Value::as_mapping)
+            .expect("source mapping");
+
+        assert!(!source.contains_key(Value::String("retry".to_string())));
+        assert!(!source.contains_key(Value::String("subdir".to_string())));
+        assert!(!source.contains_key(Value::String("extension".to_string())));
+        assert!(
+            changes
+                .iter()
+                .any(|change| change == "source: removed stale upstream-owned `retry`")
+        );
+        assert!(
+            changes
+                .iter()
+                .any(|change| change == "source: removed stale upstream-owned `subdir`")
+        );
+        assert!(
+            changes
+                .iter()
+                .any(|change| change == "source: removed stale upstream-owned `extension`")
+        );
     }
 }
