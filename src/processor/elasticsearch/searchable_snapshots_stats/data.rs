@@ -7,6 +7,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 use std::collections::HashMap;
 
+// The collector does not wire this API yet; keep the model close to its processor
+// until searchable snapshot stats collection is enabled.
+#[allow(dead_code)]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct SearchableSnapshotsStats {
     pub _shards: Box<RawValue>,
@@ -14,6 +17,8 @@ pub struct SearchableSnapshotsStats {
     pub indices: HashMap<String, Total>,
 }
 
+// Kept with SearchableSnapshotsStats so the dormant model mirrors the API shape.
+#[allow(dead_code)]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Total {
     pub total: Vec<Box<RawValue>>,

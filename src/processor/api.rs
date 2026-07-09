@@ -316,7 +316,7 @@ impl ApiResolver {
             .map(|def| ProcessingOption {
                 key: def.key.to_string(),
                 required: def.required,
-                selected: selected.iter().any(|value| *value == def.key),
+                selected: selected.contains(&def.key),
             })
             .collect())
     }

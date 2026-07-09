@@ -29,15 +29,20 @@ pub async fn form(
     // Extract authenticated user email from header
     let uri = signals.es_api.url.to_string();
     let (tx, rx) = mpsc::channel(64);
-    match state.resolve_user_email(&headers) {
-        Ok((_, request_user)) => {
+    match state.resolve_identity(&headers) {
+        Ok(identity) => {
+            let mut signals = signals;
+            if signals.metadata.account.is_none() {
+                signals.metadata.account = identity.account;
+            }
+            let request_user = identity.user;
             tokio::spawn(async move {
                 run_api_key_form(state, signals, uri, request_user, tx).await;
             });
         }
         Err(err) => {
             tokio::spawn(async move {
-                state.record_failure().await;
+                state.record_job_rejected().await;
                 send_event(
                     &tx,
                     job_feed_event(template::JobFailed {
@@ -60,15 +65,16 @@ pub async fn id(
     Path(job_id): Path<u64>,
 ) -> impl IntoResponse {
     let (tx, rx) = mpsc::channel(64);
-    match state.resolve_user_email(&headers) {
-        Ok((_, request_user)) => {
+    match state.resolve_identity(&headers) {
+        Ok(identity) => {
+            let request_user = identity.user;
             tokio::spawn(async move {
                 run_api_key_id(state, job_id, request_user, tx).await;
             });
         }
         Err(err) => {
             tokio::spawn(async move {
-                state.record_failure().await;
+                state.record_job_rejected().await;
                 send_event(
                     &tx,
                     template_event(template::JobFailed {
@@ -101,7 +107,7 @@ pub(super) async fn run_api_key_form(
         state
             .reject_retained_bundle(&download_token, &request_user, err.clone(), DOWNLOAD_REJECTION_TTL)
             .await;
-        state.record_failure().await;
+        state.record_job_rejected().await;
         send_event(
             &tx,
             job_feed_event(template::JobFailed {
@@ -129,7 +135,7 @@ pub(super) async fn run_api_key_form(
                     DOWNLOAD_REJECTION_TTL,
                 )
                 .await;
-            state.record_failure().await;
+            state.record_job_rejected().await;
             let error_msg = format!("Failed to build host: {}", e);
             tracing::error!("Failed to build host: {}", e);
             send_event(
@@ -156,7 +162,7 @@ pub(super) async fn run_api_key_form(
                     DOWNLOAD_REJECTION_TTL,
                 )
                 .await;
-            state.record_failure().await;
+            state.record_job_rejected().await;
             let error_msg = format!("Failed to resolve host URL: {}", e);
             tracing::error!("Failed to resolve host URL: {}", e);
             send_event(
@@ -173,6 +179,7 @@ pub(super) async fn run_api_key_form(
         }
     };
     let job = super::JobRequest {
+        owner: request_user.clone(),
         identifiers: signals.metadata.clone(),
         input: super::JobInput::FromRemoteHost {
             source,
@@ -200,9 +207,10 @@ pub(super) async fn run_api_key_form(
 }
 
 async fn run_api_key_id(state: Arc<ServerState>, job_id: u64, request_user: String, tx: mpsc::Sender<ServerEvent>) {
-    let job = match state.pop_job_request(job_id).await {
+    let job = match state.pop_job_request_for_owner(job_id, &request_user).await {
         Some(job) => job,
         None => {
+            state.record_job_rejected().await;
             send_event(
                 &tx,
                 template_event(template::JobFailed {
@@ -309,13 +317,13 @@ mod tests {
         let mut saw_terminal = false;
         while let Ok(event) = rx.try_recv() {
             match event {
-                ServerEvent::JobFeed(html)
+                ServerEvent::JobFeed { html, .. }
                     if html.contains("output target")
                         && html.contains("Keystore is locked. Unlock it before processing secure outputs.") =>
                 {
                     saw_failure = true;
                 }
-                ServerEvent::Signals(payload)
+                ServerEvent::Signals { payload, .. }
                     if payload.contains(r#""loading":false"#) && payload.contains(r#""processing":false"#) =>
                 {
                     saw_terminal = true;

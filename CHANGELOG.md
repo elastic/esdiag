@@ -46,6 +46,7 @@ published release notes, maintenance branches, and tagged history.
 - Changed Kibana collection and setup to use the shared `kibana-sync` client and bundled asset layout (#341).
 - Made embedded documentation minimally Open Knowledge Format compliant while preserving clean docs viewer rendering (#345).
 - Added documentation viewer tag filtering with debug-mode visibility for developer-only docs (#345).
+- Changed service-mode web authentication, event delivery, and job admission to use a pluggable auth provider, owner-scoped UI events, and service job caps (#351).
 
 ### Fixed
 
