@@ -130,10 +130,11 @@ impl LogstashDiagnostic {
                 data.documents_export(&self.exporter, &self.lookups, &self.metadata)
                     .await
             }
-            Err(err) => {
+            Err(err) if is_missing_source_error(&err) => {
                 tracing::warn!("{}", err);
                 ProcessorSummary::new(T::name())
             }
+            Err(err) => return Err(err),
         };
         summary_tx.send(summary).await.map_err(|err| {
             tracing::error!("Failed to send summary: {}", err);
@@ -201,6 +202,44 @@ impl DiagnosticProcessor for LogstashDiagnostic {
             self.metadata.node.id.clone(),
             "node".to_string(),
         )
+    }
+}
+
+fn is_missing_source_error(err: &eyre::Report) -> bool {
+    err.chain().any(|cause| {
+        cause
+            .downcast_ref::<std::io::Error>()
+            .is_some_and(|err| err.kind() == std::io::ErrorKind::NotFound)
+    }) || {
+        let message = err.to_string();
+        message.starts_with("No candidate source files available for ")
+            || message.starts_with("File not found in archive: ")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_missing_source_error;
+    use eyre::eyre;
+
+    #[test]
+    fn missing_source_errors_are_tolerated() {
+        let file_error = eyre!(std::io::Error::new(std::io::ErrorKind::NotFound, "missing"));
+        assert!(is_missing_source_error(&file_error));
+
+        let candidate_error = eyre!("No candidate source files available for logstash_plugins");
+        assert!(is_missing_source_error(&candidate_error));
+
+        let archive_error = eyre!("File not found in archive: logstash_plugins.json");
+        assert!(is_missing_source_error(&archive_error));
+    }
+
+    #[test]
+    fn parse_errors_are_not_tolerated_as_missing_sources() {
+        let parse_error = serde_json::from_str::<serde_json::Value>("{bad").unwrap_err();
+        let parse_error = eyre!(parse_error);
+
+        assert!(!is_missing_source_error(&parse_error));
     }
 }
 
