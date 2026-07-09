@@ -774,7 +774,7 @@ impl ServerState {
                     account,
                 })
             }
-            AuthProvider::None => Ok(resolve_optional_identity(headers)),
+            AuthProvider::None => Ok(resolve_optional_identity()),
         }
     }
 
@@ -1244,7 +1244,7 @@ fn parse_iap_identity(raw: &str) -> (Option<String>, String) {
     (account, user)
 }
 
-fn resolve_optional_identity(headers: &HeaderMap) -> ResolvedIdentity {
+fn resolve_optional_identity() -> ResolvedIdentity {
     if let Ok(user) = std::env::var("ESDIAG_USER") {
         let user = user.trim().to_string();
         if !user.is_empty() {
@@ -1257,20 +1257,6 @@ fn resolve_optional_identity(headers: &HeaderMap) -> ResolvedIdentity {
                     .filter(|value| !value.is_empty()),
             };
         }
-    }
-
-    let header_identity = headers
-        .get(IAP_USER_EMAIL_HEADER)
-        .and_then(|value| value.to_str().ok())
-        .map(parse_iap_identity);
-    if let Some((account, user)) = header_identity
-        && !user.is_empty()
-    {
-        return ResolvedIdentity {
-            authenticated: true,
-            user,
-            account,
-        };
     }
 
     ResolvedIdentity {
@@ -2089,6 +2075,25 @@ mod tests {
         assert!(identity.authenticated);
         assert_eq!(identity.user, "alice@example.com");
         assert_eq!(identity.account.as_deref(), Some("accounts.google.com"));
+    }
+
+    #[test]
+    fn no_auth_provider_ignores_iap_header_for_owner_identity() {
+        let mut state = test_state(RuntimeMode::Service);
+        state.server_policy =
+            ServerPolicy::new_with_options(RuntimeMode::Service, Some(super::AuthProvider::None), None, None)
+                .expect("policy");
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            super::IAP_USER_EMAIL_HEADER,
+            "accounts.google.com:spoofed@example.com".parse().expect("valid header"),
+        );
+
+        let identity = state.resolve_identity(&headers).expect("identity");
+
+        assert!(!identity.authenticated);
+        assert_eq!(identity.user, super::DEFAULT_OWNER);
+        assert_eq!(identity.account, None);
     }
 
     #[tokio::test]

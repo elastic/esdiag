@@ -450,20 +450,26 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
         let mut concurrent = FuturesUnordered::new();
         let mut sequential = Vec::new();
         for entry in ES_DISPATCH {
-            if !entry.keys.iter().any(|key| diag.should_process(key)) {
+            let selected_keys: Vec<_> = entry
+                .keys
+                .iter()
+                .copied()
+                .filter(|key| diag.should_process(key))
+                .collect();
+            if selected_keys.is_empty() {
                 continue;
             }
-            let weight = entry
-                .keys
+            let weight = selected_keys
                 .iter()
                 .map(|key| processing_weight("elasticsearch", key))
                 .max()
                 .unwrap_or(1);
+            let dispatch_key = selected_keys[0];
             if policy.is_concurrent(weight) {
                 let (diag, tx) = (diag.clone(), summary_tx.clone());
-                concurrent.push(async move { diag.dispatch(entry.keys[0], tx).await });
+                concurrent.push(async move { diag.dispatch(dispatch_key, tx).await });
             } else {
-                sequential.push(entry.keys[0]);
+                sequential.push(dispatch_key);
             }
         }
 
