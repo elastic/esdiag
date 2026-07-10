@@ -1021,6 +1021,7 @@ async fn run(cli: Cli) -> Result<CommandResult> {
                     let es_client = Client::try_from(es_uri)?;
                     tracing::info!("Setting up assets in {es_client}");
                     setup::assets(&es_client).await?;
+                    setup::ensure_agent_builder_license(&es_client).await?;
                     let kb_uri = Uri::try_from_kibana_env()?;
                     let kb_client = Client::try_from(kb_uri)?;
                     tracing::info!("Setting up Kibana assets in {kb_client}");

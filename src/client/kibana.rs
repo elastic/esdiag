@@ -14,6 +14,7 @@ pub(crate) const KIBANA_REQUEST_CONCURRENCY: usize = 5;
 #[derive(Clone, Debug)]
 pub struct KibanaClient {
     inner: kibana_sync::KibanaClient,
+    auth: Auth,
 }
 
 /// A reqwest-based client with authentication for Kibana
@@ -25,12 +26,12 @@ impl KibanaClient {
 
     pub(crate) fn try_new_with_concurrency(url: Url, auth: Auth, max_concurrency: usize) -> Result<Self> {
         let inner = kibana_sync::KibanaClient::builder(url)
-            .auth(to_kibana_sync_auth(auth))
+            .auth(to_kibana_sync_auth(auth.clone()))
             .max_concurrency(max_concurrency)
             .build()
             .wrap_err("Failed to build Kibana client")?;
 
-        Ok(Self { inner })
+        Ok(Self { inner, auth })
     }
 
     /// Send a request to a given path on the Kibana client
@@ -45,6 +46,18 @@ impl KibanaClient {
             .request(method, headers, path, body)
             .await
             .wrap_err("Failed to send request")
+    }
+
+    pub(crate) fn sync_client(
+        &self,
+        spaces: impl IntoIterator<Item = (String, String)>,
+    ) -> Result<kibana_sync::KibanaClient> {
+        kibana_sync::KibanaClient::builder(self.inner.url().clone())
+            .auth(to_kibana_sync_auth(self.auth.clone()))
+            .max_concurrency(KIBANA_REQUEST_CONCURRENCY)
+            .spaces(spaces)
+            .build()
+            .map_err(Into::into)
     }
 
     /// Verify the connection and authentication to Kibana

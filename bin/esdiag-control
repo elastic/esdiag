@@ -607,11 +607,11 @@ function command_up() {
         --env-file "${env_file}" \
         --file "${compose_file}" \
         up --detach
-    # shellcheck disable=SC2181
-    if [[ $? -ne 0 ]]; then
-        log_error "$(white "${container} compose up") $(red failed) with exit status ${?}"
+    local compose_up_status=$?
+    if [[ ${compose_up_status} -ne 0 ]]; then
+        log_error "$(white "${container} compose up") $(red failed) with exit status ${compose_up_status}"
         ${container} compose --env-file "${env_file}" --file "${compose_file}" logs | tail -n10
-        exit $?
+        exit "${compose_up_status}"
     fi
     apikey_setup
 }
@@ -759,30 +759,35 @@ function esdiag_setup() {
     log_debug "$(green running) $(white "esdiag setup")"
     # If we already have a running container from compose, use it
     local compose_status && compose_status=$(${container} inspect esdiag --format '{{.State.Status}}')
+    local setup_output
+    local setup_status
     if [[ "${compose_status}" == "running" ]]; then
         log_debug "$(green found) existing $(cyan esdiag) container"
         # shellcheck disable=SC2086
-        ${container} exec \
+        setup_output=$(${container} exec \
             --env ESDIAG_KIBANA_URL="http://esdiag-kibana:5601" \
             ${LOG_LEVEL:+--env LOG_LEVEL="${LOG_LEVEL}"} \
-            esdiag /usr/bin/esdiag setup &> /dev/null
+            esdiag /usr/bin/esdiag setup 2>&1)
+        setup_status=$?
     else
-        ${container} run --rm --name="esdiag-setup" \
+        # shellcheck disable=SC2086
+        setup_output=$(${container} run --rm --name="esdiag-setup" \
             --env ESDIAG_OUTPUT_URL="${elasticsearch_url}" \
             ${kibana_url:+--env ESDIAG_KIBANA_URL="${kibana_url}"} \
             ${LOG_LEVEL:+--env LOG_LEVEL="${LOG_LEVEL}"} \
             ${apikey:+--env ESDIAG_OUTPUT_APIKEY="${apikey}"} \
             ${username:+--env ESDIAG_OUTPUT_USERNAME="${username}"} \
             ${password:+--env ESDIAG_OUTPUT_PASSWORD="${password}"} \
-            "${esdiag_image}" setup
+            "${esdiag_image}" setup 2>&1)
+        setup_status=$?
     fi
 
-    # shellcheck disable=SC2181
-    if [[ $? -eq 0 ]]; then
+    if [[ ${setup_status} -eq 0 ]]; then
         log_info "$(green completed) $(white "esdiag setup")"
     else
-        log_error "$(red failed) $(white "esdiag setup") with exit status ${?}"
-        exit $?
+        log_error "$(red failed) $(white "esdiag setup") with exit status ${setup_status}"
+        printf '%s\n' "${setup_output}" >&2
+        exit "${setup_status}"
     fi
 }
 

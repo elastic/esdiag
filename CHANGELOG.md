@@ -33,6 +33,9 @@ published release notes, maintenance branches, and tagged history.
 
 ### Changed
 
+- Report the actual setup failure status and output when `esdiag-control` cannot configure the local stack.
+- Updated Kibana asset handling to support JSON5 resources with human-readable filenames.
+- Updated the local Elastic Stack default to version 9.4.2 to support agent skills.
 - Increased the long-running collection request timeout so large Elasticsearch API payloads can finish returning.
 - Changed diagnostic manifests to record `requested_apis` including status, response time, and response size.
 - Moved the Tauri desktop app root under `desktop/` while keeping root-level `cargo tauri build` and desktop packaging workflows working.
