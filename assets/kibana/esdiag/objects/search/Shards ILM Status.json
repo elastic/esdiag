@@ -1,0 +1,173 @@
+{
+  "attributes": {
+    "columns": [
+      "index.name",
+      "shard.number",
+      "node.tier",
+      "index.ilm.phase",
+      "index.ilm.action",
+      "index.ilm.step",
+      "shard.store.total_data_set_size_in_bytes",
+      "index.age",
+      "event.ingested"
+    ],
+    "description": "All shards including ILM phase and node tier.",
+    "grid": {
+      "columns": {
+        "diagnostic.id": {
+          "width": 298
+        },
+        "event.ingested": {
+          "width": 242
+        },
+        "index.age": {
+          "width": 86
+        },
+        "index.ilm.action": {
+          "width": 113
+        },
+        "index.ilm.phase": {
+          "width": 107
+        },
+        "index.ilm.step": {
+          "width": 155
+        },
+        "index.name": {
+          "width": 536
+        },
+        "node.tier": {
+          "width": 85
+        }
+      }
+    },
+    "hideChart": true,
+    "isTextBasedQuery": false,
+    "kibanaSavedObjectMeta": {
+      "searchSourceJSON": {
+        "filter": [
+          {
+            "$state": {
+              "store": "appState"
+            },
+            "meta": {
+              "alias": null,
+              "disabled": false,
+              "indexRefName": "kibanaSavedObjectMeta.searchSourceJSON.filter[0].meta.index",
+              "key": "index.ilm.phase",
+              "negate": false,
+              "type": "exists",
+              "value": "exists"
+            },
+            "query": {
+              "exists": {
+                "field": "index.ilm.phase"
+              }
+            }
+          }
+        ],
+        "indexRefName": "kibanaSavedObjectMeta.searchSourceJSON.index",
+        "query": {
+          "language": "kuery",
+          "query": ""
+        }
+      }
+    },
+    "rowHeight": 0,
+    "sort": [
+      [
+        "index.age",
+        "desc"
+      ]
+    ],
+    "tabs": [
+      {
+        "attributes": {
+          "columns": [
+            "index.name",
+            "shard.number",
+            "node.tier",
+            "index.ilm.phase",
+            "index.ilm.action",
+            "index.ilm.step",
+            "shard.store.total_data_set_size_in_bytes",
+            "index.age",
+            "event.ingested"
+          ],
+          "grid": {
+            "columns": {
+              "diagnostic.id": {
+                "width": 298
+              },
+              "event.ingested": {
+                "width": 242
+              },
+              "index.age": {
+                "width": 86
+              },
+              "index.ilm.action": {
+                "width": 113
+              },
+              "index.ilm.phase": {
+                "width": 107
+              },
+              "index.ilm.step": {
+                "width": 155
+              },
+              "index.name": {
+                "width": 536
+              },
+              "node.tier": {
+                "width": 85
+              }
+            }
+          },
+          "hideChart": true,
+          "isTextBasedQuery": false,
+          "kibanaSavedObjectMeta": {
+            "searchSourceJSON": "{\"filter\":[{\"$state\":{\"store\":\"appState\"},\"meta\":{\"alias\":null,\"disabled\":false,\"indexRefName\":\"kibanaSavedObjectMeta.searchSourceJSON.filter[0].meta.index\",\"key\":\"index.ilm.phase\",\"negate\":false,\"type\":\"exists\",\"value\":\"exists\"},\"query\":{\"exists\":{\"field\":\"index.ilm.phase\"}}}],\"indexRefName\":\"kibanaSavedObjectMeta.searchSourceJSON.index\",\"query\":{\"language\":\"kuery\",\"query\":\"\"}}"
+          },
+          "rowHeight": 0,
+          "sort": [
+            [
+              "index.age",
+              "desc"
+            ]
+          ],
+          "timeRestore": false,
+          "visContext": {}
+        },
+        "id": "fad7accc-8652-4092-a513-165344f8c55a",
+        "label": "Untitled"
+      }
+    ],
+    "timeRestore": false,
+    "title": "Shards ILM Status",
+    "visContext": {}
+  },
+  "coreMigrationVersion": "8.8.0",
+  "id": "d08bac14-4df9-416f-b503-f87a6681eb00",
+  "references": [
+    {
+      "id": "590e8f4c-4fe2-4794-9007-29de4d07e489",
+      "name": "kibanaSavedObjectMeta.searchSourceJSON.index",
+      "type": "index-pattern"
+    },
+    {
+      "id": "590e8f4c-4fe2-4794-9007-29de4d07e489",
+      "name": "kibanaSavedObjectMeta.searchSourceJSON.filter[0].meta.index",
+      "type": "index-pattern"
+    },
+    {
+      "id": "5e05b9ee-3e49-4efd-8a16-94de208ebb83",
+      "name": "tag-ref-5e05b9ee-3e49-4efd-8a16-94de208ebb83",
+      "type": "tag"
+    },
+    {
+      "id": "b210de37-7ebf-4ced-9a28-13c1620db46c",
+      "name": "tag-ref-b210de37-7ebf-4ced-9a28-13c1620db46c",
+      "type": "tag"
+    }
+  ],
+  "type": "search",
+  "typeMigrationVersion": "10.11.0"
+}

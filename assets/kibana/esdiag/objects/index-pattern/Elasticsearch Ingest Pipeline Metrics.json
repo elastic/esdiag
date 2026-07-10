@@ -1,0 +1,34 @@
+{
+  "attributes": {
+    "allowHidden": false,
+    "fieldAttrs": {},
+    "fieldFormatMap": {
+      "ingest.pipeline.time_in_millis": {
+        "id": "duration",
+        "params": {
+          "includeSpaceWithSuffix": false,
+          "inputFormat": "milliseconds",
+          "outputFormat": "humanizePrecise",
+          "outputPrecision": 1,
+          "parsedUrl": {
+            "basePath": "",
+            "origin": "https://esdiag.kb.us-west-2.aws.found.io:9243",
+            "pathname": "/app/dashboards"
+          },
+          "useShortSuffix": true
+        }
+      }
+    },
+    "fields": "[]",
+    "name": "Elasticsearch Ingest Pipeline Metrics",
+    "runtimeFieldMap": "{}",
+    "sourceFilters": "[]",
+    "timeFieldName": "@timestamp",
+    "title": "metrics-ingest.pipeline-*"
+  },
+  "coreMigrationVersion": "8.8.0",
+  "id": "e8de195c-287f-45ed-bbfd-45eace1e037c",
+  "references": [],
+  "type": "index-pattern",
+  "typeMigrationVersion": "8.0.0"
+}

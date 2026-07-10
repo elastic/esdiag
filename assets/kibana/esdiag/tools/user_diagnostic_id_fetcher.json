@@ -1,0 +1,18 @@
+{
+  "configuration": {
+    "wait_for_completion": true,
+    "workflow_id": "workflow-e81b9c46-9307-4ebd-b509-bbbd79b9d34b"
+  },
+  "description": "This is used when a user does not have a diagnostic ID. Run this workflow so that it will take logged in user name and find all the diagnostics uploaded in the last 30 days. Will provide the list as options for the user to pick from.",
+  "id": "user_diagnostic_id_fetcher",
+  "readonly": false,
+  "schema": {
+    "properties": {},
+    "type": "object"
+  },
+  "tags": [
+    "ada",
+    "workflow"
+  ],
+  "type": "workflow"
+}

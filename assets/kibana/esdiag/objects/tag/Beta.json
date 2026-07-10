@@ -1,0 +1,12 @@
+{
+  "attributes": {
+    "color": "#FF957D",
+    "description": "Work-in-progress and unreleased features (ESDiag)",
+    "name": "Beta"
+  },
+  "coreMigrationVersion": "8.8.0",
+  "id": "11ffb732-bed1-4aa4-8867-189e74792cdd",
+  "references": [],
+  "type": "tag",
+  "typeMigrationVersion": "8.0.0"
+}

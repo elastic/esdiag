@@ -1,1 +1,3 @@
-workflows: []
+workflows:
+  - id: workflow-e81b9c46-9307-4ebd-b509-bbbd79b9d34b
+    name: User Diagnostic ID Fetcher
