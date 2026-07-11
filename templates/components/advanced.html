@@ -839,7 +839,7 @@
                         (
                             $job.process.enabled &&
                             (
-                                ($job.send.mode === 'remote' && !!$job.send.remote_target) ||
+                                $job.send.mode === 'remote' ||
                                 ($job.send.mode === 'local' && $job.send.local_target !== '' && ($job.send.local_target !== 'directory' || $job.send.local_directory !== ''))
                             )
                         ) ||

@@ -115,6 +115,10 @@ pub async fn run_job(
         request_user.clone(),
         &job.input,
     );
+    let setup_inserts_processing_entry = matches!(&job.input, JobInput::FromRemoteHost { .. })
+        && signals.job.process.mode == ProcessMode::Process
+        && !signals.job.collect.save
+        && !replace_existing_entry;
 
     let result = match &job.input {
         JobInput::LocalArchive { path, .. } => {
@@ -186,7 +190,7 @@ pub async fn run_job(
         send_event(
             &tx,
             terminal_job_event(
-                replace_existing_entry,
+                replace_existing_entry || setup_inserts_processing_entry,
                 job_id,
                 template::JobFailed {
                     job_id,
@@ -1377,8 +1381,9 @@ mod tests {
         ));
         assert!(events.iter().any(|event| matches!(
             event,
-            ServerEvent::Template(html)
-                if html.contains("id=\"job-42\"")
+            ServerEvent::ReplaceSelector { selector, html }
+                if selector == "#job-42"
+                    && html.contains("id=\"job-42\"")
                     && html.contains("Processing Failed")
                     && html.contains("ESDIAG_OUTPUT_URL is not defined")
         )));

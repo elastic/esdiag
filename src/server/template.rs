@@ -562,6 +562,8 @@ mod tests {
         assert!(html.contains(r#"data-signals:job.send.remote_target="null""#));
         assert!(html.contains(r#"<option value="">Default</option>"#));
         assert!(html.contains("evt.target.value === '' ? null : evt.target.value"));
+        assert!(html.contains("$job.process.enabled"));
+        assert!(html.contains("$job.send.mode === 'remote' ||"));
         let remote_select = html
             .split_once(r#"id="send-remote-target""#)
             .and_then(|(_, remainder)| remainder.split_once("</select>"))
