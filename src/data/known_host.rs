@@ -1837,7 +1837,7 @@ mod tests {
         write_hosts(hosts);
 
         let host = KnownHost::get_known(&"secret-only".to_string()).expect("host");
-        let err = host.get_auth().err().expect("auth should fail");
+        let err = host.get_auth().expect_err("auth should fail");
         assert!(err.to_string().contains("missing-secret"));
         unsafe {
             std::env::remove_var("ESDIAG_OUTPUT_APIKEY");

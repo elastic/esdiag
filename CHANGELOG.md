@@ -12,6 +12,7 @@ published release notes, maintenance branches, and tagged history.
 
 ### Added
 
+- Added a standalone `esdiag-local` release artifact with generated local-stack state, secure lifecycle and secret commands, and checksum-verified self-updates.
 - Added Tauri-based desktop app support (#253).
 - Added multi-platform desktop build workflows (#268).
 - Added refined desktop packaging and build workflows (#283).
@@ -33,6 +34,11 @@ published release notes, maintenance branches, and tagged history.
 
 ### Changed
 
+- Require Elastic security for `esdiag-local` deployments and remove the unsupported `--insecure` option.
+- Changed `esdiag-control` lifecycle commands to use the shared standalone implementation while retaining repository source-build workflows.
+- Report the actual setup failure status and output when `esdiag-control` cannot configure the local stack.
+- Updated Kibana asset handling to support JSON5 resources with human-readable filenames.
+- Updated the local Elastic Stack default to version 9.4.2 to support agent skills.
 - Increased the long-running collection request timeout so large Elasticsearch API payloads can finish returning.
 - Changed diagnostic manifests to record `requested_apis` including status, response time, and response size.
 - Moved the Tauri desktop app root under `desktop/` while keeping root-level `cargo tauri build` and desktop packaging workflows working.

@@ -10,35 +10,40 @@ Running locally within containers
 
 ### 1. Preparation
 
-Use the `bin/esdiag-control` command to quickly spin up a fully-local environment.
+Use the standalone `esdiag-local` release artifact to run the official ESDiag
+image without cloning this repository. Visit [ela.st/esdiag-local](https://ela.st/esdiag-local),
+download the `esdiag-local` asset, make it executable, and run:
 
-1. Clone this repository to your local machine using either `git` or [GitHub Desktop](https://desktop.github.com/download/)
-2. Install the `esdiag-control` dependencies: `docker`, `jq`, `curl`, `grep`, and `sed`.
-3. Have either `podman` or `docker` container runtime with `compose` subcommand support.
-4. Have at least 8GB of total RAM available for the containers
+```sh
+./esdiag-local up
+```
+
+The script prefers Podman and falls back to Docker; either runtime needs Compose
+support and at least 8 GB of available memory. It writes restrictive generated
+state to `~/.esdiag/local`, binds all ports to loopback, and enables security by
+default. See [the standalone local stack guide](docs/bin/esdiag-local.md) for
+commands, credentials, updates, upgrades, and reset behavior.
+
+Repository contributors and users who need an auditable source build should
+clone this repository and run `./bin/esdiag-control up`. That command builds the
+local image and delegates lifecycle management to `esdiag-local`, using isolated
+state under `target/esdiag-local`.
 
 > [!IMPORTANT]
 > By default containers running on Linux can typically access the host's total available memory, so the 8GB requirement applies to the host machine. On MacOS and Windows the containers run inside a virtual machine that commonly has less than 8GB RAM by default. Both the Docker and Podman Desktop apps have a `resources` section to configure it. Podman also has a command-line option: `podman machine set --cpus 8 --memory 8192`
 
 ### 2. Running
 
-Run the script from this repository's root directory:
+Run the standalone artifact from any directory:
 
 ```sh
-./bin/esdiag-control up
+./esdiag-local up
 ```
 
 > [!TIP]
-> When running security enabled, the `elastic` user's password will be saved to the `ELASTIC_PASSWORD` environment variable in the `.env` file. It will be printed last, before the browser is launched.
-
-or with security disabled:
-
-```sh
-./bin/esdiag-control up --insecure
-```
-
-> [!NOTE]
-> The AI assistant features will not be available with security disabled. Running with security disabled prevents Kibana from using an Kibana encryption key, which is required to configure anything with an external API key, like large-language model (LLM) providers.
+> Elastic security is always enabled because the AI assistant and related Kibana
+> assets require it. Retrieve the generated `elastic` password with
+> `./esdiag-local secrets password`.
 
 Once the script is complete, you will have:
 1. A single Elasticsearch node with all index templates installed.

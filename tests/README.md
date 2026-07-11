@@ -11,10 +11,9 @@ user-facing `bin/esdiag-control` helper. It exercises the control script itself:
 - runs `shellcheck` against `bin/esdiag-control`
 - verifies help output
 - builds the local `esdiag` container image
-- starts and authenticates the local stack with security disabled
+- starts and authenticates the security-enabled local stack
 - runs setup against the started stack
 - tears the stack down
-- repeats startup, auth, setup, and teardown with security enabled
 
 Run it from the repository root:
 

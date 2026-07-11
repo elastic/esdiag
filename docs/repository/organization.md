@@ -33,7 +33,7 @@ Top-Level Layout
 - `.github/`: GitHub automation such as Actions workflows and issue templates.
 - `.gitignore`: Root ignore rules for generated files, local artifacts, and other untracked content that should not be committed.
 - `assets/`: Elastic Stack assets installed into target environments, such as configuration and setup content used by `esdiag setup`.
-- `bin/`: User-facing helper executables such as `esdiag-control` and `min-diag.sh`.
+- `bin/`: User-facing helpers including standalone `esdiag-local`, repository build wrapper `esdiag-control`, and `min-diag.sh`.
 - `desktop/`: Tauri desktop app root, including desktop config, capabilities, icons, packaging assets, and desktop-only build scripts.
 - `gen/`: Generated Tauri schema output at the repo root during desktop builds; this directory is build output and is not tracked.
 - `docker/`: Container and Compose definitions for local and packaging-related workflows.
