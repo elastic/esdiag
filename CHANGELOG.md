@@ -29,6 +29,7 @@ published release notes, maintenance branches, and tagged history.
 - Added collect-to-upload handoff support.
 - Added a file-based keystore unlock lease workflow shared by the CLI and web UI.
 - Added runtime web feature gating with `--web-features` and `ESDIAG_WEB_FEATURES`.
+- Added a comprehensive LLM setup guide to document AI assistant resource configurations.
 
 ### Changed
 

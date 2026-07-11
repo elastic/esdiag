@@ -6,3 +6,4 @@ Here you can learn about the different features and how to use them.
 
 ## Contents
 - [Example Subtopic](#example/subtopic)
+- [LLM Setup Guide](llm-setup-guide.md)
