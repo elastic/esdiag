@@ -5,7 +5,7 @@
 
 set -euo pipefail
 
-readonly ESDIAG_VERSION="0.16.0-SNAPSHOT"
+readonly ESDIAG_VERSION="0.16.0"
 readonly ELASTIC_VERSION="9.4.2"
 readonly STATE_SCHEMA_VERSION="1"
 readonly DEFAULT_ESDIAG_IMAGE="docker.elastic.co/esdiag/esdiag:${ESDIAG_VERSION}"

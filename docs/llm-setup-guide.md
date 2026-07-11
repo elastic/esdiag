@@ -1,3 +1,10 @@
+---
+type: Guide
+title: Elastic AI Agent LLM Configuration
+description: Configure cloud-hosted or local language models for the Agentic Diagnostic Assistant and Elastic AI Agent.
+tags: [ai, agent, configuration]
+---
+
 # Elastic AI Agent: LLM Configuration Guide
 
 This guide outlines the prerequisite requirements and step-by-step instructions for configuring Large Language Models (LLMs) to power the Agentic Diagnostic Assistant (ADA) and Elastic AI Agent.

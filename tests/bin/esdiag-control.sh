@@ -12,7 +12,7 @@ assert_not_contains() { ! grep -Fq -- "$2" "$1" || fail "$1 contains unexpected 
 mkdir -p "$tmp/repo/bin" "$tmp/repo/docker" "$tmp/bin"
 cp "$root/bin/esdiag-control" "$tmp/repo/bin/esdiag-control"
 chmod 755 "$tmp/repo/bin/esdiag-control"
-printf '%s\n' '[package]' 'version = "0.16.0-SNAPSHOT"' >"$tmp/repo/Cargo.toml"
+printf '%s\n' '[package]' 'version = "0.16.0"' >"$tmp/repo/Cargo.toml"
 : >"$tmp/repo/docker/Dockerfile"
 cat >"$tmp/repo/bin/esdiag-local" <<'EOF'
 #!/usr/bin/env bash
@@ -35,15 +35,15 @@ if (cd "$tmp/repo" && PATH="$tmp/bin:$PATH" bin/esdiag-control up --runtime podm
 assert_contains "$tmp/insecure-error" 'Unknown option: --insecure'
 
 (cd "$tmp/repo" && PATH="$tmp/bin:$PATH" bin/esdiag-control up --runtime podman --open-browser=false)
-assert_contains "$tmp/runtime.log" 'build --file docker/Dockerfile . --tag esdiag:latest --tag esdiag:0.16.0-SNAPSHOT'
-assert_contains "$tmp/delegate.log" 'image=esdiag:0.16.0-SNAPSHOT'
+assert_contains "$tmp/runtime.log" 'build --file docker/Dockerfile . --tag esdiag:latest --tag esdiag:0.16.0'
+assert_contains "$tmp/delegate.log" 'image=esdiag:0.16.0'
 assert_contains "$tmp/delegate.log" 'args=up'
 assert_contains "$tmp/delegate.log" '--pull never'
 assert_contains "$tmp/delegate.log" 'repo/target/esdiag-local'
 
 : >"$tmp/delegate.log"
 (cd "$tmp/repo" && PATH="$tmp/bin:$PATH" ESDIAG_LOCAL_DIR="$tmp/custom state" bin/esdiag-control setup --runtime podman)
-assert_contains "$tmp/delegate.log" 'image=esdiag:0.16.0-SNAPSHOT'
+assert_contains "$tmp/delegate.log" 'image=esdiag:0.16.0'
 assert_contains "$tmp/delegate.log" 'args=setup'
 assert_contains "$tmp/delegate.log" '--pull never'
 assert_contains "$tmp/delegate.log" "--state-dir $tmp/custom state"

@@ -73,7 +73,7 @@ export FAKE_CLIPBOARD="$tmp/clipboard" FAKE_UI_LOG="$tmp/ui.log"
 
 # Shell, help, platform adapters, and repository-independent execution.
 bash -n "$script"
-[[ "$($script version)" == "0.16.0-SNAPSHOT" ]] || fail version
+[[ "$($script version)" == "0.16.0" ]] || fail version
 PATH="$fake_bin:$PATH" ESDIAG_TEST_OS=Darwin "$script" help >"$tmp/help-macos"
 PATH="$fake_bin:$PATH" ESDIAG_TEST_OS=Linux "$script" help >"$tmp/help-linux"
 PATH="$fake_bin:$PATH" ESDIAG_TEST_OS=Linux ESDIAG_TEST_WSL=true "$script" help >"$tmp/help-wsl"
