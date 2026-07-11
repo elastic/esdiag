@@ -1,0 +1,4 @@
+interface:
+  display_name: "ESDiag Release"
+  short_description: "Prepare and verify an ESDiag release"
+  default_prompt: "Use $esdiag-release to prepare an ESDiag release safely through the final draft review."
