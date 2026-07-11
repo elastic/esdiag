@@ -432,7 +432,7 @@ launch_browser() {
         elif [[ -n "$clip" ]]; then warn "Could not copy password; use: ${command_name} secrets password$(clipboard_example)"; fi
     fi
     case "$(uname -s)" in
-        Darwin) have open && open "$url" >/dev/null 2>&1 || true ;;
+        Darwin) if have open; then open "$url" >/dev/null 2>&1 || true; fi ;;
         Linux) if is_wsl && have cmd.exe; then cmd.exe /c start "$url" >/dev/null 2>&1 || true
                elif have xdg-open; then xdg-open "$url" >/dev/null 2>&1 || true; fi ;;
     esac
