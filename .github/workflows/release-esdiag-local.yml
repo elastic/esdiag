@@ -59,7 +59,10 @@ jobs:
             --pattern esdiag-local --pattern esdiag-local.sha256
           cd target/release-assets/verification
           sha256sum --check esdiag-local.sha256
-      - name: Publish release
+      - name: Leave release draft for human approval
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release edit "${{ github.ref_name }}" --draft=false
+        run: |
+          test "$(gh release view "${{ github.ref_name }}" --json isDraft --jq .isDraft)" = true
+          echo "Release ${{ github.ref_name }} is verified and remains a draft pending human approval." \
+            >> "$GITHUB_STEP_SUMMARY"
