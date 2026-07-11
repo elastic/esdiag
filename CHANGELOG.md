@@ -37,6 +37,8 @@ published release notes, maintenance branches, and tagged history.
 
 ### Changed
 
+- Changed standalone web processing so the `Default` output uses `ESDIAG_OUTPUT_*`, keeps collection failures visible in the job feed, fails instead of silently streaming documents to stdout when no output is configured, and generates browser-reachable localhost Kibana links.
+- Persisted standalone ESDiag User-mode settings, saved jobs, hosts, and keystore state in a dedicated named volume across container recreation.
 - Require Elastic security for `esdiag-local` deployments and remove the unsupported `--insecure` option.
 - Changed `esdiag-control` lifecycle commands to use the shared standalone implementation while retaining repository source-build workflows.
 - Report the actual setup failure status and output when `esdiag-control` cannot configure the local stack.

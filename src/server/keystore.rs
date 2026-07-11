@@ -1,6 +1,6 @@
 use super::{ServerState, append_body_event, execute_script_event, html_event, now_epoch_seconds, signal_event};
-use crate::data::{HostRole, KnownHost, Settings, authenticate, keystore_exists};
-use crate::server::template::{self, KeystoreBootstrapModal, KeystoreProcessUnlockModal, KeystoreUnlockModal};
+use crate::data::{KnownHost, Settings, authenticate, keystore_exists};
+use crate::server::template::{KeystoreBootstrapModal, KeystoreProcessUnlockModal, KeystoreUnlockModal};
 use askama::Template;
 use axum::{
     extract::{Form, State},
@@ -436,18 +436,13 @@ pub async fn ensure_unlocked_for_active_output(state: &Arc<ServerState>) -> Resu
         return Ok(());
     }
 
-    let exporter = state.exporter.read().await.clone();
-    let hosts_by_name = KnownHost::parse_hosts_yml().unwrap_or_default();
-    let send_hosts: Vec<String> = hosts_by_name
-        .iter()
-        .filter(|(_, h)| h.has_role(HostRole::Send))
-        .map(|(name, _)| name.clone())
-        .collect();
-    let preferred_target = Settings::load().ok().and_then(|settings| settings.active_target);
-    let (_output_options, selected_output, _exporter_label) =
-        template::build_footer_output_context(&hosts_by_name, &send_hosts, &exporter, preferred_target.as_deref());
-
-    if !template::active_output_requires_keystore(&hosts_by_name, &send_hosts, &selected_output, &exporter) {
+    let Some(active_target) = Settings::load().ok().and_then(|settings| settings.active_target) else {
+        return Ok(());
+    };
+    let Some(active_host) = KnownHost::get_known(&active_target) else {
+        return Ok(());
+    };
+    if !active_host.requires_keystore_secret() {
         return Ok(());
     }
 
@@ -926,6 +921,48 @@ mod tests {
         ensure_unlocked_for_active_output(&state)
             .await
             .expect("secure output should pass once unlocked");
+    }
+
+    #[tokio::test]
+    async fn unselected_output_bypasses_keystore_when_runtime_url_matches_saved_host() {
+        let _guard = env_lock().lock().expect("env lock");
+        let (_tmp, _hosts_path, _keystore_path) = setup_env();
+
+        let mut hosts = BTreeMap::new();
+        hosts.insert(
+            "secure".to_string(),
+            KnownHost::new_legacy_apikey(
+                crate::data::Product::Elasticsearch,
+                Url::parse("http://localhost:9200").expect("url"),
+                vec![crate::data::HostRole::Send],
+                None,
+                false,
+                Some("secure".to_string()),
+                None,
+            ),
+        );
+        write_hosts(hosts);
+        Settings::default()
+            .save()
+            .expect("save settings without an explicit output");
+
+        let runtime_exporter = crate::exporter::Exporter::try_from(KnownHost::new_legacy_apikey(
+            crate::data::Product::Elasticsearch,
+            Url::parse("http://localhost:9200").expect("url"),
+            vec![crate::data::HostRole::Send],
+            None,
+            false,
+            None,
+            Some("runtime-secret".to_string()),
+        ))
+        .expect("runtime exporter");
+        let state = test_server_state();
+        *state.exporter.write().await = runtime_exporter;
+
+        ensure_unlocked_for_active_output(&state)
+            .await
+            .expect("an unselected UI output must fall through without a keystore dependency");
+        assert!(!crate::data::keystore_exists().expect("inspect keystore"));
     }
 
     #[tokio::test]

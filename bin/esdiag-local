@@ -7,7 +7,7 @@ set -euo pipefail
 
 readonly ESDIAG_VERSION="0.16.0"
 readonly ELASTIC_VERSION="9.4.2"
-readonly STATE_SCHEMA_VERSION="1"
+readonly STATE_SCHEMA_VERSION="2"
 readonly DEFAULT_ESDIAG_IMAGE="docker.elastic.co/esdiag/esdiag:${ESDIAG_VERSION}"
 readonly DEFAULT_ES_IMAGE="docker.elastic.co/elasticsearch/elasticsearch:${ELASTIC_VERSION}"
 readonly DEFAULT_KIBANA_IMAGE="docker.elastic.co/kibana/kibana:${ELASTIC_VERSION}"
@@ -246,15 +246,18 @@ services:
       elasticsearch: {condition: service_healthy}
       kibana: {condition: service_healthy}
     environment:
+      ESDIAG_MODE: user
       ESDIAG_OUTPUT_URL: http://elasticsearch:9200
       ESDIAG_OUTPUT_APIKEY: ${ESDIAG_OUTPUT_APIKEY}
-      ESDIAG_KIBANA_URL: http://kibana:5601/s/${ESDIAG_KIBANA_SPACE}
+      ESDIAG_KIBANA_URL: http://localhost:${ESDIAG_KIBANA_PORT}/s/${ESDIAG_KIBANA_SPACE}
       LOG_LEVEL: ${LOG_LEVEL}
     command: ["serve"]
     ports: ["127.0.0.1:${ESDIAG_PORT}:2501"]
+    volumes: ["esdiag-data:/root/.esdiag"]
 volumes:
   elasticsearch-data:
   kibana-data:
+  esdiag-data:
 YAML
     chmod 600 "$tmp"
     mv "$tmp" "${state_dir}/compose.yml"
@@ -330,12 +333,13 @@ detect_runtime() {
 volume_exists() { "$runtime" volume inspect "${project_name}_$1" >/dev/null 2>&1; }
 
 validate_state_coupling() {
-    local es_volume=false kibana_volume=false key
+    local es_volume=false kibana_volume=false esdiag_volume=false key
     volume_exists elasticsearch-data && es_volume=true
     volume_exists kibana-data && kibana_volume=true
+    volume_exists esdiag-data && esdiag_volume=true
     [[ "$es_volume" == true && "$kibana_volume" == true ]] && deployment_initialized=true
     if [[ ! -f "${state_dir}/.env" ]]; then
-        if [[ "$es_volume" == true || "$kibana_volume" == true ]]; then
+        if [[ "$es_volume" == true || "$kibana_volume" == true || "$esdiag_volume" == true ]]; then
             die "Deployment volumes exist but ${state_dir}/.env is missing; restore it or run '${command_name} reset --force'"
         fi
         return
@@ -476,6 +480,7 @@ command_up() {
         rm -f "$upgrade_backup"
         upgrade_backup=""
     fi
+    env_set STATE_SCHEMA_VERSION "$STATE_SCHEMA_VERSION"
     info "ESDiag is ready at http://127.0.0.1:$(env_get ESDIAG_PORT)"
     [[ "$existed" == false ]] && info "Retrieve the Kibana password with: ${command_name} secrets password"
     launch_browser

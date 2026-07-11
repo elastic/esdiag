@@ -106,6 +106,8 @@ Several commands accept an optional output target. The current resolution rules 
 - A string matching a saved host name resolves to that known host
 - Any other non-empty string is treated as a local filesystem target
 - If output is omitted entirely, `esdiag` falls back to `ESDIAG_OUTPUT_URL` plus optional auth env vars
+- In the web workflow, the `Default` remote output sends no explicit target and uses the same environment fallback
+- If neither an explicit target nor a valid environment output is available, processing fails instead of using stdout
 
 This applies to:
 
@@ -608,7 +610,10 @@ The Job Builder flag only controls web UI routes. CLI saved-job commands such as
 
 ### Output handling
 
-`serve` uses the same output target rules as `process`.
+`serve` uses the same output target rules as `process`. User mode does not add
+an implicit stdout fallback: omit the output only when `ESDIAG_OUTPUT_*` defines
+a valid target. The web workflow represents an omitted explicit output as
+`Default` and resolves it through those environment variables.
 
 ### Examples
 

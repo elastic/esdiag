@@ -52,11 +52,10 @@ pub struct Advanced {
     pub collect_hosts: Vec<String>,
     pub collect_secure_hosts_json: String,
     pub configured_local_path: String,
-    pub configured_remote_target: String,
     pub default_save_dir: String,
     pub initial_send_mode: String,
     pub initial_local_target: String,
-    pub initial_remote_target: String,
+    pub initial_remote_target: Option<String>,
     pub kibana_url: String,
     pub key_id: Option<u64>,
     pub link_id: Option<u64>,
@@ -88,7 +87,6 @@ pub struct Jobs {
     pub collect_hosts: Vec<String>,
     pub collect_secure_hosts_json: String,
     pub configured_local_path: String,
-    pub configured_remote_target: String,
     pub default_save_dir: String,
     pub kibana_url: String,
     pub key_id: Option<u64>,
@@ -124,7 +122,7 @@ pub struct Jobs {
     pub saved_process_diagnostic_type: String,
     pub saved_process_selected: String,
     pub saved_send_mode: String,
-    pub saved_remote_target: String,
+    pub saved_remote_target: Option<String>,
     pub saved_local_target: String,
     pub saved_local_directory: String,
     pub saved_user: String,
@@ -403,29 +401,6 @@ fn preferred_target_matches_exporter(
         .is_some_and(|url| url.as_str() == exporter.target_uri())
 }
 
-pub fn active_output_requires_keystore(
-    hosts_by_name: &BTreeMap<String, KnownHost>,
-    send_hosts: &[String],
-    selected_output: &str,
-    exporter: &Exporter,
-) -> bool {
-    if let Some(host) = hosts_by_name.get(selected_output) {
-        return host.requires_keystore_secret();
-    }
-
-    send_hosts.iter().any(|host_name| {
-        let Some(host) = hosts_by_name.get(host_name) else {
-            return false;
-        };
-        let secure = host.requires_keystore_secret();
-        if !secure {
-            return false;
-        }
-        host.concrete_url()
-            .is_some_and(|url| url.as_str() == exporter.target_uri())
-    })
-}
-
 fn output_target_label(target: &str) -> String {
     match Uri::try_from(target.to_string()) {
         Ok(Uri::Directory(path)) => {
@@ -451,7 +426,7 @@ fn output_target_label(target: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{JobCompleted, JobSkipped, Jobs, active_output_requires_keystore, build_footer_output_context};
+    use super::{JobCompleted, JobSkipped, Jobs, build_footer_output_context};
     use crate::{
         data::{HostRole, KnownHost, Product, Uri},
         exporter::Exporter,
@@ -526,44 +501,6 @@ mod tests {
     }
 
     #[test]
-    fn active_output_security_tracks_selected_host_or_matching_exporter() {
-        let _guard = env_lock().lock().expect("env lock");
-        let _tmp = setup_hosts();
-        let send_hosts = vec!["localhost".to_string(), "secure-prod".to_string()];
-
-        let secure_exporter = Exporter::try_from(KnownHost::new_no_auth(
-            Product::Elasticsearch,
-            Url::parse("https://secure.example.com:9200").expect("secure url"),
-            vec![HostRole::Send],
-            None,
-            false,
-        ))
-        .expect("secure exporter");
-        let hosts_by_name = KnownHost::parse_hosts_yml().unwrap_or_default();
-        assert!(active_output_requires_keystore(
-            &hosts_by_name,
-            &send_hosts,
-            "secure-prod",
-            &secure_exporter
-        ));
-        assert!(active_output_requires_keystore(
-            &hosts_by_name,
-            &send_hosts,
-            &secure_exporter.target_uri(),
-            &secure_exporter
-        ));
-
-        let dir_exporter =
-            Exporter::try_from(Uri::Directory(PathBuf::from("/tmp/output"))).expect("directory exporter");
-        assert!(!active_output_requires_keystore(
-            &hosts_by_name,
-            &send_hosts,
-            &dir_exporter.target_uri(),
-            &dir_exporter
-        ));
-    }
-
-    #[test]
     fn jobs_template_does_not_seed_conflicting_job_root_signal() {
         let page = Jobs {
             auth_header: false,
@@ -572,7 +509,6 @@ mod tests {
             collect_hosts: vec![],
             collect_secure_hosts_json: "[]".to_string(),
             configured_local_path: String::new(),
-            configured_remote_target: String::new(),
             default_save_dir: "/tmp".to_string(),
             kibana_url: String::new(),
             key_id: None,
@@ -607,7 +543,7 @@ mod tests {
             saved_process_diagnostic_type: "standard".to_string(),
             saved_process_selected: String::new(),
             saved_send_mode: "local".to_string(),
-            saved_remote_target: String::new(),
+            saved_remote_target: None,
             saved_local_target: "directory".to_string(),
             saved_local_directory: "/tmp".to_string(),
             saved_user: String::new(),
@@ -622,6 +558,19 @@ mod tests {
         assert!(
             !html.contains(r#"data-signals:job="{}""#),
             "jobs page should not seed a top-level job object that overrides nested job signals"
+        );
+        assert!(html.contains(r#"data-signals:job.send.remote_target="null""#));
+        assert!(html.contains(r#"<option value="">Default</option>"#));
+        assert!(html.contains("evt.target.value === '' ? null : evt.target.value"));
+        let remote_select = html
+            .split_once(r#"id="send-remote-target""#)
+            .and_then(|(_, remainder)| remainder.split_once("</select>"))
+            .map(|(select, _)| select)
+            .expect("remote target select");
+        assert_eq!(
+            remote_select.matches("<option").count(),
+            1,
+            "runtime environment output must be represented only by Default"
         );
     }
 

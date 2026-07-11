@@ -14,6 +14,11 @@ tags: [hosts, keystore, migration]
 
 The keystore flow is optional and additive. Existing `hosts.yml` entries continue to work.
 
+The web workflow's `Default` output is not a saved host selection. It uses the
+runtime `ESDIAG_OUTPUT_*` configuration directly and does not create, unlock, or
+write to the local keystore. Keystore preflight applies only after selecting a
+saved secret-backed output.
+
 ## Set or Unlock Keystore Password
 
 Set the keystore password in your shell before non-interactive keystore operations:

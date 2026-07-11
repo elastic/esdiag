@@ -7,9 +7,9 @@ The standalone local stack starts the ESDiag web container in User mode while pr
 - Make User-mode `serve` startup honor a complete runtime-provided Elasticsearch output before falling back to stdout.
 - Fail startup when runtime output configuration is present but invalid instead of silently selecting another exporter.
 - Keep the standalone deployment in User mode so local UI features remain available without service-mode IAP requirements.
-- Treat the generated local API key as runtime-managed authentication that does not require an encrypted keystore or unlock prompt.
+- Leave the UI output unset by default so the existing environment-backed exporter fallback uses the generated local API key without requiring an encrypted keystore or unlock prompt.
 - Persist ESDiag User-mode artifacts across container replacement with a dedicated Compose volume, preserving them through `down` and removing them through confirmed `reset`.
-- Make the local runtime mode explicit in generated Compose configuration and verify that processed documents reach the local Elasticsearch container rather than stdout.
+- Make the local runtime mode explicit in generated Compose configuration and finish verification with an API-key job that diagnoses `http://elasticsearch:9200` into that same local output, priming lazily created mapping fields while proving documents reach Elasticsearch rather than stdout.
 
 ## Capabilities
 

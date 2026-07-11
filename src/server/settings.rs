@@ -283,7 +283,9 @@ async fn footer_selection_signal_payload(state: &Arc<ServerState>, prior_active_
     let exporter = state.exporter.read().await.clone();
     let (_output_options, selected_output, _label) =
         template::build_footer_output_context(&hosts_by_name, &send_hosts, &exporter, prior_active_target);
-    let secure = template::active_output_requires_keystore(&hosts_by_name, &send_hosts, &selected_output, &exporter);
+    let secure = prior_active_target
+        .and_then(|target| KnownHost::get_known(&target.to_string()))
+        .is_some_and(|host| host.requires_keystore_secret());
     serde_json::json!({
         "settings": { "target": selected_output },
         "output": { "secure": secure }

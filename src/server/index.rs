@@ -84,17 +84,11 @@ pub async fn handler(
     let theme_dark = get_theme_dark(&headers);
     let kibana_url = { state.kibana_url.read().await.clone() };
     let output_secure = if allows_local_runtime_features {
-        let hosts_by_name = KnownHost::parse_hosts_yml().unwrap_or_default();
-        let send_hosts: Vec<String> = hosts_by_name
-            .iter()
-            .filter(|(_, h)| h.has_role(HostRole::Send))
-            .map(|(name, _)| name.clone())
-            .collect();
-        let exporter = state.exporter.read().await.clone();
-        let preferred_target = Settings::load().ok().and_then(|settings| settings.active_target);
-        let (_output_options, selected_output, _label) =
-            template::build_footer_output_context(&hosts_by_name, &send_hosts, &exporter, preferred_target.as_deref());
-        template::active_output_requires_keystore(&hosts_by_name, &send_hosts, &selected_output, &exporter)
+        Settings::load()
+            .ok()
+            .and_then(|settings| settings.active_target)
+            .and_then(|target| KnownHost::get_known(&target))
+            .is_some_and(|host| host.requires_keystore_secret())
     } else {
         false
     };
@@ -165,11 +159,10 @@ pub async fn advanced_page(
         collect_secure_hosts_json: serde_json::to_string(&job_hosts.collect_secure_hosts)
             .unwrap_or_else(|_| "[]".to_string()),
         configured_local_path: send_defaults.local_path,
-        configured_remote_target: send_defaults.remote_target,
         default_save_dir,
         initial_send_mode: send_defaults.mode,
         initial_local_target: send_defaults.local_target,
-        initial_remote_target: send_defaults.remote_target_default,
+        initial_remote_target: None,
         kibana_url,
         key_id: params.key_id,
         link_id: params.link_id,
@@ -291,7 +284,6 @@ async fn build_jobs_page(
         collect_secure_hosts_json: serde_json::to_string(&job_hosts.collect_secure_hosts)
             .unwrap_or_else(|_| "[]".to_string()),
         configured_local_path: send_defaults.local_path,
-        configured_remote_target: send_defaults.remote_target,
         default_save_dir,
         kibana_url,
         key_id: params.as_ref().and_then(|p| p.key_id),
@@ -360,7 +352,7 @@ struct SavedJobDefaults {
     process_diagnostic_type: String,
     process_selected: String,
     send_mode: String,
-    remote_target: String,
+    remote_target: Option<String>,
     local_target: String,
     local_directory: String,
     user: String,
@@ -416,7 +408,7 @@ impl SavedJobDefaults {
                 process_diagnostic_type: "standard".to_string(),
                 process_selected: String::new(),
                 send_mode: format!("\"{}\"", send_defaults.mode),
-                remote_target: send_defaults.remote_target_default.clone(),
+                remote_target: None,
                 local_target: send_defaults.local_target.clone(),
                 local_directory: String::new(),
                 user: String::new(),
@@ -432,8 +424,6 @@ struct SendDefaults {
     mode: String,
     local_path: String,
     local_target: String,
-    remote_target: String,
-    remote_target_default: String,
 }
 
 struct JobHostOptions {
@@ -451,22 +441,16 @@ fn classify_configured_exporter(exporter: &Exporter) -> SendDefaults {
             mode: "remote".to_string(),
             local_path: String::new(),
             local_target: String::new(),
-            remote_target: target_uri.clone(),
-            remote_target_default: target_uri,
         },
         Exporter::Directory(_) | Exporter::File(_) => SendDefaults {
             mode: "local".to_string(),
             local_path: target_uri,
             local_target: "directory".to_string(),
-            remote_target: String::new(),
-            remote_target_default: String::new(),
         },
         Exporter::Archive(_) | Exporter::Stream(_) => SendDefaults {
             mode: "remote".to_string(),
             local_path: String::new(),
             local_target: String::new(),
-            remote_target: target_uri.clone(),
-            remote_target_default: target_uri,
         },
     }
 }

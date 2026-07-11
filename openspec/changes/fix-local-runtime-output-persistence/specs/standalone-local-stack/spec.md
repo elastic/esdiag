@@ -37,11 +37,23 @@ The generated ESDiag service configuration SHALL explicitly select User mode rat
 - **THEN** it declares `ESDIAG_MODE=user`
 - **AND** local User-mode web features remain available without identity-aware-proxy headers
 
-### Requirement: Local Output End-to-End Verification
-The standalone local stack test coverage SHALL verify that a processed diagnostic is exported to the local Elasticsearch service and is not emitted as document output on container stdout.
+### Requirement: Browser-Reachable Kibana Links
+The generated standalone deployment SHALL give the setup container the Compose-internal Kibana URL and give the ESDiag web container the host-published Kibana URL used in browser links.
 
-#### Scenario: Diagnostic reaches Elasticsearch
+#### Scenario: Setup and browser use different Kibana addresses
+- **WHEN** `esdiag-local` generates Compose configuration
+- **THEN** setup uses `http://kibana:5601/s/${ESDIAG_KIBANA_SPACE}` to import assets within the Compose network
+- **AND** the ESDiag web container uses `http://localhost:${ESDIAG_KIBANA_PORT}/s/${ESDIAG_KIBANA_SPACE}` as its Kibana base URL
+- **AND** links returned to the browser do not contain the Compose-only hostname `kibana`
+
+### Requirement: Local Output End-to-End Verification
+The standalone local stack test coverage SHALL finish with a live API-key processing job that uses `http://elasticsearch:9200` as both its diagnostic source and its runtime-configured output. The job SHALL use the generated local API key for source authentication, verify that the local node can diagnose itself, and exercise real document indexing so lazily created mapping fields are materialized. Processed documents SHALL NOT be emitted as document output on container stdout.
+
+#### Scenario: Local node diagnoses itself into local output
 - **GIVEN** the standalone stack is running with its generated API key
-- **WHEN** a representative diagnostic is processed through the web service
-- **THEN** the expected diagnostic documents are queryable from local Elasticsearch
+- **WHEN** the final live verification submits a synchronous API-key processing job through the web service with source URL `http://elasticsearch:9200`
+- **AND** the job uses the generated API key while the active exporter targets `http://elasticsearch:9200` with that API key
+- **THEN** the processing job completes successfully and returns a diagnostic identifier
+- **AND** the expected diagnostic documents are queryable from local Elasticsearch
+- **AND** fields that are created lazily by real diagnostic indexing are present in the resulting mappings
 - **AND** container stdout contains operational logs but not the processed document stream

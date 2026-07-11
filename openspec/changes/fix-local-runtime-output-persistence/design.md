@@ -12,8 +12,8 @@ User-mode files currently live under the container's `/root/.esdiag` and disappe
 
 - Start the standalone User-mode web service with the generated local Elasticsearch exporter.
 - Keep the generated API key outside the encrypted ESDiag keystore.
-- Distinguish runtime-backed credentials from local keystore-backed credentials.
-- Fail startup instead of silently falling back to stdout when runtime output configuration is incomplete or invalid.
+- Preserve the normal explicit-output-then-environment fallback for web processing.
+- Fail instead of silently falling back to stdout when neither the UI nor the environment provides a valid output.
 - Persist User-mode hosts, settings, jobs, keystore, and unlock files across container replacement.
 - Preserve the existing Processor type-state lifecycle and Exporter implementations.
 
@@ -33,45 +33,29 @@ Generated Compose will set `ESDIAG_MODE=user`. User mode provides the local sing
 
 Alternative: use Service mode because it already reads `ESDIAG_OUTPUT_*`. Rejected because its authentication and feature restrictions are incompatible with a browser opened directly on localhost.
 
-### Resolve `serve` output independently from runtime mode
+### Preserve explicit-output-then-environment fallback
 
-Initial exporter resolution will use this state transition:
+Exporter resolution will use this state transition:
 
 ```text
 Start
   |
-  +-- explicit output ----------------------> resolve explicit exporter
+  +-- explicit CLI or UI output ------------> resolve explicit exporter
   |
-  +-- any ESDIAG_OUTPUT_* variable present -> resolve environment exporter
+  +-- no explicit output -------------------> resolve environment exporter
   |                                             |
   |                                             +-- invalid -> startup error
-  |
-  +-- User mode ----------------------------> Stream exporter
-  |
-  +-- Service mode -------------------------> startup error
 ```
 
-This restores the documented environment-output behavior while retaining stdout as an intentional fallback only for an entirely unconfigured User-mode server. Explicit output remains authoritative.
+This removes the User-mode-only stdout override. Explicit output remains authoritative, while an omitted UI output uses `ESDIAG_OUTPUT_*`; missing or invalid environment configuration fails closed.
 
 Alternative: add a magic `env` output argument to the local Compose command. Rejected because it would encode a local workaround instead of fixing the documented `serve` contract.
 
-### Track exporter credential origin explicitly
+### Gate the keystore only for an explicit saved-host selection
 
-Server state will carry an origin alongside the active exporter, with at least:
+The UI already persists an explicit saved output as `Settings.active_target`. Keystore preflight will inspect only that selection. The output control presents an unset selection as `Default`, sends `null`, and deserializes it as `Option::None`; processing then falls through to `ESDIAG_OUTPUT_*` without inspecting saved hosts or inferring ownership by matching URLs.
 
-```text
-RuntimeConfigured
-LocalKeystore
-UnsecuredOrStream
-```
-
-Startup from `ESDIAG_OUTPUT_*` produces `RuntimeConfigured`. Selecting a saved host that requires a secret produces `LocalKeystore`. Selecting stdout, files, directories, or no-auth outputs produces `UnsecuredOrStream`. Exporter updates commit the exporter and origin together only after validation succeeds.
-
-Keystore preflight will consult origin first. A runtime-configured exporter is already authenticated and bypasses keystore bootstrap even when its URL matches a saved secure host. A locally selected secure host continues to require unlock.
-
-The `Exporter` trait boundary and concrete Elasticsearch exporter remain unchanged; origin is orchestration metadata owned by web server state rather than an exporter transport concern.
-
-Alternative: infer origin from URL and saved-host records. Rejected because identical URLs can be backed by different credential sources and caused the current false keystore dependency.
+Selecting a saved secret-backed host continues to require unlock. Clearing or omitting the UI selection returns to environment fallback. No exporter-origin state is required because explicit UI selection is already the boundary between local keystore-backed configuration and runtime configuration.
 
 ### Persist User-mode artifacts in a named volume
 
@@ -87,25 +71,29 @@ The generated API key remains in the protected deployment `.env`, is supplied di
 
 User-created secure outputs remain separate and use the persistent keystore flow. This avoids two sources of truth and avoids requiring an unattended keystore password.
 
+### Separate setup and browser Kibana URLs
+
+The setup container will retain `http://kibana:5601/s/${ESDIAG_KIBANA_SPACE}` because it imports assets over the Compose network. The ESDiag web container will receive `http://localhost:${ESDIAG_KIBANA_PORT}/s/${ESDIAG_KIBANA_SPACE}` because it embeds that value in links followed by the host browser. The published port remains configurable while the internal service address remains stable.
+
 ### Preserve processing type-state transitions
 
-Receiver, Processor, and Exporter type-state transitions do not change. The server selects and validates the exporter plus credential origin before creating a processing job; the existing Processor receives the resulting `Arc<Exporter>` and follows its current initialized-to-running-to-complete lifecycle. Invalid runtime output fails before a server or Processor is started.
+Receiver, Processor, and Exporter type-state transitions do not change. The UI selection layer resolves an explicit exporter or falls through to the existing environment resolver before creating a processing job; the existing Processor receives the resulting `Arc<Exporter>` and follows its current initialized-to-running-to-complete lifecycle.
 
 ## Risks / Trade-offs
 
 - **Existing environments containing only an auth variable will now fail instead of using stdout** -> Emit an error naming the missing or invalid `ESDIAG_OUTPUT_*` values without printing secrets.
 - **Named volumes are less directly inspectable than host files** -> Keep lifecycle and backup expectations documented; prefer portability and correct ownership for the root-running 0.16 image.
 - **An empty ESDiag volume may be added to an existing local deployment** -> Treat absence of this newly introduced volume as a one-time additive migration, while retaining strict coupling for Elasticsearch, Kibana, and credential state.
-- **Exporter and origin could diverge during settings updates** -> Validate both as one candidate and update both under the same server-state write operation only after successful exporter construction.
+- **A runtime URL may match a saved secure host** -> Treat only `Settings.active_target` as explicit selection; never infer keystore ownership from URL equality.
 - **Container stdout may still contain operational JSON or diagnostics in logs** -> End-to-end tests distinguish tracing output from exported diagnostic documents and verify indexed results in Elasticsearch.
 
 ## Migration Plan
 
-1. Add exporter-origin state and environment-aware `serve` resolution with unit tests.
-2. Update keystore preflight and settings transitions to use origin.
-3. Add explicit User mode and the `esdiag-data` volume to generated standalone Compose.
+1. Remove the User-mode stdout override and make blank UI output use the environment resolver, with unit tests.
+2. Limit keystore preflight to an explicit saved-host selection and retain existing settings transitions.
+3. Add explicit User mode, browser-reachable Kibana links, and the `esdiag-data` volume to generated standalone Compose.
 4. Update lifecycle coupling, reset behavior, documentation, changelog, and standalone tests.
-5. Run a live local-stack processing test that verifies indexed documents and no stdout exporter stream.
+5. As the final runtime test and system primer, submit a synchronous API-key processing job through the web API with `http://elasticsearch:9200` as both the diagnostic source and runtime output. Use the generated local API key, verify the node diagnoses itself into local Elasticsearch without a stdout exporter stream, and confirm real indexing materializes the lazily created mapping fields.
 6. Rebuild and push all 0.16 image aliases, update the curated draft notes, move the unpublished release tag with approval, and rerun draft asset verification.
 
 Rollback before publication consists of reverting the release-branch commits and rebuilding the unpublished image aliases. Do not move a published tag.

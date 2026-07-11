@@ -147,7 +147,7 @@ impl Default for JobSignalsProcess {
 pub struct JobSignalsSend {
     pub mode: SendMode,
     #[serde(default)]
-    pub remote_target: String,
+    pub remote_target: Option<String>,
     #[serde(default)]
     pub local_target: String,
     #[serde(default)]
@@ -158,7 +158,7 @@ impl Default for JobSignalsSend {
     fn default() -> Self {
         Self {
             mode: SendMode::Remote,
-            remote_target: String::new(),
+            remote_target: None,
             local_target: String::new(),
             local_directory: String::new(),
         }
@@ -274,7 +274,7 @@ impl Job {
                 signals.process.enabled = false;
                 signals.process.mode = ProcessMode::Forward;
                 signals.send.mode = SendMode::Remote;
-                signals.send.remote_target = upload_id.clone();
+                signals.send.remote_target = Some(upload_id.clone());
             }
             JobAction::Process { output, selection } => {
                 signals.process.enabled = true;
@@ -347,7 +347,7 @@ impl JobOutput {
     fn from_signals_send(signals: &JobSignals) -> Result<Self> {
         match signals.send.mode {
             SendMode::Remote => {
-                let target = signals.send.remote_target.trim();
+                let target = signals.send.remote_target.as_deref().unwrap_or("").trim();
                 if target.is_empty() {
                     return Err(eyre!("Process jobs require a remote output target"));
                 }
@@ -391,7 +391,7 @@ impl JobOutput {
         match self {
             Self::KnownHost { name } => {
                 signals.send.mode = SendMode::Remote;
-                signals.send.remote_target = name.clone();
+                signals.send.remote_target = Some(name.clone());
             }
             Self::Directory { output_dir } => {
                 signals.send.mode = SendMode::Local;
@@ -473,7 +473,12 @@ impl JobBuilder<NeedsCollect> {
             if let Some(download_dir) = intermediate_download_dir(&signals) {
                 builder = builder.save_collected_bundle_to(download_dir);
             }
-            builder.upload_to(signals.send.remote_target)
+            builder.upload_to(
+                signals
+                    .send
+                    .remote_target
+                    .ok_or_else(|| eyre!("Upload jobs require a remote target"))?,
+            )
         } else {
             let output_dir = if signals.collect.save && !signals.collect.download_dir.trim().is_empty() {
                 signals.collect.download_dir

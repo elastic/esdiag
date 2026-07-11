@@ -683,11 +683,10 @@
                         <select
                             id="send-remote-target"
                             class="form-input"
-                            data-bind:job.send.remote_target
+                            data-effect="el.value = $job.send.remote_target ?? ''"
+                            data-on:change="$job.send.remote_target = evt.target.value === '' ? null : evt.target.value"
                         >
-                            {% if configured_remote_target != "" %}
-                            <option value="{{ configured_remote_target }}">{{ configured_remote_target }}</option>
-                            {% endif %}
+                            <option value="">Default</option>
                             {% for host in send_remote_hosts %}
                             <option value="{{ host }}">{{ host }}</option>
                             {% endfor %}
@@ -843,7 +842,7 @@
                     (
                         $job.process.enabled &&
                         (
-                            ($job.send.mode === 'remote' && $job.send.remote_target !== '') ||
+                            ($job.send.mode === 'remote' && !!$job.send.remote_target) ||
                             ($job.send.mode === 'local' && $job.send.local_target !== '' && ($job.send.local_target !== 'directory' || $job.send.local_directory !== ''))
                         )
                     ) ||
@@ -851,7 +850,7 @@
                         !$job.process.enabled &&
                         (
                             ($job.send.mode === 'local' && $job.collect.save && !($job.collect.mode === 'upload' && $job.collect.source === 'upload-file')) ||
-                            ($job.send.mode === 'remote' && $job.send.remote_target !== '')
+                            ($job.send.mode === 'remote' && !!$job.send.remote_target)
                         )
                     )
                 ))"

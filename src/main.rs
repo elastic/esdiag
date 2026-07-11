@@ -633,7 +633,7 @@ async fn run(cli: Cli) -> Result<CommandResult> {
             } => {
                 tracing::info!("Starting ESDiag server");
                 let runtime_mode = resolve_serve_runtime_mode(mode)?;
-                let exporter = resolve_serve_exporter(output, runtime_mode)?;
+                let exporter = resolve_serve_exporter(output)?;
 
                 let kibana_url = kibana.unwrap_or_else(|| {
                     esdiag::env::get_string("ESDIAG_KIBANA_URL")
@@ -1686,10 +1686,9 @@ fn resolve_serve_runtime_mode(mode: Option<RuntimeMode>) -> Result<RuntimeMode> 
 }
 
 #[cfg(feature = "server")]
-fn resolve_serve_exporter(output: Option<String>, runtime_mode: RuntimeMode) -> Result<Exporter> {
+fn resolve_serve_exporter(output: Option<String>) -> Result<Exporter> {
     match output {
         Some(output) => Exporter::try_from(Uri::try_from(output)?),
-        None if runtime_mode == RuntimeMode::User => Ok(Exporter::default()),
         None => Exporter::try_from(Uri::try_from_output_env()?),
     }
 }
@@ -2567,7 +2566,7 @@ mod tests {
 
     #[cfg(feature = "server")]
     #[test]
-    fn serve_exporter_defaults_to_stdout_in_user_mode_without_output_env() {
+    fn serve_exporter_requires_environment_when_output_is_omitted() {
         let _guard = env_lock().lock().expect("env lock");
         unsafe {
             std::env::remove_var("ESDIAG_OUTPUT_URL");
@@ -2576,28 +2575,76 @@ mod tests {
             std::env::remove_var("ESDIAG_OUTPUT_PASSWORD");
         }
 
-        let exporter = resolve_serve_exporter(None, RuntimeMode::User).expect("resolve user-mode exporter");
-
-        assert_eq!(exporter.target_uri(), "stdio://stdout");
+        let err = match resolve_serve_exporter(None) {
+            Ok(_) => panic!("omitted output without environment must fail"),
+            Err(err) => err,
+        };
+        assert!(err.to_string().contains("ESDIAG_OUTPUT_URL is not defined"));
     }
 
     #[cfg(feature = "server")]
     #[test]
-    fn serve_exporter_requires_output_env_in_service_mode_without_output_flag() {
+    fn serve_exporter_explicit_output_precedes_runtime_environment() {
         let _guard = env_lock().lock().expect("env lock");
         unsafe {
             std::env::remove_var("ESDIAG_OUTPUT_URL");
-            std::env::remove_var("ESDIAG_OUTPUT_APIKEY");
+            std::env::set_var("ESDIAG_OUTPUT_APIKEY", "runtime-secret");
             std::env::remove_var("ESDIAG_OUTPUT_USERNAME");
             std::env::remove_var("ESDIAG_OUTPUT_PASSWORD");
         }
 
-        let err = match resolve_serve_exporter(None, RuntimeMode::Service) {
-            Ok(_) => panic!("service mode should still require configured output"),
+        let exporter = resolve_serve_exporter(Some("-".to_string())).expect("resolve explicit output");
+
+        assert_eq!(exporter.target_uri(), "stdio://stdout");
+
+        unsafe {
+            std::env::remove_var("ESDIAG_OUTPUT_APIKEY");
+        }
+    }
+
+    #[cfg(feature = "server")]
+    #[test]
+    fn serve_exporter_uses_runtime_environment_when_output_is_omitted() {
+        let _guard = env_lock().lock().expect("env lock");
+        unsafe {
+            std::env::set_var("ESDIAG_OUTPUT_URL", "http://localhost:9200");
+            std::env::set_var("ESDIAG_OUTPUT_APIKEY", "runtime-secret");
+            std::env::remove_var("ESDIAG_OUTPUT_USERNAME");
+            std::env::remove_var("ESDIAG_OUTPUT_PASSWORD");
+        }
+
+        let exporter = resolve_serve_exporter(None).expect("resolve runtime output");
+
+        assert_eq!(exporter.target_uri(), "http://localhost:9200/");
+
+        unsafe {
+            std::env::remove_var("ESDIAG_OUTPUT_URL");
+            std::env::remove_var("ESDIAG_OUTPUT_APIKEY");
+        }
+    }
+
+    #[cfg(feature = "server")]
+    #[test]
+    fn serve_exporter_rejects_partial_runtime_environment_without_leaking_secrets() {
+        let _guard = env_lock().lock().expect("env lock");
+        unsafe {
+            std::env::remove_var("ESDIAG_OUTPUT_URL");
+            std::env::set_var("ESDIAG_OUTPUT_APIKEY", "do-not-print-this-secret");
+            std::env::remove_var("ESDIAG_OUTPUT_USERNAME");
+            std::env::remove_var("ESDIAG_OUTPUT_PASSWORD");
+        }
+
+        let err = match resolve_serve_exporter(None) {
+            Ok(_) => panic!("partial output must fail closed"),
             Err(err) => err,
         };
+        let message = err.to_string();
+        assert!(message.contains("ESDIAG_OUTPUT_URL is not defined"));
+        assert!(!message.contains("do-not-print-this-secret"));
 
-        assert!(err.to_string().contains("ESDIAG_OUTPUT_URL is not defined"));
+        unsafe {
+            std::env::remove_var("ESDIAG_OUTPUT_APIKEY");
+        }
     }
 }
 
