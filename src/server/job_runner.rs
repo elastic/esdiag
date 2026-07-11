@@ -1138,8 +1138,8 @@ async fn cleanup_local_path(path: &Path) {
 #[allow(clippy::await_holding_lock)]
 mod tests {
     use super::{
-        download_service_link_to_path, select_processed_exporter, validate_job_request, validate_local_send_uri,
-        validate_remote_send_uri,
+        download_service_link_to_path, run_job, select_processed_exporter, validate_job_request,
+        validate_local_send_uri, validate_remote_send_uri,
     };
     use crate::{
         data::{HostRole, KnownHostBuilder, Product, Uri},
@@ -1155,7 +1155,7 @@ mod tests {
         sync::{Arc, Mutex},
     };
     use tokio::net::TcpListener;
-    use tokio::sync::{RwLock, broadcast, watch};
+    use tokio::sync::{RwLock, broadcast, mpsc, watch};
     use url::Url;
 
     fn env_lock() -> &'static Mutex<()> {
@@ -1327,6 +1327,67 @@ mod tests {
             Err(err) => err,
         };
         assert!(err.to_string().contains("ESDIAG_OUTPUT_URL is not defined"));
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn remote_setup_failure_replaces_processing_entry_and_clears_ui_state() {
+        let _guard = env_lock().lock().expect("env lock");
+        unsafe {
+            std::env::remove_var("ESDIAG_OUTPUT_URL");
+            std::env::remove_var("ESDIAG_OUTPUT_APIKEY");
+            std::env::remove_var("ESDIAG_OUTPUT_USERNAME");
+            std::env::remove_var("ESDIAG_OUTPUT_PASSWORD");
+        }
+
+        let host = KnownHostBuilder::new(Url::parse("http://cluster.example:9200").unwrap())
+            .roles(vec![HostRole::Collect])
+            .build()
+            .unwrap();
+        let mut signals = JobRunSignals::default();
+        signals.job.collect.source = CollectSource::ApiKey;
+        signals.job.send.mode = SendMode::Remote;
+        signals.job.send.remote_target = None;
+        let job = JobRequest {
+            identifiers: Default::default(),
+            input: JobInput::FromRemoteHost {
+                source: "http://cluster.example:9200".to_string(),
+                host,
+                diagnostic_type: "standard".to_string(),
+            },
+        };
+        let (tx, mut rx) = mpsc::channel(8);
+
+        run_job(
+            Arc::new(test_state(RuntimeMode::User)),
+            signals,
+            42,
+            "Anonymous".to_string(),
+            tx,
+            job,
+            false,
+        )
+        .await;
+
+        let events: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
+        assert!(matches!(
+            events.first(),
+            Some(ServerEvent::JobFeed(html))
+                if html.contains("id=\"job-42\"") && html.contains("Processing")
+        ));
+        assert!(events.iter().any(|event| matches!(
+            event,
+            ServerEvent::Template(html)
+                if html.contains("id=\"job-42\"")
+                    && html.contains("Processing Failed")
+                    && html.contains("ESDIAG_OUTPUT_URL is not defined")
+        )));
+        assert!(events.iter().any(|event| matches!(
+            event,
+            ServerEvent::Signals(payload)
+                if payload.contains(r#""loading":false"#)
+                    && payload.contains(r#""processing":false"#)
+        )));
     }
 
     #[tokio::test]

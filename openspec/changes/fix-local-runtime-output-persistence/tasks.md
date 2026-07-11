@@ -26,12 +26,10 @@
 - [x] 4.2 Verify setup and web containers share the generated runtime API key without writing it to `hosts.yml`, `settings.yml`, or `secrets.yml`.
 - [x] 4.3 Update standalone, runtime-mode, output, and keystore documentation to describe runtime-managed default output and persistent User-mode state.
 - [x] 4.4 Create the remote-processing job entry before fallible receiver/exporter setup so connection and configuration failures remain visible in the UI job feed.
-- [ ] 4.5 Update `CHANGELOG.md` and the curated 0.16 release notes with the corrected local export and persistence behavior.
+- [x] 4.5 Add UI event regression coverage proving an early remote exporter failure leaves a persistent failure entry and clears loading and processing state.
 
-## 5. Verification And Release Refresh
+## 5. Verification
 
 - [x] 5.1 Run `shellcheck bin/esdiag-local`, standalone/control shell suites, `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`, and `cargo test --workspace`.
 - [x] 5.2 Run strict OpenSpec validation for `fix-local-runtime-output-persistence` and reconcile any implementation/spec mismatch.
 - [x] 5.3 As the final runtime test and system primer, run the live synchronous API-key job from and to `http://elasticsearch:9200`, confirm it returns a diagnostic identifier, verify its documents and lazily materialized mapping fields in local Elasticsearch, and verify no processed document stream appears on container stdout.
-- [ ] 5.4 Rebuild and push identical 0.16 multi-platform image aliases to both Elastic registries, verify digests and architectures, and confirm the image reports version 0.16.0.
-- [ ] 5.5 With explicit approval, move the unpublished `0.16.0` tag to the verified release commit, rerun the draft workflow, and confirm corrected notes and standalone assets while leaving the release unpublished.

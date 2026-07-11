@@ -94,9 +94,7 @@ Receiver, Processor, and Exporter type-state transitions do not change. The UI s
 3. Add explicit User mode, browser-reachable Kibana links, and the `esdiag-data` volume to generated standalone Compose.
 4. Update lifecycle coupling, reset behavior, documentation, changelog, and standalone tests.
 5. As the final runtime test and system primer, submit a synchronous API-key processing job through the web API with `http://elasticsearch:9200` as both the diagnostic source and runtime output. Use the generated local API key, verify the node diagnoses itself into local Elasticsearch without a stdout exporter stream, and confirm real indexing materializes the lazily created mapping fields.
-6. Rebuild and push all 0.16 image aliases, update the curated draft notes, move the unpublished release tag with approval, and rerun draft asset verification.
-
-Rollback before publication consists of reverting the release-branch commits and rebuilding the unpublished image aliases. Do not move a published tag.
+Rollback consists of reverting the implementation commit and recreating the local deployment with the previous image.
 
 ## Open Questions
 
