@@ -668,7 +668,7 @@ mod tests {
 
     #[test]
     fn kibana_assets_are_embedded_as_bundle_not_raw_files() {
-        assert!(KIBANA_ASSETS_BUNDLE.len() > 0);
+        assert!(!KIBANA_ASSETS_BUNDLE.is_empty());
         assert!(Assets::get("kibana/spaces.yml").is_none());
 
         let embedded_assets = EmbeddedAssets::new().unwrap();
@@ -708,7 +708,7 @@ mod tests {
         let bundle = kibana_bundle(&embedded_assets).unwrap().read_all().unwrap();
 
         for object in &bundle.by_space["esdiag"].saved_objects {
-            let label = saved_object_label(&object);
+            let label = saved_object_label(object);
             let attributes = object
                 .get("attributes")
                 .unwrap_or_else(|| panic!("{label} should have attributes"));

@@ -141,7 +141,7 @@ Rationale:
 ### 6) Preserve local security boundaries
 
 Decision:
-- Security is enabled by default; `--insecure` remains an explicit local-only mode.
+- Security is always enabled because agent assets and other stack features require it.
 - Host ports bind to `127.0.0.1` by default.
 - Elasticsearch and Kibana use separate named volumes.
 - Generated passwords and encryption keys use cryptographically random host facilities and are persisted with restrictive permissions.
@@ -174,7 +174,7 @@ Rationale:
 ### 7) Test standalone and delegated workflows separately
 
 Decision:
-- Add `tests/esdiag-local.sh` for shellcheck, help/version behavior, execution outside the repository, template generation, secure and insecure startup, setup completion, idempotent repeated `up`, status/auth, down, and destructive reset behavior.
+- Add `tests/esdiag-local.sh` for shellcheck, help/version behavior, execution outside the repository, secure template generation and startup, setup completion, idempotent repeated `up`, status/auth, down, and destructive reset behavior.
 - Update `tests/bin/esdiag-control.sh` to verify local image construction and delegation with `ESDIAG_IMAGE_TAG=esdiag:${version}` and pulling disabled.
 - Runtime integration tests use isolated state directories and cover both Docker Compose v2 and Podman Compose where CI runners are available.
 - Update tests copy the script to a temporary writable installation directory and inject a fixture-backed fake `curl` and checksum tools through `PATH`; they assert requests use the hard-coded official URLs and never replace the repository script.

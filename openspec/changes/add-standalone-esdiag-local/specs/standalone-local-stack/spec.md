@@ -159,10 +159,10 @@ ESDiag image selection SHALL use this precedence: an explicit command-line image
 - **AND** the prior version state remains available for recovery with a normal `up`
 
 ### Requirement: Secure Local Defaults
-The generated deployment SHALL enable Elastic security by default, bind host-facing service ports to loopback, protect credential files, and use separate persistent volumes for Elasticsearch and Kibana. Security MAY be disabled only through an explicit insecure option.
+The generated deployment SHALL enable Elastic security, bind host-facing service ports to loopback, protect credential files, and use separate persistent volumes for Elasticsearch and Kibana. Security SHALL NOT be disabled through a command-line option.
 
 #### Scenario: Default secure deployment
-- **GIVEN** the user has not requested insecure mode or host binding overrides
+- **GIVEN** the user has not requested host binding overrides
 - **WHEN** `esdiag-local up` generates the deployment
 - **THEN** Elasticsearch security is enabled
 - **AND** Elasticsearch, Kibana, and ESDiag ports bind to `127.0.0.1`
