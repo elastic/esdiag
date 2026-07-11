@@ -1,1 +1,2 @@
-tools: []
+tools:
+  - user_diagnostic_id_fetcher

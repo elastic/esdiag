@@ -1,0 +1,195 @@
+{
+  "attributes": {
+    "description": "A count of all shards not in the `STARTED` state.",
+    "state": {
+      "adHocDataViews": {},
+      "datasourceStates": {
+        "formBased": {
+          "layers": {
+            "1f66bb5c-523a-48b0-b08c-9dd4a50e7321": {
+              "columnOrder": [
+                "13382805-47da-4134-85fa-b725f0661ac1",
+                "385afd06-bd66-40b6-b158-5a34d2bc5bf7"
+              ],
+              "columns": {
+                "13382805-47da-4134-85fa-b725f0661ac1": {
+                  "customLabel": true,
+                  "dataType": "string",
+                  "isBucketed": true,
+                  "label": "shard.routing.state: Descending",
+                  "operationType": "terms",
+                  "params": {
+                    "accuracyMode": false,
+                    "exclude": [],
+                    "excludeIsRegex": false,
+                    "include": [],
+                    "includeIsRegex": false,
+                    "missingBucket": false,
+                    "orderBy": {
+                      "columnId": "385afd06-bd66-40b6-b158-5a34d2bc5bf7",
+                      "type": "column"
+                    },
+                    "orderDirection": "desc",
+                    "otherBucket": false,
+                    "parentFormat": {
+                      "id": "terms"
+                    },
+                    "size": 10
+                  },
+                  "sourceField": "shard.routing.state"
+                },
+                "385afd06-bd66-40b6-b158-5a34d2bc5bf7": {
+                  "customLabel": true,
+                  "dataType": "number",
+                  "isBucketed": false,
+                  "label": "Count",
+                  "operationType": "count",
+                  "params": {
+                    "emptyAsNull": true
+                  },
+                  "sourceField": "___records___"
+                }
+              },
+              "ignoreGlobalFilters": false,
+              "incompleteColumns": {}
+            }
+          }
+        },
+        "indexpattern": {
+          "layers": {}
+        },
+        "textBased": {
+          "layers": {}
+        }
+      },
+      "filters": [
+        {
+          "$state": {
+            "store": "appState"
+          },
+          "meta": {
+            "alias": null,
+            "disabled": false,
+            "field": "shard.routing.state",
+            "index": "edf2d24a-d6f2-40d7-a6ab-d4da6527effe",
+            "key": "shard.routing.state",
+            "negate": true,
+            "params": [
+              "STARTED"
+            ],
+            "type": "phrases",
+            "value": [
+              "STARTED"
+            ]
+          },
+          "query": {
+            "bool": {
+              "minimum_should_match": 1,
+              "should": [
+                {
+                  "match_phrase": {
+                    "shard.routing.state": "STARTED"
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "internalReferences": [],
+      "query": {
+        "language": "lucene",
+        "query": ""
+      },
+      "visualization": {
+        "axisTitlesVisibilitySettings": {
+          "x": false,
+          "yLeft": false,
+          "yRight": false
+        },
+        "curveType": "LINEAR",
+        "gridlinesVisibilitySettings": {
+          "x": false,
+          "yLeft": false,
+          "yRight": false
+        },
+        "labelsOrientation": {
+          "x": 0,
+          "yLeft": -45,
+          "yRight": -45
+        },
+        "layers": [
+          {
+            "accessors": [
+              "385afd06-bd66-40b6-b158-5a34d2bc5bf7"
+            ],
+            "isHistogram": false,
+            "layerId": "1f66bb5c-523a-48b0-b08c-9dd4a50e7321",
+            "layerType": "data",
+            "palette": {
+              "name": "default",
+              "type": "palette"
+            },
+            "seriesType": "bar_horizontal",
+            "simpleView": false,
+            "splitAccessor": "13382805-47da-4134-85fa-b725f0661ac1",
+            "xScaleType": "ordinal",
+            "yConfig": [
+              {
+                "axisMode": "left",
+                "forAccessor": "385afd06-bd66-40b6-b158-5a34d2bc5bf7"
+              }
+            ]
+          }
+        ],
+        "legend": {
+          "isVisible": false,
+          "legendStats": [
+            "currentAndLastValue"
+          ],
+          "maxLines": 1,
+          "position": "bottom",
+          "shouldTruncate": true,
+          "showSingleSeries": true
+        },
+        "preferredSeriesType": "bar_stacked",
+        "tickLabelsVisibilitySettings": {
+          "x": false,
+          "yLeft": false,
+          "yRight": false
+        },
+        "valueLabels": "show",
+        "yLeftExtent": {
+          "enforce": true,
+          "mode": "full"
+        },
+        "yLeftScale": "linear",
+        "yRightExtent": {
+          "enforce": true,
+          "mode": "full"
+        },
+        "yRightScale": "linear",
+        "yRightTitle": "Count",
+        "yTitle": ""
+      }
+    },
+    "title": "Shards not STARTED",
+    "visualizationType": "lnsXY"
+  },
+  "coreMigrationVersion": "8.8.0",
+  "id": "079f5c13-c76e-45ca-8e6b-08631a506dc3",
+  "references": [
+    {
+      "id": "590e8f4c-4fe2-4794-9007-29de4d07e489",
+      "name": "indexpattern-datasource-layer-1f66bb5c-523a-48b0-b08c-9dd4a50e7321",
+      "type": "index-pattern"
+    },
+    {
+      "id": "590e8f4c-4fe2-4794-9007-29de4d07e489",
+      "name": "edf2d24a-d6f2-40d7-a6ab-d4da6527effe",
+      "type": "index-pattern"
+    }
+  ],
+  "type": "lens",
+  "typeMigrationVersion": "10.1.0"
+}

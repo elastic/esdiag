@@ -1,0 +1,174 @@
+{
+  "attributes": {
+    "description": "The system load average normalized by CPU core count, where 100% is considered full load across all cores. This number is not container aware, so this cannot be used for individual nodes, unless there is exclusively one node per host. Elastic Cloud Hosted only guarantees one node per host for 58GB to 64GB nodes.",
+    "kibanaSavedObjectMeta": {
+      "searchSourceJSON": {
+        "filter": [],
+        "query": {
+          "language": "kuery",
+          "query": ""
+        }
+      }
+    },
+    "title": "Host Load Percent by Tier",
+    "uiStateJSON": "{}",
+    "version": "1",
+    "visState": {
+      "aggs": [],
+      "params": {
+        "spec": """{
+  "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+  "data": {
+    "url": {
+      "%context%": true,
+      "%timefield%": "event.ingested",
+      "index": "metrics-node-esdiag",
+      "body": {
+        "size": 0,
+        "aggs": {
+          "tier": {
+            "terms": {
+             "field": "node.tier"
+            },
+            "aggs": {
+              "load_pct": {
+                "boxplot": {
+                  "field": "node.os.cpu.load_percent.15m"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "format": {"property": "aggregations.tier.buckets"}
+  },
+  "transform": [
+    {"calculate": "datum.load_pct.lower", "as": "lower"},
+    {"calculate": "datum.load_pct.upper", "as": "upper"},
+    {"calculate": "datum.load_pct.q1", "as": "q1"},
+    {"calculate": "datum.load_pct.q2", "as": "q2"},
+    {"calculate": "datum.load_pct.q3", "as": "q3"},
+    {"calculate": "datum.load_pct.min", "as": "min"},
+    {"calculate": "datum.load_pct.max", "as": "max"},
+    {"calculate": "datum.key", "as": "tier"},
+    {"calculate": "0", "as": "min-x"},
+    {"calculate": "20", "as": "low-x"},
+    {"calculate": "40", "as": "mid-x1"},
+    {"calculate": "80", "as": "mid-x2"},
+    {"calculate": "90", "as": "high-x"},
+    {"calculate": "120", "as": "max-x"},
+
+  ],
+  "encoding": {
+    "y": {
+      "field": "tier",
+      "type": "nominal",
+      "title": null,
+      "sort": ["hot","warm","cold","frozen","content","data","ingest","ml","transform","tiebreaker","master","remote","coord","node"]
+    }
+  },
+  "layer": [
+    {
+      "mark": {"type": "rule", "tooltip":true, "size":2},
+      "encoding": {
+        "x": {
+          "field": "lower", 
+          "type": "quantitative",
+          "scale": {"domain":[0,120], "clamp": true}, 
+          "title": null
+        },
+        "x2": {"field": "upper"}
+      },
+      "title": null
+    },
+    {
+      "mark": "rect",
+      "encoding": {
+        "x": {"field": "min-x", "type":"quantitative", "scale": {"domain": [0, 120]}},
+        "x2": {"field": "low-x", "type": "quantitative", "scale": {"domain": [0, 120]}},
+        "color": {"value": "#ffcc571A"}
+      }
+    },
+    {
+      "mark": "rect",
+      "encoding": {
+        "x": {"field": "low-x", "type":"quantitative", "scale": {"domain": [0, 120]}},
+        "x2": {"field": "mid-x1", "type": "quantitative", "scale": {"domain": [0, 120]}},
+        "color": {"value": "#54ee991A"}
+      }
+    },
+   {
+      "mark": "rect",
+      "encoding": {
+        "x": {"field": "mid-x1", "type":"quantitative", "scale": {"domain": [0, 120]}},
+        "x2": {"field": "mid-x2", "type": "quantitative", "scale": {"domain": [0, 120]}},
+        "color": {"value": "#6092ee1A"}
+      }
+    },
+    {
+      "mark": "rect",
+      "encoding": {
+        "x": {"field": "mid-x2", "type":"quantitative", "scale": {"domain": [0, 120]}},
+        "x2": {"field": "high-x", "type": "quantitative", "scale": {"domain": [0, 120]}},
+        "color": {"value": "#54ee991A"}
+      }
+    },
+    {
+      "mark": "rect",
+      "encoding": {
+        "x": {"field":"high-x", "type": "quantitative", "scale": {"domain": [0, 120]}},
+        "x2": {"field":"max-x", "type": "quantitative", "scale": {"domain": [0, 120]}},
+        "color": {"value": "#ee60861A"}
+      }
+    },
+    {
+      "mark": {"type": "bar",  "cornerRadius": 3, "tooltip": true},
+      "encoding": {
+        "x": {"field": "q1", "type": "quantitative", "title": "p25"},
+        "x2": {"field": "q3", "title": "p75"},
+        "color": {"field": "tier", "type": "nominal", "legend": null},
+      }
+    },
+    {
+      "mark": {"type": "tick", "color": "white", "thickness": 2, "tooltip":true},
+      "encoding": {
+        "x": {"field": "q2", "type": "quantitative", "title":"Mean"}
+      }
+    },
+    {
+      "mark": {"type": "point", "tooltip": true},
+      "encoding": {
+        "x": {"field": "min", "type": "quantitative"}
+      }
+    },
+    {
+      "mark": {"type": "point", "tooltip": true},
+      "encoding": {
+        "x": {"field": "max", "type": "quantitative"}
+      }
+    }
+  ]
+}"""
+      },
+      "title": "Host Load Percent by Tier",
+      "type": "vega"
+    }
+  },
+  "coreMigrationVersion": "8.8.0",
+  "id": "16b2d778-10ff-4570-9e7f-0a771c539097",
+  "references": [
+    {
+      "id": "5e05b9ee-3e49-4efd-8a16-94de208ebb83",
+      "name": "tag-ref-5e05b9ee-3e49-4efd-8a16-94de208ebb83",
+      "type": "tag"
+    },
+    {
+      "id": "b210de37-7ebf-4ced-9a28-13c1620db46c",
+      "name": "tag-ref-b210de37-7ebf-4ced-9a28-13c1620db46c",
+      "type": "tag"
+    }
+  ],
+  "type": "visualization",
+  "typeMigrationVersion": "8.5.0"
+}

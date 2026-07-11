@@ -1,0 +1,3880 @@
+{
+  "attributes": {
+    "controlGroupInput": {
+      "chainingSystem": "HIERARCHICAL",
+      "controlStyle": "oneLine",
+      "ignoreParentSettingsJSON": {
+        "ignoreFilters": false,
+        "ignoreQuery": false,
+        "ignoreTimerange": false,
+        "ignoreValidations": false
+      },
+      "panelsJSON": {},
+      "showApplySelections": false
+    },
+    "description": "Overview of estimated indexing byte per day per index/datastream.",
+    "kibanaSavedObjectMeta": {
+      "searchSourceJSON": {
+        "filter": [],
+        "query": {
+          "language": "kuery",
+          "query": ""
+        }
+      }
+    },
+    "optionsJSON": {
+      "hidePanelTitles": false,
+      "syncColors": false,
+      "syncCursor": true,
+      "syncTooltips": false,
+      "useMargins": true
+    },
+    "panelsJSON": [
+      {
+        "embeddableConfig": {
+          "description": "Navigation links for Elasticsearch report and summary dashboards",
+          "enhancements": {},
+          "hidePanelTitles": false
+        },
+        "gridData": {
+          "h": 3,
+          "i": "62ef2b77-93b3-4670-bd86-1edb72a19b98",
+          "w": 22,
+          "x": 0,
+          "y": 0
+        },
+        "panelIndex": "62ef2b77-93b3-4670-bd86-1edb72a19b98",
+        "panelRefName": "panel_62ef2b77-93b3-4670-bd86-1edb72a19b98",
+        "title": "Elasticsearch",
+        "type": "links"
+      },
+      {
+        "embeddableConfig": {
+          "description": "Navigation links for Elasticsearch data overview dashboards",
+          "enhancements": {},
+          "hidePanelTitles": false
+        },
+        "gridData": {
+          "h": 3,
+          "i": "4a4a98b3-8a82-4068-8554-0c0632980957",
+          "w": 24,
+          "x": 22,
+          "y": 0
+        },
+        "panelIndex": "4a4a98b3-8a82-4068-8554-0c0632980957",
+        "panelRefName": "panel_4a4a98b3-8a82-4068-8554-0c0632980957",
+        "title": "Data Overviews",
+        "type": "links"
+      },
+      {
+        "embeddableConfig": {
+          "enhancements": {
+            "dynamicActions": {
+              "events": []
+            }
+          },
+          "savedVis": {
+            "data": {
+              "aggs": [],
+              "searchSource": {
+                "filter": [],
+                "query": {
+                  "language": "kuery",
+                  "query": ""
+                }
+              }
+            },
+            "description": "",
+            "id": "",
+            "params": {
+              "axis_formatter": "number",
+              "axis_position": "left",
+              "axis_scale": "normal",
+              "background_color": null,
+              "drop_last_bucket": 0,
+              "id": "1b4464d3-9663-4c43-8a3a-65110fd02b62",
+              "index_pattern_ref_name": "metrics_0_index_pattern",
+              "interval": "",
+              "isModelInvalid": false,
+              "markdown": """&nbsp;[📘](https://support.elastic.dev/knowledge/search)
+
+""",
+              "markdown_css": """p { font-size: 16pt; }
+a:link { text-decoration: none; }
+""",
+              "markdown_openLinksInNewTab": 1,
+              "markdown_vertical_align": "middle",
+              "max_lines_legend": 1,
+              "series": [
+                {
+                  "axis_position": "right",
+                  "chart_type": "line",
+                  "color": "#68BC00",
+                  "fill": 0.5,
+                  "formatter": "default",
+                  "id": "2a66e658-1618-419e-96a0-476c5bba7b2a",
+                  "line_width": 1,
+                  "metrics": [
+                    {
+                      "id": "74cfd8d2-a9d2-4f06-9df3-05ebb287447f",
+                      "type": "count"
+                    }
+                  ],
+                  "override_index_pattern": 0,
+                  "palette": {
+                    "name": "default",
+                    "type": "palette"
+                  },
+                  "point_size": 1,
+                  "separate_axis": 0,
+                  "series_drop_last_bucket": 0,
+                  "split_mode": "everything",
+                  "stacked": "none",
+                  "time_range_mode": "entire_time_range"
+                }
+              ],
+              "show_grid": 1,
+              "show_legend": 1,
+              "time_field": "",
+              "time_range_mode": "entire_time_range",
+              "tooltip_mode": "show_all",
+              "truncate_legend": 1,
+              "type": "markdown",
+              "use_kibana_indexes": true
+            },
+            "title": "",
+            "type": "metrics",
+            "uiState": {}
+          }
+        },
+        "gridData": {
+          "h": 3,
+          "i": "6d0d394f-fba8-46e1-980f-0d8fa481d1eb",
+          "w": 2,
+          "x": 46,
+          "y": 0
+        },
+        "panelIndex": "6d0d394f-fba8-46e1-980f-0d8fa481d1eb",
+        "type": "visualization"
+      },
+      {
+        "embeddableConfig": {
+          "description": "",
+          "enhancements": {
+            "dynamicActions": {
+              "events": []
+            }
+          },
+          "hidePanelTitles": true,
+          "savedVis": {
+            "data": {
+              "aggs": [],
+              "searchSource": {
+                "filter": [],
+                "query": {
+                  "language": "kuery",
+                  "query": ""
+                }
+              }
+            },
+            "description": "",
+            "id": "",
+            "params": {
+              "fontSize": 12,
+              "markdown": "### Indices",
+              "openLinksInNewTab": false
+            },
+            "title": "",
+            "type": "markdown",
+            "uiState": {}
+          }
+        },
+        "gridData": {
+          "h": 3,
+          "i": "abf39d80-d172-43ab-b1f6-60c698b4bd06",
+          "w": 12,
+          "x": 0,
+          "y": 3
+        },
+        "panelIndex": "abf39d80-d172-43ab-b1f6-60c698b4bd06",
+        "title": "",
+        "type": "visualization"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [
+              {
+                "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                "name": "indexpattern-datasource-layer-42d09652-ff79-4292-87d0-efe15e216254",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "currentIndexPatternId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                  "layers": {
+                    "42d09652-ff79-4292-87d0-efe15e216254": {
+                      "columnOrder": [
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0c",
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0cX0"
+                      ],
+                      "columns": {
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0c": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Count",
+                          "operationType": "count",
+                          "params": {
+                            "emptyAsNull": true
+                          },
+                          "scale": "ratio",
+                          "sourceField": "index.name"
+                        },
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0cX0": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "filter": {
+                            "language": "kuery",
+                            "query": "index.primaries.indexing.est_bytes_per_day > 0"
+                          },
+                          "isBucketed": false,
+                          "label": "Part of Storage Rate",
+                          "operationType": "sum",
+                          "params": {
+                            "emptyAsNull": false
+                          },
+                          "scale": "ratio",
+                          "sourceField": "index.primaries.indexing.est_bytes_per_day"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": ""
+              },
+              "visualization": {
+                "icon": "empty",
+                "layerId": "42d09652-ff79-4292-87d0-efe15e216254",
+                "layerType": "data",
+                "metricAccessor": "d8a6122d-4248-424d-8eb9-d0f478b85d0c"
+              }
+            },
+            "title": "",
+            "type": "lens",
+            "visualizationType": "lnsMetric"
+          },
+          "enhancements": {
+            "dynamicActions": {
+              "events": []
+            }
+          },
+          "filters": [],
+          "hidePanelTitles": true,
+          "query": {
+            "language": "kuery",
+            "query": ""
+          },
+          "syncColors": false,
+          "syncCursor": true,
+          "syncTooltips": false
+        },
+        "gridData": {
+          "h": 3,
+          "i": "98b0eb01-4fe9-4d77-90f4-acb2be954169",
+          "w": 4,
+          "x": 12,
+          "y": 3
+        },
+        "panelIndex": "98b0eb01-4fe9-4d77-90f4-acb2be954169",
+        "title": "Datastream total est. bytes stored per day (primaries) (copy)",
+        "type": "lens"
+      },
+      {
+        "embeddableConfig": {
+          "enhancements": {
+            "dynamicActions": {
+              "events": []
+            }
+          },
+          "hidePanelTitles": true,
+          "savedVis": {
+            "data": {
+              "aggs": [],
+              "searchSource": {
+                "filter": [],
+                "query": {
+                  "language": "kuery",
+                  "query": ""
+                }
+              }
+            },
+            "description": "",
+            "params": {
+              "fontSize": 12,
+              "markdown": "### Data Streams",
+              "openLinksInNewTab": false
+            },
+            "title": "",
+            "type": "markdown",
+            "uiState": {}
+          }
+        },
+        "gridData": {
+          "h": 3,
+          "i": "64769ca2-ef3e-47e3-b7fb-7b96d88c2b35",
+          "w": 12,
+          "x": 16,
+          "y": 3
+        },
+        "panelIndex": "64769ca2-ef3e-47e3-b7fb-7b96d88c2b35",
+        "type": "visualization"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [
+              {
+                "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                "name": "indexpattern-datasource-layer-42d09652-ff79-4292-87d0-efe15e216254",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "currentIndexPatternId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                  "layers": {
+                    "42d09652-ff79-4292-87d0-efe15e216254": {
+                      "columnOrder": [
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0c",
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0cX0"
+                      ],
+                      "columns": {
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0c": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Count",
+                          "operationType": "unique_count",
+                          "params": {
+                            "emptyAsNull": true
+                          },
+                          "scale": "ratio",
+                          "sourceField": "index.data_stream.name"
+                        },
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0cX0": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "filter": {
+                            "language": "kuery",
+                            "query": "index.primaries.indexing.est_bytes_per_day > 0 AND index.data_stream.name:*"
+                          },
+                          "isBucketed": false,
+                          "label": "Part of Strage Rate",
+                          "operationType": "sum",
+                          "params": {
+                            "emptyAsNull": false
+                          },
+                          "scale": "ratio",
+                          "sourceField": "index.primaries.indexing.est_bytes_per_day"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": ""
+              },
+              "visualization": {
+                "layerId": "42d09652-ff79-4292-87d0-efe15e216254",
+                "layerType": "data",
+                "metricAccessor": "d8a6122d-4248-424d-8eb9-d0f478b85d0c"
+              }
+            },
+            "title": "",
+            "type": "lens",
+            "visualizationType": "lnsMetric"
+          },
+          "enhancements": {
+            "dynamicActions": {
+              "events": []
+            }
+          },
+          "filters": [],
+          "hidePanelTitles": true,
+          "query": {
+            "language": "kuery",
+            "query": ""
+          },
+          "syncColors": false,
+          "syncCursor": true,
+          "syncTooltips": false
+        },
+        "gridData": {
+          "h": 3,
+          "i": "ce4be777-d274-4630-9d9f-98372937096e",
+          "w": 4,
+          "x": 28,
+          "y": 3
+        },
+        "panelIndex": "ce4be777-d274-4630-9d9f-98372937096e",
+        "title": "Datastream total est. bytes stored per day (primaries) (copy)",
+        "type": "lens"
+      },
+      {
+        "embeddableConfig": {
+          "enhancements": {
+            "dynamicActions": {
+              "events": []
+            }
+          },
+          "hidePanelTitles": true,
+          "savedVis": {
+            "data": {
+              "aggs": [],
+              "searchSource": {
+                "filter": [],
+                "query": {
+                  "language": "kuery",
+                  "query": ""
+                }
+              }
+            },
+            "description": "",
+            "params": {
+              "fontSize": 12,
+              "markdown": "### Rollover Aliases",
+              "openLinksInNewTab": false
+            },
+            "title": "",
+            "type": "markdown",
+            "uiState": {}
+          }
+        },
+        "gridData": {
+          "h": 3,
+          "i": "8f2d657d-085f-4187-827a-968e3dda5ff9",
+          "w": 12,
+          "x": 32,
+          "y": 3
+        },
+        "panelIndex": "8f2d657d-085f-4187-827a-968e3dda5ff9",
+        "type": "visualization"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [
+              {
+                "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                "name": "indexpattern-datasource-layer-42d09652-ff79-4292-87d0-efe15e216254",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "currentIndexPatternId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                  "layers": {
+                    "42d09652-ff79-4292-87d0-efe15e216254": {
+                      "columnOrder": [
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0c",
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0cX0"
+                      ],
+                      "columns": {
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0c": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Count",
+                          "operationType": "count",
+                          "params": {
+                            "emptyAsNull": true
+                          },
+                          "scale": "ratio",
+                          "sourceField": "index.alias.name"
+                        },
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0cX0": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "filter": {
+                            "language": "kuery",
+                            "query": "index.primaries.indexing.est_bytes_per_day > 0 AND index.alias.name:*"
+                          },
+                          "isBucketed": false,
+                          "label": "Part of Storage Rate",
+                          "operationType": "sum",
+                          "params": {
+                            "emptyAsNull": false
+                          },
+                          "scale": "ratio",
+                          "sourceField": "index.primaries.indexing.est_bytes_per_day"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": ""
+              },
+              "visualization": {
+                "layerId": "42d09652-ff79-4292-87d0-efe15e216254",
+                "layerType": "data",
+                "metricAccessor": "d8a6122d-4248-424d-8eb9-d0f478b85d0c"
+              }
+            },
+            "title": "",
+            "type": "lens",
+            "visualizationType": "lnsMetric"
+          },
+          "enhancements": {
+            "dynamicActions": {
+              "events": []
+            }
+          },
+          "filters": [],
+          "hidePanelTitles": true,
+          "query": {
+            "language": "kuery",
+            "query": ""
+          },
+          "syncColors": false,
+          "syncCursor": true,
+          "syncTooltips": false
+        },
+        "gridData": {
+          "h": 3,
+          "i": "bce65b09-ec0d-4b43-8db7-44214a0bf15d",
+          "w": 4,
+          "x": 44,
+          "y": 3
+        },
+        "panelIndex": "bce65b09-ec0d-4b43-8db7-44214a0bf15d",
+        "title": "Datastream total est. bytes stored per day (primaries) (copy)",
+        "type": "lens"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [
+              {
+                "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                "name": "indexpattern-datasource-layer-42d09652-ff79-4292-87d0-efe15e216254",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "currentIndexPatternId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                  "layers": {
+                    "42d09652-ff79-4292-87d0-efe15e216254": {
+                      "columnOrder": [
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0c",
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0cX0"
+                      ],
+                      "columns": {
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0c": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "filter": {
+                            "language": "kuery",
+                            "query": "index.is_write_index : true"
+                          },
+                          "isBucketed": false,
+                          "label": "Bulk Rate",
+                          "operationType": "formula",
+                          "params": {
+                            "format": {
+                              "id": "bytes",
+                              "params": {
+                                "decimals": 1,
+                                "suffix": "/day"
+                              }
+                            },
+                            "formula": "sum(index.primaries.bulk.est_bytes_per_day)",
+                            "isFormulaBroken": false
+                          },
+                          "references": [
+                            "d8a6122d-4248-424d-8eb9-d0f478b85d0cX0"
+                          ],
+                          "scale": "ratio"
+                        },
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0cX0": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "filter": {
+                            "language": "kuery",
+                            "query": "index.is_write_index : true"
+                          },
+                          "isBucketed": false,
+                          "label": "Part of Bulk Rate",
+                          "operationType": "sum",
+                          "params": {
+                            "emptyAsNull": false
+                          },
+                          "scale": "ratio",
+                          "sourceField": "index.primaries.bulk.est_bytes_per_day"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "currentIndexPatternId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                  "layers": {}
+                },
+                "textBased": {
+                  "indexPatternRefs": [
+                    {
+                      "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                      "timeField": "event.ingested",
+                      "title": "metrics-index-esdiag*"
+                    }
+                  ],
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": ""
+              },
+              "visualization": {
+                "icon": "empty",
+                "layerId": "42d09652-ff79-4292-87d0-efe15e216254",
+                "layerType": "data",
+                "metricAccessor": "d8a6122d-4248-424d-8eb9-d0f478b85d0c",
+                "subtitle": "Current"
+              }
+            },
+            "title": "",
+            "type": "lens",
+            "visualizationType": "lnsMetric"
+          },
+          "description": "The bulk size is measured after ingest pipelines; it is not a \"raw\" measurement. Does not include replicas.",
+          "enhancements": {
+            "dynamicActions": {
+              "events": []
+            }
+          },
+          "filters": [],
+          "hidePanelTitles": true,
+          "query": {
+            "language": "kuery",
+            "query": ""
+          },
+          "syncColors": false,
+          "syncCursor": true,
+          "syncTooltips": false
+        },
+        "gridData": {
+          "h": 5,
+          "i": "9ee2a128-6c30-4cb0-83ea-c1e4eaaa2a61",
+          "w": 5,
+          "x": 0,
+          "y": 28
+        },
+        "panelIndex": "9ee2a128-6c30-4cb0-83ea-c1e4eaaa2a61",
+        "title": "Datastream total est. bytes stored per day (primaries) (copy 1)",
+        "type": "lens"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [
+              {
+                "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                "name": "indexpattern-datasource-layer-42d09652-ff79-4292-87d0-efe15e216254",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "currentIndexPatternId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                  "layers": {
+                    "42d09652-ff79-4292-87d0-efe15e216254": {
+                      "columnOrder": [
+                        "55df066a-f88f-458d-8195-1e437792d9ea",
+                        "c6017a2b-98f5-4463-a1bf-72facad7b51d",
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0c"
+                      ],
+                      "columns": {
+                        "55df066a-f88f-458d-8195-1e437792d9ea": {
+                          "customLabel": true,
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "cluster.name",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "columnId": "d8a6122d-4248-424d-8eb9-d0f478b85d0c",
+                              "type": "column"
+                            },
+                            "orderDirection": "desc",
+                            "otherBucket": true,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "secondaryFields": [],
+                            "size": 20
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "cluster.name"
+                        },
+                        "c6017a2b-98f5-4463-a1bf-72facad7b51d": {
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Top 20 values of index.name",
+                          "operationType": "terms",
+                          "params": {
+                            "accuracyMode": false,
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "columnId": "d8a6122d-4248-424d-8eb9-d0f478b85d0c",
+                              "type": "column"
+                            },
+                            "orderDirection": "desc",
+                            "otherBucket": true,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "secondaryFields": [],
+                            "size": 20
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "index.name"
+                        },
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0c": {
+                          "customLabel": false,
+                          "dataType": "number",
+                          "filter": {
+                            "language": "kuery",
+                            "query": "index.is_write_index : true "
+                          },
+                          "isBucketed": false,
+                          "label": "Sum of index.primaries.bulk.est_bytes_per_day",
+                          "operationType": "sum",
+                          "params": {
+                            "emptyAsNull": true
+                          },
+                          "scale": "ratio",
+                          "sourceField": "index.primaries.bulk.est_bytes_per_day"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "currentIndexPatternId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                  "layers": {}
+                },
+                "textBased": {
+                  "indexPatternRefs": [
+                    {
+                      "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                      "timeField": "event.ingested",
+                      "title": "metrics-index-esdiag*"
+                    }
+                  ],
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": ""
+              },
+              "visualization": {
+                "axisTitlesVisibilitySettings": {
+                  "x": false,
+                  "yLeft": false,
+                  "yRight": true
+                },
+                "gridlinesVisibilitySettings": {
+                  "x": false,
+                  "yLeft": true,
+                  "yRight": true
+                },
+                "labelsOrientation": {
+                  "x": 0,
+                  "yLeft": 0,
+                  "yRight": 0
+                },
+                "layers": [
+                  {
+                    "accessors": [
+                      "d8a6122d-4248-424d-8eb9-d0f478b85d0c"
+                    ],
+                    "colorMapping": {
+                      "assignments": [],
+                      "colorMode": {
+                        "type": "categorical"
+                      },
+                      "paletteId": "eui_amsterdam_color_blind",
+                      "specialAssignments": [
+                        {
+                          "color": {
+                            "type": "loop"
+                          },
+                          "rule": {
+                            "type": "other"
+                          },
+                          "touched": false
+                        }
+                      ]
+                    },
+                    "layerId": "42d09652-ff79-4292-87d0-efe15e216254",
+                    "layerType": "data",
+                    "position": "top",
+                    "seriesType": "bar_horizontal_stacked",
+                    "showGridlines": false,
+                    "splitAccessor": "c6017a2b-98f5-4463-a1bf-72facad7b51d",
+                    "xAccessor": "55df066a-f88f-458d-8195-1e437792d9ea"
+                  }
+                ],
+                "legend": {
+                  "isVisible": false,
+                  "position": "right",
+                  "showSingleSeries": false
+                },
+                "preferredSeriesType": "bar_horizontal_stacked",
+                "tickLabelsVisibilitySettings": {
+                  "x": false,
+                  "yLeft": true,
+                  "yRight": true
+                },
+                "title": "Empty XY chart",
+                "valueLabels": "hide"
+              }
+            },
+            "title": "",
+            "type": "lens",
+            "visualizationType": "lnsXY"
+          },
+          "description": "The bulk size is measured after ingest pipelines; it is not a \"raw\" measurement. Does not include replicas.",
+          "enhancements": {
+            "dynamicActions": {
+              "events": []
+            }
+          },
+          "filters": [],
+          "query": {
+            "language": "kuery",
+            "query": ""
+          },
+          "syncColors": false,
+          "syncCursor": true,
+          "syncTooltips": false
+        },
+        "gridData": {
+          "h": 5,
+          "i": "e7c23425-b11e-421e-acff-add1bdbaeb1c",
+          "w": 11,
+          "x": 5,
+          "y": 28
+        },
+        "panelIndex": "e7c23425-b11e-421e-acff-add1bdbaeb1c",
+        "title": "Index - Estimated bulk bytes/day",
+        "type": "lens"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [
+              {
+                "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                "name": "indexpattern-datasource-layer-42d09652-ff79-4292-87d0-efe15e216254",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "currentIndexPatternId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                  "layers": {
+                    "42d09652-ff79-4292-87d0-efe15e216254": {
+                      "columnOrder": [
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0c",
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0cX0"
+                      ],
+                      "columns": {
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0c": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "filter": {
+                            "language": "kuery",
+                            "query": "index.is_write_index: true AND index.data_stream.name:*"
+                          },
+                          "isBucketed": false,
+                          "label": "Bulk Rate",
+                          "operationType": "formula",
+                          "params": {
+                            "format": {
+                              "id": "bytes",
+                              "params": {
+                                "decimals": 1,
+                                "suffix": "/day"
+                              }
+                            },
+                            "formula": "sum(index.primaries.bulk.est_bytes_per_day)",
+                            "isFormulaBroken": false
+                          },
+                          "references": [
+                            "d8a6122d-4248-424d-8eb9-d0f478b85d0cX0"
+                          ],
+                          "scale": "ratio"
+                        },
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0cX0": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "filter": {
+                            "language": "kuery",
+                            "query": "index.is_write_index: true AND index.data_stream.name:*"
+                          },
+                          "isBucketed": false,
+                          "label": "Part of Bulk Rate",
+                          "operationType": "sum",
+                          "params": {
+                            "emptyAsNull": false
+                          },
+                          "scale": "ratio",
+                          "sourceField": "index.primaries.bulk.est_bytes_per_day"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "currentIndexPatternId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                  "layers": {}
+                },
+                "textBased": {
+                  "indexPatternRefs": [
+                    {
+                      "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                      "timeField": "event.ingested",
+                      "title": "metrics-index-esdiag*"
+                    }
+                  ],
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": ""
+              },
+              "visualization": {
+                "layerId": "42d09652-ff79-4292-87d0-efe15e216254",
+                "layerType": "data",
+                "metricAccessor": "d8a6122d-4248-424d-8eb9-d0f478b85d0c",
+                "subtitle": "Current"
+              }
+            },
+            "title": "",
+            "type": "lens",
+            "visualizationType": "lnsMetric"
+          },
+          "description": "The bulk size is measured after ingest pipelines; it is not a \"raw\" measurement.",
+          "enhancements": {
+            "dynamicActions": {
+              "events": []
+            }
+          },
+          "filters": [],
+          "hidePanelTitles": true,
+          "query": {
+            "language": "kuery",
+            "query": ""
+          },
+          "syncColors": false,
+          "syncCursor": true,
+          "syncTooltips": false
+        },
+        "gridData": {
+          "h": 5,
+          "i": "892d6d45-cc95-42c5-9ba5-b3c6d902f0b6",
+          "w": 5,
+          "x": 16,
+          "y": 28
+        },
+        "panelIndex": "892d6d45-cc95-42c5-9ba5-b3c6d902f0b6",
+        "title": "Datastream total est. bytes stored per day (primaries) (copy 2)",
+        "type": "lens"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [
+              {
+                "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                "name": "indexpattern-datasource-layer-42d09652-ff79-4292-87d0-efe15e216254",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "currentIndexPatternId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                  "layers": {
+                    "42d09652-ff79-4292-87d0-efe15e216254": {
+                      "columnOrder": [
+                        "55df066a-f88f-458d-8195-1e437792d9ea",
+                        "c6017a2b-98f5-4463-a1bf-72facad7b51d",
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0c"
+                      ],
+                      "columns": {
+                        "55df066a-f88f-458d-8195-1e437792d9ea": {
+                          "customLabel": true,
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "cluster.name",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "columnId": "d8a6122d-4248-424d-8eb9-d0f478b85d0c",
+                              "type": "column"
+                            },
+                            "orderDirection": "desc",
+                            "otherBucket": true,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "secondaryFields": [],
+                            "size": 20
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "cluster.name"
+                        },
+                        "c6017a2b-98f5-4463-a1bf-72facad7b51d": {
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Top 20 values of index.data_stream.name",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "columnId": "d8a6122d-4248-424d-8eb9-d0f478b85d0c",
+                              "type": "column"
+                            },
+                            "orderDirection": "desc",
+                            "otherBucket": true,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "size": 20
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "index.data_stream.name"
+                        },
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0c": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "filter": {
+                            "language": "kuery",
+                            "query": "index.is_write_index : true "
+                          },
+                          "isBucketed": false,
+                          "label": "bulk.est_bytes_per_day",
+                          "operationType": "sum",
+                          "params": {
+                            "emptyAsNull": true
+                          },
+                          "scale": "ratio",
+                          "sourceField": "index.primaries.bulk.est_bytes_per_day"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "currentIndexPatternId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                  "layers": {}
+                },
+                "textBased": {
+                  "indexPatternRefs": [
+                    {
+                      "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                      "timeField": "event.ingested",
+                      "title": "metrics-index-esdiag*"
+                    }
+                  ],
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": ""
+              },
+              "visualization": {
+                "axisTitlesVisibilitySettings": {
+                  "x": false,
+                  "yLeft": false,
+                  "yRight": true
+                },
+                "gridlinesVisibilitySettings": {
+                  "x": false,
+                  "yLeft": true,
+                  "yRight": true
+                },
+                "labelsOrientation": {
+                  "x": 0,
+                  "yLeft": 0,
+                  "yRight": 0
+                },
+                "layers": [
+                  {
+                    "accessors": [
+                      "d8a6122d-4248-424d-8eb9-d0f478b85d0c"
+                    ],
+                    "colorMapping": {
+                      "assignments": [],
+                      "colorMode": {
+                        "type": "categorical"
+                      },
+                      "paletteId": "eui_amsterdam_color_blind",
+                      "specialAssignments": [
+                        {
+                          "color": {
+                            "type": "loop"
+                          },
+                          "rule": {
+                            "type": "other"
+                          },
+                          "touched": false
+                        }
+                      ]
+                    },
+                    "layerId": "42d09652-ff79-4292-87d0-efe15e216254",
+                    "layerType": "data",
+                    "position": "top",
+                    "seriesType": "bar_horizontal_stacked",
+                    "showGridlines": false,
+                    "splitAccessor": "c6017a2b-98f5-4463-a1bf-72facad7b51d",
+                    "xAccessor": "55df066a-f88f-458d-8195-1e437792d9ea"
+                  }
+                ],
+                "legend": {
+                  "isVisible": false,
+                  "position": "right",
+                  "showSingleSeries": false
+                },
+                "preferredSeriesType": "bar_horizontal_stacked",
+                "tickLabelsVisibilitySettings": {
+                  "x": false,
+                  "yLeft": true,
+                  "yRight": true
+                },
+                "title": "Empty XY chart",
+                "valueLabels": "hide"
+              }
+            },
+            "title": "",
+            "type": "lens",
+            "visualizationType": "lnsXY"
+          },
+          "description": "The bulk size is measured after ingest pipelines; it is not a \"raw\" measurement. Does not include replicas.",
+          "enhancements": {
+            "dynamicActions": {
+              "events": []
+            }
+          },
+          "filters": [],
+          "query": {
+            "language": "kuery",
+            "query": ""
+          },
+          "syncColors": false,
+          "syncCursor": true,
+          "syncTooltips": false
+        },
+        "gridData": {
+          "h": 5,
+          "i": "3e250dfa-7977-45d7-a449-b28b25ea4148",
+          "w": 11,
+          "x": 21,
+          "y": 28
+        },
+        "panelIndex": "3e250dfa-7977-45d7-a449-b28b25ea4148",
+        "title": "Data Stream - Estimated bulk bytes/day",
+        "type": "lens"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [
+              {
+                "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                "name": "indexpattern-datasource-layer-42d09652-ff79-4292-87d0-efe15e216254",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "currentIndexPatternId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                  "layers": {
+                    "42d09652-ff79-4292-87d0-efe15e216254": {
+                      "columnOrder": [
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0c",
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0cX0"
+                      ],
+                      "columns": {
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0c": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "filter": {
+                            "language": "kuery",
+                            "query": "index.is_write_index: true AND index.alias.name:*"
+                          },
+                          "isBucketed": false,
+                          "label": "Bulk Rate",
+                          "operationType": "formula",
+                          "params": {
+                            "format": {
+                              "id": "bytes",
+                              "params": {
+                                "decimals": 1,
+                                "suffix": "/day"
+                              }
+                            },
+                            "formula": "sum(index.primaries.bulk.est_bytes_per_day)",
+                            "isFormulaBroken": false
+                          },
+                          "references": [
+                            "d8a6122d-4248-424d-8eb9-d0f478b85d0cX0"
+                          ],
+                          "scale": "ratio"
+                        },
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0cX0": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "filter": {
+                            "language": "kuery",
+                            "query": "index.is_write_index: true AND index.alias.name:*"
+                          },
+                          "isBucketed": false,
+                          "label": "Part of Bulk Rate",
+                          "operationType": "sum",
+                          "params": {
+                            "emptyAsNull": false
+                          },
+                          "scale": "ratio",
+                          "sourceField": "index.primaries.bulk.est_bytes_per_day"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "currentIndexPatternId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                  "layers": {}
+                },
+                "textBased": {
+                  "indexPatternRefs": [
+                    {
+                      "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                      "timeField": "event.ingested",
+                      "title": "metrics-index-esdiag*"
+                    }
+                  ],
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": ""
+              },
+              "visualization": {
+                "layerId": "42d09652-ff79-4292-87d0-efe15e216254",
+                "layerType": "data",
+                "metricAccessor": "d8a6122d-4248-424d-8eb9-d0f478b85d0c",
+                "subtitle": "Current"
+              }
+            },
+            "title": "",
+            "type": "lens",
+            "visualizationType": "lnsMetric"
+          },
+          "description": "The bulk size is measured after ingest pipelines; it is not a \"raw\" measurement. Does not include replicas.",
+          "enhancements": {
+            "dynamicActions": {
+              "events": []
+            }
+          },
+          "filters": [],
+          "hidePanelTitles": true,
+          "query": {
+            "language": "kuery",
+            "query": ""
+          },
+          "syncColors": false,
+          "syncCursor": true,
+          "syncTooltips": false
+        },
+        "gridData": {
+          "h": 5,
+          "i": "f5ac1108-2467-40a9-ae41-2194fb869283",
+          "w": 5,
+          "x": 32,
+          "y": 28
+        },
+        "panelIndex": "f5ac1108-2467-40a9-ae41-2194fb869283",
+        "title": "Datastream total est. bytes stored per day (primaries) (copy 3)",
+        "type": "lens"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [
+              {
+                "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                "name": "indexpattern-datasource-layer-42d09652-ff79-4292-87d0-efe15e216254",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "currentIndexPatternId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                  "layers": {
+                    "42d09652-ff79-4292-87d0-efe15e216254": {
+                      "columnOrder": [
+                        "55df066a-f88f-458d-8195-1e437792d9ea",
+                        "c6017a2b-98f5-4463-a1bf-72facad7b51d",
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0c"
+                      ],
+                      "columns": {
+                        "55df066a-f88f-458d-8195-1e437792d9ea": {
+                          "customLabel": true,
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "cluster.name",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "columnId": "d8a6122d-4248-424d-8eb9-d0f478b85d0c",
+                              "type": "column"
+                            },
+                            "orderDirection": "desc",
+                            "otherBucket": true,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "secondaryFields": [],
+                            "size": 20
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "cluster.name"
+                        },
+                        "c6017a2b-98f5-4463-a1bf-72facad7b51d": {
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Top 20 values of index.alias.name",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "columnId": "d8a6122d-4248-424d-8eb9-d0f478b85d0c",
+                              "type": "column"
+                            },
+                            "orderDirection": "desc",
+                            "otherBucket": true,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "secondaryFields": [],
+                            "size": 20
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "index.alias.name"
+                        },
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0c": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "filter": {
+                            "language": "kuery",
+                            "query": "index.is_write_index : true "
+                          },
+                          "isBucketed": false,
+                          "label": "bulk.est_bytes_per_day",
+                          "operationType": "sum",
+                          "params": {
+                            "emptyAsNull": true
+                          },
+                          "scale": "ratio",
+                          "sourceField": "index.primaries.bulk.est_bytes_per_day"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "currentIndexPatternId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                  "layers": {}
+                },
+                "textBased": {
+                  "indexPatternRefs": [
+                    {
+                      "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                      "timeField": "event.ingested",
+                      "title": "metrics-index-esdiag*"
+                    }
+                  ],
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": ""
+              },
+              "visualization": {
+                "axisTitlesVisibilitySettings": {
+                  "x": false,
+                  "yLeft": false,
+                  "yRight": true
+                },
+                "gridlinesVisibilitySettings": {
+                  "x": false,
+                  "yLeft": true,
+                  "yRight": true
+                },
+                "labelsOrientation": {
+                  "x": 0,
+                  "yLeft": 0,
+                  "yRight": 0
+                },
+                "layers": [
+                  {
+                    "accessors": [
+                      "d8a6122d-4248-424d-8eb9-d0f478b85d0c"
+                    ],
+                    "colorMapping": {
+                      "assignments": [],
+                      "colorMode": {
+                        "type": "categorical"
+                      },
+                      "paletteId": "eui_amsterdam_color_blind",
+                      "specialAssignments": [
+                        {
+                          "color": {
+                            "type": "loop"
+                          },
+                          "rule": {
+                            "type": "other"
+                          },
+                          "touched": false
+                        }
+                      ]
+                    },
+                    "layerId": "42d09652-ff79-4292-87d0-efe15e216254",
+                    "layerType": "data",
+                    "position": "top",
+                    "seriesType": "bar_horizontal_stacked",
+                    "showGridlines": false,
+                    "splitAccessor": "c6017a2b-98f5-4463-a1bf-72facad7b51d",
+                    "xAccessor": "55df066a-f88f-458d-8195-1e437792d9ea"
+                  }
+                ],
+                "legend": {
+                  "isVisible": false,
+                  "position": "right",
+                  "showSingleSeries": false
+                },
+                "preferredSeriesType": "bar_horizontal_stacked",
+                "tickLabelsVisibilitySettings": {
+                  "x": false,
+                  "yLeft": true,
+                  "yRight": true
+                },
+                "title": "Empty XY chart",
+                "valueLabels": "hide"
+              }
+            },
+            "title": "",
+            "type": "lens",
+            "visualizationType": "lnsXY"
+          },
+          "description": "The bulk size is measured after ingest pipelines; it is not a \"raw\" measurement. Does not include replicas.",
+          "enhancements": {
+            "dynamicActions": {
+              "events": []
+            }
+          },
+          "filters": [],
+          "query": {
+            "language": "kuery",
+            "query": ""
+          },
+          "syncColors": false,
+          "syncCursor": true,
+          "syncTooltips": false
+        },
+        "gridData": {
+          "h": 5,
+          "i": "14cc7d55-cf1a-4ec9-93d1-6b209fdea331",
+          "w": 11,
+          "x": 37,
+          "y": 28
+        },
+        "panelIndex": "14cc7d55-cf1a-4ec9-93d1-6b209fdea331",
+        "title": "Rollover Alias - Estimated bulk bytes/day",
+        "type": "lens"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [
+              {
+                "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                "name": "indexpattern-datasource-layer-42d09652-ff79-4292-87d0-efe15e216254",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "currentIndexPatternId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                  "layers": {
+                    "42d09652-ff79-4292-87d0-efe15e216254": {
+                      "columnOrder": [
+                        "55df066a-f88f-458d-8195-1e437792d9ea",
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0c"
+                      ],
+                      "columns": {
+                        "55df066a-f88f-458d-8195-1e437792d9ea": {
+                          "customLabel": true,
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Index",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "columnId": "d8a6122d-4248-424d-8eb9-d0f478b85d0c",
+                              "type": "column"
+                            },
+                            "orderDirection": "desc",
+                            "otherBucket": true,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "secondaryFields": [],
+                            "size": 20
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "index.name"
+                        },
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0c": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Bulk bytes/day",
+                          "operationType": "max",
+                          "params": {
+                            "emptyAsNull": true
+                          },
+                          "scale": "ratio",
+                          "sourceField": "index.primaries.bulk.est_bytes_per_day"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "currentIndexPatternId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                  "layers": {}
+                },
+                "textBased": {
+                  "indexPatternRefs": [
+                    {
+                      "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                      "timeField": "event.ingested",
+                      "title": "metrics-index-esdiag*"
+                    }
+                  ],
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": ""
+              },
+              "visualization": {
+                "layers": [
+                  {
+                    "accessors": [
+                      "d8a6122d-4248-424d-8eb9-d0f478b85d0c"
+                    ],
+                    "colorMapping": {
+                      "assignments": [],
+                      "colorMode": {
+                        "type": "categorical"
+                      },
+                      "paletteId": "eui_amsterdam_color_blind",
+                      "specialAssignments": [
+                        {
+                          "color": {
+                            "type": "loop"
+                          },
+                          "rule": {
+                            "type": "other"
+                          },
+                          "touched": false
+                        }
+                      ]
+                    },
+                    "layerId": "42d09652-ff79-4292-87d0-efe15e216254",
+                    "layerType": "data",
+                    "position": "top",
+                    "seriesType": "bar_horizontal_stacked",
+                    "showGridlines": false,
+                    "xAccessor": "55df066a-f88f-458d-8195-1e437792d9ea"
+                  }
+                ],
+                "legend": {
+                  "isVisible": false,
+                  "position": "bottom",
+                  "showSingleSeries": false
+                },
+                "preferredSeriesType": "bar_horizontal_stacked",
+                "title": "Empty XY chart",
+                "valueLabels": "hide"
+              }
+            },
+            "title": "",
+            "type": "lens",
+            "visualizationType": "lnsXY"
+          },
+          "description": "The bulk size is measured after ingest pipelines; it is not a \"raw\" measurement. Does not include replicas.",
+          "enhancements": {
+            "dynamicActions": {
+              "events": []
+            }
+          },
+          "filters": [],
+          "query": {
+            "language": "kuery",
+            "query": ""
+          },
+          "syncColors": false,
+          "syncCursor": true,
+          "syncTooltips": false
+        },
+        "gridData": {
+          "h": 17,
+          "i": "9f6bca47-7300-4dae-b0d2-8d376e118cd5",
+          "w": 16,
+          "x": 0,
+          "y": 33
+        },
+        "panelIndex": "9f6bca47-7300-4dae-b0d2-8d376e118cd5",
+        "title": "Index - Estimated bulk bytes/day (max, primaries)",
+        "type": "lens"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [
+              {
+                "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                "name": "indexpattern-datasource-layer-42d09652-ff79-4292-87d0-efe15e216254",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "currentIndexPatternId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                  "layers": {
+                    "42d09652-ff79-4292-87d0-efe15e216254": {
+                      "columnOrder": [
+                        "55df066a-f88f-458d-8195-1e437792d9ea",
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0c"
+                      ],
+                      "columns": {
+                        "55df066a-f88f-458d-8195-1e437792d9ea": {
+                          "customLabel": true,
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Data Stream",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "columnId": "d8a6122d-4248-424d-8eb9-d0f478b85d0c",
+                              "type": "column"
+                            },
+                            "orderDirection": "desc",
+                            "otherBucket": true,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "secondaryFields": [],
+                            "size": 20
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "index.data_stream.name"
+                        },
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0c": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "filter": {
+                            "language": "kuery",
+                            "query": "index.primaries.bulk.est_bytes_per_day > 0"
+                          },
+                          "isBucketed": false,
+                          "label": "Bulk bytes/day",
+                          "operationType": "average",
+                          "params": {
+                            "emptyAsNull": true
+                          },
+                          "scale": "ratio",
+                          "sourceField": "index.primaries.bulk.est_bytes_per_day"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "currentIndexPatternId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                  "layers": {}
+                },
+                "textBased": {
+                  "indexPatternRefs": [
+                    {
+                      "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                      "timeField": "event.ingested",
+                      "title": "metrics-index-esdiag*"
+                    }
+                  ],
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": ""
+              },
+              "visualization": {
+                "layers": [
+                  {
+                    "accessors": [
+                      "d8a6122d-4248-424d-8eb9-d0f478b85d0c"
+                    ],
+                    "colorMapping": {
+                      "assignments": [],
+                      "colorMode": {
+                        "type": "categorical"
+                      },
+                      "paletteId": "eui_amsterdam_color_blind",
+                      "specialAssignments": [
+                        {
+                          "color": {
+                            "type": "loop"
+                          },
+                          "rule": {
+                            "type": "other"
+                          },
+                          "touched": false
+                        }
+                      ]
+                    },
+                    "layerId": "42d09652-ff79-4292-87d0-efe15e216254",
+                    "layerType": "data",
+                    "position": "top",
+                    "seriesType": "bar_horizontal_stacked",
+                    "showGridlines": false,
+                    "xAccessor": "55df066a-f88f-458d-8195-1e437792d9ea"
+                  }
+                ],
+                "legend": {
+                  "horizontalAlignment": "right",
+                  "isInside": false,
+                  "isVisible": false,
+                  "position": "bottom",
+                  "showSingleSeries": false,
+                  "verticalAlignment": "bottom"
+                },
+                "preferredSeriesType": "bar_horizontal_stacked",
+                "title": "Empty XY chart",
+                "valueLabels": "hide"
+              }
+            },
+            "title": "",
+            "type": "lens",
+            "visualizationType": "lnsXY"
+          },
+          "description": "The bulk size is measured after ingest pipelines; it is not a \"raw\" measurement. Does not include replicas.",
+          "enhancements": {
+            "dynamicActions": {
+              "events": []
+            }
+          },
+          "filters": [],
+          "query": {
+            "language": "kuery",
+            "query": ""
+          },
+          "syncColors": false,
+          "syncCursor": true,
+          "syncTooltips": false
+        },
+        "gridData": {
+          "h": 17,
+          "i": "a05891e8-ee3f-4bbc-80e4-e09d92446d3d",
+          "w": 16,
+          "x": 16,
+          "y": 33
+        },
+        "panelIndex": "a05891e8-ee3f-4bbc-80e4-e09d92446d3d",
+        "title": "Data Stream - Estimated bulk bytes/day (average, primaries)",
+        "type": "lens"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [
+              {
+                "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                "name": "indexpattern-datasource-layer-42d09652-ff79-4292-87d0-efe15e216254",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "currentIndexPatternId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                  "layers": {
+                    "42d09652-ff79-4292-87d0-efe15e216254": {
+                      "columnOrder": [
+                        "55df066a-f88f-458d-8195-1e437792d9ea",
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0c"
+                      ],
+                      "columns": {
+                        "55df066a-f88f-458d-8195-1e437792d9ea": {
+                          "customLabel": true,
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Alias",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "columnId": "d8a6122d-4248-424d-8eb9-d0f478b85d0c",
+                              "type": "column"
+                            },
+                            "orderDirection": "desc",
+                            "otherBucket": true,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "size": 20
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "index.alias.name"
+                        },
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0c": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "filter": {
+                            "language": "kuery",
+                            "query": "index.alias.name: * AND index.primaries.bulk.est_bytes_per_day > 0"
+                          },
+                          "isBucketed": false,
+                          "label": "Bulk bytes/day",
+                          "operationType": "average",
+                          "params": {
+                            "emptyAsNull": true
+                          },
+                          "scale": "ratio",
+                          "sourceField": "index.primaries.bulk.est_bytes_per_day"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                      "sampling": 1
+                    }
+                  }
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": ""
+              },
+              "visualization": {
+                "layers": [
+                  {
+                    "accessors": [
+                      "d8a6122d-4248-424d-8eb9-d0f478b85d0c"
+                    ],
+                    "colorMapping": {
+                      "assignments": [],
+                      "colorMode": {
+                        "type": "categorical"
+                      },
+                      "paletteId": "eui_amsterdam_color_blind",
+                      "specialAssignments": [
+                        {
+                          "color": {
+                            "type": "loop"
+                          },
+                          "rule": {
+                            "type": "other"
+                          },
+                          "touched": false
+                        }
+                      ]
+                    },
+                    "layerId": "42d09652-ff79-4292-87d0-efe15e216254",
+                    "layerType": "data",
+                    "position": "top",
+                    "seriesType": "bar_horizontal_stacked",
+                    "showGridlines": false,
+                    "xAccessor": "55df066a-f88f-458d-8195-1e437792d9ea"
+                  }
+                ],
+                "legend": {
+                  "isVisible": false,
+                  "position": "bottom",
+                  "showSingleSeries": false
+                },
+                "preferredSeriesType": "bar_horizontal_stacked",
+                "title": "Empty XY chart",
+                "valueLabels": "hide"
+              }
+            },
+            "title": "",
+            "type": "lens",
+            "visualizationType": "lnsXY"
+          },
+          "description": "The bulk size is measured after ingest pipelines; it is not a \"raw\" measurement. Does not include replicas.",
+          "enhancements": {
+            "dynamicActions": {
+              "events": []
+            }
+          },
+          "filters": [],
+          "query": {
+            "language": "kuery",
+            "query": ""
+          },
+          "syncColors": false,
+          "syncCursor": true,
+          "syncTooltips": false
+        },
+        "gridData": {
+          "h": 17,
+          "i": "1de2849f-02a5-4bf5-9c48-194f4465e0e6",
+          "w": 16,
+          "x": 32,
+          "y": 33
+        },
+        "panelIndex": "1de2849f-02a5-4bf5-9c48-194f4465e0e6",
+        "title": "Rollover Alias - Estimated bulk bytes/day (average, primaries)",
+        "type": "lens"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [
+              {
+                "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                "name": "indexpattern-datasource-layer-42d09652-ff79-4292-87d0-efe15e216254",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "currentIndexPatternId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                  "layers": {
+                    "42d09652-ff79-4292-87d0-efe15e216254": {
+                      "columnOrder": [
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0c",
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0cX0"
+                      ],
+                      "columns": {
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0c": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "filter": {
+                            "language": "kuery",
+                            "query": "index.is_write_index : true"
+                          },
+                          "isBucketed": false,
+                          "label": "Indexing Rate",
+                          "operationType": "formula",
+                          "params": {
+                            "format": {
+                              "id": "bytes",
+                              "params": {
+                                "decimals": 1,
+                                "suffix": "/day"
+                              }
+                            },
+                            "formula": "sum(index.primaries.indexing.est_bytes_per_day)",
+                            "isFormulaBroken": false
+                          },
+                          "references": [
+                            "d8a6122d-4248-424d-8eb9-d0f478b85d0cX0"
+                          ],
+                          "scale": "ratio"
+                        },
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0cX0": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "filter": {
+                            "language": "kuery",
+                            "query": "index.is_write_index : true"
+                          },
+                          "isBucketed": false,
+                          "label": "Part of Indexing Rate",
+                          "operationType": "sum",
+                          "params": {
+                            "emptyAsNull": false
+                          },
+                          "scale": "ratio",
+                          "sourceField": "index.primaries.indexing.est_bytes_per_day"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "currentIndexPatternId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                  "layers": {}
+                },
+                "textBased": {
+                  "indexPatternRefs": [
+                    {
+                      "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                      "timeField": "event.ingested",
+                      "title": "metrics-index-esdiag*"
+                    }
+                  ],
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": ""
+              },
+              "visualization": {
+                "icon": "empty",
+                "layerId": "42d09652-ff79-4292-87d0-efe15e216254",
+                "layerType": "data",
+                "metricAccessor": "d8a6122d-4248-424d-8eb9-d0f478b85d0c",
+                "subtitle": "Current"
+              }
+            },
+            "title": "",
+            "type": "lens",
+            "visualizationType": "lnsMetric"
+          },
+          "description": "Indexing rate is final storage on disk after all indexing and compression. Does not include replicas.",
+          "enhancements": {
+            "dynamicActions": {
+              "events": []
+            }
+          },
+          "filters": [],
+          "hidePanelTitles": true,
+          "query": {
+            "language": "kuery",
+            "query": ""
+          },
+          "syncColors": false,
+          "syncCursor": true,
+          "syncTooltips": false
+        },
+        "gridData": {
+          "h": 5,
+          "i": "cb58e24a-ce2e-4be9-bf7a-2fbddfda1237",
+          "w": 5,
+          "x": 0,
+          "y": 6
+        },
+        "panelIndex": "cb58e24a-ce2e-4be9-bf7a-2fbddfda1237",
+        "title": "Datastream total est. bytes stored per day (primaries) (copy)",
+        "type": "lens"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [
+              {
+                "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                "name": "indexpattern-datasource-layer-42d09652-ff79-4292-87d0-efe15e216254",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "currentIndexPatternId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                  "layers": {
+                    "42d09652-ff79-4292-87d0-efe15e216254": {
+                      "columnOrder": [
+                        "55df066a-f88f-458d-8195-1e437792d9ea",
+                        "c6017a2b-98f5-4463-a1bf-72facad7b51d",
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0c"
+                      ],
+                      "columns": {
+                        "55df066a-f88f-458d-8195-1e437792d9ea": {
+                          "customLabel": true,
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "cluster.name",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "columnId": "d8a6122d-4248-424d-8eb9-d0f478b85d0c",
+                              "type": "column"
+                            },
+                            "orderDirection": "desc",
+                            "otherBucket": true,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "secondaryFields": [],
+                            "size": 20
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "cluster.name"
+                        },
+                        "c6017a2b-98f5-4463-a1bf-72facad7b51d": {
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Top 20 values of index.name",
+                          "operationType": "terms",
+                          "params": {
+                            "accuracyMode": false,
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "columnId": "d8a6122d-4248-424d-8eb9-d0f478b85d0c",
+                              "type": "column"
+                            },
+                            "orderDirection": "desc",
+                            "otherBucket": true,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "secondaryFields": [],
+                            "size": 20
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "index.name"
+                        },
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0c": {
+                          "customLabel": false,
+                          "dataType": "number",
+                          "filter": {
+                            "language": "kuery",
+                            "query": "index.is_write_index : true "
+                          },
+                          "isBucketed": false,
+                          "label": "Sum of index.primaries.indexing.est_bytes_per_day",
+                          "operationType": "sum",
+                          "params": {
+                            "emptyAsNull": true
+                          },
+                          "scale": "ratio",
+                          "sourceField": "index.primaries.indexing.est_bytes_per_day"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "currentIndexPatternId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                  "layers": {}
+                },
+                "textBased": {
+                  "indexPatternRefs": [
+                    {
+                      "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                      "timeField": "event.ingested",
+                      "title": "metrics-index-esdiag*"
+                    }
+                  ],
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": ""
+              },
+              "visualization": {
+                "axisTitlesVisibilitySettings": {
+                  "x": false,
+                  "yLeft": false,
+                  "yRight": true
+                },
+                "gridlinesVisibilitySettings": {
+                  "x": false,
+                  "yLeft": true,
+                  "yRight": true
+                },
+                "labelsOrientation": {
+                  "x": 0,
+                  "yLeft": 0,
+                  "yRight": 0
+                },
+                "layers": [
+                  {
+                    "accessors": [
+                      "d8a6122d-4248-424d-8eb9-d0f478b85d0c"
+                    ],
+                    "colorMapping": {
+                      "assignments": [],
+                      "colorMode": {
+                        "type": "categorical"
+                      },
+                      "paletteId": "eui_amsterdam_color_blind",
+                      "specialAssignments": [
+                        {
+                          "color": {
+                            "type": "loop"
+                          },
+                          "rule": {
+                            "type": "other"
+                          },
+                          "touched": false
+                        }
+                      ]
+                    },
+                    "layerId": "42d09652-ff79-4292-87d0-efe15e216254",
+                    "layerType": "data",
+                    "position": "top",
+                    "seriesType": "bar_horizontal_stacked",
+                    "showGridlines": false,
+                    "splitAccessor": "c6017a2b-98f5-4463-a1bf-72facad7b51d",
+                    "xAccessor": "55df066a-f88f-458d-8195-1e437792d9ea"
+                  }
+                ],
+                "legend": {
+                  "isVisible": false,
+                  "position": "right",
+                  "showSingleSeries": false
+                },
+                "preferredSeriesType": "bar_horizontal_stacked",
+                "tickLabelsVisibilitySettings": {
+                  "x": false,
+                  "yLeft": true,
+                  "yRight": true
+                },
+                "title": "Empty XY chart",
+                "valueLabels": "hide"
+              }
+            },
+            "title": "",
+            "type": "lens",
+            "visualizationType": "lnsXY"
+          },
+          "description": "Indexing rate is final storage on disk after all indexing and compression. Does not include replicas.",
+          "enhancements": {
+            "dynamicActions": {
+              "events": []
+            }
+          },
+          "filters": [],
+          "query": {
+            "language": "kuery",
+            "query": ""
+          },
+          "syncColors": false,
+          "syncCursor": true,
+          "syncTooltips": false
+        },
+        "gridData": {
+          "h": 5,
+          "i": "e76409e6-6ef0-476c-a4b0-131436dc6a61",
+          "w": 11,
+          "x": 5,
+          "y": 6
+        },
+        "panelIndex": "e76409e6-6ef0-476c-a4b0-131436dc6a61",
+        "title": "Index - Estimated indexing bytes/day",
+        "type": "lens"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [
+              {
+                "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                "name": "indexpattern-datasource-layer-42d09652-ff79-4292-87d0-efe15e216254",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "currentIndexPatternId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                  "layers": {
+                    "42d09652-ff79-4292-87d0-efe15e216254": {
+                      "columnOrder": [
+                        "55df066a-f88f-458d-8195-1e437792d9ea",
+                        "c2b008ce-563c-4a9e-ba3f-c6a23e4e0ee4",
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0c"
+                      ],
+                      "columns": {
+                        "55df066a-f88f-458d-8195-1e437792d9ea": {
+                          "customLabel": true,
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Index",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "columnId": "d8a6122d-4248-424d-8eb9-d0f478b85d0c",
+                              "type": "column"
+                            },
+                            "orderDirection": "desc",
+                            "otherBucket": true,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "secondaryFields": [],
+                            "size": 20
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "index.name"
+                        },
+                        "c2b008ce-563c-4a9e-ba3f-c6a23e4e0ee4": {
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Top 10 values of index.store.config",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "columnId": "d8a6122d-4248-424d-8eb9-d0f478b85d0c",
+                              "type": "column"
+                            },
+                            "orderDirection": "desc",
+                            "otherBucket": true,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "secondaryFields": [],
+                            "size": 10
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "index.store.config"
+                        },
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0c": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Indexing bytes/day",
+                          "operationType": "max",
+                          "params": {
+                            "emptyAsNull": true
+                          },
+                          "scale": "ratio",
+                          "sourceField": "index.primaries.indexing.est_bytes_per_day"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "currentIndexPatternId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                  "layers": {}
+                },
+                "textBased": {
+                  "indexPatternRefs": [
+                    {
+                      "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                      "timeField": "event.ingested",
+                      "title": "metrics-index-esdiag*"
+                    }
+                  ],
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": ""
+              },
+              "visualization": {
+                "layers": [
+                  {
+                    "accessors": [
+                      "d8a6122d-4248-424d-8eb9-d0f478b85d0c"
+                    ],
+                    "colorMapping": {
+                      "assignments": [],
+                      "colorMode": {
+                        "type": "categorical"
+                      },
+                      "paletteId": "eui_amsterdam_color_blind",
+                      "specialAssignments": [
+                        {
+                          "color": {
+                            "type": "loop"
+                          },
+                          "rule": {
+                            "type": "other"
+                          },
+                          "touched": false
+                        }
+                      ]
+                    },
+                    "layerId": "42d09652-ff79-4292-87d0-efe15e216254",
+                    "layerType": "data",
+                    "position": "top",
+                    "seriesType": "bar_horizontal_stacked",
+                    "showGridlines": false,
+                    "splitAccessor": "c2b008ce-563c-4a9e-ba3f-c6a23e4e0ee4",
+                    "xAccessor": "55df066a-f88f-458d-8195-1e437792d9ea"
+                  }
+                ],
+                "legend": {
+                  "isVisible": false,
+                  "position": "bottom",
+                  "showSingleSeries": false
+                },
+                "preferredSeriesType": "bar_horizontal_stacked",
+                "title": "Empty XY chart",
+                "valueLabels": "hide"
+              }
+            },
+            "title": "",
+            "type": "lens",
+            "visualizationType": "lnsXY"
+          },
+          "description": "Does not include replicas",
+          "enhancements": {
+            "dynamicActions": {
+              "events": []
+            }
+          },
+          "filters": [],
+          "query": {
+            "language": "kuery",
+            "query": ""
+          },
+          "syncColors": false,
+          "syncCursor": true,
+          "syncTooltips": false
+        },
+        "gridData": {
+          "h": 17,
+          "i": "52c14877-9119-46e9-9613-53ee6a5ef1e4",
+          "w": 16,
+          "x": 0,
+          "y": 11
+        },
+        "panelIndex": "52c14877-9119-46e9-9613-53ee6a5ef1e4",
+        "title": "Index - Estimated indexing bytes/day (max, primaries)",
+        "type": "lens"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [
+              {
+                "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                "name": "indexpattern-datasource-layer-42d09652-ff79-4292-87d0-efe15e216254",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "currentIndexPatternId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                  "layers": {
+                    "42d09652-ff79-4292-87d0-efe15e216254": {
+                      "columnOrder": [
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0c",
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0cX0"
+                      ],
+                      "columns": {
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0c": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "filter": {
+                            "language": "kuery",
+                            "query": "index.is_write_index: true AND index.data_stream.name:*"
+                          },
+                          "isBucketed": false,
+                          "label": "Indexing Rate",
+                          "operationType": "formula",
+                          "params": {
+                            "format": {
+                              "id": "bytes",
+                              "params": {
+                                "decimals": 1,
+                                "suffix": "/day"
+                              }
+                            },
+                            "formula": "sum(index.primaries.indexing.est_bytes_per_day)",
+                            "isFormulaBroken": false
+                          },
+                          "references": [
+                            "d8a6122d-4248-424d-8eb9-d0f478b85d0cX0"
+                          ],
+                          "scale": "ratio"
+                        },
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0cX0": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "filter": {
+                            "language": "kuery",
+                            "query": "index.is_write_index: true AND index.data_stream.name:*"
+                          },
+                          "isBucketed": false,
+                          "label": "Part of Indexing Rate",
+                          "operationType": "sum",
+                          "params": {
+                            "emptyAsNull": false
+                          },
+                          "scale": "ratio",
+                          "sourceField": "index.primaries.indexing.est_bytes_per_day"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "currentIndexPatternId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                  "layers": {}
+                },
+                "textBased": {
+                  "indexPatternRefs": [
+                    {
+                      "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                      "timeField": "event.ingested",
+                      "title": "metrics-index-esdiag*"
+                    }
+                  ],
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": ""
+              },
+              "visualization": {
+                "layerId": "42d09652-ff79-4292-87d0-efe15e216254",
+                "layerType": "data",
+                "metricAccessor": "d8a6122d-4248-424d-8eb9-d0f478b85d0c",
+                "subtitle": "Current"
+              }
+            },
+            "title": "",
+            "type": "lens",
+            "visualizationType": "lnsMetric"
+          },
+          "description": "Indexing rate is final storage on disk after all indexing and compression. Does not include replicas.",
+          "enhancements": {
+            "dynamicActions": {
+              "events": []
+            }
+          },
+          "filters": [],
+          "hidePanelTitles": true,
+          "query": {
+            "language": "kuery",
+            "query": ""
+          },
+          "syncColors": false,
+          "syncCursor": true,
+          "syncTooltips": false
+        },
+        "gridData": {
+          "h": 5,
+          "i": "0ebe62e1-8ba6-4b3d-968a-aaadc9ed95e1",
+          "w": 5,
+          "x": 16,
+          "y": 6
+        },
+        "panelIndex": "0ebe62e1-8ba6-4b3d-968a-aaadc9ed95e1",
+        "title": "Datastream total est. bytes stored per day (primaries) (copy)",
+        "type": "lens"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [
+              {
+                "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                "name": "indexpattern-datasource-layer-42d09652-ff79-4292-87d0-efe15e216254",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "currentIndexPatternId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                  "layers": {
+                    "42d09652-ff79-4292-87d0-efe15e216254": {
+                      "columnOrder": [
+                        "55df066a-f88f-458d-8195-1e437792d9ea",
+                        "c6017a2b-98f5-4463-a1bf-72facad7b51d",
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0c"
+                      ],
+                      "columns": {
+                        "55df066a-f88f-458d-8195-1e437792d9ea": {
+                          "customLabel": true,
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "cluster.name",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "columnId": "d8a6122d-4248-424d-8eb9-d0f478b85d0c",
+                              "type": "column"
+                            },
+                            "orderDirection": "desc",
+                            "otherBucket": true,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "secondaryFields": [],
+                            "size": 20
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "cluster.name"
+                        },
+                        "c6017a2b-98f5-4463-a1bf-72facad7b51d": {
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Top 20 values of index.data_stream.name",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "columnId": "d8a6122d-4248-424d-8eb9-d0f478b85d0c",
+                              "type": "column"
+                            },
+                            "orderDirection": "desc",
+                            "otherBucket": true,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "size": 20
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "index.data_stream.name"
+                        },
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0c": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "filter": {
+                            "language": "kuery",
+                            "query": "index.is_write_index : true "
+                          },
+                          "isBucketed": false,
+                          "label": "primaries.est_bytes_per_day",
+                          "operationType": "sum",
+                          "params": {
+                            "emptyAsNull": true
+                          },
+                          "scale": "ratio",
+                          "sourceField": "index.primaries.indexing.est_bytes_per_day"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "currentIndexPatternId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                  "layers": {}
+                },
+                "textBased": {
+                  "indexPatternRefs": [
+                    {
+                      "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                      "timeField": "event.ingested",
+                      "title": "metrics-index-esdiag*"
+                    }
+                  ],
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": ""
+              },
+              "visualization": {
+                "axisTitlesVisibilitySettings": {
+                  "x": false,
+                  "yLeft": false,
+                  "yRight": true
+                },
+                "gridlinesVisibilitySettings": {
+                  "x": false,
+                  "yLeft": true,
+                  "yRight": true
+                },
+                "labelsOrientation": {
+                  "x": 0,
+                  "yLeft": 0,
+                  "yRight": 0
+                },
+                "layers": [
+                  {
+                    "accessors": [
+                      "d8a6122d-4248-424d-8eb9-d0f478b85d0c"
+                    ],
+                    "colorMapping": {
+                      "assignments": [],
+                      "colorMode": {
+                        "type": "categorical"
+                      },
+                      "paletteId": "eui_amsterdam_color_blind",
+                      "specialAssignments": [
+                        {
+                          "color": {
+                            "type": "loop"
+                          },
+                          "rule": {
+                            "type": "other"
+                          },
+                          "touched": false
+                        }
+                      ]
+                    },
+                    "layerId": "42d09652-ff79-4292-87d0-efe15e216254",
+                    "layerType": "data",
+                    "position": "top",
+                    "seriesType": "bar_horizontal_stacked",
+                    "showGridlines": false,
+                    "splitAccessor": "c6017a2b-98f5-4463-a1bf-72facad7b51d",
+                    "xAccessor": "55df066a-f88f-458d-8195-1e437792d9ea"
+                  }
+                ],
+                "legend": {
+                  "isVisible": false,
+                  "position": "right",
+                  "showSingleSeries": false
+                },
+                "preferredSeriesType": "bar_horizontal_stacked",
+                "tickLabelsVisibilitySettings": {
+                  "x": false,
+                  "yLeft": true,
+                  "yRight": true
+                },
+                "title": "Empty XY chart",
+                "valueLabels": "hide"
+              }
+            },
+            "title": "",
+            "type": "lens",
+            "visualizationType": "lnsXY"
+          },
+          "description": "Indexing rate is final storage on disk after all indexing and compression. Does not include replicas.",
+          "enhancements": {
+            "dynamicActions": {
+              "events": []
+            }
+          },
+          "filters": [],
+          "query": {
+            "language": "kuery",
+            "query": ""
+          },
+          "syncColors": false,
+          "syncCursor": true,
+          "syncTooltips": false
+        },
+        "gridData": {
+          "h": 5,
+          "i": "f3a441bd-1075-4ce8-a665-68b14e685271",
+          "w": 11,
+          "x": 21,
+          "y": 6
+        },
+        "panelIndex": "f3a441bd-1075-4ce8-a665-68b14e685271",
+        "title": "Data Stream - Estimated indexing bytes/day",
+        "type": "lens"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [
+              {
+                "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                "name": "indexpattern-datasource-layer-42d09652-ff79-4292-87d0-efe15e216254",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "currentIndexPatternId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                  "layers": {
+                    "42d09652-ff79-4292-87d0-efe15e216254": {
+                      "columnOrder": [
+                        "55df066a-f88f-458d-8195-1e437792d9ea",
+                        "29d75518-4fda-44f8-b259-c580eb673cf2",
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0c"
+                      ],
+                      "columns": {
+                        "29d75518-4fda-44f8-b259-c580eb673cf2": {
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Top 10 values of index.store.config",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "columnId": "d8a6122d-4248-424d-8eb9-d0f478b85d0c",
+                              "type": "column"
+                            },
+                            "orderDirection": "desc",
+                            "otherBucket": true,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "secondaryFields": [],
+                            "size": 10
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "index.store.config"
+                        },
+                        "55df066a-f88f-458d-8195-1e437792d9ea": {
+                          "customLabel": true,
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Datastream",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "columnId": "d8a6122d-4248-424d-8eb9-d0f478b85d0c",
+                              "type": "column"
+                            },
+                            "orderDirection": "desc",
+                            "otherBucket": true,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "secondaryFields": [],
+                            "size": 20
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "index.data_stream.name"
+                        },
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0c": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "filter": {
+                            "language": "kuery",
+                            "query": "index.primaries.indexing.est_bytes_per_day > 0 "
+                          },
+                          "isBucketed": false,
+                          "label": "Indexing bytes/day",
+                          "operationType": "average",
+                          "params": {
+                            "emptyAsNull": true
+                          },
+                          "scale": "ratio",
+                          "sourceField": "index.primaries.indexing.est_bytes_per_day"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "currentIndexPatternId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                  "layers": {}
+                },
+                "textBased": {
+                  "indexPatternRefs": [
+                    {
+                      "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                      "timeField": "event.ingested",
+                      "title": "metrics-index-esdiag*"
+                    }
+                  ],
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": ""
+              },
+              "visualization": {
+                "layers": [
+                  {
+                    "accessors": [
+                      "d8a6122d-4248-424d-8eb9-d0f478b85d0c"
+                    ],
+                    "colorMapping": {
+                      "assignments": [],
+                      "colorMode": {
+                        "type": "categorical"
+                      },
+                      "paletteId": "eui_amsterdam_color_blind",
+                      "specialAssignments": [
+                        {
+                          "color": {
+                            "type": "loop"
+                          },
+                          "rule": {
+                            "type": "other"
+                          },
+                          "touched": false
+                        }
+                      ]
+                    },
+                    "layerId": "42d09652-ff79-4292-87d0-efe15e216254",
+                    "layerType": "data",
+                    "position": "top",
+                    "seriesType": "bar_horizontal_stacked",
+                    "showGridlines": false,
+                    "splitAccessor": "29d75518-4fda-44f8-b259-c580eb673cf2",
+                    "xAccessor": "55df066a-f88f-458d-8195-1e437792d9ea"
+                  }
+                ],
+                "legend": {
+                  "horizontalAlignment": "right",
+                  "isInside": false,
+                  "isVisible": false,
+                  "position": "bottom",
+                  "showSingleSeries": false,
+                  "verticalAlignment": "bottom"
+                },
+                "preferredSeriesType": "bar_horizontal_stacked",
+                "title": "Empty XY chart",
+                "valueLabels": "hide"
+              }
+            },
+            "title": "",
+            "type": "lens",
+            "visualizationType": "lnsXY"
+          },
+          "description": "Does not include replicas",
+          "enhancements": {
+            "dynamicActions": {
+              "events": []
+            }
+          },
+          "filters": [],
+          "query": {
+            "language": "kuery",
+            "query": ""
+          },
+          "syncColors": false,
+          "syncCursor": true,
+          "syncTooltips": false
+        },
+        "gridData": {
+          "h": 17,
+          "i": "f17f237f-f998-46b1-b7a7-a524dd9ce8a4",
+          "w": 16,
+          "x": 16,
+          "y": 11
+        },
+        "panelIndex": "f17f237f-f998-46b1-b7a7-a524dd9ce8a4",
+        "title": "Data Stream - Estimated indexing bytes/day (average, primaries)",
+        "type": "lens"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [
+              {
+                "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                "name": "indexpattern-datasource-layer-42d09652-ff79-4292-87d0-efe15e216254",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "currentIndexPatternId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                  "layers": {
+                    "42d09652-ff79-4292-87d0-efe15e216254": {
+                      "columnOrder": [
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0c",
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0cX0"
+                      ],
+                      "columns": {
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0c": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "filter": {
+                            "language": "kuery",
+                            "query": "index.is_write_index: true AND index.alias.name:*"
+                          },
+                          "isBucketed": false,
+                          "label": "Indexing Rate",
+                          "operationType": "formula",
+                          "params": {
+                            "format": {
+                              "id": "bytes",
+                              "params": {
+                                "decimals": 1,
+                                "suffix": "/day"
+                              }
+                            },
+                            "formula": "sum(index.primaries.indexing.est_bytes_per_day)",
+                            "isFormulaBroken": false
+                          },
+                          "references": [
+                            "d8a6122d-4248-424d-8eb9-d0f478b85d0cX0"
+                          ],
+                          "scale": "ratio"
+                        },
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0cX0": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "filter": {
+                            "language": "kuery",
+                            "query": "index.is_write_index: true AND index.alias.name:*"
+                          },
+                          "isBucketed": false,
+                          "label": "Part of Indexing Rate",
+                          "operationType": "sum",
+                          "params": {
+                            "emptyAsNull": false
+                          },
+                          "scale": "ratio",
+                          "sourceField": "index.primaries.indexing.est_bytes_per_day"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "currentIndexPatternId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                  "layers": {}
+                },
+                "textBased": {
+                  "indexPatternRefs": [
+                    {
+                      "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                      "timeField": "event.ingested",
+                      "title": "metrics-index-esdiag*"
+                    }
+                  ],
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": ""
+              },
+              "visualization": {
+                "layerId": "42d09652-ff79-4292-87d0-efe15e216254",
+                "layerType": "data",
+                "metricAccessor": "d8a6122d-4248-424d-8eb9-d0f478b85d0c",
+                "subtitle": "Current"
+              }
+            },
+            "title": "",
+            "type": "lens",
+            "visualizationType": "lnsMetric"
+          },
+          "description": "Indexing rate is final storage on disk after all indexing and compression. Does not include replicas.",
+          "enhancements": {
+            "dynamicActions": {
+              "events": []
+            }
+          },
+          "filters": [],
+          "hidePanelTitles": true,
+          "query": {
+            "language": "kuery",
+            "query": ""
+          },
+          "syncColors": false,
+          "syncCursor": true,
+          "syncTooltips": false
+        },
+        "gridData": {
+          "h": 5,
+          "i": "461120eb-47b8-4f80-99ec-2129a5642203",
+          "w": 5,
+          "x": 32,
+          "y": 6
+        },
+        "panelIndex": "461120eb-47b8-4f80-99ec-2129a5642203",
+        "title": "Datastream total est. bytes stored per day (primaries) (copy)",
+        "type": "lens"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [
+              {
+                "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                "name": "indexpattern-datasource-layer-42d09652-ff79-4292-87d0-efe15e216254",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "currentIndexPatternId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                  "layers": {
+                    "42d09652-ff79-4292-87d0-efe15e216254": {
+                      "columnOrder": [
+                        "55df066a-f88f-458d-8195-1e437792d9ea",
+                        "c6017a2b-98f5-4463-a1bf-72facad7b51d",
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0c"
+                      ],
+                      "columns": {
+                        "55df066a-f88f-458d-8195-1e437792d9ea": {
+                          "customLabel": true,
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "cluster.name",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "columnId": "d8a6122d-4248-424d-8eb9-d0f478b85d0c",
+                              "type": "column"
+                            },
+                            "orderDirection": "desc",
+                            "otherBucket": true,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "secondaryFields": [],
+                            "size": 20
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "cluster.name"
+                        },
+                        "c6017a2b-98f5-4463-a1bf-72facad7b51d": {
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Top 20 values of index.alias.name",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "columnId": "d8a6122d-4248-424d-8eb9-d0f478b85d0c",
+                              "type": "column"
+                            },
+                            "orderDirection": "desc",
+                            "otherBucket": true,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "secondaryFields": [],
+                            "size": 20
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "index.alias.name"
+                        },
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0c": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "filter": {
+                            "language": "kuery",
+                            "query": "index.is_write_index : true "
+                          },
+                          "isBucketed": false,
+                          "label": "primaries.est_bytes_per_day",
+                          "operationType": "sum",
+                          "params": {
+                            "emptyAsNull": true
+                          },
+                          "scale": "ratio",
+                          "sourceField": "index.primaries.indexing.est_bytes_per_day"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "currentIndexPatternId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                  "layers": {}
+                },
+                "textBased": {
+                  "indexPatternRefs": [
+                    {
+                      "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                      "timeField": "event.ingested",
+                      "title": "metrics-index-esdiag*"
+                    }
+                  ],
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": ""
+              },
+              "visualization": {
+                "axisTitlesVisibilitySettings": {
+                  "x": false,
+                  "yLeft": false,
+                  "yRight": true
+                },
+                "gridlinesVisibilitySettings": {
+                  "x": false,
+                  "yLeft": true,
+                  "yRight": true
+                },
+                "labelsOrientation": {
+                  "x": 0,
+                  "yLeft": 0,
+                  "yRight": 0
+                },
+                "layers": [
+                  {
+                    "accessors": [
+                      "d8a6122d-4248-424d-8eb9-d0f478b85d0c"
+                    ],
+                    "colorMapping": {
+                      "assignments": [],
+                      "colorMode": {
+                        "type": "categorical"
+                      },
+                      "paletteId": "eui_amsterdam_color_blind",
+                      "specialAssignments": [
+                        {
+                          "color": {
+                            "type": "loop"
+                          },
+                          "rule": {
+                            "type": "other"
+                          },
+                          "touched": false
+                        }
+                      ]
+                    },
+                    "layerId": "42d09652-ff79-4292-87d0-efe15e216254",
+                    "layerType": "data",
+                    "position": "top",
+                    "seriesType": "bar_horizontal_stacked",
+                    "showGridlines": false,
+                    "splitAccessor": "c6017a2b-98f5-4463-a1bf-72facad7b51d",
+                    "xAccessor": "55df066a-f88f-458d-8195-1e437792d9ea"
+                  }
+                ],
+                "legend": {
+                  "isVisible": false,
+                  "position": "right",
+                  "showSingleSeries": false
+                },
+                "preferredSeriesType": "bar_horizontal_stacked",
+                "tickLabelsVisibilitySettings": {
+                  "x": false,
+                  "yLeft": true,
+                  "yRight": true
+                },
+                "title": "Empty XY chart",
+                "valueLabels": "hide"
+              }
+            },
+            "title": "",
+            "type": "lens",
+            "visualizationType": "lnsXY"
+          },
+          "description": "Indexing rate is final storage on disk after all indexing and compression. Does not include replicas.",
+          "enhancements": {
+            "dynamicActions": {
+              "events": []
+            }
+          },
+          "filters": [],
+          "query": {
+            "language": "kuery",
+            "query": ""
+          },
+          "syncColors": false,
+          "syncCursor": true,
+          "syncTooltips": false
+        },
+        "gridData": {
+          "h": 5,
+          "i": "49edcc4c-8845-4e56-b092-a9405f886452",
+          "w": 11,
+          "x": 37,
+          "y": 6
+        },
+        "panelIndex": "49edcc4c-8845-4e56-b092-a9405f886452",
+        "title": "Rollover Alias - Estimated indexing bytes/day",
+        "type": "lens"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [
+              {
+                "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                "name": "indexpattern-datasource-layer-42d09652-ff79-4292-87d0-efe15e216254",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "currentIndexPatternId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                  "layers": {
+                    "42d09652-ff79-4292-87d0-efe15e216254": {
+                      "columnOrder": [
+                        "55df066a-f88f-458d-8195-1e437792d9ea",
+                        "1b8cc774-9aeb-4c31-8da4-0d19bf91df23",
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0c"
+                      ],
+                      "columns": {
+                        "1b8cc774-9aeb-4c31-8da4-0d19bf91df23": {
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Top 10 values of index.store.config",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "columnId": "d8a6122d-4248-424d-8eb9-d0f478b85d0c",
+                              "type": "column"
+                            },
+                            "orderDirection": "desc",
+                            "otherBucket": true,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "secondaryFields": [],
+                            "size": 10
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "index.store.config"
+                        },
+                        "55df066a-f88f-458d-8195-1e437792d9ea": {
+                          "customLabel": true,
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Alias",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "columnId": "d8a6122d-4248-424d-8eb9-d0f478b85d0c",
+                              "type": "column"
+                            },
+                            "orderDirection": "desc",
+                            "otherBucket": true,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "size": 20
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "index.alias.name"
+                        },
+                        "d8a6122d-4248-424d-8eb9-d0f478b85d0c": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "filter": {
+                            "language": "kuery",
+                            "query": "index.alias.name: * AND index.primaries.indexing.est_bytes_per_day > 0 "
+                          },
+                          "isBucketed": false,
+                          "label": "Indexing bytes/day",
+                          "operationType": "average",
+                          "params": {
+                            "emptyAsNull": true
+                          },
+                          "scale": "ratio",
+                          "sourceField": "index.primaries.indexing.est_bytes_per_day"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "currentIndexPatternId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                  "layers": {}
+                },
+                "textBased": {
+                  "indexPatternRefs": [
+                    {
+                      "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+                      "timeField": "event.ingested",
+                      "title": "metrics-index-esdiag*"
+                    }
+                  ],
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": ""
+              },
+              "visualization": {
+                "layers": [
+                  {
+                    "accessors": [
+                      "d8a6122d-4248-424d-8eb9-d0f478b85d0c"
+                    ],
+                    "colorMapping": {
+                      "assignments": [],
+                      "colorMode": {
+                        "type": "categorical"
+                      },
+                      "paletteId": "eui_amsterdam_color_blind",
+                      "specialAssignments": [
+                        {
+                          "color": {
+                            "type": "loop"
+                          },
+                          "rule": {
+                            "type": "other"
+                          },
+                          "touched": false
+                        }
+                      ]
+                    },
+                    "layerId": "42d09652-ff79-4292-87d0-efe15e216254",
+                    "layerType": "data",
+                    "position": "top",
+                    "seriesType": "bar_horizontal_stacked",
+                    "showGridlines": false,
+                    "splitAccessor": "1b8cc774-9aeb-4c31-8da4-0d19bf91df23",
+                    "xAccessor": "55df066a-f88f-458d-8195-1e437792d9ea"
+                  }
+                ],
+                "legend": {
+                  "isVisible": false,
+                  "position": "bottom",
+                  "showSingleSeries": false
+                },
+                "preferredSeriesType": "bar_horizontal_stacked",
+                "title": "Empty XY chart",
+                "valueLabels": "hide"
+              }
+            },
+            "title": "",
+            "type": "lens",
+            "visualizationType": "lnsXY"
+          },
+          "description": "Does not include replicas",
+          "enhancements": {
+            "dynamicActions": {
+              "events": []
+            }
+          },
+          "filters": [],
+          "query": {
+            "language": "kuery",
+            "query": ""
+          },
+          "syncColors": false,
+          "syncCursor": true,
+          "syncTooltips": false
+        },
+        "gridData": {
+          "h": 17,
+          "i": "64899185-bee5-44e8-a4f1-66ffc7c7e326",
+          "w": 16,
+          "x": 32,
+          "y": 11
+        },
+        "panelIndex": "64899185-bee5-44e8-a4f1-66ffc7c7e326",
+        "title": "Rollover Alias - Estimated indexing bytes/day (average, primaries)",
+        "type": "lens"
+      }
+    ],
+    "timeRestore": false,
+    "title": "Daily Indexing Overview",
+    "version": 3
+  },
+  "coreMigrationVersion": "8.8.0",
+  "id": "daily-indexing-overview",
+  "references": [
+    {
+      "id": "d277872a-9c33-4d95-84f0-6dba30dcbdf1",
+      "name": "62ef2b77-93b3-4670-bd86-1edb72a19b98:panel_62ef2b77-93b3-4670-bd86-1edb72a19b98",
+      "type": "links"
+    },
+    {
+      "id": "b45c7e74-37d1-4cae-a491-f8c097f2d3b3",
+      "name": "4a4a98b3-8a82-4068-8554-0c0632980957:panel_4a4a98b3-8a82-4068-8554-0c0632980957",
+      "type": "links"
+    },
+    {
+      "id": "5e05b9ee-3e49-4efd-8a16-94de208ebb83",
+      "name": "tag-ref-5e05b9ee-3e49-4efd-8a16-94de208ebb83",
+      "type": "tag"
+    },
+    {
+      "id": "b210de37-7ebf-4ced-9a28-13c1620db46c",
+      "name": "tag-ref-b210de37-7ebf-4ced-9a28-13c1620db46c",
+      "type": "tag"
+    },
+    {
+      "id": "590e8f4c-4fe2-4794-9007-29de4d07e489",
+      "name": "6d0d394f-fba8-46e1-980f-0d8fa481d1eb:metrics_0_index_pattern",
+      "type": "index-pattern"
+    },
+    {
+      "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+      "name": "98b0eb01-4fe9-4d77-90f4-acb2be954169:indexpattern-datasource-layer-42d09652-ff79-4292-87d0-efe15e216254",
+      "type": "index-pattern"
+    },
+    {
+      "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+      "name": "ce4be777-d274-4630-9d9f-98372937096e:indexpattern-datasource-layer-42d09652-ff79-4292-87d0-efe15e216254",
+      "type": "index-pattern"
+    },
+    {
+      "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+      "name": "bce65b09-ec0d-4b43-8db7-44214a0bf15d:indexpattern-datasource-layer-42d09652-ff79-4292-87d0-efe15e216254",
+      "type": "index-pattern"
+    },
+    {
+      "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+      "name": "9ee2a128-6c30-4cb0-83ea-c1e4eaaa2a61:indexpattern-datasource-layer-42d09652-ff79-4292-87d0-efe15e216254",
+      "type": "index-pattern"
+    },
+    {
+      "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+      "name": "e7c23425-b11e-421e-acff-add1bdbaeb1c:indexpattern-datasource-layer-42d09652-ff79-4292-87d0-efe15e216254",
+      "type": "index-pattern"
+    },
+    {
+      "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+      "name": "892d6d45-cc95-42c5-9ba5-b3c6d902f0b6:indexpattern-datasource-layer-42d09652-ff79-4292-87d0-efe15e216254",
+      "type": "index-pattern"
+    },
+    {
+      "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+      "name": "3e250dfa-7977-45d7-a449-b28b25ea4148:indexpattern-datasource-layer-42d09652-ff79-4292-87d0-efe15e216254",
+      "type": "index-pattern"
+    },
+    {
+      "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+      "name": "f5ac1108-2467-40a9-ae41-2194fb869283:indexpattern-datasource-layer-42d09652-ff79-4292-87d0-efe15e216254",
+      "type": "index-pattern"
+    },
+    {
+      "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+      "name": "14cc7d55-cf1a-4ec9-93d1-6b209fdea331:indexpattern-datasource-layer-42d09652-ff79-4292-87d0-efe15e216254",
+      "type": "index-pattern"
+    },
+    {
+      "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+      "name": "9f6bca47-7300-4dae-b0d2-8d376e118cd5:indexpattern-datasource-layer-42d09652-ff79-4292-87d0-efe15e216254",
+      "type": "index-pattern"
+    },
+    {
+      "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+      "name": "a05891e8-ee3f-4bbc-80e4-e09d92446d3d:indexpattern-datasource-layer-42d09652-ff79-4292-87d0-efe15e216254",
+      "type": "index-pattern"
+    },
+    {
+      "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+      "name": "1de2849f-02a5-4bf5-9c48-194f4465e0e6:indexpattern-datasource-layer-42d09652-ff79-4292-87d0-efe15e216254",
+      "type": "index-pattern"
+    },
+    {
+      "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+      "name": "cb58e24a-ce2e-4be9-bf7a-2fbddfda1237:indexpattern-datasource-layer-42d09652-ff79-4292-87d0-efe15e216254",
+      "type": "index-pattern"
+    },
+    {
+      "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+      "name": "e76409e6-6ef0-476c-a4b0-131436dc6a61:indexpattern-datasource-layer-42d09652-ff79-4292-87d0-efe15e216254",
+      "type": "index-pattern"
+    },
+    {
+      "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+      "name": "52c14877-9119-46e9-9613-53ee6a5ef1e4:indexpattern-datasource-layer-42d09652-ff79-4292-87d0-efe15e216254",
+      "type": "index-pattern"
+    },
+    {
+      "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+      "name": "0ebe62e1-8ba6-4b3d-968a-aaadc9ed95e1:indexpattern-datasource-layer-42d09652-ff79-4292-87d0-efe15e216254",
+      "type": "index-pattern"
+    },
+    {
+      "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+      "name": "f3a441bd-1075-4ce8-a665-68b14e685271:indexpattern-datasource-layer-42d09652-ff79-4292-87d0-efe15e216254",
+      "type": "index-pattern"
+    },
+    {
+      "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+      "name": "f17f237f-f998-46b1-b7a7-a524dd9ce8a4:indexpattern-datasource-layer-42d09652-ff79-4292-87d0-efe15e216254",
+      "type": "index-pattern"
+    },
+    {
+      "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+      "name": "461120eb-47b8-4f80-99ec-2129a5642203:indexpattern-datasource-layer-42d09652-ff79-4292-87d0-efe15e216254",
+      "type": "index-pattern"
+    },
+    {
+      "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+      "name": "49edcc4c-8845-4e56-b092-a9405f886452:indexpattern-datasource-layer-42d09652-ff79-4292-87d0-efe15e216254",
+      "type": "index-pattern"
+    },
+    {
+      "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
+      "name": "64899185-bee5-44e8-a4f1-66ffc7c7e326:indexpattern-datasource-layer-42d09652-ff79-4292-87d0-efe15e216254",
+      "type": "index-pattern"
+    }
+  ],
+  "type": "dashboard",
+  "typeMigrationVersion": "10.3.0"
+}

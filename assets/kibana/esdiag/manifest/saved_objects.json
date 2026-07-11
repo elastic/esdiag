@@ -42,10 +42,6 @@
     },
     {
       "type": "dashboard",
-      "id": "hosts-overview"
-    },
-    {
-      "type": "dashboard",
       "id": "index-operations-overview"
     },
     {
@@ -242,10 +238,6 @@
     },
     {
       "type": "lens",
-      "id": "4594ff0f-437e-46b6-9483-f8a025ffd1d4"
-    },
-    {
-      "type": "lens",
       "id": "50cd8017-fff2-461b-9367-3833251a2b39"
     },
     {
@@ -357,8 +349,16 @@
       "id": "b0888642-7ddc-4dd5-a2df-8c81aed5e0dd"
     },
     {
+      "type": "lens",
+      "id": "4594ff0f-437e-46b6-9483-f8a025ffd1d4"
+    },
+    {
       "type": "visualization",
       "id": "d50b68db-ef54-472c-ac14-92b72b16caff"
+    },
+    {
+      "type": "dashboard",
+      "id": "hosts-overview"
     }
   ],
   "excludeExportDetails": true,

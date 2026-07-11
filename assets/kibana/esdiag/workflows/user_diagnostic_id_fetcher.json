@@ -1,0 +1,69 @@
+{
+  "createdAt": "2026-02-23T23:28:46.813Z",
+  "createdBy": "shanker",
+  "definition": {
+    "description": "Identifies the current user and retrieves their diagnostic IDs",
+    "enabled": true,
+    "name": "User Diagnostic ID Fetcher",
+    "steps": [
+      {
+        "name": "get_user_identity",
+        "type": "elasticsearch.request",
+        "with": {
+          "method": "GET",
+          "path": "/_security/_authenticate?filter_path=username"
+        }
+      },
+      {
+        "name": "fetch_diagnostic_ids",
+        "type": "elasticsearch.esql.query",
+        "with": {
+          "query": """FROM "metrics-diagnostic-esdiag" | WHERE diagnostic.user == "{{ steps.get_user_identity.output.username }}" | WHERE diagnostic.collection_date >= NOW() - 30d | KEEP diagnostic.id, diagnostic.collection_date | SORT diagnostic.collection_date DESC | LIMIT 10
+"""
+        }
+      },
+      {
+        "name": "format_output",
+        "type": "console",
+        "with": {
+          "message": """{% for row in steps.fetch_diagnostic_ids.output.values %} Option {{ forloop.index }}: "{{ row[0] }}" {% endfor %}
+"""
+        }
+      }
+    ],
+    "triggers": [
+      {
+        "type": "manual"
+      }
+    ],
+    "version": "1"
+  },
+  "description": "Identifies the current user and retrieves their diagnostic IDs",
+  "enabled": true,
+  "id": "workflow-e81b9c46-9307-4ebd-b509-bbbd79b9d34b",
+  "lastUpdatedAt": "2026-02-24T17:58:43.778Z",
+  "lastUpdatedBy": "shanker",
+  "name": "User Diagnostic ID Fetcher",
+  "valid": true,
+  "yaml": """name: User Diagnostic ID Fetcher
+description: Identifies the current user and retrieves their diagnostic IDs
+enabled: true
+triggers:
+- type: manual
+steps:
+- name: get_user_identity
+  type: elasticsearch.request
+  with:
+    method: GET
+    path: /_security/_authenticate?filter_path=username
+- name: fetch_diagnostic_ids
+  type: elasticsearch.esql.query
+  with:
+    query: |
+      FROM "metrics-diagnostic-esdiag" | WHERE diagnostic.user == "{{ steps.get_user_identity.output.username }}" | WHERE diagnostic.collection_date >= NOW() - 30d | KEEP diagnostic.id, diagnostic.collection_date | SORT diagnostic.collection_date DESC | LIMIT 10
+- name: format_output
+  type: console
+  with:
+    message: '{% for row in steps.fetch_diagnostic_ids.output.values %} Option {{ forloop.index }}: "{{ row[0] }}" {% endfor %}'
+"""
+}

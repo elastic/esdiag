@@ -1,0 +1,57 @@
+{
+  "attributes": {
+    "description": "Navigation links for Elasticsearch search overview dashboards",
+    "layout": "horizontal",
+    "links": [
+      {
+        "destinationRefName": "link_63e7a6b9-0c14-4f96-92ec-c1bc1cde8ee5_dashboard",
+        "id": "63e7a6b9-0c14-4f96-92ec-c1bc1cde8ee5",
+        "label": "Search Nodes",
+        "options": {
+          "openInNewTab": false,
+          "useCurrentDateRange": true,
+          "useCurrentFilters": false
+        },
+        "order": 0,
+        "type": "dashboardLink"
+      },
+      {
+        "destinationRefName": "link_e5de19b8-8274-4ddc-b81d-259cb96db95d_dashboard",
+        "id": "e5de19b8-8274-4ddc-b81d-259cb96db95d",
+        "options": {
+          "openInNewTab": false,
+          "useCurrentDateRange": true,
+          "useCurrentFilters": false
+        },
+        "order": 1,
+        "type": "dashboardLink"
+      }
+    ],
+    "title": "Search Overviews"
+  },
+  "coreMigrationVersion": "8.8.0",
+  "id": "2b54a9e5-0ef5-4e6d-b293-1ed2e9075369",
+  "references": [
+    {
+      "id": "search-nodes-overview",
+      "name": "link_63e7a6b9-0c14-4f96-92ec-c1bc1cde8ee5_dashboard",
+      "type": "dashboard"
+    },
+    {
+      "id": "search-hot-spotting-overview",
+      "name": "link_e5de19b8-8274-4ddc-b81d-259cb96db95d_dashboard",
+      "type": "dashboard"
+    },
+    {
+      "id": "5e05b9ee-3e49-4efd-8a16-94de208ebb83",
+      "name": "tag-ref-5e05b9ee-3e49-4efd-8a16-94de208ebb83",
+      "type": "tag"
+    },
+    {
+      "id": "b210de37-7ebf-4ced-9a28-13c1620db46c",
+      "name": "tag-ref-b210de37-7ebf-4ced-9a28-13c1620db46c",
+      "type": "tag"
+    }
+  ],
+  "type": "links"
+}
