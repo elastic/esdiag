@@ -1,0 +1,18 @@
+{
+  "attributes": {
+    "allowHidden": false,
+    "fieldAttrs": {},
+    "fieldFormatMap": {},
+    "fields": "[]",
+    "name": "Elasticsearch Ingest Processor Metrics",
+    "runtimeFieldMap": "{}",
+    "sourceFilters": "[]",
+    "timeFieldName": "@timestamp",
+    "title": "metrics-ingest.processor-esdiag*"
+  },
+  "coreMigrationVersion": "8.8.0",
+  "id": "ae7c2db0-8c40-4a7a-b7e7-8bc7953edfa6",
+  "references": [],
+  "type": "index-pattern",
+  "typeMigrationVersion": "8.0.0"
+}

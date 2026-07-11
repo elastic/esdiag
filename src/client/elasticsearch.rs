@@ -91,7 +91,7 @@ impl TryFrom<KnownHost> for ElasticsearchClient {
     type Error = eyre::Report;
 
     fn try_from(host: KnownHost) -> Result<ElasticsearchClient> {
-        let url = host.get_url();
+        let url = host.get_url()?;
         let ignore_certs = host.accept_invalid_certs();
         let auth = host.get_auth()?;
         let client = ElasticsearchBuilder::new(url)

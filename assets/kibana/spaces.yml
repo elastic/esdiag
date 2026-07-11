@@ -1,0 +1,5 @@
+kibana:
+  version: 9.4.0
+spaces:
+- id: esdiag
+  name: esdiag

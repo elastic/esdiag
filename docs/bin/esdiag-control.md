@@ -1,7 +1,21 @@
+---
+type: Guide
+title: Elastic Stack Diagnostics Control
+description: Guide to building, configuring, and deploying ESDiag with the esdiag-control helper script.
+tags: [bin, containers, deployment]
+---
+
 Elastic Stack Diagnostics Control
 =================================
 
-The `esdiag-control` script helps build, configure and deploys Elastic Stack Diagnostics (ESDiag) to a target environment.
+The repository-only `esdiag-control` script builds ESDiag from the checked-out
+source. Its `up`, `down`, `setup`, and `auth` commands delegate to
+`bin/esdiag-local`, use the locally built `esdiag:<version>` image without
+pulling it, and keep state under `target/esdiag-local` by default. Set
+`ESDIAG_LOCAL_DIR` to override that location.
+
+Users who want published official images without a source checkout should use
+the [standalone local stack](esdiag-local.md) instead.
 
 You can use either Podman (preferred) or Docker to build and run ESDiag along the Elastic Stack inside containers.
 
@@ -53,12 +67,6 @@ Build a multi-platform container image, pushing it to the container registry
 
 ```sh
 esdiag-control buildx --push
-```
-
-Configure and start up a full Elastic Stack deployment, with security disabled, and open a browser to it
-
-```sh
-esdiag-control up --insecure
 ```
 
 Setup an existing stack monitoring cluster with ESDiag assets
@@ -116,7 +124,7 @@ Command: up [options]
 
 Options:
     -e, --env <NAME|FILE>  - The .env.NAME or FILE to source credentials from (default .env)
-    -i, --insecure         - Setup the Elasticsearch cluster with security disabled
+    -b, --open-browser <true|false> - Open ESDiag in a browser after startup (default true)
     -r, --registry <URL>   - Elastic container registry URL
     -s, --space            - Kibana space id (default esdiag)
 
@@ -193,7 +201,6 @@ Command: setup
 
 Options:
     -e, --env <NAME|FILE>  - The .env.NAME or FILE to source credentials from (default .env)
-    -i, --insecure         - Setup the Elasticsearch cluster with security disabled
     -r, --registry <URL>   - Elastic container registry URL
     -s, --space            - Kibana space id (default esdiag)
 

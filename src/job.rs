@@ -115,7 +115,7 @@ pub fn validate_saved_job_name(name: &str) -> Result<()> {
 }
 
 pub async fn run_job(job: Job, host: KnownHost) -> Result<()> {
-    let host_url = host.get_url().to_string();
+    let host_url = host.get_url()?.to_string();
     tracing::info!("Running saved job against {host_url}");
 
     match &job.action {

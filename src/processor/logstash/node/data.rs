@@ -30,15 +30,21 @@ impl Node {
 
 #[derive(Deserialize, Serialize)]
 pub struct Pipeline {
+    #[serde(skip_serializing_if = "Option::is_none")]
     ephemeral_id: Option<String>,
-    hash: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    hash: Option<String>,
     workers: u32,
     batch_size: u32,
     batch_delay: u32,
-    config_reload_automatic: bool,
-    config_reload_interval: u64,
-    dead_letter_queue_enabled: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    config_reload_automatic: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    config_reload_interval: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    dead_letter_queue_enabled: Option<bool>,
     // Not in source file
+    #[serde(skip_serializing_if = "Option::is_none")]
     name: Option<String>,
 }
 

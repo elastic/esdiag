@@ -1,0 +1,181 @@
+{
+  "attributes": {
+    "description": "",
+    "state": {
+      "adHocDataViews": {},
+      "datasourceStates": {
+        "formBased": {
+          "layers": {
+            "eacdacf1-f48e-46b0-85ac-31ea57c6573c": {
+              "columnOrder": [
+                "97779e0a-4ffe-44dc-b003-2fedf790fc30",
+                "ee679b13-d99d-453c-947b-71a96091aa52",
+                "225ee7db-c5b6-4968-9183-e98cd28c1c25"
+              ],
+              "columns": {
+                "225ee7db-c5b6-4968-9183-e98cd28c1c25": {
+                  "customLabel": true,
+                  "dataType": "number",
+                  "isBucketed": false,
+                  "label": "Indices",
+                  "operationType": "unique_count",
+                  "params": {
+                    "emptyAsNull": true
+                  },
+                  "sourceField": "index.name"
+                },
+                "97779e0a-4ffe-44dc-b003-2fedf790fc30": {
+                  "dataType": "string",
+                  "isBucketed": true,
+                  "label": "Top 10 values of index.ilm.policy",
+                  "operationType": "terms",
+                  "params": {
+                    "exclude": [],
+                    "excludeIsRegex": false,
+                    "include": [],
+                    "includeIsRegex": false,
+                    "missingBucket": true,
+                    "orderBy": {
+                      "columnId": "225ee7db-c5b6-4968-9183-e98cd28c1c25",
+                      "type": "column"
+                    },
+                    "orderDirection": "desc",
+                    "otherBucket": true,
+                    "parentFormat": {
+                      "id": "terms"
+                    },
+                    "secondaryFields": [],
+                    "size": 10
+                  },
+                  "scale": "ordinal",
+                  "sourceField": "index.ilm.policy"
+                },
+                "ee679b13-d99d-453c-947b-71a96091aa52": {
+                  "customLabel": true,
+                  "dataType": "string",
+                  "isBucketed": true,
+                  "label": "Dataset Size",
+                  "operationType": "terms",
+                  "params": {
+                    "exclude": [],
+                    "excludeIsRegex": false,
+                    "include": [],
+                    "includeIsRegex": false,
+                    "missingBucket": false,
+                    "orderBy": {
+                      "columnId": "225ee7db-c5b6-4968-9183-e98cd28c1c25",
+                      "type": "column"
+                    },
+                    "orderDirection": "desc",
+                    "otherBucket": true,
+                    "parentFormat": {
+                      "id": "multi_terms"
+                    },
+                    "secondaryFields": [
+                      "index.ilm.action",
+                      "index.ilm.step"
+                    ],
+                    "size": 10
+                  },
+                  "scale": "ordinal",
+                  "sourceField": "index.ilm.phase"
+                }
+              },
+              "incompleteColumns": {},
+              "sampling": 1
+            }
+          }
+        },
+        "indexpattern": {
+          "layers": {}
+        },
+        "textBased": {
+          "layers": {}
+        }
+      },
+      "filters": [],
+      "internalReferences": [],
+      "query": {
+        "language": "lucene",
+        "query": "NOT index.ilm.step:(\"completed\" OR \"complete\" OR \"check-rollover-ready\")"
+      },
+      "visualization": {
+        "axisTitlesVisibilitySettings": {
+          "x": false,
+          "yLeft": false,
+          "yRight": true
+        },
+        "fittingFunction": "None",
+        "gridlinesVisibilitySettings": {
+          "x": true,
+          "yLeft": true,
+          "yRight": true
+        },
+        "labelsOrientation": {
+          "x": 0,
+          "yLeft": 0,
+          "yRight": 0
+        },
+        "layers": [
+          {
+            "accessors": [
+              "225ee7db-c5b6-4968-9183-e98cd28c1c25"
+            ],
+            "colorMapping": {
+              "assignments": [],
+              "colorMode": {
+                "type": "categorical"
+              },
+              "paletteId": "eui_amsterdam_color_blind",
+              "specialAssignments": [
+                {
+                  "color": {
+                    "type": "loop"
+                  },
+                  "rule": {
+                    "type": "other"
+                  },
+                  "touched": false
+                }
+              ]
+            },
+            "layerId": "eacdacf1-f48e-46b0-85ac-31ea57c6573c",
+            "layerType": "data",
+            "position": "top",
+            "seriesType": "bar_horizontal_stacked",
+            "showGridlines": false,
+            "splitAccessor": "97779e0a-4ffe-44dc-b003-2fedf790fc30",
+            "xAccessor": "ee679b13-d99d-453c-947b-71a96091aa52"
+          }
+        ],
+        "legend": {
+          "isInside": false,
+          "isVisible": true,
+          "legendSize": "xlarge",
+          "position": "right",
+          "showSingleSeries": true
+        },
+        "preferredSeriesType": "bar_stacked",
+        "tickLabelsVisibilitySettings": {
+          "x": true,
+          "yLeft": true,
+          "yRight": true
+        },
+        "valueLabels": "hide"
+      }
+    },
+    "title": "Transient ILM Statuses",
+    "visualizationType": "lnsXY"
+  },
+  "coreMigrationVersion": "8.8.0",
+  "id": "50cd8017-fff2-461b-9367-3833251a2b39",
+  "references": [
+    {
+      "id": "590e8f4c-4fe2-4794-9007-29de4d07e489",
+      "name": "indexpattern-datasource-layer-eacdacf1-f48e-46b0-85ac-31ea57c6573c",
+      "type": "index-pattern"
+    }
+  ],
+  "type": "lens",
+  "typeMigrationVersion": "10.1.0"
+}

@@ -1,3 +1,10 @@
+---
+type: Guide
+title: Host Keystore Migration
+description: Guide to migrating saved host credentials into the encrypted esdiag keystore.
+tags: [hosts, keystore, migration]
+---
+
 # Host Keystore Migration
 
 `esdiag` supports two host auth models:
@@ -56,7 +63,7 @@ esdiag keystore update prod-es-apikey --apikey
 Use `--secret` when adding or updating hosts:
 
 ```bash
-esdiag host add prod-es elasticsearch http://localhost:9200 --secret prod-es-apikey
+esdiag host add prod-es http://localhost:9200 --app elasticsearch --secret prod-es-apikey
 ```
 
 The stored host entry keeps `secret` and omits plaintext auth values.
@@ -64,7 +71,7 @@ The stored host entry keeps `secret` and omits plaintext auth values.
 You can combine secret references with host roles:
 
 ```bash
-esdiag host add prod-es elasticsearch http://localhost:9200 --secret prod-es-apikey --roles collect,send
+esdiag host add prod-es http://localhost:9200 --app elasticsearch --secret prod-es-apikey --roles collect,send
 ```
 
 Role values are `collect`, `send`, and `view`.

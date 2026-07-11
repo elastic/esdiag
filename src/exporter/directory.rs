@@ -134,6 +134,7 @@ impl Export for DirectoryExporter {
     {
         let start_time = tokio::time::Instant::now();
         let mut batch = BatchResponse::new(docs.len() as u32);
+        batch.status_code = 200;
         let mut doc_count = 0;
         {
             let writer = get_writer(self.writers.clone(), &self.path, &index).await?;
@@ -161,15 +162,28 @@ impl Export for DirectoryExporter {
         T: Serialize + Sized + Send + Sync + 'static,
     {
         let (tx, rx) = oneshot::channel();
+        let doc_count = docs.len() as u32;
+        let target_dir = self.path.display().to_string();
+        let index_for_error = index.clone();
 
-        // File exporter writes synchronously, so we just write and send a simple response
+        // Directory exporter writes synchronously, so we just write and send a simple response.
         match self.batch_send(index, docs).await {
             Ok(batch_response) => {
                 if tx.send(batch_response).is_err() {
                     tracing::error!("Failed to send batch response");
                 }
             }
-            Err(e) => tracing::warn!("File write failed: {}", e),
+            Err(e) => {
+                tracing::warn!(
+                    "Directory write failed for index {} in {}: {}",
+                    index_for_error,
+                    target_dir,
+                    e
+                );
+                if tx.send(BatchResponse::failed(doc_count, 0)).is_err() {
+                    tracing::error!("Failed to send failed batch response");
+                }
+            }
         }
 
         Ok(rx)

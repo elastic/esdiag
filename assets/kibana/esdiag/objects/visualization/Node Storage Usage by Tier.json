@@ -1,0 +1,175 @@
+{
+  "attributes": {
+    "description": "Percent of disk utilization where 100% is full. Frozen nodes are still considered healthy at 90%+ utilization because of how the shared cache pre-reserves space.",
+    "kibanaSavedObjectMeta": {
+      "searchSourceJSON": {
+        "filter": [],
+        "query": {
+          "language": "kuery",
+          "query": ""
+        }
+      }
+    },
+    "title": "Node Storage Usage by Tier",
+    "uiStateJSON": "{}",
+    "version": "1",
+    "visState": {
+      "aggs": [],
+      "params": {
+        "spec": """{
+  "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+  "data": {
+    "url": {
+      "%context%": true,
+      "%timefield%": "event.ingested",
+      "index": "metrics-node-esdiag",
+      "body": {
+        "size": 0,
+        "aggs": {
+          "tier": {
+            "terms": {
+             "field": "node.tier"
+            },
+            "aggs": {
+              "load_pct": {
+                "boxplot": {
+                  "field": "node.fs.total.used_percent"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "format": {"property": "aggregations.tier.buckets"}
+  },
+    "transform": [
+    {"calculate": "datum.load_pct.lower", "as": "lower"},
+    {"calculate": "datum.load_pct.upper", "as": "upper"},
+    {"calculate": "datum.load_pct.q1", "as": "q1"},
+    {"calculate": "datum.load_pct.q2", "as": "q2"},
+    {"calculate": "datum.load_pct.q3", "as": "q3"},
+    {"calculate": "datum.load_pct.min", "as": "min"},
+    {"calculate": "datum.load_pct.max", "as": "max"},
+    {"calculate": "datum.key", "as": "tier"}
+    {"calculate": "0", "as": "min-x"},
+    {"calculate": "15", "as": "low-x"},
+    {"calculate": "30", "as": "mid-x1"},
+    {"calculate": "70", "as": "mid-x2"},
+    {"calculate": "85", "as": "high-x"},
+    {"calculate": "100", "as": "max-x"}
+  ],
+  "encoding": {    
+    "y": {
+      "field": "tier",
+      "type": "nominal",
+      "title": null,
+      "sort": ["hot","warm","cold","frozen","content","data","ingest","ml","transform","tiebreaker","master","remote","coord","node"]
+    }
+  },
+  "layer": [
+    {
+      "mark": {"type": "rule", "tooltip":true, "size":2},
+      "encoding": {
+        "x": {
+          "field": "lower", 
+          "type": "quantitative",
+          "scale": {"domain":[0,100], "clamp": true}, 
+          "title": null
+        },
+        "x2": {"field": "upper"}
+      },
+      "title": null
+    },
+    
+    {
+      "mark": "rect",
+      "encoding": {
+        "x": {"field": "min-x", "type":"quantitative", "scale": {"domain": [0, 100]}},
+        "x2": {"field": "low-x", "type": "quantitative", "scale": {"domain": [0, 100]}},
+        "color": {"value": "#ffcc571A"}
+      }
+    },
+    {
+      "mark": "rect",
+      "encoding": {
+        "x": {"field": "low-x", "type":"quantitative", "scale": {"domain": [0, 100]}},
+        "x2": {"field": "mid-x1", "type": "quantitative", "scale": {"domain": [0, 100]}},
+        "color": {"value": "#54ee991A"}
+      }
+    },
+   {
+      "mark": "rect",
+      "encoding": {
+        "x": {"field": "mid-x1", "type":"quantitative", "scale": {"domain": [0, 100]}},
+        "x2": {"field": "mid-x2", "type": "quantitative", "scale": {"domain": [0, 100]}},
+        "color": {"value": "#6092ee1A"}
+      }
+    },
+    {
+      "mark": "rect",
+      "encoding": {
+        "x": {"field": "mid-x2", "type":"quantitative", "scale": {"domain": [0, 100]}},
+        "x2": {"field": "high-x", "type": "quantitative", "scale": {"domain": [0, 100]}},
+        "color": {"value": "#54ee991A"}
+      }
+    },
+    {
+      "mark": "rect",
+      "encoding": {
+        "x": {"field":"high-x", "type": "quantitative", "scale": {"domain": [0, 100]}},
+        "x2": {"field":"max-x", "type": "quantitative", "scale": {"domain": [0, 100]}},
+        "color": {"value": "#ee60861A"}
+      }
+    },
+    
+    {
+      "mark": {"type": "bar",  "cornerRadius": 3, "tooltip": true},
+      "encoding": {
+        "x": {"field": "q1", "type": "quantitative", "title": "p25"},
+        "x2": {"field": "q3", "title": "p75"},
+        "color": {"field": "tier", "type": "nominal", "legend": null},
+      }
+    },
+    {
+      "mark": {"type": "tick", "color": "white", "thickness": 2, "tooltip":true},
+      "encoding": {
+        "x": {"field": "q2", "type": "quantitative", "title":"Mean"}
+      }
+    },
+    {
+      "mark": {"type": "point", "tooltip": true},
+      "encoding": {
+        "x": {"field": "min", "type": "quantitative"}
+      }
+    },
+    {
+      "mark": {"type": "point", "tooltip": true},
+      "encoding": {
+        "x": {"field": "max", "type": "quantitative"}
+      }
+    }
+  ]
+}"""
+      },
+      "title": "Node Storage Usage by Tier",
+      "type": "vega"
+    }
+  },
+  "coreMigrationVersion": "8.8.0",
+  "id": "b0888642-7ddc-4dd5-a2df-8c81aed5e0dd",
+  "references": [
+    {
+      "id": "5e05b9ee-3e49-4efd-8a16-94de208ebb83",
+      "name": "tag-ref-5e05b9ee-3e49-4efd-8a16-94de208ebb83",
+      "type": "tag"
+    },
+    {
+      "id": "b210de37-7ebf-4ced-9a28-13c1620db46c",
+      "name": "tag-ref-b210de37-7ebf-4ced-9a28-13c1620db46c",
+      "type": "tag"
+    }
+  ],
+  "type": "visualization",
+  "typeMigrationVersion": "8.5.0"
+}

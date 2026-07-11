@@ -44,7 +44,8 @@ Use these variables when configuring `esdiag` without saved hosts, or to supply 
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `ESDIAG_ES_BULK_SIZE` | `5000` | Number of documents per Elasticsearch bulk request |
+| `ESDIAG_ES_BULK_SIZE` | `10000` | Maximum number of documents per Elasticsearch bulk request |
+| `ESDIAG_ES_BULK_BYTES` | `52428800` | Approximate maximum serialized bulk request size in bytes for Elasticsearch output; set to `0` to disable byte-based splitting |
 | `ESDIAG_ES_WORKERS` | `4` | Number of parallel worker threads for export |
 | `ESDIAG_OUTPUT_TASK_LIMIT` | — | Max concurrent tasks when sending to Elasticsearch |
 | `ESDIAG_REQUEST_TIMEOUT_MS` | — | HTTP request timeout in milliseconds |

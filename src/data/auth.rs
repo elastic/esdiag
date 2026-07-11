@@ -6,6 +6,7 @@ use clap::ValueEnum;
 use eyre::Result;
 use std::str::FromStr;
 
+#[derive(Clone, Debug)]
 pub enum Auth {
     /// Use an API key authentication via headers
     Apikey(String),

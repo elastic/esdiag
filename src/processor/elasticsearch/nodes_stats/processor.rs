@@ -172,6 +172,7 @@ async fn process_node(node_id: String, mut node_stats: super::data::NodeStats, c
             role: node_metadata.as_ref().map(|node| node.role.clone()),
             tier: node_metadata.as_ref().map(|node| node.tier.clone()),
             tier_order: node_metadata.as_ref().map(|node| node.tier_order),
+            version: node_metadata.as_ref().and_then(|node| node.version.clone()),
         },
         shared_cache: lookup_shared_cache.by_id(node_id.as_str()).cloned(),
         metadata: ctx.node_stats_metadata.clone(),
@@ -274,7 +275,7 @@ impl StreamingDocumentExporter<Lookups, ElasticsearchMetadata> for NodesStats {
         );
 
         let (processors_tx, processors_rx) = mpsc::channel::<ingest_pipelines::IngestDoc>(BUFFER_SIZE);
-        let processors_data_stream = "metrics-ingest.processors-esdiag".to_string();
+        let processors_data_stream = "metrics-ingest.processor-esdiag".to_string();
         let processors_processor = tokio::spawn(exporter.clone().document_channel::<ingest_pipelines::IngestDoc>(
             processors_rx,
             processors_data_stream,
@@ -336,12 +337,12 @@ impl StreamingDocumentExporter<Lookups, ElasticsearchMetadata> for NodesStats {
         );
 
         summary.merge(nodes_stats_result.map_err(|err| eyre::Report::new(err)));
-        summary.merge(actions_result.map_err(|err| eyre::Report::new(err)));
-        summary.merge(http_clients_result.map_err(|err| eyre::Report::new(err)));
-        summary.merge(applier_result.map_err(|err| eyre::Report::new(err)));
-        summary.merge(adaptive_result.map_err(|err| eyre::Report::new(err)));
-        summary.merge(pipelines_result.map_err(|err| eyre::Report::new(err)));
-        summary.merge(processors_result.map_err(|err| eyre::Report::new(err)));
+        summary.add_child(actions_result.map_err(|err| eyre::Report::new(err)));
+        summary.add_child(http_clients_result.map_err(|err| eyre::Report::new(err)));
+        summary.add_child(applier_result.map_err(|err| eyre::Report::new(err)));
+        summary.add_child(adaptive_result.map_err(|err| eyre::Report::new(err)));
+        summary.add_child(pipelines_result.map_err(|err| eyre::Report::new(err)));
+        summary.add_child(processors_result.map_err(|err| eyre::Report::new(err)));
 
         summary
     }
@@ -367,4 +368,6 @@ struct NodeStatsEnvelope {
     tier: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     tier_order: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    version: Option<String>,
 }

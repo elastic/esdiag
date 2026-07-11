@@ -48,6 +48,7 @@ impl std::str::FromStr for Product {
             "kb" | "kibana" => Ok(Self::Kibana),
             "ls" | "logstash" => Ok(Self::Logstash),
             "mki" => Ok(Self::KubernetesPlatform),
+            "unknown" => Ok(Self::Unknown),
             _ => Err("Unknown product".to_string()),
         }
     }

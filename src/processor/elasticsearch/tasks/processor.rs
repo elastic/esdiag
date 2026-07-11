@@ -44,9 +44,13 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for Tasks {
 
         tracing::debug!("task docs: {}", tasks.len());
         let mut summary = ProcessorSummary::new(data_stream.clone());
+        let doc_count = tasks.len() as u32;
         match exporter.send(data_stream, tasks).await {
             Ok(batch) => summary.add_batch(batch),
-            Err(err) => tracing::error!("Failed to send tasks: {}", err),
+            Err(err) => {
+                tracing::error!("Failed to send tasks: {}", err);
+                summary.add_batch(crate::processor::BatchResponse::failed(doc_count, 0));
+            }
         }
         summary
     }

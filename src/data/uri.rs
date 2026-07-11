@@ -118,8 +118,13 @@ impl TryFrom<KnownHost> for Uri {
     type Error = eyre::Report;
 
     fn try_from(host: KnownHost) -> Result<Self> {
+        if host.is_template() {
+            return Err(eyre!(
+                "Template-backed hosts must be resolved into a concrete URL before runtime use"
+            ));
+        }
         let host_uri = match host.cloud_id() {
-            Some(ElasticCloud::ElasticCloud) => Uri::ElasticCloud(host),
+            Some(ElasticCloud::ElasticCloud) => Uri::KnownHost(host),
             Some(ElasticCloud::ElasticCloudAdmin) => Uri::ElasticCloudAdmin(host),
             Some(ElasticCloud::ElasticGovCloudAdmin) => Uri::ElasticGovCloudAdmin(host),
             None => Uri::KnownHost(host),
@@ -137,7 +142,14 @@ impl TryFrom<&str> for Uri {
             return Ok(Uri::Stream);
         }
 
+        if let Some(host) = KnownHost::resolve_template_reference(uri)? {
+            return host.try_into();
+        }
+
         if let Ok(host) = KnownHost::from_str(uri) {
+            if host.is_template() {
+                return Err(eyre!(KnownHost::template_guidance(uri)));
+            }
             return host.try_into();
         }
         tracing::debug!("No known host for {uri}");
@@ -251,7 +263,7 @@ impl std::fmt::Display for Uri {
 #[cfg(test)]
 mod tests {
     use super::Uri;
-    use std::path::PathBuf;
+    use std::path::Path;
 
     #[test]
     fn parses_stdio_stdout_uri_as_stream() {
@@ -263,15 +275,15 @@ mod tests {
     fn parses_file_uri_directory_and_file_targets() {
         assert!(matches!(
             Uri::try_from("file:///tmp/output/"),
-            Ok(Uri::Directory(path)) if path == PathBuf::from("/tmp/output")
+            Ok(Uri::Directory(path)) if path == Path::new("/tmp/output")
         ));
         assert!(matches!(
             Uri::try_from("file:///tmp/output/report.ndjson"),
-            Ok(Uri::File(path)) if path == PathBuf::from("/tmp/output/report.ndjson")
+            Ok(Uri::File(path)) if path == Path::new("/tmp/output/report.ndjson")
         ));
         assert!(matches!(
             Uri::try_from("file:///tmp/REPORT"),
-            Ok(Uri::File(path)) if path == PathBuf::from("/tmp/REPORT")
+            Ok(Uri::File(path)) if path == Path::new("/tmp/REPORT")
         ));
     }
 }

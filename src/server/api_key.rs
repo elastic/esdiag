@@ -145,10 +145,37 @@ pub(super) async fn run_api_key_form(
             return;
         }
     };
+    let source = match host.get_url() {
+        Ok(url) => url.to_string(),
+        Err(e) => {
+            state
+                .reject_retained_bundle(
+                    &download_token,
+                    &request_user,
+                    format!("Failed to resolve host URL: {}", e),
+                    DOWNLOAD_REJECTION_TTL,
+                )
+                .await;
+            state.record_failure().await;
+            let error_msg = format!("Failed to resolve host URL: {}", e);
+            tracing::error!("Failed to resolve host URL: {}", e);
+            send_event(
+                &tx,
+                job_feed_event(template::JobFailed {
+                    job_id: new_job_id(),
+                    error: &error_msg,
+                    source: &uri,
+                }),
+            )
+            .await;
+            send_event(&tx, signal_event(r#"{"loading":false,"processing":false}"#)).await;
+            return;
+        }
+    };
     let job = super::JobRequest {
         identifiers: signals.metadata.clone(),
         input: super::JobInput::FromRemoteHost {
-            source: host.get_url().to_string(),
+            source,
             host,
             diagnostic_type: signals.job.collect.diagnostic_type.clone(),
         },

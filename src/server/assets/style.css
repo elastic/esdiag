@@ -3297,6 +3297,11 @@ content:is(.job-content, .jobs-content) .status-box {
     color: var(--color-primary);
 }
 
+.status-info {
+    background-color: color-mix(in srgb, var(--color-info) 20%, transparent);
+    color: var(--color-info);
+}
+
 .spinner {
     position: relative;
     top: -1px;

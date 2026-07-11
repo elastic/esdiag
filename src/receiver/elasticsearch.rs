@@ -5,7 +5,7 @@
 use super::super::processor::{
     DataSource, DiagnosticManifest, ElasticsearchCluster, ManifestBuilder, SourceContext, StreamingDataSource,
 };
-use super::{Receive, ReceiveRaw};
+use super::{RawResponse, Receive, ReceiveRaw};
 use crate::data::KnownHost;
 use elasticsearch::{Elasticsearch, http};
 use eyre::{Result, eyre};
@@ -15,12 +15,16 @@ use serde_json::Value;
 use url::Url;
 
 use std::sync::Arc;
+use std::time::Instant;
 use tokio::sync::OnceCell;
 
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct ElasticsearchRequestError {
     pub status: http::StatusCode,
     pub body: String,
+    pub response_time_ms: u64,
+    pub response_size_bytes: u64,
 }
 
 impl std::fmt::Display for ElasticsearchRequestError {
@@ -58,6 +62,7 @@ impl ElasticsearchReceiver {
         self.version
             .get_or_try_init(|| async {
                 tracing::debug!("Fetching version from {}", self.url);
+                let started = Instant::now();
                 let response = self
                     .client
                     .send(
@@ -71,10 +76,14 @@ impl ElasticsearchReceiver {
                     .await?;
                 let status = response.status_code();
                 let body = response.text().await?;
+                let response_time_ms = started.elapsed().as_millis() as u64;
+                let response_size_bytes = body.len() as u64;
                 if !status.is_success() {
                     return Err(ElasticsearchRequestError {
                         status,
                         body: Self::format_error_body(&body),
+                        response_time_ms,
+                        response_size_bytes,
                     }
                     .into());
                 }
@@ -88,8 +97,9 @@ impl ElasticsearchReceiver {
             .await
     }
 
-    pub async fn get_raw_by_path(&self, path: &str, extension: &str) -> Result<String> {
+    pub async fn get_raw_response_by_path(&self, path: &str, extension: &str) -> Result<RawResponse> {
         tracing::debug!("Getting raw API path: {}", path);
+        let started = Instant::now();
 
         let mut headers = http::headers::HeaderMap::new();
         // By default, the Elasticsearch client enforces Accept: application/json
@@ -113,15 +123,30 @@ impl ElasticsearchReceiver {
             .await?;
         let status = response.status_code();
         let body = response.text().await?;
+        let response_time_ms = started.elapsed().as_millis() as u64;
+        let response_size_bytes = body.len() as u64;
         if !status.is_success() {
             return Err(ElasticsearchRequestError {
                 status,
                 body: Self::format_error_body(&body),
+                response_time_ms,
+                response_size_bytes,
             }
             .into());
         }
 
-        Ok(body)
+        Ok(RawResponse {
+            body,
+            status: Some(status.as_u16()),
+            response_time_ms,
+            response_size_bytes,
+        })
+    }
+
+    pub async fn get_raw_by_path(&self, path: &str, extension: &str) -> Result<String> {
+        self.get_raw_response_by_path(path, extension)
+            .await
+            .map(|response| response.body)
     }
 }
 
@@ -129,7 +154,7 @@ impl TryFrom<KnownHost> for ElasticsearchReceiver {
     type Error = eyre::Report;
 
     fn try_from(host: KnownHost) -> Result<Self> {
-        let url = host.get_url();
+        let url = host.get_url()?;
         let client = Elasticsearch::try_from(host)?;
         Ok(Self {
             client,
@@ -151,7 +176,7 @@ impl Receive for ElasticsearchReceiver {
             .client
             .send(
                 http::Method::Get,
-                "",
+                "/",
                 http::headers::HeaderMap::new(),
                 Option::<&String>::None,
                 Option::<&String>::None,
@@ -184,6 +209,7 @@ impl Receive for ElasticsearchReceiver {
         tracing::debug!("Getting API: {}", &path);
 
         // Send a simple GET request to the API path
+        let started = Instant::now();
         let response = self
             .client
             .send(
@@ -195,16 +221,19 @@ impl Receive for ElasticsearchReceiver {
                 None,
             )
             .await?;
-
         match response.status_code() {
             http::StatusCode::OK => response.json::<T>().await.map_err(Into::into),
             status => {
                 let body = response.text().await?;
                 let formatted_body = Self::format_error_body(&body);
+                let response_time_ms = started.elapsed().as_millis() as u64;
+                let response_size_bytes = body.len() as u64;
                 tracing::debug!("Failed to get API response: {}", formatted_body);
                 Err(ElasticsearchRequestError {
                     status,
                     body: formatted_body,
+                    response_time_ms,
+                    response_size_bytes,
                 }
                 .into())
             }
@@ -245,11 +274,18 @@ impl ReceiveRaw for ElasticsearchReceiver {
     where
         T: DataSource,
     {
+        self.get_raw_response::<T>().await.map(|response| response.body)
+    }
+
+    async fn get_raw_response<T>(&self) -> Result<RawResponse>
+    where
+        T: DataSource,
+    {
         let ctx = SourceContext::new("elasticsearch", self.get_version().await.ok().cloned());
         let path = T::resolve_source_request_path(&ctx)?;
         let extension = T::resolve_source_extension(&ctx)?;
 
-        self.get_raw_by_path(&path, &extension).await
+        self.get_raw_response_by_path(&path, &extension).await
     }
 }
 

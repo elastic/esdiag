@@ -1,3 +1,10 @@
+---
+type: Reference
+title: ESDiag API Documentation
+description: Overview of the ESDiag service API for processing Elastic Stack diagnostic bundles.
+tags: [api, reference]
+---
+
 ESDiag API Documentation
 ========================
 
@@ -46,7 +53,8 @@ Both endpoints support the `wait_for_completion` parameter:
 
 When `wait_for_completion=true`:
 - The request blocks until processing completes
-- Returns `diagnostic_id`, `kibana_link`, and `took` (processing time in milliseconds)
+- Returns a JSON array with one result entry per processed diagnostic
+- Includes the parent diagnostic and any included diagnostic child outcomes
 - Returns HTTP 200 on success instead of 201
 - May take significantly longer to respond depending on diagnostic size
 

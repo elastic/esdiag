@@ -1,3 +1,10 @@
+---
+type: Guide
+title: min-diag.sh
+description: Guide to collecting minimal Elasticsearch diagnostic bundles with the min-diag helper script.
+tags: [bin, collection, diagnostics]
+---
+
 
 min-diag.sh
 ------------

@@ -4,8 +4,9 @@
 
 - `.agents/skills/esdiag/`: skill for using this project's main binary
 - `assets/`: Elastic cluster setup assets, used by `src/setup.rs`
-- `bin/`: mostly build helper scripts
+- `bin/`: user-facing helper executables
 - `bin/esdiag-control`: user quick-start container deployment script
+- `desktop/scripts/`: desktop build and packaging helper scripts
 - `docs/`: user and maintainer docs
 - `openspec/`: specs and changes
 - `src/`: Rust code

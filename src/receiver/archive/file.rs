@@ -5,7 +5,7 @@
 use super::resolve_archive_path;
 use crate::{
     processor::{DataSource, SourceContext, StreamingDataSource},
-    receiver::{Receive, ReceiveMultiple, ReceiveRaw},
+    receiver::{RawResponse, Receive, ReceiveMultiple, ReceiveRaw},
 };
 use eyre::{Result, eyre};
 use futures::stream::BoxStream;
@@ -124,6 +124,13 @@ impl ReceiveRaw for ArchiveFileReceiver {
     where
         T: DataSource,
     {
+        self.get_raw_response::<T>().await.map(|response| response.body)
+    }
+
+    async fn get_raw_response<T>(&self) -> Result<RawResponse>
+    where
+        T: DataSource,
+    {
         let mut archive = self.archive.write().await;
         let ctx = self.source_context()?;
         let source_paths = T::candidate_source_file_paths(&ctx)?;
@@ -137,7 +144,13 @@ impl ReceiveRaw for ArchiveFileReceiver {
                     let mut reader = BufReader::new(file);
                     let mut data = String::new();
                     reader.read_to_string(&mut data)?;
-                    return Ok(data);
+                    let response_size_bytes = data.len() as u64;
+                    return Ok(RawResponse {
+                        body: data,
+                        status: None,
+                        response_time_ms: 0,
+                        response_size_bytes,
+                    });
                 }
                 Err(e) => {
                     last_resolve_error = Some(e);
@@ -168,6 +181,16 @@ impl std::fmt::Display for ArchiveFileReceiver {
 }
 
 impl ArchiveFileReceiver {
+    pub(crate) fn clone_for_subdir(&self, work_dir: &str) -> Self {
+        Self {
+            archive: self.archive.clone(),
+            filename: self.filename.clone(),
+            subdir: Some(PathBuf::from(work_dir)),
+            modified_date: self.modified_date,
+            source_product: Arc::new(OnceLock::new()),
+        }
+    }
+
     pub async fn read_bundle_json<T>(&self, filename: &str) -> Result<T>
     where
         T: DeserializeOwned,

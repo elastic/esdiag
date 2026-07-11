@@ -4,7 +4,7 @@
 
 use super::super::{
     SourceContext,
-    collector::{CollectOptions, CollectionResult, default_collect_archive_name},
+    collector::{ApiCollectOutcome, CollectOptions, CollectionResult, default_collect_archive_name},
 };
 use super::{
     AliasList, Cluster, ClusterSettings, DataSource, DataStreams, DiagnosticManifest, HealthReport, IlmExplain,
@@ -14,9 +14,11 @@ use super::{
 use crate::{
     data::Product,
     exporter::ArchiveExporter,
+    processor::RequestedApi,
     receiver::{ElasticCloudAdminRequestError, ElasticsearchRequestError, Receiver},
 };
 use eyre::{Result, WrapErr};
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use crate::processor::api::{ApiResolver, ApiWeight, DiagnosticType, ElasticsearchApi};
@@ -50,12 +52,19 @@ impl ElasticsearchCollector {
 
     pub async fn collect(&self) -> Result<CollectionResult> {
         let collect_result: Result<CollectionResult> = async {
+            let collection_date = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
             let diag_type = DiagnosticType::from_str(&self.options.r#type)?;
             let apis =
                 ApiResolver::resolve_es(&diag_type, self.options.include.as_ref(), self.options.exclude.as_ref())?;
 
             let api_names: Vec<&str> = apis.iter().map(|a| a.as_str()).collect();
             tracing::debug!("Resolved APIs for collection: {:?}", api_names);
+            let stack_version = self
+                .receiver
+                .source_context()
+                .await?
+                .version
+                .map(|version| version.to_string());
 
             let mut result = CollectionResult {
                 path: self.exporter.to_string(),
@@ -65,8 +74,6 @@ impl ElasticsearchCollector {
 
             let mut heavy_apis = Vec::new();
             let mut light_apis = Vec::new();
-
-            result.success += self.save_diagnostic_manifest(&apis).await?;
 
             for api in apis {
                 if api.weight() == ApiWeight::Heavy {
@@ -81,14 +88,26 @@ impl ElasticsearchCollector {
                 .map(|api| async move { self.save_api_with_retry(&api).await })
                 .buffer_unordered(5);
 
+            let mut requested_apis = BTreeMap::new();
             while let Some(res) = light_stream.next().await {
-                result.success += res;
+                result.success += res.saved;
+                if let Some((name, requested_api)) = res.requested_api {
+                    requested_apis.insert(name, requested_api);
+                }
             }
 
             // Sequential fetch for Heavy APIs
             for api in heavy_apis {
-                result.success += self.save_api_with_retry(&api).await;
+                let res = self.save_api_with_retry(&api).await;
+                result.success += res.saved;
+                if let Some((name, requested_api)) = res.requested_api {
+                    requested_apis.insert(name, requested_api);
+                }
             }
+
+            result.success += self
+                .save_diagnostic_manifest(&requested_apis, stack_version, collection_date)
+                .await?;
 
             Ok(result)
         }
@@ -104,19 +123,44 @@ impl ElasticsearchCollector {
         }
     }
 
-    async fn save_api_with_retry(&self, api: &ElasticsearchApi) -> usize {
+    async fn save_api_with_retry(&self, api: &ElasticsearchApi) -> ApiCollectOutcome {
         let max_duration = Duration::from_secs(300); // 5 minutes
         let start_time = std::time::Instant::now();
         let mut attempt = 1;
         let mut delay = Duration::from_secs(2);
+        let mut retries = 0;
+        let mut retried_response_time_ms = 0;
+        let mut retried_response_size_bytes = 0;
 
         loop {
+            let attempt_started = std::time::Instant::now();
             match self.save_api(api).await {
-                Ok(success) => return success,
+                Ok(mut success) => {
+                    if let Some((_, requested_api)) = success.requested_api.as_mut() {
+                        requested_api.retries = retries;
+                        requested_api.response_time_ms += retried_response_time_ms;
+                        requested_api.response_size_bytes += retried_response_size_bytes;
+                    }
+                    return success;
+                }
                 Err(e) => {
+                    let (status, response_time_ms, response_size_bytes) = request_metrics(&e);
+                    let response_time_ms = if response_time_ms == 0 {
+                        attempt_started.elapsed().as_millis() as u64
+                    } else {
+                        response_time_ms
+                    };
+                    retried_response_time_ms += response_time_ms;
+                    retried_response_size_bytes += response_size_bytes;
                     if !should_retry_elasticsearch_error(&e) {
                         tracing::warn!("Skipping non-retriable failure for {}: {}", api.as_str(), e);
-                        return 0;
+                        return ApiCollectOutcome::failed(
+                            api.as_str(),
+                            status,
+                            retries,
+                            retried_response_time_ms,
+                            retried_response_size_bytes,
+                        );
                     }
                     if start_time.elapsed() > max_duration {
                         tracing::error!(
@@ -125,7 +169,13 @@ impl ElasticsearchCollector {
                             attempt,
                             e
                         );
-                        return 0;
+                        return ApiCollectOutcome::failed(
+                            api.as_str(),
+                            status,
+                            retries,
+                            retried_response_time_ms,
+                            retried_response_size_bytes,
+                        );
                     }
                     tracing::warn!(
                         "Attempt {} failed for {}: {}. Retrying in {:?}...",
@@ -136,44 +186,50 @@ impl ElasticsearchCollector {
                     );
                     tokio::time::sleep(delay).await;
                     attempt += 1;
+                    retries += 1;
                     delay = std::cmp::min(delay * 2, Duration::from_secs(60));
                 }
             }
         }
     }
 
-    async fn save_api(&self, api: &ElasticsearchApi) -> Result<usize> {
-        match api {
-            ElasticsearchApi::AliasList => self.save::<AliasList>().await,
-            ElasticsearchApi::Cluster => self.save::<Cluster>().await,
-            ElasticsearchApi::ClusterSettings => self.save::<ClusterSettings>().await,
-            ElasticsearchApi::DataStreams => self.save::<DataStreams>().await,
-            ElasticsearchApi::HealthReport => self.save::<HealthReport>().await,
-            ElasticsearchApi::IlmExplain => self.save::<IlmExplain>().await,
-            ElasticsearchApi::IlmPolicies => self.save::<IlmPolicies>().await,
-            ElasticsearchApi::IndicesSettings => self.save::<IndicesSettings>().await,
-            ElasticsearchApi::IndicesStats => self.save::<IndicesStats>().await,
-            ElasticsearchApi::Licenses => self.save::<Licenses>().await,
-            ElasticsearchApi::MappingStats => self.save::<MappingStats>().await,
-            ElasticsearchApi::Nodes => self.save::<Nodes>().await,
-            ElasticsearchApi::NodesStats => self.save::<NodesStats>().await,
-            ElasticsearchApi::PendingTasks => self.save::<PendingTasks>().await,
-            ElasticsearchApi::Repositories => self.save::<Repositories>().await,
-            ElasticsearchApi::SearchableSnapshotsCacheStats => self.save::<SearchableSnapshotsCacheStats>().await,
-            ElasticsearchApi::SearchableSnapshotsStats => self.save::<SearchableSnapshotsStats>().await,
-            ElasticsearchApi::Snapshots => self.save::<Snapshots>().await,
-            ElasticsearchApi::SlmPolicies => self.save::<SlmPolicies>().await,
-            ElasticsearchApi::Tasks => self.save::<Tasks>().await,
-            ElasticsearchApi::Raw(name, _) => self.save_raw(name).await,
+    async fn save_api(&self, api: &ElasticsearchApi) -> Result<ApiCollectOutcome> {
+        let response = match api {
+            ElasticsearchApi::AliasList => self.save::<AliasList>().await?,
+            ElasticsearchApi::Cluster => self.save::<Cluster>().await?,
+            ElasticsearchApi::ClusterSettings => self.save::<ClusterSettings>().await?,
+            ElasticsearchApi::DataStreams => self.save::<DataStreams>().await?,
+            ElasticsearchApi::HealthReport => self.save::<HealthReport>().await?,
+            ElasticsearchApi::IlmExplain => self.save::<IlmExplain>().await?,
+            ElasticsearchApi::IlmPolicies => self.save::<IlmPolicies>().await?,
+            ElasticsearchApi::IndicesSettings => self.save::<IndicesSettings>().await?,
+            ElasticsearchApi::IndicesStats => self.save::<IndicesStats>().await?,
+            ElasticsearchApi::Licenses => self.save::<Licenses>().await?,
+            ElasticsearchApi::MappingStats => self.save::<MappingStats>().await?,
+            ElasticsearchApi::Nodes => self.save::<Nodes>().await?,
+            ElasticsearchApi::NodesStats => self.save::<NodesStats>().await?,
+            ElasticsearchApi::PendingTasks => self.save::<PendingTasks>().await?,
+            ElasticsearchApi::Repositories => self.save::<Repositories>().await?,
+            ElasticsearchApi::SearchableSnapshotsCacheStats => self.save::<SearchableSnapshotsCacheStats>().await?,
+            ElasticsearchApi::SearchableSnapshotsStats => self.save::<SearchableSnapshotsStats>().await?,
+            ElasticsearchApi::Snapshots => self.save::<Snapshots>().await?,
+            ElasticsearchApi::SlmPolicies => self.save::<SlmPolicies>().await?,
+            ElasticsearchApi::Tasks => self.save::<Tasks>().await?,
+            ElasticsearchApi::Raw(name, _) => self.save_raw(name).await?,
+        };
+
+        match response {
+            Some((requested_api, saved)) => Ok(ApiCollectOutcome::success(api.as_str(), requested_api, 0, saved)),
+            None => Ok(ApiCollectOutcome::skipped()),
         }
     }
 
-    async fn save_raw(&self, name: &str) -> Result<usize> {
+    async fn save_raw(&self, name: &str) -> Result<Option<(RequestedApi, usize)>> {
         let source_conf = match crate::processor::diagnostic::data_source::get_source("elasticsearch", name, &[]) {
             Ok((_, conf)) => conf,
             Err(e) => {
                 tracing::debug!("Skipping {} collection: {}", name, e);
-                return Ok(0);
+                return Ok(None);
             }
         };
 
@@ -182,61 +238,68 @@ impl ElasticsearchCollector {
                 Ok(v) => v,
                 Err(e) => {
                     tracing::debug!("Cannot collect raw API without version: {}", e);
-                    return Ok(0);
+                    return Ok(None);
                 }
             },
             Receiver::ElasticCloudAdmin(r) => match r.get_version().await {
                 Ok(v) => v,
                 Err(e) => {
                     tracing::debug!("Cannot collect raw API without version: {}", e);
-                    return Ok(0);
+                    return Ok(None);
                 }
             },
-            _ => return Ok(0),
+            _ => return Ok(None),
         };
 
         let path = match source_conf.get_url(version) {
             Ok(p) => p,
             Err(e) => {
                 tracing::debug!("Skipping {} collection on version {}: {}", name, version, e);
-                return Ok(0);
+                return Ok(None);
             }
         };
 
         let extension = source_conf.extension.as_deref().unwrap_or(".json");
-        let content = match self.receiver.get_raw_by_path(&path, extension).await {
-            Ok(c) => c,
+        let response = match self.receiver.get_raw_response_by_path(&path, extension).await {
+            Ok(response) => response,
             Err(e) => {
                 tracing::warn!("Failed to get raw API {}: {}", name, e);
-                return Err(eyre::eyre!(e));
+                return Err(e);
             }
         };
 
         let file_path = PathBuf::from(source_conf.get_file_path(name));
         let filename = format!("{}", file_path.display());
 
-        match self.exporter.save(file_path, content).await {
+        let requested_api = RequestedApi {
+            status: response.status,
+            retries: 0,
+            response_time_ms: response.response_time_ms,
+            response_size_bytes: response.response_size_bytes,
+        };
+
+        match self.exporter.save(file_path, response.body).await {
             Ok(()) => {
                 tracing::info!("Saved {filename}");
-                Ok(1)
+                Ok(Some((requested_api, 1)))
             }
             Err(e) => {
                 tracing::error!("Failed to save {filename}: {e}");
-                Ok(0)
+                Ok(Some((requested_api, 0)))
             }
         }
     }
 
-    async fn save<T>(&self) -> Result<usize>
+    async fn save<T>(&self) -> Result<Option<(RequestedApi, usize)>>
     where
         T: DataSource,
     {
-        let content = match self.receiver.get_raw::<T>().await {
-            Ok(c) => c,
+        let response = match self.receiver.get_raw_response::<T>().await {
+            Ok(response) => response,
             Err(e) => {
                 if let Some(ds_err) = e.downcast_ref::<crate::processor::diagnostic::data_source::DataSourceError>() {
                     tracing::debug!("Skipping {} collection: {}", T::name(), ds_err);
-                    return Ok(0);
+                    return Ok(None);
                 }
                 return Err(e);
             }
@@ -244,24 +307,33 @@ impl ElasticsearchCollector {
         let ctx = SourceContext::new("elasticsearch", None);
         let path = PathBuf::from(T::resolve_source_file_path(&ctx)?);
         let filename = format!("{}", path.display());
-        match self.exporter.save(path, content).await {
+        let requested_api = RequestedApi {
+            status: response.status,
+            retries: 0,
+            response_time_ms: response.response_time_ms,
+            response_size_bytes: response.response_size_bytes,
+        };
+
+        match self.exporter.save(path, response.body).await {
             Ok(()) => {
                 tracing::info!("Saved {filename}");
-                Ok(1)
+                Ok(Some((requested_api, 1)))
             }
             Err(e) => {
                 tracing::error!("Failed to save {filename}: {e}");
-                Ok(0)
+                Ok(Some((requested_api, 0)))
             }
         }
     }
 
-    async fn save_diagnostic_manifest(&self, apis: &[ElasticsearchApi]) -> Result<usize> {
-        let cluster = self.receiver.get::<Cluster>().await?;
-        let collected_api_names: Vec<String> = apis.iter().map(|a| a.as_str().to_string()).collect();
-
+    async fn save_diagnostic_manifest(
+        &self,
+        requested_apis: &BTreeMap<String, RequestedApi>,
+        stack_version: Option<String>,
+        collection_date: String,
+    ) -> Result<usize> {
         let manifest = DiagnosticManifest::new(
-            chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+            collection_date,
             Some(format!("esdiag-{}", env!("CARGO_PKG_VERSION"))),
             None,
             None,
@@ -269,10 +341,10 @@ impl ElasticsearchCollector {
             Product::Elasticsearch,
             Some("elasticsearch_diagnostic".to_string()),
             Some("esdiag".to_string()),
-            Some(cluster.version.number.to_string()),
+            stack_version,
         )
         .with_identifiers(self.options.identifiers.clone())
-        .with_collected_apis(collected_api_names);
+        .with_requested_apis(requested_apis.clone());
 
         let path = PathBuf::from(DiagnosticManifest::FILENAME);
         let filename = format!("{}", path.display());
@@ -283,6 +355,24 @@ impl ElasticsearchCollector {
     }
 }
 
+fn request_metrics(error: &eyre::Report) -> (Option<u16>, u64, u64) {
+    if let Some(request_error) = error.downcast_ref::<ElasticsearchRequestError>() {
+        return (
+            Some(request_error.status.as_u16()),
+            request_error.response_time_ms,
+            request_error.response_size_bytes,
+        );
+    }
+    if let Some(request_error) = error.downcast_ref::<ElasticCloudAdminRequestError>() {
+        return (
+            Some(request_error.status.as_u16()),
+            request_error.response_time_ms,
+            request_error.response_size_bytes,
+        );
+    }
+    (None, 0, 0)
+}
+
 fn should_retry_elasticsearch_error(error: &eyre::Report) -> bool {
     if let Some(request_error) = error.downcast_ref::<ElasticsearchRequestError>() {
         return request_error.status.as_u16() == 429 || request_error.status.is_server_error();
@@ -290,7 +380,25 @@ fn should_retry_elasticsearch_error(error: &eyre::Report) -> bool {
     if let Some(request_error) = error.downcast_ref::<ElasticCloudAdminRequestError>() {
         return request_error.status.as_u16() == 429 || request_error.status.is_server_error();
     }
-    true
+    if let Some(request_error) = error.downcast_ref::<elasticsearch::Error>() {
+        if let Some(status) = request_error.status_code() {
+            return status.as_u16() == 429 || status.is_server_error();
+        }
+        if request_error.is_timeout() {
+            return true;
+        }
+        return std::error::Error::source(request_error)
+            .and_then(|source| source.downcast_ref::<reqwest::Error>())
+            .is_some_and(is_retryable_reqwest_error);
+    }
+    if let Some(request_error) = error.downcast_ref::<reqwest::Error>() {
+        return is_retryable_reqwest_error(request_error);
+    }
+    false
+}
+
+fn is_retryable_reqwest_error(error: &reqwest::Error) -> bool {
+    error.is_connect() || error.is_timeout() || error.is_body() || error.is_request()
 }
 
 #[cfg(test)]
@@ -303,14 +411,20 @@ mod tests {
         let unauthorized = eyre::Report::from(ElasticsearchRequestError {
             status: StatusCode::UNAUTHORIZED,
             body: "unauthorized".to_string(),
+            response_time_ms: 0,
+            response_size_bytes: 0,
         });
         let forbidden = eyre::Report::from(ElasticsearchRequestError {
             status: StatusCode::FORBIDDEN,
             body: "forbidden".to_string(),
+            response_time_ms: 0,
+            response_size_bytes: 0,
         });
         let not_found = eyre::Report::from(ElasticsearchRequestError {
             status: StatusCode::NOT_FOUND,
             body: "missing".to_string(),
+            response_time_ms: 0,
+            response_size_bytes: 0,
         });
 
         assert!(!should_retry_elasticsearch_error(&unauthorized));
@@ -320,29 +434,36 @@ mod tests {
         let cloud_admin_not_found = eyre::Report::from(ElasticCloudAdminRequestError {
             status: StatusCode::NOT_FOUND,
             body: "missing".to_string(),
+            response_time_ms: 0,
+            response_size_bytes: 0,
         });
         assert!(!should_retry_elasticsearch_error(&cloud_admin_not_found));
     }
 
     #[test]
-    fn retry_policy_retries_rate_limits_server_errors_and_transport_failures() {
+    fn retry_policy_retries_rate_limits_and_server_errors() {
         let rate_limited = eyre::Report::from(ElasticsearchRequestError {
             status: StatusCode::TOO_MANY_REQUESTS,
             body: "slow down".to_string(),
+            response_time_ms: 0,
+            response_size_bytes: 0,
         });
         let server_error = eyre::Report::from(ElasticsearchRequestError {
             status: StatusCode::BAD_GATEWAY,
             body: "gateway".to_string(),
+            response_time_ms: 0,
+            response_size_bytes: 0,
         });
         let cloud_admin_server_error = eyre::Report::from(ElasticCloudAdminRequestError {
             status: StatusCode::BAD_GATEWAY,
             body: "gateway".to_string(),
+            response_time_ms: 0,
+            response_size_bytes: 0,
         });
-        let transport = eyre::eyre!("connection reset");
 
         assert!(should_retry_elasticsearch_error(&rate_limited));
         assert!(should_retry_elasticsearch_error(&server_error));
         assert!(should_retry_elasticsearch_error(&cloud_admin_server_error));
-        assert!(should_retry_elasticsearch_error(&transport));
+        assert!(!should_retry_elasticsearch_error(&eyre::eyre!("connection reset")));
     }
 }

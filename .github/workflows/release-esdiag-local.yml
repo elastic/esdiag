@@ -1,0 +1,65 @@
+name: Release esdiag-local
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  standalone:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "${{ github.ref_name }}" >/dev/null 2>&1 || \
+            gh release create "${{ github.ref_name }}" --draft --verify-tag --generate-notes
+          test "$(gh release view "${{ github.ref_name }}" --json isDraft --jq .isDraft)" = true
+      - name: Verify published image manifests
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="${TAG#v}"
+          test -n "$version" && case "$version" in *SNAPSHOT*) exit 1;; esac
+          mkdir -p target/release-assets
+          docker buildx imagetools inspect "docker.elastic.co/esdiag/esdiag:$version" \
+            | tee target/release-assets/image-manifest.txt
+          grep -q 'linux/amd64' target/release-assets/image-manifest.txt
+          grep -q 'linux/arm64' target/release-assets/image-manifest.txt
+      - name: Render release script
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="${TAG#v}"
+          mkdir -p target/release-assets
+          sed "s/readonly ESDIAG_VERSION=\"[^\"]*\"/readonly ESDIAG_VERSION=\"$version\"/" \
+            bin/esdiag-local > target/release-assets/esdiag-local
+          chmod 755 target/release-assets/esdiag-local
+          bash -n target/release-assets/esdiag-local
+          test "$(target/release-assets/esdiag-local version)" = "$version"
+      - name: Validate and checksum
+        run: |
+          shellcheck target/release-assets/esdiag-local
+          cd target/release-assets
+          sha256sum esdiag-local > esdiag-local.sha256
+      - name: Attach and verify assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${{ github.ref_name }}" \
+            target/release-assets/esdiag-local target/release-assets/esdiag-local.sha256 --clobber
+          gh release view "${{ github.ref_name }}" --json assets \
+            --jq '[.assets[].name] | contains(["esdiag-local", "esdiag-local.sha256"])' | grep -q true
+          mkdir target/release-assets/verification
+          gh release download "${{ github.ref_name }}" --dir target/release-assets/verification \
+            --pattern esdiag-local --pattern esdiag-local.sha256
+          cd target/release-assets/verification
+          sha256sum --check esdiag-local.sha256
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "${{ github.ref_name }}" --draft=false

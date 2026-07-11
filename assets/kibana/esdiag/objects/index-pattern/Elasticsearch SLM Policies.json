@@ -1,0 +1,31 @@
+{
+  "attributes": {
+    "allowHidden": false,
+    "fieldAttrs": {
+      "cluster.display_name": {
+        "count": 1
+      },
+      "cluster.name": {
+        "count": 1
+      },
+      "diagnostic.id": {
+        "count": 1
+      },
+      "event.ingested": {
+        "count": 1
+      }
+    },
+    "fieldFormatMap": {},
+    "fields": "[]",
+    "name": "Elasticsearch SLM Policies",
+    "runtimeFieldMap": "{}",
+    "sourceFilters": "[]",
+    "timeFieldName": "@timestamp",
+    "title": "settings-slm-esdiag*"
+  },
+  "coreMigrationVersion": "8.8.0",
+  "id": "07f20cf1-21c4-4383-a522-573cc8f0fab3",
+  "references": [],
+  "type": "index-pattern",
+  "typeMigrationVersion": "8.0.0"
+}

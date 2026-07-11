@@ -76,7 +76,7 @@ impl ElasticsearchApi {
             ElasticsearchApi::PendingTasks => ApiWeight::Light,
             ElasticsearchApi::Repositories => ApiWeight::Light,
             ElasticsearchApi::SearchableSnapshotsCacheStats => ApiWeight::Light,
-            ElasticsearchApi::SearchableSnapshotsStats => ApiWeight::Light,
+            ElasticsearchApi::SearchableSnapshotsStats => ApiWeight::Heavy,
             ElasticsearchApi::Snapshots => ApiWeight::Heavy,
             ElasticsearchApi::SlmPolicies => ApiWeight::Light,
             ElasticsearchApi::Tasks => ApiWeight::Heavy,

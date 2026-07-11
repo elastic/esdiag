@@ -1,9 +1,0 @@
-- name: "space.json"
-  endpoint: "api/spaces"
-  method: "POST"
-
-- name: "dashboards.ndjson"
-  endpoint: "s/esdiag/api/saved_objects/_import?overwrite"
-  method: "POST"
-  headers:
-    Content-Type: "multipart/form-data"

@@ -4,7 +4,7 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use clap::{Args, Parser, Subcommand, builder::BoolishValueParser, builder::styling};
+use clap::{ArgAction, Args, Parser, Subcommand, builder::BoolishValueParser, builder::styling};
 #[cfg(feature = "server")]
 use esdiag::server::{RuntimeMode, Server};
 #[cfg(feature = "setup")]
@@ -19,7 +19,10 @@ use esdiag::{
     },
     env::LOG_LEVEL,
     exporter::Exporter,
-    processor::{CollectionResult, Collector, DiagnosticReport, Identifiers, Processor, default_collect_archive_name},
+    processor::{
+        CollectionResult, Collector, Completed, Identifiers, IncludedDiagnosticOutcome, Processor,
+        default_collect_archive_name,
+    },
     receiver::Receiver,
     uploader,
 };
@@ -28,6 +31,7 @@ use std::{
     future::Future,
     io::{IsTerminal, Write},
     path::PathBuf,
+    str::FromStr,
     sync::Arc,
     time::Duration,
 };
@@ -235,12 +239,15 @@ enum HostCommands {
         /// A name to identify this host
         #[arg(help = "A name to identify this host")]
         name: String,
-        /// Application of this host (elasticsearch, kibana, logstash, etc.)
-        #[arg(help = "Application of this host (elasticsearch, kibana, logstash, etc.)")]
-        app: Product,
-        /// A host URL to connect to
-        #[arg(help = "A host URL to connect to")]
-        url: Url,
+        /// A concrete URL or resolved template reference
+        #[arg(help = "A concrete URL, a template definition target, or a resolved template reference")]
+        target: String,
+        /// Application of this host when the target cannot infer it
+        #[arg(help = "Application of this host when the target cannot infer it", long)]
+        app: Option<Product>,
+        /// Treat <target> as a saved host URL template instead of a concrete URL
+        #[arg(help = "Persist <target> as a saved host URL template", long, action = ArgAction::SetTrue)]
+        url_template: bool,
         #[command(flatten)]
         args: HostMutationArgs,
     },
@@ -260,8 +267,8 @@ enum HostCommands {
     List,
     /// Test authentication for a saved host
     Auth {
-        /// Name of the saved host to test
-        name: String,
+        /// Saved host name or resolved template reference to test
+        target: String,
     },
     #[command(external_subcommand)]
     Legacy(Vec<String>),
@@ -549,15 +556,49 @@ fn emit_completion_summary(summary: &str) -> Result<()> {
     Ok(())
 }
 
-fn format_process_summary(report: &DiagnosticReport, runtime_ms: u128) -> String {
+fn format_process_summary(completed: &Completed) -> String {
+    let report = &completed.report;
     let mut summary = format!(
         "process complete in {:.3} seconds: {} documents for {}",
-        runtime_ms as f64 / 1000.0,
+        completed.runtime as f64 / 1000.0,
         report.diagnostic.docs.created,
         report.diagnostic.metadata.id
     );
     if let Some(kibana_link) = report.diagnostic.kibana_link.as_deref() {
         summary.push_str(&format!("\nKibana Link: {kibana_link}"));
+    }
+    for outcome in &completed.included_diagnostics {
+        match outcome {
+            IncludedDiagnosticOutcome::Completed {
+                path, report, runtime, ..
+            } => {
+                summary.push_str(&format!(
+                    "\n\nincluded diagnostic complete in {:.3} seconds: {} documents for {} ({})",
+                    *runtime as f64 / 1000.0,
+                    report.diagnostic.docs.created,
+                    report.diagnostic.metadata.id,
+                    report.diagnostic.product
+                ));
+                summary.push_str(&format!("\nSource: {path}"));
+                if let Some(kibana_link) = report.diagnostic.kibana_link.as_deref() {
+                    summary.push_str(&format!("\nKibana Link: {kibana_link}"));
+                }
+            }
+            IncludedDiagnosticOutcome::Skipped {
+                path, product, reason, ..
+            } => {
+                let product = product
+                    .as_ref()
+                    .map(ToString::to_string)
+                    .unwrap_or_else(|| "unknown".to_string());
+                summary.push_str(&format!(
+                    "\n\nincluded diagnostic skipped: {path} ({product})\nReason: {reason}"
+                ));
+            }
+            IncludedDiagnosticOutcome::Failed { path, error, .. } => {
+                summary.push_str(&format!("\n\nincluded diagnostic failed: {path}\nError: {error}"));
+            }
+        }
     }
     summary
 }
@@ -678,15 +719,43 @@ async fn run(cli: Cli) -> Result<CommandResult> {
                 }
             }
             Commands::Host { command } => match command {
-                HostCommands::Add { name, app, url, args } => {
+                HostCommands::Add {
+                    name,
+                    app,
+                    target,
+                    url_template,
+                    args,
+                } => {
                     tracing::info!("Adding host {name}");
                     if KnownHost::get_known(&name).is_some() {
                         return Err(eyre!("Host '{name}' already exists"));
                     }
-                    let update = build_host_cli_update(args);
-                    let secret_auth = resolve_host_secret_auth(update.secret.as_deref())?;
-                    let host = build_host_from_definition(app, url, &update, secret_auth)?;
-                    let summary = save_validated_host(&name, host, "added").await?;
+                    let mut update = build_host_cli_update(args);
+                    let secret_auth = if update.secret.is_some() {
+                        resolve_host_secret_auth(update.secret.as_deref())?
+                    } else if url_template {
+                        match resolve_same_name_host_secret_auth(&name)? {
+                            Some(secret_auth) => {
+                                tracing::debug!("Using host name {} as secret_id", name);
+                                update.secret = Some(name.clone());
+                                Some(secret_auth)
+                            }
+                            None => None,
+                        }
+                    } else {
+                        None
+                    };
+                    let host = if url_template {
+                        build_host_from_definition(app, &target, true, &update, secret_auth)?
+                    } else if let Some(host) = maybe_materialize_template_target(&target)? {
+                        let merged = host.merge_cli_update(&update, secret_auth)?;
+                        let uri = Uri::try_from(merged.clone())?;
+                        ensure_uri_role(&uri, HostRole::Collect, "host add")?;
+                        merged
+                    } else {
+                        build_host_from_definition(app, &target, false, &update, secret_auth)?
+                    };
+                    let summary = save_host(&name, host.clone(), "added", !host.is_template()).await?;
                     Ok(CommandResult::with_summary("host add", summary))
                 }
                 HostCommands::Update { name, args } => {
@@ -704,7 +773,7 @@ async fn run(cli: Cli) -> Result<CommandResult> {
                         None
                     };
                     let host = existing.merge_cli_update(&update, secret_auth)?;
-                    let summary = save_validated_host(&name, host, "updated").await?;
+                    let summary = save_host(&name, host.clone(), "updated", !host.is_template()).await?;
                     Ok(CommandResult::with_summary("host update", summary))
                 }
                 HostCommands::Remove { name } => {
@@ -720,11 +789,21 @@ async fn run(cli: Cli) -> Result<CommandResult> {
                     render_host_list()?;
                     Ok(CommandResult::without_summary("host list"))
                 }
-                HostCommands::Auth { name } => {
-                    tracing::info!("Testing saved host {name}");
-                    let host = KnownHost::get_known(&name).ok_or_else(|| eyre!("Host '{name}' not found"))?;
+                HostCommands::Auth { target } => {
+                    tracing::info!("Testing saved host {target}");
+                    if let Some(host) = KnownHost::resolve_template_reference(&target)? {
+                        let summary = validate_host_connection(&target, Uri::try_from(host)?).await?;
+                        return Ok(CommandResult::with_summary("host auth", summary));
+                    }
+                    let host = KnownHost::get_known(&target).ok_or_else(|| eyre!("Host '{target}' not found"))?;
+                    if host.is_template() {
+                        return Ok(CommandResult::with_summary(
+                            "host auth",
+                            KnownHost::template_guidance(&target),
+                        ));
+                    }
                     let uri = Uri::try_from(host)?;
-                    let summary = validate_host_connection(&name, uri).await?;
+                    let summary = validate_host_connection(&target, uri).await?;
                     Ok(CommandResult::with_summary("host auth", summary))
                 }
                 HostCommands::Legacy(args) => Err(legacy_host_command_error(&args)),
@@ -901,7 +980,7 @@ async fn run(cli: Cli) -> Result<CommandResult> {
 
                 match processor.process().await {
                     Ok(processor) => {
-                        let summary = format_process_summary(&processor.state.report, processor.state.runtime);
+                        let summary = format_process_summary(&processor.state);
                         Ok(CommandResult::with_summary("process", summary))
                     }
                     Err(processor) => {
@@ -942,6 +1021,7 @@ async fn run(cli: Cli) -> Result<CommandResult> {
                     let es_client = Client::try_from(es_uri)?;
                     tracing::info!("Setting up assets in {es_client}");
                     setup::assets(&es_client).await?;
+                    setup::ensure_agent_builder_license(&es_client).await?;
                     let kb_uri = Uri::try_from_kibana_env()?;
                     let kb_client = Client::try_from(kb_uri)?;
                     tracing::info!("Setting up Kibana assets in {kb_client}");
@@ -1194,19 +1274,51 @@ fn build_host_cli_update(args: HostMutationArgs) -> KnownHostCliUpdate {
     args.into()
 }
 
+fn infer_product_from_url(url: &Url) -> Option<Product> {
+    match url.port_or_known_default() {
+        Some(9200) => Some(Product::Elasticsearch),
+        Some(5601) => Some(Product::Kibana),
+        Some(9600) => Some(Product::Logstash),
+        _ => {
+            let mut segments = url.path_segments()?.filter(|segment| !segment.is_empty());
+            if matches!(segments.next(), Some("api"))
+                && matches!(segments.next(), Some("v1"))
+                && matches!(segments.next(), Some("deployments"))
+            {
+                let _deployment_id = segments.next()?;
+                return Product::from_str(segments.next()?).ok();
+            }
+            None
+        }
+    }
+}
+
 fn build_host_from_definition(
-    app: Product,
-    url: Url,
+    app: Option<Product>,
+    target: &str,
+    use_url_template: bool,
     update: &KnownHostCliUpdate,
     secret_auth: Option<SecretAuth>,
 ) -> Result<KnownHost> {
-    let mut builder = KnownHostBuilder::new(url)
-        .product(app)
-        .accept_invalid_certs(update.accept_invalid_certs.unwrap_or(false))
-        .apikey(update.apikey.clone())
-        .username(update.username.clone())
-        .password(update.password.clone())
-        .secret(update.secret.clone());
+    let mut builder = if use_url_template {
+        KnownHostBuilder::new_template(target.to_string())
+    } else {
+        let url = Url::parse(target).map_err(|err| eyre!("Invalid host target URL: {err}"))?;
+        let inferred_app = infer_product_from_url(&url);
+        let app = app
+            .clone()
+            .or(inferred_app)
+            .ok_or_else(|| eyre!("Target '{target}' does not determine the app. Rerun with `--app <app>`."))?;
+        KnownHostBuilder::new(url).product(app)
+    }
+    .accept_invalid_certs(update.accept_invalid_certs.unwrap_or(false))
+    .apikey(update.apikey.clone())
+    .username(update.username.clone())
+    .password(update.password.clone())
+    .secret(update.secret.clone());
+    if let Some(app) = app {
+        builder = builder.product(app);
+    }
     if let Some(roles) = update.roles.clone() {
         builder = builder.roles(roles);
     }
@@ -1216,12 +1328,21 @@ fn build_host_from_definition(
     }
 }
 
-async fn save_validated_host(name: &str, host: KnownHost, action: &str) -> Result<String> {
-    let uri = Uri::try_from(host.clone())?;
-    let validation_summary = validate_host_connection(name, uri).await?;
+fn maybe_materialize_template_target(target: &str) -> Result<Option<KnownHost>> {
+    KnownHost::resolve_template_reference(target)
+}
+
+async fn save_host(name: &str, host: KnownHost, action: &str, validate_connection: bool) -> Result<String> {
+    if validate_connection {
+        let uri = Uri::try_from(host.clone())?;
+        let validation_summary = validate_host_connection(name, uri).await?;
+        let hostfile = host.save(name)?;
+        tracing::info!("Host {name} successfully saved to {hostfile}");
+        return Ok(format!("{validation_summary}\nHost '{name}' {action} in {hostfile}"));
+    }
     let hostfile = host.save(name)?;
     tracing::info!("Host {name} successfully saved to {hostfile}");
-    Ok(format!("{validation_summary}\nHost '{name}' {action} in {hostfile}"))
+    Ok(format!("Host '{name}' {action} in {hostfile}"))
 }
 
 fn render_host_list() -> Result<()> {
@@ -1250,7 +1371,7 @@ fn legacy_host_command_error(args: &[String]) -> eyre::Report {
         format!("esdiag host {}", args.join(" "))
     };
     eyre!(
-        "Legacy positional host syntax is no longer supported. Use `esdiag host add <name> <app> <url>` to create a host, `esdiag host update <name>` to modify one, `esdiag host remove <name>` to delete one, `esdiag host list` to inspect saved hosts, or `esdiag host auth <name>` to test a saved host. Received: `{attempted}`"
+        "Legacy positional host syntax is no longer supported. Use `esdiag host add <name> <target> [--app <app>]` to create a host, `esdiag host update <name>` to modify one, `esdiag host remove <name>` to delete one, `esdiag host list` to inspect saved hosts, or `esdiag host auth <target>` to test a saved host or resolved template reference. Received: `{attempted}`"
     )
 }
 
@@ -1483,6 +1604,13 @@ fn resolve_host_secret_auth(secret_id: Option<&str>) -> Result<Option<SecretAuth
     Ok(Some(secret_auth))
 }
 
+fn resolve_same_name_host_secret_auth(host_name: &str) -> Result<Option<SecretAuth>> {
+    let Ok(keystore_password) = get_password_for_secret_commands() else {
+        return Ok(None);
+    };
+    resolve_secret_auth(host_name, &keystore_password)
+}
+
 fn host_connection_uses_receiver(uri: &Uri) -> bool {
     matches!(uri, Uri::ElasticCloudAdmin(_) | Uri::ElasticGovCloudAdmin(_))
 }
@@ -1584,7 +1712,7 @@ mod tests {
     use clap::Parser;
     use esdiag::data::{HostRole, JobAction, KnownHost, Product, SecretAuth, UnlockStatus, Uri, upsert_secret_auth};
     use esdiag::processor::diagnostic::DiagnosticReportBuilder;
-    use esdiag::processor::{CollectionResult, DiagnosticManifest, Identifiers};
+    use esdiag::processor::{CollectionResult, Completed, DiagnosticManifest, Identifiers, IncludedDiagnosticOutcome};
     #[cfg(feature = "server")]
     use esdiag::server::RuntimeMode;
     use std::sync::{
@@ -1643,8 +1771,9 @@ mod tests {
             "host",
             "add",
             "prod-es",
-            "elasticsearch",
             "http://localhost:9200",
+            "--app",
+            "elasticsearch",
             "--roles",
             "collect,send",
         ]);
@@ -2207,7 +2336,12 @@ mod tests {
             .build()
             .expect("report");
         report.add_kibana_link("https://kb.example/app/dashboards#/view/report".to_string());
-        let summary = format_process_summary(&report, 1_234);
+        let completed = Completed {
+            report,
+            runtime: 1_234,
+            included_diagnostics: vec![],
+        };
+        let summary = format_process_summary(&completed);
 
         let mut buffer = Vec::new();
         write_completion_summary(&mut buffer, &summary).expect("write summary");
@@ -2218,10 +2352,83 @@ mod tests {
     }
 
     #[test]
+    fn process_summary_includes_child_outcomes_for_parent_bundles() {
+        let parent_manifest = DiagnosticManifest::new(
+            "2024-01-01T00:00:00Z".to_string(),
+            Some("esdiag-test".to_string()),
+            None,
+            None,
+            Some("support".to_string()),
+            Product::ECK,
+            Some("eck-diagnostics".to_string()),
+            Some("esdiag".to_string()),
+            Some("3.0.0".to_string()),
+        );
+        let parent_report = DiagnosticReportBuilder::try_from(parent_manifest)
+            .expect("parent report builder")
+            .receiver("Directory /tmp/eck".to_string())
+            .product(Product::ECK)
+            .build()
+            .expect("parent report");
+
+        let child_manifest = DiagnosticManifest::new(
+            "2024-01-01T00:00:00Z".to_string(),
+            Some("esdiag-test".to_string()),
+            None,
+            None,
+            Some("standard".to_string()),
+            Product::Elasticsearch,
+            Some("elasticsearch_diagnostic".to_string()),
+            Some("esdiag".to_string()),
+            Some("9.3.3".to_string()),
+        );
+        let mut child_report = DiagnosticReportBuilder::try_from(child_manifest)
+            .expect("child report builder")
+            .receiver("Directory /tmp/eck/child".to_string())
+            .product(Product::Elasticsearch)
+            .build()
+            .expect("child report");
+        child_report.diagnostic.docs.created = 42;
+        child_report.add_kibana_link("https://kb.example/app/dashboards#/view/child".to_string());
+
+        let completed = Completed {
+            report: parent_report,
+            runtime: 2_000,
+            included_diagnostics: vec![
+                IncludedDiagnosticOutcome::Completed {
+                    job_id: 1,
+                    path: "child-es".to_string(),
+                    report: Box::new(child_report),
+                    runtime: 500,
+                },
+                IncludedDiagnosticOutcome::Skipped {
+                    job_id: 2,
+                    path: "child-kibana".to_string(),
+                    product: Some(Product::Kibana),
+                    reason: "Kibana processing is not yet implemented".to_string(),
+                },
+                IncludedDiagnosticOutcome::Failed {
+                    job_id: 3,
+                    path: "child-missing".to_string(),
+                    error: "manifest missing".to_string(),
+                },
+            ],
+        };
+
+        let summary = format_process_summary(&completed);
+
+        assert!(summary.contains("included diagnostic complete in 0.500 seconds: 42 documents"));
+        assert!(summary.contains("child-es"));
+        assert!(summary.contains("https://kb.example/app/dashboards#/view/child"));
+        assert!(summary.contains("included diagnostic skipped: child-kibana (Kibana)"));
+        assert!(summary.contains("included diagnostic failed: child-missing"));
+    }
+
+    #[test]
     fn elastic_cloud_admin_hosts_validate_via_receiver() {
         let uri = Uri::ElasticCloudAdmin(KnownHost::new_legacy_apikey(
             Product::Elasticsearch,
-            Url::parse("https://admin.found.no/api/v1/deployments/test/elasticsearch/main-elasticsearch/proxy")
+            Url::parse("https://admin.found.no/api/v1/deployments/test/elasticsearch/main-elasticsearch/proxy/")
                 .expect("valid url"),
             vec![HostRole::Collect],
             None,
@@ -2279,6 +2486,23 @@ mod tests {
 
         let resolved = resolve_host_secret_auth(Some("basic-secret")).expect("resolve auth");
         assert!(matches!(resolved, Some(SecretAuth::Basic { .. })));
+    }
+
+    #[test]
+    fn host_secret_auth_resolution_reads_named_secret() {
+        let _guard = env_lock().lock().expect("env lock");
+        let _tmp = setup_env();
+        upsert_secret_auth(
+            "host-fallback",
+            SecretAuth::ApiKey {
+                apikey: "secret-key".to_string(),
+            },
+            "pw",
+        )
+        .expect("save fallback secret");
+
+        let resolved = resolve_host_secret_auth(Some("host-fallback")).expect("resolve auth");
+        assert!(matches!(resolved, Some(SecretAuth::ApiKey { .. })));
     }
 
     #[cfg(feature = "server")]

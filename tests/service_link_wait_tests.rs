@@ -29,7 +29,7 @@ use std::{io::Cursor, net::SocketAddr, sync::Arc, time::Duration};
 use tokio::{net::TcpListener, sync::oneshot, time::sleep};
 use url::Url;
 
-const UPLOAD_FILENAME: &str = "elasticsearch-api-diagnostics-9.1.3.zip";
+const UPLOAD_FILENAME: &str = "elasticsearch-api-diagnostics-9.3.3.zip";
 
 /// Returns real upload credentials from environment variables for `#[ignore]`d
 /// network tests. Panics with a helpful message if the variables are unset.
@@ -149,7 +149,7 @@ async fn service_link_wait_for_completion_processes_synchronously() {
     let zip_bytes = Bytes::from(
         std::fs::read(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/tests/archives/elasticsearch-api-diagnostics-9.1.3.zip"
+            "/tests/archives/elasticsearch-api-diagnostics-9.3.3.zip"
         ))
         .expect("test archive should be readable"),
     );
@@ -370,18 +370,21 @@ async fn service_link_endpoint_returns_diagnostic_when_wait_for_completion() {
 
     let body: serde_json::Value = response.json().await.expect("response should be JSON");
 
+    let entries = body.as_array().expect("response should be a JSON array");
+    let first = entries.first().expect("response should contain at least one result");
     assert!(
-        body["diagnostic_id"].as_str().is_some_and(|s| !s.is_empty()),
+        first["diagnostic_id"].as_str().is_some_and(|s| !s.is_empty()),
         "response should contain non-empty diagnostic_id, got: {body}"
     );
     assert!(
-        body["kibana_link"].is_string(),
+        first["kibana_link"].is_string(),
         "response should contain kibana_link, got: {body}"
     );
     assert!(
-        body["took"].is_number(),
+        first["took"].is_number(),
         "response should contain took (milliseconds), got: {body}"
     );
+    assert_eq!(first["status"], "success");
 
     server.shutdown().await;
 }

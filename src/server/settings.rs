@@ -417,15 +417,13 @@ mod tests {
                         saw_secure_revert = true;
                     }
                 }
-                ServerEvent::AppendBody(html) => {
-                    if html.contains("keystore-unlock-modal") {
-                        saw_unlock_modal = true;
-                    }
+                ServerEvent::AppendBody(html) if html.contains("keystore-unlock-modal") => {
+                    saw_unlock_modal = true;
                 }
-                ServerEvent::ExecuteScript(script) => {
-                    if script.contains("Unlock it before selecting secure saved outputs") {
-                        saw_unlock_message = true;
-                    }
+                ServerEvent::ExecuteScript(script)
+                    if script.contains("Unlock it before selecting secure saved outputs") =>
+                {
+                    saw_unlock_message = true;
                 }
                 _ => {}
             }
@@ -519,10 +517,10 @@ mod tests {
                         saw_secure_revert = true;
                     }
                 }
-                ServerEvent::ExecuteScript(script) => {
-                    if script.contains("collector-only") && script.contains("send-capable host") {
-                        saw_error = true;
-                    }
+                ServerEvent::ExecuteScript(script)
+                    if script.contains("collector-only") && script.contains("send-capable host") =>
+                {
+                    saw_error = true;
                 }
                 _ => {}
             }

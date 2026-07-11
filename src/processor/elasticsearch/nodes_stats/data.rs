@@ -7,7 +7,7 @@ use super::super::DataSource;
 use super::super::nodes::NodeDocument;
 use crate::data::option_map_as_vec_entries;
 use eyre::Result;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::value::RawValue;
 use serde_with::skip_serializing_none;
 use std::collections::{HashMap, HashSet};
@@ -119,20 +119,20 @@ pub struct NodeStats {
     breakers: Box<RawValue>,
     pub discovery: Box<RawValue>,
     pub fs: Filesystem,
-    host: Option<Box<RawValue>>,
+    host: Option<String>,
     pub http: Box<RawValue>,
-    indexing_pressure: Box<RawValue>,
+    indexing_pressure: Option<Box<RawValue>>,
     indices: Box<RawValue>,
     pub ingest: Ingest,
     ip: Option<Box<RawValue>>,
     jvm: Box<RawValue>,
-    name: Box<RawValue>,
+    name: String,
     os: NodeOs,
     process: Box<RawValue>,
     repositories: Option<Box<RawValue>>,
     pub roles: HashSet<String>,
     script: Box<RawValue>,
-    script_cache: Box<RawValue>,
+    script_cache: Option<Box<RawValue>>,
     thread_pool: Box<RawValue>,
     pub transport: Option<Box<RawValue>>,
     transport_address: Option<Box<RawValue>>,
@@ -193,8 +193,7 @@ pub struct CpuStats {
 impl NodeStats {
     pub fn calculate_stats(&mut self, processors: usize) {
         self.fs.total.used_in_bytes = self.fs.total.total_in_bytes - self.fs.total.free_in_bytes;
-        self.fs.total.used_percent =
-            (self.fs.total.used_in_bytes * 100) / self.fs.total.total_in_bytes;
+        self.fs.total.used_percent = (self.fs.total.used_in_bytes * 100) / self.fs.total.total_in_bytes;
         if let Some(load_average) = &self.os.cpu.load_average {
             self.os.cpu.load_percent.one = (load_average.one * 100.0) as usize / processors;
             self.os.cpu.load_percent.five = (load_average.five * 100.0) as usize / processors;
@@ -203,6 +202,14 @@ impl NodeStats {
     }
 
     pub fn enrich_from_lookup(&mut self, node: &NodeDocument) {
+        if node.attributes.is_some() {
+            self.attributes = node.attributes.clone();
+        }
+        if node.host.is_some() {
+            self.host = node.host.clone();
+        }
+        self.name = node.name.clone();
+        self.roles = node.roles.clone();
         self.os.enrich_from_lookup(node);
     }
 }
@@ -268,10 +275,35 @@ pub struct IngestPipeline {
     pub processors: Option<IngestProcessors>,
 }
 
-#[derive(Deserialize)]
 pub struct IngestProcessor {
-    pub r#type: String,
+    pub r#type: Option<String>,
     pub stats: IngestProcessorStats,
+}
+
+impl<'de> Deserialize<'de> for IngestProcessor {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum IngestProcessorFormat {
+            Current {
+                #[serde(rename = "type")]
+                r#type: String,
+                stats: IngestProcessorStats,
+            },
+            Legacy(IngestProcessorStats),
+        }
+
+        match IngestProcessorFormat::deserialize(deserializer)? {
+            IngestProcessorFormat::Current { r#type, stats } => Ok(Self {
+                r#type: Some(r#type),
+                stats,
+            }),
+            IngestProcessorFormat::Legacy(stats) => Ok(Self { r#type: None, stats }),
+        }
+    }
 }
 
 #[derive(Deserialize, Serialize)]
@@ -285,5 +317,51 @@ pub struct IngestProcessorStats {
 impl DataSource for NodesStats {
     fn name() -> String {
         "nodes_stats".to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::IngestProcessor;
+
+    #[test]
+    fn ingest_processor_deserializes_current_shape() {
+        let processor: IngestProcessor = serde_json::from_str(
+            r#"{
+              "type": "set",
+              "stats": {
+                "count": 1,
+                "time_in_millis": 2,
+                "current": 3,
+                "failed": 4
+              }
+            }"#,
+        )
+        .expect("current ingest processor shape");
+
+        assert_eq!(processor.r#type.as_deref(), Some("set"));
+        assert_eq!(processor.stats.count, 1);
+        assert_eq!(processor.stats.time_in_millis, 2);
+        assert_eq!(processor.stats.current, 3);
+        assert_eq!(processor.stats.failed, 4);
+    }
+
+    #[test]
+    fn ingest_processor_deserializes_legacy_stats_shape() {
+        let processor: IngestProcessor = serde_json::from_str(
+            r#"{
+              "count": 1,
+              "time_in_millis": 2,
+              "current": 3,
+              "failed": 4
+            }"#,
+        )
+        .expect("legacy ingest processor shape");
+
+        assert_eq!(processor.r#type, None);
+        assert_eq!(processor.stats.count, 1);
+        assert_eq!(processor.stats.time_in_millis, 2);
+        assert_eq!(processor.stats.current, 3);
+        assert_eq!(processor.stats.failed, 4);
     }
 }

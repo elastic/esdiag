@@ -12,6 +12,7 @@
                 <option value="ECK" {% if host.app == "ECK" %}selected{% endif %}>ECK</option>
                 <option value="ElasticCloudHosted" {% if host.app == "ElasticCloudHosted" %}selected{% endif %}>ElasticCloudHosted</option>
                 <option value="KubernetesPlatform" {% if host.app == "KubernetesPlatform" %}selected{% endif %}>KubernetesPlatform</option>
+                <option value="Unknown" {% if host.app == "Unknown" %}selected{% endif %}>Unknown</option>
             </select>
         </form-input>
     </td>
@@ -41,12 +42,36 @@
     <td>
         <form-input>
             <input
-                type="url"
+                type="text"
                 data-bind:hosts.rows.{{ row_id }}.draft.url
                 data-on:keydown="if (evt.key === 'Enter') { evt.preventDefault(); @post('/settings/host/update/{{ row_id }}', {filterSignals: {include: /^hosts\.rows\.{{ row_id }}(\.|$)/}}); }"
                 required
             />
         </form-input>
+        <choice-row>
+            <input
+                id="host-url-template-toggle-{{ row_id }}"
+                type="checkbox"
+                class="switch"
+                {% if host.url_template %}checked{% endif %}
+                data-attr:checked="$hosts.rows.{{ row_id }}.draft.url_template || null"
+                data-on:change="$hosts.rows.{{ row_id }}.draft.url_template = evt.target.checked"
+            />
+            <switch-clip>
+                <switch-glyphs data-class="{'switch-on': $hosts.rows.{{ row_id }}.draft.url_template, 'switch-off': !$hosts.rows.{{ row_id }}.draft.url_template}">
+                    <svg viewBox="0 0 50 20" aria-hidden="true" focusable="false">
+                        <path class="glyph" d="M2 9 L6 13 L13 6"></path>
+                        <circle class="glyph filled" cx="26" cy="10" r="7"></circle>
+                        <path class="glyph" d="M41 6 L49 14 M49 6 L41 14"></path>
+                    </svg>
+                </switch-glyphs>
+            </switch-clip>
+            <label for="host-url-template-toggle-{{ row_id }}">
+                <span data-text="$hosts.rows.{{ row_id }}.draft.url_template ? 'Template URL' : 'Concrete URL'">
+                    {% if host.url_template %}Template URL{% else %}Concrete URL{% endif %}
+                </span>
+            </label>
+        </choice-row>
     </td>
     <td>
         <button type="button" {% if keystore_locked %}disabled{% endif %} title="Save host" aria-label="Save host {{ host.name }}" data-on:click="@post('/settings/host/update/{{ row_id }}', {filterSignals: {include: /^hosts\.rows\.{{ row_id }}(\.|$)/}})">
@@ -66,7 +91,7 @@
     <td class="host-product-column">{{ host.app }}</td>
     <td>{% if host.secret.is_empty() %}-none-{% else %}{{ host.secret }}{% endif %}</td>
     <td>{% if host.accept_invalid_certs %}<span class="certificate-status-insecure">Insecure</span>{% else %}Secure{% endif %}</td>
-    <td>{{ host.url }}</td>
+    <td>{% if host.url_template %}Template URL: {% else %}URL: {% endif %}{{ host.url }}</td>
     <td>
         <button type="button" {% if keystore_locked %}disabled{% endif %} title="Edit host" aria-label="Edit host {{ host.name }}" data-on:click="@post('/settings/host/read/{{ row_id }}')">
             <icon-pencil></icon-pencil>

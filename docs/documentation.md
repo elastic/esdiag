@@ -1,3 +1,10 @@
+---
+type: Guide
+title: ESDiag Documentation
+description: Entry point for ESDiag user and maintainer documentation.
+tags: [docs, overview]
+---
+
 # ESDiag Documentation
 
 Welcome to the documentation for ESDiag.

@@ -2,15 +2,6 @@ name: Desktop Artifacts
 
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - "tauri.conf.json"
-      - "packaging/**"
-      - "bin/verify-desktop-config.sh"
-      - "bin/normalize-cargo-version-for-msi.sh"
-      - "bin/build-flatpak-local.sh"
-      - "bin/validate-desktop-artifacts.sh"
-      - ".github/workflows/desktop-artifacts.yml"
 
 jobs:
   verify-config:
@@ -23,7 +14,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y jq
 
       - name: Verify desktop configuration
-        run: bash bin/verify-desktop-config.sh
+        run: bash desktop/scripts/verify-desktop-config.sh
 
   build-macos:
     runs-on: macos-latest
@@ -64,7 +55,7 @@ jobs:
 
       - name: Normalize Cargo version for MSI
         shell: bash
-        run: bash bin/normalize-cargo-version-for-msi.sh Cargo.toml
+        run: bash desktop/scripts/normalize-cargo-version-for-msi.sh Cargo.toml
 
       - name: Install Tauri CLI
         run: cargo install tauri-cli --locked
@@ -102,7 +93,7 @@ jobs:
           flatpak install --user -y flathub org.gnome.Platform//49 org.gnome.Sdk//49 org.freedesktop.Sdk.Extension.rust-stable//25.08
 
       - name: Build local Flatpak artifact
-        run: bash bin/build-flatpak-local.sh
+        run: bash desktop/scripts/build-flatpak-local.sh
 
       - name: Stage Flatpak artifact
         run: |
@@ -144,4 +135,4 @@ jobs:
           path: target/artifacts/flatpak
 
       - name: Validate required desktop artifacts
-        run: bash bin/validate-desktop-artifacts.sh target/artifacts
+        run: bash desktop/scripts/validate-desktop-artifacts.sh target/artifacts

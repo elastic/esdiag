@@ -80,7 +80,7 @@ pub struct JobBuilder<State> {
 
 pub type SavedJobs = IndexMap<String, Job>;
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Default, Deserialize, Serialize)]
 #[serde(default)]
 pub struct JobSignals {
     pub collect: JobSignalsCollect,
@@ -161,16 +161,6 @@ impl Default for JobSignalsSend {
             remote_target: String::new(),
             local_target: String::new(),
             local_directory: String::new(),
-        }
-    }
-}
-
-impl Default for JobSignals {
-    fn default() -> Self {
-        Self {
-            collect: JobSignalsCollect::default(),
-            process: JobSignalsProcess::default(),
-            send: JobSignalsSend::default(),
         }
     }
 }

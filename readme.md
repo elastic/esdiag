@@ -3,42 +3,47 @@ Elastic Stack Diagnostics
 
 Elastic Stack Diagnostics (`esdiag`) simplifies processing and importing diagnostic bundles into Elasticsearch. It pre-processes, splits and enriches the raw API outputs into Elasticsearch-friendly JSON documents. This makes using diagnostic data for Kibana dashboards, ES|QL queries, and more, easy.
 
-Desktop packaging guidance (macOS, Windows `.msi`, Linux Flatpak local builds) is documented in `docs/desktop/packaging.md`.
+Desktop packaging guidance (macOS, Windows `.msi`, Linux Flatpak local builds) is documented in `docs/build/desktop-packaging.md`.
 
 Running locally within containers
 ----------------------------------
 
 ### 1. Preparation
 
-Use the `bin/esdiag-control` command to quickly spin up a fully-local environment.
+Use the standalone `esdiag-local` release artifact to run the official ESDiag
+image without cloning this repository. Visit [ela.st/esdiag-local](https://ela.st/esdiag-local),
+download the `esdiag-local` asset, make it executable, and run:
 
-1. Clone this repository to your local machine using either `git` or [GitHub Desktop](https://desktop.github.com/download/)
-2. Install the `esdiag-control` dependencies: `docker`, `jq`, `curl`, `grep`, and `sed`.
-3. Have either `podman` or `docker` container runtime with `compose` subcommand support.
-4. Have at least 8GB of total RAM available for the containers
+```sh
+./esdiag-local up
+```
+
+The script prefers Podman and falls back to Docker; either runtime needs Compose
+support and at least 8 GB of available memory. It writes restrictive generated
+state to `~/.esdiag/local`, binds all ports to loopback, and enables security by
+default. See [the standalone local stack guide](docs/bin/esdiag-local.md) for
+commands, credentials, updates, upgrades, and reset behavior.
+
+Repository contributors and users who need an auditable source build should
+clone this repository and run `./bin/esdiag-control up`. That command builds the
+local image and delegates lifecycle management to `esdiag-local`, using isolated
+state under `target/esdiag-local`.
 
 > [!IMPORTANT]
 > By default containers running on Linux can typically access the host's total available memory, so the 8GB requirement applies to the host machine. On MacOS and Windows the containers run inside a virtual machine that commonly has less than 8GB RAM by default. Both the Docker and Podman Desktop apps have a `resources` section to configure it. Podman also has a command-line option: `podman machine set --cpus 8 --memory 8192`
 
 ### 2. Running
 
-Run the script from this repository's root directory:
+Run the standalone artifact from any directory:
 
 ```sh
-./bin/esdiag-control up
+./esdiag-local up
 ```
 
 > [!TIP]
-> When running security enabled, the `elastic` user's password will be saved to the `ELASTIC_PASSWORD` environment variable in the `.env` file. It will be printed last, before the browser is launched.
-
-or with security disabled:
-
-```sh
-./bin/esdiag-control up --insecure
-```
-
-> [!NOTE]
-> The AI assistant features will not be available with security disabled. Running with security disabled prevents Kibana from using an Kibana encryption key, which is required to configure anything with an external API key, like large-language model (LLM) providers.
+> Elastic security is always enabled because the AI assistant and related Kibana
+> assets require it. Retrieve the generated `elastic` password with
+> `./esdiag-local secrets password`.
 
 Once the script is complete, you will have:
 1. A single Elasticsearch node with all index templates installed.
@@ -126,7 +131,7 @@ Usage
 
 1. Save a target Elasticsearch cluster to the hosts configuration
     ```sh
-    esdiag host my_cluster elasticsearch http://localhost:9200
+    esdiag host add my_cluster http://localhost:9200 --app elasticsearch
     ```
 
 2. Setup the Elasticsearch cluster with the templates, data streams, etc.
@@ -180,27 +185,67 @@ Manage saved host connections in `~/.esdiag/hosts.yml`
 Usage: esdiag host <COMMAND>
 
 Commands:
-  add <NAME> <APP> <URL>   Add a saved host
+  add <NAME> <TARGET>      Add a saved host
   update <NAME>            Update an existing saved host
   remove <NAME>            Remove an existing saved host
   list                     List all saved hosts
-  auth <NAME>              Test authentication for a saved host
+  auth <TARGET>            Test authentication for a saved host or resolved template reference
 ```
 
 Examples:
 
 ```sh
 # Host backed by a keystore secret reference
-esdiag host add prod-es elasticsearch http://localhost:9200 --secret prod-es-apikey
+esdiag host add prod-es http://localhost:9200 --app elasticsearch --secret prod-es-apikey
 
 # Host with explicit roles for workflow filtering
-esdiag host add prod-es elasticsearch http://localhost:9200 --roles collect,send
+esdiag host add prod-es http://localhost:9200 --app elasticsearch --roles collect,send
+
+# Reusable Elastic Cloud template host
+esdiag host add elastic-cloud \
+  "https://cloud.elastic.co/api/v1/deployments/{id}/elasticsearch/_main/proxy/" \
+  --url-template
+
+# Same-name secret is used automatically for template hosts when available
+esdiag host add cloud-admin \
+  "https://admin.cloud.com/api/v1/deployments/{id}/elasticsearch/_main/proxy/" \
+  --url-template
+
+# Elastic Cloud admin can use `_main` for single-resource deployments
+esdiag host add cloud-admin-legacy \
+  "https://admin.found.no/api/v1/deployments/{id}/elasticsearch/_main/proxy/" \
+  --url-template
+
+# Reusable ECE template host
+esdiag keystore add ece_admin --apikey
+esdiag host add ece \
+  "https://coord.example.com:12443/api/v1/clusters/elasticsearch/{id}/{product}/_proxy" \
+  --url-template \
+  --secret ece_admin
+
+# Resolve a template reference directly; omitted product defaults to elasticsearch
+esdiag host auth elastic-cloud://1234
+
+# Materialize a concrete saved host from a template reference
+esdiag host add prod-es elastic-cloud://1234/elasticsearch
 
 # Update only the saved certificate setting in place
 esdiag host update prod-es --accept-invalid-certs false
 
 # Delete a saved host
 esdiag host remove prod-es
+```
+
+Template notes:
+
+- Template-backed hosts persist `url_template` instead of a concrete `url`.
+- `esdiag host add <name> ... --url-template` will use a same-name keystore secret by default when one already exists and `--secret` is omitted.
+- Supported placeholders are `{id}` and `{product}`.
+- Template host names should be lowercase and scheme-compatible so they can be resolved as `<template>://<id>/<product>`.
+- Bare template names return guidance instead of attempting a connection test:
+
+```sh
+esdiag host auth elastic-cloud
 ```
 
 #### Keystore

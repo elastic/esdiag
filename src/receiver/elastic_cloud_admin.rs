@@ -3,7 +3,7 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::super::processor::{DataSource, DiagnosticManifest, ElasticsearchCluster, ManifestBuilder, SourceContext};
-use super::{Receive, ReceiveRaw};
+use super::{LONG_RUNNING_REQUEST_TIMEOUT, RawResponse, Receive, ReceiveRaw};
 use crate::data::{Auth, KnownHost};
 use eyre::{Result, eyre};
 use reqwest::header::{ACCEPT, ACCEPT_ENCODING, AUTHORIZATION};
@@ -14,15 +14,18 @@ use url::Url;
 
 use std::sync::Arc;
 use std::time::Duration;
+use std::time::Instant;
 use tokio::sync::OnceCell;
 
 const ELASTIC_CLOUD_ADMIN_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
-const ELASTIC_CLOUD_ADMIN_REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct ElasticCloudAdminRequestError {
     pub status: reqwest::StatusCode,
     pub body: String,
+    pub response_time_ms: u64,
+    pub response_size_bytes: u64,
 }
 
 impl std::fmt::Display for ElasticCloudAdminRequestError {
@@ -69,7 +72,9 @@ impl ElasticCloudAdminReceiver {
         let client = ClientBuilder::new()
             .default_headers(default_headers)
             .connect_timeout(ELASTIC_CLOUD_ADMIN_CONNECT_TIMEOUT)
-            .timeout(ELASTIC_CLOUD_ADMIN_REQUEST_TIMEOUT)
+            // Cloud Admin collection proxies Elasticsearch APIs that can spend
+            // minutes building large payloads before response headers arrive.
+            .timeout(LONG_RUNNING_REQUEST_TIMEOUT)
             .build()?;
         Ok(Self {
             client,
@@ -83,13 +88,18 @@ impl ElasticCloudAdminReceiver {
             .get_or_try_init(|| async {
                 tracing::debug!("Fetching version from {}", self.url);
                 let url = self.proxy_url("/")?;
+                let started = Instant::now();
                 let response = self.client.get(url).send().await?;
                 let status = response.status();
                 let body = response.text().await?;
+                let response_time_ms = started.elapsed().as_millis() as u64;
+                let response_size_bytes = body.len() as u64;
                 if !status.is_success() {
                     return Err(ElasticCloudAdminRequestError {
                         status,
                         body: Self::format_error_body(&body),
+                        response_time_ms,
+                        response_size_bytes,
                     }
                     .into());
                 }
@@ -104,8 +114,9 @@ impl ElasticCloudAdminReceiver {
             .await
     }
 
-    pub async fn get_raw_by_path(&self, path: &str, extension: &str) -> Result<String> {
+    pub async fn get_raw_response_by_path(&self, path: &str, extension: &str) -> Result<RawResponse> {
         tracing::debug!("Getting raw Elastic Cloud Admin API path: {}", path);
+        let started = Instant::now();
 
         let accept = if extension == ".txt" {
             "text/plain"
@@ -116,15 +127,30 @@ impl ElasticCloudAdminReceiver {
         let response = self.client.get(url).header(ACCEPT, accept).send().await?;
         let status = response.status();
         let body = response.text().await?;
+        let response_time_ms = started.elapsed().as_millis() as u64;
+        let response_size_bytes = body.len() as u64;
         if !status.is_success() {
             return Err(ElasticCloudAdminRequestError {
                 status,
                 body: Self::format_error_body(&body),
+                response_time_ms,
+                response_size_bytes,
             }
             .into());
         }
 
-        Ok(body)
+        Ok(RawResponse {
+            body,
+            status: Some(status.as_u16()),
+            response_time_ms,
+            response_size_bytes,
+        })
+    }
+
+    pub async fn get_raw_by_path(&self, path: &str, extension: &str) -> Result<String> {
+        self.get_raw_response_by_path(path, extension)
+            .await
+            .map(|response| response.body)
     }
 }
 
@@ -132,7 +158,7 @@ impl TryFrom<KnownHost> for ElasticCloudAdminReceiver {
     type Error = eyre::Report;
 
     fn try_from(host: KnownHost) -> Result<Self> {
-        let url = host.get_url();
+        let url = host.get_url()?;
         match host.get_auth()? {
             Auth::Apikey(apikey) => Ok(ElasticCloudAdminReceiver::new(url, apikey)?),
             _ => Err(eyre::eyre!("Elastic Cloud Admin requires a URL and ApiKey")),
@@ -189,6 +215,7 @@ impl Receive for ElasticCloudAdminReceiver {
         let source_path = T::resolve_source_request_path(&ctx)?;
         let url = self.proxy_url(&source_path)?;
         tracing::debug!("Getting API: {}", url);
+        let started = Instant::now();
         let response = self.client.get(url).send().await?;
         let status = response.status();
         let body = response.text().await?;
@@ -196,6 +223,8 @@ impl Receive for ElasticCloudAdminReceiver {
             return Err(ElasticCloudAdminRequestError {
                 status,
                 body: Self::format_error_body(&body),
+                response_time_ms: started.elapsed().as_millis() as u64,
+                response_size_bytes: body.len() as u64,
             }
             .into());
         }
@@ -220,10 +249,17 @@ impl ReceiveRaw for ElasticCloudAdminReceiver {
     where
         T: DataSource,
     {
+        self.get_raw_response::<T>().await.map(|response| response.body)
+    }
+
+    async fn get_raw_response<T>(&self) -> Result<RawResponse>
+    where
+        T: DataSource,
+    {
         let ctx = SourceContext::new("elasticsearch", self.get_version().await.ok().cloned());
         let source_path = T::resolve_source_request_path(&ctx)?;
         let extension = T::resolve_source_extension(&ctx)?;
-        self.get_raw_by_path(&source_path, &extension).await
+        self.get_raw_response_by_path(&source_path, &extension).await
     }
 }
 

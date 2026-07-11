@@ -145,6 +145,51 @@ impl ElasticsearchExporter {
         .map_err(|_| eyre!("Request timeout for {method:?} {path}"))?
         .map_err(|e| e.into())
     }
+
+    async fn send_value_batch(&self, index: String, values: Vec<Arc<Value>>) -> Result<BatchResponse> {
+        let config = RetryConfig::from_env();
+        let mut retries: u16 = 0;
+
+        for attempt in 0..=config.max_retries {
+            let batch: Vec<BulkOperation<Arc<Value>>> = values
+                .iter()
+                .map(|doc| BulkOperation::create(Arc::clone(doc)).pipeline("esdiag").into())
+                .collect();
+
+            let response = timeout(
+                Self::request_timeout(),
+                self.client.bulk(BulkParts::Index(&index)).body(batch).send(),
+            )
+            .await
+            .map_err(|_| eyre!("Timed out sending bulk request to {} for index {}", self.url, index))?;
+
+            match parse_response(index.clone(), response, retries).await {
+                Ok(batch_response) => return Ok(batch_response),
+                Err(ExporterError::RateLimited) if attempt < config.max_retries => {
+                    let sleep_ms = backoff_ms(attempt, &config);
+                    tracing::warn!(
+                        "{index} - http 429, retry {}/{}, sleeping {sleep_ms}ms",
+                        u32::from(attempt) + 1,
+                        config.max_retries,
+                    );
+                    tokio::time::sleep(Duration::from_millis(sleep_ms)).await;
+                    retries += 1;
+                }
+                Err(ExporterError::RateLimited) => {
+                    tracing::error!(
+                        "{index} - http 429, batch dropped after {} attempts",
+                        u32::from(config.max_retries) + 1,
+                    );
+                    let mut response = BatchResponse::failed(values.len() as u32, 429);
+                    response.retries = retries;
+                    return Ok(response);
+                }
+                Err(ExporterError::Fatal(e)) => return Err(e),
+            }
+        }
+
+        unreachable!("retry loop always returns within attempt bounds")
+    }
 }
 
 impl TryFrom<KnownHost> for ElasticsearchExporter {
@@ -153,7 +198,7 @@ impl TryFrom<KnownHost> for ElasticsearchExporter {
     fn try_from(host: KnownHost) -> Result<Self> {
         let kibana_base_url = super::saved_viewer_kibana_base_url(&host).or_else(super::kibana_base_url_from_env);
         let requires_secret = !matches!(host.get_auth()?, Auth::None);
-        let url = host.get_url();
+        let url = host.get_url()?;
         let client = ElasticsearchClient::try_from(host)?;
         let limit = std::env::var("ESDIAG_OUTPUT_TASK_LIMIT")
             .ok()
@@ -204,67 +249,80 @@ impl Export for ElasticsearchExporter {
         status_code == 200
     }
 
-    /// Sends a single batch of documents to Elasticsearch, retrying on HTTP 429
-    /// with exponential backoff. Serialises docs to Values upfront so the batch
-    /// can be resent without requiring `T: Clone`.
+    /// Sends documents to Elasticsearch, splitting into bulk sub-batches as needed
+    /// and retrying each sub-batch on HTTP 429 with exponential backoff.
+    /// Serialises docs to Values upfront so sub-batches can be resent without
+    /// requiring `T: Clone`.
     async fn batch_send<T>(&self, index: String, docs: Vec<T>) -> Result<BatchResponse>
     where
         T: Serialize + Sized + Send + Sync,
     {
-        let config = RetryConfig::from_env();
-
         let values: Vec<Arc<Value>> = docs
             .into_iter()
             .map(|doc| serde_json::to_value(doc).map(Arc::new))
             .collect::<std::result::Result<_, _>>()
             .map_err(|e| eyre!("Failed to serialize document: {e}"))?;
 
-        let mut retries: u16 = 0;
+        if values.is_empty() {
+            let mut response = BatchResponse::aggregate();
+            response.status_code = 200;
+            return Ok(response);
+        }
 
-        for attempt in 0..=config.max_retries {
-            let batch: Vec<BulkOperation<Arc<Value>>> = values
-                .iter()
-                .map(|doc| BulkOperation::create(Arc::clone(doc)).pipeline("esdiag").into())
-                .collect();
+        let bulk_size = crate::env::get_int("ESDIAG_ES_BULK_SIZE")
+            .unwrap_or(crate::env::ESDIAG_ES_BULK_SIZE)
+            .max(1);
+        let bulk_bytes = elasticsearch_bulk_bytes_limit();
+        let batch_capacity = bulk_size.min(values.len());
+        let mut batches = Vec::new();
+        let mut batch = Vec::with_capacity(batch_capacity);
+        let mut batch_bytes = 0usize;
 
-            let response = timeout(
-                Self::request_timeout(),
-                self.client.bulk(BulkParts::Index(&index)).body(batch).send(),
-            )
-            .await
-            .map_err(|_| eyre!("Timed out sending bulk request to {} for index {}", self.url, index))?;
+        for value in values {
+            let doc_bytes = bulk_bytes
+                .map(|_| estimated_bulk_value_bytes(&index, value.as_ref()))
+                .unwrap_or(0);
+            let would_exceed_count = batch.len() >= bulk_size;
+            let would_exceed_bytes = bulk_bytes
+                .is_some_and(|max_bytes| !batch.is_empty() && batch_bytes.saturating_add(doc_bytes) > max_bytes);
 
-            match parse_response(index.clone(), response, retries).await {
-                Ok(batch_response) => return Ok(batch_response),
-                Err(ExporterError::RateLimited) if attempt < config.max_retries => {
-                    let sleep_ms = backoff_ms(attempt, &config);
+            if would_exceed_count || would_exceed_bytes {
+                batches.push(std::mem::take(&mut batch));
+                batch = Vec::with_capacity(batch_capacity);
+                batch_bytes = 0;
+            }
+
+            batch_bytes = batch_bytes.saturating_add(doc_bytes);
+            batch.push(value);
+        }
+
+        if !batch.is_empty() {
+            batches.push(batch);
+        }
+
+        let mut summary = BatchResponse::aggregate();
+        for batch_index in 0..batches.len() {
+            let batch_doc_count = batches[batch_index].len() as u32;
+            let batch = std::mem::take(&mut batches[batch_index]);
+            match self.send_value_batch(index.clone(), batch).await {
+                Ok(response) => summary.merge(response),
+                Err(err) if summary.batch_count == 0 => return Err(err),
+                Err(err) => {
+                    let unsent_docs = batches
+                        .iter()
+                        .skip(batch_index + 1)
+                        .fold(0u32, |count, batch| count.saturating_add(batch.len() as u32));
+                    let failed_docs = batch_doc_count.saturating_add(unsent_docs);
                     tracing::warn!(
-                        "{index} - http 429, retry {}/{}, sleeping {sleep_ms}ms",
-                        u32::from(attempt) + 1,
-                        config.max_retries,
+                        "{index} - bulk sub-batch failed after partial success; recording {failed_docs} failed docs: {err}"
                     );
-                    tokio::time::sleep(Duration::from_millis(sleep_ms)).await;
-                    retries += 1;
+                    summary.merge(BatchResponse::failed(failed_docs, 0));
+                    return Ok(summary);
                 }
-                Err(ExporterError::RateLimited) => {
-                    tracing::error!(
-                        "{index} - http 429, batch dropped after {} attempts",
-                        u32::from(config.max_retries) + 1,
-                    );
-                    return Ok(BatchResponse {
-                        docs: values.len() as u32,
-                        errors: values.len() as u32,
-                        retries,
-                        size: 0,
-                        status_code: 429,
-                        time: 0,
-                    });
-                }
-                Err(ExporterError::Fatal(e)) => return Err(e),
             }
         }
 
-        unreachable!("retry loop always returns within attempt bounds")
+        Ok(summary)
     }
 
     /// Transmits a single batch of documents with semaphore-based connection limiting.
@@ -293,6 +351,9 @@ impl Export for ElasticsearchExporter {
                 }
                 Err(e) => {
                     tracing::warn!("Bulk batch failed: {}", e);
+                    if tx.send(BatchResponse::failed(doc_count as u32, 0)).is_err() {
+                        tracing::error!("Failed to send failed batch response: receiver dropped");
+                    }
                 }
             }
         });
@@ -348,6 +409,50 @@ impl std::fmt::Display for ElasticsearchExporter {
     }
 }
 
+fn elasticsearch_bulk_bytes_limit() -> Option<usize> {
+    let bytes = crate::env::get_int("ESDIAG_ES_BULK_BYTES").unwrap_or(crate::env::ESDIAG_ES_BULK_BYTES);
+    (bytes > 0).then_some(bytes)
+}
+
+fn estimated_bulk_value_bytes(index: &str, value: &Value) -> usize {
+    const BULK_ACTION_OVERHEAD_BYTES: usize = 128;
+    estimated_json_value_bytes(value)
+        .saturating_add(index.len())
+        .saturating_add(BULK_ACTION_OVERHEAD_BYTES)
+}
+
+fn estimated_json_value_bytes(value: &Value) -> usize {
+    match value {
+        Value::Null => 4,
+        Value::Bool(true) => 4,
+        Value::Bool(false) => 5,
+        Value::Number(number) => number.to_string().len(),
+        Value::String(value) => estimated_json_string_bytes(value),
+        Value::Array(values) => values.iter().enumerate().fold(2usize, |bytes, (index, value)| {
+            bytes
+                .saturating_add(usize::from(index > 0))
+                .saturating_add(estimated_json_value_bytes(value))
+        }),
+        Value::Object(values) => values.iter().enumerate().fold(2usize, |bytes, (index, (key, value))| {
+            bytes
+                .saturating_add(usize::from(index > 0))
+                .saturating_add(estimated_json_string_bytes(key))
+                .saturating_add(1)
+                .saturating_add(estimated_json_value_bytes(value))
+        }),
+    }
+}
+
+fn estimated_json_string_bytes(value: &str) -> usize {
+    value.bytes().fold(2usize, |bytes, byte| {
+        bytes.saturating_add(match byte {
+            b'"' | b'\\' | b'\n' | b'\r' | b'\t' | 0x08 | 0x0c => 2,
+            0x00..=0x1f => 6,
+            _ => 1,
+        })
+    })
+}
+
 async fn parse_response(
     index: String,
     response: Result<Response, elasticsearch::Error>,
@@ -356,8 +461,32 @@ async fn parse_response(
     let response = response.map_err(|e| ExporterError::Fatal(e.into()))?;
     tracing::trace!("{:?}", &response);
     let status_code = response.status_code().as_u16();
-    if status_code == 429 {
-        return Err(ExporterError::RateLimited);
+    match status_code {
+        200 => {}
+        400 => {
+            return Err(ExporterError::Fatal(eyre!("{} - http 400 bad request", index)));
+        }
+        401 => {
+            return Err(ExporterError::Fatal(eyre!("{} - http 401 unauthorized", index)));
+        }
+        403 => {
+            return Err(ExporterError::Fatal(eyre!("{} - http 403 forbidden", index)));
+        }
+        404 => {
+            return Err(ExporterError::Fatal(eyre!("{} - http 404 not found", index)));
+        }
+        413 => {
+            return Err(ExporterError::Fatal(eyre!("{} - http 413 request too large", index)));
+        }
+        429 => return Err(ExporterError::RateLimited),
+        500..=599 => {
+            return Err(ExporterError::Fatal(eyre!(
+                "{} - server errors: http {}",
+                index,
+                status_code
+            )));
+        }
+        _ => tracing::warn!("unexpected http response: {}", status_code),
     }
     let body: Value = response.json().await.map_err(|e| ExporterError::Fatal(e.into()))?;
     let mut items: Vec<Value> = body.get("items").and_then(Value::as_array).cloned().unwrap_or_default();
@@ -387,32 +516,9 @@ async fn parse_response(
         .map_err(ExporterError::Fatal)?;
     }
 
-    match status_code {
-        200 if error_count == 0 => tracing::debug!("{}, created {} docs", index, doc_count),
-        200 => tracing::warn!("{}, created {} docs with {} errors", index, doc_count, error_count),
-        400 => {
-            return Err(ExporterError::Fatal(eyre!("{} - http 400 bad request", index)));
-        }
-        401 => {
-            return Err(ExporterError::Fatal(eyre!("{} - http 401 unauthorized", index)));
-        }
-        403 => {
-            return Err(ExporterError::Fatal(eyre!("{} - http 403 forbidden", index)));
-        }
-        404 => {
-            return Err(ExporterError::Fatal(eyre!("{} - http 404 not found", index)));
-        }
-        413 => {
-            return Err(ExporterError::Fatal(eyre!("{} - http 413 request too large", index)));
-        }
-        500..=599 => {
-            return Err(ExporterError::Fatal(eyre!(
-                "{} - server errors: http {}",
-                index,
-                status_code
-            )));
-        }
-        _ => tracing::warn!("unexpected http response: {}", status_code),
+    match error_count {
+        0 => tracing::debug!("{}, created {} docs", index, doc_count),
+        _ => tracing::warn!("{}, created {} docs with {} errors", index, doc_count, error_count),
     }
 
     if error_count > 0 {
@@ -428,14 +534,11 @@ async fn parse_response(
         .map_err(ExporterError::Fatal)?;
     }
 
-    let batch_response = BatchResponse {
-        docs: item_count as u32,
-        errors: error_count as u32,
-        retries,
-        size: 0,
-        status_code,
-        time: body.get("took").and_then(|v| v.as_u64()).unwrap_or(0) as u32,
-    };
+    let mut batch_response = BatchResponse::new(doc_count as u32);
+    batch_response.errors = error_count as u32;
+    batch_response.retries = retries;
+    batch_response.status_code = status_code;
+    batch_response.time = body.get("took").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
 
     Ok(batch_response)
 }
@@ -506,6 +609,31 @@ mod tests {
         (url, call_count)
     }
 
+    async fn mock_bulk_server_raw(status: u16, body: &'static str) -> Url {
+        #[derive(Clone)]
+        struct MockState {
+            status: u16,
+            body: &'static str,
+        }
+
+        async fn bulk_handler(State(state): State<MockState>) -> impl IntoResponse {
+            (StatusCode::from_u16(state.status).unwrap(), state.body)
+        }
+
+        let app = Router::new()
+            .route("/{*path}", post(bulk_handler))
+            .with_state(MockState { status, body });
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+
+        format!("http://{addr}").parse().unwrap()
+    }
+
     static ENV_LOCK: Mutex<()> = Mutex::const_new(());
 
     struct RetryEnvGuard {
@@ -549,6 +677,46 @@ mod tests {
                 }
             }
         }
+    }
+
+    struct BulkBytesEnvGuard {
+        prev_bytes: Option<String>,
+    }
+
+    impl BulkBytesEnvGuard {
+        fn set(bytes: &str) -> Self {
+            let prev_bytes = std::env::var("ESDIAG_ES_BULK_BYTES").ok();
+            unsafe {
+                std::env::set_var("ESDIAG_ES_BULK_BYTES", bytes);
+            }
+            Self { prev_bytes }
+        }
+    }
+
+    impl Drop for BulkBytesEnvGuard {
+        fn drop(&mut self) {
+            unsafe {
+                match &self.prev_bytes {
+                    Some(v) => std::env::set_var("ESDIAG_ES_BULK_BYTES", v),
+                    None => std::env::remove_var("ESDIAG_ES_BULK_BYTES"),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn estimated_json_value_bytes_matches_serialized_value_length() {
+        let value = json!({
+            "array": [null, true, false, 123, "quoted \" text", "line\nbreak"],
+            "nested": {
+                "plain": "operate ascii",
+                "control": "\u{001f}"
+            }
+        });
+
+        let serialized = serde_json::to_vec(&value).expect("serialize value");
+
+        assert_eq!(estimated_json_value_bytes(&value), serialized.len());
     }
 
     #[tokio::test]
@@ -601,5 +769,137 @@ mod tests {
 
         assert!(result.is_err(), "expected Err for 400");
         assert_eq!(*call_count.lock().await, 1, "400 must not be retried");
+    }
+
+    #[tokio::test]
+    async fn request_too_large_reports_status_without_decoding_body() {
+        let url = mock_bulk_server_raw(413, "request entity too large").await;
+        let exporter = ElasticsearchExporter::try_new(url, Auth::None).unwrap();
+
+        let result = exporter
+            .batch_send("test-index".to_string(), vec![json!({"x": 1})])
+            .await;
+
+        let err = match result {
+            Ok(_) => panic!("expected 413 to fail"),
+            Err(err) => err,
+        };
+        assert!(
+            err.to_string().contains("test-index - http 413 request too large"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn split_send_preserves_successful_counts_after_later_fatal_error() {
+        let _lock = ENV_LOCK.lock().await;
+        let _env = BulkBytesEnvGuard::set("1");
+        let (url, call_count) = mock_bulk_server(vec![200, 413]).await;
+        let exporter = ElasticsearchExporter::try_new(url, Auth::None).unwrap();
+
+        let result = exporter
+            .batch_send(
+                "test-index".to_string(),
+                vec![json!({"x": "a"}), json!({"x": "b"}), json!({"x": "c"})],
+            )
+            .await
+            .expect("partial success should return an aggregate response");
+
+        assert_eq!(result.docs, 1);
+        assert_eq!(result.errors, 2);
+        assert_eq!(result.batch_count, 2);
+        assert_eq!(result.status_code, 0);
+        assert_eq!(
+            *call_count.lock().await,
+            2,
+            "remaining docs should not be sent after fatal error"
+        );
+    }
+
+    #[tokio::test]
+    async fn batch_tx_reports_failed_batch_response() {
+        let url = mock_bulk_server_raw(413, "request entity too large").await;
+        let exporter = ElasticsearchExporter::try_new(url, Auth::None).unwrap();
+
+        let rx = exporter
+            .batch_tx("test-index".to_string(), vec![json!({"x": 1}), json!({"x": 2})])
+            .await
+            .expect("batch tx starts");
+        let response = rx.await.expect("failed batch response");
+
+        assert_eq!(response.docs, 0);
+        assert_eq!(response.errors, 2);
+        assert_eq!(response.status_code, 0);
+    }
+
+    #[tokio::test]
+    async fn exporter_send_splits_bulk_requests_by_configured_size() {
+        let _lock = ENV_LOCK.lock().await;
+        let _env = BulkBytesEnvGuard::set("104857600");
+        let (url, call_count) = mock_bulk_server(vec![200, 200]).await;
+        let exporter =
+            crate::exporter::Exporter::Elasticsearch(ElasticsearchExporter::try_new(url, Auth::None).unwrap());
+        let docs = (0..=crate::env::ESDIAG_ES_BULK_SIZE)
+            .map(|id| json!({ "x": id }))
+            .collect::<Vec<_>>();
+
+        let result = exporter.send("test-index".to_string(), docs).await;
+
+        assert!(result.is_ok(), "expected split send to succeed");
+        assert_eq!(result.unwrap().batch_count, 2);
+        assert_eq!(*call_count.lock().await, 2, "expected two bulk requests");
+    }
+
+    #[tokio::test]
+    async fn exporter_send_splits_bulk_requests_by_estimated_bytes() {
+        let _lock = ENV_LOCK.lock().await;
+        let _env = BulkBytesEnvGuard::set("1");
+        let (url, call_count) = mock_bulk_server(vec![200, 200, 200]).await;
+        let exporter =
+            crate::exporter::Exporter::Elasticsearch(ElasticsearchExporter::try_new(url, Auth::None).unwrap());
+        let docs = vec![json!({"x": "a"}), json!({"x": "b"}), json!({"x": "c"})];
+
+        let result = exporter.send("test-index".to_string(), docs).await;
+
+        assert!(result.is_ok(), "expected byte split send to succeed");
+        assert_eq!(result.unwrap().batch_count, 3);
+        assert_eq!(*call_count.lock().await, 3, "expected three bulk requests");
+    }
+
+    #[tokio::test]
+    async fn exporter_send_allows_disabling_byte_splitting() {
+        let _lock = ENV_LOCK.lock().await;
+        let _env = BulkBytesEnvGuard::set("0");
+        let (url, call_count) = mock_bulk_server(vec![200]).await;
+        let exporter =
+            crate::exporter::Exporter::Elasticsearch(ElasticsearchExporter::try_new(url, Auth::None).unwrap());
+        let docs = vec![json!({"x": "a"}), json!({"x": "b"}), json!({"x": "c"})];
+
+        let result = exporter.send("test-index".to_string(), docs).await;
+
+        assert!(result.is_ok(), "expected byte-disabled send to succeed");
+        assert_eq!(result.unwrap().batch_count, 1);
+        assert_eq!(*call_count.lock().await, 1, "expected one bulk request");
+    }
+
+    #[tokio::test]
+    async fn exporter_send_reports_single_batch_send_failure() {
+        let _lock = ENV_LOCK.lock().await;
+        let _env = BulkBytesEnvGuard::set("0");
+        let (url, call_count) = mock_bulk_server(vec![413]).await;
+        let exporter =
+            crate::exporter::Exporter::Elasticsearch(ElasticsearchExporter::try_new(url, Auth::None).unwrap());
+        let docs = vec![json!({"x": "a"}), json!({"x": "b"})];
+
+        let response = exporter
+            .send("test-index".to_string(), docs)
+            .await
+            .expect("send failures should be recorded in the batch response");
+
+        assert_eq!(response.docs, 0);
+        assert_eq!(response.errors, 2);
+        assert_eq!(response.batch_count, 1);
+        assert_eq!(response.status_code, 0);
+        assert_eq!(*call_count.lock().await, 1, "expected one bulk request");
     }
 }

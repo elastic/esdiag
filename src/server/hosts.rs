@@ -28,6 +28,7 @@ pub struct HostUpsertForm {
     pub auth: String,
     pub app: String,
     pub url: String,
+    pub url_template: Option<String>,
     pub roles: String,
     pub viewer: Option<String>,
     pub secret: Option<String>,
@@ -47,6 +48,8 @@ pub struct HostRecordPayload {
     pub auth: String,
     pub app: String,
     pub url: String,
+    #[serde(default)]
+    pub url_template: bool,
     pub roles: String,
     #[serde(default)]
     pub viewer: Option<String>,
@@ -120,6 +123,8 @@ struct HostDraftSignal {
     auth: String,
     app: String,
     url: String,
+    #[serde(default)]
+    url_template: bool,
     roles: String,
     #[serde(default)]
     viewer: Option<String>,
@@ -492,6 +497,7 @@ pub async fn secret_action(
             row_signal_patch("secrets", row_id, &secret_draft(&row, None))
                 .as_datastar_event()
                 .to_string(),
+            patch_secret_error_event(""),
             patch_append_event(
                 "#secrets-table-body",
                 render_secret_row(row_id, &row, true, false, false),
@@ -521,6 +527,7 @@ pub async fn secret_action(
                 row_signal_patch("secrets", row_id, &secret_draft(&secret, Some(&secret.secret_id)))
                     .as_datastar_event()
                     .to_string(),
+                patch_secret_error_event(""),
                 patch_row_event(
                     &secret_row_selector(row_id),
                     render_secret_row(row_id, &secret, true, true, false),
@@ -537,6 +544,7 @@ pub async fn secret_action(
                     clear_row_signal_patch("secrets", row_id)
                         .as_datastar_event()
                         .to_string(),
+                    patch_secret_error_event(""),
                     patch_row_event(
                         &secret_row_selector(row_id),
                         render_secret_row(row_id, &secret, false, true, false),
@@ -559,6 +567,7 @@ pub async fn secret_action(
                 clear_row_signal_patch("secrets", row_id)
                     .as_datastar_event()
                     .to_string(),
+                patch_secret_error_event(""),
                 patch_row_event(
                     &secret_row_selector(row_id),
                     render_secret_row(row_id, &secret, false, true, false),
@@ -568,11 +577,16 @@ pub async fn secret_action(
         }
         "update" => {
             let Some(draft) = secret_draft_from_signals(signal_state, row_id) else {
-                return (StatusCode::BAD_REQUEST, "missing secret row draft signals").into_response();
+                let message = "Missing secret row draft signals.".to_string();
+                tracing::warn!("Secret update for row {} failed: {}", row_id, message);
+                return sse_response(vec![patch_secret_error_event(&message)]);
             };
             match apply_upsert_secret(&state, draft).await {
                 Ok(_) => patch_hosts_and_secrets_with_clear_response(&state, Some(("secrets", row_id))).await,
-                Err(err) => (StatusCode::BAD_REQUEST, err).into_response(),
+                Err(err) => {
+                    tracing::warn!("Secret update for row {} failed: {}", row_id, err);
+                    sse_response(vec![patch_secret_error_event(&err)])
+                }
             }
         }
         "delete" => {
@@ -583,7 +597,14 @@ pub async fn secret_action(
                 Ok(result) => result,
                 Err(err) => return (StatusCode::BAD_REQUEST, err).into_response(),
             };
-            delete_secret_row(&state, &secrets, row_id).await
+            if secret_row_by_id(&secrets, row_id).is_some() {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    "Persisted secret deletion must use the secret_id endpoint.",
+                )
+                    .into_response();
+            }
+            clear_and_remove_row("secrets", &secret_row_selector(row_id), row_id)
         }
         _ => (
             StatusCode::BAD_REQUEST,
@@ -607,6 +628,7 @@ pub async fn create_host(State(state): State<Arc<ServerState>>, Json(payload): J
         auth: payload.auth,
         app: payload.app,
         url: payload.url,
+        url_template: payload.url_template.then_some("true".to_string()),
         roles: payload.roles,
         viewer: payload.viewer,
         secret: payload.secret,
@@ -625,6 +647,7 @@ pub async fn update_host(State(state): State<Arc<ServerState>>, Json(payload): J
         auth: payload.auth,
         app: payload.app,
         url: payload.url,
+        url_template: payload.url_template.then_some("true".to_string()),
         roles: payload.roles,
         viewer: payload.viewer,
         secret: payload.secret,
@@ -657,25 +680,29 @@ pub async fn upsert_secret(State(state): State<Arc<ServerState>>, Form(form): Fo
 }
 
 pub async fn delete_secret(State(state): State<Arc<ServerState>>, Form(form): Form<SecretDeleteForm>) -> Response {
+    delete_secret_id_response(&state, form.secret_id).await
+}
+
+pub async fn delete_secret_by_id(State(state): State<Arc<ServerState>>, Path(secret_id): Path<String>) -> Response {
+    delete_secret_id_response(&state, secret_id).await
+}
+
+async fn delete_secret_id_response(state: &Arc<ServerState>, secret_id: String) -> Response {
     if !state.is_keystore_unlocked().await {
-        return (
-            StatusCode::PRECONDITION_FAILED,
-            "Unlock keystore before deleting secrets.",
-        )
-            .into_response();
+        return secret_delete_error_response(secret_id.trim(), "Unlock keystore before deleting secrets.");
     }
 
-    let password = match current_keystore_password(&state).await {
+    let password = match current_keystore_password(state).await {
         Ok(password) => password,
-        Err(err) => return (StatusCode::BAD_REQUEST, err).into_response(),
+        Err(err) => return secret_delete_error_response(secret_id.trim(), &err),
     };
 
-    match remove_secret(form.secret_id.trim(), None, &password) {
+    match remove_secret(secret_id.trim(), None, &password) {
         Ok(_) => {
             state.touch_keystore_session().await;
-            patch_hosts_and_secrets_response(&state).await
+            patch_hosts_and_secrets_response(state).await
         }
-        Err(err) => (StatusCode::BAD_REQUEST, to_message(err)).into_response(),
+        Err(err) => secret_delete_error_response(secret_id.trim(), &to_message(err)),
     }
 }
 
@@ -712,7 +739,8 @@ fn host_row_from_known_host(name: String, host: KnownHost) -> template::HostsTab
         name,
         auth: "none".to_string(),
         app: host.app().to_string(),
-        url: host.get_url().to_string(),
+        url: host.transport_display(),
+        url_template: host.is_template(),
         roles: host
             .roles()
             .iter()
@@ -766,8 +794,8 @@ fn diagnostic_cluster_row(
         auth: host_auth_value(host).to_string(),
         secret: host_secret_value(host),
         accept_invalid_certs: host.accept_invalid_certs(),
-        elasticsearch_url: host.get_url().to_string(),
-        kibana_url: kibana_host.get_url().to_string(),
+        elasticsearch_url: host.get_url().ok()?.to_string(),
+        kibana_url: kibana_host.get_url().ok()?.to_string(),
     })
 }
 
@@ -1019,6 +1047,32 @@ fn patch_cluster_error_event(message: &str) -> String {
         .to_string()
 }
 
+fn secret_error_html(message: &str) -> String {
+    if message.trim().is_empty() {
+        "<div id=\"secrets-error-modal\"></div>".to_string()
+    } else {
+        let message = message.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
+        let close_action = "const modal = document.getElementById('secrets-error-modal'); if (modal) modal.outerHTML = `<div id='secrets-error-modal'></div>`;";
+        format!(
+            "<div id=\"secrets-error-modal\" class=\"modal\"><div class=\"modal-content\"><button type=\"button\" class=\"close-button\" aria-label=\"Close secret error\" data-on:click=\"{}\"><icon-x></icon-x></button><h2>Secret action failed</h2><p>{}</p><form-actions><button type=\"button\" class=\"button\" data-on:click=\"{}\">Close</button></form-actions></div></div>",
+            close_action, message, close_action
+        )
+    }
+}
+
+fn patch_secret_error_event(message: &str) -> String {
+    PatchElements::new(secret_error_html(message))
+        .selector("#secrets-error-modal")
+        .mode(ElementPatchMode::Outer)
+        .as_datastar_event()
+        .to_string()
+}
+
+fn secret_delete_error_response(secret_id: &str, message: &str) -> Response {
+    tracing::warn!("Secret delete for '{}' failed: {}", secret_id, message);
+    sse_response(vec![patch_secret_error_event(message)])
+}
+
 fn sse_response(events: Vec<String>) -> Response {
     ([(CONTENT_TYPE, "text/event-stream")], events.join("\n\n")).into_response()
 }
@@ -1086,7 +1140,11 @@ async fn apply_upsert_host(state: &Arc<ServerState>, form: HostUpsertForm) -> Re
         return Err("Host name is required.".to_string());
     }
 
-    let url = Url::parse(form.url.trim()).map_err(|err| format!("Invalid URL: {err}"))?;
+    let target = form.url.trim();
+    if target.is_empty() {
+        return Err("Host URL or URL template is required.".to_string());
+    }
+    let use_url_template = form.url_template.is_some();
     let app = parse_product(form.app.trim())?;
     let roles = parse_roles(&form.roles)?;
     let viewer = to_opt(form.viewer);
@@ -1094,11 +1152,16 @@ async fn apply_upsert_host(state: &Arc<ServerState>, form: HostUpsertForm) -> Re
     let accept_invalid_certs = form.accept_invalid_certs.is_some();
     let auth = infer_auth_from_secret_selection(state, &secret, form.auth.trim()).await?;
 
-    let mut builder = KnownHostBuilder::new(url)
-        .product(app)
-        .accept_invalid_certs(accept_invalid_certs)
-        .roles(roles)
-        .viewer(viewer);
+    let mut builder = if use_url_template {
+        KnownHostBuilder::new_template(target.to_string())
+    } else {
+        let url = Url::parse(target).map_err(|err| format!("Invalid URL: {err}"))?;
+        KnownHostBuilder::new(url)
+    }
+    .product(app)
+    .accept_invalid_certs(accept_invalid_certs)
+    .roles(roles)
+    .viewer(viewer);
     let host = match auth.as_str() {
         "none" => builder.build().map_err(to_message)?,
         "apikey" | "basic" | "secret" => {
@@ -1302,6 +1365,7 @@ fn blank_host_row() -> template::HostsTableRow {
         auth: "none".to_string(),
         app: "Elasticsearch".to_string(),
         url: String::new(),
+        url_template: false,
         roles: "collect".to_string(),
         viewer: String::new(),
         accept_invalid_certs: false,
@@ -1364,6 +1428,7 @@ fn host_draft(host: &template::HostsTableRow, original_name: Option<&str>) -> Ho
         auth: host.auth.clone(),
         app: host.app.clone(),
         url: host.url.clone(),
+        url_template: host.url_template,
         roles: host.roles.clone(),
         viewer: Some(host.viewer.clone()),
         secret: Some(host.secret.clone()),
@@ -1402,6 +1467,7 @@ fn host_draft_from_signals(signals: Option<&HostsUiSignals>, row_id: usize) -> O
         auth: draft.auth,
         app: draft.app,
         url: draft.url,
+        url_template: draft.url_template.then_some("true".to_string()),
         roles: draft.roles,
         viewer: draft.viewer,
         secret: draft.secret,
@@ -1569,32 +1635,6 @@ async fn delete_cluster_row(
     sse_response(vec![patch_cluster_error_event(&message)])
 }
 
-async fn delete_secret_row(state: &Arc<ServerState>, secrets: &[template::SecretTableRow], row_id: usize) -> Response {
-    let Some(secret) = secret_row_by_id(secrets, row_id) else {
-        return clear_and_remove_row("secrets", &secret_row_selector(row_id), row_id);
-    };
-    if !state.is_keystore_unlocked().await {
-        return (
-            StatusCode::PRECONDITION_FAILED,
-            "Unlock keystore before deleting secrets.",
-        )
-            .into_response();
-    }
-
-    let password = match current_keystore_password(state).await {
-        Ok(password) => password,
-        Err(err) => return (StatusCode::BAD_REQUEST, err).into_response(),
-    };
-
-    match remove_secret(secret.secret_id.trim(), None, &password) {
-        Ok(_) => {
-            state.touch_keystore_session().await;
-            patch_hosts_and_secrets_with_clear_response(state, Some(("secrets", row_id))).await
-        }
-        Err(err) => (StatusCode::BAD_REQUEST, to_message(err)).into_response(),
-    }
-}
-
 fn clear_and_remove_row(panel: &str, selector: &str, row_id: usize) -> Response {
     sse_response(vec![
         clear_row_signal_patch(panel, row_id).as_datastar_event().to_string(),
@@ -1695,13 +1735,20 @@ async fn current_keystore_password(state: &Arc<ServerState>) -> Result<String, S
 mod tests {
     use super::{
         ClusterUpsertForm, HostUpsertForm, SecretsUiSignals, TableRowSignals, TableUiSignals, apply_upsert_cluster,
-        apply_upsert_host, read_host_and_cluster_rows, read_secret_rows, render_secret_row, secret_action,
+        apply_upsert_host, delete_secret_by_id, host_draft, read_host_and_cluster_rows, read_secret_rows,
+        render_host_row, render_secret_row, render_secrets_panel, secret_action,
     };
     use crate::{
-        data::{HostRole, KnownHost, Product, SecretAuth, Settings, authenticate, upsert_secret_auth},
-        server::test_server_state,
+        data::{
+            HostRole, KnownHost, KnownHostBuilder, Product, SecretAuth, Settings, authenticate, upsert_secret_auth,
+        },
+        server::{template, test_server_state},
     };
-    use axum::{body::to_bytes, extract::Path, http::StatusCode};
+    use axum::{
+        body::to_bytes,
+        extract::Path,
+        http::{StatusCode, header::CONTENT_TYPE},
+    };
     use datastar::axum::ReadSignals;
     use serde_json::json;
     use std::{collections::BTreeMap, sync::Mutex};
@@ -1760,6 +1807,7 @@ mod tests {
                 auth: "none".to_string(),
                 app: "Elasticsearch".to_string(),
                 url: "http://localhost:9200".to_string(),
+                url_template: None,
                 roles: "send".to_string(),
                 viewer: None,
                 secret: None,
@@ -1800,6 +1848,7 @@ mod tests {
                 auth: String::new(),
                 app: "Elasticsearch".to_string(),
                 url: "http://localhost:9200".to_string(),
+                url_template: None,
                 roles: "collect".to_string(),
                 viewer: None,
                 secret: Some("api-secret".to_string()),
@@ -1813,6 +1862,120 @@ mod tests {
         let saved = saved_hosts.get("with-secret").expect("saved host");
         assert_eq!(saved.secret.as_deref(), Some("api-secret"));
         assert!(saved.legacy_apikey.is_none());
+    }
+
+    #[tokio::test]
+    async fn host_upsert_persists_template_hosts_and_rejects_invalid_templates() {
+        let _guard = env_lock().lock().expect("env lock");
+        let _tmp = setup_env();
+        let state = test_server_state();
+
+        apply_upsert_host(
+            &state,
+            HostUpsertForm {
+                original_name: None,
+                name: "elastic-cloud".to_string(),
+                auth: "none".to_string(),
+                app: "Elasticsearch".to_string(),
+                url: "https://cloud.elastic.co/api/v1/deployments/{id}/{product}".to_string(),
+                url_template: Some("true".to_string()),
+                roles: "collect".to_string(),
+                viewer: None,
+                secret: None,
+                accept_invalid_certs: None,
+            },
+        )
+        .await
+        .expect("save template host");
+
+        let saved_hosts = KnownHost::parse_hosts_yml().expect("reload hosts");
+        let saved = saved_hosts.get("elastic-cloud").expect("saved template host");
+        assert!(saved.url.is_none(), "template host should not persist a concrete url");
+        assert_eq!(
+            saved.url_template.as_deref(),
+            Some("https://cloud.elastic.co/api/v1/deployments/{id}/{product}")
+        );
+
+        let err = apply_upsert_host(
+            &state,
+            HostUpsertForm {
+                original_name: None,
+                name: "bad-template".to_string(),
+                auth: "none".to_string(),
+                app: "Elasticsearch".to_string(),
+                url: "https://cloud.elastic.co/api/v1/deployments/{unsupported}".to_string(),
+                url_template: Some("true".to_string()),
+                roles: "collect".to_string(),
+                viewer: None,
+                secret: None,
+                accept_invalid_certs: None,
+            },
+        )
+        .await
+        .expect_err("unsupported placeholders should be rejected");
+        assert!(err.contains("Unsupported `url_template` placeholder"));
+    }
+
+    #[test]
+    fn host_draft_initializes_transport_toggle_from_persisted_host_type() {
+        let template_row = template::HostsTableRow {
+            name: "elastic-cloud".to_string(),
+            auth: "none".to_string(),
+            app: "Elasticsearch".to_string(),
+            url: "https://cloud.elastic.co/api/v1/deployments/{id}/{product}".to_string(),
+            url_template: true,
+            roles: "collect".to_string(),
+            viewer: String::new(),
+            accept_invalid_certs: false,
+            cloud_id: String::new(),
+            secret: String::new(),
+        };
+        let concrete_row = template::HostsTableRow {
+            url_template: false,
+            url: "https://prod-es:9200".to_string(),
+            ..template_row.clone()
+        };
+
+        let template_draft = host_draft(&template_row, Some("elastic-cloud"));
+        let concrete_draft = host_draft(&concrete_row, Some("prod-es"));
+
+        assert!(template_draft.url_template);
+        assert!(!concrete_draft.url_template);
+    }
+
+    #[test]
+    fn rendered_host_rows_use_switch_markup_and_distinguish_template_hosts() {
+        let template_row = template::HostsTableRow {
+            name: "elastic-cloud".to_string(),
+            auth: "none".to_string(),
+            app: "Elasticsearch".to_string(),
+            url: "https://cloud.elastic.co/api/v1/deployments/{id}/{product}".to_string(),
+            url_template: true,
+            roles: "collect".to_string(),
+            viewer: String::new(),
+            accept_invalid_certs: false,
+            cloud_id: String::new(),
+            secret: String::new(),
+        };
+        let concrete_row = template::HostsTableRow {
+            name: "prod-es".to_string(),
+            url: "https://prod-es:9200".to_string(),
+            url_template: false,
+            ..template_row.clone()
+        };
+
+        let editing_html = render_host_row(1, &template_row, &[], false, true, true);
+        assert!(editing_html.contains("host-url-template-toggle-1"));
+        assert!(editing_html.contains("class=\"switch\""));
+        assert!(editing_html.contains("Template URL"));
+        assert!(editing_html.contains("Concrete URL"));
+        assert!(editing_html.contains(r#"<option value="Unknown""#));
+
+        let template_readonly_html = render_host_row(1, &template_row, &[], false, false, true);
+        let concrete_readonly_html = render_host_row(2, &concrete_row, &[], false, false, true);
+        assert!(template_readonly_html.contains("Template URL:"));
+        assert!(concrete_readonly_html.contains("URL:"));
+        assert!(!concrete_readonly_html.contains("Template URL:"));
     }
 
     #[tokio::test]
@@ -1870,6 +2033,110 @@ mod tests {
         assert!(body.contains("secrets-table-row-1"));
         assert!(body.contains("existing-secret"));
         assert!(!body.contains("Keystore password is not available"));
+    }
+
+    #[tokio::test]
+    async fn persisted_secret_row_delete_requires_secret_id_endpoint() {
+        let _guard = env_lock().lock().expect("env lock");
+        let _tmp = setup_env();
+        authenticate("pw").expect("create keystore");
+        upsert_secret_auth(
+            "existing-secret",
+            SecretAuth::ApiKey {
+                apikey: "super-secret-api-key".to_string(),
+            },
+            "pw",
+        )
+        .expect("store secret");
+
+        let state = test_server_state();
+        state.set_keystore_unlocked("pw".to_string()).await;
+
+        let response = secret_action(
+            axum::extract::State(state),
+            Path(("delete".to_string(), "1".to_string())),
+            None,
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body = to_bytes(response.into_body(), usize::MAX).await.expect("response body");
+        let body = String::from_utf8(body.to_vec()).expect("utf8 body");
+        assert!(body.contains("Persisted secret deletion must use the secret_id endpoint."));
+    }
+
+    #[tokio::test]
+    async fn delete_secret_by_id_removes_matching_secret() {
+        let _guard = env_lock().lock().expect("env lock");
+        let _tmp = setup_env();
+        authenticate("pw").expect("create keystore");
+        upsert_secret_auth(
+            "existing-secret",
+            SecretAuth::ApiKey {
+                apikey: "super-secret-api-key".to_string(),
+            },
+            "pw",
+        )
+        .expect("store secret");
+
+        let state = test_server_state();
+        state.set_keystore_unlocked("pw".to_string()).await;
+
+        let response = delete_secret_by_id(axum::extract::State(state), Path("existing-secret".to_string())).await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let (_, ids) = read_secret_rows("pw").expect("read secret rows");
+        assert!(!ids.iter().any(|secret_id| secret_id == "existing-secret"));
+    }
+
+    #[tokio::test]
+    async fn delete_secret_by_id_returns_reference_error_patch_when_secret_is_in_use() {
+        let _guard = env_lock().lock().expect("env lock");
+        let _tmp = setup_env();
+        authenticate("pw").expect("create keystore");
+        upsert_secret_auth(
+            "servermore",
+            SecretAuth::ApiKey {
+                apikey: "super-secret-api-key".to_string(),
+            },
+            "pw",
+        )
+        .expect("store secret");
+
+        let mut hosts = BTreeMap::new();
+        hosts.insert(
+            "servermore".to_string(),
+            KnownHostBuilder::new(Url::parse("https://servermore.example:9200").expect("url"))
+                .product(Product::Elasticsearch)
+                .roles(vec![HostRole::Send])
+                .secret(Some("servermore".to_string()))
+                .build()
+                .expect("build host"),
+        );
+        KnownHost::write_hosts_yml(&hosts).expect("write hosts");
+
+        let state = test_server_state();
+        state.set_keystore_unlocked("pw".to_string()).await;
+
+        let response = delete_secret_by_id(axum::extract::State(state), Path("servermore".to_string())).await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response
+                .headers()
+                .get(CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok()),
+            Some("text/event-stream")
+        );
+        let body = to_bytes(response.into_body(), usize::MAX).await.expect("response body");
+        let body = String::from_utf8(body.to_vec()).expect("utf8 body");
+        assert!(body.contains("datastar-patch-elements"));
+        assert!(body.contains("selector #secrets-error-modal"));
+        assert!(body.contains("id=\"secrets-error-modal\""));
+        assert!(body.contains("class=\"modal\""));
+        assert!(body.contains("Secret action failed"));
+        assert!(body.contains("modal.outerHTML = `<div id='secrets-error-modal'></div>`"));
+        assert!(body.contains("Cannot remove secret 'servermore' because it is still referenced by hosts: servermore"));
     }
 
     #[test]
@@ -2026,7 +2293,15 @@ mod tests {
         assert!(html.contains("api-secret"));
         assert!(html.contains("basic-secret"));
         assert!(html.contains("elastic:"));
+        assert!(html.contains("encodeURIComponent(evt.currentTarget.closest('tr').dataset.secretLabel)"));
         assert!(!html.contains("super-secret-api-key"));
         assert!(!html.contains("super-secret-password"));
+    }
+
+    #[test]
+    fn rendered_secrets_panel_includes_secret_error_modal_placeholder() {
+        let html = render_secrets_panel(&[], false).expect("render secrets panel");
+
+        assert!(html.contains("id=\"secrets-error-modal\""));
     }
 }

@@ -28,7 +28,7 @@ fn test_collect_minimal() {
     let out_dir = dir.path().to_str().unwrap();
 
     // This test expects a known host named "elasticsearch-local" to be configured in ~/.esdiag/hosts.yml
-    // You can create this with: `esdiag host add elasticsearch-local elasticsearch http://localhost:9200`
+    // You can create this with: `esdiag host add elasticsearch-local http://localhost:9200 --app elasticsearch`
     let status = Command::new(env!("CARGO_BIN_EXE_esdiag"))
         .args(["collect", "elasticsearch-local", out_dir, "--type", "minimal"])
         .status()
@@ -43,17 +43,22 @@ fn test_collect_minimal() {
     assert!(extracted.path.join("nodes.json").exists()); // nodes api
     assert!(extracted.path.join("cluster_settings.json").exists()); // from nodes resolving cluster_settings
 
-    // The script `bin/min-diag.sh` collected a lot more, but our Rust `Minimal` currently just does `cluster` and `nodes` and `cluster_settings`.
-    // Let's verify the manifest contains the correct collected_apis
+    // The script `bin/min-diag.sh` collected a lot more, but our Rust `Minimal` currently just does
+    // `cluster`, `nodes`, and `cluster_settings`. Verify the manifest records those requested APIs.
     let manifest_content = fs::read_to_string(extracted.path.join("diagnostic_manifest.json")).unwrap();
     let manifest: Value = serde_json::from_str(&manifest_content).unwrap();
 
-    let apis = manifest["collected_apis"].as_array().unwrap();
-    let api_names: Vec<&str> = apis.iter().map(|v| v.as_str().unwrap()).collect();
+    let api_names = requested_api_names(&manifest);
 
     assert!(api_names.contains(&"cluster"));
     assert!(api_names.contains(&"nodes"));
     assert!(api_names.contains(&"cluster_settings"));
+    assert_eq!(requested_api_status(&manifest, "cluster"), Some(200));
+    assert_eq!(requested_api_status(&manifest, "nodes"), Some(200));
+    assert_eq!(requested_api_status(&manifest, "cluster_settings"), Some(200));
+    assert!(requested_api_retries(&manifest, "cluster").is_some());
+    assert!(requested_api_response_time_ms(&manifest, "cluster").is_some());
+    assert!(requested_api_response_size_bytes(&manifest, "cluster").is_some());
 }
 
 fn extract_diag_zip_to_temp(path: &Path) -> Option<ExtractedDiag> {
@@ -89,7 +94,7 @@ fn test_collect_light() {
     let out_dir = dir.path().to_str().unwrap();
 
     // This test expects a known host named "elasticsearch-local" to be configured in ~/.esdiag/hosts.yml
-    // You can create this with: `esdiag host add elasticsearch-local elasticsearch http://localhost:9200`
+    // You can create this with: `esdiag host add elasticsearch-local http://localhost:9200 --app elasticsearch`
     let status = Command::new(env!("CARGO_BIN_EXE_esdiag"))
         .args([
             "collect",
@@ -124,7 +129,7 @@ fn test_collect_support_all_endpoints() {
     let out_dir = dir.path().to_str().unwrap();
 
     // This test expects a known host named "elasticsearch-local" to be configured in ~/.esdiag/hosts.yml
-    // You can create this with: `esdiag host add elasticsearch-local elasticsearch http://localhost:9200`
+    // You can create this with: `esdiag host add elasticsearch-local http://localhost:9200 --app elasticsearch`
     let status = Command::new(env!("CARGO_BIN_EXE_esdiag"))
         .args(["collect", "elasticsearch-local", out_dir, "--type", "support"])
         .status()
@@ -203,6 +208,47 @@ fn file_set(root: &Path) -> BTreeSet<String> {
     let mut files = BTreeSet::new();
     visit(root, root, &mut files);
     files
+}
+
+fn requested_api_names(manifest: &Value) -> Vec<&str> {
+    manifest["requested_apis"]
+        .as_object()
+        .expect("requested_apis object")
+        .keys()
+        .map(String::as_str)
+        .collect()
+}
+
+fn requested_api_status(manifest: &Value, name: &str) -> Option<u64> {
+    manifest["requested_apis"]
+        .as_object()
+        .expect("requested_apis object")
+        .get(name)
+        .and_then(|value| value["status"].as_u64())
+}
+
+fn requested_api_response_time_ms(manifest: &Value, name: &str) -> Option<u64> {
+    manifest["requested_apis"]
+        .as_object()
+        .expect("requested_apis object")
+        .get(name)
+        .and_then(|value| value["response_time_ms"].as_u64())
+}
+
+fn requested_api_retries(manifest: &Value, name: &str) -> Option<u64> {
+    manifest["requested_apis"]
+        .as_object()
+        .expect("requested_apis object")
+        .get(name)
+        .and_then(|value| value["retries"].as_u64())
+}
+
+fn requested_api_response_size_bytes(manifest: &Value, name: &str) -> Option<u64> {
+    manifest["requested_apis"]
+        .as_object()
+        .expect("requested_apis object")
+        .get(name)
+        .and_then(|value| value["response_size_bytes"].as_u64())
 }
 
 #[test]
@@ -423,8 +469,9 @@ fn test_collect_no_auth_with_ephemeral_container() {
             "host",
             "add",
             host_name,
-            "elasticsearch",
             &host_url,
+            "--app",
+            "elasticsearch",
             "--accept-invalid-certs",
             "true",
         ],
@@ -451,7 +498,7 @@ fn test_collect_no_auth_with_ephemeral_container() {
 
 #[test]
 #[ignore = "requires docker or podman runtime"]
-fn test_collect_with_plaintext_and_keystore_auth_modes() {
+fn test_collect_with_keystore_auth_modes() {
     let runtime = match container_runtime() {
         Some(runtime) => runtime,
         None => {
@@ -473,29 +520,7 @@ fn test_collect_with_plaintext_and_keystore_auth_modes() {
     let keystore_password = "esdiag-keystore-password";
     let host_url = format!("http://127.0.0.1:{port}");
 
-    // 1) collect with basic auth saved directly in hosts.yml
-    let basic_plain_name = "it-basic-plain";
-    let host_plain = run_esdiag(
-        &[
-            "host",
-            "add",
-            basic_plain_name,
-            "elasticsearch",
-            &host_url,
-            "--user",
-            "elastic",
-            "--password",
-            elastic_password,
-            "--accept-invalid-certs",
-            "true",
-        ],
-        &test_home,
-        &[],
-    );
-    assert_success(&host_plain, "host basic plaintext");
-    run_collect_assert_ok(&test_home, basic_plain_name, "collect basic plaintext");
-
-    // 2) collect with basic auth loaded from keystore
+    // 1) collect with basic auth loaded from keystore
     let add_basic_secret = run_esdiag(
         &[
             "keystore",
@@ -516,8 +541,9 @@ fn test_collect_with_plaintext_and_keystore_auth_modes() {
             "host",
             "add",
             "it-basic-keystore",
-            "elasticsearch",
             &host_url,
+            "--app",
+            "elasticsearch",
             "--secret",
             "it-basic-secret",
             "--accept-invalid-certs",
@@ -534,27 +560,7 @@ fn test_collect_with_plaintext_and_keystore_auth_modes() {
         "collect basic keystore",
     );
 
-    // 3) collect with apikey stored directly in hosts.yml
-    let apikey_plain_name = "it-apikey-plain";
-    let host_apikey_plain = run_esdiag(
-        &[
-            "host",
-            "add",
-            apikey_plain_name,
-            "elasticsearch",
-            &host_url,
-            "--apikey",
-            &api_key,
-            "--accept-invalid-certs",
-            "true",
-        ],
-        &test_home,
-        &[],
-    );
-    assert_success(&host_apikey_plain, "host apikey plaintext");
-    run_collect_assert_ok(&test_home, apikey_plain_name, "collect apikey plaintext");
-
-    // 4) collect with apikey loaded from keystore
+    // 2) collect with apikey loaded from keystore
     let add_apikey_secret = run_esdiag(
         &["keystore", "add", "it-apikey-secret", "--apikey", &api_key],
         &test_home,
@@ -567,8 +573,9 @@ fn test_collect_with_plaintext_and_keystore_auth_modes() {
             "host",
             "add",
             "it-apikey-keystore",
-            "elasticsearch",
             &host_url,
+            "--app",
+            "elasticsearch",
             "--secret",
             "it-apikey-secret",
             "--accept-invalid-certs",
@@ -657,10 +664,6 @@ impl Drop for RunningEsContainer {
     fn drop(&mut self) {
         let _ = Command::new(&self.runtime).args(["rm", "-f", &self.name]).status();
     }
-}
-
-fn run_collect_assert_ok(home: &tempfile::TempDir, host: &str, label: &str) {
-    run_collect_assert_ok_with_env(home, host, &[], label)
 }
 
 fn run_collect_assert_ok_with_env(home: &tempfile::TempDir, host: &str, extra_env: &[(&str, &str)], label: &str) {
@@ -795,8 +798,9 @@ async fn test_collect_kibana_mock_workflow() {
         "host".to_string(),
         "add".to_string(),
         "mock-kibana".to_string(),
-        "kibana".to_string(),
         host_url.clone(),
+        "--app".to_string(),
+        "kibana".to_string(),
     ];
     let host_output = tokio::task::spawn_blocking({
         let home_path = home_path.clone();
@@ -854,6 +858,25 @@ async fn test_collect_kibana_mock_workflow() {
             .join("spaces/security/pages/page-0002/kibana_alerts.json")
             .exists()
     );
+
+    let manifest_content = fs::read_to_string(extracted.path.join("diagnostic_manifest.json")).unwrap();
+    let manifest: Value = serde_json::from_str(&manifest_content).unwrap();
+    let api_names = requested_api_names(&manifest);
+
+    assert!(api_names.contains(&"kibana_stats"));
+    assert!(api_names.contains(&"kibana_alerts"));
+    for required in ["kibana_stats", "kibana_alerts"] {
+        assert_eq!(requested_api_status(&manifest, required), Some(200));
+        assert!(requested_api_retries(&manifest, required).is_some());
+        assert!(
+            requested_api_response_time_ms(&manifest, required).is_some(),
+            "missing response_time_ms for {required}"
+        );
+        assert!(
+            requested_api_response_size_bytes(&manifest, required).is_some(),
+            "missing response_size_bytes for {required}"
+        );
+    }
 
     let _ = shutdown_tx.send(());
     let _ = server.await;
@@ -920,7 +943,14 @@ fn run_kibana_collect_matrix_case(host_env: &str) {
 fn test_collect_kibana_localhost_no_auth() {
     let home = tempdir().expect("temp home");
     let host_output = run_esdiag(
-        &["host", "add", "localhost-kibana", "kibana", "http://localhost:5601"],
+        &[
+            "host",
+            "add",
+            "localhost-kibana",
+            "http://localhost:5601",
+            "--app",
+            "kibana",
+        ],
         &home,
         &[],
     );

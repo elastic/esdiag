@@ -12,6 +12,7 @@ published release notes, maintenance branches, and tagged history.
 
 ### Added
 
+- Added a standalone `esdiag-local` release artifact with generated local-stack state, secure lifecycle and secret commands, and checksum-verified self-updates.
 - Added Tauri-based desktop app support (#253).
 - Added multi-platform desktop build workflows (#268).
 - Added refined desktop packaging and build workflows (#283).
@@ -30,16 +31,36 @@ published release notes, maintenance branches, and tagged history.
 - Added a file-based keystore unlock lease workflow shared by the CLI and web UI.
 - Added runtime web feature gating with `--web-features` and `ESDIAG_WEB_FEATURES`.
 - Added a comprehensive LLM setup guide to document AI assistant resource configurations.
+- Added web, CLI, and synchronous API reporting for included diagnostics in ECK and KubernetesPlatform bundles.
 
 ### Changed
 
+- Require Elastic security for `esdiag-local` deployments and remove the unsupported `--insecure` option.
+- Changed `esdiag-control` lifecycle commands to use the shared standalone implementation while retaining repository source-build workflows.
+- Report the actual setup failure status and output when `esdiag-control` cannot configure the local stack.
+- Updated Kibana asset handling to support JSON5 resources with human-readable filenames.
+- Updated the local Elastic Stack default to version 9.4.2 to support agent skills.
+- Increased the long-running collection request timeout so large Elasticsearch API payloads can finish returning.
+- Changed diagnostic manifests to record `requested_apis` including status, response time, and response size.
+- Moved the Tauri desktop app root under `desktop/` while keeping root-level `cargo tauri build` and desktop packaging workflows working.
 - Refined workflow card controls.
 - Polished workflow bundle delivery.
-- Refined Advanced navigation and jobs UI.
+- Refined Advanced navigation and Job Builder UI.
 - Renamed the unreleased web workflow route to `/advanced` and defaulted Job Builder web UI behind the `job-builder` feature.
 - Finalized explicit host lifecycle commands.
 - Improved saved host authentication persistence.
 - Improved agentic CLI summaries and viewer-aware Kibana links.
+- Changed Kibana collection and setup to use the shared `kibana-sync` client and bundled asset layout (#341).
+- Made embedded documentation minimally Open Knowledge Format compliant while preserving clean docs viewer rendering (#345).
+- Added documentation viewer tag filtering with debug-mode visibility for developer-only docs (#345).
+
+### Fixed
+
+- Fixed large Elasticsearch task exports and node-derived metrics ingestion so cluster sends are batched, child streams use their matching templates, and failed sends are recorded in diagnostic reports.
+- Fixed Logstash diagnostic processing across fixture versions and allowed Logstash sub-streams to ingest with their concrete data stream datasets (#338).
+- Fixed Elasticsearch node stats processing to preserve lookup-enriched node identity fields.
+- Fixed Elastic Cloud and GovCloud host normalization to use the documented `_main` single-resource reference.
+- Fixed Service Link curl parsing to remove single, double, and escaped quotes from pasted URLs and values (#326).
 
 ## [0.14] - 2026-02-25
 

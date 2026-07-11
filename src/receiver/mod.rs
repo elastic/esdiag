@@ -31,7 +31,19 @@ use directory::DirectoryReceiver;
 use eyre::{Result, eyre};
 use futures::stream::BoxStream;
 use serde::de::DeserializeOwned;
+use std::path::{Component, Path};
+use std::time::Duration;
 use upload_service::UploadServiceDownloader;
+
+pub(crate) const LONG_RUNNING_REQUEST_TIMEOUT: Duration = Duration::from_secs(5 * 60);
+
+#[derive(Clone, Debug)]
+pub struct RawResponse {
+    pub body: String,
+    pub status: Option<u16>,
+    pub response_time_ms: u64,
+    pub response_size_bytes: u64,
+}
 
 #[allow(async_fn_in_trait)]
 pub trait Receive {
@@ -60,6 +72,20 @@ pub trait ReceiveRaw {
     async fn get_raw<T>(&self) -> Result<String>
     where
         T: DataSource;
+
+    async fn get_raw_response<T>(&self) -> Result<RawResponse>
+    where
+        T: DataSource,
+    {
+        let body = self.get_raw::<T>().await?;
+        let response_size_bytes = body.len() as u64;
+        Ok(RawResponse {
+            body,
+            status: None,
+            response_time_ms: 0,
+            response_size_bytes,
+        })
+    }
 }
 
 /// The different types of receivers for data input.
@@ -153,21 +179,34 @@ impl Receiver {
     where
         T: DataSource,
     {
+        self.get_raw_response::<T>().await.map(|response| response.body)
+    }
+
+    pub async fn get_raw_response<T>(&self) -> Result<RawResponse>
+    where
+        T: DataSource,
+    {
         match self {
-            Receiver::Elasticsearch(receiver) => receiver.get_raw::<T>().await,
-            Receiver::Kibana(receiver) => receiver.get_raw::<T>().await,
-            Receiver::Logstash(receiver) => receiver.get_raw::<T>().await,
-            Receiver::ElasticCloudAdmin(receiver) => receiver.get_raw::<T>().await,
+            Receiver::Elasticsearch(receiver) => receiver.get_raw_response::<T>().await,
+            Receiver::Kibana(receiver) => receiver.get_raw_response::<T>().await,
+            Receiver::Logstash(receiver) => receiver.get_raw_response::<T>().await,
+            Receiver::ElasticCloudAdmin(receiver) => receiver.get_raw_response::<T>().await,
             _ => Err(eyre!("Raw data is not supported for this receiver")),
         }
     }
 
     pub async fn get_raw_by_path(&self, path: &str, extension: &str) -> Result<String> {
+        self.get_raw_response_by_path(path, extension)
+            .await
+            .map(|response| response.body)
+    }
+
+    pub async fn get_raw_response_by_path(&self, path: &str, extension: &str) -> Result<RawResponse> {
         match self {
-            Receiver::Elasticsearch(receiver) => receiver.get_raw_by_path(path, extension).await,
-            Receiver::Kibana(receiver) => receiver.get_raw_by_path(path, extension).await,
-            Receiver::Logstash(receiver) => receiver.get_raw_by_path(path, extension).await,
-            Receiver::ElasticCloudAdmin(receiver) => receiver.get_raw_by_path(path, extension).await,
+            Receiver::Elasticsearch(receiver) => receiver.get_raw_response_by_path(path, extension).await,
+            Receiver::Kibana(receiver) => receiver.get_raw_response_by_path(path, extension).await,
+            Receiver::Logstash(receiver) => receiver.get_raw_response_by_path(path, extension).await,
+            Receiver::ElasticCloudAdmin(receiver) => receiver.get_raw_response_by_path(path, extension).await,
             _ => Err(eyre!(
                 "Raw data by path is only supported for Elasticsearch, Elastic Cloud Admin, Kibana, or Logstash receivers"
             )),
@@ -196,9 +235,17 @@ impl Receiver {
     }
 
     pub fn clone_for_subdir(&self, sub_dir: &str) -> Result<Self> {
-        let mut receiver = self.clone();
-        receiver.set_work_dir(sub_dir)?;
-        Ok(receiver)
+        validate_relative_subdir(sub_dir)?;
+        match self {
+            Receiver::ArchiveBytes(receiver) => Ok(Receiver::ArchiveBytes(receiver.clone_for_subdir(sub_dir))),
+            Receiver::ArchiveFile(receiver) => Ok(Receiver::ArchiveFile(receiver.clone_for_subdir(sub_dir))),
+            Receiver::Directory(receiver) => Ok(Receiver::Directory(receiver.clone_for_subdir(sub_dir))),
+            _ => {
+                let mut receiver = self.clone();
+                receiver.set_work_dir(sub_dir)?;
+                Ok(receiver)
+            }
+        }
     }
 
     pub async fn collection_date(&self) -> String {
@@ -291,6 +338,26 @@ impl Receiver {
     }
 }
 
+fn validate_relative_subdir(sub_dir: &str) -> Result<()> {
+    let path = Path::new(sub_dir);
+    if path.as_os_str().is_empty() {
+        return Err(eyre!("Included diagnostic path cannot be empty"));
+    }
+
+    for component in path.components() {
+        match component {
+            Component::Normal(_) | Component::CurDir => {}
+            Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
+                return Err(eyre!(
+                    "Included diagnostic path must be relative and stay within the bundle"
+                ));
+            }
+        }
+    }
+
+    Ok(())
+}
+
 impl TryFrom<Uri> for Receiver {
     type Error = eyre::Report;
     fn try_from(uri: Uri) -> std::result::Result<Self, Self::Error> {
@@ -346,5 +413,46 @@ impl std::fmt::Display for Receiver {
                 write!(f, "ElasticCloudAdmin {receiver}")
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{DirectoryReceiver, Receiver};
+
+    fn directory_receiver() -> Receiver {
+        let root = tempfile::tempdir().expect("temp diagnostic root");
+        Receiver::Directory(DirectoryReceiver::try_from(root.keep()).expect("directory receiver"))
+    }
+
+    #[test]
+    fn clone_for_subdir_accepts_relative_bundle_path() {
+        let receiver = directory_receiver();
+
+        assert!(receiver.clone_for_subdir("namespace/es/instance").is_ok());
+    }
+
+    #[test]
+    fn clone_for_subdir_rejects_parent_traversal() {
+        let receiver = directory_receiver();
+
+        let err = receiver
+            .clone_for_subdir("namespace/../outside")
+            .err()
+            .expect("parent traversal should be rejected");
+
+        assert!(err.to_string().contains("must be relative and stay within the bundle"));
+    }
+
+    #[test]
+    fn clone_for_subdir_rejects_absolute_path() {
+        let receiver = directory_receiver();
+
+        let err = receiver
+            .clone_for_subdir("/tmp/outside")
+            .err()
+            .expect("absolute path should be rejected");
+
+        assert!(err.to_string().contains("must be relative and stay within the bundle"));
     }
 }

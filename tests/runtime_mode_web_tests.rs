@@ -25,8 +25,8 @@ async fn start_server_with_features(mode: RuntimeMode, web_features: Option<&str
         mode,
         web_features,
     )
-        .await
-        .expect("start local server");
+    .await
+    .expect("start local server");
 
     let client = Client::new();
     let base = format!("http://127.0.0.1:{}", bound_addr.port());
@@ -103,10 +103,18 @@ async fn user_mode_default_nav_exposes_advanced_not_job_builder() {
     assert!(!body.contains("href=\"/jobs\""));
     assert!(!body.contains(">Job Builder</a>"));
 
-    let advanced = client.get(format!("{base}/advanced")).send().await.expect("advanced route");
+    let advanced = client
+        .get(format!("{base}/advanced"))
+        .send()
+        .await
+        .expect("advanced route");
     assert_eq!(advanced.status(), reqwest::StatusCode::OK);
 
-    let workflow = client.get(format!("{base}/workflow")).send().await.expect("workflow route");
+    let workflow = client
+        .get(format!("{base}/workflow"))
+        .send()
+        .await
+        .expect("workflow route");
     assert_eq!(workflow.status(), reqwest::StatusCode::NOT_FOUND);
 
     let jobs = client.get(format!("{base}/jobs")).send().await.expect("jobs route");
@@ -130,7 +138,11 @@ async fn explicit_job_builder_feature_mounts_jobs_and_omits_advanced() {
     assert!(body.contains("href=\"/jobs\""));
     assert!(body.contains(">Job Builder</a>"));
 
-    let advanced = client.get(format!("{base}/advanced")).send().await.expect("advanced route");
+    let advanced = client
+        .get(format!("{base}/advanced"))
+        .send()
+        .await
+        .expect("advanced route");
     assert_eq!(advanced.status(), reqwest::StatusCode::NOT_FOUND);
 
     let jobs = client.get(format!("{base}/jobs")).send().await.expect("jobs route");
@@ -142,8 +154,7 @@ async fn explicit_job_builder_feature_mounts_jobs_and_omits_advanced() {
 #[cfg(feature = "keystore")]
 #[tokio::test]
 async fn explicit_advanced_and_job_builder_features_mount_both_pages() {
-    let (mut server, client, base) =
-        start_server_with_features(RuntimeMode::User, Some("advanced,job-builder")).await;
+    let (mut server, client, base) = start_server_with_features(RuntimeMode::User, Some("advanced,job-builder")).await;
 
     let response = client.get(format!("{base}/")).send().await.expect("user mode request");
     assert_eq!(response.status(), reqwest::StatusCode::OK);
@@ -154,7 +165,11 @@ async fn explicit_advanced_and_job_builder_features_mount_both_pages() {
     assert!(body.contains("href=\"/advanced\""));
     assert!(body.contains("href=\"/jobs\""));
 
-    let advanced = client.get(format!("{base}/advanced")).send().await.expect("advanced route");
+    let advanced = client
+        .get(format!("{base}/advanced"))
+        .send()
+        .await
+        .expect("advanced route");
     assert_eq!(advanced.status(), reqwest::StatusCode::OK);
 
     let jobs = client.get(format!("{base}/jobs")).send().await.expect("jobs route");
@@ -176,7 +191,11 @@ async fn empty_web_features_omit_optional_nav_and_routes() {
     assert!(!body.contains("href=\"/advanced\""));
     assert!(!body.contains("href=\"/jobs\""));
 
-    let advanced = client.get(format!("{base}/advanced")).send().await.expect("advanced route");
+    let advanced = client
+        .get(format!("{base}/advanced"))
+        .send()
+        .await
+        .expect("advanced route");
     assert_eq!(advanced.status(), reqwest::StatusCode::NOT_FOUND);
 
     let jobs = client.get(format!("{base}/jobs")).send().await.expect("jobs route");
@@ -309,14 +328,14 @@ async fn user_mode_workflow_shows_known_host_collect_and_local_save_defaults() {
 
     assert!(body.contains("id=\"collect-known-host\""));
     assert!(body.contains("id=\"known-host-button\""));
-    assert!(body.contains("data-signals:workflow.collect.mode=\"'upload'\""));
-    assert!(body.contains("data-signals:workflow.collect.source=\"'upload-file'\""));
+    assert!(body.contains("data-signals:job.collect.mode=\"'upload'\""));
+    assert!(body.contains("data-signals:job.collect.source=\"'upload-file'\""));
     assert!(body.contains("id=\"collect-save-toggle\""));
     assert!(body.contains("Download Archive"));
     assert!(body.contains("id=\"upload-form\""));
-    assert!(body.contains(
-        "data-attr:disabled=\"$workflow.collect.mode === 'upload' && $workflow.collect.source === 'upload-file'\""
-    ));
+    assert!(
+        body.contains("data-attr:disabled=\"$job.collect.mode === 'upload' && $job.collect.source === 'upload-file'\"")
+    );
     assert!(body.contains("placeholder=\"/"));
 
     server.shutdown().await;
@@ -360,15 +379,17 @@ async fn advanced_page_embeds_send_target_disable_and_auto_save_rules() {
     assert_eq!(response.status(), reqwest::StatusCode::OK);
     let body = response.text().await.expect("advanced page body");
 
-    assert!(body.contains("data-bind:workflow.process.enabled"));
-    assert!(body.contains("$workflow.process.mode = $workflow.process.enabled ? 'process' : 'forward'"));
-    assert!(body.contains("$workflow.send.mode = 'local'"));
+    assert!(body.contains("data-bind:job.process.enabled"));
+    assert!(body.contains("$job.process.mode = $job.process.enabled ? 'process' : 'forward'"));
+    assert!(body.contains("$job.send.mode = 'local'"));
     assert!(body.contains("Download the archive from&nbsp;<strong>Collect</strong>."));
-    assert!(body.contains("$workflow.collect.source === 'known-host'"));
-    assert!(body.contains("$workflow.collect.mode === 'collect' && $workflow.collect.source === 'known-host' && $workflow.collect.known_host !== ''"));
+    assert!(body.contains("$job.collect.source === 'known-host'"));
+    assert!(body.contains(
+        "$job.collect.mode === 'collect' && $job.collect.source === 'known-host' && $job.collect.known_host !== ''"
+    ));
     assert!(body.contains("id=\"send-local-directory\""));
     assert!(body.contains("Local directory"));
-    assert!(body.contains("id=\"workflow-go-button\""));
+    assert!(body.contains("id=\"job-go-button\""));
     assert!(body.contains("id=\"known-host-button\""));
     assert!(body.contains("<path d=\"M6 3L11 8L6 13\"></path>"));
 
@@ -388,7 +409,7 @@ async fn user_mode_workflow_exposes_browser_download_binding_and_local_directory
     let body = response.text().await.expect("advanced page body");
 
     assert!(body.contains("data-signals:archive.download_token=\"''\""));
-    assert!(body.contains("id=\"workflow-download-anchor\""));
+    assert!(body.contains("id=\"job-download-anchor\""));
     assert!(body.contains("data-on:change=\"if (evt.target.checked)"));
     assert!(body.contains("crypto.randomUUID()"));
     assert!(body.contains(
