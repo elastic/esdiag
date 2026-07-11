@@ -32,7 +32,7 @@ State and lifecycle
 Generated `.env`, `compose.yml`, and failure logs live in
 `${ESDIAG_LOCAL_DIR:-~/.esdiag/local}`. Override this with `--state-dir`. The
 directory is private and `.env` is mode `0600`. Edit the three documented port
-values in `.env` before `up`; ports must be in range, unique, and available.
+values or `LOG_LEVEL` in `.env` before `up`; ports must be in range, unique, and available.
 Initialized credentials and volumes are treated as one deployment state. If
 either side is missing, startup fails closed and requires restoring the missing
 state or running a confirmed reset.
@@ -46,6 +46,8 @@ Pull behavior is selected with `--pull always|missing|never`.
 ```sh
 ./esdiag-local status
 ./esdiag-local logs
+./esdiag-local restart esdiag --log-level debug
+./esdiag-local restart elasticsearch kibana
 ./esdiag-local setup
 ./esdiag-local auth
 ./esdiag-local down
@@ -53,6 +55,10 @@ Pull behavior is selected with `--pull always|missing|never`.
 
 `down` keeps configuration, credentials, and volumes. `reset` destroys all of
 them and prompts for confirmation; automation must pass `reset --force`.
+`restart` recreates only the named `elasticsearch`, `kibana`, or `esdiag`
+services so persisted configuration changes take effect. `--log-level` stores
+an ESDiag log filter such as `debug` in the deployment state. The `LOG_LEVEL`
+environment variable provides the same setting; the CLI option takes precedence.
 
 Credentials
 -----------

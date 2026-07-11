@@ -28,6 +28,7 @@ esdiag_registry_override=""
 elastic_registry_override=""
 esdiag_version_override=""
 elastic_version_override=""
+log_level_override=""
 upgrade_backup=""
 project_name=""
 deployment_initialized=false
@@ -54,6 +55,7 @@ Usage: ${command_name} <command> [options]
 Commands:
   up        Configure and start the local stack
   down      Stop containers while retaining data and credentials
+  restart   Recreate one or more services
   status    Show container and endpoint status
   logs      Show container logs
   setup     Re-run ESDiag asset setup
@@ -72,6 +74,7 @@ Options:
   --elastic-registry URL     Override the Elastic image registry
   --esdiag-version VERSION   Override the ESDiag image version
   --elastic-version VERSION  Override Elasticsearch and Kibana versions
+  --log-level FILTER         Set the ESDiag log filter (or use LOG_LEVEL)
   --pull always|missing|never Image pull policy
   --upgrade                  Upgrade existing stack versions transactionally
   --open-browser=false       Do not launch ESDiag after startup
@@ -82,7 +85,7 @@ Secrets:
   ${command_name} secrets password$(clipboard_example)
   ${command_name} secrets apikey
 
-Edit ports in STATE_DIR/.env. Defaults are 9200, 5601, and 2501.
+Edit ports and LOG_LEVEL in STATE_DIR/.env. Port defaults are 9200, 5601, and 2501.
 EOF
 }
 
@@ -145,7 +148,7 @@ random_value() {
 
 env_allowed() {
     case "$1" in
-        STATE_SCHEMA_VERSION|STACK_ESDIAG_VERSION|STACK_ELASTIC_VERSION|ELASTIC_SECURITY_ENABLED|ELASTIC_PASSWORD|KIBANA_SYSTEM_PASSWORD|KIBANA_ENCRYPTION_KEY|ESDIAG_OUTPUT_APIKEY|ESDIAG_IMAGE|ELASTICSEARCH_IMAGE|KIBANA_IMAGE|ESDIAG_ELASTICSEARCH_PORT|ESDIAG_KIBANA_PORT|ESDIAG_PORT|ESDIAG_KIBANA_SPACE) return 0 ;;
+        STATE_SCHEMA_VERSION|STACK_ESDIAG_VERSION|STACK_ELASTIC_VERSION|ELASTIC_SECURITY_ENABLED|ELASTIC_PASSWORD|KIBANA_SYSTEM_PASSWORD|KIBANA_ENCRYPTION_KEY|ESDIAG_OUTPUT_APIKEY|ESDIAG_IMAGE|ELASTICSEARCH_IMAGE|KIBANA_IMAGE|ESDIAG_ELASTICSEARCH_PORT|ESDIAG_KIBANA_PORT|ESDIAG_PORT|ESDIAG_KIBANA_SPACE|LOG_LEVEL) return 0 ;;
         *) return 1 ;;
     esac
 }
@@ -235,6 +238,7 @@ services:
       ESDIAG_OUTPUT_URL: http://elasticsearch:9200
       ESDIAG_OUTPUT_APIKEY: ${ESDIAG_OUTPUT_APIKEY}
       ESDIAG_KIBANA_URL: http://kibana:5601/s/${ESDIAG_KIBANA_SPACE}
+      LOG_LEVEL: ${LOG_LEVEL}
     command: ["setup"]
   esdiag:
     image: ${ESDIAG_IMAGE}
@@ -245,6 +249,7 @@ services:
       ESDIAG_OUTPUT_URL: http://elasticsearch:9200
       ESDIAG_OUTPUT_APIKEY: ${ESDIAG_OUTPUT_APIKEY}
       ESDIAG_KIBANA_URL: http://kibana:5601/s/${ESDIAG_KIBANA_SPACE}
+      LOG_LEVEL: ${LOG_LEVEL}
     command: ["serve"]
     ports: ["127.0.0.1:${ESDIAG_PORT}:2501"]
 volumes:
@@ -294,6 +299,9 @@ init_state() {
     env_set ESDIAG_KIBANA_PORT "$(env_get ESDIAG_KIBANA_PORT 2>/dev/null || printf 5601)"
     env_set ESDIAG_PORT "$(env_get ESDIAG_PORT 2>/dev/null || printf 2501)"
     env_set ESDIAG_KIBANA_SPACE "$(env_get ESDIAG_KIBANA_SPACE 2>/dev/null || printf esdiag)"
+    if [[ -n "$log_level_override" ]]; then env_set LOG_LEVEL "$log_level_override"
+    elif [[ -n "${LOG_LEVEL:-}" ]]; then env_set LOG_LEVEL "$LOG_LEVEL"
+    else env_set LOG_LEVEL "$(env_get LOG_LEVEL 2>/dev/null || printf info)"; fi
     write_compose
     chmod 600 "${state_dir}/compose.yml"
 }
@@ -474,6 +482,16 @@ command_up() {
 }
 
 command_down() { [[ -f "${state_dir}/compose.yml" ]] || die "No local state at ${state_dir}"; validate_env; detect_runtime; "${compose[@]}" down; }
+command_restart() {
+    local service
+    [[ -f "${state_dir}/compose.yml" ]] || die "No local state at ${state_dir}"
+    (($# > 0)) || die "Usage: ${command_name} restart elasticsearch|kibana|esdiag [...]"
+    for service in "$@"; do
+        case "$service" in elasticsearch|kibana|esdiag) ;; *) die "Unknown service: ${service}" ;; esac
+    done
+    validate_env; detect_runtime; init_state
+    "${compose[@]}" up -d --no-deps --force-recreate "$@"
+}
 command_status() { [[ -f "${state_dir}/compose.yml" ]] || die "No local state at ${state_dir}"; validate_env; detect_runtime; "${compose[@]}" ps; info "ESDiag: http://127.0.0.1:$(env_get ESDIAG_PORT)"; info "Kibana: http://127.0.0.1:$(env_get ESDIAG_KIBANA_PORT)"; }
 command_logs() { [[ -f "${state_dir}/compose.yml" ]] || die "No local state at ${state_dir}"; validate_env; detect_runtime; "${compose[@]}" logs "$@"; }
 command_auth() { [[ -f "${state_dir}/.env" ]] || die "No local state at ${state_dir}"; validate_env; wait_url "http://127.0.0.1:$(env_get ESDIAG_ELASTICSEARCH_PORT)" "elastic:$(env_get ELASTIC_PASSWORD)"; wait_url "http://127.0.0.1:$(env_get ESDIAG_KIBANA_PORT)/api/status"; info "Authentication checks passed"; }
@@ -553,6 +571,8 @@ while [[ $# -gt 0 ]]; do
         --elastic-registry) elastic_registry_override="$2"; shift 2 ;; --elastic-registry=*) elastic_registry_override=${1#*=}; shift ;;
         --esdiag-version) esdiag_version_override="$2"; shift 2 ;; --esdiag-version=*) esdiag_version_override=${1#*=}; shift ;;
         --elastic-version) elastic_version_override="$2"; shift 2 ;; --elastic-version=*) elastic_version_override=${1#*=}; shift ;;
+        --log-level) [[ $# -ge 2 && -n "$2" ]] || die "Missing --log-level value"; log_level_override="$2"; shift 2 ;;
+        --log-level=*) log_level_override=${1#*=}; [[ -n "$log_level_override" ]] || die "Missing --log-level value"; shift ;;
         --pull) pull_policy="$2"; shift 2 ;; --pull=*) pull_policy=${1#*=}; shift ;;
         --insecure) die "--insecure is no longer supported; Elastic security is required" ;;
         --upgrade) upgrade=true; shift ;; --force) force=true; shift ;;
@@ -565,7 +585,7 @@ done
 [[ "$pull_policy" == always || "$pull_policy" == missing || "$pull_policy" == never ]] || die "Pull policy must be always, missing, or never"
 
 case "$command" in
-    up) command_up ;; down) command_down ;; status) command_status ;; logs) command_logs ${remaining[@]+"${remaining[@]}"} ;;
+    up) command_up ;; down) command_down ;; restart) command_restart ${remaining[@]+"${remaining[@]}"} ;; status) command_status ;; logs) command_logs ${remaining[@]+"${remaining[@]}"} ;;
     setup) detect_runtime; validate_state_coupling; init_state; run_setup ;; auth) command_auth ;; secrets) command_secrets ${remaining[@]+"${remaining[@]}"} ;;
     reset) command_reset ;; update) command_update ${remaining[@]+"${remaining[@]}"} ;; version|--version) printf '%s\n' "$ESDIAG_VERSION" ;;
     help|-h|--help) usage ;; *) die "Unknown command: ${command}" ;;

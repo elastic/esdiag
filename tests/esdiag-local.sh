@@ -91,6 +91,8 @@ assert_mode "$tmp/secure" 700; assert_mode "$tmp/secure/.env" 600
 assert_contains "$tmp/secure/compose.yml" 'Generated secure configuration'
 assert_contains "$tmp/secure/compose.yml" "127.0.0.1:\${ESDIAG_PORT}:2501"
 assert_contains "$tmp/secure/compose.yml" "ESDIAG_OUTPUT_APIKEY: \${ESDIAG_OUTPUT_APIKEY}"
+[[ "$(grep -c "LOG_LEVEL: \${LOG_LEVEL}" "$tmp/secure/compose.yml")" == 2 ]] || fail 'log level is not passed to ESDiag services'
+assert_contains "$tmp/secure/.env" 'LOG_LEVEL=info'
 [[ "$(grep -c "image: \${ESDIAG_IMAGE}" "$tmp/secure/compose.yml")" == 2 ]] || fail 'setup/service image mismatch'
 
 # Idempotence, status/auth/log secrecy, raw secrets, setup, down, and reset.
@@ -101,6 +103,13 @@ run_local setup --runtime podman --state-dir "$tmp/secure" >"$tmp/setup.out" 2>"
 run_local status --runtime podman --state-dir "$tmp/secure" >"$tmp/status" 2>&1
 run_local auth --state-dir "$tmp/secure" >"$tmp/auth" 2>&1
 run_local logs --runtime podman --state-dir "$tmp/secure" >"$tmp/logs" 2>&1
+run_local restart esdiag --runtime podman --state-dir "$tmp/secure" --log-level debug
+assert_contains "$tmp/secure/.env" 'LOG_LEVEL=debug'
+assert_contains "$tmp/runtime.log" 'up -d --no-deps --force-recreate esdiag'
+LOG_LEVEL=trace run_local restart esdiag --runtime podman --state-dir "$tmp/secure"
+assert_contains "$tmp/secure/.env" 'LOG_LEVEL=trace'
+if run_local restart unknown --runtime podman --state-dir "$tmp/secure" 2>"$tmp/restart-error"; then fail 'unknown service restarted'; fi
+assert_contains "$tmp/restart-error" 'Unknown service: unknown'
 for output in "$tmp/status" "$tmp/auth" "$tmp/logs"; do assert_not_contains "$output" "$password"; assert_not_contains "$output" fixture-api-key; done
 [[ "$(run_local secrets password --state-dir "$tmp/secure")" == "$password" ]] || fail password
 [[ "$(run_local secrets apikey --state-dir "$tmp/secure")" == fixture-api-key ]] || fail apikey

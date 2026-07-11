@@ -12,6 +12,8 @@ published release notes, maintenance branches, and tagged history.
 
 ### Added
 
+- Added configurable `LOG_LEVEL` support to `esdiag-local`.
+- Added service-scoped `esdiag-local restart` support for Elasticsearch, Kibana, and ESDiag.
 - Added a standalone `esdiag-local` release artifact with generated local-stack state, secure lifecycle and secret commands, and checksum-verified self-updates.
 - Added Tauri-based desktop app support (#253).
 - Added multi-platform desktop build workflows (#268).
