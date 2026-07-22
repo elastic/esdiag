@@ -32,6 +32,7 @@ published release notes, maintenance branches, and tagged history.
 - Added runtime web feature gating with `--web-features` and `ESDIAG_WEB_FEATURES`.
 - Added a comprehensive LLM setup guide to document AI assistant resource configurations.
 - Added web, CLI, and synchronous API reporting for included diagnostics in ECK and KubernetesPlatform bundles.
+- Added experimental Elastic CLI extension support with `elastic diag`, Elastic CLI context environment fallbacks, and `.service` / `.context.service` target references (#339).
 
 ### Changed
 

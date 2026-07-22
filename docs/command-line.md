@@ -17,6 +17,8 @@ esdiag --help
 esdiag <command> --help
 ```
 
+When installed as an experimental Elastic CLI extension, the same command surface is available through `elastic diag <args...>`.
+
 ## Overview
 
 `esdiag` supports these main workflows:
@@ -98,14 +100,54 @@ These environment variables change where local state is read and written:
 - `ESDIAG_DOCS_EXCLUDED_TAGS`: comma-separated OKF tags to hide from the documentation viewer unless debug logging is enabled; defaults to `repository`
 - `ESDIAG_OUTPUT_TASK_LIMIT`: task concurrency limit used by the Elasticsearch exporter
 
+### Elastic CLI extension
+
+ESDiag can be installed as the experimental `diag` extension for the Elastic CLI from the remote Git repository:
+
+```sh
+elastic extension install https://github.com/elastic/esdiag.git
+```
+
+The extension entrypoint is `elastic-diag`, and `elastic diag <args...>` delegates to `esdiag <args...>`. The initial wrapper expects an `esdiag` executable on `PATH`; install it with:
+
+```sh
+cargo install --git https://github.com/elastic/esdiag.git
+```
+
+ESDiag does not publish an npm extension package yet; use the remote Git repository install path while the extension remains experimental.
+
+The wrapper sets `ESDIAG_ELASTIC_CLI=1` for the delegated process. When that marker is present, help output includes Elastic CLI-specific target examples.
+
+Elastic CLI context variables are accepted as fallbacks when the matching `ESDIAG_*` variables are absent:
+
+- `ELASTIC_ES_URL`, `ELASTIC_ES_API_KEY`, `ELASTIC_ES_USERNAME`, and `ELASTIC_ES_PASSWORD`
+- `ELASTIC_KIBANA_URL`, `ELASTIC_KIBANA_API_KEY`, `ELASTIC_KIBANA_USERNAME`, and `ELASTIC_KIBANA_PASSWORD`
+- `ELASTIC_CLOUD_URL` and `ELASTIC_CLOUD_API_KEY`
+
+Existing `ESDIAG_*` variables take precedence over `ELASTIC_*` fallbacks.
+
+### Elastic CLI target references
+
+Arguments that can resolve remote targets also support leading-dot Elastic CLI references:
+
+- `.es` or `.elasticsearch`: active Elasticsearch context
+- `.kb` or `.kibana`: active Kibana context
+- `.cloud`: active Elastic Cloud context
+- `.context.service`: named context from `.elasticrc`, `.elasticrc.json`, `.elasticrc.yaml`, or `.elasticrc.yml`
+
+For named contexts, the rightmost segment is the service name or alias, so `.prod.us-west.es` resolves context `prod.us-west` and service `elasticsearch`. Elastic CLI config discovery uses `ELASTIC_CLI_CONFIG_FILE` before home-directory discovery. Context references are resolved before saved hosts; use an explicit filesystem prefix such as `./.es` for local hidden paths.
+
+ESDiag reads Elastic CLI config files in read-only mode. Inline secrets are supported, but on Unix-like platforms ESDiag warns when inline secrets are stored in config files with permissions broader than `0600` or `0400`. Resolver expressions such as `$(env:NAME)`, `$(file:/path)`, OS keychain resolvers, `$(pass:path)`, and `$(cmd:program args...)` are supported for compatibility. Command-backed resolvers execute local programs with explicit arguments, a bounded timeout, and no shell interpretation; only use them with config files you trust.
+
 ## Output Resolution Rules
 
 Several commands accept an optional output target. The current resolution rules are:
 
 - `-` means stdout
+- A leading-dot Elastic CLI target reference resolves before saved hosts when it names a supported service
 - A string matching a saved host name resolves to that known host
 - Any other non-empty string is treated as a local filesystem target
-- If output is omitted entirely, `esdiag` falls back to `ESDIAG_OUTPUT_URL` plus optional auth env vars
+- If output is omitted entirely, `esdiag` falls back to `ESDIAG_OUTPUT_URL` plus optional auth env vars, then Elastic CLI `ELASTIC_ES_*` fallbacks
 
 This applies to:
 
@@ -411,6 +453,7 @@ Options:
 - support-diagnostics `.zip` archive
 - unpacked diagnostic directory
 - saved known host name
+- Elastic CLI target reference such as `.es` or `.prod.es`
 - Elastic Upload Service URL
 
 ### Output forms
@@ -418,7 +461,8 @@ Options:
 - saved known host
 - local file path
 - `-` for stdout
-- omitted output, using `ESDIAG_OUTPUT_*`
+- Elastic CLI target reference such as `.es` or `.diag.es`
+- omitted output, using `ESDIAG_OUTPUT_*` or Elastic CLI `ELASTIC_ES_*` fallbacks
 
 ### Metadata options
 
@@ -451,6 +495,9 @@ esdiag process ~/Downloads/api-diagnostic-dir -
 
 # Process with an environment-driven output
 ESDIAG_OUTPUT_URL=http://localhost:9200 esdiag process ~/Downloads/api-diagnostic.zip
+
+# Process directly between Elastic CLI contexts
+elastic diag process .prod.es .diag.es
 ```
 
 ## `collect`
@@ -485,7 +532,7 @@ Options:
 
 ### Behavior
 
-- `<HOST>` must resolve to a saved known host
+- `<HOST>` must resolve to a saved known host or Elastic CLI target reference
 - the host must carry the `collect` role
 - `<OUTPUT>` must already exist
 - `esdiag` creates a diagnostic directory or archive structure within that output directory
@@ -537,6 +584,9 @@ esdiag collect prod-es ~/diag-output --type minimal --include nodes,cluster_heal
 
 # Collect and immediately upload the resulting archive
 esdiag collect prod-es ~/diag-output --upload abc123
+
+# Collect from the active Elastic CLI Elasticsearch context
+elastic diag collect .es ~/diag-output
 ```
 
 ## `serve`
@@ -603,7 +653,7 @@ The Job Builder flag only controls web UI routes. CLI saved-job commands such as
 ### Kibana URL behavior
 
 - `--kibana <URL>` overrides the displayed Kibana base URL
-- if omitted, `ESDIAG_KIBANA_URL` is used
+- if omitted, `ESDIAG_KIBANA_URL` is used, then `ELASTIC_KIBANA_URL` as a fallback
 - if `ESDIAG_KIBANA_SPACE` is set, the space path is appended in generated links
 
 ### Output handling
