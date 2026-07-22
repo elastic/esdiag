@@ -10,61 +10,74 @@ published release notes, maintenance branches, and tagged history.
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-07-11
+
 ### Added
 
 - Added configurable `LOG_LEVEL` support to `esdiag-local`.
 - Added service-scoped `esdiag-local restart` support for Elasticsearch, Kibana, and ESDiag.
-- Added a standalone `esdiag-local` release artifact with generated local-stack state, secure lifecycle and secret commands, and checksum-verified self-updates.
-- Added Tauri-based desktop app support (#253).
-- Added multi-platform desktop build workflows (#268).
-- Added refined desktop packaging and build workflows (#283).
-- Added a built-in documentation viewer (#258).
-- Added the Borealis theme system (#258).
-- Added a shared `/events` stream for the web interface.
-- Added streaming snapshot processing and aligned snapshot data streams.
-- Added service and user runtime modes for web interfaces.
-- Added host secrets and role targeting on the upstream branch.
-- Added Logstash API collection support (#274).
-- Added Kibana API collection support (#275).
-- Added an Advanced page for staged diagnostic workflows.
-- Added a Job Builder page for collection and processing.
-- Added saved jobs so named configurations can be persisted, listed, and re-run.
-- Added collect-to-upload handoff support.
-- Added a file-based keystore unlock lease workflow shared by the CLI and web UI.
-- Added runtime web feature gating with `--web-features` and `ESDIAG_WEB_FEATURES`.
-- Added a comprehensive LLM setup guide to document AI assistant resource configurations.
-- Added web, CLI, and synchronous API reporting for included diagnostics in ECK and KubernetesPlatform bundles.
+- Added a standalone `esdiag-local` release artifact with generated local-stack state, secure lifecycle and secret commands, and checksum-verified self-updates (#359).
+- Added a comprehensive LLM setup guide to document AI assistant resource configurations (#361).
+- Added web, CLI, and synchronous API reporting for included diagnostics in ECK and KubernetesPlatform bundles (#336).
 
 ### Changed
 
 - Changed standalone web processing so the `Default` output uses `ESDIAG_OUTPUT_*`, keeps collection failures visible in the job feed, fails instead of silently streaming documents to stdout when no output is configured, and generates browser-reachable localhost Kibana links.
 - Persisted standalone ESDiag User-mode settings, saved jobs, hosts, and keystore state in a dedicated named volume across container recreation.
-- Require Elastic security for `esdiag-local` deployments and remove the unsupported `--insecure` option.
-- Changed `esdiag-control` lifecycle commands to use the shared standalone implementation while retaining repository source-build workflows.
-- Report the actual setup failure status and output when `esdiag-control` cannot configure the local stack.
+- Require Elastic security for `esdiag-local` deployments and remove the unsupported `--insecure` option (#359).
+- Changed `esdiag-control` lifecycle commands to use the shared standalone implementation while retaining repository source-build workflows (#359).
+- Report the actual setup failure status and output when `esdiag-control` cannot configure the local stack (#359).
 - Updated Kibana asset handling to support JSON5 resources with human-readable filenames.
-- Updated the local Elastic Stack default to version 9.4.2 to support agent skills.
-- Increased the long-running collection request timeout so large Elasticsearch API payloads can finish returning.
-- Changed diagnostic manifests to record `requested_apis` including status, response time, and response size.
-- Moved the Tauri desktop app root under `desktop/` while keeping root-level `cargo tauri build` and desktop packaging workflows working.
-- Refined workflow card controls.
-- Polished workflow bundle delivery.
-- Refined Advanced navigation and Job Builder UI.
-- Renamed the unreleased web workflow route to `/advanced` and defaulted Job Builder web UI behind the `job-builder` feature.
-- Finalized explicit host lifecycle commands.
-- Improved saved host authentication persistence.
-- Improved agentic CLI summaries and viewer-aware Kibana links.
+- Updated the local Elastic Stack default to version 9.4.2 to support agent skills (#359).
 - Changed Kibana collection and setup to use the shared `kibana-sync` client and bundled asset layout (#341).
 - Made embedded documentation minimally Open Knowledge Format compliant while preserving clean docs viewer rendering (#345).
-- Added documentation viewer tag filtering with debug-mode visibility for developer-only docs (#345).
+- Changed documentation viewer tag filtering to expose developer-only docs when debug logging is enabled (#345).
 
 ### Fixed
 
-- Fixed large Elasticsearch task exports and node-derived metrics ingestion so cluster sends are batched, child streams use their matching templates, and failed sends are recorded in diagnostic reports.
+- Fixed large Elasticsearch task exports and node-derived metrics ingestion so cluster sends are batched, child streams use their matching templates, and failed sends are recorded in diagnostic reports (#338).
 - Fixed Logstash diagnostic processing across fixture versions and allowed Logstash sub-streams to ingest with their concrete data stream datasets (#338).
-- Fixed Elasticsearch node stats processing to preserve lookup-enriched node identity fields.
-- Fixed Elastic Cloud and GovCloud host normalization to use the documented `_main` single-resource reference.
 - Fixed Service Link curl parsing to remove single, double, and escaped quotes from pasted URLs and values (#326).
+
+## [0.15.0] - 2026-06-04
+
+### Added
+
+- Added Tauri-based desktop app support (#253).
+- Added multi-platform desktop build workflows (#268).
+- Added refined desktop packaging and build workflows (#283).
+- Added a built-in documentation viewer (#258).
+- Added the Borealis theme system (#258).
+- Added a shared `/events` stream for the web interface (#267).
+- Added streaming snapshot processing and aligned snapshot data streams (#264).
+- Added service and user runtime modes for web interfaces (#266).
+- Added host secrets and role targeting (#269).
+- Added Logstash API collection support (#274).
+- Added Kibana API collection support (#275).
+- Added an Advanced page for staged diagnostic workflows (#295).
+- Added a Job Builder page for collection and processing (#295).
+- Added saved jobs so named configurations can be persisted, listed, and re-run (#300, #317).
+- Added collect-to-upload handoff support (#306).
+- Added a file-based keystore unlock lease workflow shared by the CLI and web UI (#299, #306).
+- Added runtime web feature gating with `--web-features` and `ESDIAG_WEB_FEATURES`.
+
+### Changed
+
+- Increased the long-running collection request timeout so large Elasticsearch API payloads can finish returning (#327).
+- Changed diagnostic manifests to record `requested_apis` including status, response time, and response size (#322).
+- Moved the Tauri desktop app root under `desktop/` while keeping root-level `cargo tauri build` and desktop packaging workflows working.
+- Refined workflow card controls (#295).
+- Polished workflow bundle delivery (#295).
+- Refined Advanced navigation and Job Builder UI (#295).
+- Renamed the web workflow route to `/advanced` and defaulted Job Builder web UI behind the `job-builder` feature (#295).
+- Finalized explicit host lifecycle commands (#297, #306).
+- Improved saved host authentication persistence (#306).
+- Improved agentic CLI summaries and viewer-aware Kibana links (#306).
+
+### Fixed
+
+- Fixed Elasticsearch node stats processing to preserve lookup-enriched node identity fields.
+- Fixed Elastic Cloud and GovCloud host normalization to use the documented `_main` single-resource reference (#328).
 
 ## [0.14] - 2026-02-25
 
@@ -192,7 +205,9 @@ published release notes, maintenance branches, and tagged history.
   fail on invalid zip paths (#177).
 - Fixed ECK diagnostic path handling for correctly structured archives (#179).
 
-[Unreleased]: https://github.com/elastic/esdiag/compare/0.14.2...preview
+[Unreleased]: https://github.com/elastic/esdiag/compare/0.16.0...0.16
+[0.16.0]: https://github.com/elastic/esdiag/compare/0.15.0...0.16.0
+[0.15.0]: https://github.com/elastic/esdiag/compare/0.14.2...0.15.0
 [0.14]: https://github.com/elastic/esdiag/compare/0.13.0...0.14.2
 [0.13]: https://github.com/elastic/esdiag/compare/0.12.0...0.13.0
 [0.12]: https://github.com/elastic/esdiag/compare/0.11.1...0.12.0
