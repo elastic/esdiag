@@ -64,11 +64,12 @@ pub struct StoreSettings {
     pub snapshot: Option<StoreSnapshot>,
 }
 
+#[skip_serializing_none]
 #[derive(Clone, Serialize, Deserialize)]
 pub struct StoreSnapshot {
     pub snapshot_name: String,
     pub index_uuid: String,
-    pub repository_uuid: String,
+    pub repository_uuid: Option<String>,
     pub index_name: String,
     pub partial: Option<String>,
     pub repository_name: String,
