@@ -27,6 +27,8 @@ enum RuntimeInput {
     Uri {
         uri: Uri,
         application: Option<Application>,
+        scrubbed_override: Option<bool>,
+        filename_hint: Option<String>,
     },
 }
 
@@ -84,7 +86,26 @@ impl InputResolver {
     }
 
     pub fn bind_uri(&mut self, key: BindingKey, uri: Uri, application: Option<Application>) {
-        self.bindings.insert(key, RuntimeInput::Uri { uri, application });
+        self.bind_uri_with_scrub(key, uri, application, None, None);
+    }
+
+    pub fn bind_uri_with_scrub(
+        &mut self,
+        key: BindingKey,
+        uri: Uri,
+        application: Option<Application>,
+        scrubbed_override: Option<bool>,
+        filename_hint: Option<String>,
+    ) {
+        self.bindings.insert(
+            key,
+            RuntimeInput::Uri {
+                uri,
+                application,
+                scrubbed_override,
+                filename_hint,
+            },
+        );
     }
 
     pub async fn resolve(
@@ -99,7 +120,7 @@ impl InputResolver {
                 self.resolve_binding(binding, materialize_remote, require_local_bundle)
                     .await
             }
-            Input::Load { uri } => self.resolve_stable_load(uri, materialize_remote).await,
+            Input::Load { uri } => self.resolve_stable_load(uri, materialize_remote, None, None).await,
         }
     }
 
@@ -120,10 +141,47 @@ impl InputResolver {
         ))
     }
 
-    async fn resolve_stable_load(&self, uri: &Uri, materialize_remote: bool) -> Result<ResolvedInput> {
+17: use super::{IndexedArchive, normalize_supported_content, normalize_supported_reader_to_temp, resolve_archive_path, supports_json_normalization};
+19: use super::{IndexedArchive, normalize_supported_content, normalize_supported_reader_to_temp, resolve_archive_path, supports_json_normalization};
+18:     async fn resolve_stable_load(
+        &self,
+        uri: &Uri,
+        materialize_remote: bool,
+        scrubbed_override: Option<bool>,
+        filename_hint: Option<&str>,
+    ) -> Result<ResolvedInput> {
+15:     pub fn set_scrubbed(&mut self, scrubbed: bool) {
+        self.scrubbed = scrubbed;
+    }
+
+    /// `relative` beneath the working directory. Bundle paths are built from
+    /// names inside the bundle, so they must not climb out of it.
+    fn bundle_path(&self, relative: &str) -> Result<PathBuf> {
+        let escapes = Path::new(relative)
+            .components()
+            .any(|component| !matches!(component, Component::Normal(_) | Component::CurDir));
+        if escapes {
+            return Err(eyre!("Bundle path leaves the diagnostic directory: {relative}"));
+        }
+        Ok(self.path.join(&self.work_dir).join(relative))
+16:         let file = File::open(&path)?;
+        let mut reader = BufReader::new(file);
+        if !crate::receiver::source_has_json(&mut reader)? {
+            return Err(MissingSource::Empty {
+                path: path.display().to_string(),
+            }
+            .into());
+        }
+        if !should_normalize_file(filename, self.scrubbed) {
+            return serde_json::from_reader(reader).map_err(Into::into);
+        }
+        let mut content = String::new();
+        reader.read_to_string(&mut content)?;
+        let content = normalize_file_content_if_needed(filename, self.scrubbed, content)?;
+        serde_json::from_str(&content).map_err(Into::into)
         match uri {
             Uri::File(path) => Ok(ResolvedInput::new(
-                Receiver::try_from(uri.clone())?,
+                Receiver::try_from_with_scrub(uri.clone(), scrubbed_override, filename_hint)?,
                 None,
                 Some(path.clone()),
                 None,
@@ -138,7 +196,8 @@ impl InputResolver {
                     let _ = tokio::fs::remove_dir_all(&temp_dir).await;
                     return Err(error.into());
                 }
-                let receiver = Receiver::try_from(Uri::File(bundle_path.clone()))?;
+                let receiver =
+                    Receiver::try_from_with_scrub(Uri::File(bundle_path.clone()), scrubbed_override, filename_hint)?;
                 Ok(ResolvedInput::new(
                     receiver,
                     None,
@@ -146,7 +205,12 @@ impl InputResolver {
                     Some(TempInputCleanup(temp_dir)),
                 ))
             }
-            _ => Ok(ResolvedInput::new(Receiver::try_from(uri.clone())?, None, None, None)),
+            _ => Ok(ResolvedInput::new(
+                Receiver::try_from_with_scrub(uri.clone(), scrubbed_override, filename_hint)?,
+                None,
+                None,
+                None,
+            )),
         }
     }
 
@@ -197,8 +261,15 @@ impl InputResolver {
                     None,
                 ))
             }
-            RuntimeInput::Uri { uri, application } => {
-                let mut resolved = self.resolve_stable_load(uri, materialize_remote).await?;
+            RuntimeInput::Uri {
+                uri,
+                application,
+                scrubbed_override,
+                filename_hint,
+            } => {
+                let mut resolved = self
+                    .resolve_stable_load(uri, materialize_remote, *scrubbed_override, filename_hint.as_deref())
+                    .await?;
                 resolved.application = *application;
                 if require_local_bundle && resolved.bundle_path.is_none() {
                     return Err(eyre!(
