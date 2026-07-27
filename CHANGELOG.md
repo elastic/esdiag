@@ -59,6 +59,7 @@ published release notes, maintenance branches, and tagged history.
 - Added drilldowns to the Index Detail, Data Stream Detail, and Alias Detail dashboards from the bulk and indexing rate charts on Daily Indexing Overview, the per-node operation charts on Index Operations Overview and Datastream Operations Overview, the per-node shard CPU time charts on Ingest Nodes Overview and Search Nodes Overview, and the rollover alias and newest indices panels on Index Settings Overview.
 - Added drilldowns to the Node Detail dashboard from every per-node chart and thread pool table on Ingest Nodes Overview and Search Nodes Overview.
 - Added a native Windows x86_64 release archive, `esdiag-VERSION-x86_64-pc-windows-msvc.zip`, that runs without the Visual C++ Redistributable.
+- Added receiver-stage normalization for malformed IPv4 values in scrubbed diagnostics, with `--scrubbed` CLI flag and upload checkbox (#330).
 
 ### Changed
 
