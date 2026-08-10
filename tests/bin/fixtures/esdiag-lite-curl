@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+
+output=
+previous=
+last=
+head=false
+request=
+for argument in "$@"; do
+  if [[ $previous == --output ]]; then
+    output=$argument
+  fi
+  if [[ $argument == --head ]]; then
+    head=true
+  fi
+  if [[ $previous == --request ]]; then
+    request=$argument
+  fi
+  previous=$argument
+  last=$argument
+done
+
+printf '%s\n' "$@" >>"$MOCK_CURL_LOG"
+if [[ $head == true ]]; then
+  if [[ ${MOCK_UPLOAD_PART_EXISTS:-false} == true ]]; then
+    exit 0
+  fi
+  exit 22
+elif [[ $request == POST && $last == */_finalize ]]; then
+  exit 0
+elif [[ $request == PUT ]]; then
+  exit 0
+elif [[ $last == */ ]]; then
+  printf '%s\n' '{"name":"node-0","cluster_name":"test-cluster","cluster_uuid":"test-cluster-uuid","version":{"number":"7.10.0","build_type":"tar","build_hash":"hash","build_date":"2026-01-01T00:00:00.000Z","build_snapshot":false,"lucene_version":"9.0.0","minimum_wire_compatibility_version":"6.8.0","minimum_index_compatibility_version":"6.0.0"},"tagline":"You Know, for Search"}' >"$output"
+elif [[ ${MOCK_CURL_ONLY_VERSION:-false} == true ]]; then
+  exit 22
+else
+  printf '%s\n' '{}' >"$output"
+fi

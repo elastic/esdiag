@@ -3,6 +3,28 @@
 This directory contains integration tests and opt-in test utilities for workflows
 that need local services or externally managed Elastic Stack instances.
 
+## ESDiag Lite Shell Tests
+
+`tests/bin/esdiag-lite.sh` validates the portable `bin/esdiag-lite.sh` helper,
+including Bash 3.2 version predicates, generated version-aware requests,
+environment authentication, API-key precedence, archive behavior, and the
+`--archive=none` path. It uses local mock `curl` and `zip` executables; no
+Elasticsearch cluster is required.
+
+Run it from the repository root:
+
+```sh
+bash tests/bin/esdiag-lite.sh
+```
+
+`tests/bin/esdiag-lite.ps1` validates the Windows PowerShell collector using the
+built-in PowerShell parser and mocked web/archive commands. Run it on Windows
+PowerShell 5.1 or newer:
+
+```powershell
+powershell -NoProfile -File tests/bin/esdiag-lite.ps1
+```
+
 ## esdiag-control Integration Script
 
 `tests/bin/esdiag-control.sh` is an opt-in shell integration suite for the

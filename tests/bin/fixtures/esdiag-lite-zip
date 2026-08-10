@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+
+if [[ ${MOCK_ZIP_LOG:-} ]]; then
+  printf '%s\n' "$@" >>"$MOCK_ZIP_LOG"
+fi
+
+if [[ ${MOCK_ZIP_FAIL:-false} == true ]]; then
+  exit 1
+fi
+
+touch "$2"

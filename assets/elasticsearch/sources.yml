@@ -156,7 +156,7 @@ nodes_hot_threads:
 
 ## Common JSON API's
 alias:
-  tags: standard,support
+  tags: standard,support,lite
   source_weight: 3
   versions:
     ">= 0.9.0": "/_alias?human"
@@ -195,7 +195,7 @@ cluster_health:
     ">= 0.9.0": "/_cluster/health"
 
 cluster_pending_tasks:
-  tags: standard,support
+  tags: standard,support,lite
   source_weight: 1
   processable: true
   required: false
@@ -217,7 +217,7 @@ cluster_settings_defaults:
   processable: true
   required: true
   dependencies: [version]
-  tags: standard,light,support
+  tags: standard,light,support,lite
   versions:
     ">= 6.4.0": "/_cluster/settings?include_defaults&flat_settings"
 
@@ -266,7 +266,7 @@ indices:
     ">= 7.0.0": "/_cat/shards?format=json&bytes=b&s=index&h=index,shard,prirep,state,docs,store,id,node,se,sm,fm,fe,ft,iiti,iito,iitf,idto,idti,ftt,ua,ud,ur"
 
 indices_stats:
-  tags: standard,support
+  tags: standard,support,lite
   source_weight: 3
   processing_weight: 5
   streamable: true
@@ -298,7 +298,7 @@ internal_desired_balance:
     ">= 8.6.0": "/_internal/desired_balance"
 
 licenses:
-  tags: standard,support
+  tags: standard,support,lite
   source_weight: 1
   versions:
     ">= 1.0.0, < 2.0.0": "/_licenses"
@@ -323,7 +323,7 @@ nodes:
   processable: true
   required: false
   dependencies: [version]
-  tags: light,minimal,standard,support
+  tags: light,minimal,standard,support,lite
   retry: true
   versions:
     ">= 0.9.0": "/_nodes?human"
@@ -341,7 +341,7 @@ nodes_stats:
   required: false
   dependencies: [nodes, cluster_settings_defaults, version]
   collect_dependencies: [nodes]
-  tags: light,standard,support
+  tags: light,standard,support,lite
   retry: true
   versions:
     ">= 0.9.0": "/_nodes/stats?human"
@@ -391,7 +391,7 @@ indices_settings:
   processable: true
   required: false
   dependencies: [version, cluster_settings_defaults]
-  tags: light,standard,support
+  tags: light,standard,support,lite
   retry: true
   versions:
     ">= 0.9.0, < 7.7.0": "/_settings?human"
@@ -430,7 +430,7 @@ tasks:
   processable: true
   required: false
   dependencies: [nodes, version]
-  tags: light,standard,support
+  tags: light,standard,support,lite
   versions:
     ">=2.0.0": "/_tasks?human&detailed=true"
 
@@ -440,7 +440,7 @@ templates:
     ">= 0.9.0": "/_template"
 
 version:
-  tags: light,minimal,standard,support
+  tags: light,minimal,standard,support,lite
   source_weight: 1
   required: true
   retry: true
@@ -486,7 +486,7 @@ enrich_stats:
 
 ilm_explain:
   source_weight: 1
-  tags: light,standard,support
+  tags: light,standard,support,lite
   subdir: "commercial"
   versions:
     ">= 6.6.0, < 7.7.0": "/*/_ilm/explain?human"
@@ -504,7 +504,7 @@ ilm_policies:
   processable: true
   required: false
   dependencies: [version]
-  tags: light,standard,support
+  tags: light,standard,support,lite
   subdir: "commercial"
   versions:
     ">= 6.6.0": "/_ilm/policy?human"
@@ -617,7 +617,7 @@ rollup_index_caps:
     ">= 8.10.0": "/*/_rollup/data"
 
 searchable_snapshots_cache_stats:
-  tags: standard,support
+  tags: standard,support,lite
   source_weight: 1
   subdir: "commercial"
   versions:
@@ -668,7 +668,7 @@ slm_policies:
   processable: true
   required: false
   dependencies: [repositories, version]
-  tags: light,standard,support
+  tags: light,standard,support,lite
   subdir: "commercial"
   versions:
     ">= 7.4.0": "/_slm/policy?human"
@@ -728,7 +728,7 @@ xpack:
     ">= 5.0.0": "/_xpack/usage?human"
 
 data_stream:
-  tags: standard,support
+  tags: standard,support,lite
   source_weight: 3
   subdir: "commercial"
   versions:

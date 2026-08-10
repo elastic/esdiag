@@ -43,7 +43,7 @@ fn test_collect_minimal() {
     assert!(extracted.path.join("nodes.json").exists()); // nodes api
     assert!(extracted.path.join("cluster_settings.json").exists()); // from nodes resolving cluster_settings
 
-    // The script `bin/min-diag.sh` collected a lot more, but our Rust `Minimal` currently just does
+    // The collection-only `bin/esdiag-lite.sh` helper collects more APIs, while Rust `Minimal` currently does
     // `cluster`, `nodes`, and `cluster_settings`. Verify the manifest records those requested APIs.
     let manifest_content = fs::read_to_string(extracted.path.join("diagnostic_manifest.json")).unwrap();
     let manifest: Value = serde_json::from_str(&manifest_content).unwrap();
