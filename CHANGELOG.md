@@ -10,6 +10,13 @@ published release notes, maintenance branches, and tagged history.
 
 ## [Unreleased]
 
+## [0.16.5] - 2026-08-20
+
+### Fixed
+
+- Fixed the shared web statistics counter so completed jobs add their processed documents (#380).
+- Fixed web processing with an explicit `serve` output so it no longer requires `ESDIAG_OUTPUT_URL`.
+
 ## [0.16.4] - 2026-08-07
 
 ### Changed
@@ -225,7 +232,8 @@ published release notes, maintenance branches, and tagged history.
   fail on invalid zip paths (#177).
 - Fixed ECK diagnostic path handling for correctly structured archives (#179).
 
-[Unreleased]: https://github.com/elastic/esdiag/compare/0.16.4...0.16
+[Unreleased]: https://github.com/elastic/esdiag/compare/0.16.5...0.16
+[0.16.5]: https://github.com/elastic/esdiag/compare/0.16.4...0.16.5
 [0.16.4]: https://github.com/elastic/esdiag/compare/0.16.2...0.16.4
 [0.16.2]: https://github.com/elastic/esdiag/compare/0.16.1...0.16.2
 [0.16.1]: https://github.com/elastic/esdiag/compare/0.16.0...0.16.1

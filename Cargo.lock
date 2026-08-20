@@ -1407,7 +1407,7 @@ dependencies = [
 
 [[package]]
 name = "esdiag"
-version = "0.16.4"
+version = "0.16.5"
 dependencies = [
  "aes-gcm-siv",
  "askama",

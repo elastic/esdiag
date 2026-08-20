@@ -284,7 +284,7 @@ impl Server {
     pub async fn start_with_web_features(
         bind_addr: [u8; 4],
         port: u16,
-        mut exporter: Exporter,
+        exporter: Exporter,
         kibana_url: String,
         runtime_mode: RuntimeMode,
         web_features: Option<&str>,
@@ -292,7 +292,6 @@ impl Server {
         let (_, rx) = mpsc::channel::<(Identifiers, Bytes)>(1);
         let rx = Arc::new(RwLock::new(rx));
         let rx_clone = rx.clone();
-        let docs_rx = exporter.get_docs_rx();
         let (shutdown_tx, shutdown_rx) = watch::channel(false);
         let (stats_updates_tx, stats_updates_rx) = watch::channel(0u64);
 
@@ -318,14 +317,6 @@ impl Server {
         });
 
         stats::spawn_stats_publisher(state.clone(), state.event_sender());
-
-        let docs_state = state.clone();
-        tokio::spawn(async move {
-            let mut docs_rx = docs_rx;
-            while let Some(doc_count) = docs_rx.recv().await {
-                docs_state.add_docs_count(doc_count).await;
-            }
-        });
 
         let handle = axum_server::Handle::new();
         let handle_clone = handle.clone();
@@ -595,8 +586,9 @@ impl ServerState {
         Ok((has_header, email))
     }
 
-    pub async fn record_success(&self, _docs: u32, errors: u32) {
+    pub async fn record_success(&self, docs: u32, errors: u32) {
         let mut stats = self.stats.write().await;
+        stats.docs.total += docs as usize;
         stats.docs.errors += errors as usize;
         stats.jobs.total += 1;
         stats.jobs.success += 1;
@@ -614,13 +606,6 @@ impl ServerState {
         if stats.jobs.active > 0 {
             stats.jobs.active -= 1;
         }
-        drop(stats);
-        self.notify_stats_changed();
-    }
-
-    pub async fn add_docs_count(&self, doc_count: usize) {
-        let mut stats = self.stats.write().await;
-        stats.docs.total += doc_count;
         drop(stats);
         self.notify_stats_changed();
     }
@@ -1495,6 +1480,16 @@ mod tests {
         let result = test();
         drop(env_guard);
         result
+    }
+
+    #[tokio::test]
+    async fn successful_job_records_processed_documents_in_shared_stats() {
+        let state = test_server_state();
+
+        state.record_success(4636, 0).await;
+
+        let stats = state.get_stats().await;
+        assert_eq!(stats.docs.total, 4636);
     }
 
     #[test]

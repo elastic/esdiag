@@ -1,6 +1,6 @@
 [package]
 name = "esdiag"
-version = "0.16.4"
+version = "0.16.5"
 description = "Elastic Stack diagnostic collector and processor"
 repository = "https://github.com/elastic/esdiag"
 homepage = "https://github.com/elastic/esdiag"
