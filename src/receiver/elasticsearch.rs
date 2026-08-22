@@ -27,6 +27,17 @@ pub struct ElasticsearchRequestError {
     pub response_size_bytes: u64,
 }
 
+impl ElasticsearchRequestError {
+    pub fn new(status: http::StatusCode, body: String, response_time_ms: u64, response_size_bytes: u64) -> Self {
+        Self {
+            status,
+            body,
+            response_time_ms,
+            response_size_bytes,
+        }
+    }
+}
+
 impl std::fmt::Display for ElasticsearchRequestError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "http {} - {}", self.status, self.body)
@@ -204,7 +215,8 @@ impl Receive for ElasticsearchReceiver {
     where
         T: DataSource + DeserializeOwned,
     {
-        let ctx = SourceContext::new("elasticsearch", self.get_version().await.ok().cloned());
+        let version = self.get_version().await?.clone();
+        let ctx = SourceContext::new("elasticsearch", Some(version));
         let path = T::resolve_source_request_path(&ctx)?;
         tracing::debug!("Getting API: {}", &path);
 
@@ -281,7 +293,8 @@ impl ReceiveRaw for ElasticsearchReceiver {
     where
         T: DataSource,
     {
-        let ctx = SourceContext::new("elasticsearch", self.get_version().await.ok().cloned());
+        let version = self.get_version().await?.clone();
+        let ctx = SourceContext::new("elasticsearch", Some(version));
         let path = T::resolve_source_request_path(&ctx)?;
         let extension = T::resolve_source_extension(&ctx)?;
 

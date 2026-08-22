@@ -81,6 +81,26 @@ esdiag host add prod-es http://localhost:9200 --app elasticsearch --secret prod-
 
 Role values are `collect`, `send`, and `view`.
 
+## Application, Route, and Templates
+
+Each concrete saved host targets one application: Elasticsearch, Kibana, or Logstash.
+The host URL's route is separate from that application. For example, an Elastic Cloud
+admin proxy is an Elasticsearch target reached through the Cloud admin route; it is not
+an application value.
+
+A URL-template host may remain **unresolved** until a template reference supplies its
+identifier and application:
+
+```bash
+esdiag host add elastic-cloud 'https://cloud.elastic.co/api/v1/deployments/{id}/{product}/_main/proxy/' --url-template
+esdiag host auth elastic-cloud://415715723947/elasticsearch
+```
+
+Unresolved templates may omit `app` in `hosts.yml`, but cannot be connected to or
+collected from until materialized. Legacy records with `app: unknown`, `app: none`, or
+a platform value remain readable; assign a real application before using an ambiguous
+concrete record.
+
 ## Migrate Existing hosts.yml
 
 Migrate all legacy plaintext credentials into the keystore:

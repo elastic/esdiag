@@ -7,7 +7,7 @@ set -euo pipefail
 
 readonly ESDIAG_VERSION="0.17.0-SNAPSHOT"
 readonly ELASTIC_VERSION="9.4.2"
-readonly STATE_SCHEMA_VERSION="2"
+readonly STATE_SCHEMA_VERSION="3"
 readonly DEFAULT_ESDIAG_IMAGE="docker.elastic.co/esdiag/esdiag:${ESDIAG_VERSION}"
 readonly DEFAULT_ES_IMAGE="docker.elastic.co/elasticsearch/elasticsearch:${ELASTIC_VERSION}"
 readonly DEFAULT_KIBANA_IMAGE="docker.elastic.co/kibana/kibana:${ELASTIC_VERSION}"
@@ -23,6 +23,10 @@ open_browser=true
 copy_password=true
 upgrade=false
 force=false
+stack_mode="auto"
+resolved_stack_mode=""
+exec_args=()
+exec_mounts=()
 image_override=""
 esdiag_registry_override=""
 elastic_registry_override=""
@@ -43,7 +47,10 @@ trap restore_upgrade_state EXIT
 
 info() { printf '%s\n' "$*" >&2; }
 warn() { printf 'Warning: %s\n' "$*" >&2; }
-die() { printf 'Error: %s\n' "$*" >&2; exit 1; }
+die() {
+    printf 'Error: %s\n' "$*" >&2
+    exit 1
+}
 have() { command -v "$1" >/dev/null 2>&1; }
 
 usage() {
@@ -59,7 +66,9 @@ Commands:
   status    Show container and endpoint status
   logs      Show container logs
   setup     Re-run ESDiag asset setup
+  open      Open the ESDiag web UI
   auth      Check Elasticsearch and Kibana endpoints
+  exec      Run an ESDiag command inside a container
   secrets   Print a raw password or API key
   reset     Remove containers, volumes, and generated state
   update    Check for or install a newer standalone script
@@ -69,6 +78,7 @@ Commands:
 Options:
   --state-dir DIR             State directory (default: ${HOME}/.esdiag/local)
   --runtime podman|docker     Override Podman-first runtime detection
+  --stack auto|full|core     Select the ESDiag runtime (default: auto)
   --image IMAGE              Override the ESDiag image
   --esdiag-registry URL      Override the ESDiag image registry
   --elastic-registry URL     Override the Elastic image registry
@@ -79,6 +89,7 @@ Options:
   --upgrade                  Upgrade existing stack versions transactionally
   --open-browser=false       Do not launch ESDiag after startup
   --copy-password=false      Do not copy the Kibana password before launch
+  --mount PATH               Make an additional host path available to exec
   --force                    Confirm destructive reset
 
 Secrets:
@@ -86,18 +97,25 @@ Secrets:
   ${command_name} secrets apikey
 
 Edit ports and LOG_LEVEL in STATE_DIR/.env. Port defaults are 9200, 5601, and 2501.
+
+Container CLI:
+  ${command_name} exec [launcher options] -- <esdiag arguments>
 EOF
 }
 
 clipboard_command() {
     case "$(host_os)" in
-        Darwin) have pbcopy && printf '%s' pbcopy ;;
-        Linux)
-            if is_wsl && have clip.exe; then printf '%s' clip.exe
-            elif have wl-copy; then printf '%s' wl-copy
-            elif have xclip; then printf '%s' 'xclip -selection clipboard'
-            elif have xsel; then printf '%s' 'xsel --clipboard --input'
-            fi
+    Darwin) have pbcopy && printf '%s' pbcopy ;;
+    Linux)
+        if is_wsl && have clip.exe; then
+            printf '%s' clip.exe
+        elif have wl-copy; then
+            printf '%s' wl-copy
+        elif have xclip; then
+            printf '%s' 'xclip -selection clipboard'
+        elif have xsel; then
+            printf '%s' 'xsel --clipboard --input'
+        fi
         ;;
     esac
 }
@@ -107,26 +125,36 @@ is_wsl() { [[ "${ESDIAG_TEST_WSL:-false}" == true ]] || grep -qi microsoft /proc
 
 available_memory_mb() {
     local bytes
-    [[ -n "${ESDIAG_TEST_MEMORY_MB:-}" ]] && { printf '%s' "$ESDIAG_TEST_MEMORY_MB"; return; }
+    [[ -n "${ESDIAG_TEST_MEMORY_MB:-}" ]] && {
+        printf '%s' "$ESDIAG_TEST_MEMORY_MB"
+        return
+    }
     case "$(host_os)" in
-        Darwin) bytes=$(sysctl -n hw.memsize); printf '%s' "$((bytes / 1024 / 1024))" ;;
-        Linux) awk '/^MemAvailable:/ {print int($2 / 1024); exit}' /proc/meminfo ;;
-        *) printf '0' ;;
+    Darwin)
+        bytes=$(sysctl -n hw.memsize)
+        printf '%s' "$((bytes / 1024 / 1024))"
+        ;;
+    Linux) awk '/^MemAvailable:/ {print int($2 / 1024); exit}' /proc/meminfo ;;
+    *) printf '0' ;;
     esac
 }
 
 available_disk_mb() {
-    [[ -n "${ESDIAG_TEST_DISK_MB:-}" ]] && { printf '%s' "$ESDIAG_TEST_DISK_MB"; return; }
+    [[ -n "${ESDIAG_TEST_DISK_MB:-}" ]] && {
+        printf '%s' "$ESDIAG_TEST_DISK_MB"
+        return
+    }
     case "$(host_os)" in
-        Darwin) df -Pm "$state_dir" | awk 'NR == 2 {print $4}' ;;
-        Linux) df -Pm "$state_dir" | awk 'NR == 2 {print $4}' ;;
-        *) printf '0' ;;
+    Darwin) df -Pm "$state_dir" | awk 'NR == 2 {print $4}' ;;
+    Linux) df -Pm "$state_dir" | awk 'NR == 2 {print $4}' ;;
+    *) printf '0' ;;
     esac
 }
 
 validate_resources() {
     local memory disk
-    memory=$(available_memory_mb); disk=$(available_disk_mb)
+    memory=$(available_memory_mb)
+    disk=$(available_disk_mb)
     [[ "$memory" =~ ^[0-9]+$ ]] || die "Unable to inspect available memory"
     [[ "$disk" =~ ^[0-9]+$ ]] || die "Unable to inspect available disk space"
     ((memory >= 4096)) || warn "Only ${memory} MB memory is available; 8192 MB is recommended"
@@ -140,16 +168,19 @@ clipboard_example() {
 }
 
 random_value() {
-    if have openssl; then openssl rand -base64 36 | tr -d '/+=' | cut -c1-32
-    elif [[ -r /dev/urandom ]]; then LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32
-    else die "openssl or /dev/urandom is required to generate credentials"
+    if have openssl; then
+        openssl rand -base64 36 | tr -d '/+=' | cut -c1-32
+    elif [[ -r /dev/urandom ]]; then
+        LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32
+    else
+        die "openssl or /dev/urandom is required to generate credentials"
     fi
 }
 
 env_allowed() {
     case "$1" in
-        STATE_SCHEMA_VERSION|STACK_ESDIAG_VERSION|STACK_ELASTIC_VERSION|ELASTIC_SECURITY_ENABLED|ELASTIC_PASSWORD|KIBANA_SYSTEM_PASSWORD|KIBANA_ENCRYPTION_KEY|ESDIAG_OUTPUT_APIKEY|ESDIAG_IMAGE|ELASTICSEARCH_IMAGE|KIBANA_IMAGE|ESDIAG_ELASTICSEARCH_PORT|ESDIAG_KIBANA_PORT|ESDIAG_PORT|ESDIAG_KIBANA_SPACE|LOG_LEVEL) return 0 ;;
-        *) return 1 ;;
+    STATE_SCHEMA_VERSION | STACK_MODE | STACK_ESDIAG_VERSION | STACK_ELASTIC_VERSION | ELASTIC_SECURITY_ENABLED | ELASTIC_PASSWORD | KIBANA_SYSTEM_PASSWORD | KIBANA_ENCRYPTION_KEY | ESDIAG_OUTPUT_APIKEY | ESDIAG_IMAGE | ELASTICSEARCH_IMAGE | KIBANA_IMAGE | ESDIAG_ELASTICSEARCH_PORT | ESDIAG_KIBANA_PORT | ESDIAG_PORT | ESDIAG_KIBANA_SPACE | ESDIAG_KIBANA_PUBLIC_URL | LOG_LEVEL) return 0 ;;
+    *) return 1 ;;
     esac
 }
 
@@ -158,7 +189,7 @@ env_get() {
     [[ -f "${state_dir}/.env" ]] || return 1
     line=$(grep -E "^${key}=" "${state_dir}/.env" | tail -n 1) || return 1
     value=${line#*=}
-    case "$value" in *\$\(*|*\`*|*\$\{*) die "Unsafe value for ${key} in ${state_dir}/.env" ;; esac
+    case "$value" in *\$\(* | *\`* | *\$\{*) die "Unsafe value for ${key} in ${state_dir}/.env" ;; esac
     printf '%s' "$value"
 }
 
@@ -168,29 +199,80 @@ validate_env() {
     while IFS= read -r line || [[ -n "$line" ]]; do
         [[ -z "$line" || "$line" == \#* ]] && continue
         [[ "$line" == *=* ]] || die "Invalid line in ${state_dir}/.env"
-        key=${line%%=*}; value=${line#*=}
+        key=${line%%=*}
+        value=${line#*=}
         env_allowed "$key" || die "Unknown key in ${state_dir}/.env: ${key}"
-        case "$value" in *\$\(*|*\`*|*\$\{*) die "Unsafe value for ${key} in ${state_dir}/.env" ;; esac
+        case "$value" in *\$\(* | *\`* | *\$\{*) die "Unsafe value for ${key} in ${state_dir}/.env" ;; esac
     done <"${state_dir}/.env"
 }
 
 env_set() {
     local key="$1" value="$2" tmp line existing=false
     env_allowed "$key" || die "Refusing unknown environment key: ${key}"
-    case "$value" in *$'\n'*|*$'\r'*) die "Invalid newline in ${key}" ;; esac
+    case "$value" in *$'\n'* | *$'\r'*) die "Invalid newline in ${key}" ;; esac
     tmp="${state_dir}/.env.tmp.$$"
     umask 077
     : >"$tmp"
     if [[ -f "${state_dir}/.env" ]]; then
         while IFS= read -r line || [[ -n "$line" ]]; do
-            if [[ "$line" == "${key}="* ]]; then printf '%s=%s\n' "$key" "$value" >>"$tmp"; existing=true
-            else printf '%s\n' "$line" >>"$tmp"
+            if [[ "$line" == "${key}="* ]]; then
+                printf '%s=%s\n' "$key" "$value" >>"$tmp"
+                existing=true
+            else
+                printf '%s\n' "$line" >>"$tmp"
             fi
         done <"${state_dir}/.env"
     fi
     [[ "$existing" == true ]] || printf '%s=%s\n' "$key" "$value" >>"$tmp"
     chmod 600 "$tmp"
     mv "$tmp" "${state_dir}/.env"
+}
+
+native_esdiag() {
+    local candidate version
+    candidate="${ESDIAG_LOCAL_BINARY:-}"
+    [[ -n "$candidate" ]] || candidate=$(command -v esdiag 2>/dev/null || true)
+    [[ -n "$candidate" && -x "$candidate" ]] || return 1
+    version=$("$candidate" --version 2>/dev/null | awk 'NR == 1 { print $NF }') || return 1
+    [[ "$version" == "$ESDIAG_VERSION" ]] || return 1
+    printf '%s' "$candidate"
+}
+
+resolve_stack_mode() {
+    local recorded=""
+    if [[ -f "${state_dir}/.env" ]]; then
+        recorded=$(env_get STACK_MODE 2>/dev/null || printf full)
+        [[ "$recorded" == full || "$recorded" == core ]] || die "Unsupported local stack mode in ${state_dir}/.env: ${recorded}"
+    fi
+    case "$stack_mode" in
+    auto)
+        if [[ -n "$recorded" ]]; then
+            resolved_stack_mode="$recorded"
+        elif native_esdiag >/dev/null; then
+            resolved_stack_mode=core
+        else
+            resolved_stack_mode=full
+            info "Using full mode because no matching ESDiag ${ESDIAG_VERSION} binary is available"
+        fi
+        ;;
+    full) resolved_stack_mode=full ;;
+    core) resolved_stack_mode=core ;;
+    *) die "Stack mode must be auto, full, or core" ;;
+    esac
+    [[ "$resolved_stack_mode" != core ]] || native_esdiag >/dev/null || {
+        if [[ -n "$recorded" ]]; then
+            die "This state uses core mode and requires an ESDiag ${ESDIAG_VERSION} binary in PATH. Use the compatible binary or explicitly select --stack=full."
+        fi
+        die "Core mode requires an ESDiag ${ESDIAG_VERSION} binary in PATH"
+    }
+}
+
+remove_full_mode_services() {
+    local container
+    [[ "$resolved_stack_mode" == core ]] || return 0
+    for container in $("$runtime" ps -aq --filter "label=com.docker.compose.project=${project_name}" --filter "label=com.docker.compose.service=esdiag" 2>/dev/null || true); do
+        "$runtime" rm -f "$container" >/dev/null
+    done
 }
 
 write_compose() {
@@ -231,6 +313,9 @@ services:
       interval: 5s
       timeout: 5s
       retries: 60
+YAML
+    if [[ "$resolved_stack_mode" == full ]]; then
+        cat >>"$tmp" <<'YAML'
   setup:
     image: ${ESDIAG_IMAGE}
     profiles: ["setup"]
@@ -247,18 +332,28 @@ services:
       kibana: {condition: service_healthy}
     environment:
       ESDIAG_MODE: user
+      ESDIAG_CONTAINER_LOCAL_STACK: full
       ESDIAG_OUTPUT_URL: http://elasticsearch:9200
       ESDIAG_OUTPUT_APIKEY: ${ESDIAG_OUTPUT_APIKEY}
-      ESDIAG_KIBANA_URL: http://localhost:${ESDIAG_KIBANA_PORT}/s/${ESDIAG_KIBANA_SPACE}
+      ESDIAG_KIBANA_URL: http://kibana:5601/s/${ESDIAG_KIBANA_SPACE}
+      ESDIAG_KIBANA_INTERNAL_URL: http://kibana:5601/s/${ESDIAG_KIBANA_SPACE}
+      ESDIAG_KIBANA_PUBLIC_URL: ${ESDIAG_KIBANA_PUBLIC_URL}
       LOG_LEVEL: ${LOG_LEVEL}
     command: ["serve"]
     ports: ["127.0.0.1:${ESDIAG_PORT}:2501"]
     volumes: ["esdiag-data:/root/.esdiag"]
+YAML
+    fi
+    cat >>"$tmp" <<'YAML'
 volumes:
   elasticsearch-data:
   kibana-data:
+YAML
+    if [[ "$resolved_stack_mode" == full ]]; then
+        cat >>"$tmp" <<'YAML'
   esdiag-data:
 YAML
+    fi
     chmod 600 "$tmp"
     mv "$tmp" "${state_dir}/compose.yml"
 }
@@ -275,7 +370,8 @@ init_state() {
     selected_elastic_version=${elastic_version_override:-$ELASTIC_VERSION}
     esdiag_registry=${esdiag_registry_override:-${ESDIAG_REGISTRY:-docker.elastic.co}}
     elastic_registry=${elastic_registry_override:-${ELASTIC_CONTAINER_REGISTRY:-docker.elastic.co}}
-    esdiag_registry=${esdiag_registry%/}; elastic_registry=${elastic_registry%/}
+    esdiag_registry=${esdiag_registry%/}
+    elastic_registry=${elastic_registry%/}
     default_esdiag="${esdiag_registry}/esdiag/esdiag:${selected_esdiag_version}"
     default_es="${elastic_registry}/elasticsearch/elasticsearch:${selected_elastic_version}"
     default_kibana="${elastic_registry}/kibana/kibana:${selected_elastic_version}"
@@ -288,12 +384,16 @@ init_state() {
     env_set KIBANA_SYSTEM_PASSWORD "$(env_get KIBANA_SYSTEM_PASSWORD 2>/dev/null || random_value)"
     env_set KIBANA_ENCRYPTION_KEY "$(env_get KIBANA_ENCRYPTION_KEY 2>/dev/null || random_value)"
     env_set ESDIAG_OUTPUT_APIKEY "$(env_get ESDIAG_OUTPUT_APIKEY 2>/dev/null || printf pending)"
-    if [[ -n "$image_override" ]]; then env_set ESDIAG_IMAGE "$image_override"
-    elif [[ -n "${ESDIAG_IMAGE_TAG:-}" ]]; then env_set ESDIAG_IMAGE "$ESDIAG_IMAGE_TAG"
-    elif [[ -n "$esdiag_registry_override" || -n "$esdiag_version_override" ]]; then env_set ESDIAG_IMAGE "$default_esdiag"
+    if [[ -n "$image_override" ]]; then
+        env_set ESDIAG_IMAGE "$image_override"
+    elif [[ -n "${ESDIAG_IMAGE_TAG:-}" ]]; then
+        env_set ESDIAG_IMAGE "$ESDIAG_IMAGE_TAG"
+    elif [[ -n "$esdiag_registry_override" || -n "$esdiag_version_override" ]]; then
+        env_set ESDIAG_IMAGE "$default_esdiag"
     else env_set ESDIAG_IMAGE "$(env_get ESDIAG_IMAGE 2>/dev/null || printf '%s' "$default_esdiag")"; fi
     if [[ -n "$elastic_registry_override" || -n "$elastic_version_override" ]]; then
-        env_set ELASTICSEARCH_IMAGE "$default_es"; env_set KIBANA_IMAGE "$default_kibana"
+        env_set ELASTICSEARCH_IMAGE "$default_es"
+        env_set KIBANA_IMAGE "$default_kibana"
     else
         env_set ELASTICSEARCH_IMAGE "$(env_get ELASTICSEARCH_IMAGE 2>/dev/null || printf '%s' "$default_es")"
         env_set KIBANA_IMAGE "$(env_get KIBANA_IMAGE 2>/dev/null || printf '%s' "$default_kibana")"
@@ -302,8 +402,11 @@ init_state() {
     env_set ESDIAG_KIBANA_PORT "$(env_get ESDIAG_KIBANA_PORT 2>/dev/null || printf 5601)"
     env_set ESDIAG_PORT "$(env_get ESDIAG_PORT 2>/dev/null || printf 2501)"
     env_set ESDIAG_KIBANA_SPACE "$(env_get ESDIAG_KIBANA_SPACE 2>/dev/null || printf esdiag)"
-    if [[ -n "$log_level_override" ]]; then env_set LOG_LEVEL "$log_level_override"
-    elif [[ -n "${LOG_LEVEL:-}" ]]; then env_set LOG_LEVEL "$LOG_LEVEL"
+    env_set ESDIAG_KIBANA_PUBLIC_URL "$(env_get ESDIAG_KIBANA_PUBLIC_URL 2>/dev/null || printf 'http://127.0.0.1:%s/s/%s' "$(env_get ESDIAG_KIBANA_PORT)" "$(env_get ESDIAG_KIBANA_SPACE)")"
+    if [[ -n "$log_level_override" ]]; then
+        env_set LOG_LEVEL "$log_level_override"
+    elif [[ -n "${LOG_LEVEL:-}" ]]; then
+        env_set LOG_LEVEL "$LOG_LEVEL"
     else env_set LOG_LEVEL "$(env_get LOG_LEVEL 2>/dev/null || printf info)"; fi
     write_compose
     chmod 600 "${state_dir}/compose.yml"
@@ -312,9 +415,12 @@ init_state() {
 detect_runtime() {
     local project_id
     if [[ -z "$runtime" ]]; then
-        if have podman; then runtime=podman
-        elif have docker; then runtime=docker
-        else die "Podman or Docker is required"
+        if have podman; then
+            runtime=podman
+        elif have docker; then
+            runtime=docker
+        else
+            die "Podman or Docker is required"
         fi
     fi
     [[ "$runtime" == podman || "$runtime" == docker ]] || die "Runtime must be podman or docker"
@@ -346,22 +452,27 @@ validate_state_coupling() {
     fi
     validate_env
     key=$(env_get ESDIAG_OUTPUT_APIKEY 2>/dev/null || printf pending)
-    if [[ "$key" != pending && "$key" != disabled && ( "$es_volume" != true || "$kibana_volume" != true ) ]]; then
+    if [[ "$key" != pending && "$key" != disabled && ("$es_volume" != true || "$kibana_volume" != true) ]]; then
         die "Credential state exists but deployment volumes are missing; restore them or run '${command_name} reset --force'"
     fi
 }
 
 port_in_use() {
     local port="$1"
-    if have lsof; then lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1
-    elif have ss; then ss -ltn | awk -v suffix=":${port}" '$4 ~ suffix "$" {found=1} END {exit !found}'
-    else die "lsof or ss is required to validate port availability"
+    if have lsof; then
+        lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1
+    elif have ss; then
+        ss -ltn | awk -v suffix=":${port}" '$4 ~ suffix "$" {found=1} END {exit !found}'
+    else
+        die "lsof or ss is required to validate port availability"
     fi
 }
 
 validate_ports() {
     local a b c p
-    a=$(env_get ESDIAG_ELASTICSEARCH_PORT); b=$(env_get ESDIAG_KIBANA_PORT); c=$(env_get ESDIAG_PORT)
+    a=$(env_get ESDIAG_ELASTICSEARCH_PORT)
+    b=$(env_get ESDIAG_KIBANA_PORT)
+    c=$(env_get ESDIAG_PORT)
     for p in "$a" "$b" "$c"; do
         if ! [[ "$p" =~ ^[0-9]+$ ]] || ((p < 1 || p > 65535)); then die "Invalid port: ${p}"; fi
     done
@@ -378,8 +489,10 @@ validate_port_availability() {
 
 check_versions() {
     local old_esdiag old_elastic desired_esdiag desired_elastic
-    old_esdiag=$(env_get STACK_ESDIAG_VERSION); old_elastic=$(env_get STACK_ELASTIC_VERSION)
-    desired_esdiag=${esdiag_version_override:-$ESDIAG_VERSION}; desired_elastic=${elastic_version_override:-$ELASTIC_VERSION}
+    old_esdiag=$(env_get STACK_ESDIAG_VERSION)
+    old_elastic=$(env_get STACK_ELASTIC_VERSION)
+    desired_esdiag=${esdiag_version_override:-$ESDIAG_VERSION}
+    desired_elastic=${elastic_version_override:-$ELASTIC_VERSION}
     if [[ "$old_esdiag" != "$desired_esdiag" || "$old_elastic" != "$desired_elastic" ]]; then
         [[ "$upgrade" == true ]] || die "State uses ESDiag ${old_esdiag}/Elastic ${old_elastic}; run '${command_name} up --upgrade'"
         if [[ -z "$image_override" && -z "${ESDIAG_IMAGE_TAG:-}" && -z "$esdiag_registry_override" && -z "$esdiag_version_override" ]]; then
@@ -395,7 +508,8 @@ check_versions() {
 pull_images() {
     [[ "$pull_policy" == never ]] && return
     local images image
-    images="$(env_get ELASTICSEARCH_IMAGE) $(env_get KIBANA_IMAGE) $(env_get ESDIAG_IMAGE)"
+    images="$(env_get ELASTICSEARCH_IMAGE) $(env_get KIBANA_IMAGE)"
+    [[ "$resolved_stack_mode" == full ]] && images="${images} $(env_get ESDIAG_IMAGE)"
     for image in $images; do
         if [[ "$pull_policy" == always ]] || ! "$runtime" image inspect "$image" >/dev/null 2>&1; then "$runtime" pull "$image"; fi
     done
@@ -406,22 +520,28 @@ capture_logs() { "${compose[@]}" logs --no-color >"${state_dir}/logs/failure.log
 wait_url() {
     local url="$1" auth="${2:-}" attempts=60
     while ((attempts > 0)); do
-        if [[ -n "$auth" ]] && curl -fsS -u "$auth" "$url" >/dev/null 2>&1; then return 0
+        if [[ -n "$auth" ]] && curl -fsS -u "$auth" "$url" >/dev/null 2>&1; then
+            return 0
         elif [[ -z "$auth" ]] && curl -fsS "$url" >/dev/null 2>&1; then return 0; fi
-        attempts=$((attempts - 1)); sleep 2
+        attempts=$((attempts - 1))
+        sleep 2
     done
-    capture_logs; die "Timed out waiting for ${url}; logs: ${state_dir}/logs/failure.log"
+    capture_logs
+    die "Timed out waiting for ${url}; logs: ${state_dir}/logs/failure.log"
 }
 
 configure_security() {
     local port password kibana_password response encoded
-    port=$(env_get ESDIAG_ELASTICSEARCH_PORT); password=$(env_get ELASTIC_PASSWORD); kibana_password=$(env_get KIBANA_SYSTEM_PASSWORD)
+    port=$(env_get ESDIAG_ELASTICSEARCH_PORT)
+    password=$(env_get ELASTIC_PASSWORD)
+    kibana_password=$(env_get KIBANA_SYSTEM_PASSWORD)
     curl -fsS -u "elastic:${password}" -H 'Content-Type: application/json' -X POST \
         "http://127.0.0.1:${port}/_security/user/kibana_system/_password" -d "{\"password\":\"${kibana_password}\"}" >/dev/null
     if [[ "$(env_get ESDIAG_OUTPUT_APIKEY)" == pending ]]; then
         response=$(curl -fsS -u "elastic:${password}" -H 'Content-Type: application/json' -X POST \
             "http://127.0.0.1:${port}/_security/api_key" -d '{"name":"esdiag-local"}')
-        if have jq; then encoded=$(printf '%s' "$response" | jq -er '.encoded')
+        if have jq; then
+            encoded=$(printf '%s' "$response" | jq -er '.encoded')
         else encoded=$(printf '%s' "$response" | sed -n 's/.*"encoded":"\([^"]*\)".*/\1/p'); fi
         [[ -n "$encoded" ]] || die "Elasticsearch did not return an API key"
         env_set ESDIAG_OUTPUT_APIKEY "$encoded"
@@ -431,7 +551,87 @@ configure_security() {
 run_setup() {
     detect_runtime
     [[ "$(env_get ESDIAG_OUTPUT_APIKEY)" != pending ]] || die "API key is not configured; run up first"
-    if ! "${compose[@]}" --profile setup run --rm --no-deps setup; then capture_logs; die "ESDiag setup failed"; fi
+    if [[ "$resolved_stack_mode" == full ]]; then
+        if ! "${compose[@]}" --profile setup run --rm --no-deps setup; then
+            capture_logs
+            die "ESDiag setup failed"
+        fi
+    else
+        local binary
+        binary=$(native_esdiag) || die "Core mode requires an ESDiag ${ESDIAG_VERSION} binary in PATH"
+        ESDIAG_OUTPUT_URL="http://127.0.0.1:$(env_get ESDIAG_ELASTICSEARCH_PORT)" \
+        ESDIAG_OUTPUT_APIKEY="$(env_get ESDIAG_OUTPUT_APIKEY)" \
+        ESDIAG_KIBANA_URL="http://127.0.0.1:$(env_get ESDIAG_KIBANA_PORT)/s/$(env_get ESDIAG_KIBANA_SPACE)" \
+        LOG_LEVEL="$(env_get LOG_LEVEL)" "$binary" setup || die "ESDiag setup failed"
+    fi
+}
+
+native_service_pid_file() { printf '%s/.native-serve.pid' "$state_dir"; }
+native_service_binary_file() { printf '%s/.native-serve.binary' "$state_dir"; }
+native_service_started_file() { printf '%s/.native-serve.started' "$state_dir"; }
+native_service_log_file() { printf '%s/logs/native-serve.log' "$state_dir"; }
+native_service_start_time() { ps -p "$1" -o lstart= 2>/dev/null | tr -s ' ' | sed 's/^ //;s/ $//'; }
+
+native_service_running() {
+    local pid binary command started
+    [[ -f "$(native_service_pid_file)" && -f "$(native_service_binary_file)" && -f "$(native_service_started_file)" ]] || return 1
+    pid=$(cat "$(native_service_pid_file)")
+    binary=$(cat "$(native_service_binary_file)")
+    started=$(cat "$(native_service_started_file)")
+    [[ "$pid" =~ ^[0-9]+$ && -x "$binary" ]] || {
+        rm -f "$(native_service_pid_file)" "$(native_service_binary_file)" "$(native_service_started_file)"
+        return 1
+    }
+    kill -0 "$pid" >/dev/null 2>&1 || {
+        rm -f "$(native_service_pid_file)" "$(native_service_binary_file)" "$(native_service_started_file)"
+        return 1
+    }
+    command=$(ps -p "$pid" -o command= 2>/dev/null || true)
+    [[ "$command" == *"$binary"* && "$command" == *"serve"* && "$(native_service_start_time "$pid")" == "$started" ]] || {
+        rm -f "$(native_service_pid_file)" "$(native_service_binary_file)" "$(native_service_started_file)"
+        return 1
+    }
+    "$binary" --version 2>/dev/null | awk 'NR == 1 { print $NF }' | grep -qx "$ESDIAG_VERSION" || {
+        rm -f "$(native_service_pid_file)" "$(native_service_binary_file)" "$(native_service_started_file)"
+        return 1
+    }
+}
+
+stop_native_service() {
+    local pid
+    native_service_running || return 0
+    pid=$(cat "$(native_service_pid_file)")
+    kill "$pid" >/dev/null 2>&1 || true
+    for _ in 1 2 3 4 5; do
+        kill -0 "$pid" >/dev/null 2>&1 || break
+        sleep 1
+    done
+    kill -0 "$pid" >/dev/null 2>&1 && die "Managed ESDiag service did not stop; see $(native_service_log_file)"
+    rm -f "$(native_service_pid_file)" "$(native_service_binary_file)" "$(native_service_started_file)"
+}
+
+start_native_service() {
+    local binary pid started
+    binary=$(native_esdiag) || die "Core mode requires an ESDiag ${ESDIAG_VERSION} binary in PATH"
+    native_service_running && return 0
+    mkdir -p "${state_dir}/logs"
+    chmod 700 "${state_dir}" "${state_dir}/logs"
+    rm -f "$(native_service_pid_file)" "$(native_service_binary_file)" "$(native_service_started_file)"
+    : >"$(native_service_log_file)"
+    chmod 600 "$(native_service_log_file)"
+    ESDIAG_OUTPUT_URL="http://127.0.0.1:$(env_get ESDIAG_ELASTICSEARCH_PORT)" \
+    ESDIAG_OUTPUT_APIKEY="$(env_get ESDIAG_OUTPUT_APIKEY)" \
+    ESDIAG_KIBANA_URL="http://127.0.0.1:$(env_get ESDIAG_KIBANA_PORT)/s/$(env_get ESDIAG_KIBANA_SPACE)" \
+    LOG_LEVEL="$(env_get LOG_LEVEL)" \
+        "$binary" serve --mode user --bind 127.0.0.1 --port "$(env_get ESDIAG_PORT)" >>"$(native_service_log_file)" 2>&1 &
+    pid=$!
+    started=$(native_service_start_time "$pid")
+    [[ -n "$started" ]] || die "Could not identify the managed native ESDiag service"
+    printf '%s\n' "$pid" >"$(native_service_pid_file)"
+    printf '%s\n' "$binary" >"$(native_service_binary_file)"
+    printf '%s\n' "$started" >"$(native_service_started_file)"
+    chmod 600 "$(native_service_pid_file)" "$(native_service_binary_file)" "$(native_service_started_file)"
+    wait_url "http://127.0.0.1:$(env_get ESDIAG_PORT)"
 }
 
 launch_browser() {
@@ -440,31 +640,39 @@ launch_browser() {
     url="http://127.0.0.1:$(env_get ESDIAG_PORT)"
     if [[ "$copy_password" == true ]]; then
         clip=$(clipboard_command || true)
-        if [[ -n "$clip" ]] && printf '%s' "$(env_get ELASTIC_PASSWORD)" | sh -c "$clip"; then info "Copied the elastic password to the clipboard"
+        if [[ -n "$clip" ]] && printf '%s' "$(env_get ELASTIC_PASSWORD)" | sh -c "$clip"; then
+            info "Copied the elastic password to the clipboard"
         elif [[ -n "$clip" ]]; then warn "Could not copy password; use: ${command_name} secrets password$(clipboard_example)"; fi
     fi
     case "$(uname -s)" in
-        Darwin) if have open; then open "$url" >/dev/null 2>&1 || true; fi ;;
-        Linux) if is_wsl && have cmd.exe; then cmd.exe /c start "$url" >/dev/null 2>&1 || true
-               elif have xdg-open; then xdg-open "$url" >/dev/null 2>&1 || true; fi ;;
+    Darwin) if have open; then open "$url" >/dev/null 2>&1 || true; fi ;;
+    Linux) if is_wsl && have cmd.exe; then
+        cmd.exe /c start "$url" >/dev/null 2>&1 || true
+    elif have xdg-open; then xdg-open "$url" >/dev/null 2>&1 || true; fi ;;
     esac
     return 0
 }
 
 command_up() {
-    local existed=false
+    local existed=false recorded_mode=""
     [[ -n "$esdiag_version_override" || -n "$elastic_version_override" ]] && upgrade=true
     detect_runtime
     validate_state_coupling
     [[ -f "${state_dir}/.env" ]] && existed=true
+    [[ "$existed" == true ]] && recorded_mode=$(env_get STACK_MODE 2>/dev/null || printf full)
+    resolve_stack_mode
+    [[ "$resolved_stack_mode" == full ]] && stop_native_service
     init_state
     if [[ "$upgrade" == true && "$existed" == true ]]; then
         upgrade_backup="${state_dir}/.env.pre-upgrade.$$"
         cp "${state_dir}/.env" "$upgrade_backup"
         chmod 600 "$upgrade_backup"
     fi
-    check_versions; validate_ports; validate_resources
+    check_versions
+    validate_ports
+    validate_resources
     [[ "$deployment_initialized" == false ]] && validate_port_availability
+    [[ "$recorded_mode" == full && "$resolved_stack_mode" == core ]] && remove_full_mode_services
     pull_images
     "${compose[@]}" up -d --no-deps elasticsearch
     wait_url "http://127.0.0.1:$(env_get ESDIAG_ELASTICSEARCH_PORT)" "elastic:$(env_get ELASTIC_PASSWORD)"
@@ -472,8 +680,13 @@ command_up() {
     "${compose[@]}" up -d --no-deps kibana
     wait_url "http://127.0.0.1:$(env_get ESDIAG_KIBANA_PORT)/api/status"
     run_setup
-    "${compose[@]}" up -d --no-deps esdiag
-    wait_url "http://127.0.0.1:$(env_get ESDIAG_PORT)"
+    if [[ "$resolved_stack_mode" == full ]]; then
+        stop_native_service
+        "${compose[@]}" up -d --no-deps esdiag
+        wait_url "http://127.0.0.1:$(env_get ESDIAG_PORT)"
+    else
+        start_native_service
+    fi
     if [[ "$upgrade" == true ]]; then
         env_set STACK_ESDIAG_VERSION "${esdiag_version_override:-$ESDIAG_VERSION}"
         env_set STACK_ELASTIC_VERSION "${elastic_version_override:-$ELASTIC_VERSION}"
@@ -481,36 +694,175 @@ command_up() {
         upgrade_backup=""
     fi
     env_set STATE_SCHEMA_VERSION "$STATE_SCHEMA_VERSION"
-    info "ESDiag is ready at http://127.0.0.1:$(env_get ESDIAG_PORT)"
+    env_set STACK_MODE "$resolved_stack_mode"
+    info "ESDiag ${resolved_stack_mode} stack is ready at http://127.0.0.1:$(env_get ESDIAG_PORT)"
+    [[ "$recorded_mode" != "" && "$recorded_mode" != "$resolved_stack_mode" ]] && info "ESDiag user state is separate between full and core modes; no migration was performed"
     [[ "$existed" == false ]] && info "Retrieve the Kibana password with: ${command_name} secrets password"
     launch_browser
 }
 
-command_down() { [[ -f "${state_dir}/compose.yml" ]] || die "No local state at ${state_dir}"; validate_env; detect_runtime; "${compose[@]}" down; }
+command_down() {
+    [[ -f "${state_dir}/compose.yml" ]] || die "No local state at ${state_dir}"
+    validate_env
+    detect_runtime
+    stop_native_service
+    "${compose[@]}" down
+}
 command_restart() {
     local service
     [[ -f "${state_dir}/compose.yml" ]] || die "No local state at ${state_dir}"
     (($# > 0)) || die "Usage: ${command_name} restart elasticsearch|kibana|esdiag [...]"
     for service in "$@"; do
-        case "$service" in elasticsearch|kibana|esdiag) ;; *) die "Unknown service: ${service}" ;; esac
+        case "$service" in elasticsearch | kibana | esdiag) ;; *) die "Unknown service: ${service}" ;; esac
     done
-    validate_env; detect_runtime; init_state
-    "${compose[@]}" up -d --no-deps --force-recreate "$@"
+    validate_env
+    detect_runtime
+    resolved_stack_mode=$(env_get STACK_MODE 2>/dev/null || printf full)
+    init_state
+    for service in "$@"; do
+        if [[ "$service" == esdiag && "$resolved_stack_mode" == core ]]; then
+            stop_native_service
+            start_native_service
+        else "${compose[@]}" up -d --no-deps --force-recreate "$service"; fi
+    done
 }
-command_status() { [[ -f "${state_dir}/compose.yml" ]] || die "No local state at ${state_dir}"; validate_env; detect_runtime; "${compose[@]}" ps; info "ESDiag: http://127.0.0.1:$(env_get ESDIAG_PORT)"; info "Kibana: http://127.0.0.1:$(env_get ESDIAG_KIBANA_PORT)"; }
-command_logs() { [[ -f "${state_dir}/compose.yml" ]] || die "No local state at ${state_dir}"; validate_env; detect_runtime; "${compose[@]}" logs "$@"; }
-command_auth() { [[ -f "${state_dir}/.env" ]] || die "No local state at ${state_dir}"; validate_env; wait_url "http://127.0.0.1:$(env_get ESDIAG_ELASTICSEARCH_PORT)" "elastic:$(env_get ELASTIC_PASSWORD)"; wait_url "http://127.0.0.1:$(env_get ESDIAG_KIBANA_PORT)/api/status"; info "Authentication checks passed"; }
+command_status() {
+    [[ -f "${state_dir}/compose.yml" ]] || die "No local state at ${state_dir}"
+    validate_env
+    detect_runtime
+    "${compose[@]}" ps
+    resolved_stack_mode=$(env_get STACK_MODE 2>/dev/null || printf full)
+    info "Stack mode: ${resolved_stack_mode}"
+    if [[ "$resolved_stack_mode" == core ]]; then
+        if native_service_running; then
+            info "Native ESDiag service: running"
+        else warn "Native ESDiag service: stopped; run '${command_name} up --stack=core'"; fi
+    fi
+    info "ESDiag: http://127.0.0.1:$(env_get ESDIAG_PORT)"
+    info "Kibana: http://127.0.0.1:$(env_get ESDIAG_KIBANA_PORT)"
+}
+command_open() {
+    [[ -f "${state_dir}/.env" ]] || die "No local state at ${state_dir}"
+    validate_env
+    launch_browser
+}
+command_logs() {
+    [[ -f "${state_dir}/compose.yml" ]] || die "No local state at ${state_dir}"
+    validate_env
+    detect_runtime
+    resolved_stack_mode=$(env_get STACK_MODE 2>/dev/null || printf full)
+    if [[ "$resolved_stack_mode" == core && ("$#" == 0 || "$1" == esdiag) ]]; then
+        if [[ -f "$(native_service_log_file)" ]]; then
+            cat "$(native_service_log_file)"
+        else info "No native ESDiag service logs"; fi
+    else "${compose[@]}" logs "$@"; fi
+}
+command_auth() {
+    [[ -f "${state_dir}/.env" ]] || die "No local state at ${state_dir}"
+    validate_env
+    wait_url "http://127.0.0.1:$(env_get ESDIAG_ELASTICSEARCH_PORT)" "elastic:$(env_get ELASTIC_PASSWORD)"
+    wait_url "http://127.0.0.1:$(env_get ESDIAG_KIBANA_PORT)/api/status"
+    info "Authentication checks passed"
+}
+
+canonical_path() {
+    local directory basename
+    if [[ -d "$1" ]]; then
+        (cd "$1" && pwd -P)
+    elif [[ -e "$1" ]]; then
+        directory=$(dirname "$1")
+        basename=$(basename "$1")
+        (cd "$directory" && printf '%s/%s\n' "$(pwd -P)" "$basename")
+    else
+        return 1
+    fi
+}
+
+path_is_within() {
+    local path="$1" root="$2"
+    [[ "$path" == "$root" || "$path" == "$root/"* ]]
+}
+
+service_running() {
+    "${compose[@]}" ps -q "$1" | grep -q .
+}
+
+command_exec() {
+    local cwd mount mount_source mount_target argument path index visible=false
+    local -a mount_sources=() mount_targets=() exec_compose=()
+    [[ "${#exec_args[@]}" -gt 0 ]] || die "Usage: ${command_name} exec [launcher options] -- <esdiag arguments>"
+    [[ -f "${state_dir}/compose.yml" && -f "${state_dir}/.env" ]] || die "No local state at ${state_dir}; run '${command_name} up --stack=full' first"
+    validate_env
+    detect_runtime
+    validate_state_coupling
+    resolved_stack_mode=$(env_get STACK_MODE 2>/dev/null || printf full)
+    [[ "$resolved_stack_mode" == full ]] || die "Container CLI execution requires full mode; use a native ESDiag binary for core mode"
+    for argument in elasticsearch kibana esdiag; do
+        service_running "$argument" || die "Full-mode service '${argument}' is not running; run '${command_name} up --stack=full' first"
+    done
+
+    cwd=$(canonical_path "$PWD") || die "Cannot resolve the current working directory"
+    for mount in "${exec_mounts[@]:-}"; do
+        [[ -n "$mount" ]] || continue
+        mount_source=$(canonical_path "$mount") || die "Exec mount does not exist: ${mount}"
+        if [[ "$mount" == /* ]]; then mount_target="$mount"; else mount_target="$mount_source"; fi
+        mount_sources+=("$mount_source")
+        mount_targets+=("$mount_target")
+    done
+    for argument in "${exec_args[@]}"; do
+        path="$argument"
+        [[ -e "$path" ]] || {
+            [[ "$argument" == *=* ]] && path=${argument#*=}
+        }
+        [[ -e "$path" ]] || continue
+        path=$(canonical_path "$path") || die "Cannot resolve command path: ${argument}"
+        path_is_within "$path" "$cwd" && continue
+        for ((index = 0; index < ${#mount_sources[@]}; index++)); do
+            path_is_within "$path" "${mount_sources[$index]}" && {
+                visible=true
+                break
+            }
+        done
+        [[ "$visible" == true ]] || die "Path is outside the working directory: ${argument}. Re-run with --mount ${path}"
+        visible=false
+    done
+
+    exec_compose=("${compose[@]}" run --rm --no-deps --volume "${cwd}:${cwd}" --workdir "$cwd")
+    for ((index = 0; index < ${#mount_sources[@]}; index++)); do
+        exec_compose+=(--volume "${mount_sources[$index]}:${mount_targets[$index]}")
+    done
+    exec_compose+=(esdiag "${exec_args[@]}")
+    "${exec_compose[@]}"
+}
 
 command_secrets() {
     local which="${1:-}"
     [[ -f "${state_dir}/.env" ]] || die "No local state at ${state_dir}"
     validate_env
-    case "$which" in password) env_get ELASTIC_PASSWORD; printf '\n' ;; apikey) [[ "$(env_get ESDIAG_OUTPUT_APIKEY)" != pending ]] || die "API key has not been created"; env_get ESDIAG_OUTPUT_APIKEY; printf '\n' ;; *) die "Usage: ${command_name} secrets password|apikey" ;; esac
+    case "$which" in password)
+        env_get ELASTIC_PASSWORD
+        printf '\n'
+        ;;
+    apikey)
+        [[ "$(env_get ESDIAG_OUTPUT_APIKEY)" != pending ]] || die "API key has not been created"
+        env_get ESDIAG_OUTPUT_APIKEY
+        printf '\n'
+        ;;
+    *) die "Usage: ${command_name} secrets password|apikey" ;; esac
 }
 
 command_reset() {
-    [[ "$force" == true ]] || { [[ -t 0 ]] || die "reset requires --force in non-interactive use"; printf 'Delete all ESDiag local data? [y/N] ' >&2; read -r answer; [[ "$answer" == y || "$answer" == Y ]] || die "Reset cancelled"; }
-    if [[ -f "${state_dir}/compose.yml" ]]; then detect_runtime; "${compose[@]}" down --volumes --remove-orphans; fi
+    [[ "$force" == true ]] || {
+        [[ -t 0 ]] || die "reset requires --force in non-interactive use"
+        printf 'Delete all ESDiag local data? [y/N] ' >&2
+        read -r answer
+        [[ "$answer" == y || "$answer" == Y ]] || die "Reset cancelled"
+    }
+    if [[ -f "${state_dir}/compose.yml" ]]; then
+        detect_runtime
+        stop_native_service
+        "${compose[@]}" down --volumes --remove-orphans
+    fi
     rm -rf "${state_dir}"
 }
 
@@ -537,11 +889,14 @@ command_update() {
     local check_only=false installed candidate checksum expected latest dir path
     [[ "${1:-}" == --check ]] && check_only=true
     have curl || die "curl is required for updates"
-    path=$(script_path); dir=$(dirname "$path"); installed="$ESDIAG_VERSION"
-    if [[ "$check_only" != true && ( ! -w "$path" || ! -w "$dir" ) ]]; then
+    path=$(script_path)
+    dir=$(dirname "$path")
+    installed="$ESDIAG_VERSION"
+    if [[ "$check_only" != true && (! -w "$path" || ! -w "$dir") ]]; then
         die "Installation is not writable. Download manually: ${UPDATE_SCRIPT_URL}"
     fi
-    if [[ "$check_only" == true ]]; then candidate="${TMPDIR:-/tmp}/.esdiag-local.check.$$"
+    if [[ "$check_only" == true ]]; then
+        candidate="${TMPDIR:-/tmp}/.esdiag-local.check.$$"
     else candidate="${dir}/.esdiag-local.download.$$"; fi
     checksum="${dir}/.esdiag-local.sha256.$$"
     trap 'rm -f "${candidate:-}" "${checksum:-}"' EXIT
@@ -549,7 +904,10 @@ command_update() {
     grep -q '^#!/usr/bin/env bash$' "$candidate" || die "Downloaded artifact is not an esdiag-local script; no files changed"
     grep -q 'readonly UPDATE_SCRIPT_URL="https://github.com/elastic/esdiag/releases/latest/download/esdiag-local"' "$candidate" || die "Downloaded artifact has an invalid update identity; no files changed"
     latest=$(bash "$candidate" version 2>/dev/null) || die "Downloaded artifact is not a valid esdiag-local script; no files changed"
-    if ! semver_gt "$latest" "$installed"; then info "esdiag-local ${installed} is current"; return; fi
+    if ! semver_gt "$latest" "$installed"; then
+        info "esdiag-local ${installed} is current"
+        return
+    fi
     info "esdiag-local ${latest} is available (installed: ${installed}): ${UPDATE_SCRIPT_URL}"
     [[ "$check_only" == true ]] && return
     curl -fsSL "$UPDATE_CHECKSUM_URL" -o "$checksum" || die "Unable to download checksum; no files changed"
@@ -564,34 +922,156 @@ command_update() {
 [[ "${BASH_SOURCE[0]}" == "$0" ]] || die "esdiag-local must be executed, not sourced"
 ((BASH_VERSINFO[0] > 3 || (BASH_VERSINFO[0] == 3 && BASH_VERSINFO[1] >= 2))) || die "Bash 3.2 or newer is required"
 
-command="${1:-help}"; [[ $# -eq 0 ]] || shift
+command="${1:-help}"
+[[ $# -eq 0 ]] || shift
 remaining=()
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --state-dir) [[ $# -ge 2 ]] || die "Missing --state-dir value"; state_dir="$2"; shift 2 ;;
-        --state-dir=*) state_dir=${1#*=}; shift ;;
-        --runtime) runtime="$2"; shift 2 ;; --runtime=*) runtime=${1#*=}; shift ;;
-        --image) image_override="$2"; shift 2 ;; --image=*) image_override=${1#*=}; shift ;;
-        --esdiag-registry) esdiag_registry_override="$2"; shift 2 ;; --esdiag-registry=*) esdiag_registry_override=${1#*=}; shift ;;
-        --elastic-registry) elastic_registry_override="$2"; shift 2 ;; --elastic-registry=*) elastic_registry_override=${1#*=}; shift ;;
-        --esdiag-version) esdiag_version_override="$2"; shift 2 ;; --esdiag-version=*) esdiag_version_override=${1#*=}; shift ;;
-        --elastic-version) elastic_version_override="$2"; shift 2 ;; --elastic-version=*) elastic_version_override=${1#*=}; shift ;;
-        --log-level) [[ $# -ge 2 && -n "$2" ]] || die "Missing --log-level value"; log_level_override="$2"; shift 2 ;;
-        --log-level=*) log_level_override=${1#*=}; [[ -n "$log_level_override" ]] || die "Missing --log-level value"; shift ;;
-        --pull) pull_policy="$2"; shift 2 ;; --pull=*) pull_policy=${1#*=}; shift ;;
-        --insecure) die "--insecure is no longer supported; Elastic security is required" ;;
-        --upgrade) upgrade=true; shift ;; --force) force=true; shift ;;
-        --open-browser=false|-b=false) open_browser=false; shift ;; --open-browser=true|-b=true) open_browser=true; shift ;;
-        --copy-password=false) copy_password=false; shift ;; --copy-password=true) copy_password=true; shift ;;
-        -h|--help) command=help; shift ;;
-        *) remaining+=("$1"); shift ;;
+    --)
+        shift
+        exec_args=("$@")
+        break
+        ;;
+    --state-dir)
+        [[ $# -ge 2 ]] || die "Missing --state-dir value"
+        state_dir="$2"
+        shift 2
+        ;;
+    --state-dir=*)
+        state_dir=${1#*=}
+        shift
+        ;;
+    --runtime)
+        runtime="$2"
+        shift 2
+        ;;
+    --runtime=*)
+        runtime=${1#*=}
+        shift
+        ;;
+    --stack)
+        [[ $# -ge 2 ]] || die "Missing --stack value"
+        stack_mode="$2"
+        shift 2
+        ;;
+    --stack=*)
+        stack_mode=${1#*=}
+        shift
+        ;;
+    --image)
+        image_override="$2"
+        shift 2
+        ;;
+    --image=*)
+        image_override=${1#*=}
+        shift
+        ;;
+    --esdiag-registry)
+        esdiag_registry_override="$2"
+        shift 2
+        ;;
+    --esdiag-registry=*)
+        esdiag_registry_override=${1#*=}
+        shift
+        ;;
+    --elastic-registry)
+        elastic_registry_override="$2"
+        shift 2
+        ;;
+    --elastic-registry=*)
+        elastic_registry_override=${1#*=}
+        shift
+        ;;
+    --esdiag-version)
+        esdiag_version_override="$2"
+        shift 2
+        ;;
+    --esdiag-version=*)
+        esdiag_version_override=${1#*=}
+        shift
+        ;;
+    --elastic-version)
+        elastic_version_override="$2"
+        shift 2
+        ;;
+    --elastic-version=*)
+        elastic_version_override=${1#*=}
+        shift
+        ;;
+    --log-level)
+        [[ $# -ge 2 && -n "$2" ]] || die "Missing --log-level value"
+        log_level_override="$2"
+        shift 2
+        ;;
+    --log-level=*)
+        log_level_override=${1#*=}
+        [[ -n "$log_level_override" ]] || die "Missing --log-level value"
+        shift
+        ;;
+    --pull)
+        pull_policy="$2"
+        shift 2
+        ;;
+    --pull=*)
+        pull_policy=${1#*=}
+        shift
+        ;;
+    --insecure) die "--insecure is no longer supported; Elastic security is required" ;;
+    --upgrade)
+        upgrade=true
+        shift
+        ;;
+    --force)
+        force=true
+        shift
+        ;;
+    --open-browser=false | -b=false)
+        open_browser=false
+        shift
+        ;;
+    --open-browser=true | -b=true)
+        open_browser=true
+        shift
+        ;;
+    --copy-password=false)
+        copy_password=false
+        shift
+        ;;
+    --copy-password=true)
+        copy_password=true
+        shift
+        ;;
+    --mount)
+        [[ $# -ge 2 ]] || die "Missing --mount value"
+        exec_mounts+=("$2")
+        shift 2
+        ;;
+    --mount=*)
+        exec_mounts+=("${1#*=}")
+        shift
+        ;;
+    -h | --help)
+        command=help
+        shift
+        ;;
+    *)
+        remaining+=("$1")
+        shift
+        ;;
     esac
 done
 [[ "$pull_policy" == always || "$pull_policy" == missing || "$pull_policy" == never ]] || die "Pull policy must be always, missing, or never"
 
 case "$command" in
-    up) command_up ;; down) command_down ;; restart) command_restart ${remaining[@]+"${remaining[@]}"} ;; status) command_status ;; logs) command_logs ${remaining[@]+"${remaining[@]}"} ;;
-    setup) detect_runtime; validate_state_coupling; init_state; run_setup ;; auth) command_auth ;; secrets) command_secrets ${remaining[@]+"${remaining[@]}"} ;;
-    reset) command_reset ;; update) command_update ${remaining[@]+"${remaining[@]}"} ;; version|--version) printf '%s\n' "$ESDIAG_VERSION" ;;
-    help|-h|--help) usage ;; *) die "Unknown command: ${command}" ;;
+up) command_up ;; down) command_down ;; restart) command_restart ${remaining[@]+"${remaining[@]}"} ;; status) command_status ;; logs) command_logs ${remaining[@]+"${remaining[@]}"} ;;
+setup)
+    detect_runtime
+    validate_state_coupling
+    resolve_stack_mode
+    init_state
+    run_setup
+    ;;
+open) command_open ;; auth) command_auth ;; secrets) command_secrets ${remaining[@]+"${remaining[@]}"} ;;
+reset) command_reset ;; exec) command_exec ;; update) command_update ${remaining[@]+"${remaining[@]}"} ;; version | --version) printf '%s\n' "$ESDIAG_VERSION" ;;
+help | -h | --help) usage ;; *) die "Unknown command: ${command}" ;;
 esac

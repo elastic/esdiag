@@ -6,7 +6,7 @@ use super::super::processor::{DataSource, DiagnosticManifest, SourceContext, Str
 use super::{RawResponse, Receive, ReceiveRaw};
 use crate::{
     client::KibanaClient,
-    data::{KnownHost, Product},
+    data::{Application, KnownHost},
 };
 use eyre::{Result, eyre};
 use futures::stream::BoxStream;
@@ -50,6 +50,17 @@ pub struct KibanaRequestError {
     pub body: String,
     pub response_time_ms: u64,
     pub response_size_bytes: u64,
+}
+
+impl KibanaRequestError {
+    pub fn new(status: reqwest::StatusCode, body: String, response_time_ms: u64, response_size_bytes: u64) -> Self {
+        Self {
+            status,
+            body,
+            response_time_ms,
+            response_size_bytes,
+        }
+    }
 }
 
 impl std::fmt::Display for KibanaRequestError {
@@ -235,7 +246,7 @@ impl Receive for KibanaReceiver {
             None,
             None,
             Some("compatible".to_string()),
-            Product::Kibana,
+            Some(Application::Kibana),
             Some("kibana_diagnostic".to_string()),
             Some("esdiag".to_string()),
             Some(status.version.number),

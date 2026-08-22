@@ -1,6 +1,6 @@
 use super::{ServerState, get_theme_dark, template};
 use crate::data::{
-    HostRole, KnownHost, KnownHostBuilder, Product, SecretAuth, Settings, keystore_exists, list_secret_entries,
+    Application, HostRole, KnownHost, KnownHostBuilder, SecretAuth, Settings, keystore_exists, list_secret_entries,
     remove_secret, resolve_secret_auth, upsert_secret_auth,
 };
 use askama::Template;
@@ -738,7 +738,10 @@ fn host_row_from_known_host(name: String, host: KnownHost) -> template::HostsTab
     let mut row = template::HostsTableRow {
         name,
         auth: "none".to_string(),
-        app: host.app().to_string(),
+        app: host
+            .app()
+            .map(|app| app.to_string())
+            .unwrap_or_else(|| "Unresolved".to_string()),
         url: host.transport_display(),
         url_template: host.is_template(),
         roles: host
@@ -767,7 +770,7 @@ fn diagnostic_cluster_row(
     host: &KnownHost,
     hosts: &BTreeMap<String, KnownHost>,
 ) -> Option<template::DiagnosticClusterTableRow> {
-    if host.app() != &Product::Elasticsearch || !host.has_role(HostRole::Send) {
+    if host.app() != Some(Application::Elasticsearch) || !host.has_role(HostRole::Send) {
         return None;
     }
 
@@ -776,7 +779,7 @@ fn diagnostic_cluster_row(
         return None;
     }
     let kibana_host = hosts.get(&kibana_name)?;
-    if kibana_host.app() != &Product::Kibana || !kibana_host.has_role(HostRole::View) {
+    if kibana_host.app() != Some(Application::Kibana) || !kibana_host.has_role(HostRole::View) {
         return None;
     }
 
@@ -1145,7 +1148,10 @@ async fn apply_upsert_host(state: &Arc<ServerState>, form: HostUpsertForm) -> Re
         return Err("Host URL or URL template is required.".to_string());
     }
     let use_url_template = form.url_template.is_some();
-    let app = parse_product(form.app.trim())?;
+    let app = parse_application(form.app.trim())?;
+    if !use_url_template && app.is_none() {
+        return Err("Concrete hosts require an application.".to_string());
+    }
     let roles = parse_roles(&form.roles)?;
     let viewer = to_opt(form.viewer);
     let secret = to_opt(form.secret);
@@ -1158,10 +1164,10 @@ async fn apply_upsert_host(state: &Arc<ServerState>, form: HostUpsertForm) -> Re
         let url = Url::parse(target).map_err(|err| format!("Invalid URL: {err}"))?;
         KnownHostBuilder::new(url)
     }
-    .product(app)
     .accept_invalid_certs(accept_invalid_certs)
     .roles(roles)
-    .viewer(viewer);
+    .viewer(viewer)
+    .app(app);
     let host = match auth.as_str() {
         "none" => builder.build().map_err(to_message)?,
         "apikey" | "basic" | "secret" => {
@@ -1219,7 +1225,7 @@ async fn apply_upsert_cluster(state: &Arc<ServerState>, form: ClusterUpsertForm)
     let kibana_name = format!("{name}-kb");
     let elasticsearch_host = {
         let mut builder = KnownHostBuilder::new(elasticsearch_url)
-            .product(Product::Elasticsearch)
+            .application(Application::Elasticsearch)
             .accept_invalid_certs(accept_invalid_certs)
             .roles(vec![HostRole::Send])
             .viewer(Some(kibana_name.clone()));
@@ -1237,7 +1243,7 @@ async fn apply_upsert_cluster(state: &Arc<ServerState>, form: ClusterUpsertForm)
     };
     let kibana_host = {
         let mut builder = KnownHostBuilder::new(kibana_url)
-            .product(Product::Kibana)
+            .application(Application::Kibana)
             .accept_invalid_certs(accept_invalid_certs)
             .roles(vec![HostRole::View]);
         match auth.as_str() {
@@ -1307,15 +1313,12 @@ async fn apply_upsert_secret(state: &Arc<ServerState>, form: SecretUpsertForm) -
     let auth = match form.auth_type.trim().to_ascii_lowercase().as_str() {
         "apikey" => {
             let apikey = to_opt(form.apikey).ok_or("apikey is required for ApiKey type.")?;
-            SecretAuth::ApiKey { apikey }
+            SecretAuth::apikey(apikey)
         }
         "basic" => {
             let username = to_opt(form.username).ok_or("username is required for Basic type.")?;
             let password_value = to_opt(form.password).ok_or("password is required for Basic type.")?;
-            SecretAuth::Basic {
-                username,
-                password: password_value,
-            }
+            SecretAuth::basic(username, password_value)
         }
         _ => return Err("auth_type must be either ApiKey or Basic.".to_string()),
     };
@@ -1675,14 +1678,14 @@ fn parse_roles(value: &str) -> Result<Vec<HostRole>, String> {
     }
 }
 
-fn parse_product(value: &str) -> Result<Product, String> {
+fn parse_application(value: &str) -> Result<Option<Application>, String> {
     let normalized = value.trim().to_ascii_lowercase();
-    let mapped = match normalized.as_str() {
-        "elasticcloudhosted" => "elastic-cloud-hosted",
-        "kubernetesplatform" => "mki",
-        other => other,
-    };
-    Product::from_str(mapped).map_err(|err| format!("Invalid product: {err}"))
+    if normalized.is_empty() || normalized == "none" || normalized == "unresolved" {
+        return Ok(None);
+    }
+    Application::from_str(&normalized)
+        .map(Some)
+        .map_err(|err| format!("Invalid application: {err}"))
 }
 
 async fn infer_auth_from_secret_selection(
@@ -1740,7 +1743,7 @@ mod tests {
     };
     use crate::{
         data::{
-            HostRole, KnownHost, KnownHostBuilder, Product, SecretAuth, Settings, authenticate, upsert_secret_auth,
+            Application, HostRole, KnownHost, KnownHostBuilder, SecretAuth, Settings, authenticate, upsert_secret_auth,
         },
         server::{template, test_server_state},
     };
@@ -1751,39 +1754,22 @@ mod tests {
     };
     use datastar::axum::ReadSignals;
     use serde_json::json;
-    use std::{collections::BTreeMap, sync::Mutex};
-    use tempfile::TempDir;
+    use std::collections::BTreeMap;
     use url::Url;
 
-    fn env_lock() -> &'static Mutex<()> {
-        crate::test_env_lock()
-    }
-
-    fn setup_env() -> TempDir {
-        let tmp = TempDir::new().expect("temp dir");
-        let config_dir = tmp.path().join(".esdiag");
-        std::fs::create_dir_all(&config_dir).expect("create config dir");
-        let hosts_path = config_dir.join("hosts.yml");
-        let keystore_path = config_dir.join("secrets.yml");
-        unsafe {
-            std::env::set_var("HOME", tmp.path());
-            std::env::set_var("USERPROFILE", tmp.path());
-            std::env::set_var("ESDIAG_HOSTS", &hosts_path);
-            std::env::set_var("ESDIAG_KEYSTORE", &keystore_path);
-        }
-        tmp
+    fn setup_env() -> crate::TestEnv {
+        crate::TestEnv::new()
     }
 
     #[tokio::test]
     async fn renaming_active_host_updates_settings_target() {
-        let _guard = env_lock().lock().expect("env lock");
         let _tmp = setup_env();
 
         let mut hosts = BTreeMap::new();
         hosts.insert(
             "old-host".to_string(),
             KnownHost::new_no_auth(
-                Product::Elasticsearch,
+                Application::Elasticsearch,
                 Url::parse("http://localhost:9200").expect("url"),
                 vec![HostRole::Send],
                 None,
@@ -1823,20 +1809,11 @@ mod tests {
 
     #[tokio::test]
     async fn host_upsert_infers_auth_from_selected_secret() {
-        let _guard = env_lock().lock().expect("env lock");
-        let _tmp = setup_env();
+        let mut _tmp = setup_env();
         authenticate("pw").expect("create keystore");
-        unsafe {
-            std::env::set_var("ESDIAG_KEYSTORE_PASSWORD", "pw");
-        }
-        upsert_secret_auth(
-            "api-secret",
-            SecretAuth::ApiKey {
-                apikey: "super-secret-api-key".to_string(),
-            },
-            "pw",
-        )
-        .expect("save api key secret");
+        _tmp.set("ESDIAG_KEYSTORE_PASSWORD", "pw");
+        upsert_secret_auth("api-secret", SecretAuth::apikey("super-secret-api-key"), "pw")
+            .expect("save api key secret");
 
         let state = test_server_state();
         state.set_keystore_unlocked("pw".to_string()).await;
@@ -1865,8 +1842,38 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn host_upsert_rejects_concrete_host_without_application() {
+        let _tmp = setup_env();
+        let state = test_server_state();
+
+        let error = apply_upsert_host(
+            &state,
+            HostUpsertForm {
+                original_name: None,
+                name: "platform-host".to_string(),
+                auth: "none".to_string(),
+                app: "none".to_string(),
+                url: "https://platform.example".to_string(),
+                url_template: None,
+                roles: "collect".to_string(),
+                viewer: None,
+                secret: None,
+                accept_invalid_certs: None,
+            },
+        )
+        .await
+        .expect_err("concrete host without application must be rejected");
+
+        assert_eq!(error, "Concrete hosts require an application.");
+        assert!(
+            !KnownHost::parse_hosts_yml()
+                .expect("reload hosts")
+                .contains_key("platform-host")
+        );
+    }
+
+    #[tokio::test]
     async fn host_upsert_persists_template_hosts_and_rejects_invalid_templates() {
-        let _guard = env_lock().lock().expect("env lock");
         let _tmp = setup_env();
         let state = test_server_state();
 
@@ -1969,7 +1976,7 @@ mod tests {
         assert!(editing_html.contains("class=\"switch\""));
         assert!(editing_html.contains("Template URL"));
         assert!(editing_html.contains("Concrete URL"));
-        assert!(editing_html.contains(r#"<option value="Unknown""#));
+        assert!(editing_html.contains(r#"<option value="None""#));
 
         let template_readonly_html = render_host_row(1, &template_row, &[], false, false, true);
         let concrete_readonly_html = render_host_row(2, &concrete_row, &[], false, false, true);
@@ -1980,15 +1987,11 @@ mod tests {
 
     #[tokio::test]
     async fn secret_cancel_after_lock_timeout_uses_draft_without_keystore_read() {
-        let _guard = env_lock().lock().expect("env lock");
         let _tmp = setup_env();
         authenticate("pw").expect("create keystore");
         upsert_secret_auth(
             "existing-secret",
-            SecretAuth::Basic {
-                username: "elastic".to_string(),
-                password: "super-secret-password".to_string(),
-            },
+            SecretAuth::basic("elastic", "super-secret-password"),
             "pw",
         )
         .expect("store secret");
@@ -2037,17 +2040,9 @@ mod tests {
 
     #[tokio::test]
     async fn persisted_secret_row_delete_requires_secret_id_endpoint() {
-        let _guard = env_lock().lock().expect("env lock");
         let _tmp = setup_env();
         authenticate("pw").expect("create keystore");
-        upsert_secret_auth(
-            "existing-secret",
-            SecretAuth::ApiKey {
-                apikey: "super-secret-api-key".to_string(),
-            },
-            "pw",
-        )
-        .expect("store secret");
+        upsert_secret_auth("existing-secret", SecretAuth::apikey("super-secret-api-key"), "pw").expect("store secret");
 
         let state = test_server_state();
         state.set_keystore_unlocked("pw".to_string()).await;
@@ -2067,17 +2062,9 @@ mod tests {
 
     #[tokio::test]
     async fn delete_secret_by_id_removes_matching_secret() {
-        let _guard = env_lock().lock().expect("env lock");
         let _tmp = setup_env();
         authenticate("pw").expect("create keystore");
-        upsert_secret_auth(
-            "existing-secret",
-            SecretAuth::ApiKey {
-                apikey: "super-secret-api-key".to_string(),
-            },
-            "pw",
-        )
-        .expect("store secret");
+        upsert_secret_auth("existing-secret", SecretAuth::apikey("super-secret-api-key"), "pw").expect("store secret");
 
         let state = test_server_state();
         state.set_keystore_unlocked("pw".to_string()).await;
@@ -2091,23 +2078,15 @@ mod tests {
 
     #[tokio::test]
     async fn delete_secret_by_id_returns_reference_error_patch_when_secret_is_in_use() {
-        let _guard = env_lock().lock().expect("env lock");
         let _tmp = setup_env();
         authenticate("pw").expect("create keystore");
-        upsert_secret_auth(
-            "servermore",
-            SecretAuth::ApiKey {
-                apikey: "super-secret-api-key".to_string(),
-            },
-            "pw",
-        )
-        .expect("store secret");
+        upsert_secret_auth("servermore", SecretAuth::apikey("super-secret-api-key"), "pw").expect("store secret");
 
         let mut hosts = BTreeMap::new();
         hosts.insert(
             "servermore".to_string(),
             KnownHostBuilder::new(Url::parse("https://servermore.example:9200").expect("url"))
-                .product(Product::Elasticsearch)
+                .application(Application::Elasticsearch)
                 .roles(vec![HostRole::Send])
                 .secret(Some("servermore".to_string()))
                 .build()
@@ -2141,14 +2120,13 @@ mod tests {
 
     #[test]
     fn paired_send_and_view_hosts_render_as_diagnostic_cluster_rows() {
-        let _guard = env_lock().lock().expect("env lock");
         let _tmp = setup_env();
 
         let mut hosts = BTreeMap::new();
         hosts.insert(
             "collector".to_string(),
             KnownHost::new_no_auth(
-                Product::Elasticsearch,
+                Application::Elasticsearch,
                 Url::parse("http://collector:9200").expect("url"),
                 vec![HostRole::Collect],
                 None,
@@ -2158,7 +2136,7 @@ mod tests {
         hosts.insert(
             "prod".to_string(),
             KnownHost::new_legacy_apikey(
-                Product::Elasticsearch,
+                Application::Elasticsearch,
                 Url::parse("https://prod-es:9200").expect("url"),
                 vec![HostRole::Send],
                 Some("prod-kb".to_string()),
@@ -2170,7 +2148,7 @@ mod tests {
         hosts.insert(
             "prod-kb".to_string(),
             KnownHost::new_legacy_apikey(
-                Product::Kibana,
+                Application::Kibana,
                 Url::parse("https://prod-kb:5601").expect("url"),
                 vec![HostRole::View],
                 None,
@@ -2195,14 +2173,13 @@ mod tests {
 
     #[tokio::test]
     async fn renaming_active_cluster_updates_both_hosts_and_settings_target() {
-        let _guard = env_lock().lock().expect("env lock");
         let _tmp = setup_env();
 
         let mut hosts = BTreeMap::new();
         hosts.insert(
             "old-cluster".to_string(),
             KnownHost::new_no_auth(
-                Product::Elasticsearch,
+                Application::Elasticsearch,
                 Url::parse("http://old-es:9200").expect("url"),
                 vec![HostRole::Send],
                 Some("old-cluster-kb".to_string()),
@@ -2212,7 +2189,7 @@ mod tests {
         hosts.insert(
             "old-cluster-kb".to_string(),
             KnownHost::new_no_auth(
-                Product::Kibana,
+                Application::Kibana,
                 Url::parse("http://old-kb:5601").expect("url"),
                 vec![HostRole::View],
                 None,
@@ -2259,26 +2236,14 @@ mod tests {
 
     #[test]
     fn rendered_secret_rows_expose_metadata_but_not_persisted_secret_values() {
-        let _guard = env_lock().lock().expect("env lock");
-        let _tmp = setup_env();
+        let mut _tmp = setup_env();
         authenticate("pw").expect("create keystore");
-        unsafe {
-            std::env::set_var("ESDIAG_KEYSTORE_PASSWORD", "pw");
-        }
-        upsert_secret_auth(
-            "api-secret",
-            SecretAuth::ApiKey {
-                apikey: "super-secret-api-key".to_string(),
-            },
-            "pw",
-        )
-        .expect("save api key secret");
+        _tmp.set("ESDIAG_KEYSTORE_PASSWORD", "pw");
+        upsert_secret_auth("api-secret", SecretAuth::apikey("super-secret-api-key"), "pw")
+            .expect("save api key secret");
         upsert_secret_auth(
             "basic-secret",
-            SecretAuth::Basic {
-                username: "elastic".to_string(),
-                password: "super-secret-password".to_string(),
-            },
+            SecretAuth::basic("elastic", "super-secret-password"),
             "pw",
         )
         .expect("save basic secret");

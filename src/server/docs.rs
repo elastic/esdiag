@@ -442,7 +442,7 @@ fn doc_tag_cache() -> &'static BTreeMap<String, HashSet<String>> {
 
 fn doc_tags(markdown: &str) -> HashSet<String> {
     split_okf_frontmatter(markdown)
-        .and_then(|(frontmatter, _)| serde_yaml::from_str::<OkfFrontmatter>(frontmatter).ok())
+        .and_then(|(frontmatter, _)| yaml_serde::from_str::<OkfFrontmatter>(frontmatter).ok())
         .map(|frontmatter| {
             frontmatter
                 .tags
@@ -532,26 +532,11 @@ mod tests {
         http::{HeaderMap, HeaderValue, StatusCode},
         response::IntoResponse,
     };
-    use serde_yaml::Value;
-    use std::{sync::Arc, sync::Mutex};
-    use tempfile::TempDir;
+    use std::sync::Arc;
+    use yaml_serde::Value;
 
-    fn env_lock() -> &'static Mutex<()> {
-        crate::test_env_lock()
-    }
-
-    fn setup_env() -> (TempDir, std::path::PathBuf, std::path::PathBuf) {
-        let tmp = TempDir::new().expect("temp dir");
-        let config_dir = tmp.path().join(".esdiag");
-        let hosts_path = config_dir.join("hosts.yml");
-        let settings_path = config_dir.join("settings.yml");
-        unsafe {
-            std::env::set_var("HOME", tmp.path());
-            std::env::set_var("USERPROFILE", tmp.path());
-            std::env::set_var("ESDIAG_HOSTS", &hosts_path);
-            std::env::set_var("ESDIAG_SETTINGS", &settings_path);
-        }
-        (tmp, hosts_path, settings_path)
+    fn setup_env() -> crate::TestEnv {
+        crate::TestEnv::new()
     }
 
     #[test]
@@ -574,7 +559,7 @@ mod tests {
             let markdown = String::from_utf8_lossy(&content.data);
             let (frontmatter, body) =
                 split_okf_frontmatter(&markdown).unwrap_or_else(|| panic!("{file} should start with OKF frontmatter"));
-            let frontmatter: Value = serde_yaml::from_str(frontmatter)
+            let frontmatter: Value = yaml_serde::from_str(frontmatter)
                 .unwrap_or_else(|err| panic!("{file} has invalid YAML frontmatter: {err}"));
             let doc_type = frontmatter
                 .get("type")
@@ -649,11 +634,8 @@ mod tests {
 
     #[tokio::test]
     async fn direct_docs_request_returns_not_found_for_filtered_tags() {
-        let _guard = env_lock().lock().expect("env lock");
-        let (_tmp, _hosts_path, _settings_path) = setup_env();
-        unsafe {
-            std::env::set_var(DOCS_EXCLUDED_TAGS_ENV, "repository");
-        }
+        let mut env = setup_env();
+        env.set(DOCS_EXCLUDED_TAGS_ENV, "repository");
 
         let state = test_server_state();
         let mut headers = HeaderMap::new();
@@ -666,17 +648,14 @@ mod tests {
             .await
             .into_response();
 
-        unsafe {
-            std::env::remove_var(DOCS_EXCLUDED_TAGS_ENV);
-        }
-
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
     }
 
     #[tokio::test]
     async fn service_mode_docs_does_not_touch_local_runtime_features() {
-        let _guard = env_lock().lock().expect("env lock");
-        let (_tmp, hosts_path, settings_path) = setup_env();
+        let env = setup_env();
+        let hosts_path = env.hosts_path.clone();
+        let settings_path = env.settings_path.clone();
 
         let mut state = test_server_state();
         let state_mut = Arc::get_mut(&mut state).expect("unique state");

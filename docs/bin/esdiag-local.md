@@ -1,108 +1,104 @@
 ---
 type: Guide
-title: Standalone Local ESDiag Stack
-description: Run ESDiag, Elasticsearch, and Kibana from official container images.
+title: Local-stack launcher reference
+description: Lifecycle and state reference for esdiag local and esdiag-local.
 tags: [bin, containers, deployment]
 ---
 
-Standalone Local ESDiag Stack
-=============================
+# Local-stack launcher reference
 
-Download `esdiag-local` from [ela.st/esdiag-local](https://ela.st/esdiag-local).
-The single Bash 3.2+ artifact embeds its Compose configuration and runs from any
-directory on Linux, macOS, and WSL. It prefers Podman, falls back to Docker, and
-supports `--runtime podman|docker` for an explicit choice.
-
-Quick start
------------
+Use the installed binary for a local stack:
 
 ```sh
-chmod +x esdiag-local
-./esdiag-local up
+esdiag local up
 ```
 
-The stack uses pinned official images, binds Elasticsearch (`9200`), Kibana
-(`5601`), and ESDiag (`2501`) to `127.0.0.1`, and always enables security.
-Setup reaches Kibana through the internal Compose hostname, while links returned
-by ESDiag use `http://localhost:5601` (or the configured published Kibana port)
-so they are reachable from the host browser.
-The script attempts to copy the Kibana password immediately before opening the browser; disable that with
-`--copy-password=false` or browser launch with `--open-browser=false`.
+`esdiag local` owns its stack lifecycle directly in Rust. Update the binary
+through Homebrew, Cargo, or its release archive; `esdiag local update` cannot
+replace binary-owned code.
 
-State and lifecycle
--------------------
-
-Generated `.env`, `compose.yml`, and failure logs live in
-`${ESDIAG_LOCAL_DIR:-~/.esdiag/local}`. Override this with `--state-dir`. The
-directory is private and `.env` is mode `0600`. Edit the three documented port
-values or `LOG_LEVEL` in `.env` before `up`; ports must be in range, unique, and available.
-Initialized credentials and volumes are treated as one deployment state. If
-either side is missing, startup fails closed and requires restoring the missing
-state or running a confirmed reset.
-
-Elasticsearch, Kibana, and ESDiag User-mode state use separate named volumes.
-The `esdiag-data` volume is mounted at `/root/.esdiag` and preserves saved hosts,
-settings, jobs, keystore data, and unlock state when the ESDiag container is
-recreated.
-
-Image defaults are version-pinned. Use `--image` for a complete ESDiag image
-override, `--esdiag-registry` or `--elastic-registry` for registry overrides,
-and `--esdiag-version` or `--elastic-version` for explicit stack versions.
-`ESDIAG_IMAGE_TAG` takes precedence over stored and embedded ESDiag images.
-Pull behavior is selected with `--pull always|missing|never`.
+Use the standalone `esdiag-local` script when a script is your entry point. It
+needs Bash 3.2 or later and Podman or Docker with Compose support.
 
 ```sh
-./esdiag-local status
-./esdiag-local logs
-./esdiag-local restart esdiag --log-level debug
-./esdiag-local restart elasticsearch kibana
-./esdiag-local setup
-./esdiag-local auth
-./esdiag-local down
+./esdiag-local up --stack=full
 ```
 
-`down` keeps configuration, credentials, and volumes. `reset` destroys all of
-them and prompts for confirmation; automation must pass `reset --force`.
-`restart` recreates only the named `elasticsearch`, `kibana`, or `esdiag`
-services so persisted configuration changes take effect. `--log-level` stores
-an ESDiag log filter such as `debug` in the deployment state. The `LOG_LEVEL`
-environment variable provides the same setting; the CLI option takes precedence.
+For installation and first use, see
+[Run a local diagnostic cluster](../setup/esdiag-local.md).
 
-Default diagnostic output
--------------------------
+## Stack modes
 
-The ESDiag service runs explicitly in User mode. Its generated
-`ESDIAG_OUTPUT_URL` and `ESDIAG_OUTPUT_APIKEY` point to the local Elasticsearch
-service and remain in the protected deployment `.env`; they are not copied into
-`hosts.yml`, `settings.yml`, or `secrets.yml`.
+`up` accepts `--stack=auto|core|full`.
 
-In the web workflow, the remote output selector displays `Default` when no
-saved output is selected. `Default` sends no explicit exporter, so processing
-uses the deployment's `ESDIAG_OUTPUT_*` values without creating or unlocking an
-ESDiag keystore. Selecting a saved secret-backed output continues to require
-the normal keystore unlock flow.
+| Mode | Services |
+|---|---|
+| `auto` | `esdiag local` uses core for a new state directory. `esdiag-local` uses core only with a matching native binary and otherwise uses full. |
+| `core` | Runs Elasticsearch and Kibana containers, plus native `esdiag serve --mode user`. |
+| `full` | Runs Elasticsearch, Kibana, and ESDiag containers. |
 
-Credentials
------------
+The state directory records the selected mode. Changing modes does not move
+hosts, jobs, settings, or secrets between native user state and the full-mode
+container volume. Existing state without a mode record is full mode.
 
-The following commands emit exactly one raw secret on standard output. Errors
-go to standard error. Ordinary status and log commands do not print secrets.
+## State
+
+The launcher writes generated `.env`, `compose.yml`, and logs to
+`${ESDIAG_LOCAL_DIR:-~/.esdiag/local}`. Use `--state-dir` to change that path.
+The directory is private and `.env` has mode `0600`.
+
+The stack binds Elasticsearch to `127.0.0.1:9200`, Kibana to
+`127.0.0.1:5601`, and the ESDiag web UI to `127.0.0.1:2501` by default.
+`esdiag local up` and `esdiag local open` copy the generated Elastic password
+to the clipboard when a platform clipboard helper is available; pass
+`--copy-password=false` to opt out.
+
+The stack stores generated Elasticsearch credentials and API keys in `.env`.
+Do not copy them into `hosts.yml`, `settings.yml`, or `secrets.yml`.
+
+Core mode uses the native user's ESDiag state. Full mode uses the
+`esdiag-data` container volume.
+
+## Lifecycle commands
 
 ```sh
-./esdiag-local secrets password
-./esdiag-local secrets apikey
-./esdiag-local secrets password | pbcopy  # macOS
+esdiag local status
+esdiag local auth
+esdiag local logs
+esdiag local setup
+esdiag local restart esdiag
+esdiag local restart elasticsearch kibana
+esdiag local down
 ```
 
-Updates
--------
+`down` keeps state and volumes. `reset --force` removes containers,
+credentials, and volumes:
 
-`update --check` checks official `github.com/elastic/esdiag` releases without
-changing files. `update` downloads the stable `esdiag-local` and
-`esdiag-local.sha256` assets, verifies the checksum and script, then atomically
-replaces a writable regular installation. It refuses symlinks. Script updates do
-not change an existing stack; use `up --upgrade` explicitly afterward.
+```sh
+esdiag local reset --force
+```
 
-The published checksum detects corruption or modification within the GitHub
-release trust boundary. Because the checksum and artifact share that boundary,
-it is not an independent cryptographic signature.
+Use `esdiag-local` in place of `esdiag local` for a standalone stack.
+
+## Credentials and updates
+
+These commands print one raw secret:
+
+```sh
+esdiag local secrets password
+esdiag local secrets apikey
+```
+
+Do not capture the output in history, tickets, documents, or chat.
+
+The standalone script can update itself:
+
+```sh
+esdiag-local update --check
+esdiag-local update
+esdiag-local up --upgrade
+```
+
+The update verifies the release checksum, then replaces a writable regular
+script. It refuses symlinks. Updating the script does not upgrade a running
+stack.

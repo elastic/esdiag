@@ -4,8 +4,12 @@
 
 /// Write collection output to a zip archive
 mod archive;
+/// Role-typed raw bundle output used by the Save stage.
+mod bundle;
 /// Write collection output to a directory
 mod directory;
+/// Role-typed processed document output used by the Export stage.
+mod document;
 /// Send to an Elasticsearch cluster with the `_bulk` API
 mod elasticsearch;
 /// Write to an `.ndjson` file
@@ -14,11 +18,13 @@ mod file;
 mod stream;
 
 use crate::{
-    data::{KnownHost, Product, Uri},
+    data::{Application, KnownHost, Uri},
     processor::{BatchResponse, DiagnosticReport, ProcessorSummary},
 };
 pub use archive::ArchiveExporter;
+pub use bundle::BundleExporter;
 pub use directory::DirectoryExporter;
+pub use document::DocumentExporter;
 use elasticsearch::ElasticsearchExporter;
 use eyre::{Result, eyre};
 use file::FileExporter;
@@ -71,21 +77,6 @@ impl Exporter {
         }
     }
 
-    pub fn for_collect_archive(output_dir: PathBuf) -> Result<Self> {
-        Ok(Self::Archive(ArchiveExporter::zip(output_dir)?))
-    }
-
-    pub fn into_collect_exporter(self) -> Result<ArchiveExporter> {
-        match self {
-            Self::Archive(exporter) => Ok(exporter),
-            Self::Directory(exporter) => Ok(ArchiveExporter::Directory(exporter)),
-            unsupported => Err(eyre!(
-                "Collect supports only directory or archive exporters, got {}",
-                unsupported
-            )),
-        }
-    }
-
     /// Consume a channel of documents and export them in batches with parallelism.
     ///
     /// This helper continuously receives documents from the provided
@@ -122,7 +113,7 @@ impl Exporter {
                     Ok(batch_rx) => batch_receivers.push(batch_rx),
                     Err(err) => {
                         tracing::warn!("Failed to send document batch: {}", err);
-                        summary.add_batch(BatchResponse::failed(doc_count, 0));
+                        summary.add_batch(BatchResponse::failed(doc_count, self.failed_request_status()));
                     }
                 }
             }
@@ -135,7 +126,7 @@ impl Exporter {
                 Ok(batch_rx) => batch_receivers.push(batch_rx),
                 Err(err) => {
                     tracing::warn!("Failed to send final document batch: {}", err);
-                    summary.add_batch(BatchResponse::failed(doc_count, 0));
+                    summary.add_batch(BatchResponse::failed(doc_count, self.failed_request_status()));
                 }
             }
         }
@@ -159,7 +150,7 @@ impl Exporter {
     {
         if docs.is_empty() {
             let mut response = crate::processor::BatchResponse::aggregate();
-            response.status_code = 200;
+            response.status_code = self.no_request_status();
             return Ok(response);
         }
         if matches!(self, Exporter::Archive(_)) {
@@ -182,8 +173,30 @@ impl Exporter {
             Ok(response) => Ok(response),
             Err(err) => {
                 tracing::warn!("Failed to send document batch: {}", err);
-                Ok(BatchResponse::failed(doc_count, 0))
+                Ok(BatchResponse::failed(doc_count, self.failed_request_status()))
             }
+        }
+    }
+
+    /// The request status recorded when this exporter fails without a
+    /// response: HTTP exporters use the 599 sentinel; status `0` is reserved
+    /// for non-HTTP exporters (file, stream, directory) — ADR-0016.
+    fn failed_request_status(&self) -> u16 {
+        match self {
+            Exporter::Elasticsearch(_) => BatchResponse::HTTP_REQUEST_NOT_COMPLETED,
+            _ => 0,
+        }
+    }
+
+    /// The request status recorded when a result is produced without an HTTP
+    /// round trip, such as an empty batch. A non-HTTP exporter keeps the
+    /// reserved `0`; the Elasticsearch exporter never reports `0`, because
+    /// that code means "no HTTP transport" rather than "no request needed"
+    /// (ADR-0016).
+    fn no_request_status(&self) -> u16 {
+        match self {
+            Exporter::Elasticsearch(_) => 200,
+            _ => 0,
         }
     }
 
@@ -265,6 +278,15 @@ impl Exporter {
         }
     }
 
+    /// The user-facing output URI reported after processing completes.
+    ///
+    /// Prefer the configured Kibana base URL for Elasticsearch output so the
+    /// result identifies where the exported documents can be viewed. Other
+    /// exporters report their canonical destination URI.
+    pub fn outcome_uri(&self) -> String {
+        self.kibana_base_url().unwrap_or_else(|| self.target_uri())
+    }
+
     pub fn target_label(&self) -> String {
         match self {
             Exporter::Archive(exporter) => format!("archive: {}", exporter),
@@ -287,9 +309,7 @@ impl Exporter {
     pub fn kibana_base_url(&self) -> Option<String> {
         match self {
             Exporter::Elasticsearch(exporter) => exporter.kibana_base_url(),
-            Exporter::Archive(_) | Exporter::Directory(_) | Exporter::File(_) | Exporter::Stream(_) => {
-                kibana_base_url_from_env()
-            }
+            Exporter::Archive(_) | Exporter::Directory(_) | Exporter::File(_) | Exporter::Stream(_) => None,
         }
     }
 
@@ -379,8 +399,8 @@ impl TryFrom<KnownHost> for Exporter {
     type Error = eyre::Report;
     fn try_from(host: KnownHost) -> std::result::Result<Self, Self::Error> {
         match host.app() {
-            Product::Elasticsearch => Ok(Exporter::Elasticsearch(ElasticsearchExporter::try_from(host)?)),
-            _ => Err(eyre!("Unsupported product")),
+            Some(Application::Elasticsearch) => Ok(Exporter::Elasticsearch(ElasticsearchExporter::try_from(host)?)),
+            _ => Err(eyre!("Export requires an Elasticsearch application host")),
         }
     }
 }
@@ -399,7 +419,7 @@ fn saved_viewer_kibana_base_url(host: &KnownHost) -> Option<String> {
         }
     };
 
-    if !viewer_host.has_role(crate::data::HostRole::View) || viewer_host.app() != &Product::Kibana {
+    if !viewer_host.has_role(crate::data::HostRole::View) || viewer_host.app() != Some(Application::Kibana) {
         tracing::warn!(
             "Output host viewer '{}' is not a valid Kibana view target; falling back to environment Kibana URL",
             viewer_name
@@ -439,8 +459,8 @@ fn build_kibana_link(kibana_url: &str, diagnostic_id: &str, collection_date: u64
 #[cfg(test)]
 mod tests {
     use super::{ArchiveExporter, Exporter, format_directory_label};
-    use crate::data::{HostRole, KnownHost, KnownHostBuilder, Product, Uri};
-    use std::{collections::BTreeMap, path::PathBuf, sync::Mutex};
+    use crate::data::{Application, HostRole, KnownHost, KnownHostBuilder, Uri};
+    use std::{collections::BTreeMap, path::PathBuf, sync::Mutex, time::Duration};
     use tempfile::TempDir;
     use url::Url;
 
@@ -477,7 +497,31 @@ mod tests {
         assert_eq!(response.docs, 0);
         assert_eq!(response.errors, 0);
         assert_eq!(response.batch_count, 0);
-        assert_eq!(response.status_code, 200);
+        // Reserved for a non-HTTP exporter: there was no request to report.
+        assert_eq!(response.status_code, 0);
+    }
+
+    #[tokio::test]
+    async fn non_http_exporters_report_the_reserved_request_status() {
+        let tmp = TempDir::new().expect("temp dir");
+        let exporters = [
+            Exporter::try_from(Uri::File(tmp.path().join("documents.ndjson"))).expect("file exporter"),
+            Exporter::try_from(Uri::Directory(tmp.path().to_path_buf())).expect("directory exporter"),
+            Exporter::try_from(Uri::Stream).expect("stream exporter"),
+        ];
+
+        for exporter in exporters {
+            let response = exporter
+                .send("metrics-node-esdiag".to_string(), vec![serde_json::json!({"id": 1})])
+                .await
+                .expect("batch send");
+
+            assert_eq!(response.docs, 1);
+            assert_eq!(response.errors, 0);
+            // `0` denotes "no HTTP transport", so it is what a successful
+            // local write reports too — not just a failed one (ADR-0016).
+            assert_eq!(response.status_code, 0);
+        }
     }
 
     #[tokio::test]
@@ -498,6 +542,35 @@ mod tests {
         assert_eq!(value["docs"], 0);
         assert_eq!(value["doc_errors"], 3);
         assert_eq!(value["batch"]["count"], 3);
+    }
+
+    #[tokio::test]
+    async fn document_channel_streams_with_bounded_backpressure() {
+        let tmp = TempDir::new().expect("temp dir");
+        let exporter = Exporter::try_from(Uri::File(tmp.path().join("documents.ndjson"))).expect("file exporter");
+        let (tx, rx) = tokio::sync::mpsc::channel(1);
+
+        tx.try_send(serde_json::json!({"id": 1}))
+            .expect("first document fills the bounded channel");
+        assert!(
+            matches!(
+                tx.try_send(serde_json::json!({"id": 2})),
+                Err(tokio::sync::mpsc::error::TrySendError::Full(_))
+            ),
+            "the producer must observe backpressure before the consumer starts"
+        );
+
+        let consumer = tokio::spawn(exporter.document_channel(rx, "metrics-node-esdiag".to_string(), 1));
+        tokio::time::timeout(Duration::from_secs(1), tx.send(serde_json::json!({"id": 2})))
+            .await
+            .expect("the running exporter must drain while production continues")
+            .expect("channel remains open");
+        drop(tx);
+
+        let summary = consumer.await.expect("document channel task");
+        let value = serde_json::to_value(summary).expect("summary json");
+        assert_eq!(value["docs"], 2);
+        assert_eq!(value["doc_errors"], 0);
     }
 
     #[test]
@@ -521,6 +594,7 @@ mod tests {
         let stream = Exporter::default();
         assert_eq!(stream.target_uri(), "stdio://stdout");
         assert_eq!(stream.target_label(), "stdout: -");
+        assert_eq!(stream.outcome_uri(), "stdio://stdout");
     }
 
     #[test]
@@ -532,7 +606,7 @@ mod tests {
         hosts.insert(
             "send-host".to_string(),
             KnownHostBuilder::new(Url::parse("https://es.example:9200").expect("es url"))
-                .product(Product::Elasticsearch)
+                .application(Application::Elasticsearch)
                 .roles(vec![HostRole::Send])
                 .viewer(Some("viewer-host".to_string()))
                 .build()
@@ -541,7 +615,7 @@ mod tests {
         hosts.insert(
             "viewer-host".to_string(),
             KnownHostBuilder::new(Url::parse("https://kb.example:5601").expect("kb url"))
-                .product(Product::Kibana)
+                .application(Application::Kibana)
                 .roles(vec![HostRole::View])
                 .build()
                 .expect("viewer host"),
@@ -558,6 +632,7 @@ mod tests {
             .expect("kibana link");
 
         assert!(kibana_link.starts_with("https://kb.example:5601/s/esdiag/app/dashboards#/view/"));
+        assert_eq!(exporter.outcome_uri(), "https://kb.example:5601/s/esdiag");
 
         unsafe {
             std::env::remove_var("ESDIAG_KIBANA_URL");
@@ -565,64 +640,22 @@ mod tests {
     }
 
     #[test]
-    fn kibana_link_falls_back_to_env_for_non_host_outputs() {
+    fn kibana_link_is_omitted_for_non_cluster_outputs() {
         let _guard = env_lock().lock().expect("env lock");
-        let _tmp = setup_env();
+        let tmp = setup_env();
         unsafe {
             std::env::set_var("ESDIAG_KIBANA_URL", "https://env-kb.example:5601");
             std::env::set_var("ESDIAG_KIBANA_SPACE", "ops");
         }
 
-        let exporter = Exporter::default();
-        let kibana_link = exporter
-            .kibana_link("diag-123", 1_700_000_000_000)
-            .expect("kibana link");
-
-        assert!(kibana_link.starts_with("https://env-kb.example:5601/s/ops/app/dashboards#/view/"));
+        let stream = Exporter::default();
+        let directory = Exporter::try_from(Uri::Directory(tmp.path().to_path_buf())).expect("directory exporter");
+        assert!(stream.kibana_link("diag-123", 1_700_000_000_000).is_none());
+        assert!(directory.kibana_link("diag-123", 1_700_000_000_000).is_none());
 
         unsafe {
             std::env::remove_var("ESDIAG_KIBANA_URL");
             std::env::remove_var("ESDIAG_KIBANA_SPACE");
         }
-    }
-
-    #[test]
-    fn kibana_link_omits_space_when_explicitly_empty() {
-        let _guard = env_lock().lock().expect("env lock");
-        let _tmp = setup_env();
-        unsafe {
-            std::env::set_var("ESDIAG_KIBANA_URL", "https://env-kb.example:5601");
-            std::env::set_var("ESDIAG_KIBANA_SPACE", "");
-        }
-
-        let exporter = Exporter::default();
-        let kibana_link = exporter
-            .kibana_link("diag-123", 1_700_000_000_000)
-            .expect("kibana link");
-
-        assert!(kibana_link.starts_with("https://env-kb.example:5601/app/dashboards#/view/"));
-
-        unsafe {
-            std::env::remove_var("ESDIAG_KIBANA_URL");
-            std::env::remove_var("ESDIAG_KIBANA_SPACE");
-        }
-    }
-
-    #[test]
-    fn kibana_link_falls_back_to_default_kibana_url_when_no_override_exists() {
-        let _guard = env_lock().lock().expect("env lock");
-        let _tmp = setup_env();
-        unsafe {
-            std::env::remove_var("ESDIAG_KIBANA_URL");
-            std::env::remove_var("ESDIAG_KIBANA_SPACE");
-        }
-
-        let exporter = Exporter::default();
-
-        let kibana_link = exporter
-            .kibana_link("diag-123", 1_700_000_000_000)
-            .expect("default kibana link");
-
-        assert!(kibana_link.starts_with("http://localhost:5601/s/esdiag/app/dashboards#/view/"));
     }
 }

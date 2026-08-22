@@ -3,7 +3,7 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::{ServerState, get_theme_dark, template};
-use crate::data::{HostRole, KnownHost, Product, Settings};
+use crate::data::{Application, HostRole, KnownHost, Settings, is_collectable_app};
 #[cfg(feature = "keystore")]
 use crate::data::{Job, load_saved_jobs_async};
 use crate::exporter::Exporter;
@@ -322,6 +322,8 @@ async fn build_jobs_page(
         saved_remote_target: saved.remote_target,
         saved_local_target: saved.local_target,
         saved_local_directory: saved.local_directory,
+        saved_raw_remote_target: saved.raw_remote_target,
+        saved_raw_local: saved.raw_local,
         saved_user: saved.user,
         saved_account: saved.account,
         saved_case_number: saved.case_number,
@@ -355,6 +357,8 @@ struct SavedJobDefaults {
     remote_target: Option<String>,
     local_target: String,
     local_directory: String,
+    raw_remote_target: Option<String>,
+    raw_local: bool,
     user: String,
     account: String,
     case_number: String,
@@ -389,6 +393,8 @@ impl SavedJobDefaults {
                 remote_target: signals.send.remote_target.clone(),
                 local_target: signals.send.local_target.clone(),
                 local_directory: signals.send.local_directory.clone(),
+                raw_remote_target: signals.send.raw_remote_target.clone(),
+                raw_local: signals.send.raw_local,
                 user: job.identifiers.user.clone().unwrap_or_default(),
                 account: job.identifiers.account.clone().unwrap_or_default(),
                 case_number: job.identifiers.case_number.clone().unwrap_or_default(),
@@ -411,6 +417,8 @@ impl SavedJobDefaults {
                 remote_target: None,
                 local_target: send_defaults.local_target.clone(),
                 local_directory: String::new(),
+                raw_remote_target: None,
+                raw_local: false,
                 user: String::new(),
                 account: String::new(),
                 case_number: String::new(),
@@ -474,14 +482,14 @@ fn job_host_options(state: &Arc<ServerState>) -> JobHostOptions {
     let mut send_secure_hosts = Vec::new();
 
     for (name, host) in hosts_by_name {
-        if host.has_role(HostRole::Collect) {
+        if host.has_role(HostRole::Collect) && is_collectable_app(host.app()) {
             collect_hosts.push(name.clone());
             if host.requires_keystore_secret() {
                 collect_secure_hosts.push(name.clone());
             }
         }
 
-        if host.has_role(HostRole::Send) && host.app() == &Product::Elasticsearch {
+        if host.has_role(HostRole::Send) && host.app() == Some(Application::Elasticsearch) {
             send_remote_hosts.push(name.clone());
             if host.requires_keystore_secret() {
                 send_secure_hosts.push(name.clone());
@@ -528,33 +536,20 @@ fn default_downloads_dir() -> PathBuf {
 mod tests {
     use super::job_host_options;
     use crate::{
-        data::{HostRole, KnownHost, KnownHostBuilder, Product},
+        data::{Application, HostRole, KnownHost, KnownHostBuilder},
         server::test_server_state,
     };
     use std::collections::BTreeMap;
-    use tempfile::TempDir;
     use url::Url;
 
-    fn env_lock() -> &'static std::sync::Mutex<()> {
-        crate::test_env_lock()
-    }
-
-    fn setup_hosts() -> TempDir {
-        let tmp = TempDir::new().expect("temp dir");
-        let config_dir = tmp.path().join(".esdiag");
-        std::fs::create_dir_all(&config_dir).expect("create config dir");
-        let hosts_path = config_dir.join("hosts.yml");
-        unsafe {
-            std::env::set_var("HOME", tmp.path());
-            std::env::set_var("USERPROFILE", tmp.path());
-            std::env::set_var("ESDIAG_HOSTS", &hosts_path);
-        }
+    fn setup_hosts() -> crate::TestEnv {
+        let env = crate::TestEnv::new();
 
         let mut hosts = BTreeMap::new();
         hosts.insert(
             "es-remote".to_string(),
             KnownHostBuilder::new(Url::parse("https://es.example.com:9200").expect("es url"))
-                .product(Product::Elasticsearch)
+                .application(Application::Elasticsearch)
                 .roles(vec![HostRole::Send])
                 .build()
                 .expect("es host"),
@@ -562,7 +557,7 @@ mod tests {
         hosts.insert(
             "es-local".to_string(),
             KnownHostBuilder::new(Url::parse("http://localhost:9200").expect("local es url"))
-                .product(Product::Elasticsearch)
+                .application(Application::Elasticsearch)
                 .roles(vec![HostRole::Send])
                 .build()
                 .expect("local es host"),
@@ -570,18 +565,32 @@ mod tests {
         hosts.insert(
             "kb-collect".to_string(),
             KnownHostBuilder::new(Url::parse("https://kb.example.com:5601").expect("kb url"))
-                .product(Product::Kibana)
+                .application(Application::Kibana)
                 .roles(vec![HostRole::Collect])
                 .build()
                 .expect("kb host"),
         );
+        hosts.insert(
+            "agent-collect".to_string(),
+            KnownHostBuilder::new(Url::parse("https://agent.example.com:8220").expect("agent url"))
+                .application(Application::Agent)
+                .roles(vec![HostRole::Collect])
+                .build()
+                .expect("agent host"),
+        );
+        hosts.insert(
+            "platform-template".to_string(),
+            KnownHostBuilder::new_template("https://platform.example/{id}".to_string())
+                .roles(vec![HostRole::Collect])
+                .build()
+                .expect("platform host"),
+        );
         KnownHost::write_hosts_yml(&hosts).expect("write hosts");
-        tmp
+        env
     }
 
     #[test]
     fn job_host_options_only_offer_elasticsearch_send_hosts() {
-        let _guard = env_lock().lock().expect("env lock");
         let _tmp = setup_hosts();
         let state = test_server_state();
 
@@ -592,6 +601,8 @@ mod tests {
         assert!(options.send_remote_hosts.contains(&"es-local".to_string()));
         assert_eq!(options.send_local_hosts, vec!["es-local".to_string()]);
         assert!(options.collect_hosts.contains(&"kb-collect".to_string()));
+        assert!(!options.collect_hosts.contains(&"agent-collect".to_string()));
+        assert!(!options.collect_hosts.contains(&"platform-template".to_string()));
         assert!(!options.send_remote_hosts.contains(&"kb-collect".to_string()));
         assert!(!options.send_local_hosts.contains(&"kb-collect".to_string()));
         assert!(!options.send_secure_hosts.contains(&"kb-collect".to_string()));

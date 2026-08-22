@@ -4,7 +4,7 @@
 
 use crate::{
     client::Client,
-    data::Product,
+    data::Application,
     embeds::{Assets, KIBANA_ASSETS_BUNDLE},
 };
 //use bytes::Bytes;
@@ -116,6 +116,126 @@ fn default_headers() -> HashMap<String, String> {
     HashMap::from([("Content-Type".to_string(), "application/json".to_string())])
 }
 
+/// Every ESDiag-owned index, whichever generation created it.
+const ESDIAG_INDEX_PATTERN: &str = "*-esdiag*";
+
+/// The renamed `diagnostic.*` provenance fields as `(current, legacy)` pairs
+/// (ADR-0001, bridged by ADR-0014).
+const PROVENANCE_RENAMES: [(&str, &str); 2] = [("application", "product"), ("platform", "orchestration")];
+
+/// The alias mapping an index created before the provenance rename is missing.
+///
+/// A field alias must point at a concrete field, so no single index can carry
+/// both names as aliases: the direction is fixed by which name that index stores.
+/// The templates give every *new* index the legacy name as an alias to the
+/// current one; this supplies the mirror image for indices that predate them, so
+/// a query over an index pattern spanning both generations resolves either name
+/// in every index it touches.
+///
+/// Returns `None` when there is nothing to bridge — a new-generation index, one
+/// already carrying the alias, or a mapping with no provenance fields at all —
+/// which is what makes running this on every setup idempotent.
+fn provenance_alias_patch(diagnostic_properties: &Value) -> Option<Value> {
+    let mut aliases = serde_json::Map::new();
+    for (current, legacy) in PROVENANCE_RENAMES {
+        let stores_legacy_name = diagnostic_properties
+            .get(legacy)
+            .and_then(|mapping| mapping.get("type"))
+            .and_then(Value::as_str)
+            .is_some_and(|field_type| field_type != "alias");
+        if stores_legacy_name && diagnostic_properties.get(current).is_none() {
+            aliases.insert(
+                current.to_string(),
+                serde_json::json!({ "type": "alias", "path": format!("diagnostic.{legacy}") }),
+            );
+        }
+    }
+
+    if aliases.is_empty() {
+        return None;
+    }
+    Some(serde_json::json!({
+        "properties": { "diagnostic": { "properties": Value::Object(aliases) } }
+    }))
+}
+
+/// The indices needing a provenance alias, paired with the mapping patch each one
+/// needs, read from a `GET <pattern>/_mapping` response.
+fn provenance_alias_patches(mappings: &Value) -> Vec<(String, Value)> {
+    let Some(indices) = mappings.as_object() else {
+        return Vec::new();
+    };
+    indices
+        .iter()
+        .filter_map(|(index, mapping)| {
+            let properties = mapping
+                .pointer("/mappings/properties/diagnostic/properties")
+                .unwrap_or(&Value::Null);
+            provenance_alias_patch(properties).map(|patch| (index.clone(), patch))
+        })
+        .collect()
+}
+
+/// Bridge the provenance rename on indices that predate it (ADR-0014).
+///
+/// Templates only govern indices created after they are installed, so this is the
+/// other half of the bridge: without it a dashboard querying the current field
+/// name silently matches nothing in historical indices. Failures are reported and
+/// not fatal — an index that cannot take a mapping update (closed, frozen, or
+/// write-blocked) costs one index's worth of legacy-name resolution, which is no
+/// reason to fail installing the assets.
+async fn install_provenance_aliases(client: &Client) -> Result<()> {
+    let headers = default_headers();
+    let path = format!("/{ESDIAG_INDEX_PATTERN}/_mapping?ignore_unavailable=true&allow_no_indices=true");
+    let response = client.request(Method::GET, &headers, &path, None).await?;
+    if !response.status().is_success() {
+        return Err(eyre!(
+            "Reading ESDiag index mappings returned {}: {}",
+            response.status(),
+            response.text().await.unwrap_or_default()
+        ));
+    }
+
+    let mappings: Value = response.json().await?;
+    let patches = provenance_alias_patches(&mappings);
+    if patches.is_empty() {
+        tracing::debug!("No pre-rename ESDiag indices need a provenance alias");
+        return Ok(());
+    }
+
+    let mut failures = 0;
+    for (index, patch) in &patches {
+        let body = serde_json::to_vec(patch)?;
+        let result = client
+            .request(Method::PUT, &headers, &format!("/{index}/_mapping"), Some(&body))
+            .await;
+        match result {
+            Ok(response) if response.status().is_success() => {
+                tracing::info!("Aliased the current provenance names onto {index}");
+            }
+            Ok(response) => {
+                failures += 1;
+                tracing::warn!(
+                    "Could not add the provenance alias to {index}: {} {}",
+                    response.status(),
+                    response.text().await.unwrap_or_default()
+                );
+            }
+            Err(err) => {
+                failures += 1;
+                tracing::warn!("Could not add the provenance alias to {index}: {err}");
+            }
+        }
+    }
+
+    tracing::info!(
+        "Bridged provenance field names on {} of {} pre-rename indices",
+        patches.len() - failures,
+        patches.len()
+    );
+    Ok(())
+}
+
 fn should_skip_asset(asset: &Asset, security_enabled: bool) -> bool {
     asset.requires_security && !security_enabled
 }
@@ -136,8 +256,8 @@ async fn send_asset_with_allowed_statuses(
     let endpoint = match named {
         true => &format!(
             "{}/{}{}",
-            &asset.endpoint,
-            &stem,
+            asset.endpoint,
+            stem,
             asset.suffix.clone().unwrap_or("".to_string()),
         ),
         false => &asset.endpoint,
@@ -173,7 +293,7 @@ async fn send_asset_with_allowed_statuses(
 /// Submit saved assets to the client APIs
 pub async fn assets(client: &Client) -> Result<()> {
     let embedded_assets = EmbeddedAssets::new()?;
-    if Product::from(client) == Product::Kibana {
+    if Application::from(client) == Application::Kibana {
         return kibana_assets(client, &embedded_assets).await;
     }
 
@@ -227,6 +347,17 @@ pub async fn assets(client: &Client) -> Result<()> {
             return Err(eyre!("Asset not found: {}", asset.name));
         }
     }
+    // The templates just installed only shape indices created from here on, so
+    // existing ones still answer to whichever provenance names they were created
+    // with (ADR-0014). Elasticsearch owns those indices, so the bridge is only
+    // meaningful there — asking any other product for its mappings would warn
+    // about a call that never made sense.
+    if matches!(client, Client::Elasticsearch(_))
+        && let Err(err) = install_provenance_aliases(client).await
+    {
+        tracing::warn!("Could not bridge provenance field names on existing ESDiag indices: {err}");
+    }
+
     if error_count == 0 {
         tracing::info!("completed setup for {client}");
         Ok(())
@@ -516,18 +647,137 @@ async fn send_kibana_json_with_method(
 }
 
 /// Parses the assets YAML file for the given exporter. Currently only supports Elasticsearch.
-fn parse_assets_yml(product: Product, assets_store: &EmbeddedAssets) -> Result<Vec<Asset>> {
-    let filename = format!("{}/{}", product.to_string().to_lowercase(), ASSETS_FILE);
+fn parse_assets_yml(application: Application, assets_store: &EmbeddedAssets) -> Result<Vec<Asset>> {
+    let filename = format!("{}/{}", application.key(), ASSETS_FILE);
     let contents = assets_store
         .get_file(Path::new(&filename))
         .ok_or(eyre!("embedded assets did not contain expected file {filename}"))?;
-    let assets = serde_yaml::from_slice(&contents)?;
+    let assets = yaml_serde::from_slice(&contents)?;
     Ok(assets)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The `diagnostic` properties an index created from the current templates
+    /// carries, read from the template itself so the test moves with it.
+    fn template_diagnostic_properties() -> Value {
+        let path =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/elasticsearch/component_templates/esdiag@metadata.json");
+        let template: Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).expect("read metadata template")).expect("parse");
+        template["template"]["mappings"]["properties"]["diagnostic"]["properties"].clone()
+    }
+
+    /// Which concrete field a provenance name resolves to in one index's mapping.
+    fn resolves_to(diagnostic_properties: &Value, field: &str) -> Option<String> {
+        let mapping = diagnostic_properties.get(field)?;
+        match mapping["type"].as_str()? {
+            "alias" => Some(mapping["path"].as_str().expect("alias path").to_string()),
+            _ => Some(format!("diagnostic.{field}")),
+        }
+    }
+
+    /// The mapping of an index created before the provenance rename.
+    fn pre_rename_diagnostic_properties() -> Value {
+        serde_json::json!({
+            "product": { "type": "keyword" },
+            "orchestration": { "type": "keyword" },
+            "uuid": { "type": "keyword" },
+        })
+    }
+
+    /// Applies a `_mapping` patch the way Elasticsearch would, so the assertion is
+    /// about the mapping the index ends up with rather than the request body.
+    fn patched(diagnostic_properties: &Value, patch: &Value) -> Value {
+        let mut properties = diagnostic_properties.clone();
+        let target = properties.as_object_mut().expect("diagnostic properties");
+        let added = patch["properties"]["diagnostic"]["properties"]
+            .as_object()
+            .expect("patch properties");
+        for (field, mapping) in added {
+            target.insert(field.clone(), mapping.clone());
+        }
+        properties
+    }
+
+    #[test]
+    fn both_provenance_names_resolve_in_either_index_generation() {
+        let new_index = template_diagnostic_properties();
+        assert_eq!(
+            resolves_to(&new_index, "product"),
+            resolves_to(&new_index, "application"),
+            "a new index stores `application` and aliases `product` to it"
+        );
+        assert_eq!(
+            resolves_to(&new_index, "orchestration"),
+            resolves_to(&new_index, "platform")
+        );
+        assert!(
+            provenance_alias_patch(&new_index).is_none(),
+            "a new index needs no patch, so setup is idempotent"
+        );
+
+        let old_index = pre_rename_diagnostic_properties();
+        assert_eq!(
+            resolves_to(&old_index, "application"),
+            None,
+            "before the patch, the current name resolves to nothing in a historical index"
+        );
+
+        let patch = provenance_alias_patch(&old_index).expect("a pre-rename index needs the mirrored aliases");
+        let old_index = patched(&old_index, &patch);
+        assert_eq!(
+            resolves_to(&old_index, "application"),
+            resolves_to(&old_index, "product"),
+            "after the patch, an old index stores `product` and aliases `application` to it"
+        );
+        assert_eq!(
+            resolves_to(&old_index, "orchestration"),
+            resolves_to(&old_index, "platform")
+        );
+        assert!(
+            provenance_alias_patch(&old_index).is_none(),
+            "re-running setup over a patched index is a no-op"
+        );
+    }
+
+    #[test]
+    fn provenance_alias_patch_skips_mappings_with_nothing_to_bridge() {
+        assert!(provenance_alias_patch(&Value::Null).is_none());
+        assert!(provenance_alias_patch(&serde_json::json!({ "uuid": { "type": "keyword" } })).is_none());
+        assert!(
+            provenance_alias_patch(&serde_json::json!({
+                "product": { "type": "alias", "path": "diagnostic.application" },
+                "application": { "type": "keyword" },
+            }))
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn provenance_alias_patches_select_only_the_pre_rename_indices() {
+        let mappings = serde_json::json!({
+            ".ds-metrics-node-esdiag-2024.01.01-000001": {
+                "mappings": { "properties": { "diagnostic": { "properties": pre_rename_diagnostic_properties() } } }
+            },
+            ".ds-metrics-node-esdiag-2026.07.01-000002": {
+                "mappings": { "properties": { "diagnostic": { "properties": template_diagnostic_properties() } } }
+            },
+            "unrelated-esdiag-lookalike": { "mappings": { "properties": { "message": { "type": "text" } } } },
+        });
+
+        let patches = provenance_alias_patches(&mappings);
+
+        assert_eq!(patches.len(), 1, "only the historical backing index is patched");
+        let (index, patch) = &patches[0];
+        assert_eq!(index, ".ds-metrics-node-esdiag-2024.01.01-000001");
+        assert_eq!(
+            patch["properties"]["diagnostic"]["properties"]["application"],
+            serde_json::json!({ "type": "alias", "path": "diagnostic.product" })
+        );
+    }
 
     #[test]
     fn test_asset_deserialization_with_requires_security() {
@@ -540,7 +790,7 @@ mod tests {
   endpoint: "_ingest/pipeline"
   method: "PUT"
 "#;
-        let assets: Vec<Asset> = serde_yaml::from_str(yaml).unwrap();
+        let assets: Vec<Asset> = yaml_serde::from_str(yaml).unwrap();
         assert_eq!(assets.len(), 2);
         assert_eq!(assets[0].name, "roles");
         assert!(assets[0].requires_security);

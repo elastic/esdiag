@@ -5,7 +5,14 @@
 use super::{ApiKeyRequest, ServerState, UploadServiceRequest};
 use crate::{
     data::{KnownHostBuilder, Uri},
-    processor::{Completed, IncludedDiagnosticOutcome, Processor, new_job_id},
+    exporter::DocumentExporter,
+    job::{
+        context::{ExecutionContext, ExecutionIdentity},
+        executor::execute_with_context,
+        model::{BindingKey, ExportTarget, Input, Job, Process},
+        outcome::ExecutionOutcome,
+    },
+    processor::{DiagnosticOutcome, Identifiers, new_job_id},
     receiver::Receiver,
 };
 use axum::{
@@ -23,6 +30,51 @@ use url::Url;
 pub struct ServiceLinkQueryParams {
     #[serde(default, deserialize_with = "deserialize_empty_as_true")]
     wait_for_completion: bool,
+}
+
+async fn execute_synchronous_processing(
+    state: &ServerState,
+    owner: &str,
+    job_id: u64,
+    metadata: Identifiers,
+    input: Input,
+    mut context: ExecutionContext,
+) -> eyre::Result<ExecutionOutcome> {
+    let output_binding = BindingKey::try_new(format!("sync-api-output-{job_id}"))?;
+    let exporter = state.exporter.read().await.clone();
+    context.bind_document_exporter(output_binding.clone(), DocumentExporter::try_from(exporter)?);
+    context = context.with_identity(ExecutionIdentity::new(job_id, owner));
+    let job = Job::try_new(
+        metadata,
+        input,
+        None,
+        Some(Process {
+            selection: None,
+            export: ExportTarget::Binding {
+                binding: output_binding,
+            },
+        }),
+        None,
+    )?;
+    let outcome = execute_with_context(job, context).await;
+    if outcome.succeeded() {
+        Ok(outcome)
+    } else {
+        Err(eyre::eyre!(execution_failure(&outcome)))
+    }
+}
+
+fn execution_failure(outcome: &ExecutionOutcome) -> String {
+    outcome
+        .stages
+        .iter()
+        .find_map(|stage| match &stage.status {
+            crate::job::outcome::StageStatus::Failed(error) | crate::job::outcome::StageStatus::Blocked(error) => {
+                Some(error.clone())
+            }
+            crate::job::outcome::StageStatus::Succeeded | crate::job::outcome::StageStatus::Skipped(_) => None,
+        })
+        .unwrap_or_else(|| "Diagnostic execution failed".to_string())
 }
 
 #[axum::debug_handler]
@@ -100,8 +152,8 @@ pub async fn service_link(
         );
     }
 
-    let request_user = match state.resolve_user_email(&headers) {
-        Ok((_, user)) => user,
+    let identity = match state.resolve_identity(&headers) {
+        Ok(identity) => identity,
         Err(err) => {
             tracing::warn!("Rejecting service_link request due to auth policy: {err}");
             return (
@@ -119,84 +171,44 @@ pub async fn service_link(
         .clone()
         .unwrap_or_else(|| "Elastic Upload Service".to_string());
     let mut metadata = payload.metadata;
-    metadata.user = Some(request_user);
+    let owner = identity.user;
+    metadata.user = Some(owner.clone());
+    if metadata.account.is_none() {
+        metadata.account = identity.account;
+    }
 
     if params.wait_for_completion {
+        if let Err(err) = state.record_job_started(&owner).await {
+            state.record_job_rejected().await;
+            return (
+                StatusCode::TOO_MANY_REQUESTS,
+                Json(json!({
+                    "error": err.to_string()
+                })),
+            );
+        }
         tracing::info!("Processing service link synchronously: {}", job_id);
         tracing::debug!("[fsm][api.service_link] queued -> processing(sync): job_id={job_id}");
 
-        let receiver = match Receiver::try_from(uri) {
-            Ok(receiver) => {
-                tracing::debug!("[fsm][api.service_link] receiver created: job_id={job_id}");
-                Arc::new(receiver)
-            }
-            Err(e) => {
-                tracing::error!("Failed to create receiver: {}", e);
-                state.record_failure().await;
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({
-                        "error": format!("Failed to create receiver: {}", e)
-                    })),
-                );
-            }
-        };
-
-        let exporter = Arc::new(state.exporter.read().await.clone());
-        tracing::debug!("[fsm][api.service_link] ready->try_new: job_id={job_id}");
-
-        let processor = match Processor::try_new(receiver, exporter, metadata).await {
-            Ok(processor) => {
-                tracing::debug!(
-                    "[fsm][api.service_link] try_new ok: processor_id={}, job_id={job_id}",
-                    processor.id
-                );
-                processor
-            }
-            Err(error) => {
-                tracing::error!("Failed to create processor: {}", error);
-                state.record_failure().await;
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({
-                        "error": format!("Failed to create processor: {}", error)
-                    })),
-                );
-            }
-        };
-
-        let processing = match processor.start().await {
-            Ok(processing) => {
-                tracing::debug!(
-                    "[fsm][api.service_link] start ok -> processing: processor_id={}, job_id={job_id}",
-                    processing.id
-                );
-                processing
-            }
-            Err(failed) => {
-                tracing::error!("Failed to start processor: {}", failed.state.error);
-                state.record_failure().await;
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({
-                        "error": format!("Failed to start processor: {}", failed.state.error)
-                    })),
-                );
-            }
-        };
-
-        match processing.process().await {
-            Ok(completed) => {
-                tracing::debug!(
-                    "[fsm][api.service_link] process ok -> completed: processor_id={}, job_id={job_id}",
-                    completed.id
-                );
-                let report = &completed.state.report;
+        let binding = BindingKey::try_new(format!("sync-service-link-{job_id}")).expect("valid binding key");
+        let mut context = ExecutionContext::default();
+        context.inputs.bind_uri(binding.clone(), uri, None);
+        match execute_synchronous_processing(
+            &state,
+            &owner,
+            job_id,
+            metadata,
+            Input::LoadBinding { binding },
+            context,
+        )
+        .await
+        {
+            Ok(outcome) => {
+                let report = outcome.report.as_ref().expect("successful Process has a report");
                 state
-                    .record_success(report.diagnostic.docs.total, report.diagnostic.docs.errors)
+                    .record_outcome(&owner, report.outcome(), report.diagnostic.docs.errors)
                     .await;
-
-                let response = diagnostic_result_entries(&completed.state);
+                let response = diagnostic_result_entries(&outcome);
 
                 tracing::info!(
                     "Service link job completed synchronously: {}",
@@ -204,13 +216,13 @@ pub async fn service_link(
                 );
                 (StatusCode::OK, Json(response))
             }
-            Err(failed) => {
-                tracing::error!("Processing failed: {}", failed.state.error);
-                state.record_failure().await;
+            Err(error) => {
+                tracing::error!("Processing failed: {}", error);
+                state.record_failure(&owner).await;
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Json(json!({
-                        "error": format!("Processing failed: {}", failed.state.error)
+                        "error": format!("Processing failed: {error}")
                     })),
                 )
             }
@@ -264,8 +276,8 @@ pub async fn api_key(
         params.wait_for_completion
     );
 
-    let request_user = match state.resolve_user_email(&headers) {
-        Ok((_, user)) => user,
+    let identity = match state.resolve_identity(&headers) {
+        Ok(identity) => identity,
         Err(err) => {
             tracing::warn!("Rejecting api_key request due to auth policy: {err}");
             return (
@@ -314,21 +326,31 @@ pub async fn api_key(
         }
     };
 
+    let owner = identity.user.clone();
+
     // If wait_for_completion is true, process the job synchronously
     if params.wait_for_completion {
+        if let Err(err) = state.record_job_started(&owner).await {
+            state.record_job_rejected().await;
+            return (
+                StatusCode::TOO_MANY_REQUESTS,
+                Json(json!({
+                    "error": err.to_string()
+                })),
+            );
+        }
         tracing::info!("Processing job: {}", job_id);
         tracing::debug!("[fsm][api.api_key] queued -> processing(sync): job_id={job_id}");
 
-        // Create receiver from host
         let receiver = match Receiver::try_from(host) {
             Ok(receiver) => {
                 tracing::info!("Created receiver: {}", receiver);
                 tracing::debug!("[fsm][api.api_key] receiver created: job_id={job_id}");
-                Arc::new(receiver)
+                receiver
             }
             Err(e) => {
                 tracing::error!("Failed to create receiver: {}", e);
-                state.record_failure().await;
+                state.record_failure(&owner).await;
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Json(json!({
@@ -338,88 +360,46 @@ pub async fn api_key(
             }
         };
 
-        let exporter = Arc::new(state.exporter.read().await.clone());
         let mut identifiers = payload.metadata;
-        identifiers.user = Some(request_user.clone());
-        tracing::debug!("[fsm][api.api_key] ready->try_new: job_id={job_id}");
-
-        // Create and start the processor
-        let processor = match Processor::try_new(receiver, exporter, identifiers).await {
-            Ok(processor) => {
-                tracing::debug!(
-                    "[fsm][api.api_key] try_new ok: processor_id={}, job_id={job_id}",
-                    processor.id
-                );
-                processor
-            }
-            Err(error) => {
-                tracing::error!("Failed to create processor: {}", error);
-                state.record_failure().await;
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({
-                        "error": format!("Failed to create processor: {}", error)
-                    })),
-                );
-            }
-        };
-
-        tracing::debug!(
-            "[fsm][api.api_key] ready->start: processor_id={}, job_id={job_id}",
-            processor.id
-        );
-        let processing = match processor.start().await {
-            Ok(processing) => {
-                tracing::debug!(
-                    "[fsm][api.api_key] start ok -> processing: processor_id={}, job_id={job_id}",
-                    processing.id
-                );
-                processing
-            }
-            Err(failed) => {
-                tracing::error!("Failed to start processor: {}", failed.state.error);
-                state.record_failure().await;
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({
-                        "error": format!("Failed to start processor: {}", failed.state.error)
-                    })),
-                );
-            }
-        };
-
-        // Process the job
-        tracing::debug!(
-            "[fsm][api.api_key] processing->process await: processor_id={}, job_id={job_id}",
-            processing.id
-        );
-        match processing.process().await {
-            Ok(completed) => {
-                tracing::debug!(
-                    "[fsm][api.api_key] process ok -> completed: processor_id={}, job_id={job_id}",
-                    completed.id
-                );
-                let report = &completed.state.report;
+        identifiers.user = Some(owner.clone());
+        if identifiers.account.is_none() {
+            identifiers.account = identity.account.clone();
+        }
+        let binding = BindingKey::try_new(format!("sync-api-key-{job_id}")).expect("valid binding key");
+        let mut context = ExecutionContext::default();
+        context.inputs.bind_receiver(binding.clone(), receiver, None);
+        match execute_synchronous_processing(
+            &state,
+            &owner,
+            job_id,
+            identifiers,
+            Input::CollectBinding {
+                binding,
+                diagnostic_type: "standard".to_string(),
+                include: None,
+                exclude: None,
+            },
+            context,
+        )
+        .await
+        {
+            Ok(outcome) => {
+                let report = outcome.report.as_ref().expect("successful Process has a report");
                 state
-                    .record_success(report.diagnostic.docs.total, report.diagnostic.docs.errors)
+                    .record_outcome(&owner, report.outcome(), report.diagnostic.docs.errors)
                     .await;
-
-                let response = diagnostic_result_entries(&completed.state);
+                let response = diagnostic_result_entries(&outcome);
 
                 tracing::info!("Job completed successfully: {}", report.diagnostic.metadata.id);
                 (StatusCode::OK, Json(response))
             }
-            Err(failed) => {
-                tracing::debug!(
-                    "[fsm][api.api_key] process failed -> failed: processor_id={}, job_id={job_id}",
-                    failed.id
-                );
-                tracing::error!("Processing failed: {}", failed.state.error);
-                state.record_failure().await;
+            Err(error) => {
+                tracing::error!("Processing failed: {}", error);
+                state.record_failure(&owner).await;
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Json(json!({
-                        "error": format!("Processing failed: {}", failed.state.error)
+                        "error": format!("Processing failed: {error}")
                     })),
                 )
             }
@@ -428,7 +408,10 @@ pub async fn api_key(
         // Stash the username and (filename, URI) into the server state for later use
         tracing::debug!("[fsm][api.api_key] queued(in state): job_id={job_id}");
         let mut metadata = payload.metadata;
-        metadata.user = Some(request_user);
+        metadata.user = Some(owner);
+        if metadata.account.is_none() {
+            metadata.account = identity.account;
+        }
         state.push_key(job_id, metadata, host, "standard".to_string()).await;
 
         // Respond with a JSON success
@@ -436,49 +419,67 @@ pub async fn api_key(
     }
 }
 
-fn diagnostic_result_entries(completed: &Completed) -> Value {
-    let report = &completed.report;
+fn diagnostic_result_entries(outcome: &ExecutionOutcome) -> Value {
+    let report = outcome
+        .report
+        .as_ref()
+        .expect("Process outcome has a diagnostic report");
     let mut entries = vec![json!({
-        "status": "success",
+        "status": status_for_outcome(&report.outcome()),
+        "outcome": report.outcome().to_string(),
         "diagnostic_id": report.diagnostic.metadata.id,
         "kibana_link": report.diagnostic.kibana_link.as_deref().unwrap_or(""),
-        "took": runtime_millis(completed.runtime),
-        "product": report.diagnostic.product.to_string(),
+        "took": runtime_millis(report.diagnostic.processing_duration),
+        "product": report.diagnostic.display_label(),
         "source": "parent"
     })];
 
-    for outcome in &completed.included_diagnostics {
-        match outcome {
-            IncludedDiagnosticOutcome::Completed {
-                path, report, runtime, ..
-            } => entries.push(json!({
-                "status": "success",
+    for child in &outcome.children {
+        let entry = match (&child.diagnostic_outcome, child.report()) {
+            (DiagnosticOutcome::Skipped(_), _) => json!({
+                "status": "info",
+                "outcome": child.diagnostic_outcome.to_string(),
+                "product": crate::processor::display_label(child.application(), child.platform()),
+                "source": "included_diagnostic",
+                "path": child.path,
+                "reason": child.execution_error().unwrap_or_default()
+            }),
+            (_, Some(report)) => json!({
+                "status": if child.export_error().is_some() {
+                    "failed"
+                } else {
+                    status_for_outcome(&child.diagnostic_outcome)
+                },
+                "outcome": child.diagnostic_outcome.to_string(),
                 "diagnostic_id": report.diagnostic.metadata.id,
                 "kibana_link": report.diagnostic.kibana_link.as_deref().unwrap_or(""),
-                "took": runtime_millis(*runtime),
-                "product": report.diagnostic.product.to_string(),
+                "took": runtime_millis(child.runtime.unwrap_or_default()),
+                "product": report.diagnostic.display_label(),
                 "source": "included_diagnostic",
-                "path": path
-            })),
-            IncludedDiagnosticOutcome::Skipped {
-                path, product, reason, ..
-            } => entries.push(json!({
-                "status": "info",
-                "product": product.as_ref().map(ToString::to_string).unwrap_or_else(|| "unknown".to_string()),
+                "path": child.path,
+                "error": child.export_error().unwrap_or_default()
+            }),
+            (_, None) => json!({
+                "status": status_for_outcome(&child.diagnostic_outcome),
+                "outcome": child.diagnostic_outcome.to_string(),
+                "product": crate::processor::display_label(child.application(), child.platform()),
                 "source": "included_diagnostic",
-                "path": path,
-                "reason": reason
-            })),
-            IncludedDiagnosticOutcome::Failed { path, error, .. } => entries.push(json!({
-                "status": "failed",
-                "source": "included_diagnostic",
-                "path": path,
-                "error": error
-            })),
-        }
+                "path": child.path,
+                "error": child.execution_error().unwrap_or_default()
+            }),
+        };
+        entries.push(entry);
     }
 
     Value::Array(entries)
+}
+
+fn status_for_outcome(outcome: &DiagnosticOutcome) -> &'static str {
+    match outcome {
+        DiagnosticOutcome::Failed => "failed",
+        DiagnosticOutcome::Skipped(_) => "info",
+        DiagnosticOutcome::Complete | DiagnosticOutcome::Partial => "success",
+    }
 }
 
 fn runtime_millis(runtime: u128) -> u64 {
@@ -487,64 +488,109 @@ fn runtime_millis(runtime: u128) -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{diagnostic_result_entries, runtime_millis};
+    use super::{diagnostic_result_entries, runtime_millis, status_for_outcome};
     use crate::{
-        data::Product,
-        processor::{Completed, DiagnosticManifest, IncludedDiagnosticOutcome, diagnostic::DiagnosticReportBuilder},
+        data::{Application, Platform},
+        job::{
+            context::ExecutionIdentity,
+            outcome::{ChildExecutionOutcome, ExecutionOutcome, Stage, StageStatus},
+        },
+        processor::{DiagnosticManifest, DiagnosticOutcome, SkipKind, diagnostic::DiagnosticReportBuilder},
     };
 
-    fn report(product: Product, id_type: &str) -> crate::processor::DiagnosticReport {
-        DiagnosticReportBuilder::try_from(DiagnosticManifest::new(
+    fn report(
+        application: Option<Application>,
+        platform: Platform,
+        id_type: &str,
+    ) -> crate::processor::DiagnosticReport {
+        let mut manifest = DiagnosticManifest::new(
             "2024-01-01T00:00:00Z".to_string(),
             Some("esdiag-test".to_string()),
             None,
             None,
             Some("standard".to_string()),
-            product.clone(),
+            application,
             Some(id_type.to_string()),
             Some("esdiag".to_string()),
             Some("9.3.3".to_string()),
-        ))
-        .expect("report builder")
-        .receiver("Directory /tmp/diag".to_string())
-        .product(product)
-        .build()
-        .expect("report")
+        );
+        manifest.set_platform(platform);
+        DiagnosticReportBuilder::try_from(manifest)
+            .expect("report builder")
+            .receiver("Directory /tmp/diag".to_string())
+            .build()
+            .expect("report")
     }
 
     #[test]
     fn synchronous_api_results_include_parent_and_child_outcomes() {
-        let mut child_report = report(Product::Elasticsearch, "elasticsearch_diagnostic");
+        let mut child_report = report(
+            Some(Application::Elasticsearch),
+            Platform::Unknown,
+            "elasticsearch_diagnostic",
+        );
         child_report.add_kibana_link("https://kb.example/app/dashboards#/view/child".to_string());
+        let export_failed_report = report(
+            Some(Application::Elasticsearch),
+            Platform::Unknown,
+            "elasticsearch_diagnostic",
+        );
 
-        let completed = Completed {
-            report: report(Product::ECK, "eck-diagnostics"),
-            runtime: 1_000,
-            included_diagnostics: vec![
-                IncludedDiagnosticOutcome::Completed {
-                    job_id: 11,
-                    path: "child-es".to_string(),
-                    report: Box::new(child_report),
-                    runtime: 500,
-                },
-                IncludedDiagnosticOutcome::Skipped {
-                    job_id: 12,
-                    path: "child-kibana".to_string(),
-                    product: Some(Product::Kibana),
-                    reason: "Kibana processing is not yet implemented".to_string(),
-                },
-                IncludedDiagnosticOutcome::Failed {
-                    job_id: 13,
-                    path: "child-missing".to_string(),
-                    error: "manifest missing".to_string(),
-                },
-            ],
-        };
-
-        let entries = diagnostic_result_entries(&completed);
+        let mut parent_report = report(None, Platform::ECK, "eck-diagnostics");
+        parent_report.diagnostic.processing_duration = 1_000;
+        let mut outcome = ExecutionOutcome::new(ExecutionIdentity::new(1, "test"));
+        outcome.report = Some(parent_report);
+        let mut child_execution = ExecutionOutcome::new(ExecutionIdentity::new(11, "test"));
+        child_execution.report = Some(child_report);
+        let mut skipped_execution = ExecutionOutcome::new(ExecutionIdentity::new(12, "test"));
+        skipped_execution.record(
+            Stage::Process,
+            StageStatus::Failed("Kibana processing is not yet implemented".to_string()),
+        );
+        let mut failed_execution = ExecutionOutcome::new(ExecutionIdentity::new(13, "test"));
+        failed_execution.record(Stage::Load, StageStatus::Failed("manifest missing".to_string()));
+        let mut export_failed_execution = ExecutionOutcome::new(ExecutionIdentity::new(14, "test"));
+        export_failed_execution.report = Some(export_failed_report);
+        export_failed_execution.record(Stage::Process, StageStatus::Succeeded);
+        export_failed_execution.record(Stage::Export, StageStatus::Failed("child export failed".to_string()));
+        outcome.children = vec![
+            ChildExecutionOutcome {
+                path: "child-es".to_string(),
+                diagnostic_outcome: DiagnosticOutcome::Complete,
+                execution: Box::new(child_execution),
+                application: Some(Application::Elasticsearch),
+                platform: Platform::ECK,
+                runtime: Some(500),
+            },
+            ChildExecutionOutcome {
+                path: "child-kibana".to_string(),
+                diagnostic_outcome: DiagnosticOutcome::Skipped(SkipKind::NotImplemented),
+                execution: Box::new(skipped_execution),
+                application: Some(Application::Kibana),
+                platform: Platform::ECK,
+                runtime: None,
+            },
+            ChildExecutionOutcome {
+                path: "child-missing".to_string(),
+                diagnostic_outcome: DiagnosticOutcome::Failed,
+                execution: Box::new(failed_execution),
+                application: None,
+                platform: Platform::Unknown,
+                runtime: None,
+            },
+            ChildExecutionOutcome {
+                path: "child-export-failed".to_string(),
+                diagnostic_outcome: DiagnosticOutcome::Complete,
+                execution: Box::new(export_failed_execution),
+                application: Some(Application::Elasticsearch),
+                platform: Platform::ECK,
+                runtime: Some(250),
+            },
+        ];
+        let entries = diagnostic_result_entries(&outcome);
         let entries = entries.as_array().expect("array response");
 
-        assert_eq!(entries.len(), 4);
+        assert_eq!(entries.len(), 5);
         assert_eq!(entries[0]["status"], "success");
         assert_eq!(entries[0]["source"], "parent");
         assert_eq!(entries[0]["took"], 1_000);
@@ -556,9 +602,25 @@ mod tests {
             "https://kb.example/app/dashboards#/view/child"
         );
         assert_eq!(entries[2]["status"], "info");
+        assert_eq!(entries[2]["outcome"], "skipped (not implemented)");
         assert_eq!(entries[2]["reason"], "Kibana processing is not yet implemented");
         assert_eq!(entries[3]["status"], "failed");
+        assert_eq!(entries[3]["outcome"], "failed");
         assert_eq!(entries[3]["error"], "manifest missing");
+        assert_eq!(entries[4]["status"], "failed");
+        assert_eq!(entries[4]["outcome"], "complete");
+        assert_eq!(entries[4]["error"], "child export failed");
+    }
+
+    #[test]
+    fn status_for_outcome_tracks_terminal_outcomes() {
+        assert_eq!(status_for_outcome(&DiagnosticOutcome::Complete), "success");
+        assert_eq!(status_for_outcome(&DiagnosticOutcome::Partial), "success");
+        assert_eq!(status_for_outcome(&DiagnosticOutcome::Failed), "failed");
+        assert_eq!(
+            status_for_outcome(&DiagnosticOutcome::Skipped(SkipKind::ByDesign)),
+            "info"
+        );
     }
 
     #[test]

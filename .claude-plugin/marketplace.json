@@ -1,0 +1,16 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "esdiag",
+  "description": "ESDiag diagnostic tooling for Elasticsearch, Kibana, and Logstash",
+  "owner": {
+    "name": "Elastic",
+    "url": "https://github.com/elastic/esdiag"
+  },
+  "plugins": [
+    {
+      "name": "esdiag",
+      "source": "./plugin",
+      "description": "Load the portable ESDiag Agent Skill and delegate diagnostic analysis to your deployment's Agent Builder agent."
+    }
+  ]
+}

@@ -22,7 +22,7 @@ impl Settings {
         let path = Self::get_path()?;
         if path.exists() {
             let content = fs::read_to_string(&path)?;
-            let settings: Settings = serde_yaml::from_str(&content)?;
+            let settings: Settings = yaml_serde::from_str(&content)?;
             Ok(settings)
         } else {
             Ok(Settings::default())
@@ -31,7 +31,7 @@ impl Settings {
 
     pub fn save(&self) -> Result<()> {
         let path = Self::get_path()?;
-        let content = serde_yaml::to_string(self)?;
+        let content = yaml_serde::to_string(self)?;
         fs::write(path, content)?;
         Ok(())
     }

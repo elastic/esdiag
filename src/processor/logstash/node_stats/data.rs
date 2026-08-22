@@ -315,11 +315,11 @@ struct QueueStats {
 
 impl DataSource for NodeStats {
     fn name() -> String {
-        "node_stats".to_string()
+        "logstash_node_stats".to_string()
     }
 
     fn aliases() -> Vec<&'static str> {
-        vec!["logstash_node_stats"]
+        vec!["node_stats"]
     }
 }
 

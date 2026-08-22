@@ -15,6 +15,7 @@
     data-signals:_send_secure_hosts="{{ send_secure_hosts_json }}"
     data-on:datastar-fetch-error="$loading = false; $processing = false; $message = evt.detail.error || 'Request failed'"
     data-on:datastar-fetch-retries-failed="$loading = false; $processing = false"
+    data-on:change="@post('/jobs/draft', {filterSignals: {include: /^(job)(\.|$)/}})"
     data-signals:job.collect.mode="'upload'"
     data-signals:job.collect.source="'upload-file'"
     data-signals:job.collect.known_host="''"
@@ -30,6 +31,10 @@
     data-signals:job.send.remote_target="{{ initial_remote_target|json }}"
     data-signals:job.send.local_target="'{{ initial_local_target }}'"
     data-signals:job.send.local_directory="'{% if configured_local_path != "" %}{{ configured_local_path }}{% else %}{{ default_save_dir }}{% endif %}'"
+    data-signals:job.send.raw_remote_target="null"
+    data-signals:job.send.raw_local="false"
+    data-signals:target-availability.processed-documents="true"
+    data-signals:target-availability.raw-bundle="false"
 >
     <div
         hidden
@@ -667,7 +672,7 @@
                         id="send-forward-upload"
                         type="text"
                         class="form-input"
-                        data-bind:job.send.remote_target
+                        data-bind:job.send.raw_remote_target
                         placeholder="00000000-0000-0000-0000-000000000000"
                     />
                 </input-group>
@@ -721,6 +726,34 @@
             >
                 Existing local files stay in place. Choose `Remote` or use a save-capable collect source to create a new saved archive.
             </info-text>
+            <fieldset
+                data-show="$job.process.enabled"
+                data-attr:disabled="!$targetAvailability.rawBundle"
+            >
+                <legend>Raw bundle delivery</legend>
+                <label for="send-raw-local">
+                    <input
+                        id="send-raw-local"
+                        type="checkbox"
+                        data-bind:job.send.raw_local
+                    />
+                    Keep the collected or loaded bundle available locally
+                </label>
+                <input-group>
+                    <label for="send-raw-upload" class="form-label">Elastic Upload Service ID</label>
+                    <input
+                        id="send-raw-upload"
+                        type="text"
+                        class="form-input"
+                        data-bind:job.send.raw_remote_target
+                        placeholder="Optional upload ID"
+                    />
+                </input-group>
+                <info-text>
+                    Raw bundle delivery is independent from the processed diagnostic target.
+                    Enable <strong>Download Archive</strong> before collecting live data.
+                </info-text>
+            </fieldset>
             <stage-divider></stage-divider>
             <h3>Metadata</h3>
             <input-group>

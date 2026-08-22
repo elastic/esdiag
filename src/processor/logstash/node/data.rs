@@ -78,10 +78,10 @@ struct Memory {
 
 impl DataSource for Node {
     fn name() -> String {
-        "node".to_string()
+        "logstash_node".to_string()
     }
 
     fn aliases() -> Vec<&'static str> {
-        vec!["logstash_node"]
+        vec!["node"]
     }
 }

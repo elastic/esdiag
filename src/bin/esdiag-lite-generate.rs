@@ -4,8 +4,9 @@
 
 //! Maintainer utility for generated regions in the ESDiag Lite scripts.
 
-use esdiag::processor::diagnostic::data_source::{VersionSource, get_product_sources, parse_npm_version_requirement};
+use esdiag::processor::diagnostic::data_source::{VersionSource, get_product_sources};
 use eyre::{Result, bail, eyre};
+use semver::VersionReq;
 use std::cmp::Ordering;
 use std::fmt::Write;
 use std::path::PathBuf;
@@ -106,11 +107,37 @@ fn parse_version(value: &str, source_name: &str, expression: &str) -> Result<Ver
 }
 
 fn parse_rule(source_name: &str, expression: &str, url: &str) -> Result<Rule> {
-    // This also verifies the generated subset and runtime source resolution use
-    // the same NPM-style parsing rules.
-    parse_npm_version_requirement(expression)?;
+    let normalized_expression = expression.replace(',', "");
+    let mut semver_clauses = Vec::new();
+    let mut semver_tokens = normalized_expression.split_whitespace().peekable();
+    while let Some(token) = semver_tokens.next() {
+        if matches!(token, ">=" | ">" | "<=" | "<" | "=") {
+            let version = semver_tokens.next().ok_or_else(|| {
+                eyre!(
+                    "lite source '{}' has incomplete version rule '{}'",
+                    source_name,
+                    expression
+                )
+            })?;
+            semver_clauses.push(format!("{token} {version}"));
+        } else {
+            semver_clauses.push(token.to_string());
+        }
+    }
+    let semver_expression = semver_clauses.join(", ");
+    VersionReq::parse(&semver_expression).map_err(|error| {
+        eyre!(
+            "lite source '{}' uses invalid native semver rule '{}': {}",
+            source_name,
+            expression,
+            error
+        )
+    })?;
 
-    let mut tokens = expression.split_whitespace().peekable();
+    // Native Rust semver uses commas between comparator clauses; the lite
+    // generator only needs the individual bounds, so discard that separator
+    // after validating the complete expression.
+    let mut tokens = normalized_expression.split_whitespace().peekable();
     let mut lower = None;
     let mut upper = None;
     while let Some(token) = tokens.next() {
@@ -369,9 +396,9 @@ fn render_powershell_source(name: &str, output_path: &str, rules: &[Rule]) -> Re
     Ok(result)
 }
 
-fn lite_source_names<'a>(
-    sources: &'a std::collections::HashMap<String, esdiag::processor::diagnostic::data_source::Source>,
-) -> Result<Vec<&'a String>> {
+fn lite_source_names(
+    sources: &std::collections::HashMap<String, esdiag::processor::diagnostic::data_source::Source>,
+) -> Result<Vec<&String>> {
     let mut names: Vec<&String> = sources
         .iter()
         .filter_map(|(name, source)| source.has_tag("lite").then_some(name))
@@ -401,7 +428,7 @@ fn source_rules(name: &str, source: &esdiag::processor::diagnostic::data_source:
 fn render_bash() -> Result<String> {
     let sources =
         get_product_sources("elasticsearch").ok_or_else(|| eyre!("embedded Elasticsearch sources are unavailable"))?;
-    let names = lite_source_names(&sources)?;
+    let names = lite_source_names(sources)?;
 
     let mut output = String::new();
     writeln!(
@@ -445,7 +472,7 @@ fn render_bash() -> Result<String> {
 fn render_powershell() -> Result<String> {
     let sources =
         get_product_sources("elasticsearch").ok_or_else(|| eyre!("embedded Elasticsearch sources are unavailable"))?;
-    let names = lite_source_names(&sources)?;
+    let names = lite_source_names(sources)?;
     let mut output = String::new();
     writeln!(
         output,

@@ -50,23 +50,27 @@ pub use collector::ElasticsearchCollector;
 pub use metadata::ElasticsearchMetadata;
 use tokio::sync::mpsc;
 pub use {
-    licenses::License,
+    licenses::{License, Licenses},
     version::{Cluster, ClusterMetadata, Version},
 };
 
 use super::{
     DataSource, DiagnosticManifest, DiagnosticProcessor, DiagnosticReport, DocumentExporter, Metadata,
     ProcessorSummary,
-    api::ProcessSelection,
-    diagnostic::{DiagnosticReportBuilder, Lookup},
+    api::{ProcessSelection, ProcessingConcurrencyPolicy, is_streamable, processing_weight},
+    diagnostic::{
+        DiagnosticReportBuilder, Lookup,
+        data_source::{ProcessableClaim, validate_processable_registry},
+    },
     elasticsearch::health_report::HealthReport,
 };
 use crate::{
-    data::{self, Product},
+    data::{self, Application},
     exporter::Exporter,
-    receiver::Receiver,
+    receiver::{MissingSource, Receiver},
 };
 use eyre::{Result, eyre};
+use futures::{future::BoxFuture, stream::FuturesUnordered};
 use serde::{Serialize, de::DeserializeOwned};
 use std::{collections::HashSet, sync::Arc};
 use {
@@ -77,7 +81,6 @@ use {
     ilm_policies::IlmPolicies,
     indices_settings::{IndexSettings, IndicesSettings},
     indices_stats::IndicesStats,
-    licenses::Licenses,
     mapping_stats::{MappingStats, MappingSummary},
     nodes::{NodeDocument, Nodes},
     nodes_stats::NodesStats,
@@ -100,11 +103,183 @@ pub struct ElasticsearchDiagnostic {
     receiver: Arc<Receiver>,
 }
 
+/// Runs one processable source's typed processor.
+type EsProcessFn = fn(Arc<ElasticsearchDiagnostic>, mpsc::Sender<ProcessorSummary>) -> BoxFuture<'static, Result<()>>;
+
+/// The registry-keyed dispatch table (ADR-0005): each entry binds one
+/// processable source to its typed processor in a single registration — the
+/// canonical registry key, the impl's `DataSource::name()`, and the call that
+/// runs it. Adding a processable source is this entry plus its `sources.yml`
+/// entry; [`validate_es_dispatch_registry`] proves the two agree.
+struct EsDispatchEntry {
+    /// Canonical registry key handled by this entry.
+    key: &'static str,
+    /// `DataSource::name()` of the typed impl bound to `key`.
+    datasource_name: fn() -> String,
+    /// Invokes that impl.
+    process: EsProcessFn,
+}
+
+/// `DataSource::name()` as a plain function pointer, so a dispatch entry can
+/// carry the name its key must equal.
+fn datasource_name<T: DataSource>() -> String {
+    T::name()
+}
+
+/// Binds a buffered source's typed processor as an [`EsProcessFn`]. The type
+/// is named concretely so the resulting future keeps its auto-derived `Send`,
+/// which the web server's handlers require.
+macro_rules! buffered {
+    ($source:ty) => {{
+        fn run(
+            diagnostic: Arc<ElasticsearchDiagnostic>,
+            summary_tx: mpsc::Sender<ProcessorSummary>,
+        ) -> BoxFuture<'static, Result<()>> {
+            Box::pin(async move { diagnostic.process_datasource::<$source>(summary_tx).await })
+        }
+        run
+    }};
+}
+
+/// As [`buffered!`], for a source whose `streamable` registry flag selects
+/// between the streaming and buffered paths.
+macro_rules! streamable {
+    ($source:ty) => {{
+        fn run(
+            diagnostic: Arc<ElasticsearchDiagnostic>,
+            summary_tx: mpsc::Sender<ProcessorSummary>,
+        ) -> BoxFuture<'static, Result<()>> {
+            Box::pin(async move { diagnostic.process_maybe_streaming::<$source>(summary_tx).await })
+        }
+        run
+    }};
+}
+
+/// Both cluster-settings keys export the same dataset through one processor.
+fn process_cluster_settings(
+    diagnostic: Arc<ElasticsearchDiagnostic>,
+    summary_tx: mpsc::Sender<ProcessorSummary>,
+) -> BoxFuture<'static, Result<()>> {
+    Box::pin(async move { diagnostic.process_cluster_settings(summary_tx).await })
+}
+
+const ES_DISPATCH: &[EsDispatchEntry] = &[
+    EsDispatchEntry {
+        key: "indices_stats",
+        datasource_name: datasource_name::<IndicesStats>,
+        process: streamable!(IndicesStats),
+    },
+    EsDispatchEntry {
+        key: "nodes_stats",
+        datasource_name: datasource_name::<NodesStats>,
+        process: streamable!(NodesStats),
+    },
+    EsDispatchEntry {
+        key: "cluster_settings",
+        datasource_name: datasource_name::<ClusterSettings>,
+        process: process_cluster_settings,
+    },
+    EsDispatchEntry {
+        key: "cluster_settings_defaults",
+        datasource_name: datasource_name::<ClusterSettingsDefaults>,
+        process: process_cluster_settings,
+    },
+    EsDispatchEntry {
+        key: "health_report",
+        datasource_name: datasource_name::<HealthReport>,
+        process: buffered!(HealthReport),
+    },
+    EsDispatchEntry {
+        key: "ilm_policies",
+        datasource_name: datasource_name::<IlmPolicies>,
+        process: buffered!(IlmPolicies),
+    },
+    EsDispatchEntry {
+        key: "indices_settings",
+        datasource_name: datasource_name::<IndicesSettings>,
+        process: buffered!(IndicesSettings),
+    },
+    EsDispatchEntry {
+        key: "nodes",
+        datasource_name: datasource_name::<Nodes>,
+        process: buffered!(Nodes),
+    },
+    EsDispatchEntry {
+        key: "cluster_pending_tasks",
+        datasource_name: datasource_name::<PendingTasks>,
+        process: buffered!(PendingTasks),
+    },
+    EsDispatchEntry {
+        key: "slm_policies",
+        datasource_name: datasource_name::<SlmPolicies>,
+        process: buffered!(SlmPolicies),
+    },
+    EsDispatchEntry {
+        key: "repositories",
+        datasource_name: datasource_name::<Repositories>,
+        process: buffered!(Repositories),
+    },
+    EsDispatchEntry {
+        key: "searchable_snapshots_stats",
+        datasource_name: datasource_name::<SearchableSnapshotsStats>,
+        process: buffered!(SearchableSnapshotsStats),
+    },
+    EsDispatchEntry {
+        key: "snapshot",
+        datasource_name: datasource_name::<Snapshots>,
+        process: streamable!(Snapshots),
+    },
+    EsDispatchEntry {
+        key: "tasks",
+        datasource_name: datasource_name::<Tasks>,
+        process: buffered!(Tasks),
+    },
+];
+
+/// Fail fast if the dispatch table and the collection registry disagree
+/// (ADR-0005 key alignment): every table key must be a registry entry marked
+/// `processable`, matching its impl's `DataSource::name()`, and every
+/// `processable` registry entry must appear in the table. Runs once.
+fn validate_es_dispatch_registry() -> Result<()> {
+    static VALIDATED: std::sync::OnceLock<std::result::Result<(), String>> = std::sync::OnceLock::new();
+    VALIDATED
+        .get_or_init(|| {
+            let claims: Vec<ProcessableClaim> = ES_DISPATCH
+                .iter()
+                .map(|entry| ProcessableClaim {
+                    key: entry.key,
+                    datasource_name: (entry.datasource_name)(),
+                })
+                .collect();
+            validate_processable_registry("elasticsearch", &claims).map_err(|err| err.to_string())
+        })
+        .clone()
+        .map_err(|err| eyre!(err))
+}
+
 impl ElasticsearchDiagnostic {
     fn should_process(&self, key: &str) -> bool {
         self.selected_processors
             .as_ref()
             .is_none_or(|selected| selected.contains(key))
+    }
+
+    async fn process_maybe_streaming<T>(&self, summary_tx: mpsc::Sender<ProcessorSummary>) -> Result<()>
+    where
+        T: DataSource
+            + StreamingDataSource
+            + StreamingDocumentExporter<Lookups, ElasticsearchMetadata>
+            + DocumentExporter<Lookups, ElasticsearchMetadata>
+            + DeserializeOwned
+            + Send
+            + Sync,
+        T::Item: DeserializeOwned + Send + 'static,
+    {
+        if is_streamable("elasticsearch", &T::name()) {
+            self.process_streaming_datasource::<T>(summary_tx).await
+        } else {
+            self.process_datasource::<T>(summary_tx).await
+        }
     }
 
     async fn process_cluster_settings(&self, summary_tx: mpsc::Sender<ProcessorSummary>) -> Result<()> {
@@ -124,12 +299,24 @@ impl ElasticsearchDiagnostic {
                         .await
                         .was_parsed(),
                     Err(settings_err) => {
-                        tracing::warn!(
-                            "Failed to read cluster_settings_defaults and cluster_settings: {}; {}",
-                            defaults_err,
-                            settings_err
-                        );
-                        ProcessorSummary::new(ClusterSettings::name())
+                        if missing_source_error(&defaults_err) && missing_source_error(&settings_err) {
+                            tracing::debug!(
+                                "cluster_settings_defaults and cluster_settings are absent: {}; {}",
+                                defaults_err,
+                                settings_err
+                            );
+                            ProcessorSummary::missing(ClusterSettings::name())
+                        } else {
+                            tracing::warn!(
+                                "Failed to read cluster_settings_defaults and cluster_settings: {}; {}",
+                                defaults_err,
+                                settings_err
+                            );
+                            ProcessorSummary::new(ClusterSettings::name()).with_error(format!(
+                                "Failed to read cluster_settings_defaults and cluster_settings: {}; {}",
+                                defaults_err, settings_err
+                            ))
+                        }
                     }
                 }
             }
@@ -157,8 +344,18 @@ impl ElasticsearchDiagnostic {
                 })
             }
             Err(err) => {
-                tracing::warn!("{}", err);
-                let summary = ProcessorSummary::new(T::name());
+                let summary = if missing_source_error(&err) {
+                    tracing::debug!("{} is absent: {}", T::name(), err);
+                    ProcessorSummary::missing(T::name())
+                } else {
+                    tracing::warn!(
+                        "Failed to process data source {} (aliases: {}): {}",
+                        T::name(),
+                        T::aliases().join(", "),
+                        err
+                    );
+                    ProcessorSummary::new(T::name()).with_error(err.to_string())
+                };
                 summary_tx.send(summary).await.map_err(|err| {
                     tracing::error!("Failed to send summary: {}", err);
                     eyre!(err)
@@ -200,6 +397,30 @@ impl ElasticsearchDiagnostic {
     }
 }
 
+pub(super) fn missing_source_error(err: &eyre::Report) -> bool {
+    err.chain().any(|cause| {
+        cause.is::<MissingSource>()
+            || cause
+                .downcast_ref::<std::io::Error>()
+                .is_some_and(|io_err| io_err.kind() == std::io::ErrorKind::NotFound)
+    })
+}
+
+fn lookup_from_result<T, U>(result: Result<U>, label: &str) -> Lookup<T>
+where
+    T: Clone + Serialize,
+    Lookup<T>: From<U>,
+{
+    match result {
+        Ok(value) => Lookup::<T>::from_parsed(value),
+        Err(err) if missing_source_error(&err) => Lookup::missing(),
+        Err(err) => {
+            tracing::warn!("Failed to parse {}: {}", label, err);
+            Lookup::new()
+        }
+    }
+}
+
 impl DiagnosticProcessor for ElasticsearchDiagnostic {
     async fn try_new(
         receiver: Arc<Receiver>,
@@ -226,23 +447,26 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
 
         let mut report = DiagnosticReportBuilder::from(metadata.diagnostic.clone())
             .cluster(metadata.cluster.clone())
-            .product(Product::Elasticsearch)
+            .application(Application::Elasticsearch)
             .receiver(receiver.to_string())
             .build()?;
         tracing::debug!("ElasticsearchDiagnostic::try_new built report");
 
         let lookups = Lookups {
-            alias: Lookup::from(receiver.get::<AliasList>().await),
-            data_stream: Lookup::from(receiver.get::<DataStreams>().await),
-            index_settings: Lookup::from(receiver.get::<IndicesSettings>().await),
-            node: Lookup::from(receiver.get::<Nodes>().await),
-            ilm_explain: Lookup::from(receiver.get::<IlmExplain>().await),
-            shared_cache: Lookup::from(receiver.get::<SearchableSnapshotsCacheStats>().await),
+            alias: lookup_from_result(receiver.get::<AliasList>().await, "AliasList"),
+            data_stream: lookup_from_result(receiver.get::<DataStreams>().await, "DataStreams"),
+            index_settings: lookup_from_result(receiver.get::<IndicesSettings>().await, "IndicesSettings"),
+            node: lookup_from_result(receiver.get::<Nodes>().await, "Nodes"),
+            ilm_explain: lookup_from_result(receiver.get::<IlmExplain>().await, "IlmExplain"),
+            shared_cache: lookup_from_result(
+                receiver.get::<SearchableSnapshotsCacheStats>().await,
+                "SearchableSnapshotsCacheStats",
+            ),
             mapping_stats: match receiver.get_stream::<MappingStats>().await {
                 Ok(stream) => Lookup::<MappingSummary>::from_stream(stream).await,
                 Err(e) => {
                     tracing::debug!("Streaming mappings failed: {}, falling back to full load", e);
-                    Lookup::from(receiver.get::<MappingStats>().await)
+                    lookup_from_result(receiver.get::<MappingStats>().await, "MappingStats")
                 }
             },
         };
@@ -280,66 +504,48 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
             data::save_file("diagnostic.json", &self)?;
         }
 
+        validate_es_dispatch_registry()?;
+
         let diag = Arc::new(self);
-        // Future 1: IndicesStats
-        let (diag_idx, summary_tx_idx) = (diag.clone(), summary_tx.clone());
-        let thread1 = async move {
-            if diag_idx.should_process("indices_stats") {
-                diag_idx
-                    .process_streaming_datasource::<IndicesStats>(summary_tx_idx)
-                    .await?;
+        // Processing weight governs processing concurrency (ADR-0017): the
+        // heaviest sources run as their own concurrent tasks; the rest run
+        // sequentially. The weight -> concurrency mapping is tunable policy
+        // (ADR-0018).
+        let policy = ProcessingConcurrencyPolicy::from_env();
+        let mut concurrent = FuturesUnordered::new();
+        let mut sequential = Vec::new();
+        let process_cluster_settings_defaults = diag.should_process("cluster_settings_defaults");
+        for entry in ES_DISPATCH {
+            if !diag.should_process(entry.key) {
+                continue;
+            }
+            // Both keys export the same cluster-settings dataset. When both
+            // are selected, run the shared defaults-first processor once.
+            if entry.key == "cluster_settings" && process_cluster_settings_defaults {
+                continue;
+            }
+            let weight = processing_weight("elasticsearch", entry.key);
+            if policy.is_concurrent(weight) {
+                concurrent.push((entry.process)(diag.clone(), summary_tx.clone()));
+            } else {
+                sequential.push(entry);
+            }
+        }
+
+        let sequential_task = async {
+            for entry in sequential {
+                (entry.process)(diag.clone(), summary_tx.clone()).await?;
+            }
+            Ok::<(), eyre::Error>(())
+        };
+        let concurrent_task = async {
+            while let Some(result) = futures::StreamExt::next(&mut concurrent).await {
+                result?;
             }
             Ok::<(), eyre::Error>(())
         };
 
-        // Future 2: NodesStats
-        let (diag_nodes, summary_tx_nodes) = (diag.clone(), summary_tx.clone());
-        let thread2 = async move {
-            if diag_nodes.should_process("nodes_stats") {
-                diag_nodes
-                    .process_streaming_datasource::<NodesStats>(summary_tx_nodes)
-                    .await?;
-            }
-            Ok::<(), eyre::Error>(())
-        };
-
-        // Future 3: Everything else
-        let thread3 = async move {
-            if diag.should_process("cluster_settings") || diag.should_process("cluster_settings_defaults") {
-                diag.process_cluster_settings(summary_tx.clone()).await?;
-            }
-            if diag.should_process("health_report") {
-                diag.process_datasource::<HealthReport>(summary_tx.clone()).await?;
-            }
-            if diag.should_process("ilm_policies") {
-                diag.process_datasource::<IlmPolicies>(summary_tx.clone()).await?;
-            }
-            if diag.should_process("indices_settings") {
-                diag.process_datasource::<IndicesSettings>(summary_tx.clone()).await?;
-            }
-            if diag.should_process("nodes") {
-                diag.process_datasource::<Nodes>(summary_tx.clone()).await?;
-            }
-            if diag.should_process("pending_tasks") {
-                diag.process_datasource::<PendingTasks>(summary_tx.clone()).await?;
-            }
-            if diag.should_process("slm_policies") {
-                diag.process_datasource::<SlmPolicies>(summary_tx.clone()).await?;
-            }
-            if diag.should_process("repositories") {
-                diag.process_datasource::<Repositories>(summary_tx.clone()).await?;
-            }
-            if diag.should_process("snapshot") {
-                diag.process_streaming_datasource::<Snapshots>(summary_tx.clone())
-                    .await?;
-            }
-            if diag.should_process("tasks") {
-                diag.process_datasource::<Tasks>(summary_tx.clone()).await?;
-            }
-            Ok::<(), eyre::Error>(())
-        };
-
-        let _ = tokio::try_join!(thread1, thread2, thread3)?;
+        let _ = tokio::try_join!(sequential_task, concurrent_task)?;
         Ok(())
     }
 
@@ -357,6 +563,7 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
 }
 
 impl ElasticsearchDiagnostic {
+    #[cfg(test)]
     pub fn uuid(&self) -> &str {
         &self.metadata.diagnostic.uuid
     }
@@ -371,4 +578,24 @@ pub struct Lookups {
     pub mapping_stats: Lookup<MappingSummary>,
     pub node: Lookup<NodeDocument>,
     pub shared_cache: Lookup<SharedCacheStats>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{missing_source_error, validate_es_dispatch_registry};
+    use crate::receiver::MissingSource;
+
+    #[test]
+    fn dispatch_table_and_registry_agree() {
+        validate_es_dispatch_registry().expect("Elasticsearch dispatch table matches the collection registry");
+    }
+
+    #[test]
+    fn empty_source_files_are_treated_as_missing() {
+        let error = eyre::Report::new(MissingSource::Empty {
+            path: "internal_health.json".to_string(),
+        });
+
+        assert!(missing_source_error(&error));
+    }
 }

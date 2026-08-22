@@ -4,8 +4,8 @@
 
 use super::Export;
 use crate::{
-    client::{ElasticsearchBuilder, ElasticsearchClient},
-    data::{self, Auth, KnownHost},
+    client::{ElasticsearchBuilder, ElasticsearchClient, elasticsearch_client_from_output_host},
+    data::{self, Auth, CredentialDirection, KnownHost},
     processor::{BatchResponse, DiagnosticReport},
 };
 use elasticsearch::{
@@ -197,9 +197,9 @@ impl TryFrom<KnownHost> for ElasticsearchExporter {
 
     fn try_from(host: KnownHost) -> Result<Self> {
         let kibana_base_url = super::saved_viewer_kibana_base_url(&host).or_else(super::kibana_base_url_from_env);
-        let requires_secret = !matches!(host.get_auth()?, Auth::None);
+        let requires_secret = !matches!(host.get_auth_for_direction(CredentialDirection::Output)?, Auth::None);
         let url = host.get_url()?;
-        let client = ElasticsearchClient::try_from(host)?;
+        let client = elasticsearch_client_from_output_host(host)?;
         let limit = std::env::var("ESDIAG_OUTPUT_TASK_LIMIT")
             .ok()
             .and_then(|s| s.parse::<usize>().ok())
@@ -316,7 +316,10 @@ impl Export for ElasticsearchExporter {
                     tracing::warn!(
                         "{index} - bulk sub-batch failed after partial success; recording {failed_docs} failed docs: {err}"
                     );
-                    summary.merge(BatchResponse::failed(failed_docs, 0));
+                    summary.merge(BatchResponse::failed(
+                        failed_docs,
+                        BatchResponse::HTTP_REQUEST_NOT_COMPLETED,
+                    ));
                     return Ok(summary);
                 }
             }
@@ -351,7 +354,13 @@ impl Export for ElasticsearchExporter {
                 }
                 Err(e) => {
                     tracing::warn!("Bulk batch failed: {}", e);
-                    if tx.send(BatchResponse::failed(doc_count as u32, 0)).is_err() {
+                    if tx
+                        .send(BatchResponse::failed(
+                            doc_count as u32,
+                            BatchResponse::HTTP_REQUEST_NOT_COMPLETED,
+                        ))
+                        .is_err()
+                    {
                         tracing::error!("Failed to send failed batch response: receiver dropped");
                     }
                 }
@@ -808,7 +817,8 @@ mod tests {
         assert_eq!(result.docs, 1);
         assert_eq!(result.errors, 2);
         assert_eq!(result.batch_count, 2);
-        assert_eq!(result.status_code, 0);
+        // HTTP request never completed: 599 sentinel, never 0 (ADR-0016)
+        assert_eq!(result.status_code, BatchResponse::HTTP_REQUEST_NOT_COMPLETED);
         assert_eq!(
             *call_count.lock().await,
             2,
@@ -829,7 +839,7 @@ mod tests {
 
         assert_eq!(response.docs, 0);
         assert_eq!(response.errors, 2);
-        assert_eq!(response.status_code, 0);
+        assert_eq!(response.status_code, BatchResponse::HTTP_REQUEST_NOT_COMPLETED);
     }
 
     #[tokio::test]
@@ -899,7 +909,7 @@ mod tests {
         assert_eq!(response.docs, 0);
         assert_eq!(response.errors, 2);
         assert_eq!(response.batch_count, 1);
-        assert_eq!(response.status_code, 0);
+        assert_eq!(response.status_code, BatchResponse::HTTP_REQUEST_NOT_COMPLETED);
         assert_eq!(*call_count.lock().await, 1, "expected one bulk request");
     }
 }

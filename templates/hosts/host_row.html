@@ -4,15 +4,11 @@
     <td class="host-product-column">
         <form-input>
             <select data-bind:hosts.rows.{{ row_id }}.draft.app>
+                <option value="None" {% if host.app == "None" %}selected{% endif %}>None</option>
                 <option value="Elasticsearch" {% if host.app == "Elasticsearch" %}selected{% endif %}>Elasticsearch</option>
                 <option value="Kibana" {% if host.app == "Kibana" %}selected{% endif %}>Kibana</option>
                 <option value="Logstash" {% if host.app == "Logstash" %}selected{% endif %}>Logstash</option>
                 <option value="Agent" {% if host.app == "Agent" %}selected{% endif %}>Agent</option>
-                <option value="ECE" {% if host.app == "ECE" %}selected{% endif %}>ECE</option>
-                <option value="ECK" {% if host.app == "ECK" %}selected{% endif %}>ECK</option>
-                <option value="ElasticCloudHosted" {% if host.app == "ElasticCloudHosted" %}selected{% endif %}>ElasticCloudHosted</option>
-                <option value="KubernetesPlatform" {% if host.app == "KubernetesPlatform" %}selected{% endif %}>KubernetesPlatform</option>
-                <option value="Unknown" {% if host.app == "Unknown" %}selected{% endif %}>Unknown</option>
             </select>
         </form-input>
     </td>

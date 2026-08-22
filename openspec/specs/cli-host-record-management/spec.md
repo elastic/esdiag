@@ -140,18 +140,21 @@ The system SHALL reject `esdiag host update <name>` invocations for unknown host
 - **AND** the system does not create or save a partial host record
 
 ### Requirement: Saved Host Listing
-The system SHALL provide `esdiag host list` to print a compact table of saved hosts with columns `name`, `app`, and `secret`. The `secret` column SHALL show the saved secret identifier when present and SHALL otherwise be empty. When no hosts are saved, the command SHALL print `No saved hosts`.
+The system SHALL provide `esdiag host list` to emit a structured list outcome containing saved host entries. Each entry SHALL include `name`, `app`, roles, URL or template metadata safe for display, and the saved secret reference identifier when present. It MUST NOT include resolved API keys or passwords. When no hosts are saved, the outcome SHALL contain an empty `hosts` sequence.
 
-#### Scenario: List prints compact host table
+#### Scenario: List emits structured hosts
 - **GIVEN** saved hosts exist in persisted host storage
 - **WHEN** the user runs `esdiag host list`
-- **THEN** the command prints a compact table with headers `name`, `app`, and `secret`
-- **AND** each saved host appears on its own row
+- **THEN** the command emits a YAML host-list outcome by default
+- **AND** each saved host appears as one typed entry in `hosts`
+- **AND** no terminal table is present
+- **AND** non-interactive stdout contains no ANSI color
 
-#### Scenario: List reports empty host storage
+#### Scenario: List represents empty host storage
 - **GIVEN** no saved hosts exist
 - **WHEN** the user runs `esdiag host list`
-- **THEN** the command prints `No saved hosts`
+- **THEN** the command emits a successful host-list outcome with `hosts: []`
+- **AND** it does not emit an empty-state sentence that callers must parse
 
 ### Requirement: Saved Host Authentication Check
 The system SHALL provide `esdiag host auth <name>` to test authentication against an existing saved host. `auth` MUST fail when the host does not exist and MUST not modify persisted host storage.
@@ -181,3 +184,49 @@ The system SHALL support deleting an existing saved host record with `esdiag hos
 - **WHEN** the user runs `esdiag host remove prod-es`
 - **THEN** the command fails with an explicit error indicating that `prod-es` was not found
 - **AND** the system leaves persisted host storage unchanged
+
+### Requirement: CLI Host Application Classification
+The `esdiag host` commands SHALL accept and display only actual Stack applications as
+host applications. Concrete host creation MUST produce a classified application before
+connection testing or persistence. A dynamic template definition MAY omit the
+application until materialization, and the CLI MUST present that state as unresolved
+rather than as `Unknown` or a platform.
+
+#### Scenario: Add concrete host with explicit application
+- **GIVEN** the target URL does not identify its application unambiguously
+- **WHEN** the user runs `esdiag host add prod-kb https://kibana.example --app kibana`
+- **THEN** the CLI constructs a concrete host whose application is `Kibana`
+- **AND** validates and connection-tests that classified host before saving it
+
+#### Scenario: Reject platform passed as host application
+- **WHEN** the user supplies `--app eck` to a host command
+- **THEN** the CLI rejects the value because ECK is a platform rather than an application
+
+#### Scenario: Add unresolved dynamic template
+- **GIVEN** a URL template selects its application through the reference product parameter
+- **WHEN** the user saves the template without `--app`
+- **THEN** the CLI saves an unresolved template with no application placeholder
+- **AND** does not require a connection test until the template is materialized
+
+#### Scenario: List unresolved template
+- **GIVEN** a saved template-backed host has no application before materialization
+- **WHEN** the user runs `esdiag host list`
+- **THEN** the application column identifies the host as unresolved
+- **AND** does not display `Unknown` or a platform as its application
+
+### Requirement: CLI Template Materialization Classification
+When a CLI host target is a template reference, the system SHALL derive the concrete
+application from the selected product or the documented default, render the URL, and
+validate the resulting resolved host before authentication, connection testing,
+collection, or persistence.
+
+#### Scenario: Materialize template with selected application
+- **GIVEN** a saved dynamic template named `elastic-cloud`
+- **WHEN** the user targets `elastic-cloud://415715723947/kibana`
+- **THEN** the CLI materializes a concrete host whose application is `Kibana`
+- **AND** validates the rendered route and host roles before use
+
+#### Scenario: Reject unsupported template product
+- **GIVEN** a saved dynamic template named `elastic-cloud`
+- **WHEN** the user targets `elastic-cloud://415715723947/eck`
+- **THEN** the CLI rejects the reference because ECK is not an application target

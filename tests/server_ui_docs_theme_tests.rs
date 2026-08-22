@@ -108,7 +108,7 @@ async fn test_docs_routes_render_and_404() {
         .expect("subtopic response");
     assert!(subtopic.status().is_success());
     let subtopic_body = subtopic.text().await.expect("subtopic body");
-    assert!(subtopic_body.contains("Elastic Stack Diagnostics Control"));
+    assert!(subtopic_body.contains("esdiag-control"));
     assert!(subtopic_body.contains("esdiag-control buildx --push"));
 
     let missing = client
@@ -139,7 +139,8 @@ async fn index_embeds_processing_option_catalog() {
     assert!(body.contains("\"elasticsearch\""));
     assert!(body.contains("\"cluster_settings_defaults\""));
     assert!(body.contains("\"logstash\""));
-    assert!(body.contains("\"plugins\""));
+    // Processing options carry canonical registry keys (ADR-0005)
+    assert!(body.contains("\"logstash_plugins\""));
 
     server.shutdown().await;
 }

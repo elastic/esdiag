@@ -537,6 +537,16 @@ get_api_ilm_policies() {
   fi
 }
 
+get_api_indices_settings() {
+  if version_at_least 0 9 0 && version_less_than 7 7 0; then
+    get_api "/_settings?human" "indices_settings.json"
+  elif version_at_least 7 7 0; then
+    get_api "/_settings?human&expand_wildcards=all" "indices_settings.json"
+  else
+    skip_api "indices_settings"
+  fi
+}
+
 get_api_indices_stats() {
   if version_at_least 0 9 0 && version_less_than 7 7 0; then
     get_api "/_stats?level=shards&human" "indices_stats.json"
@@ -585,16 +595,6 @@ get_api_searchable_snapshots_cache_stats() {
   fi
 }
 
-get_api_settings() {
-  if version_at_least 0 9 0 && version_less_than 7 7 0; then
-    get_api "/_settings?human" "settings.json"
-  elif version_at_least 7 7 0; then
-    get_api "/_settings?human&expand_wildcards=all" "settings.json"
-  else
-    skip_api "settings"
-  fi
-}
-
 get_api_slm_policies() {
   if version_at_least 7 4 0; then
     get_api "/_slm/policy?human" "commercial/slm_policies.json"
@@ -623,12 +623,12 @@ collect_lite_apis() {
   get_api_data_stream || status=1
   get_api_ilm_explain || status=1
   get_api_ilm_policies || status=1
+  get_api_indices_settings || status=1
   get_api_indices_stats || status=1
   get_api_licenses || status=1
   get_api_nodes || status=1
   get_api_nodes_stats || status=1
   get_api_searchable_snapshots_cache_stats || status=1
-  get_api_settings || status=1
   get_api_slm_policies || status=1
   get_api_tasks || status=1
   return "$status"

@@ -11,6 +11,9 @@
 # Include repo-specific skills
 !/.agents/skills/
 !/.agents/skills/**
+# Include skills bundled into the distributable Claude Code plugin
+!/plugin/skills/
+!/plugin/skills/**
 /*/command*/
 .cursor
 .wolf

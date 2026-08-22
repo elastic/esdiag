@@ -4,18 +4,22 @@
 
 use super::super::elasticsearch::{ClusterMetadata, License as ElasticsearchLicense};
 use super::{DiagnosticManifest, DiagnosticMetadata, Lookup};
-use crate::data::Product;
+use crate::data::{Application, ApplicationConfig, Platform};
 use eyre::{OptionExt, Report, Result, eyre};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_with::{NoneAsEmptyString, serde_as, skip_serializing_none};
 use std::collections::HashMap;
+use std::str::FromStr;
 
 pub struct DiagnosticReportBuilder {
     cluster: Option<ClusterMetadata>,
     processors: HashMap<String, ProcessorSummary>,
-    product: Option<Product>,
+    application: Option<Application>,
     metadata: DiagnosticMetadata,
     origin: Option<Origin>,
+    /// Collection-stage events carried in from the manifest's per-request
+    /// record — collection failures persist in the report, not only in logs.
+    collection_events: Vec<DiagnosticEvent>,
 }
 
 impl DiagnosticReportBuilder {
@@ -23,9 +27,9 @@ impl DiagnosticReportBuilder {
         DiagnosticReport::try_from(self)
     }
 
-    pub fn product(self, product: Product) -> Self {
+    pub fn application(self, application: Application) -> Self {
         Self {
-            product: Some(product),
+            application: Some(application),
             ..self
         }
     }
@@ -51,8 +55,9 @@ impl From<DiagnosticMetadata> for DiagnosticReportBuilder {
             metadata,
             cluster: None,
             processors: HashMap::new(),
-            product: None,
+            application: None,
             origin: None,
+            collection_events: Vec::new(),
         }
     }
 }
@@ -61,13 +66,33 @@ impl TryFrom<DiagnosticManifest> for DiagnosticReportBuilder {
     type Error = eyre::Report;
 
     fn try_from(manifest: DiagnosticManifest) -> Result<Self> {
+        let application = manifest.application();
+        // Collection failures recorded at collect time persist as report
+        // events (ADR-0016): a non-2xx request is a warning with its source.
+        let collection_events = manifest
+            .requested_apis
+            .as_ref()
+            .map(|apis| {
+                apis.iter()
+                    .filter(|(_, api)| !api.status.is_some_and(|status| (200..300).contains(&status)))
+                    .map(|(name, api)| {
+                        let reason = match api.status {
+                            Some(status) => format!("collection failed with HTTP {status}"),
+                            None => "collection failed without an HTTP response".to_string(),
+                        };
+                        DiagnosticEvent::warning(name.clone(), reason)
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
         let metadata = DiagnosticMetadata::try_from(manifest)?;
         Ok(Self {
             cluster: None,
             metadata,
             processors: HashMap::new(),
-            product: None,
+            application,
             origin: None,
+            collection_events,
         })
     }
 }
@@ -96,9 +121,21 @@ pub struct Identifiers {
     /// Parent diagnostic identifier
     #[serde_as(as = "NoneAsEmptyString")]
     pub parent_id: Option<String>,
-    /// Orchestration platform
-    #[serde_as(as = "NoneAsEmptyString")]
-    pub orchestration: Option<String>,
+    /// Deployment platform (replaces the legacy untyped `orchestration`
+    /// identifier; legacy keys and identifier strings still deserialize)
+    #[serde(alias = "orchestration", deserialize_with = "deserialize_platform_identifier")]
+    pub platform: Option<Platform>,
+}
+
+/// Tolerant deserializer for the platform identifier: accepts the typed
+/// platform values and the legacy `orchestration` strings; empty or
+/// unrecognized values become `None` rather than failing the whole document.
+fn deserialize_platform_identifier<'de, D>(deserializer: D) -> Result<Option<Platform>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value: Option<String> = Option::deserialize(deserializer)?;
+    Ok(value.and_then(|value| Platform::from_str(value.trim()).ok()))
 }
 impl Identifiers {
     pub fn is_empty(&self) -> bool {
@@ -108,7 +145,7 @@ impl Identifiers {
             && self.opportunity.is_none()
             && self.user.is_none()
             && self.parent_id.is_none()
-            && self.orchestration.is_none()
+            && self.platform.is_none()
     }
 
     pub fn new(
@@ -123,9 +160,9 @@ impl Identifiers {
             case_number: normalize_identifier(case_number),
             filename: normalize_identifier(filename),
             opportunity: normalize_identifier(opportunity),
-            user: normalize_identifier(user).or_else(|| normalize_identifier(std::env::var("ESDIAG_USER").ok())),
+            user: resolve_default_user(user),
             parent_id: None,
-            orchestration: None,
+            platform: None,
         }
     }
 
@@ -154,9 +191,9 @@ impl Identifiers {
         }
     }
 
-    pub fn with_orchestration(self, orchestration: String) -> Self {
+    pub fn with_platform(self, platform: Platform) -> Self {
         Self {
-            orchestration: normalize_identifier(Some(orchestration)),
+            platform: Some(platform),
             ..self
         }
     }
@@ -164,7 +201,7 @@ impl Identifiers {
 
 impl Default for Identifiers {
     fn default() -> Self {
-        let user = normalize_identifier(std::env::var("ESDIAG_USER").ok());
+        let user = resolve_default_user(None);
         Self {
             account: None,
             case_number: None,
@@ -172,9 +209,19 @@ impl Default for Identifiers {
             opportunity: None,
             user,
             parent_id: None,
-            orchestration: None,
+            platform: None,
         }
     }
+}
+
+fn resolve_default_user(explicit: Option<String>) -> Option<String> {
+    normalize_identifier(explicit)
+        .or_else(|| normalize_identifier(std::env::var("ESDIAG_USER").ok()))
+        .or_else(|| {
+            ApplicationConfig::load()
+                .ok()
+                .and_then(|config| normalize_identifier(config.user))
+        })
 }
 
 fn normalize_identifier(value: Option<String>) -> Option<String> {
@@ -186,6 +233,114 @@ fn normalize_identifier(value: Option<String>) -> Option<String> {
             Some(trimmed.to_string())
         }
     })
+}
+
+/// The verdict of a diagnostic — one type for any diagnostic, parent or
+/// child (ADR-0016). Derived from the report's recorded events, never set
+/// imperatively; `Skipped` is constructed only where a diagnostic is
+/// rejected before a report exists.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DiagnosticOutcome {
+    /// Everything selected was captured and processed.
+    Complete,
+    /// The common real case: some sources captured or exported, some failed.
+    Partial,
+    /// Nothing was produced.
+    Failed,
+    /// The diagnostic was not processed at all.
+    Skipped(SkipKind),
+}
+
+/// Why a diagnostic was skipped (ADR-0019): deliberately out of scope, or
+/// simply not implemented yet.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SkipKind {
+    ByDesign,
+    NotImplemented,
+}
+
+impl DiagnosticOutcome {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Complete => "complete",
+            Self::Partial => "partial",
+            Self::Failed => "failed",
+            Self::Skipped(_) => "skipped",
+        }
+    }
+
+    pub fn skip_kind(&self) -> Option<SkipKind> {
+        match self {
+            Self::Skipped(kind) => Some(*kind),
+            _ => None,
+        }
+    }
+}
+
+impl std::fmt::Display for DiagnosticOutcome {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Skipped(SkipKind::ByDesign) => write!(f, "skipped (by design)"),
+            Self::Skipped(SkipKind::NotImplemented) => write!(f, "skipped (not implemented)"),
+            other => write!(f, "{}", other.as_str()),
+        }
+    }
+}
+
+impl Serialize for DiagnosticOutcome {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+/// Severity of a recorded diagnostic event.
+#[derive(Serialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum EventSeverity {
+    Error,
+    Warning,
+    Success,
+}
+
+/// One recorded event in a diagnostic's report: what happened, to which
+/// source, and why. Failures are collected here, never dropped to logs
+/// (ADR-0016). Events are source-grained (one per data source / processor /
+/// exporter batch class), not per document.
+#[derive(Serialize, Clone, Debug)]
+pub struct DiagnosticEvent {
+    pub severity: EventSeverity,
+    /// The data source / processor / exporter the event pertains to.
+    pub source: String,
+    pub reason: String,
+}
+
+impl DiagnosticEvent {
+    pub fn error(source: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self {
+            severity: EventSeverity::Error,
+            source: source.into(),
+            reason: reason.into(),
+        }
+    }
+
+    pub fn warning(source: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self {
+            severity: EventSeverity::Warning,
+            source: source.into(),
+            reason: reason.into(),
+        }
+    }
+
+    pub fn success(source: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self {
+            severity: EventSeverity::Success,
+            source: source.into(),
+            reason: reason.into(),
+        }
+    }
 }
 
 #[derive(Serialize, Clone)]
@@ -212,7 +367,10 @@ pub struct Agent {
 #[derive(Serialize)]
 pub struct DiagnosticStats {
     pub docs: Docs,
-    pub product: Product,
+    /// Application component the diagnostic pertains to; absent for
+    /// platform-only diagnostics (the platform rides on `identifiers`)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub application: Option<Application>,
     origin: Origin,
     pub license: Option<License>,
     lookup: NestedStats<LookupSummary>,
@@ -223,11 +381,79 @@ pub struct DiagnosticStats {
     #[serde(flatten)]
     pub identifiers: Identifiers,
     pub processing_duration: u128,
+    /// All recorded error/warning/success events (source + reason) — the
+    /// persisted record failures land in, never only a log line (ADR-0016).
+    ///
+    /// Private with `outcome`: the two are only consistent because every
+    /// mutation here is followed by [`DiagnosticStats::refresh_outcome`], so
+    /// an outcome inconsistent with its events must stay unreachable from
+    /// outside this module.
+    events: Vec<DiagnosticEvent>,
+    /// The derived verdict, always equal to `derive_outcome(&events, &docs)`.
+    outcome: DiagnosticOutcome,
+}
+
+/// Derive the diagnostic outcome from the recorded events and document
+/// counts (ADR-0016): this is the only way an outcome is computed. Any error
+/// with nothing produced is `Failed`; any error/warning or rejected document
+/// alongside produced output is `Partial`; otherwise `Complete`. (`Skipped`
+/// is constructed only where a diagnostic is rejected before a report
+/// exists — a skip records no report at all.)
+pub fn derive_outcome(events: &[DiagnosticEvent], docs: &Docs) -> DiagnosticOutcome {
+    let has_error = events.iter().any(|event| event.severity == EventSeverity::Error);
+    let has_warning = events.iter().any(|event| event.severity == EventSeverity::Warning);
+    let has_failure_signal = has_error || has_warning || docs.errors > 0;
+    let produced = docs.total > 0 || events.iter().any(|event| event.severity == EventSeverity::Success);
+
+    if has_failure_signal && !produced {
+        DiagnosticOutcome::Failed
+    } else if has_failure_signal {
+        DiagnosticOutcome::Partial
+    } else {
+        DiagnosticOutcome::Complete
+    }
+}
+
+impl DiagnosticStats {
+    /// The deployment platform recorded for this diagnostic. Total by
+    /// construction: unresolved provenance is `Unknown`.
+    pub fn platform(&self) -> Platform {
+        self.identifiers.platform.unwrap_or_default()
+    }
+
+    fn refresh_outcome(&mut self) {
+        self.outcome = derive_outcome(&self.events, &self.docs);
+    }
+
+    /// Display label per ADR-0001: the application when present, else the
+    /// platform.
+    pub fn display_label(&self) -> String {
+        crate::processor::display_label(self.application, self.platform())
+    }
 }
 
 impl DiagnosticReport {
     pub fn add_kibana_link(&mut self, link: String) {
         self.diagnostic.kibana_link = Some(link);
+    }
+
+    /// Record an event (source + reason) in the persisted report and keep the
+    /// derived outcome in sync.
+    pub fn record_event(&mut self, event: DiagnosticEvent) {
+        self.diagnostic.events.push(event);
+        self.diagnostic.refresh_outcome();
+    }
+
+    /// The derived verdict of this diagnostic.
+    pub fn outcome(&self) -> DiagnosticOutcome {
+        self.diagnostic.outcome
+    }
+
+    /// The recorded events behind [`DiagnosticReport::outcome`]. Read-only:
+    /// events are added through [`DiagnosticReport::record_event`], which
+    /// keeps the derived outcome in sync.
+    pub fn events(&self) -> &[DiagnosticEvent] {
+        &self.diagnostic.events
     }
 
     pub fn add_identifiers(&mut self, identifiers: Identifiers) {
@@ -292,24 +518,62 @@ impl DiagnosticReport {
         }
     }
 
-    fn add_single_processor_summary(&mut self, summary: ProcessorSummary) {
-        if !summary.source.parsed {
+    fn add_single_processor_summary(&mut self, mut summary: ProcessorSummary) {
+        // Drain the summary's recorded events into the persisted report and
+        // record this source's verdict as an event (ADR-0016).
+        let has_recorded_error = summary
+            .events
+            .iter()
+            .any(|event| event.severity == EventSeverity::Error);
+        self.diagnostic.events.append(&mut summary.events);
+        if summary.source.missing {
+            // Source was not present in an imported bundle; that is not a
+            // processing failure and should not affect the derived outcome.
+        } else if !summary.source.parsed {
             self.diagnostic.processor.errors += 1;
             self.diagnostic.processor.failures.push(summary.index.clone());
+            if !has_recorded_error {
+                self.diagnostic.events.push(DiagnosticEvent::error(
+                    summary.processor.clone(),
+                    "source could not be read or parsed".to_string(),
+                ));
+            }
+        } else if summary.doc_errors > 0 {
+            self.diagnostic.events.push(DiagnosticEvent::warning(
+                summary.processor.clone(),
+                format!(
+                    "{} of {} documents rejected",
+                    summary.doc_errors,
+                    summary.docs + summary.doc_errors
+                ),
+            ));
+        } else {
+            self.diagnostic.events.push(DiagnosticEvent::success(
+                summary.processor.clone(),
+                format!("{} documents exported", summary.docs),
+            ));
         }
         self.diagnostic.docs.created += summary.docs;
         self.diagnostic.docs.errors += summary.doc_errors;
         self.diagnostic.docs.total += summary.docs + summary.doc_errors;
         self.diagnostic.processor.push(summary.processor.clone(), summary);
+        self.diagnostic.refresh_outcome();
     }
 
     pub fn add_lookup<T>(&mut self, name: &str, lookup: &Lookup<T>)
     where
         T: Clone + Serialize,
     {
-        if !lookup.parsed && !self.diagnostic.lookup.failures.iter().any(|f| f == name) {
+        if lookup.missing {
+            // Optional lookup source was absent from an imported bundle; this
+            // should not affect the derived diagnostic outcome.
+        } else if !lookup.parsed && !self.diagnostic.lookup.failures.iter().any(|f| f == name) {
             self.diagnostic.lookup.errors += 1;
             self.diagnostic.lookup.failures.push(name.to_string());
+            self.diagnostic
+                .events
+                .push(DiagnosticEvent::warning(name.to_string(), "lookup could not be parsed"));
+            self.diagnostic.refresh_outcome();
         }
 
         self.diagnostic.lookup.push(
@@ -354,10 +618,19 @@ impl TryFrom<DiagnosticReportBuilder> for DiagnosticReport {
                     failures: Vec::new(),
                     stats: builder.processors,
                 },
-                product: builder.product.unwrap_or(Product::Unknown),
+                application: builder.application,
                 kibana_link: None,
                 identifiers: Identifiers::default(),
                 processing_duration: 0,
+                outcome: derive_outcome(
+                    &builder.collection_events,
+                    &Docs {
+                        created: 0,
+                        errors: 0,
+                        total: 0,
+                    },
+                ),
+                events: builder.collection_events,
             },
         })
     }
@@ -404,6 +677,12 @@ impl BatchResponse {
         }
     }
 
+    /// Request status recorded when an HTTP exporter's request never
+    /// completed (connection failure, serialization error). Status `0` is
+    /// reserved exclusively for non-HTTP exporters (ADR-0016), so HTTP
+    /// failures without a response use this sentinel instead.
+    pub const HTTP_REQUEST_NOT_COMPLETED: u16 = 599;
+
     pub fn failed(failed_doc_count: u32, status_code: u16) -> Self {
         Self {
             batch_count: 1,
@@ -425,11 +704,20 @@ impl BatchResponse {
         self.retries = self.retries.saturating_add(other.retries);
         self.size = self.size.saturating_add(other.size);
         self.time = self.time.saturating_add(other.time);
+        // The scalar code is the transport verdict; `status_counts` is
+        // authoritative for document outcomes. Mixed HTTP request codes are
+        // never collapsed to 0 — 0 is reserved for non-HTTP exporters
+        // (ADR-0016). A mixed aggregate keeps the most severe request code.
         self.status_code = match (self.status_code, other.status_code) {
             (0, status) if was_empty => status,
             (status, 0) if other.errors == 0 => status,
             (left, right) if left == right => left,
-            _ => 0,
+            (left, right) => match (left >= 400, right >= 400) {
+                (true, true) => left.max(right),
+                (true, false) => left,
+                (false, true) => right,
+                (false, false) => left.max(right),
+            },
         };
         self.merge_status_counts(&other);
     }
@@ -481,6 +769,10 @@ pub struct ProcessorSummary {
     pub source: Source,
     #[serde(skip_serializing)]
     children: Vec<ProcessorSummary>,
+    /// Events recorded while producing this summary; drained into the
+    /// diagnostic report's event log (ADR-0016).
+    #[serde(skip_serializing)]
+    events: Vec<DiagnosticEvent>,
 }
 
 impl ProcessorSummary {
@@ -490,9 +782,13 @@ impl ProcessorSummary {
                 self.batch.merge(other.batch);
                 self.docs = self.docs.saturating_add(other.docs);
                 self.doc_errors = self.doc_errors.saturating_add(other.doc_errors);
+                self.events.extend(other.events);
             }
             Err(err) => {
-                tracing::warn!("processor summary was err: {}", err);
+                // A whole-source failure is a recorded event, never only a
+                // log line (ADR-0016).
+                self.events
+                    .push(DiagnosticEvent::error(self.processor.clone(), err.to_string()));
             }
         }
     }
@@ -501,7 +797,8 @@ impl ProcessorSummary {
         match other {
             Ok(other) => self.children.push(other),
             Err(err) => {
-                tracing::warn!("processor summary was err: {}", err);
+                self.events
+                    .push(DiagnosticEvent::error(self.processor.clone(), err.to_string()));
             }
         }
     }
@@ -553,6 +850,8 @@ impl BatchStats {
 #[derive(Serialize, Clone)]
 pub struct Source {
     pub parsed: bool,
+    #[serde(skip_serializing_if = "is_false")]
+    pub missing: bool,
 }
 
 impl std::fmt::Display for Source {
@@ -568,6 +867,10 @@ impl Source {
     }
 }
 
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
 impl ProcessorSummary {
     pub fn new(name: String) -> Self {
         Self {
@@ -581,9 +884,29 @@ impl ProcessorSummary {
             docs: 0,
             doc_errors: 0,
             processor: name,
-            source: Source { parsed: false },
+            source: Source {
+                parsed: false,
+                missing: false,
+            },
             children: Vec::new(),
+            events: Vec::new(),
         }
+    }
+
+    pub fn missing(name: String) -> Self {
+        Self {
+            source: Source {
+                parsed: false,
+                missing: true,
+            },
+            ..Self::new(name)
+        }
+    }
+
+    pub fn with_error(mut self, reason: impl Into<String>) -> Self {
+        self.events
+            .push(DiagnosticEvent::error(self.processor.clone(), reason.into()));
+        self
     }
 
     pub fn add_batch(&mut self, batch: BatchResponse) {
@@ -614,7 +937,10 @@ impl ProcessorSummary {
     }
 
     pub fn was_parsed(mut self) -> Self {
-        self.source = Source { parsed: true };
+        self.source = Source {
+            parsed: true,
+            missing: false,
+        };
         self.children = self.children.into_iter().map(ProcessorSummary::was_parsed).collect();
         self
     }
@@ -659,6 +985,58 @@ impl TryFrom<String> for Origin {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::data::ApplicationConfig;
+
+    #[test]
+    fn configured_user_supplies_an_omitted_identifier() {
+        let mut env = crate::TestEnv::new();
+        env.remove("ESDIAG_USER");
+        ApplicationConfig {
+            version: 1,
+            user: Some("configured@example.com".to_string()),
+            ..ApplicationConfig::new()
+        }
+        .save()
+        .expect("save application config");
+
+        let identifiers = Identifiers::new(None, None, None, None, None);
+
+        assert_eq!(identifiers.user.as_deref(), Some("configured@example.com"));
+    }
+
+    #[test]
+    fn environment_user_precedes_configured_user() {
+        let mut env = crate::TestEnv::new();
+        env.set("ESDIAG_USER", "environment@example.com");
+        ApplicationConfig {
+            version: 1,
+            user: Some("configured@example.com".to_string()),
+            ..ApplicationConfig::new()
+        }
+        .save()
+        .expect("save application config");
+
+        let identifiers = Identifiers::new(None, None, None, None, None);
+
+        assert_eq!(identifiers.user.as_deref(), Some("environment@example.com"));
+    }
+
+    #[test]
+    fn explicit_user_precedes_environment_and_configured_user() {
+        let mut env = crate::TestEnv::new();
+        env.set("ESDIAG_USER", "environment@example.com");
+        ApplicationConfig {
+            version: 1,
+            user: Some("configured@example.com".to_string()),
+            ..ApplicationConfig::new()
+        }
+        .save()
+        .expect("save application config");
+
+        let identifiers = Identifiers::new(None, None, None, None, Some("explicit@example.com".to_string()));
+
+        assert_eq!(identifiers.user.as_deref(), Some("explicit@example.com"));
+    }
 
     #[test]
     fn test_lookup_parsed_status() {
@@ -710,7 +1088,7 @@ mod tests {
 
     #[test]
     fn identifiers_deserialize_empty_strings_as_none() {
-        let identifiers: Identifiers = serde_yaml::from_str(
+        let identifiers: Identifiers = yaml_serde::from_str(
             r#"
 account: ''
 case_number: ''
@@ -725,6 +1103,221 @@ user: ada
     }
 
     #[test]
+    fn outcome_derives_complete_from_all_success_events() {
+        let events = vec![DiagnosticEvent::success("nodes", "5 documents exported")];
+        let docs = Docs {
+            created: 5,
+            errors: 0,
+            total: 5,
+        };
+        assert_eq!(derive_outcome(&events, &docs), DiagnosticOutcome::Complete);
+    }
+
+    #[test]
+    fn outcome_derives_partial_from_a_failure_alongside_output() {
+        let events = vec![
+            DiagnosticEvent::success("nodes", "5 documents exported"),
+            DiagnosticEvent::error("tasks", "source could not be read or parsed"),
+        ];
+        let docs = Docs {
+            created: 5,
+            errors: 0,
+            total: 5,
+        };
+        assert_eq!(derive_outcome(&events, &docs), DiagnosticOutcome::Partial);
+    }
+
+    #[test]
+    fn outcome_derives_partial_from_rejected_documents() {
+        // A 200 request with per-doc rejections is Partial: the per-doc
+        // histogram is authoritative, not the transport code (ADR-0016)
+        let events = vec![DiagnosticEvent::warning("nodes", "2 of 7 documents rejected")];
+        let docs = Docs {
+            created: 5,
+            errors: 2,
+            total: 7,
+        };
+        assert_eq!(derive_outcome(&events, &docs), DiagnosticOutcome::Partial);
+    }
+
+    #[test]
+    fn outcome_derives_partial_when_all_attempted_documents_are_rejected() {
+        let events = vec![DiagnosticEvent::warning("nodes", "7 of 7 documents rejected")];
+        let docs = Docs {
+            created: 0,
+            errors: 7,
+            total: 7,
+        };
+        assert_eq!(derive_outcome(&events, &docs), DiagnosticOutcome::Partial);
+    }
+
+    #[test]
+    fn outcome_derives_failed_from_total_failure() {
+        let events = vec![
+            DiagnosticEvent::error("nodes", "connection refused"),
+            DiagnosticEvent::error("tasks", "connection refused"),
+        ];
+        let docs = Docs {
+            created: 0,
+            errors: 0,
+            total: 0,
+        };
+        assert_eq!(derive_outcome(&events, &docs), DiagnosticOutcome::Failed);
+    }
+
+    #[test]
+    fn outcome_derives_failed_from_warning_without_output() {
+        let events = vec![DiagnosticEvent::warning(
+            "nodes",
+            "collection failed without an HTTP response",
+        )];
+        let docs = Docs {
+            created: 0,
+            errors: 0,
+            total: 0,
+        };
+        assert_eq!(derive_outcome(&events, &docs), DiagnosticOutcome::Failed);
+    }
+
+    #[test]
+    fn skipped_outcome_distinguishes_by_design_from_not_implemented() {
+        let by_design = DiagnosticOutcome::Skipped(SkipKind::ByDesign);
+        let wip = DiagnosticOutcome::Skipped(SkipKind::NotImplemented);
+        assert_eq!(by_design.as_str(), "skipped");
+        assert_eq!(by_design.to_string(), "skipped (by design)");
+        assert_eq!(wip.to_string(), "skipped (not implemented)");
+        assert_eq!(by_design.skip_kind(), Some(SkipKind::ByDesign));
+        assert_eq!(serde_json::to_value(by_design).unwrap(), "skipped (by design)");
+        assert_eq!(serde_json::to_value(wip).unwrap(), "skipped (not implemented)");
+    }
+
+    #[test]
+    fn merged_err_records_a_failure_event_not_a_dropped_log() {
+        let mut summary = ProcessorSummary::new("metrics-nodes-esdiag".to_string());
+        summary.merge(Err(eyre!("boom")));
+        summary.add_child(Err(eyre!("child boom")));
+
+        assert_eq!(summary.events.len(), 2);
+        assert!(summary.events.iter().all(|e| e.severity == EventSeverity::Error));
+        assert!(summary.events.iter().any(|e| e.reason.contains("boom")));
+    }
+
+    #[test]
+    fn missing_source_summary_does_not_change_outcome() {
+        let metadata = DiagnosticMetadata {
+            id: "test".to_string(),
+            collection_date: 0,
+            runner: "test".to_string(),
+            uuid: "test".to_string(),
+        };
+        let mut report =
+            DiagnosticReport::try_from(DiagnosticReportBuilder::from(metadata).receiver("file path".to_string()))
+                .unwrap();
+
+        let mut parsed = ProcessorSummary::new("metrics-nodes-esdiag".to_string());
+        let mut batch = BatchResponse::new(2);
+        batch.status_code = 200;
+        parsed.add_batch(batch);
+        report.add_processor_summary(parsed.was_parsed());
+        report.add_processor_summary(ProcessorSummary::missing("metrics-task-esdiag".to_string()));
+
+        assert_eq!(report.outcome(), DiagnosticOutcome::Complete);
+        assert_eq!(report.diagnostic.processor.errors(), 0);
+        assert_eq!(report.diagnostic.events.len(), 1);
+        assert!(
+            report
+                .diagnostic
+                .processor
+                .stats()
+                .get("metrics-task-esdiag")
+                .expect("missing source summary")
+                .source
+                .missing
+        );
+    }
+
+    #[test]
+    fn failed_summary_with_recorded_event_does_not_add_generic_duplicate() {
+        let metadata = DiagnosticMetadata {
+            id: "test".to_string(),
+            collection_date: 0,
+            runner: "test".to_string(),
+            uuid: "test".to_string(),
+        };
+        let mut report =
+            DiagnosticReport::try_from(DiagnosticReportBuilder::from(metadata).receiver("file path".to_string()))
+                .unwrap();
+
+        report.add_processor_summary(
+            ProcessorSummary::new("cluster_settings-esdiag".to_string())
+                .with_error("Failed to read cluster_settings: corrupt payload"),
+        );
+
+        assert_eq!(report.outcome(), DiagnosticOutcome::Failed);
+        assert_eq!(report.diagnostic.processor.errors(), 1);
+        assert_eq!(report.diagnostic.events.len(), 1);
+        assert_eq!(
+            report.diagnostic.events[0].reason,
+            "Failed to read cluster_settings: corrupt payload"
+        );
+    }
+
+    #[test]
+    fn mixed_http_request_codes_are_not_collapsed_to_zero() {
+        let mut aggregate = BatchResponse::aggregate();
+        let mut ok = BatchResponse::new(5);
+        ok.status_code = 200;
+        let mut rejected = BatchResponse::failed(2, 429);
+        rejected.status_code = 429;
+        aggregate.merge(ok);
+        aggregate.merge(rejected);
+
+        // The most severe request code wins; 0 is reserved for non-HTTP
+        // exporters (ADR-0016)
+        assert_eq!(aggregate.status_code, 429);
+        assert!(aggregate.status_counts.contains_key(&200));
+        assert!(aggregate.status_counts.contains_key(&429));
+    }
+
+    #[test]
+    fn non_http_exporter_status_stays_zero() {
+        let mut aggregate = BatchResponse::aggregate();
+        let mut local_a = BatchResponse::new(5);
+        local_a.status_code = 0;
+        let mut local_b = BatchResponse::new(3);
+        local_b.status_code = 0;
+        aggregate.merge(local_a);
+        aggregate.merge(local_b);
+        assert_eq!(aggregate.status_code, 0);
+    }
+
+    #[test]
+    fn identifiers_platform_deserializes_from_legacy_orchestration_key() {
+        let identifiers: Identifiers =
+            serde_json::from_str(r#"{"user": "ada", "orchestration": "elastic-cloud-kubernetes"}"#)
+                .expect("deserialize identifiers");
+        assert_eq!(identifiers.platform, Some(crate::data::Platform::ECK));
+    }
+
+    #[test]
+    fn identifiers_platform_tolerates_empty_and_unknown_legacy_values() {
+        let empty: Identifiers = serde_json::from_str(r#"{"orchestration": ""}"#).expect("deserialize identifiers");
+        assert_eq!(empty.platform, None);
+
+        let unknown: Identifiers =
+            serde_json::from_str(r#"{"orchestration": "not-a-platform"}"#).expect("deserialize identifiers");
+        assert_eq!(unknown.platform, None);
+    }
+
+    #[test]
+    fn identifiers_platform_serializes_as_typed_platform_key() {
+        let identifiers = Identifiers::default().with_platform(crate::data::Platform::ECK);
+        let value = serde_json::to_value(&identifiers).expect("serialize identifiers");
+        assert_eq!(value["platform"], "elastic-cloud-kubernetes");
+        assert!(value.get("orchestration").is_none());
+    }
+
+    #[test]
     fn identifiers_do_not_serialize_empty_values() {
         let identifiers = Identifiers::new(
             Some("".to_string()),
@@ -734,7 +1327,7 @@ user: ada
             Some("ada".to_string()),
         );
 
-        let yaml = serde_yaml::to_string(&identifiers).expect("serialize identifiers");
+        let yaml = yaml_serde::to_string(&identifiers).expect("serialize identifiers");
 
         assert!(!yaml.contains("account"));
         assert!(!yaml.contains("case_number"));

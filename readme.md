@@ -1,487 +1,72 @@
-Elastic Stack Diagnostics
-==========================
+# Elastic Stack Diagnostics
 
-Elastic Stack Diagnostics (`esdiag`) simplifies processing and importing diagnostic bundles into Elasticsearch. It pre-processes, splits and enriches the raw API outputs into Elasticsearch-friendly JSON documents. This makes using diagnostic data for Kibana dashboards, ES|QL queries, and more, easy.
+Elastic Stack Diagnostics (`esdiag`) collects diagnostic bundles from Elastic
+Stack products, shares raw archives, processes diagnostic data into
+Elasticsearch, and provides Kibana and Agent Builder analysis handoffs.
 
-Desktop packaging guidance (macOS, Windows `.msi`, Linux Flatpak local builds) is documented in `docs/build/desktop-packaging.md`.
+## Start here
 
-Running locally within containers
-----------------------------------
+Choose the stages you need; installation, diagnostic-cluster setup, and daily
+usage are separate decisions.
 
-### 1. Preparation
+1. [Install ESDiag](docs/setup/installation.md) — binary-first,
+   container-first, skill-first, or no installation for a shared service.
+2. [Configure ESDiag](docs/setup/configuration.md) — no diagnostic cluster,
+   a local diagnostic cluster, a remote diagnostic cluster, or a shared hosted
+   service.
+3. [Use ESDiag](docs/setup/usage.md) — collect and share, process and analyze,
+   or run every stage through the CLI, web UI, or coding-agent skill.
 
-Use the standalone `esdiag-local` release artifact to run the official ESDiag
-image without cloning this repository. Visit [ela.st/esdiag-local](https://ela.st/esdiag-local),
-download the `esdiag-local` asset, make it executable, and run:
+The [setup overview](docs/setup/index.md) maps the three main user workflows:
 
-```sh
-./esdiag-local up
-```
+- Collect and share diagnostics
+- Process and analyze diagnostics
+- Collect, share, process, and analyze diagnostics
 
-The script prefers Podman and falls back to Docker; either runtime needs Compose
-support and at least 8 GB of available memory. It writes restrictive generated
-state to `~/.esdiag/local`, binds all ports to loopback, and enables security by
-default. See [the standalone local stack guide](docs/bin/esdiag-local.md) for
-commands, credentials, updates, upgrades, and reset behavior.
+## Local diagnostic cluster
 
-Repository contributors and users who need an auditable source build should
-clone this repository and run `./bin/esdiag-control up`. That command builds the
-local image and delegates lifecycle management to `esdiag-local`, using isolated
-state under `target/esdiag-local`.
-
-> [!IMPORTANT]
-> By default containers running on Linux can typically access the host's total available memory, so the 8GB requirement applies to the host machine. On MacOS and Windows the containers run inside a virtual machine that commonly has less than 8GB RAM by default. Both the Docker and Podman Desktop apps have a `resources` section to configure it. Podman also has a command-line option: `podman machine set --cpus 8 --memory 8192`
-
-### 2. Running
-
-Run the standalone artifact from any directory:
+With an installed binary, start the version-matched local stack:
 
 ```sh
-./esdiag-local up
+esdiag local up
 ```
 
-> [!TIP]
-> Elastic security is always enabled because the AI assistant and related Kibana
-> assets require it. Retrieve the generated `elastic` password with
-> `./esdiag-local secrets password`.
-
-Once the script is complete, you will have:
-1. A single Elasticsearch node with all index templates installed.
-2. A fully-configured Kibana instance with dashboards, data views, and saved searches imported.
-3. An `esdiag:latest` container serving the web interface.
-4. A web browser opened to the ESDiag web interface at `http://localhost:2501`
-
-### 3. Processing diagnostics
-
-Open your browser to the ESDiag web interface at `http://localhost:2501` and use your browser to upload a diagnostic bundle. The first time you open Kibana, use the `elastic` username and password printed to your terminal (also saved in the `.env` file).
-
-Full Rust Installation with Cargo
-----------------------------------
-
-First install the Rust toolchain from [rust-lang.org/tools/install]()
+New automatic deployments select native **core** mode when the binary is
+compatible. Core mode runs Elasticsearch and Kibana containers while managing
+the native ESDiag web UI. Use `--stack=full` for the fully containerized ESDiag
+web service:
 
 ```sh
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+esdiag local up --stack=full
 ```
 
-### Local `git clone` installation
-
-1. Clone this GitHub repository using [GitHub Desktop](https://github.com/apps/desktop) or the command line
-
-    ```sh
-    git clone https://github.com/elastic/esdiag.git
-    ```
-
-2. Install the `esdiag` tool using `cargo` from the local directory
-
-    ```sh
-    cargo install --path ~/GitHub/esdiag
-    ```
-
-    Where `~/GitHub/esdiag` is your local install directory. This will compile the `esdiag` tool and install it into your `~/.cargo/bin` directory created by the Rust toolchain.
-
-3. Updates can be pulled from the GitHub repository and re-installed using the same command
-
-    ```sh
-    cd ~/GitHub/esdiag
-    git pull
-    cargo install --path .
-    ```
-
-    This will recompile the tool and install the new version.
-
-### Alternative: install crate directly from GitHub
-
-If you have `ssh` authentication already configured, it possible to install directly from GitHub.
-
-1. Ensure your GitHub `ssh` credentials are working from the command line. If you haven't set this up yet, follow the [GitHub guide](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/adding-a-new-ssh-key-to-your-github-account)
-
-    ```sh
-    ssh -T git@github.com
-    ```
-
-    If it works, you will see this confirmation message:
-
-    ```
-    Hi ${username}! You've successfully authenticated, but GitHub does not provide shell access.
-    ```
-
-2. Install the crate (package) directly from the private GitHub using the `ssh` URL
-
-    ```sh
-    cargo install --git ssh://git@github.com/elastic/esdiag.git
-    ```
-
-    This automatically kicks off the build process. Ignore any warnings, report any errors.
-
-3. Updates with this method use `cargo install esdiag` without needing to `git pull` first.
-
-### Use it!
-
-Validate the installation is working by simply running `esdiag help`. If you see the help message, you're ready to configure some hosts, setup a cluster, and import some diagnostics!
-
-Refer to the `example.env` file to configure a default output with environment variables, without any `host` configurations.
-
-If you need a simple way to run the full stack locally, including Elasticsearch and Kibana, use the `bin/esdiag-local` script above. You can still target the containers with a local ESDiag install, just be sure to stop the `esdiag` container before trying to run `esdiag serve`.
-
-Usage
---------------------
-
-### Examples
-
-1. Save a target Elasticsearch cluster to the hosts configuration
-    ```sh
-    esdiag host add my_cluster http://localhost:9200 --app elasticsearch
-    ```
-
-2. Setup the Elasticsearch cluster with the templates, data streams, etc.
-    ```sh
-    esdiag setup my_cluster
-    ```
-
-3. Process a diagnostic bundle from a local directory to `my_cluster`
-    ```sh
-    esdiag process ~/downloads/api-diagnostic-20240506-0050225 my_cluster
-    ```
-
-4. Open Kibana and explore!
-
-If you set the `ESDIAG_KIBANA_URL` environment variable with your target Kibana URL (no trailing `/`), ESDiag will log a link directly to a pre-filtered cluster report dashboard.
-
-### Commands
-
-#### Help
-
-`esdiag help` - Prints out the latest commands and usage guides
-`esdiag help <command>` or `esdiag <command> --help` - prints out specific help for each subcommand.
-
-```
-Elastic Stack Diagnostics (esdiag) - collect diagnostics and import into Elasticsearch
-
-Usage: esdiag <COMMAND>
-
-Commands:
-  collect  Collect a diagnostic bundle from a known host's API endpoints, writes output to a directory
-  host     Configure and test a remote host connection
-  keystore Manage encrypted secrets in the local keystore
-  process  Receives a diagnostic from the input, processes it, and sends processed docs to the output
-  serve    Start a web server to receive diagnostic bundle uploads
-  setup    Import assets (templates, ingest pipelines, etc.) to a known Elasticsearch host
-  help     Print this message or the help of the given subcommand(s)
-
-Options:
-  -h, --help  Print help
-```
-
-#### Host
-
-The `esdiag host` command allows you to configure and test authentication information. On a successful connection test, it writes the configuration to your `~/.esdiag/hosts.yml` file for easy re-use.
-
-Alternatively you can use a `.env` file and set `ESDIAG_OUTPUT_*` values; see `example.env`.
-
-```
-Manage saved host connections in `~/.esdiag/hosts.yml`
-
-Usage: esdiag host <COMMAND>
-
-Commands:
-  add <NAME> <TARGET>      Add a saved host
-  update <NAME>            Update an existing saved host
-  remove <NAME>            Remove an existing saved host
-  list                     List all saved hosts
-  auth <TARGET>            Test authentication for a saved host or resolved template reference
-```
-
-Examples:
+Script-first users can download the standalone `esdiag-local` release artifact
+and run:
 
 ```sh
-# Host backed by a keystore secret reference
-esdiag host add prod-es http://localhost:9200 --app elasticsearch --secret prod-es-apikey
-
-# Host with explicit roles for workflow filtering
-esdiag host add prod-es http://localhost:9200 --app elasticsearch --roles collect,send
-
-# Reusable Elastic Cloud template host
-esdiag host add elastic-cloud \
-  "https://cloud.elastic.co/api/v1/deployments/{id}/elasticsearch/_main/proxy/" \
-  --url-template
-
-# Same-name secret is used automatically for template hosts when available
-esdiag host add cloud-admin \
-  "https://admin.cloud.com/api/v1/deployments/{id}/elasticsearch/_main/proxy/" \
-  --url-template
-
-# Elastic Cloud admin can use `_main` for single-resource deployments
-esdiag host add cloud-admin-legacy \
-  "https://admin.found.no/api/v1/deployments/{id}/elasticsearch/_main/proxy/" \
-  --url-template
-
-# Reusable ECE template host
-esdiag keystore add ece_admin --apikey
-esdiag host add ece \
-  "https://coord.example.com:12443/api/v1/clusters/elasticsearch/{id}/{product}/_proxy" \
-  --url-template \
-  --secret ece_admin
-
-# Resolve a template reference directly; omitted product defaults to elasticsearch
-esdiag host auth elastic-cloud://1234
-
-# Materialize a concrete saved host from a template reference
-esdiag host add prod-es elastic-cloud://1234/elasticsearch
-
-# Update only the saved certificate setting in place
-esdiag host update prod-es --accept-invalid-certs false
-
-# Delete a saved host
-esdiag host remove prod-es
+./esdiag-local up --stack=full
 ```
 
-Template notes:
-
-- Template-backed hosts persist `url_template` instead of a concrete `url`.
-- `esdiag host add <name> ... --url-template` will use a same-name keystore secret by default when one already exists and `--secret` is omitted.
-- Supported placeholders are `{id}` and `{product}`.
-- Template host names should be lowercase and scheme-compatible so they can be resolved as `<template>://<id>/<product>`.
-- Bare template names return guidance instead of attempting a connection test:
-
-```sh
-esdiag host auth elastic-cloud
-```
-
-#### Keystore
-
-The `esdiag keystore` command manages encrypted local secrets used by `--secret` references in `hosts.yml`.
-
-```
-Manage encrypted secrets in the local keystore
-
-Usage: esdiag keystore <COMMAND>
-
-Commands:
-  add <SECRET_ID>       Add a new secret to the encrypted keystore
-  update <SECRET_ID>    Update an existing secret in the encrypted keystore
-  unlock                Unlock the local keystore for future CLI runs
-  lock                  Lock the local keystore for future CLI runs
-  status                Show local keystore and unlock status
-  password              Change the keystore password
-  remove <SECRET_ID>    Remove a secret from the encrypted keystore
-  migrate               Migrate legacy host credentials in hosts.yml into the keystore
-```
-
-Examples:
-
-```sh
-# Add a basic auth secret
-esdiag keystore add prod-es-basic --user elastic --password changeme
-
-# Add an API key secret
-esdiag keystore add prod-es-apikey --apikey BASE64_ENCODED_KEY
-
-# Update an existing API key secret
-esdiag keystore update prod-es-apikey --apikey NEW_BASE64_ENCODED_KEY
-
-# Unlock the keystore for 24 hours (default)
-esdiag keystore unlock
-
-# Unlock for a custom duration
-esdiag keystore unlock --ttl 7d
-
-# Inspect or clear the local unlock lease
-esdiag keystore status
-esdiag keystore lock
-
-# Remove just the API key auth from a secret
-esdiag keystore remove prod-es-apikey --apikey BASE64_ENCODED_KEY
-
-# Move plaintext hosts.yml credentials into keystore entries
-esdiag keystore migrate
-```
-
-Use `ESDIAG_KEYSTORE_PASSWORD` to provide the keystore password non-interactively. In interactive shells, `keystore add`, `update`, `remove`, `unlock`, and `password` can prompt when values are missing or the keystore password is unset.
-
-For interactive secret entry, you can omit the value after `--apikey` or `--password` and `esdiag` will prompt with masked input:
-
-```sh
-esdiag keystore add prod-es-apikey --apikey
-esdiag keystore update prod-es-basic --user elastic --password
-```
-
-`esdiag keystore unlock` writes a local `keystore.unlock` lease file under `~/.esdiag/` (or alongside a custom `ESDIAG_KEYSTORE` path) so later CLI runs can reuse the keystore password until the lease expires. The default lease is 24 hours and the maximum is 30 days.
-
-#### Setup
-
-You must setup a host to use the `esdiag setup` command. It will send the required index templates and other assets into your Elasticsearch cluster. This may be either a pre-configured known host, or use the `ESDIAG_OUTPUT_*` environment variables.
-
-```
-Import assets (templates, ingest pipelines, etc.) to a known Elasticsearch host
-
-Usage: esdiag setup [HOST]
-
-Arguments:
-  [HOST]  Known Elasticsearch host to import assets into; if omitted the ESDIAG_OUTPUT_URL, ESDIAG_OUTPUT_APIKEY, ESDIAG_OUTPUT_USERNAME, ESDIAG_OUTPUT_PASSWORD variables will be checked.
-
-Options:
-  -h, --help  Print help
-```
-
-#### Process
-
-The `esdiag process <input> [output]` will read the diagnostic data from `<input>`, run the source documents through a series of processors, and send the enriched documents to the `<output>` target.
-
-The `<input>` may be:
-    1. Archive file - a `.zip` output from the [support diangostic](https://github.com/elastic/support-diagnostics) tool
-    2. Directory - the uncompressed directory from an archive
-    3. Known host - saved in the `hosts.yml`
-    4. Elastic Uploader link - A url with auth token formated as `https://token:0123456789@upload.elastic.co/d/abcdefghijklmnopqrstuvwxyz`
-
-The optional `[output]` may be:
-    1. Known host - Must be an Elasticsearch host saved in the `hosts.yml`
-    2. File - writes in an `.ndjson` format
-    3. `stdout` - use `-` as the output name
-    4. Omitted - Uses values read from `ESDIAG_OUTPUT_*` environment variables
-
-```
-Receives a diagnostic from the input, processes it, and sends processed docs to the output
-
-Usage: esdiag process <INPUT> [OUTPUT]
-
-Arguments:
-  <INPUT>
-          Source to read diagnostic data from (archive, directory, known host, or uploader URL)
-
-  [OUTPUT]
-          Target to send the processed diagnostic documents to (known host, file, stdout, or env). Strings will be checked against the known hosts stored in `~/.esdiag/hosts.yml` and will fallback to a filename if not found. Use `-` for stdout. If nothing is provided, the target will be determined based on the environment variables: ESDIAG_OUTPUT_URL, ESDIAG_OUTPUT_APIKEY, ESDIAG_OUTPUT_USERNAME, and ESDIAG_OUTPUT_PASSWORD.
-
-Options:
-  -a, --account <ACCOUNT>
-          Diagnostic report account name
-
-      --debug
-          Enable debug logging
-
-  -c, --case <CASE>
-          Diagnostic report case number
-
-  -o, --opportunity <OPPORTUNITY>
-          Diagnostic report opportunity
-
-  -u, --user <USER>
-          Diagnostic report user
-
-  -h, --help
-          Print help (see a summary with '-h')
-```
-
-Once you have known hosts configured, you can add a simple shell commands shortcuts to your `~/.bashrc` or `~/.zshrc`. For example if you have `diag-cluster` as a known host:
-
-```sh
-esd() { esdiag process $1 diag-cluster }
-```
-
-Allows you to process diagnostics into the remote cluster with only:
-
-```sh
-esd ~/Downloads/api-diagnostic-20240506-0050225.zip
-```
-
-And a second function for an Elasticsearch cluster on your local machine, with `localhost` as a configured known host:
-
-```sh
-esdl() { esdiag process $1 localhost }
-```
-
-To pull a diagnostic into your local cluster directly from `diag-cluster`:
-
-```sh
-esdl diag-cluster
-```
-
-#### Serve
-
-> [!NOTE]
-> This is the default entry command when run from a container.
-
-The `esdiag serve` command starts a web server that accepts diagnostic bundle uploads through a user-friendly interface. This makes it easy to receive and process diagnostics without requiring command-line access from the uploading user.
-
-```
-Start a web server to receive diagnostic bundle uploads
-
-Usage: esdiag serve [OPTIONS] [OUTPUT]
-
-Arguments:
-  [OUTPUT]
-          Target to send the processed diagnostic documents to (known host, file, stdout, or env). Strings will be checked against the known hosts stored in `~/.esdiag/hosts.yml` and will fallback to a filename if not found. Use `-` for stdout. If nothing is provided, the output will try using the environment variables: ESDIAG_OUTPUT_URL, ESDIAG_OUTPUT_APIKEY, ESDIAG_OUTPUT_USERNAME, and ESDIAG_OUTPUT_PASSWORD.
-
-Options:
-  -p, --port <PORT>
-          The port to bind the server to [default: 2501]
-      --mode <MODE>
-          Web runtime mode: user or service
-      --web-features <FEATURES>
-          Optional comma-separated web feature allowlist (advanced, job-builder)
-  -h, --help
-          Print help
-```
-
-Example usage:
-
-```sh
-# Start a server on the default port 2501 that sends processed diagnostics to a known host
-esdiag serve localhost
-
-# Start a server on port 8080
-esdiag serve --port 8080 localhost
-
-# Enable both Advanced and Job Builder web pages
-esdiag serve --web-features advanced,job-builder localhost
-```
-
-You can access the web interface at http://localhost:2501 (or your specified port) or use curl to upload a file:
-
-```sh
-curl -F "file=@/path/to/diagnostic.zip" http://localhost:2501/upload
-```
-
-#### Collect
-
-The `esdiag collect` command pulls the minimum required diagnostics from a supported Elastic Stack host and saves them to a directory. These are JSON-only, not pretty-printed, and do not include human-readable metrics. This bundle captures only what is needed to then import with `esdiag`.
-
-Authentication must be set up in advance with the `esdiag host` command or `hosts.yml` file. Direct access to the cluster is required, this cannot be done through any Elastic Cloud API.
-
-```text
-Collect a diagnostic bundle from a known host's API endpoints, writes output to a directory
-
-Usage: esdiag collect [OPTIONS] <HOST> <OUTPUT>
-
-Arguments:
-  <HOST>    The Elastic Stack host to collect diagnostics from
-  <OUTPUT>  An existing directory to create a diagnostic directory and files in
-
-Options:
-      --type <TYPE>                Diagnostic type (minimal, light, standard, support) [default: standard]
-      --include <INCLUDE>          Comma-separated list of APIs to include
-      --exclude <EXCLUDE>          Comma-separated list of APIs to exclude
-      --sources <SOURCES>          Override the embedded sources.yml for the detected Elasticsearch or Logstash workflow. The file must match the active product or the command fails before collection
-  -a, --account <ACCOUNT>          Diagnostic report account name
-  -c, --case <CASE>                Diagnostic report case number
-  -o, --opportunity <OPPORTUNITY>  Diagnostic report opportunity
-  -u, --user <USER>                Diagnostic report user
-      --upload <UPLOAD_ID>         Elastic Upload Service upload id or URL for immediate upload after collection
-  -h, --help                       Print help
-```
-
-When `--upload` is provided, `esdiag collect` still writes the archive locally first and then uploads that exact collected archive to Elastic Upload Service.
-
-### Debugging
-
-Use a shell environment variables to enable debug logging:
-
-```sh
-export LOG_LEVEL=debug
-```
-
-This will enable debug-level log messages and when processing a diagnostic, `esdiag` will write debugging files into an `~/.esdiag/last_run` directory:
-
-1. `metadata.ndjson` - This contains the diagnostic metadata and lookup tables generated while processing the diagnostic.
-2. `responses.ndjson` - This contains all the HTTP responses from the Elasticsearch `_bulk` API.
-3. `errors.ndjson` - Only the errors from the `_bulk` API, very useful when tracking down specific document errors.
+Both paths use secure loopback-only defaults and shared stack state. Core and
+full modes intentionally retain separate ESDiag user configuration; switching
+modes does not migrate hosts, jobs, settings, or secrets.
+
+See [Run a Local Diagnostic Cluster](docs/setup/esdiag-local.md) for
+prerequisites, credential handling, Agent Builder setup, and lifecycle
+commands.
+
+## Documentation
+
+- [ESDiag Documentation](docs/documentation.md)
+- [Command-Line Interface Reference](docs/command-line.md)
+- [Local-Stack Launcher Reference](docs/bin/esdiag-local.md)
+- [Use an Existing Cluster](docs/setup/existing-cluster.md)
+- [Use a Shared ESDiag Service](docs/setup/shared-service.md)
+- [Desktop packaging guidance](docs/build/desktop-packaging.md)
+
+## Development
+
+Repository structure and contributor guidance are documented in
+[Repository Organization](docs/repository/organization.md). Contributors can
+build a source-image local stack with `./bin/esdiag-control up`; this is a
+development workflow, not the user onboarding path.

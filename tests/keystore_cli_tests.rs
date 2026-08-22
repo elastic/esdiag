@@ -76,7 +76,10 @@ fn keystore_add_command_stores_secret_that_reads_back_with_values() {
     let raw_keystore = std::fs::read_to_string(&keystore_path).expect("read keystore");
 
     assert_eq!(secret.basic.as_ref().map(|b| b.username.as_str()), Some("elastic"));
-    assert_eq!(secret.basic.as_ref().map(|b| b.password.as_str()), Some("pass-1"));
+    assert_eq!(
+        secret.basic.as_ref().map(|b| b.password.expose_secret().as_str()),
+        Some("pass-1")
+    );
     assert!(secret.apikey.is_none());
     assert!(!raw_keystore.contains("elastic"));
     assert!(!raw_keystore.contains("pass-1"));
@@ -137,27 +140,33 @@ fn keystore_migrate_command_scrubs_plaintext_hosts_and_preserves_reads() {
     let es_secret = get_secret("es-prod", "pw")
         .expect("read es secret")
         .expect("es secret exists");
-    assert_eq!(es_secret.apikey.as_deref(), Some("apikey-1"));
+    assert_eq!(
+        es_secret.apikey.as_ref().map(|key| key.expose_secret().as_str()),
+        Some("apikey-1")
+    );
 
     let kb_secret = get_secret("kb-prod", "pw")
         .expect("read kb secret")
         .expect("kb secret exists");
     assert_eq!(kb_secret.basic.as_ref().map(|b| b.username.as_str()), Some("elastic"));
-    assert_eq!(kb_secret.basic.as_ref().map(|b| b.password.as_str()), Some("pass-1"));
+    assert_eq!(
+        kb_secret.basic.as_ref().map(|b| b.password.expose_secret().as_str()),
+        Some("pass-1")
+    );
 
     let es_auth = migrated_hosts
         .get("es-prod")
         .expect("es host exists")
         .get_auth()
         .expect("resolve es auth");
-    assert!(matches!(es_auth, Auth::Apikey(key) if key == "apikey-1"));
+    assert!(matches!(es_auth, Auth::Apikey(key) if key.expose_secret() == "apikey-1"));
 
     let kb_auth = migrated_hosts
         .get("kb-prod")
         .expect("kb host exists")
         .get_auth()
         .expect("resolve kb auth");
-    assert!(matches!(kb_auth, Auth::Basic(user, pass) if user == "elastic" && pass == "pass-1"));
+    assert!(matches!(kb_auth, Auth::Basic(user, pass) if user == "elastic" && pass.expose_secret() == "pass-1"));
 }
 
 #[test]
@@ -191,7 +200,10 @@ fn keystore_add_rejects_duplicate_secret() {
     let secret = get_secret("prod-es", "pw")
         .expect("read secret")
         .expect("secret should still exist");
-    assert_eq!(secret.apikey.as_deref(), Some("key-1"));
+    assert_eq!(
+        secret.apikey.as_ref().map(|key| key.expose_secret().as_str()),
+        Some("key-1")
+    );
 }
 
 #[test]
@@ -245,7 +257,10 @@ fn keystore_update_updates_existing_secret_and_rejects_missing_secret() {
         Some("elastic")
     );
     assert_eq!(
-        secret.basic.as_ref().map(|basic| basic.password.as_str()),
+        secret
+            .basic
+            .as_ref()
+            .map(|basic| basic.password.expose_secret().as_str()),
         Some("pass-2")
     );
     assert!(secret.apikey.is_none(), "update should replace previous auth type");

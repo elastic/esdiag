@@ -5,7 +5,7 @@
 use super::super::processor::{DataSource, DiagnosticManifest, SourceContext};
 use super::{RawResponse, Receive, ReceiveRaw};
 use crate::client::LogstashClient;
-use crate::data::{KnownHost, Product};
+use crate::data::{Application, KnownHost};
 use eyre::{Result, eyre};
 use futures::stream::BoxStream;
 use reqwest::Method;
@@ -31,6 +31,17 @@ pub struct LogstashRequestError {
     pub body: String,
     pub response_time_ms: u64,
     pub response_size_bytes: u64,
+}
+
+impl LogstashRequestError {
+    pub fn new(status: reqwest::StatusCode, body: String, response_time_ms: u64, response_size_bytes: u64) -> Self {
+        Self {
+            status,
+            body,
+            response_time_ms,
+            response_size_bytes,
+        }
+    }
 }
 
 impl std::fmt::Display for LogstashRequestError {
@@ -191,7 +202,7 @@ impl Receive for LogstashReceiver {
             None,
             None,
             None,
-            Product::Logstash,
+            Some(Application::Logstash),
             Some("logstash_diagnostic".to_string()),
             Some("esdiag".to_string()),
             Some(version.to_string()),

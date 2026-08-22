@@ -3,8 +3,8 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::super::processor::{DataSource, SourceContext, StreamingDataSource};
-use super::{RawResponse, Receive, ReceiveMultiple, ReceiveRaw};
-use eyre::{Result, eyre};
+use super::{MissingSource, RawResponse, Receive, ReceiveMultiple, ReceiveRaw};
+use eyre::{Result, WrapErr, eyre};
 use futures::stream::{self, BoxStream};
 use serde::de::DeserializeOwned;
 use std::{
@@ -69,28 +69,39 @@ impl Receive for DirectoryReceiver {
     {
         let ctx = self.source_context()?;
         let source_paths = T::candidate_source_file_paths(&ctx)?;
-        let mut last_open_error = None;
+        let mut last_error = None;
 
         for source_path in source_paths {
             let filename = self.path.join(&self.work_dir).join(source_path);
             tracing::debug!("Reading file: {}", &filename.display());
             match File::open(&filename) {
                 Ok(file) => {
-                    let reader = BufReader::new(file);
-                    let data: T = serde_json::from_reader(reader)?;
+                    let mut contents = String::new();
+                    BufReader::new(file).read_to_string(&mut contents)?;
+                    if contents.trim().is_empty() {
+                        last_error = Some(
+                            MissingSource::Empty {
+                                path: filename.display().to_string(),
+                            }
+                            .into(),
+                        );
+                        continue;
+                    }
+                    let data: T = serde_json::from_str(&contents)
+                        .wrap_err_with(|| format!("Failed to parse {} for {}", filename.display(), T::name()))?;
                     return Ok(data);
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                    last_open_error = Some(e);
+                    last_error = Some(e.into());
                     continue;
                 }
                 Err(e) => return Err(e.into()),
             }
         }
 
-        match last_open_error {
-            Some(e) => Err(e.into()),
-            None => Err(eyre!("No candidate source files available for {}", T::name())),
+        match last_error {
+            Some(e) => Err(e),
+            None => Err(MissingSource::NoCandidates { source: T::name() }.into()),
         }
     }
 
@@ -176,7 +187,7 @@ impl ReceiveRaw for DirectoryReceiver {
 
         match last_open_error {
             Some(e) => Err(e.into()),
-            None => Err(eyre!("No candidate source files available for {}", T::name())),
+            None => Err(MissingSource::NoCandidates { source: T::name() }.into()),
         }
     }
 }
@@ -213,6 +224,13 @@ impl DirectoryReceiver {
         let file = File::open(path)?;
         let reader = BufReader::new(file);
         serde_json::from_reader(reader).map_err(Into::into)
+    }
+
+    /// Whether the bundle contains `dir` as a directory within the receiver's
+    /// working subdirectory. Used for platform indicators such as the
+    /// `syscalls` folder.
+    pub fn has_bundle_dir(&self, dir: &str) -> bool {
+        self.path.join(&self.work_dir).join(dir).is_dir()
     }
 
     pub fn set_source_product(&self, product: &'static str) -> Result<()> {

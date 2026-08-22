@@ -32,10 +32,10 @@ struct Thread {
 
 impl DataSource for NodeHotThreads {
     fn name() -> String {
-        "hot_threads".to_string()
+        "logstash_nodes_hot_threads".to_string()
     }
 
     fn aliases() -> Vec<&'static str> {
-        vec!["logstash_nodes_hot_threads"]
+        vec!["hot_threads"]
     }
 }

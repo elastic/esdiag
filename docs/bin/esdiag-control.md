@@ -1,237 +1,71 @@
 ---
 type: Guide
-title: Elastic Stack Diagnostics Control
-description: Guide to building, configuring, and deploying ESDiag with the esdiag-control helper script.
+title: esdiag-control
+description: Build ESDiag from this checkout and run it in a local stack.
 tags: [bin, containers, deployment]
 ---
 
-Elastic Stack Diagnostics Control
-=================================
+# esdiag-control
 
-The repository-only `esdiag-control` script builds ESDiag from the checked-out
-source. Its `up`, `down`, `setup`, and `auth` commands delegate to
-`bin/esdiag-local`, use the locally built `esdiag:<version>` image without
-pulling it, and keep state under `target/esdiag-local` by default. Set
-`ESDIAG_LOCAL_DIR` to override that location.
+`bin/esdiag-control` is for repository contributors. It builds the image from
+the current checkout, then delegates stack lifecycle commands to
+`bin/esdiag-local`.
 
-Users who want published official images without a source checkout should use
-the [standalone local stack](esdiag-local.md) instead.
+For published images without a source checkout, use
+[esdiag local](../setup/esdiag-local.md) or the standalone launcher.
 
-You can use either Podman (preferred) or Docker to build and run ESDiag along the Elastic Stack inside containers.
+Run the script from the repository root. It needs Podman or Docker. It refuses
+to run as root.
 
-Quickstart: MacOS Installation with Homebrew and Podman
--------------------------------------------------------
-
-1. Install [Homebrew package manager](https://brew.sh/)
-
-  ```bash
-  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-  ```
-
-2. Install Podman and `esdiag-control` dependencies
-
-  ```bash
-  brew install podman podman-compose jq
-  ```
-
-3. Setup Podman machine, increase it's resources, and start it
-
-  ```sh
-  podman machine init
-  podman machine set --cpus 8 --memory 8192
-  podman machine start
-  ```
-
-4. Start a full security-enabled Elastic Stack. The script will attempt opening your default web browser to the ESDiag web interface.
-
-  ```sh
-  ./bin/esdiag-control up
-  ```
-
-5. Retrieve your `elastic` password for logging into Kibana; it is saved into your `.env` file.
-
-  ```bash
-  grep "ELASTIC_PASSWORD" .env
-  ```
-
-Examples
---------
-
-Build a container image for the current host's platform
+## Start a contributor stack
 
 ```sh
-esdiag-control build
+./bin/esdiag-control up
 ```
 
-Build a multi-platform container image, pushing it to the container registry
+The command builds `esdiag:<version>` for the current checkout, starts the
+local stack without pulling an ESDiag image, and stores its state in
+`target/esdiag-local`.
+
+Use `--state-dir` or `ESDIAG_LOCAL_DIR` to change the state directory:
 
 ```sh
-esdiag-control buildx --push
+./bin/esdiag-control up --state-dir /path/to/state
 ```
 
-Setup an existing stack monitoring cluster with ESDiag assets
+## Commands
+
+| Command | What it does |
+|---|---|
+| `build` | Builds an image for the current platform. |
+| `buildx` | Builds images for `linux/amd64` and `linux/arm64`. |
+| `up` | Builds the image and starts the delegated local stack. |
+| `down` | Stops the delegated stack. |
+| `setup` | Runs delegated asset setup. |
+| `auth` | Tests delegated Elasticsearch and Kibana authentication. |
+
+`build` and `buildx` reuse an existing image with the current Cargo version.
+Pass `--push` to publish it. Set `--registry <URL>` or `ESDIAG_REGISTRY` to
+choose the registry.
 
 ```sh
-export ESDIAG_OUTPUT_APIKEY="abcdefghijklmnopqrstuvwxyz"
-export ESDIAG_OUTPUT_URL="https://elasticsearch.example.com"
-export ESDIAG_KIBANA_URL="https://kibana.example.com"
-esdiag-control setup
+./bin/esdiag-control build
+./bin/esdiag-control buildx --push --registry registry.example.com
+./bin/esdiag-control auth
+./bin/esdiag-control down
 ```
 
-Build the multi-platform container image, push it to your repository. You will need to pre-configure authentication in `registries.conf` and use `podman login` or `docker login`.
-
-```sh
-export ESDIAG_REGISTRY="registry.example.co"
-esdiag-control buildx --push
-```
-
-Commands
---------
-
-### help
-
-`esdiag-control help` - Prints out the latest commands and usage guides
-`esdiag-control help <command>` or `esdiag-control <command> --help` - prints out specific help for each subcommand.
+## Shared options
 
 ```text
-Description:
-    Elastic Stack Diagnostics Control esdiag-control is the deployment assistant for ESDiag
-
-Usage:
-    esdiag-control <command> [options] <arguments>
-
-Commands:
-    auth     Test the authentication for ESDIAG_OUTPUT_URL and ESDIAG_KIBANA_URL
-    build    Build an ESDiag container image for the local host's platform
-    buildx   Build a multi-platform ESDiag container image with buildx
-    up       Configure and start up a full Elastic Stack deployment using compose
-    setup    Setup the target Elasticsearch and Kibana instances with ESDiag assets
-    down     Bring down the Elasticsearch, Kibana and ESDiag containers
-    help     To get detailed <command> help, use a command name as the <argument>
-
-Options:
-    -e, --env <NAME|FILE>  - The .env.NAME or FILE file to source credentials from (default .env)
-    -s, --space <ID>       - Kibana space id (default esdiag)
-        --debug            - More verbose logging and retention of temporary files
-        --version          - Print the version of the script
+--runtime podman|docker
+--registry URL
+--push
+--open-browser=true|false
+--state-dir DIR
 ```
 
-### up
+Podman is the first runtime the script detects. Docker is the fallback. Use
+`--runtime` to choose one explicitly.
 
-```text
-Command: up [options]
-    Configure and start up a full Elastic Stack deployment with podman compose up -d
-
-Options:
-    -e, --env <NAME|FILE>  - The .env.NAME or FILE to source credentials from (default .env)
-    -b, --open-browser <true|false> - Open ESDiag in a browser after startup (default true)
-    -r, --registry <URL>   - Elastic container registry URL
-    -s, --space            - Kibana space id (default esdiag)
-
-Environment Variables:
-    ELASTIC_CONTAINER_REGISTRY - Elastic container registry (default docker.elastic.co)
-    ESDIAG_REGISTRY            - Private container registry (default localhost)
-```
-
-### down
-
-```text
-Command: down
-    Remove all containers with podman compose down, optionally also delete the volume
-
-Options:
-    --remove-file          - Also remove the currently-configured target/docker-compose.yml file
-    --remove-image         - Also remove the ESDiag image, will require re-building or re-downloading for a new container
-    --remove-volume        - Also remove the volume WARNING: Permanently deletes all data from the cluster and invalidates security configuration!
-    --remove-all           - Remove the containers, image, volume, and compose file
-```
-
-### auth
-
-```text
-Command: auth
-    Test the configured authorization for Elasticsearch and Kibana
-
-Options:
-    -e, --env <NAME|FILE>  - The .env.NAME or FILE file to source credentials from (default .env)
-
-Environment Variables:
-    ESDIAG_KIBANA_URL          - Kibana URL (default http://localhost:5601)
-    ESDIAG_OUTPUT_URL          - Elasticsearch URL (default http://localhost:9200)
-    ESDIAG_OUTPUT_APIKEY       - Elasticsearch API key, takes precedence over username/password
-    ESDIAG_OUTPUT_USERNAME     - Elasticsearch username
-    ESDIAG_OUTPUT_PASSWORD     - Elasticsearch password
-```
-
-### build
-
-```text
-Command: build
-    Build an ESDiag container image for the local host's platform
-
-Options:
-    -e, --env <NAME|FILE>  - The .env.NAME or FILE to source credentials from (default .env)
-    -r, --registry <URL>   - Elastic container registry URL
-    -p, --push             - Push the container image to the registry
-
-Environment Variables:
-    ESDIAG_REGISTRY        - Private container registry to publish to (default localhost)
-```
-
-### buildx
-
-```text
-Command: buildx
-    Build a multi-platform ESDiag container image for x86_64 and arm64
-
-Options:
-    -e, --env <NAME|FILE>  - The .env.NAME or FILE to source credentials from (default .env)
-    -r, --registry <URL>   - Elastic container registry URL
-    -p, --push             - Push the container image to the registry
-
-Environment Variables:
-    ESDIAG_REGISTRY        - Private container registry to publish to (default localhost)
-```
-
-### setup
-
-```text
-Command: setup
-    Configure and start up a full Elastic Stack deployment with compose up -d
-
-Options:
-    -e, --env <NAME|FILE>  - The .env.NAME or FILE to source credentials from (default .env)
-    -r, --registry <URL>   - Elastic container registry URL
-    -s, --space            - Kibana space id (default esdiag)
-
-Environment Variables:
-    ELASTIC_CONTAINER_REGISTRY - Elastic container registry (default docker.elastic.co)
-    ESDIAG_REGISTRY            - Private container registry (default localhost)
-    ESDIAG_KIBANA_URL          - Kibana URL (default http://localhost:5601)
-    ESDIAG_OUTPUT_URL          - Elasticsearch URL (default http://localhost:9200)
-    ESDIAG_OUTPUT_APIKEY       - Elasticsearch API key , takes precedence over username/password
-    ESDIAG_OUTPUT_USERNAME     - Elasticsearch username
-    ESDIAG_OUTPUT_PASSWORD     - Elasticsearch password
-```
-
-Troubleshooting and Errors
---------------------------
-
-### podman/docker compose up failed with exit status 0
-
-If you have used Docker compose with Docker Desktop on your machine in the past, you may see an error like this:
-```text
-[2025-08-24 18:22:44 Info esdiag-control] Running podman compose up --detach
-[2025-08-24 18:23:27 Error esdiag-control] podman compose up failed with exit status 0
-
-podman compose --file target/esdiag-compose.yml up -d
->>>> Executing external compose provider "/opt/homebrew/bin/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
-
-[+] Running 0/2
- ⠋ esdiag-kibana Pulling                                                                                                                                0.0s
- ⠋ esdiag-elasticsearch Pulling                                                                                                                         0.0s
-error getting credentials - err: exec: "docker-credential-desktop": executable file not found in $PATH, out: ``
-Error: executing /opt/homebrew/bin/docker-compose --file target/esdiag-compose.yml up -d: exit status 1
-```
-
-If so, delete (or rename) your `~/.docker` directory as an old configuration may be conflicting with Podman.
+Run `./bin/esdiag-control help` for the script's current options.

@@ -29,6 +29,14 @@ pub struct License {
     start_date_in_millis: i64,
 }
 
+impl License {
+    /// Who the license was issued to. Elastic Cloud Hosted deployments issue
+    /// to a fixed holder, which makes this a platform indicator (ADR-0001).
+    pub fn issued_to(&self) -> &str {
+        &self.issued_to
+    }
+}
+
 impl DataSource for Licenses {
     fn name() -> String {
         "licenses".to_string()

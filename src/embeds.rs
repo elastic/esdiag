@@ -10,6 +10,19 @@ use rust_embed::RustEmbed;
 #[exclude = "kibana/**"]
 pub struct Assets;
 
+/// The portable ESDiag skill installed by `esdiag agent skills`.
+///
+/// Helper scripts are intentionally excluded: installed skills compose native
+/// commands, so every binary carries one script-free, version-matched asset set.
+#[cfg(feature = "agent")]
+#[derive(RustEmbed)]
+#[folder = ".agents/skills/esdiag/"]
+#[include = "SKILL.md"]
+#[include = "references/**"]
+#[include = "agents/**"]
+#[exclude = "scripts/**"]
+pub struct EsdiagSkillAssets;
+
 /// Generated Kibana asset bundle built from `assets/kibana`.
 #[cfg(feature = "setup")]
 pub static KIBANA_ASSETS_BUNDLE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/kibana-assets.zip"));

@@ -5,6 +5,7 @@
 use super::super::diagnostic::{DataStreamName, DiagnosticManifest, DiagnosticMetadata};
 use super::Metadata;
 use super::version::{Cluster, ClusterMetadata};
+use crate::data::{Application, Platform};
 use eyre::Result;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::value::RawValue;
@@ -14,6 +15,8 @@ use std::sync::Arc;
 pub struct ElasticsearchMetadata {
     pub cluster: ClusterMetadata,
     pub diagnostic: DiagnosticMetadata,
+    pub platform: Platform,
+    pub application: Option<Application>,
     pub timestamp: u64,
     pub as_doc: MetadataRawValue,
 }
@@ -23,8 +26,19 @@ struct MetadataDocTemp<'a> {
     #[serde(rename = "@timestamp")]
     pub timestamp: u64,
     pub cluster: &'a ClusterMetadata,
-    pub diagnostic: &'a DiagnosticMetadata,
+    pub diagnostic: DiagnosticDocMetadata<'a>,
     pub data_stream: DataStreamName,
+}
+
+/// The per-document `diagnostic.*` envelope: the diagnostic metadata plus the
+/// platform/application classification of ADR-0001.
+#[derive(Serialize)]
+struct DiagnosticDocMetadata<'a> {
+    #[serde(flatten)]
+    metadata: &'a DiagnosticMetadata,
+    platform: Platform,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    application: Option<Application>,
 }
 
 impl ElasticsearchMetadata {
@@ -32,7 +46,11 @@ impl ElasticsearchMetadata {
         let temp = MetadataDocTemp {
             timestamp: self.timestamp,
             cluster: &self.cluster,
-            diagnostic: &self.diagnostic,
+            diagnostic: DiagnosticDocMetadata {
+                metadata: &self.diagnostic,
+                platform: self.platform,
+                application: self.application,
+            },
             data_stream: DataStreamName::from(data_stream),
         };
         let raw = serde_json::value::to_raw_value(&temp).expect("Failed to serialize metadata");
@@ -41,6 +59,8 @@ impl ElasticsearchMetadata {
 
     pub fn try_new(manifest: DiagnosticManifest, cluster: Cluster) -> Result<Self> {
         let name = cluster.display_name.replace(" ", "_");
+        let platform = manifest.platform();
+        let application = manifest.application();
         let diagnostic = DiagnosticMetadata::try_from(manifest.with_name(name))?;
         let timestamp = diagnostic.collection_date;
         let cluster = ClusterMetadata::from(cluster);
@@ -48,7 +68,11 @@ impl ElasticsearchMetadata {
         let temp = MetadataDocTemp {
             timestamp,
             cluster: &cluster,
-            diagnostic: &diagnostic,
+            diagnostic: DiagnosticDocMetadata {
+                metadata: &diagnostic,
+                platform,
+                application,
+            },
             data_stream: DataStreamName::from("metrics-default-esdiag"),
         };
         let raw = serde_json::value::to_raw_value(&temp).expect("Failed to serialize metadata");
@@ -58,6 +82,8 @@ impl ElasticsearchMetadata {
             as_doc,
             cluster,
             diagnostic,
+            platform,
+            application,
             timestamp,
         })
     }

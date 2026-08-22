@@ -3,6 +3,7 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use crate::processor::{DataSource, SourceContext, StreamingDataSource};
+use crate::receiver::MissingSource;
 use eyre::Result;
 use futures::stream::{self, BoxStream};
 use serde::de::DeserializeOwned;
@@ -96,6 +97,56 @@ pub fn trim_to_working_directory(path: &mut PathBuf) {
     }
 }
 
+/// Whether the archive contains `dir` as a directory component, scoped to the
+/// receiver's working subdirectory when one is set. Used for platform
+/// indicators such as the `syscalls` folder.
+pub(crate) fn archive_has_dir<'a>(
+    mut file_names: impl Iterator<Item = &'a str>,
+    subdir: Option<&PathBuf>,
+    dir: &str,
+) -> bool {
+    let subdir_components: Vec<String> = subdir
+        .map(|subdir| {
+            subdir
+                .to_string_lossy()
+                .replace('\\', "/")
+                .split('/')
+                .filter(|c| !c.is_empty())
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default();
+
+    file_names.any(|name| {
+        let explicit_dir_entry = name.ends_with('/') || name.ends_with('\\');
+        let components: Vec<&str> = name.split(['/', '\\']).filter(|c| !c.is_empty()).collect();
+        // The directory must appear after the subdir components when scoped.
+        // A non-terminal component proves a directory through a child path;
+        // a terminal component only counts when the zip has an explicit
+        // directory entry such as `syscalls/`.
+        let start = if subdir_components.is_empty() {
+            0
+        } else {
+            // `subdir` is a working-directory prefix (see `resolve_archive_path`),
+            // so it only counts at the archive root or directly beneath a single
+            // top-level bundle directory. Accepting it at any depth would let an
+            // unrelated subtree that repeats the same component names answer for
+            // this receiver.
+            const MAX_BUNDLE_ROOT_DEPTH: usize = 1;
+            match components
+                .windows(subdir_components.len())
+                .position(|window| window.iter().zip(&subdir_components).all(|(a, b)| a == b))
+            {
+                Some(pos) if pos <= MAX_BUNDLE_ROOT_DEPTH => pos + subdir_components.len(),
+                _ => return false,
+            }
+        };
+        components[start..].iter().enumerate().any(|(index, component)| {
+            *component == dir && (index + 1 < components[start..].len() || explicit_dir_entry)
+        })
+    })
+}
+
 pub fn resolve_archive_path<A: Read + Seek>(
     subdir: Option<&PathBuf>,
     archive: &mut ZipArchive<A>,
@@ -125,7 +176,7 @@ pub fn resolve_archive_path<A: Read + Seek>(
     if archive.by_name(&path).is_ok() {
         Ok(path)
     } else {
-        Err(eyre::eyre!("File not found in archive: {}", path))
+        Err(MissingSource::ArchiveEntry { path }.into())
     }
 }
 
@@ -263,5 +314,48 @@ mod tests {
         let mut path = PathBuf::from("root/docker");
         trim_to_working_directory(&mut path);
         assert_eq!(path, PathBuf::from("root"));
+    }
+
+    #[test]
+    fn archive_has_dir_matches_explicit_terminal_directory_entries() {
+        assert!(archive_has_dir(["syscalls/"].into_iter(), None, "syscalls"));
+        assert!(archive_has_dir(
+            ["root/cluster/syscalls/"].into_iter(),
+            Some(&PathBuf::from("cluster")),
+            "syscalls"
+        ));
+    }
+
+    #[test]
+    fn archive_has_dir_matches_implicit_directory_child_entries() {
+        assert!(archive_has_dir(
+            ["syscalls/processes.txt"].into_iter(),
+            None,
+            "syscalls"
+        ));
+        assert!(archive_has_dir(
+            ["root/cluster/syscalls/processes.txt"].into_iter(),
+            Some(&PathBuf::from("cluster")),
+            "syscalls"
+        ));
+    }
+
+    #[test]
+    fn archive_has_dir_ignores_a_matching_component_in_an_unrelated_subtree() {
+        assert!(!archive_has_dir(
+            ["root/child-b/child-a/syscalls/processes.txt"].into_iter(),
+            Some(&PathBuf::from("child-a")),
+            "syscalls"
+        ));
+    }
+
+    #[test]
+    fn archive_has_dir_rejects_terminal_file_entries() {
+        assert!(!archive_has_dir(["syscalls"].into_iter(), None, "syscalls"));
+        assert!(!archive_has_dir(
+            ["root/cluster/syscalls"].into_iter(),
+            Some(&PathBuf::from("cluster")),
+            "syscalls"
+        ));
     }
 }

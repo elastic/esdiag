@@ -19,8 +19,13 @@ use axum::{Router, body::Body, extract::State, http::StatusCode, response::Respo
 use bytes::Bytes;
 use esdiag::{
     data::Uri,
-    exporter::Exporter,
-    processor::{Identifiers, Processor},
+    exporter::{DocumentExporter, Exporter},
+    job::{
+        context::ExecutionContext,
+        executor::execute_with_context,
+        model::{BindingKey, ExportTarget, Input, Job, Process},
+    },
+    processor::Identifiers,
     receiver::Receiver,
     server::{RuntimeMode, Server},
 };
@@ -105,6 +110,28 @@ async fn start_mock_upload_server(zip_bytes: Bytes, token: &str) -> (SocketAddr,
     (addr, shutdown_tx)
 }
 
+async fn execute_service_link(uri: Uri, identifiers: Identifiers) -> esdiag::job::outcome::ExecutionOutcome {
+    let input_binding = BindingKey::try_new("test-service-link").expect("binding");
+    let output_binding = BindingKey::try_new("test-output").expect("binding");
+    let mut context = ExecutionContext::default();
+    context.inputs.bind_uri(input_binding.clone(), uri, None);
+    context.bind_document_exporter(output_binding.clone(), DocumentExporter::default());
+    let job = Job::try_new(
+        identifiers,
+        Input::LoadBinding { binding: input_binding },
+        None,
+        Some(Process {
+            selection: None,
+            export: ExportTarget::Binding {
+                binding: output_binding,
+            },
+        }),
+        None,
+    )
+    .expect("valid processing job");
+    execute_with_context(job, context).await
+}
+
 async fn start_esdiag_server() -> (Server, Client, String) {
     let (server, bound_addr) = Server::start([127, 0, 0, 1], 0, Exporter::default(), String::new(), RuntimeMode::User)
         .await
@@ -166,9 +193,6 @@ async fn service_link_wait_for_completion_processes_synchronously() {
     // is exercised without going through the HTTP endpoint's domain validation.
     let uri = Uri::ServiceLink(mock_url);
 
-    let receiver = Arc::new(Receiver::try_from(uri).expect("receiver should be created from mock upload service"));
-
-    let exporter = Arc::new(Exporter::default());
     let identifiers = Identifiers::new(
         Some("test-account".to_string()),
         Some("12345".to_string()),
@@ -177,26 +201,18 @@ async fn service_link_wait_for_completion_processes_synchronously() {
         Some("test@example.com".to_string()),
     );
 
-    let processor = Processor::try_new(receiver, exporter, identifiers)
-        .await
-        .expect("processor should initialise from downloaded zip");
-
-    let processing = processor
-        .start()
-        .await
-        .map_err(|f| format!("processor failed to start: {}", f.state.error))
-        .expect("processor should start");
-    let completed = processing
-        .process()
-        .await
-        .map_err(|f| format!("processor failed: {}", f.state.error))
-        .expect("processor should complete");
+    let outcome = execute_service_link(uri, identifiers).await;
+    assert!(outcome.succeeded(), "executor should complete: {:?}", outcome.stages);
+    let report = outcome.report.expect("processing report");
 
     assert!(
-        !completed.state.report.diagnostic.metadata.id.is_empty(),
+        !report.diagnostic.metadata.id.is_empty(),
         "diagnostic_id should be populated after processing"
     );
-    assert!(completed.state.runtime > 0, "processing runtime should be positive");
+    assert!(
+        report.diagnostic.processing_duration > 0,
+        "processing runtime should be positive"
+    );
 
     let _ = shutdown_tx.send(());
 }
@@ -299,9 +315,6 @@ async fn processor_fails_when_zip_contains_no_diagnostic_files() {
         Url::parse(&format!("http://token:{mock_token}@{mock_addr}/d/mock-diagnostic")).expect("valid mock URL");
     let uri = Uri::ServiceLink(mock_url);
 
-    let receiver = Arc::new(Receiver::try_from(uri).expect("receiver should be created from a valid (empty) zip"));
-
-    let exporter = Arc::new(Exporter::default());
     let identifiers = Identifiers::new(
         Some("test-account".to_string()),
         Some("12345".to_string()),
@@ -310,19 +323,7 @@ async fn processor_fails_when_zip_contains_no_diagnostic_files() {
         Some("test@example.com".to_string()),
     );
 
-    // An empty zip has no diagnostic files: the pipeline will fail at try_new,
-    // start, or process — all of which the handler maps to a 500 error response.
-    let error_occurred = match Processor::try_new(receiver, exporter, identifiers).await {
-        Err(_) => true,
-        Ok(processor) => match processor.start().await.map_err(|f| f.state.error.to_string()) {
-            Err(_) => true,
-            Ok(processing) => processing
-                .process()
-                .await
-                .map_err(|f| f.state.error.to_string())
-                .is_err(),
-        },
-    };
+    let error_occurred = !execute_service_link(uri, identifiers).await.succeeded();
 
     assert!(
         error_occurred,

@@ -14,6 +14,8 @@ mod elasticsearch;
 mod kibana;
 /// Request API calls from Logstash
 mod logstash;
+/// Resolve stable and runtime-bound Phase-1 inputs.
+mod resolver;
 /// Get file from https://upload.elastic.co/
 mod upload_service;
 
@@ -21,9 +23,10 @@ pub use elastic_cloud_admin::{ElasticCloudAdminReceiver, ElasticCloudAdminReques
 pub use elasticsearch::{ElasticsearchReceiver, ElasticsearchRequestError};
 pub use kibana::{KibanaReceiver, KibanaRequestError};
 pub use logstash::{LogstashReceiver, LogstashRequestError};
+pub use resolver::{InputResolver, ResolvedInput};
 
 use super::{
-    data::{KnownHost, Product, Uri},
+    data::{Application, KnownHost, Uri},
     processor::{DataSource, DiagnosticManifest, Manifest, SourceContext, StreamingDataSource},
 };
 use archive::{ArchiveBytesReceiver, ArchiveFileReceiver};
@@ -44,6 +47,33 @@ pub struct RawResponse {
     pub response_time_ms: u64,
     pub response_size_bytes: u64,
 }
+
+/// A source a receiver can treat as absent during processing.
+///
+/// Processors match on this type to tell a legitimately absent source apart
+/// from a source that is present but unreadable, so receivers must report
+/// missing sources with this error rather than an ad-hoc message.
+#[derive(Clone, Debug)]
+pub enum MissingSource {
+    /// None of the candidate filenames for the data source were present.
+    NoCandidates { source: String },
+    /// The archive did not contain the resolved entry path.
+    ArchiveEntry { path: String },
+    /// A resolved source file exists but contains no JSON value.
+    Empty { path: String },
+}
+
+impl std::fmt::Display for MissingSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NoCandidates { source } => write!(f, "No candidate source files available for {source}"),
+            Self::ArchiveEntry { path } => write!(f, "File not found in archive: {path}"),
+            Self::Empty { path } => write!(f, "Source file is empty: {path}"),
+        }
+    }
+}
+
+impl std::error::Error for MissingSource {}
 
 #[allow(async_fn_in_trait)]
 pub trait Receive {
@@ -272,6 +302,38 @@ impl Receiver {
         }
     }
 
+    /// A platform the receiver itself can vouch for, independent of manifest
+    /// indicators (ADR-0001: platform is determined best-effort at the
+    /// receiver). Collecting through the Elastic Cloud admin API implies
+    /// Elastic Cloud Hosted.
+    pub fn platform_hint(&self) -> Option<crate::data::Platform> {
+        match self {
+            Receiver::ElasticCloudAdmin(_) => Some(crate::data::Platform::ElasticCloudHosted),
+            _ => None,
+        }
+    }
+
+    /// Whether the receiver reads a collected bundle rather than a live API.
+    /// Only these receivers can be asked about bundle contents.
+    pub fn is_bundle(&self) -> bool {
+        matches!(
+            self,
+            Receiver::ArchiveBytes(_) | Receiver::ArchiveFile(_) | Receiver::Directory(_)
+        )
+    }
+
+    /// Whether the received bundle contains `dir` as a directory. Only local
+    /// (archive/directory) receivers can answer; remote receivers report
+    /// `false`. Used for platform indicators such as the `syscalls` folder.
+    pub async fn has_bundle_dir(&self, dir: &str) -> bool {
+        match self {
+            Receiver::ArchiveBytes(receiver) => receiver.has_bundle_dir(dir).await,
+            Receiver::ArchiveFile(receiver) => receiver.has_bundle_dir(dir).await,
+            Receiver::Directory(receiver) => receiver.has_bundle_dir(dir),
+            _ => false,
+        }
+    }
+
     pub async fn try_get_manifest(&self) -> Result<DiagnosticManifest> {
         let manifest = match self {
             Receiver::ArchiveBytes(_) | Receiver::ArchiveFile(_) | Receiver::Directory(_) => {
@@ -282,7 +344,7 @@ impl Receiver {
             Receiver::Logstash(receiver) => receiver.try_get_manifest().await,
             Receiver::ElasticCloudAdmin(receiver) => receiver.try_get_manifest().await,
         }?;
-        self.set_source_product_from_manifest(&manifest.product)?;
+        self.set_source_application_from_manifest(manifest.application())?;
         Ok(manifest)
     }
 
@@ -293,7 +355,7 @@ impl Receiver {
         {
             Ok(manifest) => {
                 tracing::debug!("Using diagnostic_manifest.json");
-                self.set_source_product_from_manifest(&manifest.product)?;
+                self.set_source_application_from_manifest(manifest.application())?;
                 return Ok(manifest);
             }
             Err(e) => tracing::debug!("Error reading diagnostic_manifest.json: {e}"),
@@ -303,7 +365,7 @@ impl Receiver {
             Ok(manifest) => {
                 tracing::warn!("Falling back to manifest.json");
                 let manifest: DiagnosticManifest = manifest.into();
-                self.set_source_product_from_manifest(&manifest.product)?;
+                self.set_source_application_from_manifest(manifest.application())?;
                 Ok(manifest)
             }
             Err(e) => Err(eyre!("Failed to identify product from diagnostic manifest: {}", e)),
@@ -324,8 +386,11 @@ impl Receiver {
         }
     }
 
-    fn set_source_product_from_manifest(&self, product: &Product) -> Result<()> {
-        let Ok(product) = crate::processor::diagnostic::data_source::source_product_key(product) else {
+    fn set_source_application_from_manifest(&self, application: Option<Application>) -> Result<()> {
+        let Some(application) = application else {
+            return Ok(());
+        };
+        let Ok(product) = crate::processor::diagnostic::data_source::source_application_key(application) else {
             return Ok(());
         };
 
@@ -370,14 +435,19 @@ impl TryFrom<Uri> for Receiver {
                 Receiver::ElasticCloudAdmin(ElasticCloudAdminReceiver::try_from(host)?)
             }
             Uri::File(file) => Receiver::ArchiveFile(ArchiveFileReceiver::try_from(file)?),
-            Uri::KnownHost(host) => match host.app() {
-                Product::Elasticsearch => Receiver::Elasticsearch(ElasticsearchReceiver::try_from(host)?),
-                Product::Logstash => Receiver::Logstash(LogstashReceiver::try_from(host)?),
-                Product::Kibana => Receiver::Kibana(KibanaReceiver::try_from(host)?),
-                _ => {
-                    return Err(eyre!("Unsupported known-host receiver product: {}", host.app()));
+            Uri::KnownHost(host) => {
+                let resolved = host.resolve()?;
+                let application = resolved.application();
+                let host = resolved.into_known_host();
+                match application {
+                    Application::Elasticsearch => Receiver::Elasticsearch(ElasticsearchReceiver::try_from(host)?),
+                    Application::Logstash => Receiver::Logstash(LogstashReceiver::try_from(host)?),
+                    Application::Kibana => Receiver::Kibana(KibanaReceiver::try_from(host)?),
+                    application => {
+                        unreachable!("KnownHost::resolve returned non-collectable application {application}")
+                    }
                 }
-            },
+            }
             Uri::ServiceLink(url) => Receiver::ArchiveBytes(UploadServiceDownloader::try_from(url)?.download()?),
             _ => return Err(eyre!("Unsupported URI: {uri}")),
         };
@@ -419,6 +489,8 @@ impl std::fmt::Display for Receiver {
 #[cfg(test)]
 mod tests {
     use super::{DirectoryReceiver, Receiver};
+    use crate::data::{Application, KnownHostBuilder};
+    use url::Url;
 
     fn directory_receiver() -> Receiver {
         let root = tempfile::tempdir().expect("temp diagnostic root");
@@ -454,5 +526,18 @@ mod tests {
             .expect("absolute path should be rejected");
 
         assert!(err.to_string().contains("must be relative and stay within the bundle"));
+    }
+
+    #[test]
+    fn known_host_receiver_refuses_agent_collect_by_design() {
+        let host = KnownHostBuilder::new(Url::parse("http://localhost:8220").expect("url"))
+            .application(Application::Agent)
+            .build()
+            .expect("host");
+
+        let err = Receiver::try_from(host).err().expect("agent collect should be refused");
+
+        assert!(err.to_string().contains("out of scope by design for Agent"));
+        assert!(err.to_string().contains("read/Load"));
     }
 }

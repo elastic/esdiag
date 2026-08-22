@@ -24,6 +24,7 @@ Top-Level Layout
 ├── docker/
 ├── docs/
 ├── openspec/
+├── plugin/
 ├── src/
 ├── templates/
 └── tests/
@@ -39,6 +40,7 @@ Top-Level Layout
 - `docker/`: Container and Compose definitions for local and packaging-related workflows.
 - `docs/`: User-facing and maintainer-facing documentation.
 - `openspec/`: OpenSpec change proposals, archived changes, and repository specification artifacts.
+- `plugin/`: Distributable script-free Agent Skill package with thin Claude Code and Codex manifests. Its bundled `SKILL.md` and `references/` under `plugin/skills/` are generated from `.agents/skills/esdiag/` by `bin/sync-plugin-skill.sh` and must not be edited directly. The repository-root `.claude-plugin/marketplace.json` publishes the Claude package; Codex and OpenCode discover the canonical `.agents/skills/` copy in a checkout, while `esdiag agent skills` installs the matching embedded skill for binary users.
 - `src/`: Rust application and library source code.
 - `templates/`: Askama HTML templates that power the web UI.
 - `tests/`: Integration-style tests, CLI tests, runtime tests, and test fixtures.
@@ -61,6 +63,7 @@ src/
 ├── job.rs
 ├── lib.rs
 ├── main.rs
+├── onboarding.rs
 ├── setup.rs
 └── uploader.rs
 ```
@@ -81,5 +84,6 @@ src/
 - `src/setup.rs`: Asset installation logic for Elasticsearch and Kibana setup flows.
 - `src/uploader.rs`: Upload logic for sending collected archives to the Elastic Upload Service.
 - `src/job.rs`: Saved job execution and management helpers.
+- `src/onboarding.rs`: Flow-neutral first-run configuration, persistence, and readiness operations shared by terminal and future GUI flows.
 - `src/env.rs`: Environment-variable defaults and lookup helpers.
 - `src/embeds.rs`: Embedded static asset wiring used by the application.

@@ -125,6 +125,8 @@ pub struct Jobs {
     pub saved_remote_target: Option<String>,
     pub saved_local_target: String,
     pub saved_local_directory: String,
+    pub saved_raw_remote_target: Option<String>,
+    pub saved_raw_local: bool,
     pub saved_user: String,
     pub saved_account: String,
     pub saved_case_number: String,
@@ -276,12 +278,19 @@ pub struct HostsPage {
 #[template(path = "job/completed.html")]
 pub struct JobCompleted<'a> {
     pub job_id: u64,
+    pub status_class: &'a str,
+    pub heading: &'a str,
     pub diagnostic_id: &'a str,
     pub docs_created: &'a u32,
     pub duration: &'a str,
     pub source: &'a str,
     pub kibana_link: &'a str,
     pub product: &'a str,
+    /// The derived diagnostic outcome (ADR-0016), e.g. `complete`/`partial`.
+    pub outcome: &'a str,
+    pub upload_destination: Option<&'a str>,
+    pub execution_error: Option<&'a str>,
+    pub recorded_failures: Vec<String>,
 }
 
 #[derive(Template)]
@@ -428,34 +437,21 @@ fn output_target_label(target: &str) -> String {
 mod tests {
     use super::{JobCompleted, JobSkipped, Jobs, build_footer_output_context};
     use crate::{
-        data::{HostRole, KnownHost, Product, Uri},
+        data::{Application, HostRole, KnownHost, Uri},
         exporter::Exporter,
     };
     use askama::Template;
-    use std::{collections::BTreeMap, path::PathBuf, sync::Mutex};
-    use tempfile::TempDir;
+    use std::{collections::BTreeMap, path::PathBuf};
     use url::Url;
 
-    fn env_lock() -> &'static Mutex<()> {
-        crate::test_env_lock()
-    }
-
-    fn setup_hosts() -> TempDir {
-        let tmp = TempDir::new().expect("temp dir");
-        let config_dir = tmp.path().join(".esdiag");
-        std::fs::create_dir_all(&config_dir).expect("create config dir");
-        let hosts_path = config_dir.join("hosts.yml");
-        unsafe {
-            std::env::set_var("HOME", tmp.path());
-            std::env::set_var("USERPROFILE", tmp.path());
-            std::env::set_var("ESDIAG_HOSTS", &hosts_path);
-        }
+    fn setup_hosts() -> crate::TestEnv {
+        let env = crate::TestEnv::new();
 
         let mut hosts = BTreeMap::new();
         hosts.insert(
             "localhost".to_string(),
             KnownHost::new_no_auth(
-                Product::Elasticsearch,
+                Application::Elasticsearch,
                 Url::parse("http://localhost:9200").expect("url"),
                 vec![HostRole::Send],
                 None,
@@ -465,7 +461,7 @@ mod tests {
         hosts.insert(
             "secure-prod".to_string(),
             KnownHost::new_legacy_apikey(
-                Product::Elasticsearch,
+                Application::Elasticsearch,
                 Url::parse("https://secure.example.com:9200").expect("url"),
                 vec![HostRole::Send],
                 None,
@@ -475,12 +471,11 @@ mod tests {
             ),
         );
         KnownHost::write_hosts_yml(&hosts).expect("write hosts");
-        tmp
+        env
     }
 
     #[test]
     fn footer_context_prefers_live_cli_output_over_saved_host_override() {
-        let _guard = env_lock().lock().expect("env lock");
         let _tmp = setup_hosts();
         let send_hosts = vec!["localhost".to_string(), "secure-prod".to_string()];
         let exporter = Exporter::try_from(Uri::Directory(PathBuf::from("/tmp/output"))).expect("directory exporter");
@@ -546,6 +541,8 @@ mod tests {
             saved_remote_target: None,
             saved_local_target: "directory".to_string(),
             saved_local_directory: "/tmp".to_string(),
+            saved_raw_remote_target: None,
+            saved_raw_local: false,
             saved_user: String::new(),
             saved_account: String::new(),
             saved_case_number: String::new(),
@@ -564,6 +561,14 @@ mod tests {
         assert!(html.contains("evt.target.value === '' ? null : evt.target.value"));
         assert!(html.contains("$job.process.enabled"));
         assert!(html.contains("$job.send.mode === 'remote' ||"));
+        assert!(
+            html.contains("$job.collect.source !== 'known-host'"),
+            "Save Job must be disabled for upload, service-link, and API-key drafts"
+        );
+        assert!(
+            html.contains("$job.collect.known_host.trim()"),
+            "Save Job must require a selected known host"
+        );
         let remote_select = html
             .split_once(r#"id="send-remote-target""#)
             .and_then(|(_, remainder)| remainder.split_once("</select>"))
@@ -581,12 +586,18 @@ mod tests {
         let docs_created = 42;
         let completed = JobCompleted {
             job_id: 100,
+            status_class: "status-success",
+            heading: "Processing complete!",
             diagnostic_id: "elasticsearch_diagnostic@2026-01-01~abcd",
             docs_created: &docs_created,
             duration: "0.500",
             source: "Included diagnostic: child-es",
             kibana_link: "https://kb.example/app/dashboards#/view/child",
             product: "Elasticsearch",
+            outcome: "complete",
+            upload_destination: Some("https://upload.elastic.co/g/raw-bundle"),
+            execution_error: Some("Send failed"),
+            recorded_failures: vec!["Error cluster_settings: request failed".to_string()],
         }
         .render()
         .expect("completed template renders");
@@ -594,15 +605,27 @@ mod tests {
         assert!(completed.contains("elasticsearch_diagnostic@2026-01-01~abcd"));
         assert!(completed.contains("https://kb.example/app/dashboards#/view/child"));
         assert!(completed.contains("Included diagnostic: child-es"));
+        assert!(completed.contains("status-success"));
+        assert!(completed.contains("Processing complete!"));
+        assert!(completed.contains("https://upload.elastic.co/g/raw-bundle"));
+        assert!(completed.contains("Send failed"));
+        assert!(completed.contains("Recorded diagnostic failures"));
+        assert!(completed.contains("cluster_settings: request failed"));
 
         let no_link = JobCompleted {
             job_id: 102,
+            status_class: "status-success",
+            heading: "Processing complete!",
             diagnostic_id: "elasticsearch_diagnostic@2026-01-01~efgh",
             docs_created: &docs_created,
             duration: "0.500",
             source: "Included diagnostic: child-es",
             kibana_link: "",
             product: "Elasticsearch",
+            outcome: "complete",
+            upload_destination: None,
+            execution_error: None,
+            recorded_failures: Vec::new(),
         }
         .render()
         .expect("completed template without Kibana link renders");
@@ -614,13 +637,13 @@ mod tests {
             job_id: 101,
             source: "Included diagnostic: child-kibana",
             product: "Kibana",
-            reason: "Kibana processing is not yet implemented",
+            reason: "Kibana processing is not yet implemented (not implemented)",
         }
         .render()
         .expect("skipped template renders");
 
         assert!(skipped.contains("status-info"));
         assert!(skipped.contains("Included diagnostic: child-kibana"));
-        assert!(skipped.contains("Kibana processing is not yet implemented"));
+        assert!(skipped.contains("Kibana processing is not yet implemented (not implemented)"));
     }
 }

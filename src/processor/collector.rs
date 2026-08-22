@@ -4,8 +4,8 @@
 
 use super::{elasticsearch::ElasticsearchCollector, kibana::KibanaCollector, logstash::LogstashCollector};
 use crate::{
-    data::Product,
-    exporter::Exporter,
+    data::Application,
+    exporter::BundleExporter,
     processor::{Identifiers, RequestedApi},
     receiver::Receiver,
 };
@@ -13,55 +13,74 @@ use eyre::{Result, eyre};
 
 #[derive(Debug, Clone)]
 pub struct CollectOptions {
-    pub product: Product,
+    pub application: Application,
     pub r#type: String,
     pub include: Option<Vec<String>>,
     pub exclude: Option<Vec<String>>,
     pub identifiers: Identifiers,
 }
 
-pub enum Collector {
+enum Collector {
     Elasticsearch(ElasticsearchCollector),
     Logstash(LogstashCollector),
     Kibana(KibanaCollector),
 }
 
+pub(crate) async fn collect_bundle(
+    receiver: Receiver,
+    exporter: BundleExporter,
+    options: CollectOptions,
+) -> Result<CollectionResult> {
+    Collector::try_new(
+        receiver,
+        exporter,
+        options.application,
+        options.r#type,
+        options.include,
+        options.exclude,
+        options.identifiers,
+    )
+    .await?
+    .collect()
+    .await
+}
+
 impl Collector {
-    pub async fn try_new(
+    async fn try_new(
         receiver: Receiver,
-        exporter: Exporter,
-        product: Product,
+        exporter: BundleExporter,
+        application: Application,
         r#type: String,
         include: Option<Vec<String>>,
         exclude: Option<Vec<String>>,
         identifiers: Identifiers,
     ) -> Result<Self> {
         let options = CollectOptions {
-            product,
+            application,
             r#type,
             include,
             exclude,
             identifiers,
         };
 
-        match (options.product.clone(), receiver) {
-            (Product::Elasticsearch, receiver @ (Receiver::Elasticsearch(_) | Receiver::ElasticCloudAdmin(_))) => {
-                let collect_exporter = exporter.into_collect_exporter()?;
+        match (options.application, receiver) {
+            (Application::Elasticsearch, receiver @ (Receiver::Elasticsearch(_) | Receiver::ElasticCloudAdmin(_))) => {
+                let collect_exporter = exporter.into_archive();
                 let collector = ElasticsearchCollector::new(receiver, collect_exporter, options).await?;
                 Ok(Self::Elasticsearch(collector))
             }
-            (Product::Logstash, receiver @ Receiver::Logstash(_)) => {
-                let collect_exporter = exporter.into_collect_exporter()?;
+            (Application::Logstash, receiver @ Receiver::Logstash(_)) => {
+                let collect_exporter = exporter.into_archive();
                 let collector = LogstashCollector::new(receiver, collect_exporter, options).await?;
                 Ok(Self::Logstash(collector))
             }
-            (Product::Kibana, receiver @ Receiver::Kibana(_)) => {
-                let collect_exporter = exporter.into_collect_exporter()?;
+            (Application::Kibana, receiver @ Receiver::Kibana(_)) => {
+                let collect_exporter = exporter.into_archive();
                 let collector = KibanaCollector::new(receiver, collect_exporter, options).await?;
                 Ok(Self::Kibana(collector))
             }
-            (Product::Logstash, _) => Err(eyre!("Collect for Logstash requires a standard known-host endpoint")),
-            (Product::Kibana, _) => Err(eyre!("Collect for Kibana requires a standard known-host endpoint")),
+            (Application::Logstash, _) => Err(eyre!("Collect for Logstash requires a standard known-host endpoint")),
+            (Application::Kibana, _) => Err(eyre!("Collect for Kibana requires a standard known-host endpoint")),
             _ => Err(eyre!(
                 "Collect is only implemented for Elasticsearch, Kibana, and Logstash hosts"
             )),
@@ -69,11 +88,13 @@ impl Collector {
     }
 
     pub async fn collect(&self) -> Result<CollectionResult> {
-        let result = match self {
+        let started = std::time::Instant::now();
+        let mut result = match self {
             Self::Elasticsearch(collector) => collector.collect().await?,
             Self::Logstash(collector) => collector.collect().await?,
             Self::Kibana(collector) => collector.collect().await?,
         };
+        result.duration_ms = started.elapsed().as_millis();
 
         tracing::info!(
             "Collected {} of {} files into {}",
@@ -85,21 +106,12 @@ impl Collector {
     }
 }
 
-pub fn default_collect_archive_name(product: &Product, timestamp: &str) -> String {
-    match product {
-        Product::Elasticsearch => format!("api-diagnostics-{timestamp}"),
-        Product::Kibana => format!("kibana-api-diagnostics-{timestamp}"),
-        Product::Logstash => format!("logstash-api-diagnostics-{timestamp}"),
-        Product::Agent => format!("agent-api-diagnostics-{timestamp}"),
-        Product::ECE => format!("ece-api-diagnostics-{timestamp}"),
-        Product::ECK => format!("eck-api-diagnostics-{timestamp}"),
-        Product::ElasticCloudHosted => {
-            format!("elastic-cloud-hosted-api-diagnostics-{timestamp}")
-        }
-        Product::KubernetesPlatform => {
-            format!("kubernetes-platform-api-diagnostics-{timestamp}")
-        }
-        Product::Unknown => format!("unknown-api-diagnostics-{timestamp}"),
+pub fn default_collect_archive_name(application: Application, timestamp: &str) -> String {
+    match application {
+        Application::Elasticsearch => format!("api-diagnostics-{timestamp}"),
+        Application::Kibana => format!("kibana-api-diagnostics-{timestamp}"),
+        Application::Logstash => format!("logstash-api-diagnostics-{timestamp}"),
+        Application::Agent => format!("agent-api-diagnostics-{timestamp}"),
     }
 }
 
@@ -107,6 +119,7 @@ pub struct CollectionResult {
     pub path: String,
     pub success: usize,
     pub total: usize,
+    pub duration_ms: u128,
 }
 
 pub(crate) struct ApiCollectOutcome {
@@ -166,12 +179,12 @@ impl ApiCollectOutcome {
 #[cfg(test)]
 mod tests {
     use super::{ApiCollectOutcome, default_collect_archive_name};
-    use crate::data::Product;
+    use crate::data::Application;
 
     #[test]
     fn default_archive_name_uses_elasticsearch_basename_without_prefix() {
         assert_eq!(
-            default_collect_archive_name(&Product::Elasticsearch, "20260406-203000"),
+            default_collect_archive_name(Application::Elasticsearch, "20260406-203000"),
             "api-diagnostics-20260406-203000"
         );
     }
@@ -179,11 +192,11 @@ mod tests {
     #[test]
     fn default_archive_name_prefixes_non_elasticsearch_products() {
         assert_eq!(
-            default_collect_archive_name(&Product::Logstash, "20260406-203000"),
+            default_collect_archive_name(Application::Logstash, "20260406-203000"),
             "logstash-api-diagnostics-20260406-203000"
         );
         assert_eq!(
-            default_collect_archive_name(&Product::Kibana, "20260406-203000"),
+            default_collect_archive_name(Application::Kibana, "20260406-203000"),
             "kibana-api-diagnostics-20260406-203000"
         );
     }

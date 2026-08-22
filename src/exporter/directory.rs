@@ -133,8 +133,9 @@ impl Export for DirectoryExporter {
         T: Sized + Serialize,
     {
         let start_time = tokio::time::Instant::now();
+        // No HTTP transport, so the reserved `0` request status stands
+        // (ADR-0016); write failures travel in `errors`, not the status.
         let mut batch = BatchResponse::new(docs.len() as u32);
-        batch.status_code = 200;
         let mut doc_count = 0;
         {
             let writer = get_writer(self.writers.clone(), &self.path, &index).await?;

@@ -1,0 +1,21 @@
+{
+  "name": "esdiag",
+  "displayName": "ESDiag",
+  "description": "Load the portable ESDiag Agent Skill for Elastic diagnostics. Analysis is saved in your deployment's Kibana Agent Builder conversation history.",
+  "version": "0.17.0",
+  "author": {
+    "name": "Elastic"
+  },
+  "homepage": "https://github.com/elastic/esdiag",
+  "repository": "https://github.com/elastic/esdiag",
+  "license": "Elastic-2.0",
+  "keywords": [
+    "elasticsearch",
+    "kibana",
+    "logstash",
+    "diagnostics",
+    "elastic",
+    "support",
+    "agent-builder"
+  ]
+}

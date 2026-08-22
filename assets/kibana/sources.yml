@@ -20,12 +20,14 @@
 #   Please adhere to this convention when submitting pull requests.
 
 kibana_actions:
+  tags: standard,light,support
   versions:
     ">= 7.0.0":
       url: "/api/actions"
       spaceaware: true
 
 kibana_alerts:
+  tags: standard,light,support
   versions:
     ">= 7.9.0":
       url: "/api/alerts/_find"
@@ -33,11 +35,13 @@ kibana_alerts:
       paginate: per_page
 
 kibana_alerts_health:
+  tags: standard,light,support
   versions:
-    ">= 7.11.0 < 7.13.0": "/api/alerts/_health"
+    ">= 7.11.0, < 7.13.0": "/api/alerts/_health"
     ">= 7.13.0": "/api/alerting/_health"
 
 kibana_data_views:
+  tags: standard,light,support
   versions:
     ">= 8.0.0":
       url: "/api/data_views"
@@ -47,6 +51,7 @@ kibana_data_views:
 # Scope: the whole cluster = all detection rules in all Kibana spaces.
 # https://github.com/elastic/kibana/blob/main/x-pack/plugins/security_solution/common/detection_engine/rule_monitoring/api/detection_engine_health/README.md
 kibana_detection_engine_health_cluster:
+  tags: standard,light,support
   versions:
     ">= 8.8.2": "/internal/detection_engine/health/_cluster"
 
@@ -54,16 +59,19 @@ kibana_detection_engine_health_cluster:
 # Scope: all detection rules in the current/default Kibana space.
 # https://github.com/elastic/kibana/blob/main/x-pack/plugins/security_solution/common/detection_engine/rule_monitoring/api/detection_engine_health/README.md
 kibana_detection_engine_health_space:
+  tags: standard,light,support
   versions:
     ">= 8.8.2": "/internal/detection_engine/health/_space"
 
 kibana_detection_engine_privileges:
+  tags: standard,light,support
   versions:
     ">= 7.6.0": "/api/detection_engine/privileges"
 
 # Returns installed detection rules, both prebuilt and custom. This endpoint requires pagination.
 # Scope: current/default Kibana space.
 kibana_detection_engine_rules_installed:
+  tags: standard,light,support
   versions:
     ">= 7.6.0":
       url: "/api/detection_engine/rules/_find?sort_field=enabled&sort_order=asc"
@@ -72,103 +80,123 @@ kibana_detection_engine_rules_installed:
 # Returns status of prebuilt detection rules: how many of them are installed, can be installed, can be upgraded, etc.
 # Scope: current/default Kibana space.
 kibana_detection_engine_rules_prebuilt_status:
+  tags: standard,light,support
   versions:
-    ">= 7.10.0 < 7.15.0": "/api/detection_engine/prepackaged"
-    ">= 7.15.0 < 8.9.0": "/api/detection_engine/rules/prepackaged/_status"
+    ">= 7.10.0, < 7.15.0": "/api/detection_engine/prepackaged"
+    ">= 7.15.0, < 8.9.0": "/api/detection_engine/rules/prepackaged/_status"
     ">= 8.9.0": "/internal/detection_engine/prebuilt_rules/status"
 
 kibana_fleet_agents:
+  tags: standard,light,support
   versions:
     ">= 7.10.0":
       url: "/api/fleet/agents"
       paginate: perPage
 
 kibana_fleet_agent_policies:
+  tags: standard,light,support
   versions:
     ">= 7.10.0":
       url: "/api/fleet/agent_policies"
       paginate: perPage
 
 kibana_fleet_packages:
+  tags: standard,light,support
   versions:
     ">= 7.11.0": "/api/fleet/epm/packages?experimental=true"
 
 kibana_fleet_agent_status:
+  tags: standard,light,support
   versions:
-    ">= 7.11.0 < 8.0.0": "/api/fleet/agent-status"
+    ">= 7.11.0, < 8.0.0": "/api/fleet/agent-status"
     ">= 8.0.0": "/api/fleet/agent_status"
 
 kibana_fleet_agents_current_upgrades:
+  tags: standard,light,support
   versions:
     ">= 8.3.0": "/api/fleet/agents/current_upgrades"
 
 kibana_lists_privileges:
+  tags: standard,light,support
   versions:
     ">= 7.9.0": "/api/lists/privileges"
 
 kibana_fleet_settings:
+  tags: standard,light,support
   versions:
     ">= 7.14.0": "/api/fleet/settings"
 
 kibana_reporting_diagnose_browser:
+  tags: standard,light,support
   versions:
     ">= 8.16.0": "/internal/reporting/diagnose/browser"
 
 kibana_roles:
+  tags: standard,light,support
   versions:
     ">= 6.4.0": "/api/security/role"
 
 # These endpoints will return 404 if there are no exceptions
 kibana_security_endpoint_host_isolation:
+  tags: standard,light,support
   versions:
     ">= 7.14.0":
       url: "/api/exception_lists/items/_find?list_id=endpoint_host_isolation_exceptions&namespace_type=agnostic"
       paginate: per_page
 
 kibana_security_endpoint_event_filters:
+  tags: standard,light,support
   versions:
     ">= 7.14.0":
       url: "/api/exception_lists/items/_find?list_id=endpoint_event_filters&namespace_type=agnostic"
       paginate: per_page
 
 kibana_security_endpoint_exception_items:
+  tags: standard,light,support
   versions:
     ">= 7.14.0":
       url: "/api/exception_lists/items/_find?list_id=endpoint_list&namespace_type=agnostic"
       paginate: per_page
 
 kibana_security_endpoint_metadata:
+  tags: standard,light,support
   versions:
     ">= 8.0.0":
       url: "/api/endpoint/metadata"
       paginate: pageSize
 
 kibana_security_endpoint_trusted_apps:
+  tags: standard,light,support
   versions:
-    ">= 7.10.0 < 7.14.0": "/api/endpoint/trusted_apps"
+    ">= 7.10.0, < 7.14.0": "/api/endpoint/trusted_apps"
     ">= 7.14.0":
       url: "/api/exception_lists/items/_find?list_id=endpoint_trusted_apps&namespace_type=agnostic"
       paginate: per_page
 
 kibana_security_exception_list:
+  tags: standard,light,support
   versions:
     ">= 7.10.0":
       url: "/api/exception_lists/_find?namespace_type=agnostic"
       paginate: per_page
 
 kibana_security_packages:
+  tags: standard,light,support
   versions:
     ">= 7.10.0": "/api/fleet/epm/packages?experimental=true&category=security"
 
 kibana_settings:
+  tags: standard,light,support
   versions:
-    ">= 6.5.0 < 8.0.0": "/api/settings"
+    ">= 6.5.0, < 8.0.0": "/api/settings"
 
 kibana_spaces:
+  tags: standard,light,support
   versions:
     ">= 6.5.0": "/api/spaces/space"
 
 kibana_stats:
+  tags: standard,light,support
   versions:
     ">= 6.5.0": "/api/stats"
 
@@ -178,10 +206,12 @@ kibana_stats:
 #    ">= 6.5.0": "/api/stats?extended=true"
 
 kibana_status:
+  tags: standard,light,support
   versions:
     ">= 5.0.0": "/api/status"
 
 kibana_synthetics_monitor_filters:
+  tags: standard,light,support
   versions:
     ">= 8.12.0": "/internal/synthetics/monitor/filters"
 
@@ -193,30 +223,37 @@ kibana_synthetics_monitor_filters:
 #      paginate: perPage
 
 kibana_synthetics_private_locations:
+  tags: standard,light,support
   versions:
     ">= 8.12.0": "/api/synthetics/private_locations"
 
 kibana_task_manager_health:
+  tags: standard,light,support
   versions:
     ">= 7.11.0": "/api/task_manager/_health"
 
 kibana_upgrade_assistant:
+  tags: standard,light,support
   versions:
     ">= 6.6.0": "/api/upgrade_assistant/status"
 
 kibana_uptime_locations:
+  tags: standard,light,support
   versions:
     ">= 8.12.0": "/internal/uptime/service/locations"
 
 kibana_uptime_settings:
+  tags: standard,light,support
   versions:
     ">= 8.12.0": "/api/uptime/settings"
 
 kibana_user:
+  tags: standard,light,support
   versions:
     ">= 7.6.0": "/internal/security/me"
-    ">= 5.0.0 < 7.6.0": "/api/security/v1/me"
+    ">= 5.0.0, < 7.6.0": "/api/security/v1/me"
 
 kibana_stack_monitoring_health:
+  tags: standard,light,support
   versions:
     ">= 8.3.1": "/api/monitoring/v1/_health"

@@ -1,5 +1,5 @@
 use axum::{Json, Router, routing::get};
-use esdiag::data::{HostRole, KnownHost, Settings};
+use esdiag::data::{Application, HostRole, KnownHost, Settings};
 use std::{
     collections::BTreeMap,
     path::PathBuf,
@@ -79,15 +79,6 @@ fn assert_stdout_contains(output: &Output, expected: &str, context: &str) {
     );
 }
 
-fn assert_stderr_contains(output: &Output, expected: &str, context: &str) {
-    assert_success(output, context);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains(expected),
-        "{context} stderr missing expected text `{expected}`\nstderr:\n{stderr}"
-    );
-}
-
 fn read_hosts(home: &TempDir) -> BTreeMap<String, KnownHost> {
     let path = home.path().join(".esdiag").join("hosts.yml");
     if !path.exists() {
@@ -97,7 +88,7 @@ fn read_hosts(home: &TempDir) -> BTreeMap<String, KnownHost> {
     if content.trim().is_empty() {
         return BTreeMap::new();
     }
-    serde_yaml::from_str(&content).expect("parse hosts yaml")
+    yaml_serde::from_str(&content).expect("parse hosts yaml")
 }
 
 fn read_settings(home: &TempDir) -> Settings {
@@ -106,12 +97,12 @@ fn read_settings(home: &TempDir) -> Settings {
         return Settings::default();
     }
     let content = std::fs::read_to_string(path).expect("read settings");
-    serde_yaml::from_str(&content).expect("parse settings")
+    yaml_serde::from_str(&content).expect("parse settings")
 }
 
 fn write_settings(home: &TempDir, settings: &Settings) {
     let path = home.path().join(".esdiag").join("settings.yml");
-    let content = serde_yaml::to_string(settings).expect("serialize settings");
+    let content = yaml_serde::to_string(settings).expect("serialize settings");
     std::fs::write(path, content).expect("write settings");
 }
 
@@ -599,7 +590,12 @@ async fn host_update_rejects_partial_basic_auth_for_existing_basic_host() {
     let hosts = read_hosts(&home);
     let host = hosts.get("basic-es").expect("saved host exists");
     assert_eq!(host.legacy_username.as_deref(), Some("elastic"));
-    assert_eq!(host.legacy_password.as_deref(), Some("old-pass"));
+    assert_eq!(
+        host.legacy_password
+            .as_ref()
+            .map(|password| password.expose_secret().as_str()),
+        Some("old-pass")
+    );
     assert!(host.secret.is_none(), "failed update should not add a secret reference");
 
     let _ = shutdown_tx.send(());
@@ -698,18 +694,14 @@ async fn host_add_rejects_duplicate_names() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn host_list_prints_empty_state_and_saved_rows() {
+async fn host_list_emits_typed_empty_and_populated_outcomes() {
     let (url, shutdown_tx) = start_mock_elasticsearch().await;
     let home = setup_home();
     let home_path = home.path().to_path_buf();
 
     let empty_list = run_esdiag(&["host", "list"], &home, &[]);
-    assert_stdout_contains(&empty_list, "No saved hosts", "empty host list");
-    let empty_stderr = String::from_utf8_lossy(&empty_list.stderr);
-    assert!(
-        !empty_stderr.contains("host list complete"),
-        "host list should not emit completion summary:\n{empty_stderr}"
-    );
+    assert_stdout_contains(&empty_list, "result: hosts_listed", "empty host list");
+    assert_stdout_contains(&empty_list, "hosts: []", "empty host list");
 
     let create = run_esdiag_async(
         vec![
@@ -729,17 +721,14 @@ async fn host_list_prints_empty_state_and_saved_rows() {
     let populated_list = run_esdiag(&["host", "list"], &home, &[]);
     assert_success(&populated_list, "populated host list");
     let stdout = String::from_utf8_lossy(&populated_list.stdout);
-    let stderr = String::from_utf8_lossy(&populated_list.stderr);
-    assert!(stdout.contains("name"), "expected header in list output:\n{stdout}");
-    assert!(stdout.contains("app"), "expected header in list output:\n{stdout}");
-    assert!(stdout.contains("secret"), "expected header in list output:\n{stdout}");
+    assert!(
+        stdout.contains("result: hosts_listed"),
+        "expected typed result:\n{stdout}"
+    );
+    assert!(stdout.contains("hosts:"), "expected host collection:\n{stdout}");
     assert!(
         stdout.contains("prod-es"),
         "expected saved host row in list output:\n{stdout}"
-    );
-    assert!(
-        !stderr.contains("host list complete"),
-        "host list should not emit completion summary:\n{stderr}"
     );
 
     let _ = shutdown_tx.send(());
@@ -775,15 +764,8 @@ async fn host_auth_tests_saved_host_without_mutating_it() {
     )
     .await;
     assert_success(&auth, "auth host");
-    let auth_stderr = String::from_utf8_lossy(&auth.stderr);
-    assert!(
-        auth_stderr.contains("Host prod-es: 200 OK"),
-        "auth should emit a meaningful connection summary:\n{auth_stderr}"
-    );
-    assert!(
-        !auth_stderr.contains("host auth complete"),
-        "auth should not fall back to a generic completion summary:\n{auth_stderr}"
-    );
+    assert_stdout_contains(&auth, "result: host_authenticated", "auth host");
+    assert_stdout_contains(&auth, "name: prod-es", "auth host");
 
     let after = std::fs::read_to_string(&hosts_path).expect("read hosts after auth");
     assert_eq!(before, after, "auth should not mutate saved hosts");
@@ -807,7 +789,7 @@ fn host_auth_missing_host_and_legacy_syntax_fail() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn host_subcommands_emit_meaningful_agent_summaries() {
+async fn host_subcommands_emit_typed_agent_outcomes() {
     let (url, shutdown_tx) = start_mock_elasticsearch().await;
     let home = setup_home();
     let home_path = home.path().to_path_buf();
@@ -826,13 +808,8 @@ async fn host_subcommands_emit_meaningful_agent_summaries() {
         vec![],
     )
     .await;
-    assert_stderr_contains(&add, "Host prod-es: 200 OK", "agent host add");
-    assert_stderr_contains(&add, "Host 'prod-es' added in", "agent host add");
-    assert!(
-        !String::from_utf8_lossy(&add.stderr).contains("host add complete"),
-        "agent host add should not emit a generic completion summary:\n{}",
-        String::from_utf8_lossy(&add.stderr)
-    );
+    assert_stdout_contains(&add, "result: host_added", "agent host add");
+    assert_stdout_contains(&add, "name: prod-es", "agent host add");
 
     let update = run_esdiag_async(
         vec![
@@ -847,13 +824,7 @@ async fn host_subcommands_emit_meaningful_agent_summaries() {
         vec![],
     )
     .await;
-    assert_stderr_contains(&update, "Host prod-es: 200 OK", "agent host update");
-    assert_stderr_contains(&update, "Host 'prod-es' updated in", "agent host update");
-    assert!(
-        !String::from_utf8_lossy(&update.stderr).contains("host update complete"),
-        "agent host update should not emit a generic completion summary:\n{}",
-        String::from_utf8_lossy(&update.stderr)
-    );
+    assert_stdout_contains(&update, "result: host_updated", "agent host update");
 
     let auth = run_esdiag_async(
         vec![
@@ -866,12 +837,7 @@ async fn host_subcommands_emit_meaningful_agent_summaries() {
         vec![],
     )
     .await;
-    assert_stderr_contains(&auth, "Host prod-es: 200 OK", "agent host auth");
-    assert!(
-        !String::from_utf8_lossy(&auth.stderr).contains("host auth complete"),
-        "agent host auth should not emit a generic completion summary:\n{}",
-        String::from_utf8_lossy(&auth.stderr)
-    );
+    assert_stdout_contains(&auth, "result: host_authenticated", "agent host auth");
 
     let remove = run_esdiag_async(
         vec![
@@ -884,12 +850,8 @@ async fn host_subcommands_emit_meaningful_agent_summaries() {
         vec![],
     )
     .await;
-    assert_stderr_contains(&remove, "Host 'prod-es' removed from", "agent host remove");
-    assert!(
-        !String::from_utf8_lossy(&remove.stderr).contains("host remove complete"),
-        "agent host remove should not emit a generic completion summary:\n{}",
-        String::from_utf8_lossy(&remove.stderr)
-    );
+    assert_stdout_contains(&remove, "result: host_removed", "agent host remove");
+    assert_stdout_contains(&remove, "name: prod-es", "agent host remove");
 
     let _ = shutdown_tx.send(());
 }
@@ -916,8 +878,8 @@ async fn host_add_infers_app_from_concrete_url_and_requires_app_for_ambiguous_ta
 
     let hosts = read_hosts(&home);
     assert_eq!(
-        hosts.get("prod-es").expect("saved host exists").app.to_string(),
-        "Elasticsearch"
+        hosts.get("prod-es").expect("saved host exists").app,
+        Some(Application::Elasticsearch)
     );
 
     let ambiguous = run_esdiag_async(
@@ -1087,7 +1049,8 @@ async fn template_hosts_auth_materialize_and_preserve_transport_on_update() {
         vec![],
     )
     .await;
-    assert_stderr_contains(
+    assert_stdout_contains(&bare_auth, "result: host_authenticated", "template auth guidance");
+    assert_stdout_contains(
         &bare_auth,
         "requires an `id` plus an optional `product`",
         "template auth guidance",
@@ -1103,9 +1066,10 @@ async fn template_hosts_auth_materialize_and_preserve_transport_on_update() {
         vec![],
     )
     .await;
-    assert_stderr_contains(
+    assert_stdout_contains(&resolved_auth, "result: host_authenticated", "resolved template auth");
+    assert_stdout_contains(
         &resolved_auth,
-        "Host elastic-cloud://cluster-1: 200 OK",
+        "name: elastic-cloud://cluster-1",
         "resolved template auth",
     );
 

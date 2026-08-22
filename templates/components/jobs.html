@@ -24,6 +24,7 @@
     data-signals:metadata.opportunity="{{ saved_opportunity|json }}"
     data-on:datastar-fetch-error="$loading = false; $processing = false; $message = evt.detail.error || 'Request failed'"
     data-on:datastar-fetch-retries-failed="$loading = false; $processing = false"
+    data-on:change="@post('/jobs/draft', {filterSignals: {include: /^(job)(\.|$)/}})"
     data-signals:job.collect.mode="{{ saved_collect_mode }}"
     data-signals:job.collect.source="{{ saved_collect_source }}"
     data-signals:job.collect.known_host="{{ saved_known_host|json }}"
@@ -39,6 +40,10 @@
     data-signals:job.send.remote_target="{{ saved_remote_target|json }}"
     data-signals:job.send.local_target="{{ saved_local_target|json }}"
     data-signals:job.send.local_directory="{% if saved_local_directory != "" %}{{ saved_local_directory|json }}{% elif configured_local_path != "" %}{{ configured_local_path|json }}{% else %}{{ default_save_dir|json }}{% endif %}"
+    data-signals:job.send.raw_remote_target="{{ saved_raw_remote_target|json }}"
+    data-signals:job.send.raw_local="{{ saved_raw_local }}"
+    data-signals:target-availability.processed-documents="{{ saved_process_enabled }}"
+    data-signals:target-availability.raw-bundle="{{ saved_collect_save }}"
 >
     <content-layout class="jobs-layout">
     <div
@@ -698,7 +703,7 @@
                             id="send-forward-upload"
                             type="text"
                             class="form-input"
-                            data-bind:job.send.remote_target
+                            data-bind:job.send.raw_remote_target
                             placeholder="00000000-0000-0000-0000-000000000000"
                         />
                     </input-group>
@@ -753,6 +758,35 @@
                 >
                     Existing local files stay in place. Choose <code>Remote</code> or use a save-capable collect source to create a new saved archive.
                 </info-text>
+
+                <fieldset
+                    data-show="$job.process.enabled"
+                    data-attr:disabled="!$targetAvailability.rawBundle"
+                >
+                    <legend>Raw bundle delivery</legend>
+                    <label for="send-raw-local">
+                        <input
+                            id="send-raw-local"
+                            type="checkbox"
+                            data-bind:job.send.raw_local
+                        />
+                        Keep the collected or loaded bundle available locally
+                    </label>
+                    <input-group>
+                        <label for="send-raw-upload" class="form-label">Elastic Upload Service ID</label>
+                        <input
+                            id="send-raw-upload"
+                            type="text"
+                            class="form-input"
+                            data-bind:job.send.raw_remote_target
+                            placeholder="Optional upload ID"
+                        />
+                    </input-group>
+                    <info-text>
+                        Raw bundle delivery is independent from the processed diagnostic target.
+                        Enable <strong>Download Bundle</strong> before collecting live data.
+                    </info-text>
+                </fieldset>
                 </li>
             </ol>
         </steps>

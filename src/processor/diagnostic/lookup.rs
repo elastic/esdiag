@@ -12,6 +12,8 @@ pub struct Lookup<T> {
     by_name: HashMap<String, usize>,
     entries: Vec<T>,
     pub parsed: bool,
+    #[serde(skip_serializing_if = "is_false")]
+    pub missing: bool,
 }
 
 impl<T> Lookup<T>
@@ -24,12 +26,21 @@ where
             by_name: HashMap::new(),
             entries: Vec::new(),
             parsed: false,
+            missing: false,
         }
     }
 
     pub fn was_parsed(mut self) -> Self {
         self.parsed = true;
+        self.missing = false;
         self
+    }
+
+    pub fn missing() -> Lookup<T> {
+        Lookup {
+            missing: true,
+            ..Lookup::new()
+        }
     }
 
     pub fn from_parsed<U>(value: U) -> Self
@@ -38,6 +49,10 @@ where
     {
         Self::from(value).was_parsed()
     }
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 impl<T> Default for Lookup<T>

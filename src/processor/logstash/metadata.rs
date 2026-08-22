@@ -4,6 +4,7 @@
 
 use super::super::diagnostic::{DataStreamName, DiagnosticManifest, DiagnosticMetadata};
 use super::{Metadata, version::Version};
+use crate::data::{Application, Platform};
 use eyre::Result;
 use serde::Serialize;
 use serde_json::Value;
@@ -21,8 +22,19 @@ pub struct MetadataDoc {
     #[serde(rename = "@timestamp")]
     pub timestamp: u64,
     pub node: Version,
-    pub diagnostic: DiagnosticMetadata,
+    pub diagnostic: DiagnosticDocMetadata,
     pub data_stream: DataStreamName,
+}
+
+/// The per-document `diagnostic.*` envelope: the diagnostic metadata plus the
+/// platform/application classification of ADR-0001.
+#[derive(Clone, Serialize)]
+pub struct DiagnosticDocMetadata {
+    #[serde(flatten)]
+    pub metadata: DiagnosticMetadata,
+    pub platform: Platform,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub application: Option<Application>,
 }
 
 impl Metadata for MetadataDoc {
@@ -34,13 +46,19 @@ impl Metadata for MetadataDoc {
 impl LogstashMetadata {
     pub fn try_new(manifest: DiagnosticManifest, node: Version) -> Result<Self> {
         let name = node.name.replace(" ", "_");
+        let platform = manifest.platform();
+        let application = manifest.application();
         let diagnostic = DiagnosticMetadata::try_from(manifest.with_name(name))?;
         let timestamp = diagnostic.collection_date;
 
         let as_doc = MetadataDoc {
             timestamp,
             node: node.clone(),
-            diagnostic: diagnostic.clone(),
+            diagnostic: DiagnosticDocMetadata {
+                metadata: diagnostic.clone(),
+                platform,
+                application,
+            },
             data_stream: DataStreamName::from("metrics-default-esdiag"),
         };
 

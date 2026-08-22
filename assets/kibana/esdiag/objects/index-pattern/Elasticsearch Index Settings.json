@@ -62,7 +62,7 @@
     "runtimeFieldMap": "{}",
     "sourceFilters": "[]",
     "timeFieldName": "event.ingested",
-    "title": "settings-index*"
+    "title": "settings-index-esdiag*"
   },
   "coreMigrationVersion": "8.8.0",
   "id": "e4c191cb-6ea1-4850-a83a-73d1a5173d2b",

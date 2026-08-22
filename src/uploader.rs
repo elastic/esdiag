@@ -4,6 +4,7 @@
 
 use bytes::BytesMut;
 use eyre::{Result, eyre};
+use futures::future::BoxFuture;
 use reqwest::{Client, ClientBuilder, StatusCode};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -15,6 +16,41 @@ const CHUNK_SIZE: usize = 50 * 1024 * 1024;
 const UPLOAD_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 const UPLOAD_REQUEST_TIMEOUT: Duration = Duration::from_secs(300);
 pub const DEFAULT_UPLOAD_API_URL: &str = "https://upload.elastic.co";
+
+/// Role-typed `Send` adapter. It accepts only an already-resolved local bundle
+/// and keeps runtime service configuration out of the serializable Job.
+#[derive(Clone, Debug)]
+pub struct BundleSender {
+    api_url: String,
+}
+
+impl BundleSender {
+    pub fn new(api_url: impl Into<String>) -> Self {
+        Self {
+            api_url: api_url.into(),
+        }
+    }
+
+    pub async fn send(&self, bundle_path: &Path, upload_id: &str) -> Result<FinalizeResponse> {
+        upload_file(bundle_path, upload_id, &self.api_url).await
+    }
+}
+
+pub trait BundleSending: Send + Sync {
+    fn send<'a>(&'a self, bundle_path: &'a Path, upload_id: &'a str) -> BoxFuture<'a, Result<FinalizeResponse>>;
+}
+
+impl BundleSending for BundleSender {
+    fn send<'a>(&'a self, bundle_path: &'a Path, upload_id: &'a str) -> BoxFuture<'a, Result<FinalizeResponse>> {
+        Box::pin(self.send(bundle_path, upload_id))
+    }
+}
+
+impl Default for BundleSender {
+    fn default() -> Self {
+        Self::new(DEFAULT_UPLOAD_API_URL)
+    }
+}
 
 #[derive(Debug, Deserialize)]
 pub struct FinalizeResponse {

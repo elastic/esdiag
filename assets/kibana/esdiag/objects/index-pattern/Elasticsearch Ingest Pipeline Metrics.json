@@ -24,7 +24,7 @@
     "runtimeFieldMap": "{}",
     "sourceFilters": "[]",
     "timeFieldName": "@timestamp",
-    "title": "metrics-ingest.pipeline-*"
+    "title": "metrics-ingest.pipeline-esdiag*"
   },
   "coreMigrationVersion": "8.8.0",
   "id": "e8de195c-287f-45ed-bbfd-45eace1e037c",

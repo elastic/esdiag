@@ -1,0 +1,38 @@
+{
+  "name": "esdiag",
+  "version": "0.17.0",
+  "description": "Collect, process, and analyze Elastic Stack diagnostics while preserving analysis in Kibana Agent Builder history.",
+  "author": {
+    "name": "Elastic",
+    "url": "https://github.com/elastic"
+  },
+  "homepage": "https://github.com/elastic/esdiag",
+  "repository": "https://github.com/elastic/esdiag",
+  "license": "Elastic-2.0",
+  "keywords": [
+    "elasticsearch",
+    "kibana",
+    "logstash",
+    "diagnostics",
+    "agent-builder"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "ESDiag",
+    "shortDescription": "Collect and analyze Elastic diagnostics",
+    "longDescription": "Operate ESDiag workflows and delegate diagnostic analysis to the configured Elastic deployment, retaining each review for continuation in Kibana Agent Builder.",
+    "developerName": "Elastic",
+    "category": "Engineering",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/elastic/esdiag",
+    "defaultPrompt": [
+      "Check the health of my Elastic cluster.",
+      "Analyze my latest ESDiag diagnostic.",
+      "Help me configure an ESDiag collection job."
+    ]
+  }
+}

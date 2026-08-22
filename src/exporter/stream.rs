@@ -6,6 +6,7 @@ use super::Export;
 use crate::processor::{BatchResponse, DiagnosticReport};
 use eyre::Result;
 use serde::Serialize;
+use std::io::Write;
 use tokio::sync::{mpsc, oneshot};
 
 /// An exporter that writes documents to stdout.
@@ -45,12 +46,15 @@ impl Export for StreamExporter {
     {
         let start_time = tokio::time::Instant::now();
         let doc_count = docs.len() as u32;
+        // No HTTP transport, so the reserved `0` request status stands
+        // (ADR-0016); write failures travel in `errors`, not the status.
         let mut batch = BatchResponse::new(doc_count);
-        batch.status_code = 200;
         tracing::debug!("{} wrote {} docs to stdout", index, doc_count);
         for doc in docs {
-            serde_json::to_writer(std::io::stdout(), &doc)?;
-            println!();
+            let stdout = std::io::stdout();
+            let mut writer = stdout.lock();
+            serde_json::to_writer(&mut writer, &doc)?;
+            writer.write_all(b"\n")?;
         }
         batch.size = doc_count;
         batch.time = start_time.elapsed().as_millis() as u32;
@@ -86,7 +90,10 @@ impl Export for StreamExporter {
 
     /// Writes the final diagnostic report file to stdout
     async fn save_report(&self, report: &DiagnosticReport) -> Result<()> {
-        println!("{}", serde_json::to_string(report)?);
+        let stdout = std::io::stdout();
+        let mut writer = stdout.lock();
+        serde_json::to_writer(&mut writer, report)?;
+        writer.write_all(b"\n")?;
         Ok(())
     }
 }

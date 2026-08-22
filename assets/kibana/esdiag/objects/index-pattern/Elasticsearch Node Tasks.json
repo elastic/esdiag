@@ -64,7 +64,7 @@
     "runtimeFieldMap": "{}",
     "sourceFilters": "[]",
     "timeFieldName": "@timestamp",
-    "title": "metrics-task-*"
+    "title": "metrics-task-esdiag*"
   },
   "coreMigrationVersion": "8.8.0",
   "id": "2a1a6f44-179d-4073-b23a-f75ba717cc65",

@@ -15,7 +15,7 @@
     "runtimeFieldMap": "{}",
     "sourceFilters": "[]",
     "timeFieldName": "@timestamp",
-    "title": "settings-node*"
+    "title": "settings-node-esdiag*"
   },
   "coreMigrationVersion": "8.8.0",
   "id": "4319ebc4-df81-4b18-b8bd-6aaa55a1fd13",

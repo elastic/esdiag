@@ -4,11 +4,12 @@
 
 use super::super::collector::{CollectOptions, CollectionResult, default_collect_archive_name};
 use crate::{
-    data::Product,
+    client::KIBANA_REQUEST_CONCURRENCY,
+    data::Application,
     exporter::ArchiveExporter,
     processor::{
         DiagnosticManifest, RequestedApi,
-        api::{ApiResolver, DiagnosticType, KibanaApi},
+        api::{ApiResolver, CollectConcurrencyPolicy, DiagnosticType},
         collector::ApiCollectOutcome,
     },
     receiver::{KibanaReceiver, KibanaRequestError, Receiver},
@@ -84,7 +85,7 @@ impl KibanaCollector {
             .and_then(|name| std::path::Path::new(name).file_stem())
             .map(|stem| stem.to_string_lossy().to_string())
             .filter(|name| !name.is_empty())
-            .unwrap_or_else(|| default_collect_archive_name(&options.product, &timestamp));
+            .unwrap_or_else(|| default_collect_archive_name(options.application, &timestamp));
         Ok(Self {
             receiver,
             exporter: exporter.with_archive_name(&collection_name)?,
@@ -103,11 +104,14 @@ impl KibanaCollector {
                 path: self.exporter.to_string(),
                 success: 0,
                 total: apis.len() + 1,
+                duration_ms: 0,
             };
 
+            let policy = CollectConcurrencyPolicy::from_env();
+            let concurrent_pool = policy.concurrent_pool.min(KIBANA_REQUEST_CONCURRENCY);
             let mut api_stream = stream::iter(apis)
                 .map(|api| async move { self.save_api_with_retry(&api).await })
-                .buffer_unordered(crate::client::KIBANA_REQUEST_CONCURRENCY);
+                .buffer_unordered(concurrent_pool);
 
             let mut requested_apis = BTreeMap::new();
             while let Some(res) = api_stream.next().await {
@@ -133,7 +137,7 @@ impl KibanaCollector {
         }
     }
 
-    async fn save_api_with_retry(&self, api: &KibanaApi) -> ApiCollectOutcome {
+    async fn save_api_with_retry(&self, api: &str) -> ApiCollectOutcome {
         let max_duration = Duration::from_secs(300);
         let start_time = std::time::Instant::now();
         let mut attempt = 1;
@@ -171,9 +175,9 @@ impl KibanaCollector {
                     retried_response_time_ms += completed_response_time_ms + response_time_ms;
                     retried_response_size_bytes += completed_response_size_bytes + response_size_bytes;
                     if !should_retry_kibana_error(&e) {
-                        tracing::warn!("Skipping non-retriable failure for {}: {}", api.as_str(), e);
+                        tracing::warn!("Skipping non-retriable failure for {}: {}", api, e);
                         return ApiCollectOutcome::failed_with_saved(
-                            api.as_str(),
+                            api,
                             status,
                             retries,
                             retried_response_time_ms,
@@ -184,12 +188,12 @@ impl KibanaCollector {
                     if start_time.elapsed() > max_duration {
                         tracing::error!(
                             "Failed to save {} after {} attempts (5 min timeout): {}",
-                            api.as_str(),
+                            api,
                             attempt,
                             e
                         );
                         return ApiCollectOutcome::failed_with_saved(
-                            api.as_str(),
+                            api,
                             status,
                             retries,
                             retried_response_time_ms,
@@ -200,7 +204,7 @@ impl KibanaCollector {
                     tracing::warn!(
                         "Attempt {} failed for {}: {}. Retrying in {:?}...",
                         attempt,
-                        api.as_str(),
+                        api,
                         e,
                         delay
                     );
@@ -213,15 +217,15 @@ impl KibanaCollector {
         }
     }
 
-    async fn save_api(&self, api: &KibanaApi) -> Result<ApiCollectOutcome> {
+    async fn save_api(&self, api: &str) -> Result<ApiCollectOutcome> {
         let receiver = match &self.receiver {
             Receiver::Kibana(receiver) => receiver,
             _ => return Err(eyre!("KibanaCollector requires a Kibana receiver")),
         };
-        let source_conf = match crate::processor::diagnostic::data_source::get_source("kibana", api.as_str(), &[]) {
+        let source_conf = match crate::processor::diagnostic::data_source::get_source("kibana", api, &[]) {
             Ok((_, conf)) => conf,
             Err(e) => {
-                tracing::debug!("Skipping {} collection: {}", api.as_str(), e);
+                tracing::debug!("Skipping {} collection: {}", api, e);
                 return Ok(ApiCollectOutcome::skipped());
             }
         };
@@ -230,7 +234,7 @@ impl KibanaCollector {
         let resolved = match source_conf.resolve_version(version) {
             Ok(resolved) => resolved,
             Err(e) => {
-                tracing::debug!("Skipping {} collection on version {}: {}", api.as_str(), version, e);
+                tracing::debug!("Skipping {} collection on version {}: {}", api, version, e);
                 return Ok(ApiCollectOutcome::skipped());
             }
         };
@@ -242,7 +246,7 @@ impl KibanaCollector {
                 Err(err) => {
                     tracing::warn!(
                         "Failed to resolve Kibana spaces for {}: {}. Falling back to default space.",
-                        api.as_str(),
+                        api,
                         err
                     );
                     vec!["default".to_string()]
@@ -259,7 +263,7 @@ impl KibanaCollector {
             let result = self
                 .save_endpoint(
                     receiver,
-                    api.as_str(),
+                    api,
                     source_conf,
                     &resolved.url,
                     space,
@@ -282,7 +286,7 @@ impl KibanaCollector {
         }
 
         match requested_api {
-            Some(requested_api) => Ok(ApiCollectOutcome::success(api.as_str(), requested_api, 0, saved)),
+            Some(requested_api) => Ok(ApiCollectOutcome::success(api, requested_api, 0, saved)),
             None => Ok(ApiCollectOutcome::skipped()),
         }
     }
@@ -406,7 +410,7 @@ impl KibanaCollector {
             None,
             None,
             Some(self.options.r#type.clone()),
-            Product::Kibana,
+            Application::Kibana.into(),
             Some("kibana_diagnostic".to_string()),
             Some("esdiag".to_string()),
             Some(version),

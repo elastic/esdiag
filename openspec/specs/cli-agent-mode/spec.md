@@ -1,8 +1,8 @@
 ## Purpose
 
-Define low-noise CLI behavior for agent-driven invocations while preserving explicit completion summaries and normal interactive overrides.
+Define low-noise CLI behavior for agent-driven invocations while preserving the standard structured outcome contract.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Global CLI Agent Mode Activation
 The system SHALL provide a parent-level CLI flag `--agent` with short form `-a` that activates agent mode for any top-level CLI command. The system SHALL also activate agent mode automatically when the `CLAUDECODE` environment variable is present.
@@ -27,19 +27,16 @@ When agent mode is active, the system SHALL use warn-level logging as the defaul
 - **WHEN** a user runs an `esdiag` CLI command with both agent mode and `--debug`
 - **THEN** the command uses debug-level logging
 
-### Requirement: Final CLI Summary Uses STDERR Outside Tracing
-The system SHALL write the final human-readable CLI completion summary directly to `STDERR` through an explicit print path instead of relying only on tracing or log-level-controlled output. This behavior SHALL preserve `STDOUT` for streamed command data such as `.ndjson` document output.
+### Requirement: Agent Mode Preserves The Standard Outcome Contract
+Agent mode SHALL use the same typed stdout outcome and selected YAML or JSON format as every other finite CLI invocation. Agent mode MUST NOT introduce a separate summary schema, prose completion message, or output parser requirement.
 
-#### Scenario: Process command emits final stderr summary
-- **WHEN** a processed diagnostic command completes successfully
-- **THEN** the CLI writes a final completion summary to `STDERR`
-- **AND** the summary includes the final Kibana link when one is available
+#### Scenario: Explicit agent mode emits default YAML
+- **WHEN** a user runs a finite command with `--agent` and does not specify `--format`
+- **THEN** stdout contains the command's standard YAML outcome
+- **AND** stderr uses agent mode's warn-level logging default
 
-#### Scenario: Streamed stdout output remains unmodified
-- **WHEN** a command streams processed `.ndjson` documents to `STDOUT`
-- **THEN** the final human-readable completion summary is written to `STDERR`
-- **AND** `STDOUT` contains only the streamed document output
-
-#### Scenario: Non-process command emits one final stderr result
-- **WHEN** a non-process CLI command completes successfully
-- **THEN** the CLI writes a concise final success result to `STDERR`
+#### Scenario: Automatic agent mode honors JSON selection
+- **GIVEN** `CLAUDECODE` is present
+- **WHEN** a user runs a finite command with `--format json`
+- **THEN** stdout contains the standard JSON outcome for that command
+- **AND** no Claude-specific result shape is used

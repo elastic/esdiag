@@ -2,7 +2,7 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use crate::data::Product;
+use crate::data::Application;
 use eyre::{Result, eyre};
 use semver::{Version, VersionReq};
 use serde::{Deserialize, Deserializer, Serialize};
@@ -85,11 +85,15 @@ pub trait DataSource {
         paths.push(source_conf.get_file_path(matched_name));
 
         for alias in aliases {
-            if let Ok((matched_name, source_conf)) = get_source(ctx.product, alias, &[]) {
-                let path = source_conf.get_file_path(matched_name);
-                if !paths.contains(&path) {
-                    paths.push(path);
-                }
+            // An alias may be its own registry entry, or a legacy file name
+            // whose registry key was renamed to the canonical key (ADR-0005);
+            // in the latter case derive its path from the canonical entry.
+            let path = match get_source(ctx.product, alias, &[]) {
+                Ok((matched_name, source_conf)) => source_conf.get_file_path(matched_name),
+                Err(_) => source_conf.get_file_path(alias),
+            };
+            if !paths.contains(&path) {
+                paths.push(path);
             }
         }
 
@@ -97,12 +101,14 @@ pub trait DataSource {
     }
 }
 
-pub fn source_product_key(product: &Product) -> Result<&'static str> {
-    match product {
-        Product::Elasticsearch => Ok("elasticsearch"),
-        Product::Kibana => Ok("kibana"),
-        Product::Logstash => Ok("logstash"),
-        _ => Err(eyre!("sources.yml overrides are not supported for product {}", product)),
+pub fn source_application_key(application: Application) -> Result<&'static str> {
+    match application {
+        Application::Elasticsearch => Ok("elasticsearch"),
+        Application::Kibana => Ok("kibana"),
+        Application::Logstash => Ok("logstash"),
+        Application::Agent => Err(eyre!(
+            "sources.yml overrides are not supported for application {application}"
+        )),
     }
 }
 
@@ -138,11 +144,51 @@ pub struct ResolvedVersionSource {
     pub paginate: Option<String>,
 }
 
+/// A collection-definition entry: one data source (ADR-0005).
+///
+/// The registry is the single source of truth for what to collect and how to
+/// process it. Fields beyond `versions`/`extension`/`subdir`/`retry` are
+/// ESDiag enrichments preserved across reconciliation from
+/// `support-diagnostics` (ADR-0006).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Eq)]
 pub struct Source {
     pub extension: Option<String>,
     pub subdir: Option<String>,
+    /// Comma-separated tags; diagnostic-type membership (`minimal`,
+    /// `standard`, `light`) derives from these.
     pub tags: Option<String>,
+    /// Retry the request on failure during collect.
+    #[serde(default)]
+    pub retry: bool,
+    /// Legacy upstream flag, currently informational.
+    #[serde(default, rename = "showErrors")]
+    pub show_errors: Option<bool>,
+    /// Load this source imposes on the system it is pulled from (1 = cheap …
+    /// 5 = expensive); governs collect concurrency only (ADR-0017).
+    #[serde(default)]
+    pub source_weight: Option<u8>,
+    /// ESDiag CPU/time to transform this source (1 = cheap … 5 = expensive);
+    /// governs processing concurrency only (ADR-0017).
+    #[serde(default)]
+    pub processing_weight: Option<u8>,
+    /// The processor may consume this source as a stream.
+    #[serde(default)]
+    pub streamable: bool,
+    /// A typed processor is registered for this source (its dispatch key ==
+    /// this registry key == `DataSource::name()`). Absent/false means
+    /// collect-only — a valid role, not a wiring gap.
+    #[serde(default)]
+    pub processable: bool,
+    /// Present iff this source is a user-facing processing option; `true`
+    /// means it cannot be deselected.
+    #[serde(default)]
+    pub required: Option<bool>,
+    /// Processing options that must be selected along with this one.
+    #[serde(default)]
+    pub dependencies: Vec<String>,
+    /// Sources that must be collected along with this one.
+    #[serde(default)]
+    pub collect_dependencies: Vec<String>,
     pub versions: BTreeMap<String, VersionSource>,
 }
 
@@ -152,6 +198,15 @@ impl Default for Source {
             extension: Some(String::from(".json")),
             subdir: None,
             tags: None,
+            retry: false,
+            show_errors: None,
+            source_weight: None,
+            processing_weight: None,
+            streamable: false,
+            processable: false,
+            required: None,
+            dependencies: Vec::new(),
+            collect_dependencies: Vec::new(),
             versions: BTreeMap::new(),
         }
     }
@@ -187,7 +242,7 @@ fn required_source_keys(product: &str) -> &'static [&'static str] {
 }
 
 fn parse_sources_content(label: &str, content: &str) -> Result<HashMap<String, Source>> {
-    serde_yaml::from_str(content).map_err(|e| eyre!("Failed to parse {}: {}", label, e))
+    yaml_serde::from_str(content).map_err(|e| eyre!("Failed to parse {}: {}", label, e))
 }
 
 fn validate_sources_product(product: &str, sources: &HashMap<String, Source>, label: &str) -> Result<()> {
@@ -291,37 +346,89 @@ pub fn get_source_keys_with_tag(product: &str, tag: &str) -> Vec<String> {
         .unwrap_or_default()
 }
 
-fn convert_npm_semver_to_cargo(req: &str) -> String {
-    let parts: Vec<&str> = req.split_whitespace().collect();
-    let mut out = String::new();
-    for i in 0..parts.len() {
-        out.push_str(parts[i]);
-        if i + 1 < parts.len() {
-            // If current part starts with a digit and next starts with an operator, insert comma.
-            if parts[i].chars().next().is_some_and(|c| c.is_ascii_digit())
-                && parts[i + 1]
-                    .chars()
-                    .next()
-                    .is_some_and(|c| c == '<' || c == '>' || c == '=' || c == '~' || c == '^')
-            {
-                out.push_str(", ");
-            } else {
-                out.push(' ');
-            }
-        }
+/// Default source weight when the registry does not set one explicitly: the
+/// legacy binary mapping (ADR-0017 migration) keeps `light`-tagged sources at
+/// 1 and everything else at 3 on a 1–5 scale.
+const LEGACY_LIGHT_WEIGHT: u8 = 1;
+const LEGACY_HEAVY_WEIGHT: u8 = 3;
+
+impl Source {
+    /// Load this source imposes on the system it is pulled from (1–5).
+    /// Governs collect concurrency only (ADR-0017).
+    pub fn source_weight(&self) -> u8 {
+        self.source_weight.unwrap_or(if self.has_tag("light") {
+            LEGACY_LIGHT_WEIGHT
+        } else {
+            LEGACY_HEAVY_WEIGHT
+        })
     }
-    out
+
+    /// ESDiag CPU/time to transform this source (1–5). Governs processing
+    /// concurrency only (ADR-0017).
+    pub fn processing_weight(&self) -> u8 {
+        // Processing was historically lightweight unless explicitly promoted.
+        self.processing_weight.unwrap_or(LEGACY_LIGHT_WEIGHT)
+    }
 }
 
-/// Parses the NPM-style version requirements used by `sources.yml`.
-///
-/// The source catalog permits adjacent comparator expressions such as
-/// `>= 6.6.0 < 7.7.0`, while `semver::VersionReq` requires commas between
-/// comparators. Keep this conversion in one place so source resolution and
-/// generated consumers validate exactly the same syntax.
-pub fn parse_npm_version_requirement(req: &str) -> Result<VersionReq> {
-    let cargo_req = convert_npm_semver_to_cargo(req);
-    VersionReq::parse(&cargo_req).map_err(|error| eyre!("Failed to parse version req '{}': {}", req, error))
+/// A dispatch-table entry claim used by [`validate_processable_registry`]: a
+/// processable source's canonical key and the `DataSource::name()` of its
+/// registered typed impl.
+pub struct ProcessableClaim {
+    pub key: &'static str,
+    pub datasource_name: String,
+}
+
+/// Runtime validation of the key-alignment invariant (ADR-0005): every
+/// registry entry marked `processable` has exactly one registered typed impl,
+/// every dispatch-table key exists in the registry marked `processable`, and
+/// each key equals its impl's `DataSource::name()`. A registry entry without
+/// a typed impl must not be marked `processable` — collect-only is a valid
+/// role, never a wiring gap.
+pub fn validate_processable_registry(product: &str, claims: &[ProcessableClaim]) -> Result<()> {
+    let sources =
+        get_product_sources(product).ok_or_else(|| eyre!("No collection definition for product {}", product))?;
+
+    let mut errors = Vec::new();
+    for claim in claims {
+        match sources.get(claim.key) {
+            None => errors.push(format!(
+                "dispatch key '{}' has no {} registry entry",
+                claim.key, product
+            )),
+            Some(source) if !source.processable => errors.push(format!(
+                "dispatch key '{}' is not marked processable in the {} registry",
+                claim.key, product
+            )),
+            Some(_) => {}
+        }
+        if claim.key != claim.datasource_name {
+            errors.push(format!(
+                "dispatch key '{}' != DataSource::name() '{}'",
+                claim.key, claim.datasource_name
+            ));
+        }
+    }
+
+    let claimed: Vec<&str> = claims.iter().map(|claim| claim.key).collect();
+    for (key, source) in sources {
+        if source.processable && !claimed.contains(&key.as_str()) {
+            errors.push(format!(
+                "registry entry '{}' is marked processable but has no registered impl",
+                key
+            ));
+        }
+    }
+
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(eyre!(
+            "Collection registry key alignment failed for {}: {}",
+            product,
+            errors.join("; ")
+        ))
+    }
 }
 
 impl Source {
@@ -354,8 +461,11 @@ impl Source {
         let mut clean_version = version.clone();
         clean_version.pre = semver::Prerelease::EMPTY;
 
+        // Ranges are stored in native Rust `semver` form: the upstream
+        // NPM/Java dialect is normalized once, at reconciliation (ADR-0006).
         for (req_str, source) in &self.versions {
-            let req = parse_npm_version_requirement(req_str)?;
+            let req =
+                VersionReq::parse(req_str).map_err(|e| eyre!("Failed to parse version req '{}': {}", req_str, e))?;
             if req.matches(&clean_version) {
                 return Ok(match source {
                     VersionSource::Url(url) => ResolvedVersionSource {
@@ -381,8 +491,63 @@ impl Source {
 
 #[cfg(test)]
 mod tests {
-    use super::{get_sources, parse_npm_version_requirement};
-    use semver::Version;
+    use super::{ProcessableClaim, get_sources, validate_processable_registry};
+    use semver::{Version, VersionReq};
+
+    #[test]
+    fn all_registry_version_ranges_parse_with_stock_semver() {
+        // Ranges are normalized to native `semver` form at reconciliation
+        // (ADR-0006); the runtime has no compatibility shim.
+        for (product, sources) in get_sources() {
+            for (key, source) in sources {
+                for range in source.versions.keys() {
+                    VersionReq::parse(range)
+                        .unwrap_or_else(|e| panic!("{product}/{key} range '{range}' is not native semver: {e}"));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn validate_registry_rejects_unaligned_dispatch_key() {
+        let claims = vec![ProcessableClaim {
+            key: "not_a_registry_key",
+            datasource_name: "not_a_registry_key".to_string(),
+        }];
+        let err = validate_processable_registry("elasticsearch", &claims).expect_err("unaligned key must fail");
+        assert!(err.to_string().contains("no elasticsearch registry entry"));
+    }
+
+    #[test]
+    fn validate_registry_rejects_name_mismatch() {
+        let claims = vec![ProcessableClaim {
+            key: "tasks",
+            datasource_name: "task_list".to_string(),
+        }];
+        let err = validate_processable_registry("elasticsearch", &claims).expect_err("name mismatch must fail");
+        assert!(err.to_string().contains("!= DataSource::name()"));
+    }
+
+    #[test]
+    fn validate_registry_rejects_processable_entry_without_impl() {
+        // Claim only a subset: the remaining processable entries must be
+        // reported as missing impls.
+        let claims = vec![ProcessableClaim {
+            key: "tasks",
+            datasource_name: "tasks".to_string(),
+        }];
+        let err = validate_processable_registry("elasticsearch", &claims).expect_err("missing impls must fail");
+        assert!(err.to_string().contains("has no registered impl"));
+    }
+
+    #[test]
+    fn collect_only_entry_is_not_a_wiring_gap() {
+        let sources = get_sources().get("elasticsearch").unwrap();
+        let cat = sources.get("cat_aliases").unwrap();
+        assert!(!cat.processable);
+        // A collect-only source needs no impl and passes validation implicitly
+        // (it is simply absent from the claims and not marked processable).
+    }
 
     #[test]
     fn test_semver_parsing_and_matching() {
@@ -401,88 +566,6 @@ mod tests {
         assert_eq!(alias.get_url(&v_5_0).unwrap(), "/_cat/aliases?v");
         assert_eq!(alias.get_url(&v_5_1_1).unwrap(), "/_cat/aliases?v&s=alias,index");
         assert_eq!(alias.get_url(&v_6_0).unwrap(), "/_cat/aliases?v&s=alias,index");
-    }
-
-    #[test]
-    fn test_npm_version_requirement_comparators() {
-        let release = Version::parse("7.7.0").unwrap();
-        assert!(parse_npm_version_requirement(">= 7.7.0").unwrap().matches(&release));
-        assert!(!parse_npm_version_requirement("> 7.7.0").unwrap().matches(&release));
-        assert!(!parse_npm_version_requirement("< 7.7.0").unwrap().matches(&release));
-        assert!(
-            parse_npm_version_requirement(">= 6.6.0 < 7.7.0")
-                .unwrap()
-                .matches(&Version::parse("7.6.2").unwrap())
-        );
-        assert!(
-            !parse_npm_version_requirement(">= 6.6.0 < 7.7.0")
-                .unwrap()
-                .matches(&release)
-        );
-    }
-
-    #[test]
-    fn test_lite_source_membership_and_configuration() {
-        let sources = get_sources();
-        let elasticsearch = sources.get("elasticsearch").unwrap();
-        let expected = [
-            ("alias", "alias.json", &[">= 0.9.0"][..]),
-            ("cluster_pending_tasks", "cluster_pending_tasks.json", &[">= 0.9.0"][..]),
-            (
-                "cluster_settings_defaults",
-                "cluster_settings_defaults.json",
-                &[">= 6.4.0"][..],
-            ),
-            (
-                "data_stream",
-                "commercial/data_stream.json",
-                &[">= 7.11.0", ">= 7.9.0 < 7.11.0"][..],
-            ),
-            (
-                "ilm_explain",
-                "commercial/ilm_explain.json",
-                &[">= 6.6.0 < 7.7.0", ">= 7.7.0"][..],
-            ),
-            ("ilm_policies", "commercial/ilm_policies.json", &[">= 6.6.0"][..]),
-            (
-                "indices_stats",
-                "indices_stats.json",
-                &[">= 0.9.0 < 7.7.0", ">= 7.7.0"][..],
-            ),
-            (
-                "licenses",
-                "licenses.json",
-                &[">= 1.0.0 < 2.0.0", ">= 2.0.0 < 7.6.0", ">= 7.6.0 < 8.0.0", ">= 8.0.0"][..],
-            ),
-            ("nodes", "nodes.json", &[">= 0.9.0"][..]),
-            ("nodes_stats", "nodes_stats.json", &[">= 0.9.0"][..]),
-            (
-                "searchable_snapshots_cache_stats",
-                "commercial/searchable_snapshots_cache_stats.json",
-                &[">= 7.13.0"][..],
-            ),
-            ("settings", "settings.json", &[">= 0.9.0 < 7.7.0", ">= 7.7.0"][..]),
-            ("slm_policies", "commercial/slm_policies.json", &[">= 7.4.0"][..]),
-            ("tasks", "tasks.json", &[">=2.0.0"][..]),
-            ("version", "version.json", &[">= 0.9.0"][..]),
-        ];
-        let mut actual: Vec<&str> = elasticsearch
-            .iter()
-            .filter_map(|(name, source)| source.has_tag("lite").then_some(name.as_str()))
-            .collect();
-        actual.sort_unstable();
-        let mut expected_names: Vec<&str> = expected.iter().map(|(name, _, _)| *name).collect();
-        expected_names.sort_unstable();
-        assert_eq!(actual, expected_names);
-
-        for (name, path, version_rules) in expected {
-            let source = elasticsearch.get(name).unwrap();
-            assert_eq!(source.get_file_path(name), path);
-            assert_eq!(
-                source.versions.keys().map(String::as_str).collect::<Vec<_>>(),
-                version_rules
-            );
-        }
     }
 
     #[test]

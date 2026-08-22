@@ -6,6 +6,7 @@ use eyre::{Result, eyre};
 use url::Url;
 
 use crate::receiver::archive::ArchiveBytesReceiver;
+use bytes::Bytes;
 
 #[derive(Clone)]
 pub struct UploadServiceDownloader {
@@ -17,6 +18,10 @@ impl UploadServiceDownloader {
     /// Downloads a file from the Elastic Uploader service given a URL and token
     /// The URL format of `https://upload.elastic.co/...` will have been validated previously.
     pub fn download(self) -> Result<ArchiveBytesReceiver> {
+        ArchiveBytesReceiver::try_from(self.download_bytes()?)
+    }
+
+    pub fn download_bytes(self) -> Result<Bytes> {
         // Using block_in_place allows a synchronous file download inside an async runtime
         tokio::task::block_in_place(|| {
             let client = reqwest::blocking::Client::new();
@@ -28,7 +33,7 @@ impl UploadServiceDownloader {
             tracing::debug!("Downloaded archive size: {} bytes", bytes.len());
             match bytes.len() {
                 0 => Err(eyre!("Downloaded empty file, check upload link expiration")),
-                _ => Ok(ArchiveBytesReceiver::try_from(bytes)?),
+                _ => Ok(bytes),
             }
         })
     }

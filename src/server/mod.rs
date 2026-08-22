@@ -23,7 +23,7 @@ mod stats;
 mod template;
 mod theme;
 
-use super::processor::Identifiers;
+use super::processor::{DiagnosticOutcome, Identifiers};
 use crate::{
     data::{KnownHost, Uri},
     exporter::Exporter,
@@ -35,7 +35,7 @@ use axum::{
     Router,
     extract::{DefaultBodyLimit, Request, State},
     http::{
-        HeaderMap,
+        HeaderMap, StatusCode,
         header::{HeaderName, VARY},
     },
     middleware,
@@ -56,15 +56,18 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::{
     collections::{HashMap, HashSet},
     convert::Infallible,
+    fmt,
     net::SocketAddr,
     path::PathBuf,
     sync::Arc,
 };
-use tokio::sync::{RwLock, broadcast, mpsc, watch};
+use tokio::sync::{Mutex, RwLock, broadcast, mpsc, watch};
 use uuid::Uuid;
 
 type UploadReceiver = Arc<RwLock<mpsc::Receiver<(Identifiers, Bytes)>>>;
 const IAP_USER_EMAIL_HEADER: &str = "X-Goog-Authenticated-User-Email";
+pub(crate) const DEFAULT_OWNER: &str = "Anonymous";
+pub type Owner = String;
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq, ValueEnum)]
 #[serde(rename_all = "lowercase")]
@@ -95,9 +98,116 @@ impl std::fmt::Display for RuntimeMode {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq, ValueEnum)]
+#[serde(rename_all = "kebab-case")]
+pub enum AuthProvider {
+    GoogleIap,
+    #[default]
+    None,
+}
+
+impl AuthProvider {
+    pub fn from_env(value: &str) -> Result<Self> {
+        match value.trim().to_ascii_lowercase().replace('_', "-").as_str() {
+            "google-iap" | "iap" => Ok(Self::GoogleIap),
+            "none" => Ok(Self::None),
+            other => Err(eyre!(
+                "Invalid ESDIAG_AUTH_PROVIDER value '{other}', expected 'google-iap' or 'none'"
+            )),
+        }
+    }
+
+    fn requires_identity(&self) -> bool {
+        matches!(self, Self::GoogleIap)
+    }
+}
+
+impl std::fmt::Display for AuthProvider {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AuthProvider::GoogleIap => write!(f, "google-iap"),
+            AuthProvider::None => write!(f, "none"),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ResolvedIdentity {
+    pub authenticated: bool,
+    pub user: Owner,
+    pub account: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct JobConcurrencyCaps {
+    pub global: usize,
+    pub per_owner: usize,
+}
+
+#[derive(Debug)]
+pub enum JobAdmissionError {
+    GlobalCapReached { active: usize, cap: usize },
+    OwnerCapReached { owner: Owner, active: usize, cap: usize },
+}
+
+impl fmt::Display for JobAdmissionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::GlobalCapReached { active, cap } => {
+                write!(f, "Service mode concurrent job cap reached ({active}/{cap})")
+            }
+            Self::OwnerCapReached { owner, active, cap } => {
+                write!(
+                    f,
+                    "Service mode per-owner concurrent job cap reached for {owner} ({active}/{cap})"
+                )
+            }
+        }
+    }
+}
+
+impl std::error::Error for JobAdmissionError {}
+
+impl Default for JobConcurrencyCaps {
+    fn default() -> Self {
+        Self {
+            global: 8,
+            per_owner: 2,
+        }
+    }
+}
+
+impl JobConcurrencyCaps {
+    fn from_env() -> Result<Self> {
+        fn read_cap(name: &str, default: usize) -> Result<usize> {
+            match std::env::var(name) {
+                Ok(value) => {
+                    let parsed = value
+                        .parse::<usize>()
+                        .map_err(|_| eyre!("{name} must be a positive integer"))?;
+                    if parsed == 0 {
+                        return Err(eyre!("{name} must be greater than zero"));
+                    }
+                    Ok(parsed)
+                }
+                Err(std::env::VarError::NotPresent) => Ok(default),
+                Err(err) => Err(err.into()),
+            }
+        }
+
+        let default = Self::default();
+        Ok(Self {
+            global: read_cap("ESDIAG_SERVICE_JOB_CAP", default.global)?,
+            per_owner: read_cap("ESDIAG_SERVICE_OWNER_JOB_CAP", default.per_owner)?,
+        })
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct ServerPolicy {
     mode: RuntimeMode,
+    auth_provider: AuthProvider,
+    job_caps: JobConcurrencyCaps,
     web_features: WebFeatureSet,
 }
 
@@ -105,6 +215,8 @@ impl ServerPolicy {
     pub fn defaults(mode: RuntimeMode) -> Self {
         Self {
             mode,
+            auth_provider: default_auth_provider(mode),
+            job_caps: JobConcurrencyCaps::default(),
             web_features: WebFeatureSet::defaults_for(mode),
         }
     }
@@ -114,6 +226,15 @@ impl ServerPolicy {
     }
 
     pub fn with_web_features(mode: RuntimeMode, web_features: Option<&str>) -> Result<Self> {
+        Self::new_with_options(mode, None, None, web_features)
+    }
+
+    pub fn new_with_options(
+        mode: RuntimeMode,
+        auth_provider: Option<AuthProvider>,
+        job_caps: Option<JobConcurrencyCaps>,
+        web_features: Option<&str>,
+    ) -> Result<Self> {
         let web_features = match web_features {
             Some(value) => WebFeatureSet::parse(value)?,
             None => match std::env::var("ESDIAG_WEB_FEATURES") {
@@ -130,15 +251,43 @@ impl ServerPolicy {
             ));
         }
 
-        Ok(Self { mode, web_features })
+        let auth_provider = match auth_provider {
+            Some(provider) => provider,
+            None => match std::env::var("ESDIAG_AUTH_PROVIDER") {
+                Ok(value) => AuthProvider::from_env(&value)?,
+                Err(std::env::VarError::NotPresent) => default_auth_provider(mode),
+                Err(err) => return Err(err.into()),
+            },
+        };
+
+        let job_caps = match job_caps {
+            Some(caps) => caps,
+            None if mode == RuntimeMode::Service => JobConcurrencyCaps::from_env()?,
+            None => JobConcurrencyCaps::default(),
+        };
+
+        Ok(Self {
+            mode,
+            auth_provider,
+            job_caps,
+            web_features,
+        })
     }
 
     pub fn mode(&self) -> RuntimeMode {
         self.mode
     }
 
-    pub fn requires_iap_headers(&self) -> bool {
-        self.mode == RuntimeMode::Service
+    pub fn auth_provider(&self) -> AuthProvider {
+        self.auth_provider
+    }
+
+    pub fn requires_authentication(&self) -> bool {
+        self.auth_provider.requires_identity()
+    }
+
+    pub fn job_caps(&self) -> JobConcurrencyCaps {
+        self.job_caps
     }
 
     pub fn allows_local_runtime_features(&self) -> bool {
@@ -161,6 +310,13 @@ impl ServerPolicy {
         cfg!(feature = "keystore")
             && self.allows_local_runtime_features()
             && self.web_features.contains(WebFeature::JobBuilder)
+    }
+}
+
+fn default_auth_provider(mode: RuntimeMode) -> AuthProvider {
+    match mode {
+        RuntimeMode::Service => AuthProvider::GoogleIap,
+        RuntimeMode::User => AuthProvider::None,
     }
 }
 
@@ -270,6 +426,13 @@ pub struct Server {
     shutdown_tx: Option<watch::Sender<bool>>,
 }
 
+#[derive(Default)]
+pub struct ServerStartOptions<'a> {
+    pub auth_provider: Option<AuthProvider>,
+    pub job_caps: Option<JobConcurrencyCaps>,
+    pub web_features: Option<&'a str>,
+}
+
 impl Server {
     pub async fn start(
         bind_addr: [u8; 4],
@@ -284,10 +447,32 @@ impl Server {
     pub async fn start_with_web_features(
         bind_addr: [u8; 4],
         port: u16,
-        mut exporter: Exporter,
+        exporter: Exporter,
         kibana_url: String,
         runtime_mode: RuntimeMode,
         web_features: Option<&str>,
+    ) -> Result<(Self, std::net::SocketAddr)> {
+        Self::start_with_options(
+            bind_addr,
+            port,
+            exporter,
+            kibana_url,
+            runtime_mode,
+            ServerStartOptions {
+                web_features,
+                ..ServerStartOptions::default()
+            },
+        )
+        .await
+    }
+
+    pub async fn start_with_options(
+        bind_addr: [u8; 4],
+        port: u16,
+        mut exporter: Exporter,
+        kibana_url: String,
+        runtime_mode: RuntimeMode,
+        options: ServerStartOptions<'_>,
     ) -> Result<(Self, std::net::SocketAddr)> {
         let (_, rx) = mpsc::channel::<(Identifiers, Bytes)>(1);
         let rx = Arc::new(RwLock::new(rx));
@@ -297,7 +482,12 @@ impl Server {
         let (stats_updates_tx, stats_updates_rx) = watch::channel(0u64);
 
         let (event_tx, _event_rx) = broadcast::channel::<ServerEvent>(256);
-        let server_policy = ServerPolicy::with_web_features(runtime_mode, web_features)?;
+        let server_policy = ServerPolicy::new_with_options(
+            runtime_mode,
+            options.auth_provider,
+            options.job_caps,
+            options.web_features,
+        )?;
         let route_policy = server_policy.clone();
 
         // Create shared state
@@ -305,6 +495,7 @@ impl Server {
             exporter: Arc::new(RwLock::new(exporter)),
             kibana_url: Arc::new(RwLock::new(kibana_url)),
             stats: Arc::new(RwLock::new(Stats::default())),
+            active_jobs_by_owner: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
             job_requests: Arc::new(RwLock::new(HashMap::new())),
             retained_bundles: Arc::new(RwLock::new(HashMap::new())),
             shutdown: shutdown_rx,
@@ -366,6 +557,9 @@ impl Server {
                 .route("/upload/submit", post(file_upload::submit))
                 .route("/events", patch(events));
 
+            #[cfg(feature = "keystore")]
+            let app = app.route("/jobs/draft", post(saved_jobs::normalize_draft));
+
             let app = if route_policy.allows_advanced() {
                 app.route("/advanced", get(index::advanced_page))
             } else {
@@ -414,7 +608,7 @@ impl Server {
                 app
             };
 
-            let app = if route_policy.requires_iap_headers() {
+            let app = if route_policy.requires_authentication() {
                 app.layer(middleware::from_fn_with_state(
                     state.clone(),
                     require_authenticated_user,
@@ -448,11 +642,13 @@ impl Server {
             .ok_or_else(|| eyre::eyre!("Server failed to bind"))?;
         tracing::info!("Starting {}-mode server on port {}", runtime_mode, bound_addr.port());
         tracing::debug!(
-            "Server policy => requires_iap_headers={}, allows_local_runtime_features={}, allows_exporter_updates={}, allows_host_management={}",
-            server_policy.requires_iap_headers(),
+            "Server policy => auth_provider={}, allows_local_runtime_features={}, allows_exporter_updates={}, allows_host_management={}, service_job_cap={}, service_owner_job_cap={}",
+            server_policy.auth_provider(),
             server_policy.allows_local_runtime_features(),
             server_policy.allows_exporter_updates(),
-            server_policy.allows_host_management()
+            server_policy.allows_host_management(),
+            server_policy.job_caps().global,
+            server_policy.job_caps().per_owner
         );
 
         Ok((
@@ -501,6 +697,7 @@ pub struct ServerState {
     #[cfg(feature = "keystore")]
     pub keystore_rate_limit: Arc<std::sync::Mutex<keystore::KeystoreRateLimit>>,
     stats: Arc<RwLock<Stats>>,
+    active_jobs_by_owner: Arc<Mutex<HashMap<Owner, usize>>>,
     shutdown: watch::Receiver<bool>,
     event_tx: broadcast::Sender<ServerEvent>,
     stats_updates_tx: watch::Sender<u64>,
@@ -556,46 +753,63 @@ impl ServerState {
         )
     }
 
-    pub async fn record_job_started(&self) {
+    pub async fn record_job_started(&self, owner: &str) -> std::result::Result<(), JobAdmissionError> {
+        if self.runtime_mode == RuntimeMode::Service {
+            let caps = self.server_policy.job_caps();
+            let mut owners = self.active_jobs_by_owner.lock().await;
+            let active: usize = owners.values().sum();
+            if active >= caps.global {
+                return Err(JobAdmissionError::GlobalCapReached {
+                    active,
+                    cap: caps.global,
+                });
+            }
+            let owner_active = owners.get(owner).copied().unwrap_or(0);
+            if owner_active >= caps.per_owner {
+                return Err(JobAdmissionError::OwnerCapReached {
+                    owner: owner.to_string(),
+                    active: owner_active,
+                    cap: caps.per_owner,
+                });
+            }
+            *owners.entry(owner.to_string()).or_insert(0) += 1;
+        }
+
         let mut stats = self.stats.write().await;
         stats.jobs.active += 1;
         drop(stats);
         self.notify_stats_changed();
+        Ok(())
+    }
+
+    pub fn resolve_identity(&self, headers: &HeaderMap) -> Result<ResolvedIdentity> {
+        match self.server_policy.auth_provider() {
+            AuthProvider::GoogleIap => {
+                let raw = headers
+                    .get(IAP_USER_EMAIL_HEADER)
+                    .ok_or_else(|| eyre!("Missing required header: {}", IAP_USER_EMAIL_HEADER))?
+                    .to_str()
+                    .map_err(|_| eyre!("Invalid {} header", IAP_USER_EMAIL_HEADER))?;
+                let (account, user) = parse_iap_identity(raw);
+                if user.is_empty() {
+                    return Err(eyre!("{} header is empty", IAP_USER_EMAIL_HEADER));
+                }
+                Ok(ResolvedIdentity {
+                    authenticated: true,
+                    user,
+                    account,
+                })
+            }
+            AuthProvider::None => Ok(resolve_optional_identity(headers)),
+        }
     }
 
     pub fn resolve_user_email(&self, headers: &HeaderMap) -> Result<(bool, String)> {
-        if self.server_policy.requires_iap_headers() {
-            let raw = headers
-                .get(IAP_USER_EMAIL_HEADER)
-                .ok_or_else(|| eyre!("Missing required header: {}", IAP_USER_EMAIL_HEADER))?
-                .to_str()
-                .map_err(|_| eyre!("Invalid {} header", IAP_USER_EMAIL_HEADER))?;
-            let email = raw.split(':').next_back().unwrap_or(raw).trim().to_string();
-            if email.is_empty() {
-                return Err(eyre!("{} header is empty", IAP_USER_EMAIL_HEADER));
-            }
-            return Ok((true, email));
-        }
-
-        if let Ok(user) = std::env::var("ESDIAG_USER") {
-            let user = user.trim().to_string();
-            if !user.is_empty() {
-                return Ok((false, user));
-            }
-        }
-
-        let has_header = headers.contains_key(IAP_USER_EMAIL_HEADER);
-        let email = headers
-            .get(IAP_USER_EMAIL_HEADER)
-            .and_then(|value| value.to_str().ok())
-            .map(|raw| raw.split(':').next_back().unwrap_or(raw).trim().to_string())
-            .filter(|value| !value.is_empty())
-            .unwrap_or_else(|| "Anonymous".to_string());
-
-        Ok((has_header, email))
+        let identity = self.resolve_identity(headers)?;
+        Ok((identity.authenticated, identity.user))
     }
 
-    pub async fn record_success(&self, _docs: u32, errors: u32) {
+    pub async fn record_success(&self, owner: &str, _docs: u32, errors: u32) {
         let mut stats = self.stats.write().await;
         stats.docs.errors += errors as usize;
         stats.jobs.total += 1;
@@ -604,10 +818,29 @@ impl ServerState {
             stats.jobs.active -= 1;
         }
         drop(stats);
+        self.record_job_finished_for_owner(owner).await;
         self.notify_stats_changed();
     }
 
-    pub async fn record_failure(&self) {
+    pub async fn record_outcome(&self, owner: &str, outcome: DiagnosticOutcome, errors: u32) {
+        if outcome != DiagnosticOutcome::Failed {
+            self.record_success(owner, 0, errors).await;
+            return;
+        }
+
+        let mut stats = self.stats.write().await;
+        stats.docs.errors += errors as usize;
+        stats.jobs.total += 1;
+        stats.jobs.failed += 1;
+        if stats.jobs.active > 0 {
+            stats.jobs.active -= 1;
+        }
+        drop(stats);
+        self.record_job_finished_for_owner(owner).await;
+        self.notify_stats_changed();
+    }
+
+    pub async fn record_failure(&self, owner: &str) {
         let mut stats = self.stats.write().await;
         stats.jobs.total += 1;
         stats.jobs.failed += 1;
@@ -615,7 +848,29 @@ impl ServerState {
             stats.jobs.active -= 1;
         }
         drop(stats);
+        self.record_job_finished_for_owner(owner).await;
         self.notify_stats_changed();
+    }
+
+    pub async fn record_job_rejected(&self) {
+        let mut stats = self.stats.write().await;
+        stats.jobs.total += 1;
+        stats.jobs.failed += 1;
+        drop(stats);
+        self.notify_stats_changed();
+    }
+
+    async fn record_job_finished_for_owner(&self, owner: &str) {
+        if self.runtime_mode != RuntimeMode::Service {
+            return;
+        }
+        let mut owners = self.active_jobs_by_owner.lock().await;
+        if let Some(active) = owners.get_mut(owner) {
+            *active = active.saturating_sub(1);
+            if *active == 0 {
+                owners.remove(owner);
+            }
+        }
     }
 
     pub async fn add_docs_count(&self, doc_count: usize) {
@@ -793,6 +1048,16 @@ impl ServerState {
         self.job_requests.write().await.remove(&id)
     }
 
+    pub async fn pop_job_request_for_owner(&self, id: u64, owner: &str) -> Option<JobRequest> {
+        tracing::debug!("Popping job request id: {id} for owner: {owner}");
+        let mut jobs = self.job_requests.write().await;
+        if jobs.get(&id).is_some_and(|job| job.owner == owner) {
+            jobs.remove(&id)
+        } else {
+            None
+        }
+    }
+
     pub async fn discard_job_request(&self, id: u64) {
         if let Some(job) = self.job_requests.write().await.remove(&id) {
             job.cleanup().await;
@@ -816,6 +1081,7 @@ impl ServerState {
         self.push_job_request(
             id,
             JobRequest {
+                owner: identifiers.user.clone().unwrap_or_else(|| DEFAULT_OWNER.to_string()),
                 identifiers,
                 input: JobInput::FromRemoteHost {
                     source,
@@ -832,6 +1098,7 @@ impl ServerState {
         self.push_job_request(
             id,
             JobRequest {
+                owner: identifiers.user.clone().unwrap_or_else(|| DEFAULT_OWNER.to_string()),
                 identifiers,
                 input: JobInput::FromServiceLink { source: filename, uri },
             },
@@ -839,12 +1106,25 @@ impl ServerState {
         .await
     }
 
-    pub async fn push_upload(&self, id: u64, filename: String, path: PathBuf) -> Option<JobRequest> {
+    pub async fn push_upload(
+        &self,
+        id: u64,
+        owner: String,
+        account: Option<String>,
+        filename: String,
+        path: PathBuf,
+    ) -> Option<JobRequest> {
         tracing::debug!("Pushing file upload id: {id}");
+        let identifiers = Identifiers {
+            user: Some(owner.clone()),
+            account,
+            ..Identifiers::default()
+        };
         self.push_job_request(
             id,
             JobRequest {
-                identifiers: Identifiers::default(),
+                owner,
+                identifiers,
                 input: JobInput::LocalArchive {
                     source: filename.clone(),
                     filename,
@@ -866,6 +1146,10 @@ impl ServerState {
 
     pub fn publish_event(&self, event: ServerEvent) {
         let _ = self.event_tx.send(event);
+    }
+
+    pub fn publish_event_for_owner(&self, owner: &str, event: ServerEvent) {
+        self.publish_event(event.for_owner(owner.to_string()));
     }
 
     pub fn stats_updates_receiver(&self) -> watch::Receiver<u64> {
@@ -916,7 +1200,7 @@ async fn require_authenticated_user(State(state): State<Arc<ServerState>>, reque
                 | "/style.css"
                 | "/theme-borealis.css"
         );
-    if state.server_policy.requires_iap_headers()
+    if state.server_policy.requires_authentication()
         && !path_is_routable_without_iap
         && let Err(err) = state.resolve_user_email(request.headers())
     {
@@ -935,6 +1219,7 @@ pub(crate) fn test_server_state() -> Arc<ServerState> {
         exporter: Arc::new(RwLock::new(Exporter::default())),
         kibana_url: Arc::new(RwLock::new(String::new())),
         stats: Arc::new(RwLock::new(Stats::default())),
+        active_jobs_by_owner: Arc::new(Mutex::new(HashMap::new())),
         job_requests: Arc::new(RwLock::new(HashMap::new())),
         retained_bundles: Arc::new(RwLock::new(HashMap::new())),
         runtime_mode,
@@ -1020,6 +1305,38 @@ impl From<KnownHostFormSignals> for JobRunSignals {
             archive: signals.archive,
             job: signals.job,
         }
+    }
+}
+
+fn parse_iap_identity(raw: &str) -> (Option<String>, String) {
+    let trimmed = raw.trim();
+    let (account, user) = trimmed
+        .rsplit_once(':')
+        .map(|(account, user)| (Some(account.trim().to_string()), user.trim().to_string()))
+        .unwrap_or((None, trimmed.to_string()));
+    let account = account.filter(|value| !value.is_empty());
+    (account, user)
+}
+
+fn resolve_optional_identity(_headers: &HeaderMap) -> ResolvedIdentity {
+    if let Ok(user) = std::env::var("ESDIAG_USER") {
+        let user = user.trim().to_string();
+        if !user.is_empty() {
+            return ResolvedIdentity {
+                authenticated: false,
+                user,
+                account: std::env::var("ESDIAG_ACCOUNT")
+                    .ok()
+                    .map(|value| value.trim().to_string())
+                    .filter(|value| !value.is_empty()),
+            };
+        }
+    }
+
+    ResolvedIdentity {
+        authenticated: false,
+        user: DEFAULT_OWNER.to_string(),
+        account: None,
     }
 }
 
@@ -1113,6 +1430,7 @@ pub use crate::data::{CollectMode, CollectSource, JobSignals, ProcessMode, SendM
 
 #[derive(Clone)]
 pub struct JobRequest {
+    pub owner: Owner,
     pub identifiers: Identifiers,
     pub input: JobInput,
 }
@@ -1221,86 +1539,168 @@ pub fn patch_job_feed(template: impl Template) -> Result<Event, Infallible> {
 
 #[derive(Debug, Clone)]
 pub enum ServerEvent {
-    Signals(String),
-    TargetedSignals { user: String, payload: String },
-    Template(String),
-    JobFeed(String),
-    ReplaceSelector { selector: String, html: String },
-    AppendBody(String),
-    PrependSelector { selector: String, html: String },
-    ExecuteScript(String),
+    Signals {
+        owner: Owner,
+        payload: String,
+        broadcast: bool,
+    },
+    Template {
+        owner: Owner,
+        html: String,
+    },
+    JobFeed {
+        owner: Owner,
+        html: String,
+    },
+    ReplaceSelector {
+        owner: Owner,
+        selector: String,
+        html: String,
+    },
+    AppendBody {
+        owner: Owner,
+        html: String,
+    },
+    PrependSelector {
+        owner: Owner,
+        selector: String,
+        html: String,
+    },
+    ExecuteScript {
+        owner: Owner,
+        script: String,
+    },
+}
+
+impl ServerEvent {
+    pub fn owner(&self) -> &str {
+        match self {
+            ServerEvent::Signals { owner, .. }
+            | ServerEvent::Template { owner, .. }
+            | ServerEvent::JobFeed { owner, .. }
+            | ServerEvent::ReplaceSelector { owner, .. }
+            | ServerEvent::AppendBody { owner, .. }
+            | ServerEvent::PrependSelector { owner, .. }
+            | ServerEvent::ExecuteScript { owner, .. } => owner,
+        }
+    }
+
+    pub fn is_broadcast(&self) -> bool {
+        matches!(self, ServerEvent::Signals { broadcast: true, .. })
+    }
+
+    pub fn for_owner(mut self, owner: impl Into<Owner>) -> Self {
+        let owner = owner.into();
+        match &mut self {
+            ServerEvent::Signals { owner: event_owner, .. }
+            | ServerEvent::Template { owner: event_owner, .. }
+            | ServerEvent::JobFeed { owner: event_owner, .. }
+            | ServerEvent::ReplaceSelector { owner: event_owner, .. }
+            | ServerEvent::AppendBody { owner: event_owner, .. }
+            | ServerEvent::PrependSelector { owner: event_owner, .. }
+            | ServerEvent::ExecuteScript { owner: event_owner, .. } => *event_owner = owner,
+        }
+        self
+    }
 }
 
 pub fn signal_event(signals: impl Into<String>) -> ServerEvent {
-    ServerEvent::Signals(signals.into())
+    ServerEvent::Signals {
+        owner: DEFAULT_OWNER.to_string(),
+        payload: signals.into(),
+        broadcast: false,
+    }
 }
 
 pub fn targeted_signal_event(user: impl Into<String>, signals: impl Into<String>) -> ServerEvent {
-    ServerEvent::TargetedSignals {
-        user: user.into(),
+    signal_event(signals).for_owner(user)
+}
+
+pub fn stats_event(signals: impl Into<String>) -> ServerEvent {
+    ServerEvent::Signals {
+        owner: DEFAULT_OWNER.to_string(),
         payload: signals.into(),
+        broadcast: true,
     }
 }
 
 pub fn template_event(template: impl Template) -> ServerEvent {
     let html = template.render().expect("Failed to render template");
-    ServerEvent::Template(html)
+    ServerEvent::Template {
+        owner: DEFAULT_OWNER.to_string(),
+        html,
+    }
 }
 
 pub fn job_feed_event(template: impl Template) -> ServerEvent {
     let html = template.render().expect("Failed to render template");
-    ServerEvent::JobFeed(html)
+    ServerEvent::JobFeed {
+        owner: DEFAULT_OWNER.to_string(),
+        html,
+    }
 }
 
 pub fn replace_job_event(job_id: u64, template: impl Template) -> ServerEvent {
     let html = template.render().expect("Failed to render template");
     ServerEvent::ReplaceSelector {
+        owner: DEFAULT_OWNER.to_string(),
         selector: format!("#job-{job_id}"),
         html,
     }
 }
 
 pub fn html_event(html: impl Into<String>) -> ServerEvent {
-    ServerEvent::Template(html.into())
+    ServerEvent::Template {
+        owner: DEFAULT_OWNER.to_string(),
+        html: html.into(),
+    }
 }
 
 pub fn append_body_event(html: impl Into<String>) -> ServerEvent {
-    ServerEvent::AppendBody(html.into())
+    ServerEvent::AppendBody {
+        owner: DEFAULT_OWNER.to_string(),
+        html: html.into(),
+    }
 }
 
 pub fn prepend_selector_event(selector: impl Into<String>, html: impl Into<String>) -> ServerEvent {
     ServerEvent::PrependSelector {
+        owner: DEFAULT_OWNER.to_string(),
         selector: selector.into(),
         html: html.into(),
     }
 }
 
 pub fn execute_script_event(script: impl Into<String>) -> ServerEvent {
-    ServerEvent::ExecuteScript(script.into())
+    ServerEvent::ExecuteScript {
+        owner: DEFAULT_OWNER.to_string(),
+        script: script.into(),
+    }
 }
 
 pub fn server_event_to_sse(event: ServerEvent) -> Result<Event, Infallible> {
     let sse_event = match event {
-        ServerEvent::Signals(payload) => PatchSignals::new(payload).write_as_axum_sse_event(),
-        ServerEvent::TargetedSignals { payload, .. } => PatchSignals::new(payload).write_as_axum_sse_event(),
-        ServerEvent::Template(html) => PatchElements::new(html).write_as_axum_sse_event(),
-        ServerEvent::JobFeed(html) => PatchElements::new(html)
+        ServerEvent::Signals { payload, .. } => PatchSignals::new(payload).write_as_axum_sse_event(),
+        ServerEvent::Template { html, .. } => PatchElements::new(html).write_as_axum_sse_event(),
+        ServerEvent::JobFeed { html, .. } => PatchElements::new(html)
             .selector("#job-feed")
             .mode(ElementPatchMode::After)
             .write_as_axum_sse_event(),
-        ServerEvent::ReplaceSelector { selector, html } => PatchElements::new(html)
+        ServerEvent::ReplaceSelector { selector, html, .. } => PatchElements::new(html)
             .selector(&selector)
             .mode(ElementPatchMode::Outer)
             .write_as_axum_sse_event(),
-        ServerEvent::AppendBody(html) => PatchElements::new(html)
+        ServerEvent::AppendBody { html, .. } => PatchElements::new(html)
             .selector("body")
             .mode(ElementPatchMode::Append)
             .write_as_axum_sse_event(),
-        ServerEvent::PrependSelector { selector, html } => PatchElements::new(html)
+        ServerEvent::PrependSelector { selector, html, .. } => PatchElements::new(html)
             .selector(&selector)
             .mode(ElementPatchMode::Prepend)
             .write_as_axum_sse_event(),
-        ServerEvent::ExecuteScript(script) => datastar::prelude::ExecuteScript::new(&script).write_as_axum_sse_event(),
+        ServerEvent::ExecuteScript { script, .. } => {
+            datastar::prelude::ExecuteScript::new(&script).write_as_axum_sse_event()
+        }
     };
 
     Ok(sse_event)
@@ -1352,29 +1752,35 @@ fn broadcast_receiver_stream(
     )
 }
 
-async fn events(
-    axum::extract::State(state): axum::extract::State<Arc<ServerState>>,
-    headers: HeaderMap,
-) -> impl axum::response::IntoResponse {
+/// Subscribe to the shared event bus. The subscriber's resolved identity is
+/// what [`event_visible_to_user`] filters on, so an unresolved identity must
+/// not fall back to [`DEFAULT_OWNER`] while a provider requires one: that
+/// owner is also where any event published without an explicit owner lands
+/// (ADR-0008). The `require_authenticated_user` layer rejects these requests
+/// too; this check keeps the guarantee local to the delivery path.
+async fn events(axum::extract::State(state): axum::extract::State<Arc<ServerState>>, headers: HeaderMap) -> Response {
     tracing::debug!("Started events stream");
-    let (_, request_user) = state
-        .resolve_user_email(&headers)
-        .unwrap_or_else(|_| (false, "Anonymous".to_string()));
+    let request_user = match state.resolve_user_email(&headers) {
+        Ok((_, user)) => user,
+        Err(err) if state.server_policy.requires_authentication() => {
+            tracing::warn!("Event stream denied: {}", err);
+            return StatusCode::UNAUTHORIZED.into_response();
+        }
+        Err(_) => DEFAULT_OWNER.to_string(),
+    };
     let initial_stats = state.get_stats().await;
-    let initial = signal_event(format!(r#"{{"stats":{}}}"#, initial_stats));
+    let initial = stats_event(format!(r#"{{"stats":{}}}"#, initial_stats));
     Sse::new(broadcast_receiver_stream(
         state.event_sender().subscribe(),
         Some(initial),
         request_user,
         state.shutdown_receiver(),
     ))
+    .into_response()
 }
 
 fn event_visible_to_user(event: &ServerEvent, user: &str) -> bool {
-    match event {
-        ServerEvent::TargetedSignals { user: target_user, .. } => target_user == user,
-        _ => true,
-    }
+    event.owner() == user || event.is_broadcast()
 }
 
 fn parse_cookie(headers: &HeaderMap, key: &str) -> Option<String> {
@@ -1425,22 +1831,22 @@ async fn add_client_hint_headers(mut response: Response) -> Response {
 #[cfg(test)]
 mod tests {
     use super::{
-        ApiKeyFormSignals, JobRunSignals, RuntimeMode, Server, ServerEvent, ServerPolicy, ServerState, Stats,
-        event_visible_to_user, receiver_stream, replace_job_event, signal_event, targeted_signal_event,
-        test_server_state,
+        ApiKeyFormSignals, JobConcurrencyCaps, JobRunSignals, RuntimeMode, Server, ServerEvent, ServerPolicy,
+        ServerState, Stats, broadcast_receiver_stream, event_visible_to_user, receiver_stream, replace_job_event,
+        signal_event, stats_event, targeted_signal_event, test_server_state,
     };
+    use crate::data::{Auth, KnownHostBuilder};
     #[cfg(feature = "keystore")]
     use crate::data::{
         SecretAuth, authenticate, create_keystore, resolve_secret_auth, upsert_secret_auth, write_unlock_lease,
     };
     use crate::exporter::Exporter;
+    use crate::processor::{DiagnosticOutcome, Identifiers};
     use axum::http::HeaderMap;
     use futures::StreamExt;
     #[cfg(feature = "keystore")]
     use reqwest::Client;
     use std::{collections::HashMap, sync::Arc};
-    #[cfg(feature = "keystore")]
-    use tempfile::TempDir;
     use tokio::{
         sync::{RwLock, broadcast, mpsc, watch},
         time::{Duration, timeout},
@@ -1454,18 +1860,57 @@ mod tests {
             job_requests: Arc::new(RwLock::new(HashMap::new())),
             retained_bundles: Arc::new(RwLock::new(HashMap::new())),
             runtime_mode: mode,
-            server_policy: ServerPolicy {
-                mode,
-                web_features: super::WebFeatureSet::defaults_for(mode),
-            },
+            server_policy: ServerPolicy::defaults(mode),
             #[cfg(feature = "keystore")]
             keystore_rate_limit: Arc::new(std::sync::Mutex::new(super::keystore::KeystoreRateLimit::default())),
             stats: Arc::new(RwLock::new(Stats::default())),
+            active_jobs_by_owner: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
             shutdown: watch::channel(false).1,
             event_tx: broadcast::channel(16).0,
             stats_updates_tx,
             stats_updates_rx,
         }
+    }
+
+    #[tokio::test]
+    async fn record_outcome_counts_failed_outcome_as_failed_job() {
+        let state = test_state(RuntimeMode::User);
+
+        state
+            .record_outcome("test@example.com", DiagnosticOutcome::Failed, 2)
+            .await;
+
+        let stats = state.stats.read().await;
+        assert_eq!(stats.jobs.total, 1);
+        assert_eq!(stats.jobs.success, 0);
+        assert_eq!(stats.jobs.failed, 1);
+        assert_eq!(stats.docs.errors, 2);
+    }
+
+    #[tokio::test]
+    async fn queued_ad_hoc_input_key_is_consumed_once() {
+        let state = test_state(RuntimeMode::Service);
+        let ad_hoc_key = "one-time-ad-hoc-api-key";
+        let host = KnownHostBuilder::new(url::Url::parse("http://cluster.example:9200").expect("url"))
+            .apikey(Some(ad_hoc_key.to_string()))
+            .build()
+            .expect("ad-hoc host");
+        let identifiers = Identifiers {
+            user: Some("alice@example.com".to_string()),
+            ..Default::default()
+        };
+
+        state.push_key(42, identifiers, host, "standard".to_string()).await;
+
+        let first = state.pop_job_request(42).await.expect("queued job request");
+        let super::JobInput::FromRemoteHost { host, .. } = first.input else {
+            panic!("expected remote host job input");
+        };
+        assert!(matches!(host.get_auth(), Ok(Auth::Apikey(key)) if key.expose_secret() == ad_hoc_key));
+        assert!(
+            state.pop_job_request(42).await.is_none(),
+            "ad-hoc input key must not survive the execution handoff"
+        );
     }
 
     struct WebFeaturesEnvGuard {
@@ -1484,7 +1929,9 @@ mod tests {
 
     fn with_web_features_env<T>(value: Option<&str>, test: impl FnOnce() -> T) -> T {
         let env_guard = WebFeaturesEnvGuard {
-            _guard: crate::test_env_lock().lock().expect("web features env lock"),
+            _guard: crate::test_env_lock()
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()),
             previous: std::env::var("ESDIAG_WEB_FEATURES").ok(),
         };
         match value {
@@ -1499,10 +1946,7 @@ mod tests {
 
     #[test]
     fn web_feature_defaults_enable_only_advanced_for_user_mode() {
-        let policy = ServerPolicy {
-            mode: RuntimeMode::User,
-            web_features: super::WebFeatureSet::defaults_for(RuntimeMode::User),
-        };
+        let policy = ServerPolicy::defaults(RuntimeMode::User);
 
         assert!(policy.allows_advanced());
         assert!(!policy.allows_job_builder());
@@ -1510,10 +1954,7 @@ mod tests {
 
     #[test]
     fn web_feature_defaults_disable_optional_features_for_service_mode() {
-        let policy = ServerPolicy {
-            mode: RuntimeMode::Service,
-            web_features: super::WebFeatureSet::defaults_for(RuntimeMode::Service),
-        };
+        let policy = ServerPolicy::defaults(RuntimeMode::Service);
 
         assert!(!policy.allows_advanced());
         assert!(!policy.allows_job_builder());
@@ -1620,7 +2061,36 @@ mod tests {
 
         assert!(!policy.allows_advanced());
         assert!(!policy.allows_job_builder());
-        assert!(policy.requires_iap_headers());
+        assert!(policy.requires_authentication());
+    }
+
+    #[test]
+    fn service_mode_can_use_no_auth_provider_for_local_testing() {
+        let policy = ServerPolicy::new_with_options(RuntimeMode::Service, Some(super::AuthProvider::None), None, None)
+            .expect("service policy");
+
+        assert!(!policy.requires_authentication());
+        assert!(!policy.allows_local_runtime_features());
+        assert!(!policy.allows_exporter_updates());
+        assert!(!policy.allows_host_management());
+    }
+
+    #[test]
+    fn user_mode_ignores_invalid_service_job_cap_env() {
+        let _guard = crate::test_env_lock().lock().expect("env lock");
+        unsafe {
+            std::env::set_var("ESDIAG_SERVICE_JOB_CAP", "0");
+            std::env::set_var("ESDIAG_SERVICE_OWNER_JOB_CAP", "0");
+        }
+
+        let policy = ServerPolicy::new(RuntimeMode::User).expect("user policy ignores service caps");
+
+        unsafe {
+            std::env::remove_var("ESDIAG_SERVICE_JOB_CAP");
+            std::env::remove_var("ESDIAG_SERVICE_OWNER_JOB_CAP");
+        }
+        assert_eq!(policy.job_caps().global, JobConcurrencyCaps::default().global);
+        assert_eq!(policy.job_caps().per_owner, JobConcurrencyCaps::default().per_owner);
     }
 
     #[test]
@@ -1633,20 +2103,8 @@ mod tests {
     }
 
     #[cfg(feature = "keystore")]
-    fn setup_keystore_env() -> TempDir {
-        let tmp = TempDir::new().expect("temp dir");
-        let config_dir = tmp.path().join(".esdiag");
-        std::fs::create_dir_all(&config_dir).expect("create config dir");
-        let keystore_path = config_dir.join("secrets.yml");
-        let hosts_path = config_dir.join("hosts.yml");
-        unsafe {
-            std::env::set_var("HOME", tmp.path());
-            std::env::set_var("USERPROFILE", tmp.path());
-            std::env::set_var("ESDIAG_KEYSTORE", &keystore_path);
-            std::env::set_var("ESDIAG_HOSTS", &hosts_path);
-            std::env::remove_var("ESDIAG_KEYSTORE_PASSWORD");
-        }
-        tmp
+    fn setup_keystore_env() -> crate::TestEnv {
+        crate::TestEnv::new()
     }
 
     #[tokio::test]
@@ -1692,16 +2150,70 @@ mod tests {
     async fn receiver_stream_preserves_event_order() {
         let _state = test_server_state();
         let (tx, rx) = mpsc::channel(4);
-        tx.send(ServerEvent::Signals(r#"{"a":1}"#.to_string()))
-            .await
-            .expect("send first event");
-        tx.send(ServerEvent::Signals(r#"{"b":2}"#.to_string()))
-            .await
-            .expect("send second event");
+        tx.send(signal_event(r#"{"a":1}"#)).await.expect("send first event");
+        tx.send(signal_event(r#"{"b":2}"#)).await.expect("send second event");
         drop(tx);
 
         let events: Vec<_> = receiver_stream(rx).collect().await;
         assert_eq!(events.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn service_mode_event_stream_requires_iap_header() {
+        let mut state = test_server_state();
+        let state_mut = Arc::get_mut(&mut state).expect("unique state");
+        state_mut.runtime_mode = RuntimeMode::Service;
+        state_mut.server_policy = ServerPolicy::defaults(RuntimeMode::Service);
+
+        let denied = super::events(axum::extract::State(Arc::clone(&state)), HeaderMap::new()).await;
+        assert_eq!(denied.status(), axum::http::StatusCode::UNAUTHORIZED);
+
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            super::IAP_USER_EMAIL_HEADER,
+            "accounts.google.com:alice@example.com".parse().expect("valid header"),
+        );
+        let allowed = super::events(axum::extract::State(state), headers).await;
+        assert_eq!(allowed.status(), axum::http::StatusCode::OK);
+    }
+
+    /// The gate the predicate feeds: three subscribers on one bus, each with a
+    /// different expected count, so a stream that drops the filter or compares
+    /// the wrong field cannot keep all three right.
+    #[tokio::test]
+    async fn broadcast_stream_delivers_owned_and_broadcast_events_per_subscriber() {
+        let (tx, _) = broadcast::channel(8);
+        let (_shutdown_tx, shutdown_rx) = watch::channel(false);
+        let (alice_rx, bob_rx, carol_rx) = (tx.subscribe(), tx.subscribe(), tx.subscribe());
+
+        tx.send(targeted_signal_event(
+            "alice@example.com",
+            r#"{"archive":{"status":"ready"}}"#,
+        ))
+        .expect("send alice's archive event");
+        tx.send(targeted_signal_event(
+            "bob@example.com",
+            r#"{"archive":{"status":"ready"}}"#,
+        ))
+        .expect("send bob's archive event");
+        tx.send(stats_event(r#"{"stats":{"jobs":{"total":1}}}"#))
+            .expect("send the broadcast stats event");
+        tx.send(signal_event(r#"{"loading":false}"#).for_owner("alice@example.com"))
+            .expect("send alice's signal event");
+        // Closes each subscription once the buffered events drain, ending the
+        // streams so they can be collected.
+        drop(tx);
+
+        let subscribed = |rx, user: &str| {
+            broadcast_receiver_stream(rx, None, user.to_string(), shutdown_rx.clone()).collect::<Vec<_>>()
+        };
+        let alice = subscribed(alice_rx, "alice@example.com").await;
+        let bob = subscribed(bob_rx, "bob@example.com").await;
+        let carol = subscribed(carol_rx, "carol@example.com").await;
+
+        assert_eq!(alice.len(), 3, "alice's two events plus the broadcast");
+        assert_eq!(bob.len(), 2, "bob's one event plus the broadcast");
+        assert_eq!(carol.len(), 1, "the broadcast alone");
     }
 
     #[test]
@@ -1715,9 +2227,106 @@ mod tests {
             "bob@example.com"
         ));
         assert!(event_visible_to_user(
-            &signal_event(r#"{"stats":{"jobs":{"total":1}}}"#),
+            &stats_event(r#"{"stats":{"jobs":{"total":1}}}"#),
             "bob@example.com"
         ));
+        assert!(!event_visible_to_user(
+            &signal_event(r#"{"loading":false}"#).for_owner("alice@example.com"),
+            "bob@example.com"
+        ));
+    }
+
+    #[test]
+    fn service_google_iap_resolves_identity_and_requires_header() {
+        let state = test_state(RuntimeMode::Service);
+        let mut headers = HeaderMap::new();
+
+        assert!(state.resolve_identity(&headers).is_err());
+        headers.insert(
+            super::IAP_USER_EMAIL_HEADER,
+            "accounts.google.com:alice@example.com".parse().expect("valid header"),
+        );
+
+        let identity = state.resolve_identity(&headers).expect("identity");
+        assert!(identity.authenticated);
+        assert_eq!(identity.user, "alice@example.com");
+        assert_eq!(identity.account.as_deref(), Some("accounts.google.com"));
+    }
+
+    #[test]
+    fn no_auth_provider_ignores_iap_identity_header() {
+        let mut state = test_state(RuntimeMode::Service);
+        state.server_policy =
+            ServerPolicy::new_with_options(RuntimeMode::Service, Some(super::AuthProvider::None), None, None)
+                .expect("policy");
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            super::IAP_USER_EMAIL_HEADER,
+            "accounts.google.com:alice@example.com".parse().expect("valid header"),
+        );
+
+        let identity = state.resolve_identity(&headers).expect("identity");
+
+        assert!(!identity.authenticated);
+        assert_eq!(identity.user, super::DEFAULT_OWNER);
+        assert!(identity.account.is_none());
+    }
+
+    #[tokio::test]
+    async fn service_job_caps_limit_global_and_per_owner_concurrency() {
+        let mut state = test_state(RuntimeMode::Service);
+        state.server_policy = ServerPolicy::new_with_options(
+            RuntimeMode::Service,
+            Some(super::AuthProvider::None),
+            Some(JobConcurrencyCaps {
+                global: 2,
+                per_owner: 1,
+            }),
+            None,
+        )
+        .expect("policy");
+
+        state
+            .record_job_started("alice@example.com")
+            .await
+            .expect("first alice");
+        assert!(state.record_job_started("alice@example.com").await.is_err());
+        state.record_job_started("bob@example.com").await.expect("first bob");
+        assert!(state.record_job_started("carol@example.com").await.is_err());
+        state.record_success("alice@example.com", 0, 0).await;
+        state
+            .record_job_started("carol@example.com")
+            .await
+            .expect("slot released");
+    }
+
+    #[tokio::test]
+    async fn service_rejected_jobs_do_not_release_active_capacity() {
+        let mut state = test_state(RuntimeMode::Service);
+        state.server_policy = ServerPolicy::new_with_options(
+            RuntimeMode::Service,
+            Some(super::AuthProvider::None),
+            Some(JobConcurrencyCaps {
+                global: 1,
+                per_owner: 1,
+            }),
+            None,
+        )
+        .expect("policy");
+
+        state
+            .record_job_started("alice@example.com")
+            .await
+            .expect("first alice");
+        state.record_job_rejected().await;
+        state.record_failure("bob@example.com").await;
+
+        assert!(state.record_job_started("bob@example.com").await.is_err());
+        state.record_failure("alice@example.com").await;
+        state
+            .record_job_started("bob@example.com")
+            .await
+            .expect("slot released");
     }
 
     #[test]
@@ -1732,7 +2341,7 @@ mod tests {
         );
 
         match event {
-            ServerEvent::ReplaceSelector { selector, html } => {
+            ServerEvent::ReplaceSelector { selector, html, .. } => {
                 assert_eq!(selector, "#job-42");
                 assert!(html.contains(r#"id="job-42""#));
             }
@@ -1791,7 +2400,6 @@ mod tests {
     #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn user_mode_keystore_session_is_shared_across_request_users() {
-        let _guard = crate::test_env_lock().lock().expect("env lock");
         let _tmp = setup_keystore_env();
 
         let state = Arc::new(test_state(RuntimeMode::User));
@@ -1812,7 +2420,6 @@ mod tests {
     #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn user_mode_reads_cli_unlock_file() {
-        let _guard = crate::test_env_lock().lock().expect("env lock");
         let _tmp = setup_keystore_env();
         create_keystore("pw").expect("create keystore");
         write_unlock_lease("pw", Duration::from_secs(300)).expect("write unlock lease");
@@ -1827,7 +2434,6 @@ mod tests {
     #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn explicit_web_lock_deletes_unlock_file() {
-        let _guard = crate::test_env_lock().lock().expect("env lock");
         let _tmp = setup_keystore_env();
         create_keystore("pw").expect("create keystore");
         write_unlock_lease("pw", Duration::from_secs(300)).expect("write unlock lease");
@@ -1849,7 +2455,6 @@ mod tests {
     #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn service_mode_does_not_read_unlock_file() {
-        let _guard = crate::test_env_lock().lock().expect("env lock");
         let _tmp = setup_keystore_env();
         create_keystore("pw").expect("create keystore");
         write_unlock_lease("pw", Duration::from_secs(300)).expect("write unlock lease");
@@ -1898,17 +2503,9 @@ mod tests {
     #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn secret_delete_path_prefers_secret_id_route_over_generic_action_route() {
-        let _guard = crate::test_env_lock().lock().expect("env lock");
         let _tmp = setup_keystore_env();
         authenticate("secretpw").expect("create keystore");
-        upsert_secret_auth(
-            "servermore",
-            SecretAuth::ApiKey {
-                apikey: "super-secret-api-key".to_string(),
-            },
-            "secretpw",
-        )
-        .expect("store secret");
+        upsert_secret_auth("servermore", SecretAuth::apikey("super-secret-api-key"), "secretpw").expect("store secret");
 
         let (mut server, bound_addr) =
             Server::start([127, 0, 0, 1], 0, Exporter::default(), String::new(), RuntimeMode::User)

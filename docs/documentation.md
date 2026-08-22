@@ -1,16 +1,22 @@
 ---
 type: Guide
-title: ESDiag Documentation
-description: Entry point for ESDiag user and maintainer documentation.
+title: ESDiag documentation
+description: Guides and reference material for ESDiag users and maintainers.
 tags: [docs, overview]
 ---
 
-# ESDiag Documentation
+# ESDiag documentation
 
-Welcome to the documentation for ESDiag.
+New users should start with [Set up ESDiag](setup/index.md).
 
-Here you can learn about the different features and how to use them.
+## Setup
 
-## Contents
-- [Example Subtopic](#example/subtopic)
-- [LLM Setup Guide](llm-setup-guide.md)
+- [Install ESDiag](setup/installation.md)
+- [Configure ESDiag](setup/configuration.md)
+- [Use ESDiag](setup/usage.md)
+- [Use a shared ESDiag service](setup/shared-service.md)
+
+## Reference
+
+- [Command-line interface reference](command-line.md)
+- [LLM configuration guide](llm-setup-guide.md)

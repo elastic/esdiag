@@ -4,14 +4,18 @@
 
 use clap::ValueEnum;
 use eyre::Result;
+use redact::Secret;
 use std::str::FromStr;
 
+/// Resolved credential material for one stage. The secret halves are wrapped
+/// so neither `Debug` nor `Display` can print them (ADR-0011); reaching the
+/// plaintext takes an explicit `expose_secret()` at the transport boundary.
 #[derive(Clone, Debug)]
 pub enum Auth {
     /// Use an API key authentication via headers
-    Apikey(String),
+    Apikey(Secret<String>),
     /// Use username and password authentication via Basic Auth headers
-    Basic(String, String),
+    Basic(String, Secret<String>),
     /// Don't use any authentication
     None,
 }
@@ -19,10 +23,21 @@ pub enum Auth {
 impl Auth {
     pub fn new(r#type: &AuthType, username: Option<String>, password: Option<String>, apikey: Option<String>) -> Self {
         match (r#type, username, password, apikey) {
-            (AuthType::Apikey, _, _, Some(apikey)) => Self::Apikey(apikey),
-            (AuthType::Basic, Some(username), Some(password), _) => Self::Basic(username, password),
+            (AuthType::Apikey, _, _, Some(apikey)) => Self::apikey(apikey),
+            (AuthType::Basic, Some(username), Some(password), _) => Self::basic(username, password),
             _ => Self::None,
         }
+    }
+
+    /// Wraps an API key that arrived as plaintext from a CLI flag, environment
+    /// variable, form field, or the decrypted keystore.
+    pub fn apikey(apikey: impl Into<String>) -> Self {
+        Self::Apikey(Secret::new(apikey.into()))
+    }
+
+    /// As [`Auth::apikey`], for a username and password pair.
+    pub fn basic(username: impl Into<String>, password: impl Into<String>) -> Self {
+        Self::Basic(username.into(), Secret::new(password.into()))
     }
 }
 
@@ -52,5 +67,28 @@ impl FromStr for AuthType {
             "none" => Ok(Self::None),
             _ => Err(()),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Auth;
+
+    #[test]
+    fn auth_display_redacts_secret_material() {
+        assert_eq!(Auth::apikey("ad-hoc-api-key").to_string(), "Apikey");
+        assert_eq!(Auth::basic("elastic", "super-secret-password").to_string(), "Basic");
+    }
+
+    /// `Display` was redacted by hand while `Debug` was derived, so a `{:?}`
+    /// anywhere near a credential used to print it verbatim.
+    #[test]
+    fn auth_debug_redacts_secret_material() {
+        let apikey = format!("{:?}", Auth::apikey("ad-hoc-api-key"));
+        let basic = format!("{:?}", Auth::basic("elastic", "super-secret-password"));
+
+        assert!(!apikey.contains("ad-hoc-api-key"), "{apikey}");
+        assert!(!basic.contains("super-secret-password"), "{basic}");
+        assert!(basic.contains("elastic"), "the username is not secret: {basic}");
     }
 }

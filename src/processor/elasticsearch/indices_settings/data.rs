@@ -80,7 +80,7 @@ impl IndexSettings {
     /// Determines additional field values from previously deserialized data
     pub fn build(mut self) -> Self {
         let source = self.source_mode();
-        let config = format!("{}-{}-{}", &self.mode, source, &self.codec);
+        let config = format!("{}-{}-{}", self.mode, source, self.codec);
         match self.store.as_mut() {
             Some(store) => {
                 store.config = Some(config);
@@ -100,7 +100,9 @@ impl IndexSettings {
     /// Sets the age of the index in milliseconds to the given epoch time
     pub fn age(self, epoch_millis: u64) -> Self {
         Self {
-            age: self.creation_date.map(|date| epoch_millis - date),
+            // Streaming collection can observe an index created after its
+            // collection timestamp. An index cannot have a negative age.
+            age: self.creation_date.map(|date| epoch_millis.saturating_sub(date)),
             ..self
         }
     }
@@ -228,5 +230,20 @@ impl DataSource for IndicesSettings {
     }
     fn aliases() -> Vec<&'static str> {
         vec!["settings"]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::IndexSettings;
+
+    #[test]
+    fn age_is_zero_when_index_is_newer_than_collection_timestamp() {
+        let settings = IndexSettings {
+            creation_date: Some(2_000),
+            ..IndexSettings::default()
+        };
+
+        assert_eq!(settings.age(1_000).age, Some(0));
     }
 }
