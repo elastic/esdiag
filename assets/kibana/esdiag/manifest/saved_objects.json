@@ -42,6 +42,10 @@
     },
     {
       "type": "dashboard",
+      "id": "index-detail"
+    },
+    {
+      "type": "dashboard",
       "id": "index-operations-overview"
     },
     {
