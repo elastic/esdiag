@@ -299,7 +299,7 @@ mod tests {
     use super::super::scrub::synthetic_vectors as v;
     use super::ArchiveFileReceiver;
     use crate::processor::DataSource;
-    use crate::receiver::{ReceiveRaw, ScrubMode, should_enable_scrubbed};
+    use crate::receiver::ReceiveRaw;
     use std::io::Write;
     use std::path::PathBuf;
     use zip::{ZipWriter, write::SimpleFileOptions};
@@ -368,9 +368,11 @@ mod tests {
     async fn non_scrubbed_archive_passes_nodes_json_unchanged() {
         let archive_path =
             PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/archives/elasticsearch-api-diagnostics-9.3.3.zip");
-        if !archive_path.exists() {
-            return;
-        }
+        assert!(
+            archive_path.exists(),
+            "missing test fixture: {}",
+            archive_path.display()
+        );
 
         let file = std::fs::File::open(&archive_path).expect("open archive");
         let mut archive = zip::ZipArchive::new(file).expect("read archive");
@@ -382,11 +384,6 @@ mod tests {
         let mut receiver = ArchiveFileReceiver::try_from(archive_path).expect("receiver");
         receiver.set_scrubbed(false);
         receiver.set_source_product("elasticsearch").expect("source product");
-
-        assert!(!should_enable_scrubbed(
-            ScrubMode::Auto,
-            Some("elasticsearch-api-diagnostics-9.3.3.zip")
-        ));
 
         let actual = receiver.get_raw::<NodesSource>().await.expect("get raw nodes");
         assert_eq!(actual, expected);

@@ -23,7 +23,7 @@ Precedence is **channel-local**:
 
 - CLI `--scrubbed true` forces normalization even if the filename does not contain a `scrubbed` token.
 - CLI `--scrubbed false` disables normalization even for `*scrubbed*.zip` inputs.
-- Upload checkbox values `true`, `1`, or `on` enable scrub mode; any other explicit value disables it. If the checkbox field is present but unreadable, scrub mode defaults to enabled.
+- Checking the upload checkbox explicitly enables scrub mode. When unchecked, the field is omitted and the uploaded filename controls auto-detection. API clients may send other explicit values to disable scrub mode. If the checkbox field is present but unreadable, scrub mode defaults to enabled.
 
 CLI and UI are independent execution channels; one does not override the other.
 

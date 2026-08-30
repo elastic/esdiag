@@ -30,8 +30,14 @@ fn manifest_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
+fn golden_archive() -> PathBuf {
+    let path = manifest_dir().join(GOLDEN_ARCHIVE);
+    assert!(path.exists(), "missing test fixture: {}", path.display());
+    path
+}
+
 fn build_synthetic_scrubbed_archive(out_zip: &Path) -> ScrubFixtureExpectations {
-    let golden = manifest_dir().join(GOLDEN_ARCHIVE);
+    let golden = golden_archive();
     let entries = [
         "diagnostic_manifest.json",
         "version.json",
@@ -128,11 +134,6 @@ async fn process_input_to_directory(
 
 #[tokio::test]
 async fn archive_export_normalizes_ips_with_stable_node_mapping() {
-    let golden = manifest_dir().join(GOLDEN_ARCHIVE);
-    if !golden.exists() {
-        return;
-    }
-
     let fixture_dir = tempdir().expect("fixture tempdir");
     let scrubbed_zip = fixture_dir.path().join("synthetic-malformed-ips-test.zip");
     let expectations = build_synthetic_scrubbed_archive(&scrubbed_zip);
@@ -143,11 +144,6 @@ async fn archive_export_normalizes_ips_with_stable_node_mapping() {
 
 #[tokio::test]
 async fn directory_export_normalizes_ips_with_stable_node_mapping() {
-    let golden = manifest_dir().join(GOLDEN_ARCHIVE);
-    if !golden.exists() {
-        return;
-    }
-
     let fixture_dir = tempdir().expect("fixture tempdir");
     let scrubbed_zip = fixture_dir.path().join("synthetic-malformed-ips-test.zip");
     let expectations = build_synthetic_scrubbed_archive(&scrubbed_zip);
@@ -165,11 +161,6 @@ async fn directory_export_normalizes_ips_with_stable_node_mapping() {
 
 #[tokio::test]
 async fn directory_auto_detect_enables_scrub_when_path_contains_scrubbed() {
-    let golden = manifest_dir().join(GOLDEN_ARCHIVE);
-    if !golden.exists() {
-        return;
-    }
-
     let fixture_dir = tempdir().expect("fixture tempdir");
     let scrubbed_zip = fixture_dir.path().join("synthetic-malformed-ips-test.zip");
     let expectations = build_synthetic_scrubbed_archive(&scrubbed_zip);
@@ -187,11 +178,6 @@ async fn directory_auto_detect_enables_scrub_when_path_contains_scrubbed() {
 
 #[tokio::test]
 async fn directory_with_scrub_disabled_preserves_malformed_ips() {
-    let golden = manifest_dir().join(GOLDEN_ARCHIVE);
-    if !golden.exists() {
-        return;
-    }
-
     let fixture_dir = tempdir().expect("fixture tempdir");
     let scrubbed_zip = fixture_dir.path().join("synthetic-malformed-ips-test.zip");
     let expectations = build_synthetic_scrubbed_archive(&scrubbed_zip);
@@ -214,10 +200,7 @@ async fn directory_with_scrub_disabled_preserves_malformed_ips() {
 
 #[tokio::test]
 async fn processes_non_scrubbed_golden_archive_without_error() {
-    let archive = manifest_dir().join(GOLDEN_ARCHIVE);
-    if !archive.exists() {
-        return;
-    }
+    let archive = golden_archive();
 
     let (_output, output_path) = process_input_to_directory(Uri::File(archive), Some(false), None).await;
     let node_metrics = output_path.join("metrics-node-esdiag.ndjson");
