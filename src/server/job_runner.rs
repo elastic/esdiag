@@ -196,7 +196,8 @@ async fn execute_unified_web_job(
             ..
         } => {
             let binding = BindingKey::try_new(format!("web-local-archive-{job_id}"))?;
-            let receiver = Receiver::try_from_with_scrub(Uri::File(path.clone()), *scrubbed_override, Some(filename))?;
+            let receiver =
+                Receiver::try_from_with_scrub(Uri::File(path.clone()), *scrubbed_override, Some(filename.as_str()))?;
             context
                 .inputs
                 .bind_bundle(binding.clone(), receiver, path.clone(), None);
