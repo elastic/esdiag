@@ -1,0 +1,55 @@
+name: elasticrc
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/elasticrc.yml"
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "crates/elasticrc/**"
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/elasticrc.yml"
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "crates/elasticrc/**"
+
+permissions:
+  contents: read
+
+jobs:
+  platforms:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test -p elasticrc
+
+  msrv:
+    name: Rust 1.89
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.89.0
+      - run: cargo check -p elasticrc --all-targets
+
+  package:
+    name: Package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test -p elasticrc
+      - run: cargo test -p elasticrc --doc
+      - run: cargo doc -p elasticrc --no-deps
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+      - run: cargo package -p elasticrc
+      - run: cargo run --manifest-path crates/elasticrc/tests/external-consumer/Cargo.toml
+      - run: cargo publish --dry-run -p elasticrc

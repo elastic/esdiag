@@ -126,9 +126,9 @@ pub trait ReceiveRaw {
 ///
 /// - `Archive`: Reads data from a `.zip` archive file.
 /// - `Directory`: Reads data from a directory in the local file system.
-/// - `ElasticUploader`: Downloads an archive file from the Elastic Uploader service.
+/// - `ArchiveBytes`: Downloads an archive from the Elastic Upload Service.
 /// - `Elasticsearch`: Requests data via API calls from an Elasticsearch service.
-/// - `RestApi`: Provides a REST API server that accepts diagnostic uploads.
+/// - `RestApi`: Provides a REST API server that accepts diagnostic submissions.
 #[derive(Clone)]
 pub enum Receiver {
     /// Read from a `.zip` archive file

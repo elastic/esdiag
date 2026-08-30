@@ -30,16 +30,16 @@ ad hoc target URL.
 
 ## Share
 
-Upload newly collected diagnostics to Elastic Upload Service:
+Send newly collected diagnostics to Elastic Upload Service:
 
 ```sh
-esdiag collect <host> <directory> --upload <upload-id>
+esdiag collect <host> <directory> --send <upload-id>
 ```
 
-Upload an existing archive directly:
+Send an existing archive directly:
 
 ```sh
-esdiag upload <archive> <upload-id>
+esdiag send <archive> <upload-id>
 ```
 
 Use ESDiag Lite when collecting from an Elasticsearch cluster without a full

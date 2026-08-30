@@ -16,16 +16,16 @@ mkdir -p "$HOME/diagnostics"
 esdiag collect source-cluster "$HOME/diagnostics" --type standard
 ```
 
-Add `--upload '<UPLOAD_ID_OR_URL>'` to send the archive to Elastic Upload
+Add `--send '<UPLOAD_ID_OR_URL>'` to send the archive to Elastic Upload
 Service after collection. ESDiag keeps the local copy.
 
-To upload an archive you already have:
+To send an archive you already have:
 
 ```sh
-esdiag upload /path/to/diagnostic.zip '<UPLOAD_ID_OR_URL>'
+esdiag send /path/to/diagnostic.zip '<UPLOAD_ID_OR_URL>'
 ```
 
-Treat upload IDs and URLs as secrets.
+Treat Elastic Upload Service IDs and URLs as secrets.
 
 ## Process and analyze
 
@@ -61,12 +61,13 @@ esdiag job run <NAME>
 ```
 
 To keep the raw archive, collect first and pass its reported path to `process`.
-ESDiag only uploads when you run `upload` or use `collect --upload`.
+ESDiag sends to Elastic Upload Service only when you run `send` or use
+`collect --send`.
 
 ## Web UI
 
 After `esdiag local up`, open the URL it prints. The default is
-`http://127.0.0.1:2501`. Upload an archive and follow the returned Kibana link.
+`http://127.0.0.1:2501`. Submit an archive and follow the returned Kibana link.
 
 Use `esdiag local status`, `logs`, `restart`, `down`, and `reset --force` to
 operate a binary-owned stack. The standalone forms start with `esdiag-local`.
@@ -81,7 +82,7 @@ The skill must never receive or store credentials in an agent conversation.
 
 ## Shared service
 
-Open the URL from your service administrator, sign in, and upload the archive.
+Open the URL from your service administrator, sign in, and submit the archive.
 The service chooses the destination. It does not expose hosts, jobs, or
 credentials to users. See [Use a shared service](shared-service.md).
 

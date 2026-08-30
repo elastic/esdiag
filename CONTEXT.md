@@ -30,8 +30,8 @@ _Avoid_: gather, receive, fetch
 
 **Load**:
 Read an *existing* diagnostic from a directory or bundle. Surfaces as a CLI
-`process` input (a file path, directory, or service link), Web UI *upload* (a
-user-supplied file), or an upload-service *download* — and is how
+`process` input (a file path, directory, or service link), Web UI *submission*
+(a user-supplied file), or an Elastic Upload Service download — and is how
 *product-provided* diagnostics enter (an Agent-generated bundle, or a
 platform-generated ECE/ECK/K8P bundle), since ESDiag does not API-collect those.
 _Avoid_: collect, receive, read (a surface form, not the canonical stage)
@@ -52,9 +52,10 @@ file/stream). Only follows Process.
 _Avoid_: load, output, send (Send is a distinct stage — do not conflate)
 
 **Send**:
-Transmit an existing *bundle* to the Elastic Uploader service. Requires a bundle to
-exist, from Save this run or from Load.
-_Avoid_: upload (that is an inbound Load surface; Send is outbound), export
+Transmit an existing *bundle* to a remote destination. Elastic Upload Service
+is the primary adapter today; object storage may be supported later. Requires a
+bundle to exist, from Save this run or from Load.
+_Avoid_: export
 
 ### Job phases
 
@@ -80,7 +81,7 @@ serialization barrier. `Process` directly after `Collect` (no `Save`) is
 
 The Web UI and saved-job signals use the deliberately friendlier verbs **collect /
 process / send**; these are UI labels, not backend stages, and do not map 1:1. UI
-*upload* is a `Load` source (inbound); UI *send* resolves to `Export` or the `Send`
+*submission* is a `Load` source (inbound); UI *send* resolves to `Export` or the `Send`
 stage depending on whether `Process` ran. The `JobSignals*` types are strictly UI
 implementation detail — the backend aligns on the six stages above.
 

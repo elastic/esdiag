@@ -161,7 +161,7 @@ impl TryFrom<&Url> for ElasticCloud {
     fn try_from(url: &Url) -> Result<Self, Self::Error> {
         if url.domain() == Some("admin.us-gov-east-1.aws.elastic-cloud.com") {
             Ok(ElasticCloud::ElasticGovCloudAdmin)
-        } else if url.domain() == Some("admin.found.no") {
+        } else if matches!(url.domain(), Some("admin.found.no" | "api.elastic-cloud.com")) {
             Ok(ElasticCloud::ElasticCloudAdmin)
         } else if url.domain() == Some("cloud.elastic.co") {
             Ok(ElasticCloud::ElasticCloud)
@@ -298,6 +298,7 @@ impl KnownHostBuilder {
     /// This only rewrites concrete Elasticsearch hosts for known Elastic Cloud domains:
     ///
     /// - `cloud.elastic.co`
+    /// - `api.elastic-cloud.com`
     /// - `admin.found.no`
     /// - `admin.us-gov-east-1.aws.elastic-cloud.com`
     ///
@@ -409,6 +410,9 @@ fn deployment_id_from_cloud_url(url: &Url) -> Option<&str> {
 fn elastic_cloud_proxy_template(domain: Option<&str>) -> Option<&'static str> {
     match domain {
         Some("admin.found.no") => Some("https://admin.found.no/api/v1/deployments/{id}/elasticsearch/_main/proxy/"),
+        Some("api.elastic-cloud.com") => {
+            Some("https://api.elastic-cloud.com/api/v1/deployments/{id}/elasticsearch/_main/proxy/")
+        }
         Some("cloud.elastic.co") => Some("https://cloud.elastic.co/api/v1/deployments/{id}/elasticsearch/_main/proxy/"),
         Some("admin.us-gov-east-1.aws.elastic-cloud.com") => {
             Some("https://admin.us-gov-east-1.aws.elastic-cloud.com/api/v1/deployments/{id}/elasticsearch/_main/proxy/")

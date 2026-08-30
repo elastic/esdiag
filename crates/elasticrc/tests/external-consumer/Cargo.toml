@@ -1,0 +1,10 @@
+[package]
+name = "elasticrc-external-consumer"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+elasticrc = { path = "../../../../target/package/elasticrc-0.1.0" }

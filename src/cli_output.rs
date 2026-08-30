@@ -55,12 +55,12 @@ pub enum CliOutcome {
         #[serde(skip_serializing_if = "Option::is_none")]
         duration_ms: Option<u128>,
         #[serde(skip_serializing_if = "Option::is_none")]
-        upload_destination: Option<String>,
+        send_destination: Option<String>,
     },
     DiagnosticProcessed {
         diagnostic: DiagnosticResult,
     },
-    DiagnosticUploaded {
+    DiagnosticSent {
         destination: String,
     },
     JobCompleted {
@@ -135,6 +135,13 @@ pub enum CliOutcome {
     },
     SetupCompleted {
         targets: Vec<String>,
+    },
+    OutputContext {
+        operation: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        context: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        config_file: Option<String>,
     },
     LocalStack {
         command: String,
@@ -457,7 +464,7 @@ mod tests {
                 total: 3,
             },
             duration_ms: None,
-            upload_destination: None,
+            send_destination: None,
         };
 
         let mut yaml = Vec::new();
@@ -591,7 +598,7 @@ mod tests {
         let failure = CliFailure {
             result: "command_failed",
             category: CliFailureCategory::SendFailed.as_str().to_string(),
-            message: "diagnostic upload failed".to_string(),
+            message: "diagnostic send failed".to_string(),
             r#type: None,
             status: None,
             reason: None,

@@ -1,0 +1,37 @@
+#!/usr/bin/env node
+
+// Copyright Elasticsearch B.V. and/or licensed to Elasticsearch B.V. under one
+// or more contributor license agreements. Licensed under the Elastic License 2.0;
+// you may not use this file except in compliance with the Elastic License 2.0.
+
+const { spawnSync } = require("node:child_process");
+
+const env = {
+  ...process.env,
+  ESDIAG_ELASTIC_CLI: "1",
+};
+
+const result = spawnSync("esdiag", process.argv.slice(2), {
+  env,
+  stdio: "inherit",
+  shell: false,
+});
+
+if (result.error) {
+  if (result.error.code === "ENOENT") {
+    console.error("Unable to find `esdiag` on PATH.");
+    console.error("Install ESDiag with:");
+    console.error("  cargo install --git https://github.com/elastic/esdiag.git");
+    process.exit(127);
+  }
+
+  console.error(`Failed to run esdiag: ${result.error.message}`);
+  process.exit(1);
+}
+
+if (result.signal) {
+  console.error(`esdiag terminated by signal ${result.signal}`);
+  process.exit(1);
+}
+
+process.exit(result.status ?? 0);

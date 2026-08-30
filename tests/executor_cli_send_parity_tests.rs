@@ -2,7 +2,8 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-//! End-to-end parity coverage for the converged standalone `upload` command.
+//! End-to-end parity coverage for the standalone `send` command and Elastic
+//! Upload Service adapter.
 
 use axum::{
     Router,
@@ -88,7 +89,7 @@ async fn finalize_upload(
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn standalone_upload_uses_executor_sender_with_custom_api_url() {
+async fn standalone_send_uses_executor_with_custom_elastic_upload_service_url() {
     let calls = UploadCalls::default();
     let app = Router::new()
         .route("/api/uploads/{upload_id}", head(validate_upload).put(receive_upload))
@@ -114,14 +115,14 @@ async fn standalone_upload_uses_executor_sender_with_custom_api_url() {
         move || {
             Command::new(env!("CARGO_BIN_EXE_esdiag"))
                 .args([
-                    "upload",
+                    "send",
                     archive.to_str().expect("archive path"),
                     "upload-id",
                     "--api-url",
                     &format!("http://{address}"),
                 ])
                 .output()
-                .expect("run esdiag upload")
+                .expect("run esdiag send")
         }
     })
     .await
@@ -132,7 +133,7 @@ async fn standalone_upload_uses_executor_sender_with_custom_api_url() {
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    assert!(String::from_utf8_lossy(&output.stdout).contains("diagnostic_uploaded"));
+    assert!(String::from_utf8_lossy(&output.stdout).contains("diagnostic_sent"));
     assert_eq!(calls.head.load(Ordering::SeqCst), 1);
     assert_eq!(calls.put.load(Ordering::SeqCst), 1);
     assert_eq!(calls.finalize.load(Ordering::SeqCst), 1);

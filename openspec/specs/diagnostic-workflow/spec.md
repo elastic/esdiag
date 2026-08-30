@@ -94,7 +94,7 @@ The workflow SHALL move output target selection from the footer into the `Send` 
 #### Scenario: User configures send target in panel
 - **WHEN** the user configures the `Send` panel
 - **THEN** output target selection is performed inside the panel instead of the footer
-- **AND** the chosen send mode maps onto an existing compatible exporter option or uploader capability
+- **AND** the chosen send mode maps onto an existing compatible exporter or Elastic Upload Service adapter
 
 ### Requirement: Send Target Availability Follows Workflow State
 The backend SHALL derive `Send` panel target availability from the active

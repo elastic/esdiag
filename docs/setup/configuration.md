@@ -17,7 +17,8 @@ Pick the destination for processed diagnostic documents.
 | Shared service | An administrator runs the web service and destination. | No local setup for service users. |
 
 Run setup that handles credentials in an interactive terminal. Do not put API
-keys, passwords, or upload URLs in chat, tickets, documents, or shell history.
+keys, passwords, or Elastic Upload Service URLs in chat, tickets, documents,
+or shell history.
 
 ## No diagnostic cluster
 

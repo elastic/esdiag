@@ -256,7 +256,9 @@ async fn build_jobs_page(
 
     let stale_host = saved_job.as_ref().is_some_and(|job| {
         let h = job.collect_host();
-        !h.is_empty() && !job_hosts.collect_hosts.iter().any(|host| host == h)
+        matches!(job.input(), crate::job::model::Input::Collect { .. })
+            && !h.is_empty()
+            && !job_hosts.collect_hosts.iter().any(|host| host == &h)
     });
     let hide_saved_job = job_not_found || job_load_error.is_some();
 

@@ -83,6 +83,10 @@ pub trait DataSource {
 
         let (matched_name, source_conf) = get_source(ctx.product, &name, &aliases)?;
         paths.push(source_conf.get_file_path(matched_name));
+        let derived_canonical_path = source_conf.get_derived_file_path(matched_name);
+        if !paths.contains(&derived_canonical_path) {
+            paths.push(derived_canonical_path);
+        }
 
         for alias in aliases {
             // An alias may be its own registry entry, or a legacy file name
@@ -153,6 +157,9 @@ pub struct ResolvedVersionSource {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Eq)]
 pub struct Source {
     pub extension: Option<String>,
+    /// Stable bundle filename when it intentionally differs from the registry
+    /// and dispatch key.
+    pub filename: Option<String>,
     pub subdir: Option<String>,
     /// Comma-separated tags; diagnostic-type membership (`minimal`,
     /// `standard`, `light`) derives from these.
@@ -196,6 +203,7 @@ impl Default for Source {
     fn default() -> Self {
         Self {
             extension: Some(String::from(".json")),
+            filename: None,
             subdir: None,
             tags: None,
             retry: false,
@@ -433,10 +441,23 @@ pub fn validate_processable_registry(product: &str, claims: &[ProcessableClaim])
 
 impl Source {
     pub fn get_file_path(&self, name: &str) -> String {
-        let extension = self.extension.as_deref().unwrap_or(".json");
+        let filename = self.filename.clone().unwrap_or_else(|| self.derived_filename(name));
         match &self.subdir {
-            Some(subdir) => format!("{}/{}{}", subdir, name, extension),
-            None => format!("{}{}", name, extension),
+            Some(subdir) => format!("{subdir}/{filename}"),
+            None => filename,
+        }
+    }
+
+    fn derived_filename(&self, name: &str) -> String {
+        let extension = self.extension.as_deref().unwrap_or(".json");
+        format!("{name}{extension}")
+    }
+
+    fn get_derived_file_path(&self, name: &str) -> String {
+        let filename = self.derived_filename(name);
+        match &self.subdir {
+            Some(subdir) => format!("{subdir}/{filename}"),
+            None => filename,
         }
     }
 

@@ -35,7 +35,7 @@ The two `POST` endpoints accept `wait_for_completion`:
 Use `?wait_for_completion` or `?wait_for_completion=true` for synchronous
 processing.
 
-The request body limit is 512 MiB. Archive uploads accept `.zip` files.
+The request body limit is 512 MiB. Archive submissions accept `.zip` files.
 
 ## Request and response types
 

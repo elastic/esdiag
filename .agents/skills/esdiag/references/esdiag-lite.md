@@ -26,27 +26,27 @@ Elasticsearch only. Kibana and Logstash collection are unsupported.
 
 ## Share
 
-Upload while collecting:
+Send to Elastic Upload Service while collecting:
 
 ```sh
-esdiag-lite.sh collect --upload="<upload-id>"
+esdiag-lite.sh collect --send="<upload-id>"
 ```
 
 ```powershell
-powershell -File esdiag-lite.ps1 collect --upload="<upload-id>"
+powershell -File esdiag-lite.ps1 collect --send="<upload-id>"
 ```
 
-Upload an existing ZIP archive:
+Send an existing ZIP archive:
 
 ```sh
-esdiag-lite.sh upload api-diagnostics-<timestamp>.zip "<upload-id>"
+esdiag-lite.sh send api-diagnostics-<timestamp>.zip "<upload-id>"
 ```
 
 ```powershell
-powershell -File esdiag-lite.ps1 upload api-diagnostics-<timestamp>.zip "<upload-id>"
+powershell -File esdiag-lite.ps1 send api-diagnostics-<timestamp>.zip "<upload-id>"
 ```
 
-An upload ID is required. Directory output cannot be uploaded.
+An Elastic Upload Service ID is required. Directory output cannot be sent.
 
 ## Process
 
@@ -70,7 +70,7 @@ Both Lite scripts read these values:
 | `ELASTIC_ES_USERNAME` | Basic-auth username. Requires `ELASTIC_ES_PASSWORD`. |
 | `ELASTIC_ES_PASSWORD` | Basic-auth password. Requires `ELASTIC_ES_USERNAME`. |
 | `UPLOAD_HOST` | Elastic Upload Service URL. Defaults to `https://upload.elastic.co`. |
-| `UPLOAD_ID` | Upload ID used when a command omits one. |
+| `UPLOAD_ID` | Elastic Upload Service ID used when a command omits one. |
 
 `esdiag-lite.sh` also reads `LOG_LEVEL`. The PowerShell script does not.
 The user sets credential values in their own shell.

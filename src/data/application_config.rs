@@ -2,7 +2,7 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use super::{Application, HostRole, KnownHost, load_saved_jobs};
+use super::{Application, ElasticOutputContext, HostRole, KnownHost, load_saved_jobs};
 use eyre::{Result, eyre};
 use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf};
@@ -60,6 +60,8 @@ pub struct OutputConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub elastic_context: Option<ElasticOutputContext>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub authenticated_on: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub assets_version: Option<String>,
@@ -67,7 +69,10 @@ pub struct OutputConfig {
 
 impl OutputConfig {
     fn is_empty(&self) -> bool {
-        self.default.is_none() && self.authenticated_on.is_none() && self.assets_version.is_none()
+        self.default.is_none()
+            && self.elastic_context.is_none()
+            && self.authenticated_on.is_none()
+            && self.assets_version.is_none()
     }
 }
 
@@ -122,7 +127,29 @@ impl ApplicationConfig {
         self.validate_version()?;
 
         let hosts = KnownHost::parse_hosts_yml()?;
-        if let Some(output_name) = &self.output.default {
+        if let Some(output_context) = &self.output.elastic_context {
+            #[cfg(feature = "elasticrc")]
+            {
+                let config = elasticrc::ConfigFile::load_with_options(output_context.config_file.as_deref(), None)?;
+                let context = config.contexts.get(&output_context.context).ok_or_else(|| {
+                    eyre!(
+                        "Configured Elastic CLI output context '{}' was not found",
+                        output_context.context
+                    )
+                })?;
+                if context.elasticsearch.is_none() {
+                    return Err(eyre!(
+                        "Configured Elastic CLI output context '{}' has no Elasticsearch service",
+                        output_context.context
+                    ));
+                }
+            }
+            #[cfg(not(feature = "elasticrc"))]
+            return Err(eyre!(
+                "Configured Elastic CLI output context '{}' requires the 'elasticrc' feature",
+                output_context.context
+            ));
+        } else if let Some(output_name) = &self.output.default {
             let output = hosts
                 .get(output_name)
                 .ok_or_else(|| eyre!("Configured output host '{output_name}' was not found"))?;
@@ -172,7 +199,7 @@ impl ApplicationConfig {
 #[cfg(test)]
 mod tests {
     use super::{ApplicationConfig, JobConfig, OnboardingWorkflow, OutputConfig};
-    use crate::data::{Application, HostRole, KnownHostBuilder};
+    use crate::data::{Application, ElasticOutputContext, HostRole, KnownHostBuilder};
     use std::collections::BTreeMap;
     use url::Url;
 
@@ -225,6 +252,32 @@ mod tests {
             !env.settings_path.exists(),
             "application config must not write legacy settings"
         );
+    }
+
+    #[test]
+    fn elastic_output_context_round_trips_without_credentials() {
+        let _env = crate::TestEnv::new();
+        let config = ApplicationConfig {
+            version: 1,
+            output: OutputConfig {
+                elastic_context: Some(ElasticOutputContext {
+                    context: "monitoring".to_string(),
+                    config_file: Some("elasticrc.yml".into()),
+                }),
+                ..OutputConfig::default()
+            },
+            ..ApplicationConfig::new()
+        };
+
+        config.save().expect("save configuration");
+        let written = std::fs::read_to_string(ApplicationConfig::path().expect("config path")).expect("read config");
+        let loaded = ApplicationConfig::load().expect("load configuration");
+
+        assert_eq!(loaded, config);
+        assert!(written.contains("context: monitoring"));
+        assert!(written.contains("config_file: elasticrc.yml"));
+        assert!(!written.contains("api_key"));
+        assert!(!written.contains("password"));
     }
 
     #[test]

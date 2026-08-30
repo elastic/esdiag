@@ -11,13 +11,13 @@
 //!   and/or [`Process`] (transform). `Export` lives *inside* [`Process`]
 //!   (Model β): "process to nowhere" and "export nothing" are unrepresentable.
 //! - **Phase 3 — output (optional, and/or):** `Export` (inside `Process`)
-//!   and/or [`SendTarget`] (bundle to the Elastic Uploader).
+//!   and/or [`SendTarget`] (bundle to the Elastic Upload Service).
 //!
 //! Execution mode is **derived, not stored** (`Save` is the serialization
 //! barrier): see [`Job::execution_mode`].
 
 use crate::{
-    data::Uri,
+    data::{ElasticContextTarget, Uri},
     processor::{Identifiers, api::ProcessSelection},
 };
 use serde::{Deserialize, Serialize};
@@ -64,6 +64,15 @@ pub enum Input {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         exclude: Option<Vec<String>>,
     },
+    /// Call live product APIs through a symbolic Elastic CLI context reference.
+    CollectContext {
+        target: ElasticContextTarget,
+        diagnostic_type: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        include: Option<Vec<String>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        exclude: Option<Vec<String>>,
+    },
     /// Collect through a transient receiver held only by the execution context.
     CollectBinding {
         binding: BindingKey,
@@ -75,13 +84,16 @@ pub enum Input {
     },
     /// Read an existing diagnostic from a directory, bundle, or download.
     Load { uri: Uri },
-    /// Load a transient upload or a nested path in a parent bundle.
+    /// Load a transient submitted bundle or a nested path in a parent bundle.
     LoadBinding { binding: BindingKey },
 }
 
 impl Input {
     pub fn is_collect(&self) -> bool {
-        matches!(self, Input::Collect { .. } | Input::CollectBinding { .. })
+        matches!(
+            self,
+            Input::Collect { .. } | Input::CollectContext { .. } | Input::CollectBinding { .. }
+        )
     }
 
     pub fn is_sendable_bundle(&self) -> bool {
@@ -138,6 +150,8 @@ pub struct Process {
 pub enum ExportTarget {
     /// A saved known host (an Elasticsearch output cluster).
     KnownHost { name: String },
+    /// An Elasticsearch service resolved from Elastic CLI configuration at execution time.
+    ElasticContext { target: ElasticContextTarget },
     /// A local newline-delimited JSON file.
     File { path: PathBuf },
     /// A local directory of per-stream files.
@@ -148,7 +162,7 @@ pub enum ExportTarget {
     Binding { binding: BindingKey },
 }
 
-/// Phase 3: transmit an existing bundle to the Elastic Uploader service.
+/// Phase 3: transmit an existing bundle to a remote destination.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct SendTarget {
     pub upload_id: String,
@@ -287,7 +301,7 @@ impl Job {
         }
         if match &input {
             Input::CollectBinding { binding, .. } | Input::LoadBinding { binding } => binding.is_empty(),
-            Input::Collect { .. } | Input::Load { .. } => false,
+            Input::Collect { .. } | Input::CollectContext { .. } | Input::Load { .. } => false,
         } {
             return Err(JobValidationError::EmptyRuntimeBinding);
         }
@@ -345,7 +359,9 @@ impl Job {
     /// staged over a materialised (or loaded) bundle.
     pub fn execution_mode(&self) -> ExecutionMode {
         match (&self.input, &self.save) {
-            (Input::Collect { .. } | Input::CollectBinding { .. }, None) if self.process.is_some() => {
+            (Input::Collect { .. } | Input::CollectContext { .. } | Input::CollectBinding { .. }, None)
+                if self.process.is_some() =>
+            {
                 ExecutionMode::Streaming
             }
             _ => ExecutionMode::Staged,
@@ -361,7 +377,7 @@ impl Job {
     }
 
     pub fn validate_for_persistence(&self) -> Result<(), JobValidationError> {
-        if self.uses_runtime_bindings() || !matches!(self.input, Input::Collect { .. }) {
+        if self.uses_runtime_bindings() || !matches!(self.input, Input::Collect { .. } | Input::CollectContext { .. }) {
             Err(JobValidationError::RuntimeBindingNotPersistable)
         } else {
             Ok(())
@@ -372,6 +388,7 @@ impl Job {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::data::Application;
 
     fn collect_input() -> Input {
         Input::Collect {
@@ -640,5 +657,55 @@ process:
 
         Job::try_new(Identifiers::default(), Input::Load { uri }, None, None, Some(send()))
             .expect("service-link bundle can be materialized for send");
+    }
+
+    #[test]
+    fn elastic_context_references_round_trip_symbolically() {
+        let input_target = ElasticContextTarget {
+            context: Some("prod".to_string()),
+            application: Application::Elasticsearch,
+            cloud_deployment: None,
+            config_file: None,
+        };
+        let output_target = ElasticContextTarget {
+            context: Some("monitoring".to_string()),
+            application: Application::Elasticsearch,
+            cloud_deployment: None,
+            config_file: None,
+        };
+        let job = Job::try_new(
+            Identifiers::default(),
+            Input::CollectContext {
+                target: input_target,
+                diagnostic_type: "standard".to_string(),
+                include: None,
+                exclude: None,
+            },
+            None,
+            Some(Process {
+                selection: None,
+                export: ExportTarget::ElasticContext { target: output_target },
+            }),
+            None,
+        )
+        .expect("context job");
+
+        let yaml = yaml_serde::to_string(&job).expect("serialize");
+        let loaded: Job = yaml_serde::from_str(&yaml).expect("deserialize");
+
+        assert!(yaml.contains("type: collect-context"));
+        assert!(yaml.contains("context: prod"));
+        assert!(yaml.contains("type: elastic-context"));
+        assert!(yaml.contains("context: monitoring"));
+        assert!(!yaml.contains("api_key"));
+        assert!(matches!(
+            loaded.input(),
+            Input::CollectContext { target, .. } if target.context.as_deref() == Some("prod")
+        ));
+        assert!(matches!(
+            loaded.process().map(|process| &process.export),
+            Some(ExportTarget::ElasticContext { target })
+                if target.context.as_deref() == Some("monitoring")
+        ));
     }
 }

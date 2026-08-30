@@ -7,7 +7,7 @@ tags: [setup, containers, local, agent-builder]
 
 # Run a local diagnostic cluster
 
-Run a local stack when you need local dashboards, browser uploads, or Agent
+Run a local stack when you need local dashboards, browser submissions, or Agent
 Builder. It needs Podman or Docker with Compose support, 4 GB of disk space,
 and preferably 8 GB of memory.
 

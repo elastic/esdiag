@@ -14,7 +14,7 @@
 use super::model::{ExecutionMode, Input, Job, Process};
 use super::{
     context::{ExecutionContext, ExecutionIdentity, RetentionPolicy},
-    outcome::{ChildExecutionOutcome, ExecutionEvent, ExecutionOutcome, Lifecycle, Stage, StageStatus, UploadResult},
+    outcome::{ChildExecutionOutcome, ExecutionEvent, ExecutionOutcome, Lifecycle, SendResult, Stage, StageStatus},
 };
 use crate::{
     data::{Application, Platform, Uri},
@@ -43,8 +43,8 @@ pub struct JobOutcome {
     pub bundle_retained: bool,
     /// Whether the retained bundle was produced by this job's collection stage.
     pub bundle_created: bool,
-    /// The upload slug returned by the Elastic Uploader for a `Send` stage.
-    pub upload_slug: Option<String>,
+    /// The destination slug returned by the Elastic Upload Service for a `Send` stage.
+    pub send_slug: Option<String>,
     /// Whether a `Process` stage ran to completion.
     pub processed: bool,
     /// The complete execution outcome used to report saved-job results.
@@ -94,7 +94,7 @@ fn job_outcome(outcome: ExecutionOutcome) -> JobOutcome {
         bundle_path: outcome.retained_bundle.clone(),
         bundle_retained: outcome.retained_bundle.is_some(),
         bundle_created: outcome.collection.is_some(),
-        upload_slug: outcome.upload.as_ref().map(|upload| upload.slug.clone()),
+        send_slug: outcome.send.as_ref().map(|send| send.slug.clone()),
         processed: outcome.report.is_some(),
         execution: Some(outcome),
     }
@@ -410,14 +410,14 @@ async fn run_independent_outputs(
                 ));
                 send_context.observe(
                     ExecutionEvent::new(send_context.identity.clone(), Stage::Send, Lifecycle::Progress)
-                        .with_message("Uploading resolved bundle"),
+                        .with_message("Sending resolved bundle"),
                 );
                 Some(
                     send_context
                         .sender
                         .send(&path, &send.upload_id)
                         .await
-                        .map(|response| UploadResult { slug: response.slug }),
+                        .map(|response| SendResult { slug: response.slug }),
                 )
             }
             (Some(_), None) => Some(Err(eyre!("Send requires a resolved local bundle"))),
@@ -430,7 +430,7 @@ async fn run_independent_outputs(
     if let Some(send_result) = send_result {
         match send_result {
             Ok(upload) => {
-                outcome.upload = Some(upload);
+                outcome.send = Some(upload);
                 record_stage(context, outcome, Stage::Send, StageStatus::Succeeded);
             }
             Err(error) => record_stage(context, outcome, Stage::Send, StageStatus::Failed(error.to_string())),
@@ -695,21 +695,27 @@ fn record_blocked_outputs(context: &ExecutionContext, job: &Job, outcome: &mut E
 
 fn collect_diagnostic_type(input: &Input) -> &str {
     match input {
-        Input::Collect { diagnostic_type, .. } | Input::CollectBinding { diagnostic_type, .. } => diagnostic_type,
+        Input::Collect { diagnostic_type, .. }
+        | Input::CollectContext { diagnostic_type, .. }
+        | Input::CollectBinding { diagnostic_type, .. } => diagnostic_type,
         Input::Load { .. } | Input::LoadBinding { .. } => "standard",
     }
 }
 
 fn collect_include(input: &Input) -> Option<&Vec<String>> {
     match input {
-        Input::Collect { include, .. } | Input::CollectBinding { include, .. } => include.as_ref(),
+        Input::Collect { include, .. }
+        | Input::CollectContext { include, .. }
+        | Input::CollectBinding { include, .. } => include.as_ref(),
         Input::Load { .. } | Input::LoadBinding { .. } => None,
     }
 }
 
 fn collect_exclude(input: &Input) -> Option<&Vec<String>> {
     match input {
-        Input::Collect { exclude, .. } | Input::CollectBinding { exclude, .. } => exclude.as_ref(),
+        Input::Collect { exclude, .. }
+        | Input::CollectContext { exclude, .. }
+        | Input::CollectBinding { exclude, .. } => exclude.as_ref(),
         Input::Load { .. } | Input::LoadBinding { .. } => None,
     }
 }
@@ -769,12 +775,12 @@ impl Drop for TempDirCleanup {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::elastic_upload_service::{BundleSending, FinalizeResponse};
     use crate::job::{
         context::{ExecutionIdentity, ExecutionObserver},
         model::{BindingKey, ExportTarget, SendTarget},
     };
     use crate::processor::Identifiers;
-    use crate::uploader::{BundleSending, FinalizeResponse};
     use futures::future::BoxFuture;
     use std::{
         fs::File,
@@ -910,7 +916,7 @@ mod tests {
 
         let outcome = execute(job).await.expect("job executes");
         assert!(outcome.processed);
-        assert!(outcome.upload_slug.is_none());
+        assert!(outcome.send_slug.is_none());
         // Processing produced exported document streams
         let produced = std::fs::read_dir(output.path()).expect("read output dir").count();
         assert!(produced > 0, "expected exported document files");
@@ -1377,7 +1383,7 @@ mod tests {
                 matches!(outcome.stage(Stage::Send), Some(StageStatus::Failed(_))),
                 send_fails
             );
-            assert_eq!(outcome.upload.is_some(), !send_fails);
+            assert_eq!(outcome.send.is_some(), !send_fails);
         }
     }
 
@@ -1415,10 +1421,7 @@ mod tests {
         assert!(matches!(outcome.stage(Stage::Process), Some(StageStatus::Failed(_))));
         assert!(matches!(outcome.stage(Stage::Export), Some(StageStatus::Blocked(_))));
         assert_eq!(outcome.stage(Stage::Send), Some(&StageStatus::Succeeded));
-        assert_eq!(
-            outcome.upload.as_ref().map(|upload| upload.slug.as_str()),
-            Some("raw-bundle")
-        );
+        assert_eq!(outcome.send.as_ref().map(|send| send.slug.as_str()), Some("raw-bundle"));
         assert!(!outcome.succeeded());
     }
 

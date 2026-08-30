@@ -68,24 +68,24 @@ share it.
 `minimal`, `light`, `standard`, and `support` are the collection levels.
 `standard` is the default.
 
-## Upload
+## Send
 
-To upload an existing archive:
+To send an existing archive to Elastic Upload Service:
 
 ```sh
-esdiag upload /path/to/diagnostic.zip '<UPLOAD_ID_OR_URL>'
+esdiag send /path/to/diagnostic.zip '<UPLOAD_ID_OR_URL>'
 ```
 
-To upload immediately after collection:
+To send immediately after collection:
 
 ```sh
 esdiag collect source-cluster "$HOME/diagnostics" \
   --type standard \
-  --upload '<UPLOAD_ID_OR_URL>'
+  --send '<UPLOAD_ID_OR_URL>'
 ```
 
-The collected archive stays on disk. Upload IDs and URLs are sensitive. Use the
-approved way to prevent them landing in shell history.
+The collected archive stays on disk. Elastic Upload Service IDs and URLs are
+sensitive. Use the approved way to prevent them landing in shell history.
 
 ## Next
 

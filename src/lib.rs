@@ -11,6 +11,8 @@ pub mod cli_output;
 pub mod client;
 /// Data structures and types for serializing and deserializing
 pub mod data;
+/// Send raw diagnostic archives to Elastic Upload Service
+pub mod elastic_upload_service;
 /// Embedded assets
 pub mod embeds;
 /// Environment variables
@@ -31,8 +33,6 @@ pub mod server;
 /// Send pre-built assets (index templates, etc) to Elasticsearch
 #[cfg(feature = "setup")]
 pub mod setup;
-/// Upload raw diagnostic archives to Elastic Upload Service
-pub mod uploader;
 
 #[cfg(test)]
 pub(crate) fn test_env_lock() -> &'static std::sync::Mutex<()> {

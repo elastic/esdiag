@@ -1,25 +1,25 @@
 ---
 type: Guide
 title: Use a shared ESDiag service
-description: Upload diagnostics to an organization-managed ESDiag web service.
+description: Submit diagnostics to an organization-managed ESDiag web service.
 tags: [setup, service, web, onboarding]
 ---
 
 # Use a shared ESDiag service
 
-A service user uploads diagnostics through a web URL. A service administrator
+A service user submits diagnostics through a web URL. A service administrator
 runs the service and its output cluster. They have different jobs.
 
 ## Service users
 
 1. Get the service URL and data-handling rules from the administrator.
 2. Open the URL and sign in.
-3. Upload the approved diagnostic archive.
+3. Submit the approved diagnostic archive.
 4. Open the returned diagnostic or Kibana link, if the service provides one.
 
 You do not need `esdiag`, `esdiag-local`, or the coding-agent skill. A shared
 service does not let users select an output cluster, save credentials, or create
-jobs. Contact the administrator if an upload fails or reaches the wrong place.
+jobs. Contact the administrator if a submission fails or reaches the wrong place.
 
 ## Service administrators
 

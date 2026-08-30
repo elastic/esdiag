@@ -288,7 +288,7 @@ pub struct JobCompleted<'a> {
     pub product: &'a str,
     /// The derived diagnostic outcome (ADR-0016), e.g. `complete`/`partial`.
     pub outcome: &'a str,
-    pub upload_destination: Option<&'a str>,
+    pub send_destination: Option<&'a str>,
     pub execution_error: Option<&'a str>,
     pub recorded_failures: Vec<String>,
 }
@@ -595,7 +595,7 @@ mod tests {
             kibana_link: "https://kb.example/app/dashboards#/view/child",
             product: "Elasticsearch",
             outcome: "complete",
-            upload_destination: Some("https://upload.elastic.co/g/raw-bundle"),
+            send_destination: Some("https://upload.elastic.co/g/raw-bundle"),
             execution_error: Some("Send failed"),
             recorded_failures: vec!["Error cluster_settings: request failed".to_string()],
         }
@@ -623,7 +623,7 @@ mod tests {
             kibana_link: "",
             product: "Elasticsearch",
             outcome: "complete",
-            upload_destination: None,
+            send_destination: None,
             execution_error: None,
             recorded_failures: Vec::new(),
         }

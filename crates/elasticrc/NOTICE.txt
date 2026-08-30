@@ -1,0 +1,2 @@
+elasticrc: Rust library for Elastic CLI context configuration
+Copyright 2026 Elasticsearch B.V.

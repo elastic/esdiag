@@ -182,7 +182,7 @@ The system SHALL derive a default job name from the current job signals using th
 - **action**: `collect` when only collecting; `process` when processing
 - **destination**:
   - collect + save to local file -> `save`
-  - collect + upload to upload service -> `upload`
+  - collect + send to Elastic Upload Service -> `send`
   - process + send to remote host -> the target host name
   - process + write to local file -> `file`
   - process + write to local directory -> `directory`
@@ -191,9 +191,9 @@ The system SHALL derive a default job name from the current job signals using th
 - **WHEN** the job signals are configured to collect from host `prod` and save locally
 - **THEN** the name field is pre-populated with `prod-collect-save`
 
-#### Scenario: Default name for collect-upload
-- **WHEN** the job signals are configured to collect from host `es_poc` and upload to the upload service
-- **THEN** the name field is pre-populated with `es_poc-collect-upload`
+#### Scenario: Default name for collect-send
+- **WHEN** the job signals are configured to collect from host `es_poc` and send to Elastic Upload Service
+- **THEN** the name field is pre-populated with `es_poc-collect-send`
 
 #### Scenario: Default name for process to remote host
 - **WHEN** the job signals are configured to process and send to remote host `monitoring`

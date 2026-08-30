@@ -8,10 +8,10 @@ use super::{
 };
 use crate::{
     data::{Application, HostRole, KnownHost, Platform, Uri},
+    elastic_upload_service::{BundleSender, BundleSending},
     exporter::DocumentExporter,
     processor::new_job_id,
     receiver::InputResolver,
-    uploader::{BundleSender, BundleSending},
 };
 use eyre::{Result, eyre};
 use std::{collections::HashMap, sync::Arc};
@@ -129,6 +129,10 @@ impl ExecutionContext {
                     return Err(eyre!("Export host '{host_key}' must be an Elasticsearch host"));
                 }
                 DocumentExporter::try_from(Uri::try_from(host)?)
+            }
+            ExportTarget::ElasticContext { target } => {
+                let deployment = crate::data::OutputDeployment::from_elastic_target(target, false)?;
+                DocumentExporter::try_from(Uri::try_from(deployment.elasticsearch)?)
             }
             ExportTarget::File { path } => DocumentExporter::try_from(Uri::File(path.clone())),
             ExportTarget::Directory { output_dir } => DocumentExporter::try_from(Uri::Directory(output_dir.clone())),

@@ -8,6 +8,8 @@ mod application;
 mod application_config;
 /// Authentication methods
 mod auth;
+/// Symbolic Elastic CLI context targets and resolution
+mod elastic_context;
 /// Encrypted secret storage
 mod keystore;
 /// Manage saving and loading hosts from a YAML file
@@ -26,6 +28,7 @@ mod uri;
 pub use application::Application;
 pub use application_config::{ApplicationConfig, JobConfig, OnboardingWorkflow, OutputConfig};
 pub use auth::{Auth, AuthType};
+pub use elastic_context::{ElasticContextTarget, ElasticOutputContext};
 #[cfg(all(feature = "server", feature = "keystore"))]
 pub(crate) use keystore::get_active_unlock_keystore_password;
 #[cfg(all(feature = "server", feature = "keystore"))]
@@ -66,10 +69,10 @@ pub fn collect_application(app: Option<Application>) -> Result<Application> {
             Ok(application)
         }
         Some(Application::Agent) => Err(eyre!(
-            "Collect is out of scope by design for Elastic Agent. Elastic Agent provides its own diagnostic bundle; acquire it through CLI `process` input or Web UI `Upload`."
+            "Collect is out of scope by design for Elastic Agent. Elastic Agent provides its own diagnostic bundle; acquire it through CLI `process` input or a Web UI submission."
         )),
         None => Err(eyre!(
-            "Collect is out of scope by design for platform targets (ECE, ECK, and KubernetesPlatform). Load the platform-generated bundle through CLI `process` input or Web UI `Upload`; only Elasticsearch, Kibana, and Logstash support API collection."
+            "Collect is out of scope by design for platform targets (ECE, ECK, and KubernetesPlatform). Load the platform-generated bundle through CLI `process` input or a Web UI submission; only Elasticsearch, Kibana, and Logstash support API collection."
         )),
     }
 }
@@ -220,7 +223,7 @@ mod tests {
                 .to_string();
             assert!(error.contains("out of scope by design"));
             assert!(error.contains("CLI `process` input"));
-            assert!(error.contains("Web UI `Upload`"));
+            assert!(error.contains("Web UI submission"));
             assert!(!error.contains("not yet implemented"));
         }
     }

@@ -84,7 +84,7 @@ pub async fn service_link(
     Query(params): Query<ServiceLinkQueryParams>,
     Json(payload): Json<UploadServiceRequest>,
 ) -> impl IntoResponse {
-    tracing::info!("Received JSON elastic uploader request for: {}", payload.url);
+    tracing::info!("Received JSON Elastic Upload Service request for: {}", payload.url);
 
     let job_id = new_job_id();
 

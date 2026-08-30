@@ -48,11 +48,11 @@ Usage: esdiag-lite.ps1 <COMMAND> [OPTIONS]
 Commands:
   watch                    Collect diagnostics periodically using WAIT_SECONDS and COLLECTION_COUNT.
   collect                  Collect a single diagnostic immediately.
-  upload <filename> [id]   Upload an existing ZIP archive; uses UPLOAD_ID when id is omitted.
+  send <filename> [id]     Send an existing ZIP archive to Elastic Upload Service; uses UPLOAD_ID when id is omitted.
 
 Options:
   --archive=zip|none       Output format; zip is the default and none preserves the directory.
-  --upload=UPLOAD_ID       Upload the generated ZIP archive to an Elastic Upload Service id.
+  --send=UPLOAD_ID         Send the generated ZIP archive to an Elastic Upload Service ID.
 
 Environment:
   ELASTIC_ES_URL           Elasticsearch endpoint URL.
@@ -60,7 +60,7 @@ Environment:
   ELASTIC_ES_USERNAME      Username for HTTP basic authentication.
   ELASTIC_ES_PASSWORD      Password for HTTP basic authentication.
   UPLOAD_HOST              Elastic Upload Service base URL; defaults to https://upload.elastic.co.
-  UPLOAD_ID                Elastic Upload Service id used by upload when [id] is omitted.
+  UPLOAD_ID                Elastic Upload Service ID used by send when [id] is omitted.
 
 ESDiag Lite collects raw diagnostic API responses and can forward its ZIP output.
 Process its ZIP or directory output with esdiag process.
@@ -80,10 +80,10 @@ function Parse-Arguments {
     '-h' { $script:CommandName = 'help'; return $true }
     'collect' { $script:CommandName = 'collect' }
     'watch' { $script:CommandName = 'watch' }
-    'upload' {
-      $script:CommandName = 'upload'
+    'send' {
+      $script:CommandName = 'send'
       if ($RemainingArguments.Count -lt 1 -or $RemainingArguments.Count -gt 2) {
-        Write-Log Error 'upload requires a filename and accepts an optional upload id'
+        Write-Log Error 'send requires a filename and accepts an optional Elastic Upload Service ID'
         Show-Help
         return $false
       }
@@ -113,10 +113,10 @@ function Parse-Arguments {
       Show-Help
       return $false
     }
-    elseif ($argument.StartsWith('--upload=')) {
-      $script:UploadId = $argument.Substring('--upload='.Length)
+    elseif ($argument.StartsWith('--send=')) {
+      $script:UploadId = $argument.Substring('--send='.Length)
       if ([string]::IsNullOrWhiteSpace($script:UploadId)) {
-        Write-Log Error 'upload id must not be empty'
+        Write-Log Error 'Elastic Upload Service ID must not be empty'
         return $false
       }
       $script:UploadRequested = $true
@@ -147,25 +147,25 @@ function Test-Configuration {
   return $false
 }
 
-function Test-UploadConfiguration {
+function Test-SendConfiguration {
   if ([string]::IsNullOrWhiteSpace($script:UploadId)) {
-    Write-Log Error 'upload id must be provided as [id] or UPLOAD_ID'
+    Write-Log Error 'Elastic Upload Service ID must be provided as [id] or UPLOAD_ID'
     return $false
   }
   if (-not (Test-Path -LiteralPath $script:UploadFile -PathType Leaf)) {
-    Write-Log Error "upload file does not exist: $($script:UploadFile)"
+    Write-Log Error "send file does not exist: $($script:UploadFile)"
     return $false
   }
   return $true
 }
 
 function Test-Dependencies {
-  if ($script:CommandName -ne 'upload' -and $script:ArchiveFormat -eq 'zip' -and -not (Get-Command Compress-Archive -ErrorAction SilentlyContinue)) {
+  if ($script:CommandName -ne 'send' -and $script:ArchiveFormat -eq 'zip' -and -not (Get-Command Compress-Archive -ErrorAction SilentlyContinue)) {
     [Console]::Error.WriteLine('No ZIP archive support found, run with --archive=none to skip archive creation')
     return $false
   }
   if ($script:UploadRequested -and -not (Get-Command Get-FileHash -ErrorAction SilentlyContinue)) {
-    Write-Log Error 'missing required PowerShell command Get-FileHash for uploads'
+    Write-Log Error 'missing required PowerShell command Get-FileHash for Elastic Upload Service sends'
     return $false
   }
   return $true
@@ -332,10 +332,10 @@ function Get-ApiIlmPolicies {
 
 function Get-ApiIndicesSettings {
   if ((Test-VersionAtLeast 0 9 0) -and (Test-VersionLessThan 7 7 0)) {
-    return Invoke-Api '/_settings?human' 'indices_settings.json'
+    return Invoke-Api '/_settings?human' 'settings.json'
   }
   elseif ((Test-VersionAtLeast 7 7 0)) {
-    return Invoke-Api '/_settings?human&expand_wildcards=all' 'indices_settings.json'
+    return Invoke-Api '/_settings?human&expand_wildcards=all' 'settings.json'
   }
   else {
     Skip-Api 'indices_settings'
@@ -479,7 +479,7 @@ function Get-UploadId {
   return $segments[$segments.Count - 1]
 }
 
-function New-UploadParts {
+function New-SendParts {
   param([string]$SourcePath, [string]$DestinationDirectory)
 
   $partSize = 50000000
@@ -519,8 +519,8 @@ function New-UploadParts {
   return $parts
 }
 
-function Invoke-DiagnosticUpload {
-  if (-not (Test-UploadConfiguration)) { return $false }
+function Invoke-DiagnosticSend {
+  if (-not (Test-SendConfiguration)) { return $false }
   $uploadId = Get-UploadId
   $uploadHost = $script:UploadHost.TrimEnd('/')
   $fileName = [IO.Path]::GetFileName($script:UploadFile)
@@ -531,10 +531,10 @@ function Invoke-DiagnosticUpload {
     Write-Log Error "failed to calculate SHA-256 for $($script:UploadFile)"
     return $false
   }
-  $temporaryDirectory = Join-Path ([IO.Path]::GetTempPath()) ("esdiag-lite-upload-{0}" -f [Guid]::NewGuid().ToString('N'))
+  $temporaryDirectory = Join-Path ([IO.Path]::GetTempPath()) ("esdiag-lite-send-{0}" -f [Guid]::NewGuid().ToString('N'))
   [IO.Directory]::CreateDirectory($temporaryDirectory) | Out-Null
   try {
-    $parts = New-UploadParts $script:UploadFile $temporaryDirectory
+    $parts = New-SendParts $script:UploadFile $temporaryDirectory
     $partNumber = 1
     foreach ($part in $parts) {
       $partDigest = Get-FileDigest $part
@@ -548,27 +548,27 @@ function Invoke-DiagnosticUpload {
         $exists = $false
       }
       if ($exists) {
-        Write-Log Info "skipping uploaded part $partNumber"
+        Write-Log Info "skipping existing Elastic Upload Service part $partNumber"
       }
       else {
         $query = "part_number=$partNumber&part_digest=$partDigest&file_digest=$fileDigest&filename=$([Uri]::EscapeDataString($fileName))"
         try {
           Invoke-WebRequest -UseBasicParsing -Method Put -Uri "$uploadHost/api/uploads/$uploadId?$query" -InFile $part -ContentType 'application/octet-stream' -ErrorAction Stop | Out-Null
-          Write-Log Info "uploaded part $partNumber"
+          Write-Log Info "sent part $partNumber"
         }
         catch {
-          Write-Log Error "failed to upload part $partNumber"
+          Write-Log Error "Elastic Upload Service rejected part $partNumber"
           return $false
         }
       }
       $partNumber += 1
     }
     Invoke-WebRequest -UseBasicParsing -Method Post -Uri "$uploadHost/api/uploads/$uploadId/$fileDigest/_finalize" -ErrorAction Stop | Out-Null
-    Write-Log Info "uploaded $($script:UploadFile)"
+    Write-Log Info "sent $($script:UploadFile) to Elastic Upload Service"
     return $true
   }
   catch {
-    Write-Log Error "failed to finalize upload for $($script:UploadFile)"
+    Write-Log Error "failed to finalize Elastic Upload Service send for $($script:UploadFile)"
     return $false
   }
   finally {
@@ -598,7 +598,7 @@ function Invoke-Collection {
   }
   Save-Manifest
   if (-not (Complete-Archive)) { return $false }
-  if ($script:UploadRequested) { return Invoke-DiagnosticUpload }
+  if ($script:UploadRequested) { return Invoke-DiagnosticSend }
   return $true
 }
 
@@ -608,7 +608,7 @@ function Invoke-Watch {
   for ($number = 1; $number -le $script:CollectionCount; $number += 1) {
     Write-Log Info "collecting diagnostic $number of $($script:CollectionCount)"
     $arguments = @('collect', "--archive=$($script:ArchiveFormat)")
-    if ($script:UploadRequested) { $arguments += "--upload=$($script:UploadId)" }
+    if ($script:UploadRequested) { $arguments += "--send=$($script:UploadId)" }
     $jobs += Start-Job -ScriptBlock {
       param($ScriptPath, $ScriptArguments)
       & $ScriptPath @ScriptArguments
@@ -633,11 +633,11 @@ function Invoke-Main {
   }
   if (-not (Parse-Arguments)) { return $false }
   if ($script:CommandName -eq 'help') { Show-Help; return $true }
-  if ($script:CommandName -eq 'upload') {
-    return (Test-UploadConfiguration) -and (Test-Dependencies) -and (Invoke-DiagnosticUpload)
+  if ($script:CommandName -eq 'send') {
+    return (Test-SendConfiguration) -and (Test-Dependencies) -and (Invoke-DiagnosticSend)
   }
   if ($script:UploadRequested -and $script:ArchiveFormat -ne 'zip') {
-    Write-Log Error 'uploads require --archive=zip'
+    Write-Log Error 'Elastic Upload Service sends require --archive=zip'
     return $false
   }
   if (-not (Test-Configuration) -or -not (Test-Dependencies)) { return $false }

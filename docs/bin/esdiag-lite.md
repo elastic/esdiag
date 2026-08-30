@@ -15,7 +15,7 @@ The Bash script needs Bash 3.2 or later, `curl`, and standard POSIX tools. ZIP
 output also needs `zip`. It does not need ESDiag, a container runtime, `jq`,
 `yq`, Python, or Rust.
 
-`bin/esdiag-lite.ps1` provides the same collection and upload commands for
+`bin/esdiag-lite.ps1` provides the same collection and send commands for
 Windows PowerShell 5.1 or later.
 
 ## Configure access
@@ -61,33 +61,34 @@ WAIT_SECONDS=60 COLLECTION_COUNT=5 \
   bin/esdiag-lite.sh watch --archive=none
 ```
 
-## Upload
+## Send
 
-Set an upload ID when you want to omit it from the `upload` command:
+Set an Elastic Upload Service ID when you want to omit it from the `send`
+command:
 
 ```sh
 export UPLOAD_ID="<upload-id>"
 ```
 
-Upload immediately after collection:
+Send immediately after collection:
 
 ```sh
-bin/esdiag-lite.sh collect --upload="<upload-id>"
+bin/esdiag-lite.sh collect --send="<upload-id>"
 ```
 
-Or upload an existing archive:
+Or send an existing archive:
 
 ```sh
-bin/esdiag-lite.sh upload api-diagnostics-<timestamp>.zip
-bin/esdiag-lite.sh upload api-diagnostics-<timestamp>.zip "<upload-id>"
+bin/esdiag-lite.sh send api-diagnostics-<timestamp>.zip
+bin/esdiag-lite.sh send api-diagnostics-<timestamp>.zip "<upload-id>"
 ```
 
 Uploads need `split` and one SHA-256 tool: `shasum`, `sha256sum`, or `openssl`.
 The script creates 50 MB parts and skips parts that the service already has.
-You can retry a failed upload.
+You can retry a failed send.
 
-Setting `UPLOAD_ID` alone does not upload collection output. Use `--upload`.
-Immediate upload needs ZIP output.
+Setting `UPLOAD_ID` alone does not send collection output. Use `--send`.
+Immediate sending needs ZIP output.
 
 ## Process the output
 
@@ -118,7 +119,7 @@ The generator updates and checks both `esdiag-lite.sh` and `esdiag-lite.ps1`.
 ```powershell
 powershell -File bin/esdiag-lite.ps1 collect
 powershell -File bin/esdiag-lite.ps1 collect --archive=none
-powershell -File bin/esdiag-lite.ps1 upload api-diagnostics-<timestamp>.zip
+powershell -File bin/esdiag-lite.ps1 send api-diagnostics-<timestamp>.zip
 ```
 
 PowerShell uses `Compress-Archive` for ZIP output. Use `--archive=none` when

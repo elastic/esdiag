@@ -25,13 +25,13 @@ Without `exec`, collection is unsupported. Use a native binary or ESDiag Lite.
 
 ## Share
 
-With `exec`, upload diagnostics while collecting:
+With `exec`, send diagnostics to Elastic Upload Service while collecting:
 
 ```sh
-esdiag-local exec -- collect <host> <directory> --upload <upload-id>
+esdiag-local exec -- collect <host> <directory> --send <upload-id>
 ```
 
-Without `exec`, sharing is unsupported. ESDiag Lite can upload an existing ZIP
+Without `exec`, sharing is unsupported. ESDiag Lite can send an existing ZIP
 archive.
 
 ## Process

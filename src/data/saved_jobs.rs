@@ -9,7 +9,7 @@ use std::{
 };
 use tokio::task;
 
-use super::{KnownHost, Uri};
+use super::{ElasticContextTarget, KnownHost, Uri};
 use crate::{
     job::model::{Input, Process, SaveTarget, SendTarget},
     processor::{
@@ -95,9 +95,14 @@ pub struct NeedsAction;
 /// The Phase-1 `Collect` input under construction, with the Phase-2a save
 /// directory the terminal builder methods fold into a [`SaveTarget`].
 struct CollectDraft {
-    host: String,
+    target: CollectDraftTarget,
     diagnostic_type: String,
     save_dir: Option<PathBuf>,
+}
+
+enum CollectDraftTarget {
+    KnownHost(String),
+    ElasticContext(ElasticContextTarget),
 }
 
 pub struct JobBuilder<State> {
@@ -178,7 +183,7 @@ pub struct JobDraftSend {
     pub local_target: String,
     #[serde(default)]
     pub local_directory: String,
-    /// Raw-bundle upload target. This is independent from the processed
+    /// Raw-bundle send target. This is independent from the processed
     /// document target represented by the legacy send controls above.
     #[serde(default)]
     pub raw_remote_target: Option<String>,
@@ -382,10 +387,11 @@ impl Job {
         JobBuilder::new()
     }
 
-    pub fn collect_host(&self) -> &str {
+    pub fn collect_host(&self) -> String {
         match self.input() {
-            Input::Collect { host, .. } => host,
-            Input::CollectBinding { .. } | Input::Load { .. } | Input::LoadBinding { .. } => "",
+            Input::Collect { host, .. } => host.clone(),
+            Input::CollectContext { target, .. } => target.to_string(),
+            Input::CollectBinding { .. } | Input::Load { .. } | Input::LoadBinding { .. } => String::new(),
         }
     }
 
@@ -504,6 +510,14 @@ impl From<&Job> for JobSignals {
 
 impl JobOutput {
     pub fn from_cli_target(target: &str) -> Result<Self> {
+        if let Some(target) = ElasticContextTarget::parse(target)? {
+            if target.application != crate::data::Application::Elasticsearch || target.is_cloud_admin() {
+                return Err(eyre!(
+                    "Elastic CLI Export targets must select an Elasticsearch service context"
+                ));
+            }
+            return Ok(Self::ElasticContext { target });
+        }
         match Uri::try_from(target.to_string())? {
             Uri::KnownHost(_) | Uri::ElasticCloudAdmin(_) | Uri::ElasticGovCloudAdmin(_) => Ok(Self::KnownHost {
                 name: target.to_string(),
@@ -520,6 +534,7 @@ impl JobOutput {
     pub fn target_uri(&self) -> String {
         match self {
             Self::KnownHost { name } => name.clone(),
+            Self::ElasticContext { target } => target.to_string(),
             Self::File { path } => path.display().to_string(),
             Self::Directory { output_dir } => output_dir.display().to_string(),
             Self::Stdout => "-".to_string(),
@@ -530,6 +545,7 @@ impl JobOutput {
     fn label(&self) -> String {
         match self {
             Self::KnownHost { name } => name.clone(),
+            Self::ElasticContext { target } => target.to_string(),
             Self::File { path } => path.display().to_string(),
             Self::Directory { output_dir } => format!("dir:{}", output_dir.display()),
             Self::Stdout => "stdout".to_string(),
@@ -544,9 +560,7 @@ impl JobOutput {
                 if target.is_empty() {
                     return Err(eyre!("Process jobs require a remote output target"));
                 }
-                Ok(Self::KnownHost {
-                    name: target.to_string(),
-                })
+                Self::from_cli_target(target)
             }
             SendMode::Local => {
                 if signals.send.local_target == "directory" {
@@ -585,6 +599,10 @@ impl JobOutput {
             Self::KnownHost { name } => {
                 signals.send.mode = SendMode::Remote;
                 signals.send.remote_target = Some(name.clone());
+            }
+            Self::ElasticContext { target } => {
+                signals.send.mode = SendMode::Remote;
+                signals.send.remote_target = Some(target.to_string());
             }
             Self::Directory { output_dir } => {
                 signals.send.mode = SendMode::Local;
@@ -677,19 +695,19 @@ impl JobBuilder<NeedsCollect> {
             let output = JobOutput::from_signals_send(&signals)?;
             let selection = explicit_process_selection(&signals)?;
             match signals.send.raw_remote_target {
-                Some(upload_id) => builder.process_and_upload_to(output, selection, upload_id),
+                Some(upload_id) => builder.process_and_send_to(output, selection, upload_id),
                 None => builder.process_to_with_selection(output, selection),
             }
         } else if signals.process.mode == ProcessMode::Forward && signals.send.mode == SendMode::Remote {
             if let Some(download_dir) = intermediate_download_dir(&signals) {
                 builder = builder.save_collected_bundle_to(download_dir);
             }
-            builder.upload_to(
+            builder.send_to(
                 signals
                     .send
                     .raw_remote_target
                     .or(signals.send.remote_target)
-                    .ok_or_else(|| eyre!("Upload jobs require a remote target"))?,
+                    .ok_or_else(|| eyre!("Send jobs require a remote target"))?,
             )
         } else {
             let output_dir = if signals.collect.save && !signals.collect.download_dir.trim().is_empty() {
@@ -706,12 +724,18 @@ impl JobBuilder<NeedsCollect> {
     pub fn collect_from(self, host: impl Into<String>) -> Result<JobBuilder<NeedsAction>> {
         let host = host.into();
         let host_name = host.trim();
-        KnownHost::get_known(&host_name.to_string())
-            .ok_or_else(|| eyre!("Jobs require a saved known host name as input"))?;
+        let target = match ElasticContextTarget::parse(host_name)? {
+            Some(target) => CollectDraftTarget::ElasticContext(target),
+            None => {
+                KnownHost::get_known(&host_name.to_string())
+                    .ok_or_else(|| eyre!("Jobs require a saved known host name or Elastic CLI context as input"))?;
+                CollectDraftTarget::KnownHost(host_name.to_string())
+            }
+        };
         Ok(JobBuilder {
             identifiers: self.identifiers,
             collect: Some(CollectDraft {
-                host: host_name.to_string(),
+                target,
                 diagnostic_type: default_diagnostic_type(),
                 save_dir: None,
             }),
@@ -760,10 +784,10 @@ impl JobBuilder<NeedsAction> {
         self.build(Some(SaveTarget::retained(output_dir)), None, None)
     }
 
-    pub fn upload_to(self, upload_id: impl Into<String>) -> Result<Job> {
+    pub fn send_to(self, upload_id: impl Into<String>) -> Result<Job> {
         let upload_id = upload_id.into();
         if upload_id.trim().is_empty() {
-            return Err(eyre!("Upload jobs require an Elastic Upload Service upload id or URL"));
+            return Err(eyre!("Send jobs require an Elastic Upload Service ID or URL"));
         }
         let save = self
             .collect
@@ -794,7 +818,7 @@ impl JobBuilder<NeedsAction> {
         )
     }
 
-    pub fn process_and_upload_to(
+    pub fn process_and_send_to(
         self,
         output: JobOutput,
         selection: Option<ProcessSelection>,
@@ -802,7 +826,7 @@ impl JobBuilder<NeedsAction> {
     ) -> Result<Job> {
         let upload_id = upload_id.into();
         if upload_id.trim().is_empty() {
-            return Err(eyre!("Upload jobs require an Elastic Upload Service upload id or URL"));
+            return Err(eyre!("Send jobs require an Elastic Upload Service ID or URL"));
         }
         let save = self
             .collect
@@ -826,11 +850,19 @@ impl JobBuilder<NeedsAction> {
 
     fn build(self, save: Option<SaveTarget>, process: Option<Process>, send: Option<SendTarget>) -> Result<Job> {
         let collect = self.collect.expect("typestate guarantees collect");
-        let input = Input::Collect {
-            host: collect.host,
-            diagnostic_type: collect.diagnostic_type,
-            include: None,
-            exclude: None,
+        let input = match collect.target {
+            CollectDraftTarget::KnownHost(host) => Input::Collect {
+                host,
+                diagnostic_type: collect.diagnostic_type,
+                include: None,
+                exclude: None,
+            },
+            CollectDraftTarget::ElasticContext(target) => Input::CollectContext {
+                target,
+                diagnostic_type: collect.diagnostic_type,
+                include: None,
+                exclude: None,
+            },
         };
         Job::try_new(self.identifiers, input, save, process, send).map_err(Into::into)
     }
@@ -1812,7 +1844,36 @@ collect-job:
 
         assert!(
             err.to_string()
-                .contains("Jobs require a saved known host name as input")
+                .contains("Jobs require a saved known host name or Elastic CLI context as input")
         );
+    }
+
+    #[test]
+    fn saved_job_round_trips_symbolic_input_and_output_contexts() {
+        let _guard = test_env_lock().lock().expect("env lock");
+        let _tmp = setup_env();
+        let job = Job::builder()
+            .collect_from(".prod.es")
+            .expect("context input")
+            .process_to(JobOutput::from_cli_target(".monitoring.es").expect("context output"))
+            .expect("context job");
+        let jobs = IndexMap::from([("context-job".to_string(), job)]);
+
+        save_saved_jobs(&jobs).expect("save jobs");
+        let loaded = load_saved_jobs().expect("load jobs");
+        let loaded = loaded.get("context-job").expect("saved job");
+        let written = std::fs::read_to_string(get_jobs_path().expect("jobs path")).expect("read jobs");
+
+        assert!(matches!(
+            loaded.input(),
+            Input::CollectContext { target, .. } if target.context.as_deref() == Some("prod")
+        ));
+        assert!(matches!(
+            loaded.process().map(|process| &process.export),
+            Some(JobOutput::ElasticContext { target })
+                if target.context.as_deref() == Some("monitoring")
+        ));
+        assert!(!written.contains("api_key"));
+        assert!(!written.contains("password"));
     }
 }

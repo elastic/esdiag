@@ -98,16 +98,16 @@ try {
   $script:UploadId = 'upload-id'
   $script:UploadHost = 'https://upload.elastic.co'
   $script:UploadRequested = $true
-  Assert-True (Invoke-DiagnosticUpload) 'upload should complete with mocked requests'
-  Assert-True ($global:Requests.Method -contains 'Head') 'upload should check whether a part already exists'
-  Assert-True ($global:Requests.Method -contains 'Put') 'upload should send a missing part'
-  Assert-True ($global:Requests.Method -contains 'Post') 'upload should finalize the file'
+  Assert-True (Invoke-DiagnosticSend) 'send should complete with mocked requests'
+  Assert-True ($global:Requests.Method -contains 'Head') 'send should check whether a part already exists'
+  Assert-True ($global:Requests.Method -contains 'Put') 'send should transfer a missing part'
+  Assert-True ($global:Requests.Method -contains 'Post') 'send should finalize the file'
 
   $requestCount = $global:Requests.Count
   $global:UploadPartExists = $true
-  Assert-True (Invoke-DiagnosticUpload) 'upload should resume when all parts already exist'
+  Assert-True (Invoke-DiagnosticSend) 'send should resume when all parts already exist'
   $resumeMethods = $global:Requests[$requestCount..($global:Requests.Count - 1)].Method
-  Assert-True (-not ($resumeMethods -contains 'Put')) 'upload should skip existing parts'
+  Assert-True (-not ($resumeMethods -contains 'Put')) 'send should skip existing parts'
 
   Write-Host 'esdiag-lite PowerShell tests passed'
 }

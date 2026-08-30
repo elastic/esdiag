@@ -72,7 +72,7 @@ test_generated_functions() {
   assert_contains "$skipped" searchable_snapshots_cache_stats
   get_api_ilm_explain
   assert_contains "$requests" '/*/_ilm/explain?human&expand_wildcards=all:commercial/ilm_explain.json'
-  get_api_settings
+  get_api_indices_settings
   assert_contains "$requests" '/_settings?human&expand_wildcards=all:settings.json'
 }
 
@@ -155,7 +155,7 @@ test_collection_authentication_and_none_output() {
   assert_contains "$(<"$run_dir/curl.log")" 'Authorization: ApiKey key'
   assert_not_contains "$(<"$run_dir/curl.log")" user:pass
 
-  run_dir="$tmp/no-implicit-upload"
+  run_dir="$tmp/no-implicit-send"
   run_collection "$run_dir" env ELASTIC_ES_API_KEY=key UPLOAD_ID=environment-id "$script" collect
   assert_not_contains "$(<"$run_dir/curl.log")" '/api/uploads/'
 }
@@ -196,48 +196,48 @@ test_archives_and_validation() {
 
 test_uploads() {
   make_mock_path
-  run_dir="$tmp/upload-after-collect"
-  run_collection "$run_dir" env ELASTIC_ES_API_KEY=key "$script" collect --upload=immediate-id
-  archive=$(archive_path "$run_dir") || fail 'immediate upload should retain archive'
+  run_dir="$tmp/send-after-collect"
+  run_collection "$run_dir" env ELASTIC_ES_API_KEY=key "$script" collect --send=immediate-id
+  archive=$(archive_path "$run_dir") || fail 'immediate send should retain archive'
   log=$(<"$run_dir/curl.log")
   assert_contains "$log" 'https://upload.elastic.co/api/uploads/immediate-id'
   assert_contains "$log" --head
   assert_contains "$log" --request
   assert_contains "$log" _finalize
 
-  run_dir="$tmp/upload-existing"
+  run_dir="$tmp/send-existing"
   mkdir -p "$run_dir"
   printf 'existing archive' >"$run_dir/existing.zip"
   (
     cd "$run_dir"
-    PATH="$mock_bin:$PATH" MOCK_CURL_LOG="$run_dir/curl.log" UPLOAD_ID=environment-id "$script" upload existing.zip
-  ) || fail 'upload should use UPLOAD_ID when no argument is provided'
+    PATH="$mock_bin:$PATH" MOCK_CURL_LOG="$run_dir/curl.log" UPLOAD_ID=environment-id "$script" send existing.zip
+  ) || fail 'send should use UPLOAD_ID when no argument is provided'
   assert_contains "$(<"$run_dir/curl.log")" 'https://upload.elastic.co/api/uploads/environment-id'
 
-  run_dir="$tmp/upload-argument"
+  run_dir="$tmp/send-argument"
   mkdir -p "$run_dir"
   printf 'existing archive' >"$run_dir/existing.zip"
   (
     cd "$run_dir"
-    PATH="$mock_bin:$PATH" MOCK_CURL_LOG="$run_dir/curl.log" UPLOAD_ID=environment-id "$script" upload existing.zip argument-id
-  ) || fail 'upload should accept an explicit id'
+    PATH="$mock_bin:$PATH" MOCK_CURL_LOG="$run_dir/curl.log" UPLOAD_ID=environment-id "$script" send existing.zip argument-id
+  ) || fail 'send should accept an explicit Elastic Upload Service ID'
   assert_contains "$(<"$run_dir/curl.log")" 'https://upload.elastic.co/api/uploads/argument-id'
   assert_not_contains "$(<"$run_dir/curl.log")" environment-id
 
-  run_dir="$tmp/upload-resume"
+  run_dir="$tmp/send-resume"
   mkdir -p "$run_dir"
   printf 'existing archive' >"$run_dir/existing.zip"
   (
     cd "$run_dir"
-    PATH="$mock_bin:$PATH" MOCK_CURL_LOG="$run_dir/curl.log" MOCK_UPLOAD_PART_EXISTS=true UPLOAD_ID=environment-id "$script" upload existing.zip
-  ) || fail 'upload should skip an existing part'
+    PATH="$mock_bin:$PATH" MOCK_CURL_LOG="$run_dir/curl.log" MOCK_UPLOAD_PART_EXISTS=true UPLOAD_ID=environment-id "$script" send existing.zip
+  ) || fail 'send should skip an existing Elastic Upload Service part'
   assert_not_contains "$(<"$run_dir/curl.log")" PUT
 
-  if PATH="$mock_bin:$PATH" MOCK_CURL_LOG="$tmp/missing-upload-id.log" "$script" upload "$run_dir/existing.zip" >/dev/null 2>&1; then
-    fail 'upload without an id should fail'
+  if PATH="$mock_bin:$PATH" MOCK_CURL_LOG="$tmp/missing-upload-id.log" "$script" send "$run_dir/existing.zip" >/dev/null 2>&1; then
+    fail 'send without an Elastic Upload Service ID should fail'
   fi
-  if run_collection "$tmp/upload-none" env ELASTIC_ES_API_KEY=key "$script" collect --archive=none --upload=id; then
-    fail 'immediate upload with directory output should fail'
+  if run_collection "$tmp/upload-none" env ELASTIC_ES_API_KEY=key "$script" collect --archive=none --send=id; then
+    fail 'immediate send with directory output should fail'
   fi
 }
 
