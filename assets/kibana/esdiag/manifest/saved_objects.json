@@ -2,6 +2,10 @@
   "objects": [
     {
       "type": "dashboard",
+      "id": "alias-detail"
+    },
+    {
+      "type": "dashboard",
       "id": "allocation-overview"
     },
     {
@@ -15,6 +19,10 @@
     {
       "type": "dashboard",
       "id": "data-summary"
+    },
+    {
+      "type": "dashboard",
+      "id": "data-stream-detail"
     },
     {
       "type": "dashboard",
