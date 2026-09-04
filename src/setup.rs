@@ -587,7 +587,7 @@ mod tests {
         assert_eq!(bundle.spaces[0]["id"], "esdiag");
 
         let esdiag = bundle.by_space.get("esdiag").unwrap();
-        assert_eq!(esdiag.saved_objects.len(), 90);
+        assert_eq!(esdiag.saved_objects.len(), 93);
         assert_eq!(esdiag.workflows.len(), 1);
         assert!(esdiag.agents.is_empty());
         assert_eq!(esdiag.tools.len(), 1);
@@ -697,9 +697,9 @@ mod tests {
         let bundle = kibana_bundle(&embedded_assets).unwrap().read_all().unwrap();
         let saved_objects = &bundle.by_space["esdiag"].saved_objects;
 
-        assert_eq!(saved_objects.len(), 90);
+        assert_eq!(saved_objects.len(), 93);
         assert_eq!(saved_objects[0]["type"], "dashboard");
-        assert_eq!(saved_objects[0]["id"], "allocation-overview");
+        assert_eq!(saved_objects[0]["id"], "alias-detail");
     }
 
     #[test]
