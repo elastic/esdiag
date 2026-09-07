@@ -15,6 +15,7 @@ use std::sync::{Arc, Mutex};
 
 struct MockCluster {
     client: Client,
+    url: url::Url,
     paths: Arc<Mutex<Vec<String>>>,
     task: tokio::task::JoinHandle<()>,
 }
@@ -87,10 +88,10 @@ async fn restricted_elasticsearch_metadata_uses_serverless_security_fallback() {
         )
     });
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let url = format!("http://{}", listener.local_addr().unwrap()).parse().unwrap();
+    let url: url::Url = format!("http://{}", listener.local_addr().unwrap()).parse().unwrap();
     let task = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
     let client = Client::Elasticsearch(
-        ElasticsearchBuilder::new(url)
+        ElasticsearchBuilder::new(url.clone())
             .apikey("test-key".into())
             .build()
             .unwrap(),
@@ -153,15 +154,70 @@ async fn cluster_with_flavor(
         }
     });
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let url = format!("http://{}", listener.local_addr().unwrap()).parse().unwrap();
+    let url: url::Url = format!("http://{}", listener.local_addr().unwrap()).parse().unwrap();
     let task = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
     let client = Client::Elasticsearch(
-        ElasticsearchBuilder::new(url)
+        ElasticsearchBuilder::new(url.clone())
             .apikey("test-key".into())
             .build()
             .unwrap(),
     );
-    MockCluster { client, paths, task }
+    MockCluster {
+        client,
+        url,
+        paths,
+        task,
+    }
+}
+
+#[tokio::test]
+async fn cli_setup_attempts_kibana_after_elasticsearch_asset_rejection() {
+    let es = cluster(StatusCode::GONE, "", StatusCode::BAD_REQUEST).await;
+    let paths = Arc::new(Mutex::new(Vec::new()));
+    let requests = paths.clone();
+    let app = Router::new().fallback(move |request: Request<Body>| {
+        let requests = requests.clone();
+        async move {
+            requests.lock().unwrap().push(request.uri().path().to_string());
+            if request.uri().path() == "/api/status" {
+                (
+                    StatusCode::OK,
+                    r#"{"version":{"number":"9.4.2","build_flavor":"serverless"}}"#,
+                )
+            } else {
+                // Stop at Kibana's first asset request. This test verifies that
+                // Elasticsearch's rejection cannot prevent that phase.
+                (StatusCode::SERVICE_UNAVAILABLE, "{}")
+            }
+        }
+    });
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let kb_url = format!("http://{}", listener.local_addr().unwrap());
+    let task = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let tmp = tempfile::tempdir().unwrap();
+    let output_url = es.url.to_string();
+    let output = tokio::task::spawn_blocking(move || {
+        std::process::Command::new(env!("CARGO_BIN_EXE_esdiag"))
+            .arg("setup")
+            .env("ESDIAG_HOME", tmp.path())
+            .env("ESDIAG_OUTPUT_URL", output_url)
+            .env("ESDIAG_KIBANA_URL", kb_url)
+            .env("ESDIAG_KIBANA_SPACE", "esdiag")
+            .env("ESDIAG_OUTPUT_APIKEY", "test-key")
+            .env_remove("ESDIAG_OUTPUT_USERNAME")
+            .env_remove("ESDIAG_OUTPUT_PASSWORD")
+            .output()
+            .unwrap()
+    })
+    .await
+    .unwrap();
+    task.abort();
+    assert!(!output.status.success(), "Kibana's own failure must still fail setup");
+    assert!(
+        paths.lock().unwrap().iter().any(|path| path.contains("/spaces/")),
+        "Kibana asset phase was skipped: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 #[tokio::test]
@@ -217,6 +273,16 @@ async fn setup_still_reports_probe_and_asset_failures() {
 
     let mock = cluster(StatusCode::GONE, "", StatusCode::FORBIDDEN).await;
     assert!(esdiag::setup::assets(&mock.client).await.is_err());
+    let report = esdiag::setup::assets_report(&mock.client)
+        .await
+        .expect("asset failures must remain reportable so Kibana setup can proceed");
+    assert!(!report.is_complete());
+    assert!(
+        report
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("metrics-diagnostic"))
+    );
 }
 
 #[tokio::test]

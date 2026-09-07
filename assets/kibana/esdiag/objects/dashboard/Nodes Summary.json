@@ -1207,7 +1207,7 @@ a:link { text-decoration: none; }""",
     {"calculate": "85", "as": "mid-x1"},
     {"calculate": "90", "as": "mid-x2"},
     {"calculate": "95", "as": "high-x"},
-    {"calculate": "100", "as": "max-x"},
+    {"calculate": "100", "as": "max-x"}
   ],
   "encoding": {
     "y": {
@@ -1235,7 +1235,7 @@ a:link { text-decoration: none; }""",
         "x": {"field": "mid-x1", "type":"quantitative", "scale": {"domain": [0, 100]}},
         "x2": {"field": "mid-x2", "type": "quantitative", "scale": {"domain": [0, 100]}},
         "color": {"value": "#54ee991A"}
-      },
+      }
     },
     {
       "mark": "rect",
@@ -1243,7 +1243,7 @@ a:link { text-decoration: none; }""",
         "x": {"field": "mid-x2", "type":"quantitative", "scale": {"domain": [0, 100]}},
         "x2": {"field": "high-x", "type": "quantitative", "scale": {"domain": [0, 100]}},
         "color": {"value": "#eeee571A"}
-      },
+      }
     },
     {
       "mark": "rect",
@@ -1258,7 +1258,7 @@ a:link { text-decoration: none; }""",
       "encoding": {
         "x": {"field": "q1", "type": "quantitative", "title": "p25"},
         "x2": {"field": "q3", "title": "p75"},
-        "color": {"field": "tier", "type": "nominal", "legend": null},
+        "color": {"field": "tier", "type": "nominal", "legend": null}
       }
     },
     {
@@ -1354,7 +1354,7 @@ a:link { text-decoration: none; }""",
     {"calculate": "datum.load_pct.q3", "as": "q3"},
     {"calculate": "datum.load_pct.min", "as": "min"},
     {"calculate": "datum.load_pct.max", "as": "max"},
-    {"calculate": "datum.key", "as": "tier"}
+    {"calculate": "datum.key", "as": "tier"},
     {"calculate": "0", "as": "min-x"},
     {"calculate": "20", "as": "low-x"},
     {"calculate": "30", "as": "mid-x1"},
@@ -1431,7 +1431,7 @@ a:link { text-decoration: none; }""",
       "encoding": {
         "x": {"field": "q1", "type": "quantitative", "title": "p25"},
         "x2": {"field": "q3", "title": "p75"},
-        "color": {"field": "tier", "type": "nominal", "legend": null},
+        "color": {"field": "tier", "type": "nominal", "legend": null}
       }
     },
     {
@@ -1533,7 +1533,7 @@ a:link { text-decoration: none; }""",
     {"calculate": "30", "as": "mid-x1"},
     {"calculate": "70", "as": "mid-x2"},
     {"calculate": "85", "as": "high-x"},
-    {"calculate": "100", "as": "max-x"},
+    {"calculate": "100", "as": "max-x"}
 
   ],
   "encoding": {
@@ -1603,7 +1603,7 @@ a:link { text-decoration: none; }""",
       "encoding": {
         "x": {"field": "q1", "type": "quantitative", "title": "p25"},
         "x2": {"field": "q3", "title": "p75"},
-        "color": {"field": "tier", "type": "nominal", "legend": null},
+        "color": {"field": "tier", "type": "nominal", "legend": null}
       }
     },
     {

@@ -57,7 +57,7 @@
     {"calculate": "30", "as": "mid-x1"},
     {"calculate": "70", "as": "mid-x2"},
     {"calculate": "85", "as": "high-x"},
-    {"calculate": "100", "as": "max-x"},
+    {"calculate": "100", "as": "max-x"}
 
   ],
   "encoding": {
@@ -127,7 +127,7 @@
       "encoding": {
         "x": {"field": "q1", "type": "quantitative", "title": "p25"},
         "x2": {"field": "q3", "title": "p75"},
-        "color": {"field": "tier", "type": "nominal", "legend": null},
+        "color": {"field": "tier", "type": "nominal", "legend": null}
       }
     },
     {

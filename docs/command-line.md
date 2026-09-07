@@ -38,10 +38,21 @@ finite commands. YAML is the default.
 
 Finite commands write one result to stdout. Progress and errors go to stderr.
 Processing results include `outcome`, `documents_failed`, and `indexing_failures`
-with affected index names and rejection counts. `output` identifies the resolved
+with destination data stream names and rejection counts, including documents
+redirected to a failure store. `output` identifies the resolved
 destination, including a saved default deployment. A `setup_completed` result
 has an `outcome` of `complete` or `partial`; partial mapping updates include
-`failed_indices` and recovery advice in `warnings`.
+`failed_indices` and recovery advice in `warnings`. Rejected setup assets also
+appear in `warnings`; they do not prevent the combined setup command from
+attempting Kibana installation.
+
+Process results use the output host's linked Kibana viewer. An output with no
+linked viewer omits `kibana_url` unless its URL matches `ESDIAG_OUTPUT_URL`,
+in which case it uses that environment deployment's `ESDIAG_KIBANA_URL`.
+An unrelated default viewer is never used. See
+[Serverless asset compatibility](reference/serverless-assets.md#indexing-failures-and-recovery)
+for rollover and failure-store recovery steps.
+
 When a command fails after it starts, stdout contains a `command_failed` result
 and the command exits non-zero.
 

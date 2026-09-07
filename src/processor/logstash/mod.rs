@@ -139,13 +139,13 @@ impl LogstashDiagnostic {
         T: DataSource + DocumentExporter<Lookups, LogstashMetadata> + DeserializeOwned + Send + Sync,
     {
         let summary = match self.receiver.get::<T>().await {
-            Ok(data) => {
-                data.documents_export(&self.exporter, &self.lookups, &self.metadata)
-                    .await
-            }
+            Ok(data) => data
+                .documents_export(&self.exporter, &self.lookups, &self.metadata)
+                .await
+                .was_parsed(),
             Err(err) if is_missing_source_error(&err) => {
                 tracing::warn!("{}", err);
-                ProcessorSummary::new(T::name())
+                ProcessorSummary::missing(T::name())
             }
             Err(err) => return Err(err),
         };

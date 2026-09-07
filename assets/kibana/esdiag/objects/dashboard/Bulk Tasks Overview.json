@@ -1576,11 +1576,6 @@
       "id": "2a1a6f44-179d-4073-b23a-f75ba717cc65",
       "name": "f2379d71-7a3b-4e4e-bb10-a5ed6cfb64dd:indexpattern-datasource-layer-2790396a-7702-4bd3-82c2-76c13e11fa72",
       "type": "index-pattern"
-    },
-    {
-      "id": "2a1a6f44-179d-4073-b23a-f75ba717cc65",
-      "name": "kibanaSavedObjectMeta.searchSourceJSON.filter[0].meta.index",
-      "type": "index-pattern"
     }
   ],
   "type": "dashboard",

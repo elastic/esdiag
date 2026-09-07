@@ -1878,11 +1878,6 @@ a:link { text-decoration: none; }""",
       "id": "ae7c2db0-8c40-4a7a-b7e7-8bc7953edfa6",
       "name": "6b641383-273e-4334-a671-fade8e007323:indexpattern-datasource-layer-7413b4b8-554d-451a-bd07-5c6ec7e85723",
       "type": "index-pattern"
-    },
-    {
-      "id": "e8de195c-287f-45ed-bbfd-45eace1e037c",
-      "name": "kibanaSavedObjectMeta.searchSourceJSON.filter[0].meta.index",
-      "type": "index-pattern"
     }
   ],
   "type": "dashboard",

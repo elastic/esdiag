@@ -297,6 +297,12 @@ fn serverless_asset_contents(asset: &Asset, contents: &[u8]) -> Result<Vec<u8>> 
     if let Some(settings) = body.pointer_mut("/template/settings") {
         remove_serverless_ilm_settings(settings, "");
     }
+    // Serverless requires lifecycle management even for long-lived reports.
+    if let Some(lifecycle) = body.pointer_mut("/template/lifecycle")
+        && lifecycle.get("enabled") == Some(&Value::Bool(false))
+    {
+        *lifecycle = serde_json::json!({"enabled": true, "data_retention": "3650d"});
+    }
     Ok(serde_json::to_vec(&body)?)
 }
 
@@ -458,6 +464,11 @@ pub async fn assets_report(client: &Client) -> Result<SetupReport> {
                     Ok(res) => tracing::debug!("Response: {:?}", res),
                     Err(e) => {
                         tracing::error!("Failed to send asset: {e:?}");
+                        report.warnings.push(format!(
+                            "Failed to install {} asset {}. Check setup logs and rerun setup.",
+                            client,
+                            file_path.display()
+                        ));
                         error_count += 1;
                     }
                 }
@@ -472,6 +483,11 @@ pub async fn assets_report(client: &Client) -> Result<SetupReport> {
             tracing::debug!("file.path: {:?}", &path);
             if let Err(e) = send_asset(client, &asset, &path, &contents, false).await {
                 tracing::error!("Failed to send asset: {e:?}");
+                report.warnings.push(format!(
+                    "Failed to install {} asset {}. Check setup logs and rerun setup.",
+                    client,
+                    path.display()
+                ));
                 error_count += 1;
             }
         } else {
@@ -502,7 +518,7 @@ pub async fn assets_report(client: &Client) -> Result<SetupReport> {
         Ok(report)
     } else {
         tracing::error!("{error_count} errors in setup for {client}");
-        Err(eyre!("{error_count} errors in setup for {client}"))
+        Ok(report)
     }
 }
 

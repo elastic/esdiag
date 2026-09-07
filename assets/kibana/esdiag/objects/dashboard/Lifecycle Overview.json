@@ -2293,26 +2293,6 @@ a:link { text-decoration: none; }""",
       "id": "590e8f4c-4fe2-4794-9007-29de4d07e489",
       "name": "34211f0e-236a-4f89-8e74-da0e26e00bd3:indexpattern-datasource-layer-eacdacf1-f48e-46b0-85ac-31ea57c6573c",
       "type": "index-pattern"
-    },
-    {
-      "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
-      "name": "kibanaSavedObjectMeta.searchSourceJSON.filter[0].meta.index",
-      "type": "index-pattern"
-    },
-    {
-      "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
-      "name": "kibanaSavedObjectMeta.searchSourceJSON.filter[1].meta.index",
-      "type": "index-pattern"
-    },
-    {
-      "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
-      "name": "kibanaSavedObjectMeta.searchSourceJSON.filter[2].meta.index",
-      "type": "index-pattern"
-    },
-    {
-      "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
-      "name": "kibanaSavedObjectMeta.searchSourceJSON.filter[3].meta.index",
-      "type": "index-pattern"
     }
   ],
   "type": "dashboard",

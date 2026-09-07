@@ -675,8 +675,12 @@ fn explicit_process_selection(signals: &JobRunSignals) -> Result<Option<ProcessS
     }))
 }
 
-fn processing_job_event(_replace_existing_entry: bool, _job_id: u64, template: impl askama::Template) -> ServerEvent {
-    job_feed_event(template)
+fn processing_job_event(replace_existing_entry: bool, job_id: u64, template: impl askama::Template) -> ServerEvent {
+    if replace_existing_entry {
+        replace_job_event(job_id, template)
+    } else {
+        job_feed_event(template)
+    }
 }
 
 fn terminal_job_event(replace_existing_entry: bool, job_id: u64, template: impl askama::Template) -> ServerEvent {
@@ -922,6 +926,22 @@ async fn send_terminal_signal(tx: &mpsc::Sender<ServerEvent>, state: &ServerStat
 #[cfg(test)]
 #[allow(clippy::await_holding_lock)]
 mod tests {
+    #[test]
+    fn uploaded_job_updates_the_existing_card_when_processing_starts() {
+        let event = super::processing_job_event(
+            true,
+            42,
+            super::template::JobProcessing {
+                job_id: 42,
+                source: "uploaded diagnostic.zip",
+            },
+        );
+        assert!(
+            matches!(event, super::ServerEvent::ReplaceSelector { selector, html, .. }
+            if selector == "#job-42" && html.contains("id=\"job-42\""))
+        );
+    }
+
     use super::{
         completed_heading, completed_status_class, download_service_link_to_path, run_job, select_processed_exporter,
         skipped_child_reason, validate_job_request, validate_local_send_uri, validate_remote_send_uri,

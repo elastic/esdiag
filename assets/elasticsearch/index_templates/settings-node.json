@@ -730,7 +730,11 @@
                   }
                 },
                 "http": {
+                  "subobjects": false,
                   "properties": {
+                    "max_warning_header_size": {
+                      "type": "keyword"
+                    },
                     "compression": {
                       "type": "keyword"
                     },
@@ -836,6 +840,7 @@
                   }
                 },
                 "transport": {
+                  "subobjects": false,
                   "properties": {
                     "host": {
                       "type": "keyword"
@@ -1850,5 +1855,5 @@
       }
     }
   },
-  "version": 2
+  "version": 3
 }

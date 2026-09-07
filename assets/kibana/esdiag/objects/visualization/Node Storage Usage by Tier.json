@@ -51,7 +51,7 @@
     {"calculate": "datum.load_pct.q3", "as": "q3"},
     {"calculate": "datum.load_pct.min", "as": "min"},
     {"calculate": "datum.load_pct.max", "as": "max"},
-    {"calculate": "datum.key", "as": "tier"}
+    {"calculate": "datum.key", "as": "tier"},
     {"calculate": "0", "as": "min-x"},
     {"calculate": "15", "as": "low-x"},
     {"calculate": "30", "as": "mid-x1"},
@@ -128,7 +128,7 @@
       "encoding": {
         "x": {"field": "q1", "type": "quantitative", "title": "p25"},
         "x2": {"field": "q3", "title": "p75"},
-        "color": {"field": "tier", "type": "nominal", "legend": null},
+        "color": {"field": "tier", "type": "nominal", "legend": null}
       }
     },
     {

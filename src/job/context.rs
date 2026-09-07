@@ -167,6 +167,78 @@ mod tests {
     use super::*;
 
     #[test]
+    fn process_output_uses_its_own_viewer_or_omits_the_link() {
+        use crate::data::KnownHostBuilder;
+        use std::collections::BTreeMap;
+        let mut env = crate::TestEnv::new();
+        env.set("ESDIAG_OUTPUT_URL", "https://local-es.example");
+        env.set("ESDIAG_KIBANA_URL", "https://local-kb.example");
+        env.set("ESDIAG_KIBANA_SPACE", "esdiag");
+        let output = KnownHostBuilder::new("https://less-es.example".parse().unwrap())
+            .application(Application::Elasticsearch)
+            .roles(vec![HostRole::Send])
+            .viewer(Some("less-kb".into()))
+            .build()
+            .unwrap();
+        let viewer = KnownHostBuilder::new("https://less-kb.example".parse().unwrap())
+            .application(Application::Kibana)
+            .roles(vec![HostRole::View])
+            .build()
+            .unwrap();
+        let unpaired = KnownHostBuilder::new("https://unpaired-es.example".parse().unwrap())
+            .application(Application::Elasticsearch)
+            .roles(vec![HostRole::Send])
+            .build()
+            .unwrap();
+        KnownHost::write_hosts_yml(&BTreeMap::from([
+            ("less".into(), output),
+            ("less-kb".into(), viewer),
+            ("unpaired".into(), unpaired),
+        ]))
+        .unwrap();
+        let context = ExecutionContext::default();
+        let exporter = context
+            .resolve_document_exporter(&ExportTarget::KnownHost { name: "less".into() })
+            .unwrap()
+            .into_inner();
+        assert!(
+            exporter
+                .kibana_link("diag", 0)
+                .unwrap()
+                .starts_with("https://less-kb.example/s/esdiag/app/")
+        );
+        let exporter = context
+            .resolve_document_exporter(&ExportTarget::KnownHost {
+                name: "unpaired".into(),
+            })
+            .unwrap()
+            .into_inner();
+        assert!(
+            exporter.kibana_link("diag", 0).is_none(),
+            "an unrelated configured viewer must not leak into the result"
+        );
+        let exporter = context
+            .resolve_document_exporter(&ExportTarget::Environment)
+            .unwrap()
+            .into_inner();
+        assert!(
+            exporter
+                .kibana_link("diag", 0)
+                .unwrap()
+                .starts_with("https://local-kb.example/s/esdiag/app/")
+        );
+        env.remove("ESDIAG_KIBANA_URL");
+        let exporter = context
+            .resolve_document_exporter(&ExportTarget::Environment)
+            .unwrap()
+            .into_inner();
+        assert!(
+            exporter.kibana_link("diag", 0).is_none(),
+            "an unconfigured environment viewer must not default to localhost"
+        );
+    }
+
+    #[test]
     fn child_context_inherits_owner_platform_and_parent_identity() {
         let parent = ExecutionContext::default().with_identity(ExecutionIdentity::new(17, "alice@example.com"));
 

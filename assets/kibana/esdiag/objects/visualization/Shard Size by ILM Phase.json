@@ -58,7 +58,7 @@
     {"calculate": "40", "as": "mid-y2"},
     {"calculate": "50", "as": "mid-y3"},
     {"calculate": "80", "as": "high-y"},
-    {"calculate": "100", "as": "max-y"},
+    {"calculate": "100", "as": "max-y"}
 
   ],
   "encoding": {
@@ -66,7 +66,7 @@
       "field": "phase",
       "type": "nominal",
       "title": null,
-      "sort": ["new","hot","warm","cold","frozen","delete"]
+      "sort": ["new","hot","warm","cold","frozen","delete"],
       "axis": {
         "labelAngle": 0
       }
@@ -80,7 +80,7 @@
           "field": "lower", 
           "type": "quantitative",
           "scale": {"domain":[0,100], "clamp": true}, 
-          "title": null,
+          "title": null
         },
         "y2": {"field": "upper"}
       },
@@ -139,7 +139,7 @@
       "encoding": {
         "y": {"field": "q1", "type": "quantitative", "title": "p25"},
         "y2": {"field": "q3", "title": "p75"},
-        "color": {"field": "phase", "type": "nominal", "legend": null},
+        "color": {"field": "phase", "type": "nominal", "legend": null}
       }
     },
     {

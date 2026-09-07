@@ -965,11 +965,6 @@
       "id": "2a1a6f44-179d-4073-b23a-f75ba717cc65",
       "name": "controlGroup_8eafa0dd-990a-4057-a3a8-0c3d4f795fb5:optionsListDataView",
       "type": "index-pattern"
-    },
-    {
-      "id": "2a1a6f44-179d-4073-b23a-f75ba717cc65",
-      "name": "kibanaSavedObjectMeta.searchSourceJSON.filter[0].meta.index",
-      "type": "index-pattern"
     }
   ],
   "type": "dashboard",

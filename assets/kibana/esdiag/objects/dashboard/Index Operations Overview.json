@@ -127,8 +127,7 @@
     "panelsJSON": [
       {
         "embeddableConfig": {
-          "enhancements": {},
-          "savedObjectId": "d277872a-9c33-4d95-84f0-6dba30dcbdf1"
+          "enhancements": {}
         },
         "gridData": {
           "h": 3,
@@ -143,8 +142,7 @@
       },
       {
         "embeddableConfig": {
-          "enhancements": {},
-          "savedObjectId": "b45c7e74-37d1-4cae-a491-f8c097f2d3b3"
+          "enhancements": {}
         },
         "gridData": {
           "h": 3,
@@ -1834,16 +1832,6 @@ a:link { text-decoration: none; }""",
       "type": "links"
     },
     {
-      "id": "d277872a-9c33-4d95-84f0-6dba30dcbdf1",
-      "name": "e58ec061-5c28-40b3-97e4-c3eab7bc520f:panel_e58ec061-5c28-40b3-97e4-c3eab7bc520f",
-      "type": "links"
-    },
-    {
-      "id": "b45c7e74-37d1-4cae-a491-f8c097f2d3b3",
-      "name": "4ba84706-fcf2-406f-ab05-2ed0d160e79d:panel_4ba84706-fcf2-406f-ab05-2ed0d160e79d",
-      "type": "links"
-    },
-    {
       "id": "b45c7e74-37d1-4cae-a491-f8c097f2d3b3",
       "name": "4ba84706-fcf2-406f-ab05-2ed0d160e79d:panel_4ba84706-fcf2-406f-ab05-2ed0d160e79d",
       "type": "links"
@@ -1891,26 +1879,6 @@ a:link { text-decoration: none; }""",
     {
       "id": "590e8f4c-4fe2-4794-9007-29de4d07e489",
       "name": "1c8e891e-f66e-44e1-b12f-d93479f51327:indexpattern-datasource-layer-c3d2a25d-33a2-43fa-a441-19044beb51d2",
-      "type": "index-pattern"
-    },
-    {
-      "id": "590e8f4c-4fe2-4794-9007-29de4d07e489",
-      "name": "kibanaSavedObjectMeta.searchSourceJSON.filter[0].meta.index",
-      "type": "index-pattern"
-    },
-    {
-      "id": "590e8f4c-4fe2-4794-9007-29de4d07e489",
-      "name": "kibanaSavedObjectMeta.searchSourceJSON.filter[1].meta.index",
-      "type": "index-pattern"
-    },
-    {
-      "id": "590e8f4c-4fe2-4794-9007-29de4d07e489",
-      "name": "kibanaSavedObjectMeta.searchSourceJSON.filter[2].meta.index",
-      "type": "index-pattern"
-    },
-    {
-      "id": "590e8f4c-4fe2-4794-9007-29de4d07e489",
-      "name": "kibanaSavedObjectMeta.searchSourceJSON.filter[3].meta.index",
       "type": "index-pattern"
     }
   ],

@@ -780,10 +780,14 @@ impl Processor<Processing> {
             report.diagnostic.metadata.id,
         );
 
-        if let Some(kibana_link) = self.exporter.kibana_link(
-            &report.diagnostic.metadata.id,
-            report.diagnostic.metadata.collection_date,
-        ) {
+        if let Some(kibana_link) = self
+            .exporter
+            .resolved_kibana_link(
+                &report.diagnostic.metadata.id,
+                report.diagnostic.metadata.collection_date,
+            )
+            .await
+        {
             report.add_kibana_link(kibana_link);
         }
         tracing::debug!("{:?}", identifiers);

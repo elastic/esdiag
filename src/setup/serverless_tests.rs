@@ -95,6 +95,62 @@ fn visit_json(value: &Value, visitor: &mut impl FnMut(&Value)) {
 }
 
 #[test]
+fn dashboard_links_have_one_reference_and_no_obsolete_saved_object_id() {
+    let bundle = kibana_bundle(&EmbeddedAssets::new().unwrap())
+        .unwrap()
+        .read_all()
+        .unwrap();
+    let objects = &bundle.by_space["esdiag"].saved_objects;
+    let mut links_count = 0;
+    for dashboard in objects.iter().filter(|object| object["type"] == "dashboard") {
+        let references = dashboard["references"].as_array().unwrap();
+        let unique: std::collections::BTreeSet<_> = references.iter().map(Value::to_string).collect();
+        assert_eq!(
+            unique.len(),
+            references.len(),
+            "{} has duplicate references",
+            dashboard["id"]
+        );
+        visit_json(&dashboard["attributes"]["panelsJSON"], &mut |panel| {
+            if panel["type"] != "links" || panel.get("panelIndex").is_none() {
+                return;
+            }
+            links_count += 1;
+            assert!(
+                panel["embeddableConfig"].get("savedObjectId").is_none(),
+                "{}",
+                dashboard["id"]
+            );
+            if panel["embeddableConfig"]["links"]
+                .as_array()
+                .is_some_and(|links| !links.is_empty())
+                || panel["embeddableConfig"]["attributes"]["links"]
+                    .as_array()
+                    .is_some_and(|links| !links.is_empty())
+            {
+                return;
+            }
+            let name = format!(
+                "{}:{}",
+                panel["panelIndex"].as_str().unwrap(),
+                panel["panelRefName"].as_str().unwrap_or("savedObjectRef")
+            );
+            let matches: Vec<_> = references
+                .iter()
+                .filter(|reference| reference["type"] == "links" && reference["name"] == name)
+                .collect();
+            assert_eq!(matches.len(), 1, "{}: {name}", dashboard["id"]);
+            assert!(
+                objects
+                    .iter()
+                    .any(|object| object["type"] == "links" && object["id"] == matches[0]["id"])
+            );
+        });
+    }
+    assert!(links_count > 20);
+}
+
+#[test]
 fn kibana_queries_do_not_use_serverless_unsupported_aggregations() {
     let bundle = kibana_bundle(&EmbeddedAssets::new().unwrap())
         .unwrap()
@@ -102,6 +158,9 @@ fn kibana_queries_do_not_use_serverless_unsupported_aggregations() {
         .unwrap();
     for object in &bundle.by_space["esdiag"].saved_objects {
         visit_json(object, &mut |value| {
+            if let Some(spec) = value.get("spec").and_then(Value::as_str) {
+                serde_json::from_str::<Value>(spec).expect("Vega specs must be inspectable JSON");
+            }
             assert!(
                 value.get("scripted_metric").is_none(),
                 "{} uses scripted_metric",
@@ -127,15 +186,50 @@ async fn live_json(client: &Client, method: Method, path: &str, body: Option<Val
     Ok(value)
 }
 
+#[tokio::test]
+#[ignore = "reads diagnostic streams in the Serverless project selected by ESDIAG_OUTPUT_* environment variables"]
+async fn live_serverless_dashboard_searches() -> Result<()> {
+    let es = Client::try_from(crate::data::Uri::try_from_output_env()?)?;
+    assert!(es.is_serverless().await?);
+    let bundle = kibana_bundle(&EmbeddedAssets::new()?)?.read_all()?;
+    let mut searches = Vec::new();
+    for object in &bundle.by_space["esdiag"].saved_objects {
+        visit_json(object, &mut |value| {
+            if let Some(url) = value.get("url")
+                && let (Some(index), Some(body)) = (url.get("index").and_then(Value::as_str), url.get("body"))
+            {
+                searches.push((index.to_string(), body.clone()));
+            }
+        });
+    }
+    assert!(!searches.is_empty());
+    for (index, body) in &searches {
+        let response = live_json(
+            &es,
+            Method::POST,
+            &format!("/{index}/_search?ignore_unavailable=true&allow_no_indices=true"),
+            Some(body.clone()),
+        )
+        .await?;
+        assert_eq!(response["_shards"]["failed"], 0, "{index}: {response}");
+    }
+    eprintln!("Executed {} embedded dashboard searches", searches.len());
+    Ok(())
+}
+
 /// Read and simulate the assets installed by `esdiag setup`; never creates diagnostic data.
 #[tokio::test]
-#[ignore = "requires explicit Serverless saved hosts, an unlocked keystore, and installed assets"]
+#[ignore = "requires explicit Serverless saved hosts or ESDIAG_OUTPUT_* and ESDIAG_KIBANA_URL, and installed assets"]
 async fn live_serverless_asset_audit() -> Result<()> {
     use crate::data::Uri;
-    let es_host = std::env::var("ESDIAG_SERVERLESS_TEST_HOST")?;
-    let kb_host = std::env::var("ESDIAG_SERVERLESS_TEST_KIBANA_HOST")?;
-    let es = Client::try_from(Uri::try_from(es_host)?)?;
-    let kb = Client::try_from(Uri::try_from(kb_host)?)?;
+    let es = Client::try_from(match std::env::var("ESDIAG_SERVERLESS_TEST_HOST") {
+        Ok(host) => Uri::try_from(host)?,
+        Err(_) => Uri::try_from_output_env()?,
+    })?;
+    let kb = Client::try_from(match std::env::var("ESDIAG_SERVERLESS_TEST_KIBANA_HOST") {
+        Ok(host) => Uri::try_from(host)?,
+        Err(_) => Uri::try_from_kibana_env()?,
+    })?;
     assert!(es.is_serverless().await?);
     assert!(kb.is_serverless().await?);
     ensure_agent_builder_license(&es).await?;
@@ -180,9 +274,15 @@ async fn live_serverless_asset_audit() -> Result<()> {
         simulation["docs"][0]["doc"]["_source"]["diagnostic"]["account"],
         "serverless-audit"
     );
-    let bundle = kibana_bundle(&store)?.read_all()?;
+    let mut bundle = kibana_bundle(&store)?.read_all()?;
+    target_kibana_bundle(&mut bundle, crate::env::get_kibana_space().as_deref())?;
     let mut query_count = 0;
     for (space_id, space) in &bundle.by_space {
+        let prefix = if space_id == "default" {
+            String::new()
+        } else {
+            format!("/s/{space_id}")
+        };
         let types: BTreeSet<_> = space
             .saved_objects
             .iter()
@@ -195,7 +295,7 @@ async fn live_serverless_asset_audit() -> Result<()> {
                 let found = live_json(
                     &kb,
                     Method::GET,
-                    &format!("/s/{space_id}/api/saved_objects/_find?type={kind}&per_page=100&page={page}"),
+                    &format!("{prefix}/api/saved_objects/_find?type={kind}&per_page=100&page={page}"),
                     None,
                 )
                 .await?;
@@ -225,6 +325,26 @@ async fn live_serverless_asset_audit() -> Result<()> {
                     actual["id"]
                 );
             }
+            if expected["type"] == "dashboard" {
+                let id = actual["id"].as_str().unwrap();
+                let transformed = live_json(&kb, Method::GET, &format!("{prefix}/api/dashboards/{id}"), None).await?;
+                for warning in transformed["warnings"].as_array().into_iter().flatten() {
+                    assert_ne!(warning["panel_type"], "links", "{id}: {warning}");
+                }
+                let mut expected_links = 0;
+                visit_json(&expected["attributes"]["panelsJSON"], &mut |panel| {
+                    if panel["type"] == "links" && panel.get("panelIndex").is_some() {
+                        expected_links += 1;
+                    }
+                });
+                let mut actual_links = 0;
+                visit_json(&transformed["data"], &mut |panel| {
+                    if panel["type"] == "links" && panel.get("config").is_some() {
+                        actual_links += 1;
+                    }
+                });
+                assert_eq!(actual_links, expected_links, "{id}: navigation panels were lost");
+            }
         }
         for (kind, values) in [
             ("workflows/workflow", &space.workflows),
@@ -233,13 +353,13 @@ async fn live_serverless_asset_audit() -> Result<()> {
         ] {
             for value in values {
                 let id = value["id"].as_str().unwrap();
-                live_json(&kb, Method::GET, &format!("/s/{space_id}/api/{kind}/{id}"), None).await?;
+                live_json(&kb, Method::GET, &format!("{prefix}/api/{kind}/{id}"), None).await?;
             }
         }
         let agent = live_json(
             &kb,
             Method::GET,
-            &format!("/s/{space_id}/api/agent_builder/agents/elastic-ai-agent"),
+            &format!("{prefix}/api/agent_builder/agents/elastic-ai-agent"),
             None,
         )
         .await?;
@@ -299,19 +419,21 @@ fn settings_keys(value: &Value, prefix: &str, keys: &mut BTreeSet<String>) {
 }
 
 #[test]
-fn diagnostic_reports_disable_retention_on_all_deployments() {
+fn diagnostic_reports_use_serverless_compatible_retention() {
     let source = Assets::get("elasticsearch/index_templates/metrics-diagnostic.json").unwrap();
     let original: Value = serde_json::from_slice(&source.data).unwrap();
     let store = EmbeddedAssets::new().unwrap();
     let assets = parse_assets_yml(Application::Elasticsearch, &store).unwrap();
     let asset = assets.iter().find(|asset| asset.name == "index_templates").unwrap();
     let adapted: Value = serde_json::from_slice(&serverless_asset_contents(asset, &source.data).unwrap()).unwrap();
-    for template in [original, adapted] {
-        assert_eq!(
-            template["template"]["lifecycle"],
-            serde_json::json!({"enabled": false, "data_retention": null})
-        );
-    }
+    assert_eq!(
+        original["template"]["lifecycle"],
+        serde_json::json!({"enabled": false, "data_retention": null})
+    );
+    assert_eq!(
+        adapted["template"]["lifecycle"],
+        serde_json::json!({"enabled": true, "data_retention": "3650d"})
+    );
 }
 
 #[test]
@@ -355,10 +477,12 @@ fn serverless_templates_only_use_audited_settings() {
                 "{} changed diagnostic fields",
                 path.display()
             );
-            assert_eq!(
-                original.pointer("/template/lifecycle"),
-                adapted.pointer("/template/lifecycle")
-            );
+            if original.pointer("/template/lifecycle/enabled") != Some(&Value::Bool(false)) {
+                assert_eq!(
+                    original.pointer("/template/lifecycle"),
+                    adapted.pointer("/template/lifecycle")
+                );
+            }
             count += 1;
         }
     }

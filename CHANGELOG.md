@@ -24,6 +24,8 @@ published release notes, maintenance branches, and tagged history.
 
 ### Changed
 
+- Enabled failure stores for new diagnostic data streams so rejected documents can be inspected and recovered.
+
 - Changed local startup to retry transient Elasticsearch authentication failures while security initializes.
 - Changed the managed native server to use local output credentials and report early exits with a log path.
 - Changed onboarding to return to output selection when replacement is declined.
@@ -71,6 +73,21 @@ published release notes, maintenance branches, and tagged history.
   container; full mode preserves the containerized runtime.
 
 ### Fixed
+
+- Explicitly mapped the HTTP maximum warning-header size setting, preventing node-settings rejection without changing shared dynamic-template suppression rules.
+- Fixed successful Logstash diagnostics reporting partial outcomes because parsed sources were not recorded as parsed.
+- Resolved imported Kibana dashboard and data-view IDs before generating diagnostic links, including imports that assign new IDs in another space.
+- Fixed duplicate upload result cards by replacing the existing upload card when processing starts.
+- Fixed dashboard navigation panels rejected by current Kibana by removing obsolete saved-object IDs and duplicate references.
+- Fixed node HTTP and transport settings indexing when both `type` and `type.default` are present, preserving both values.
+- Included bulk rejection reason samples in diagnostic report warnings and hosted result cards.
+
+- Fixed Serverless setup rejecting the diagnostic report lifecycle by requesting 3650-day retention with lifecycle enabled.
+- Fixed Elasticsearch asset rejections preventing the combined setup command from installing Kibana assets.
+- Fixed indexing failures naming the submitted stream instead of the destination returned after ingest rerouting.
+- Fixed cluster settings with both `rest.incremental_bulk` and its sub-settings being rejected during indexing.
+- Fixed unpaired output hosts linking to an unrelated environment Kibana viewer.
+- Fixed documents redirected to a failure store being counted as successfully indexed diagnostic documents.
 
 - Fixed first-run output validation trying to read a pasted API key from the keystore before it had been saved.
 - Fixed onboarding accepting invalid confirmations and aborting on invalid URLs or default-job host selections; output validation now identifies endpoint failures and offers a retry.

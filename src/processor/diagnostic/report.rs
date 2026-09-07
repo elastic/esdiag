@@ -8,7 +8,7 @@ use crate::data::{Application, ApplicationConfig, Platform};
 use eyre::{OptionExt, Report, Result, eyre};
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_with::{NoneAsEmptyString, serde_as, skip_serializing_none};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::str::FromStr;
 
 pub struct DiagnosticReportBuilder {
@@ -457,16 +457,11 @@ impl DiagnosticReport {
     }
 
     pub fn rejected_indices(&self) -> Vec<(String, u32)> {
-        let mut indices = self
-            .diagnostic
-            .processor
-            .stats
-            .values()
-            .filter(|summary| summary.doc_errors > 0)
-            .map(|summary| (summary.index.clone(), summary.doc_errors))
-            .collect::<Vec<_>>();
-        indices.sort();
-        indices
+        let mut indices = BTreeMap::new();
+        for summary in self.diagnostic.processor.stats.values() {
+            merge_rejections(&mut indices, &summary.rejected_indices);
+        }
+        indices.into_iter().collect()
     }
 
     pub fn add_identifiers(&mut self, identifiers: Identifiers) {
@@ -566,6 +561,13 @@ impl DiagnosticReport {
                 format!("{} documents exported", summary.docs),
             ));
         }
+        for (index, reasons) in &summary.rejection_reasons {
+            for reason in reasons {
+                self.diagnostic
+                    .events
+                    .push(DiagnosticEvent::warning(index.clone(), reason.clone()));
+            }
+        }
         self.diagnostic.docs.created += summary.docs;
         self.diagnostic.docs.errors += summary.doc_errors;
         self.diagnostic.docs.total += summary.docs + summary.doc_errors;
@@ -649,8 +651,30 @@ impl TryFrom<DiagnosticReportBuilder> for DiagnosticReport {
     }
 }
 
+fn merge_rejections(target: &mut BTreeMap<String, u32>, source: &BTreeMap<String, u32>) {
+    for (index, count) in source {
+        let total = target.entry(index.clone()).or_default();
+        *total = total.saturating_add(*count);
+    }
+}
+
+fn merge_rejection_reasons(target: &mut BTreeMap<String, Vec<String>>, source: &BTreeMap<String, Vec<String>>) {
+    for (index, reasons) in source {
+        let samples = target.entry(index.clone()).or_default();
+        for reason in reasons {
+            if samples.len() < 3 && !samples.contains(reason) {
+                samples.push(reason.clone());
+            }
+        }
+    }
+}
+
 #[derive(Serialize, Clone)]
 pub struct BatchResponse {
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub rejected_indices: BTreeMap<String, u32>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub rejection_reasons: BTreeMap<String, Vec<String>>,
     #[serde(skip_serializing)]
     pub batch_count: u32,
     #[serde(skip_serializing)]
@@ -666,6 +690,8 @@ pub struct BatchResponse {
 impl BatchResponse {
     pub fn new(docs: u32) -> Self {
         Self {
+            rejected_indices: BTreeMap::new(),
+            rejection_reasons: BTreeMap::new(),
             batch_count: 1,
             status_counts: HashMap::new(),
             docs,
@@ -679,6 +705,8 @@ impl BatchResponse {
 
     pub fn aggregate() -> Self {
         Self {
+            rejected_indices: BTreeMap::new(),
+            rejection_reasons: BTreeMap::new(),
             batch_count: 0,
             status_counts: HashMap::new(),
             docs: 0,
@@ -698,6 +726,8 @@ impl BatchResponse {
 
     pub fn failed(failed_doc_count: u32, status_code: u16) -> Self {
         Self {
+            rejected_indices: BTreeMap::new(),
+            rejection_reasons: BTreeMap::new(),
             batch_count: 1,
             status_counts: HashMap::new(),
             docs: 0,
@@ -733,6 +763,8 @@ impl BatchResponse {
             },
         };
         self.merge_status_counts(&other);
+        merge_rejections(&mut self.rejected_indices, &other.rejected_indices);
+        merge_rejection_reasons(&mut self.rejection_reasons, &other.rejection_reasons);
     }
 
     fn merge_status_counts(&mut self, other: &Self) {
@@ -773,6 +805,10 @@ pub struct LookupSummary {
 
 #[derive(Serialize, Clone)]
 pub struct ProcessorSummary {
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    rejected_indices: BTreeMap<String, u32>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    rejection_reasons: BTreeMap<String, Vec<String>>,
     batch: BatchStats,
     pub docs: u32,
     doc_errors: u32,
@@ -792,6 +828,8 @@ impl ProcessorSummary {
     pub fn merge(&mut self, other: Result<ProcessorSummary>) {
         match other {
             Ok(other) => {
+                merge_rejections(&mut self.rejected_indices, &other.rejected_indices);
+                merge_rejection_reasons(&mut self.rejection_reasons, &other.rejection_reasons);
                 self.batch.merge(other.batch);
                 self.docs = self.docs.saturating_add(other.docs);
                 self.doc_errors = self.doc_errors.saturating_add(other.doc_errors);
@@ -887,6 +925,8 @@ fn is_false(value: &bool) -> bool {
 impl ProcessorSummary {
     pub fn new(name: String) -> Self {
         Self {
+            rejected_indices: BTreeMap::new(),
+            rejection_reasons: BTreeMap::new(),
             batch: BatchStats {
                 count: 0,
                 retries: 0,
@@ -946,6 +986,17 @@ impl ProcessorSummary {
         }
         self.docs = self.docs.saturating_add(batch.docs);
         self.doc_errors = self.doc_errors.saturating_add(batch.errors);
+        merge_rejections(&mut self.rejected_indices, &batch.rejected_indices);
+        merge_rejection_reasons(&mut self.rejection_reasons, &batch.rejection_reasons);
+        let attributed = batch
+            .rejected_indices
+            .values()
+            .fold(0u32, |total, count| total.saturating_add(*count));
+        let unattributed = batch.errors.saturating_sub(attributed);
+        if unattributed > 0 {
+            let count = self.rejected_indices.entry(self.index.clone()).or_default();
+            *count = count.saturating_add(unattributed);
+        }
         self.batch.responses.push(batch);
     }
 
@@ -1225,7 +1276,7 @@ user: ada
         };
         let mut report =
             DiagnosticReport::try_from(DiagnosticReportBuilder::from(metadata).receiver("file path".into())).unwrap();
-        let mut summary = ProcessorSummary::new("metrics-test-esdiag".into());
+        let mut summary = ProcessorSummary::new("metrics-node-esdiag".into());
         let mut batch = BatchResponse::new(10);
         batch.errors = 3;
         batch.status_code = 200;
@@ -1233,7 +1284,7 @@ user: ada
         report.add_processor_summary(summary.was_parsed());
         assert_eq!(report.outcome(), DiagnosticOutcome::Partial);
         assert_eq!(report.diagnostic.docs.errors, 3);
-        assert_eq!(report.rejected_indices(), vec![("metrics-test-esdiag".into(), 3)]);
+        assert_eq!(report.rejected_indices(), vec![("metrics-node-esdiag".into(), 3)]);
     }
 
     #[test]
@@ -1404,6 +1455,8 @@ user: ada
     #[test]
     fn batch_response_merge_saturates_summary_counters() {
         let mut left = BatchResponse {
+            rejected_indices: BTreeMap::new(),
+            rejection_reasons: BTreeMap::new(),
             batch_count: u32::MAX,
             status_counts: std::collections::HashMap::from([(200, u32::MAX)]),
             docs: u32::MAX,

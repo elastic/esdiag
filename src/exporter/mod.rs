@@ -314,8 +314,36 @@ impl Exporter {
     }
 
     pub fn kibana_link(&self, diagnostic_id: &str, collection_date: u64) -> Option<String> {
-        self.kibana_base_url()
-            .map(|kibana_url| build_kibana_link(&kibana_url, diagnostic_id, collection_date))
+        self.kibana_base_url().map(|kibana_url| {
+            build_kibana_link(
+                &kibana_url,
+                diagnostic_id,
+                collection_date,
+                "elasticsearch-cluster-report",
+                "4319ebc4-df81-4b18-b8bd-6aaa55a1fd13",
+            )
+        })
+    }
+
+    pub async fn resolved_kibana_link(&self, diagnostic_id: &str, collection_date: u64) -> Option<String> {
+        let Self::Elasticsearch(exporter) = self else {
+            return None;
+        };
+        let base = exporter.kibana_base_url()?;
+        let viewer = *exporter.kibana_viewer.clone()?;
+        match resolve_kibana_link_ids(viewer, &base).await {
+            Ok((dashboard, data_view)) => Some(build_kibana_link(
+                &base,
+                diagnostic_id,
+                collection_date,
+                &dashboard,
+                &data_view,
+            )),
+            Err(error) => {
+                tracing::warn!("Unable to resolve the output's Kibana dashboard; omitting its link: {error}");
+                None
+            }
+        }
     }
 
     pub async fn save_report(&self, report: &DiagnosticReport) -> Result<()> {
@@ -412,7 +440,7 @@ fn saved_viewer_kibana_base_url(host: &KnownHost) -> Option<String> {
         Some(viewer_host) => viewer_host,
         None => {
             tracing::warn!(
-                "Output host viewer '{}' was not found at runtime; falling back to environment Kibana URL",
+                "Output host viewer '{}' was not found at runtime; omitting its Kibana link",
                 viewer_name
             );
             return None;
@@ -421,7 +449,7 @@ fn saved_viewer_kibana_base_url(host: &KnownHost) -> Option<String> {
 
     if !viewer_host.has_role(crate::data::HostRole::View) || viewer_host.app() != Some(Application::Kibana) {
         tracing::warn!(
-            "Output host viewer '{}' is not a valid Kibana view target; falling back to environment Kibana URL",
+            "Output host viewer '{}' is not a valid Kibana view target; omitting its Kibana link",
             viewer_name
         );
         return None;
@@ -433,12 +461,78 @@ fn saved_viewer_kibana_base_url(host: &KnownHost) -> Option<String> {
 }
 
 fn kibana_base_url_from_env() -> Option<String> {
-    crate::env::get_string("ESDIAG_KIBANA_URL")
+    std::env::var("ESDIAG_KIBANA_URL")
         .ok()
+        .filter(|url| !url.trim().is_empty())
         .map(|url| crate::env::append_kibana_space(&url))
 }
 
-fn build_kibana_link(kibana_url: &str, diagnostic_id: &str, collection_date: u64) -> String {
+fn kibana_base_url_for_output(host: &KnownHost) -> Option<String> {
+    if host.viewer().is_some() {
+        return saved_viewer_kibana_base_url(host);
+    }
+    // Environment endpoints belong to one deployment. Do not attach its viewer
+    // to a different saved output when that host has no viewer of its own.
+    let output = std::env::var("ESDIAG_OUTPUT_URL").ok()?;
+    let output = Url::parse(&output).ok()?;
+    (host.concrete_url() == Some(&output))
+        .then(kibana_base_url_from_env)
+        .flatten()
+}
+
+async fn resolve_kibana_link_ids(viewer: Uri, base: &str) -> Result<(String, String)> {
+    let client = crate::client::Client::try_from(viewer)?;
+    let prefix = Url::parse(base)?.path().trim_end_matches('/').to_string();
+    let mut dashboard = None;
+    let mut data_view = None;
+    let headers = std::collections::HashMap::from([("X-Elastic-Internal-Origin".to_string(), "Kibana".to_string())]);
+    for page in 1.. {
+        let response = client
+            .request(
+                reqwest::Method::GET,
+                &headers,
+                &format!("{prefix}/api/saved_objects/_find?type=dashboard&type=index-pattern&per_page=100&page={page}"),
+                None,
+            )
+            .await?;
+        eyre::ensure!(
+            response.status().is_success(),
+            "Kibana object lookup returned {}",
+            response.status()
+        );
+        let value: serde_json::Value = response.json().await?;
+        let objects = value["saved_objects"]
+            .as_array()
+            .ok_or_else(|| eyre!("Missing saved objects in Kibana response"))?;
+        for object in objects {
+            let original = object["originId"].as_str().or_else(|| object["id"].as_str());
+            let id = object["id"].as_str().map(str::to_string);
+            match (object["type"].as_str(), original) {
+                (Some("dashboard"), Some("elasticsearch-cluster-report")) => dashboard = id,
+                (Some("index-pattern"), Some("4319ebc4-df81-4b18-b8bd-6aaa55a1fd13")) => data_view = id,
+                _ => {}
+            }
+        }
+        if dashboard.is_some() && data_view.is_some() {
+            break;
+        }
+        if objects.is_empty() || page * 100 >= value["total"].as_u64().unwrap_or(0) {
+            break;
+        }
+    }
+    Ok((
+        dashboard.ok_or_else(|| eyre!("Cluster Report is not installed in the output's Kibana space"))?,
+        data_view.ok_or_else(|| eyre!("Node Settings data view is not installed in the output's Kibana space"))?,
+    ))
+}
+
+fn build_kibana_link(
+    kibana_url: &str,
+    diagnostic_id: &str,
+    collection_date: u64,
+    dashboard_id: &str,
+    data_view_id: &str,
+) -> String {
     let url_safe_id = urlencoding::encode(diagnostic_id);
     let now_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -451,13 +545,50 @@ fn build_kibana_link(kibana_url: &str, diagnostic_id: &str, collection_date: u64
         x => format!("from:now-{}d,to:now", x + 1),
     };
     format!(
-        "{}/app/dashboards#/view/elasticsearch-cluster-report?_g=(filters:!(('$state':(store:globalState),meta:(disabled:!f,index:'4319ebc4-df81-4b18-b8bd-6aaa55a1fd13',key:diagnostic.id,negate:!f,params:(query:'{}'),type:phrase),query:(match_phrase:(diagnostic.id:'{}')))),refreshInterval:(pause:!t,value:60000),time:({}))",
-        kibana_url, url_safe_id, url_safe_id, time_filter
+        "{}/app/dashboards#/view/{}?_g=(filters:!(('$state':(store:globalState),meta:(disabled:!f,index:'{}',key:diagnostic.id,negate:!f,params:(query:'{}'),type:phrase),query:(match_phrase:(diagnostic.id:'{}')))),refreshInterval:(pause:!t,value:60000),time:({}))",
+        kibana_url,
+        urlencoding::encode(dashboard_id),
+        urlencoding::encode(data_view_id),
+        url_safe_id,
+        url_safe_id,
+        time_filter
     )
 }
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn migrated_kibana_ids_are_resolved_in_the_selected_space_across_pages() {
+        use axum::{Json, Router, routing::get};
+        use serde_json::json;
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}/s/ops", listener.local_addr().unwrap());
+        let router = Router::new().route("/s/ops/api/saved_objects/_find", get(|uri: axum::http::Uri| async move {
+            assert!(uri.query().unwrap().contains("type=dashboard&type=index-pattern"));
+                if uri.query().unwrap().ends_with("&page=1") {
+                Json(json!({"total":101,"saved_objects":[{"type":"dashboard","id":"unrelated"}]}))
+            } else {
+                Json(json!({"total":101,"saved_objects":[
+                    {"type":"dashboard","id":"migrated-dashboard","originId":"elasticsearch-cluster-report"},
+                    {"type":"index-pattern","id":"migrated-data-view","originId":"4319ebc4-df81-4b18-b8bd-6aaa55a1fd13"}
+                ]}))
+            }
+        }));
+        let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+        let viewer = KnownHostBuilder::new(Url::parse(&base).unwrap())
+            .application(Application::Kibana)
+            .build()
+            .unwrap();
+        let (dashboard, data_view) = super::resolve_kibana_link_ids(Uri::KnownHost(viewer), &base)
+            .await
+            .unwrap();
+        let link = super::build_kibana_link(&base, "diag@today", 0, &dashboard, &data_view);
+        assert!(link.contains("/s/ops/app/dashboards#/view/migrated-dashboard?"));
+        assert!(link.contains("index:'migrated-data-view'"));
+        assert!(link.contains("diag%40today"));
+        server.abort();
+    }
+
     use super::{ArchiveExporter, Exporter, format_directory_label};
     use crate::data::{Application, HostRole, KnownHost, KnownHostBuilder, Uri};
     use std::{collections::BTreeMap, path::PathBuf, sync::Mutex, time::Duration};

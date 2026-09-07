@@ -1219,7 +1219,7 @@ a:link { text-decoration: none; }""",
     {"calculate": "datum.shards.q3", "as": "q3"},
     {"calculate": "datum.shards.min", "as": "min"},
     {"calculate": "datum.shards.max", "as": "max"},
-    {"calculate": "datum.key", "as": "tier"}
+    {"calculate": "datum.key", "as": "tier"},
     {"calculate": "0", "as": "min-x"},
     {"calculate": "250", "as": "low-x"},
     {"calculate": "500", "as": "mid-x"},
@@ -1285,7 +1285,7 @@ a:link { text-decoration: none; }""",
       "encoding": {
         "x": {"field": "q1", "type": "quantitative", "title": "p25"},
         "x2": {"field": "q3", "title": "p75"},
-        "color": {"field": "tier", "type": "nominal", "legend": null},
+        "color": {"field": "tier", "type": "nominal", "legend": null}
       }
     },
     {
@@ -2393,7 +2393,7 @@ a:link { text-decoration: none; }""",
     {"calculate": "datum.shards.q3", "as": "q3"},
     {"calculate": "datum.shards.min", "as": "min"},
     {"calculate": "datum.shards.max", "as": "max"},
-    {"calculate": "datum.key", "as": "tier"}
+    {"calculate": "datum.key", "as": "tier"},
     {"calculate": "0", "as": "min-x"},
     {"calculate": "250", "as": "low-x"},
     {"calculate": "500", "as": "mid-x"},
@@ -2459,7 +2459,7 @@ a:link { text-decoration: none; }""",
       "encoding": {
         "x": {"field": "q1", "type": "quantitative", "title": "p25"},
         "x2": {"field": "q3", "title": "p75"},
-        "color": {"field": "tier", "type": "nominal", "legend": null},
+        "color": {"field": "tier", "type": "nominal", "legend": null}
       }
     },
     {
@@ -3518,7 +3518,7 @@ a:link { text-decoration: none; }""",
     {"calculate": "datum.shards.q3", "as": "q3"},
     {"calculate": "datum.shards.min", "as": "min"},
     {"calculate": "datum.shards.max", "as": "max"},
-    {"calculate": "datum.key", "as": "tier"}
+    {"calculate": "datum.key", "as": "tier"},
     {"calculate": "0", "as": "min-x"},
     {"calculate": "250", "as": "low-x"},
     {"calculate": "500", "as": "mid-x"},
@@ -3584,7 +3584,7 @@ a:link { text-decoration: none; }""",
       "encoding": {
         "x": {"field": "q1", "type": "quantitative", "title": "p25"},
         "x2": {"field": "q3", "title": "p75"},
-        "color": {"field": "tier", "type": "nominal", "legend": null},
+        "color": {"field": "tier", "type": "nominal", "legend": null}
       }
     },
     {
@@ -4646,7 +4646,7 @@ a:link { text-decoration: none; }""",
     {"calculate": "datum.shards.q3", "as": "q3"},
     {"calculate": "datum.shards.min", "as": "min"},
     {"calculate": "datum.shards.max", "as": "max"},
-    {"calculate": "datum.key", "as": "tier"}
+    {"calculate": "datum.key", "as": "tier"},
     {"calculate": "0", "as": "min-x"},
     {"calculate": "2000", "as": "low-x"},
     {"calculate": "3000", "as": "mid-x"},
@@ -4712,7 +4712,7 @@ a:link { text-decoration: none; }""",
       "encoding": {
         "x": {"field": "q1", "type": "quantitative", "title": "p25"},
         "x2": {"field": "q3", "title": "p75"},
-        "color": {"field": "tier", "type": "nominal", "legend": null},
+        "color": {"field": "tier", "type": "nominal", "legend": null}
       }
     },
     {

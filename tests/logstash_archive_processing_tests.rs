@@ -26,6 +26,8 @@ fn process_archive(archive: &Path, output: &Path, home: &Path) {
             "process",
             archive.to_str().expect("archive path"),
             output.to_str().expect("output path"),
+            "--format",
+            "json",
         ])
         .env("HOME", home)
         .env("USERPROFILE", home)
@@ -39,6 +41,14 @@ fn process_archive(archive: &Path, output: &Path, home: &Path) {
         String::from_utf8_lossy(&process.stdout),
         String::from_utf8_lossy(&process.stderr)
     );
+    let result: Value = serde_json::from_slice(&process.stdout).expect("process result");
+    assert_eq!(
+        result["diagnostic"]["outcome"],
+        "complete",
+        "{}: {result}",
+        archive.display()
+    );
+    assert_eq!(result["diagnostic"]["documents_failed"], 0);
 }
 
 fn read_docs(output_dir: &Path, file_name: &str) -> Vec<Value> {

@@ -43,6 +43,10 @@
         }
       ],
       "properties": {
+        "rest": {
+          "type": "object",
+          "subobjects": false
+        },
         "data_stream": {
           "type": "object",
           "properties": {

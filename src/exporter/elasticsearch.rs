@@ -75,6 +75,7 @@ pub struct ElasticsearchExporter {
     docs_tx: Option<mpsc::Sender<usize>>,
     requires_secret: bool,
     kibana_base_url: Option<String>,
+    pub(super) kibana_viewer: Option<Box<crate::data::Uri>>,
     url: Url,
 }
 
@@ -107,6 +108,7 @@ impl ElasticsearchExporter {
             client,
             tx_limit: Arc::new(Semaphore::new(limit)),
             kibana_base_url: super::kibana_base_url_from_env(),
+            kibana_viewer: crate::data::Uri::try_from_kibana_env().ok().map(Box::new),
             url,
             docs_tx: None,
             requires_secret,
@@ -196,7 +198,14 @@ impl TryFrom<KnownHost> for ElasticsearchExporter {
     type Error = eyre::Report;
 
     fn try_from(host: KnownHost) -> Result<Self> {
-        let kibana_base_url = super::saved_viewer_kibana_base_url(&host).or_else(super::kibana_base_url_from_env);
+        let kibana_base_url = super::kibana_base_url_for_output(&host);
+        let kibana_viewer = kibana_base_url.as_ref().and_then(|_| {
+            if let Some(viewer) = host.viewer() {
+                KnownHost::get_known(&viewer.to_string()).map(crate::data::Uri::KnownHost)
+            } else {
+                crate::data::Uri::try_from_kibana_env().ok()
+            }
+        });
         let requires_secret = !matches!(host.get_auth_for_direction(CredentialDirection::Output)?, Auth::None);
         let url = host.get_url()?;
         let client = elasticsearch_client_from_output_host(host)?;
@@ -211,6 +220,7 @@ impl TryFrom<KnownHost> for ElasticsearchExporter {
             client,
             tx_limit: Arc::new(Semaphore::new(limit)),
             kibana_base_url,
+            kibana_viewer: kibana_viewer.map(Box::new),
             url,
             docs_tx: None,
             requires_secret,
@@ -462,6 +472,28 @@ fn estimated_json_string_bytes(value: &str) -> usize {
     })
 }
 
+// Elasticsearch bulk items identify backing indices after ingest rerouting.
+// Only recognize ESDiag's stream names; preserve other index names verbatim.
+fn rejected_data_stream(index: &str) -> &str {
+    let Some(backing) = index.strip_prefix(".ds-").or_else(|| index.strip_prefix(".fs-")) else {
+        return index;
+    };
+    let Some((dated_stream, generation)) = backing.rsplit_once('-') else {
+        return index;
+    };
+    let Some((stream, date)) = dated_stream.rsplit_once('-') else {
+        return index;
+    };
+    if generation.len() < 6
+        || !generation.bytes().all(|byte| byte.is_ascii_digit())
+        || chrono::NaiveDate::parse_from_str(date, "%Y.%m.%d").is_err()
+        || !(stream.ends_with("-esdiag") || stream.contains("-esdiag-"))
+    {
+        return index;
+    }
+    stream
+}
+
 async fn parse_response(
     index: String,
     response: Result<Response, elasticsearch::Error>,
@@ -503,10 +535,7 @@ async fn parse_response(
 
     let error_items: Vec<Value> = items
         .drain(..)
-        .filter(|item| match item["create"]["status"].as_u64() {
-            Some(status) => status != 201,
-            None => false,
-        })
+        .filter(|item| item["create"]["status"].as_u64() != Some(201) || item["create"]["failure_store"] == "used")
         .collect();
     let error_count = error_items.len();
     let doc_count = item_count - error_count;
@@ -544,6 +573,33 @@ async fn parse_response(
     }
 
     let mut batch_response = BatchResponse::new(doc_count as u32);
+    for item in &error_items {
+        let destination = item["create"]["_index"]
+            .as_str()
+            .filter(|value| !value.is_empty())
+            .unwrap_or(&index);
+        let destination = rejected_data_stream(destination);
+        *batch_response
+            .rejected_indices
+            .entry(destination.to_string())
+            .or_default() += 1;
+        let error = &item["create"]["error"];
+        let reason = match error.get("reason").and_then(Value::as_str) {
+            Some(reason) => format!("{}: {reason}", error["type"].as_str().unwrap_or("document_rejected")),
+            None if item["create"]["failure_store"] == "used" => {
+                format!("Document retained in {destination}::failures; inspect error.message for the rejection reason")
+            }
+            None => format!("Bulk item rejected with status {}", item["create"]["status"]),
+        };
+        let reason: String = reason.chars().take(1024).collect();
+        let samples = batch_response
+            .rejection_reasons
+            .entry(destination.to_string())
+            .or_default();
+        if samples.len() < 3 && !samples.contains(&reason) {
+            samples.push(reason);
+        }
+    }
     batch_response.errors = error_count as u32;
     batch_response.retries = retries;
     batch_response.status_code = status_code;
@@ -644,6 +700,76 @@ mod tests {
     }
 
     static ENV_LOCK: Mutex<()> = Mutex::const_new(());
+
+    #[test]
+    fn rejected_backing_indices_preserve_the_complete_stream_name() {
+        assert_eq!(
+            rejected_data_stream(".ds-settings-index-esdiag-migrated-hist-2026.09.06-000013"),
+            "settings-index-esdiag-migrated-hist"
+        );
+        assert_eq!(
+            rejected_data_stream(".ds-health-impact-esdiag-not-a-backing-index"),
+            ".ds-health-impact-esdiag-not-a-backing-index"
+        );
+        assert_eq!(
+            rejected_data_stream(".ds-other-stream-2026.09.06-000001"),
+            ".ds-other-stream-2026.09.06-000001"
+        );
+    }
+
+    #[tokio::test]
+    async fn rerouted_failures_reach_the_diagnostic_report() {
+        let mut env = crate::TestEnv::new();
+        env.set_path("ESDIAG_HOME", env.tmp.path().to_path_buf());
+        std::fs::create_dir_all(env.tmp.path().join("last_run")).unwrap();
+        use crate::processor::{
+            ProcessorSummary,
+            diagnostic::{DiagnosticMetadata, DiagnosticReportBuilder},
+        };
+        let url = mock_bulk_server_raw(
+            200,
+            r#"{"items":[
+            {"create":{"_index":".ds-health-indicator-esdiag-2026.09.06-000001","status":201}},
+            {"create":{"_index":".ds-health-impact-esdiag-2026.09.06-000001","status":400,"error":{"type":"document_parsing_exception","reason":"Cannot write to a field alias [diagnostic.platform]"}}},
+            {"create":{"_index":"health-diagnosis-esdiag","status":400}},
+            {"create":{"_index":".fs-health-impact-esdiag-2026.09.06-000002","status":201,"failure_store":"used"}}
+        ]}"#,
+        )
+        .await;
+        let exporter = ElasticsearchExporter::try_new(url, Auth::None).unwrap();
+        let batch = exporter
+            .batch_send("health-indicator-esdiag".into(), vec![json!({}); 4])
+            .await
+            .unwrap();
+        assert_eq!(batch.docs, 1);
+        assert_eq!(batch.errors, 3);
+        let mut summary = ProcessorSummary::new("health-indicator-esdiag".into());
+        summary.add_batch(batch);
+        // Include a request failure with no resolved destination.
+        summary.add_batch(BatchResponse::failed(2, 429));
+        let metadata = DiagnosticMetadata {
+            id: "test".into(),
+            collection_date: 0,
+            runner: "test".into(),
+            uuid: "test".into(),
+        };
+        let mut report =
+            DiagnosticReport::try_from(DiagnosticReportBuilder::from(metadata).receiver("file fixture".into()))
+                .unwrap();
+        report.add_processor_summary(summary.was_parsed());
+        assert_eq!(
+            report.rejected_indices(),
+            vec![
+                ("health-diagnosis-esdiag".into(), 1),
+                ("health-impact-esdiag".into(), 2),
+                ("health-indicator-esdiag".into(), 2),
+            ]
+        );
+        assert_eq!(report.diagnostic.docs.errors, 5);
+        let rendered = serde_json::to_value(&report.diagnostic).unwrap()["events"].to_string();
+        assert!(rendered.contains("Cannot write to a field alias [diagnostic.platform]"));
+        assert!(rendered.contains("health-impact-esdiag::failures"));
+    }
 
     struct RetryEnvGuard {
         prev_max: Option<String>,
