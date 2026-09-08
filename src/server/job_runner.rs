@@ -189,12 +189,25 @@ async fn execute_unified_web_job(
         }));
 
     let input = match &request.input {
-        JobInput::LocalArchive { path, .. } => Input::Load {
-            uri: Uri::File(path.clone()),
-        },
+        JobInput::LocalArchive {
+            path,
+            filename,
+            scrubbed_override,
+            ..
+        } => {
+            let binding = BindingKey::try_new(format!("web-local-archive-{job_id}"))?;
+            let receiver =
+                Receiver::try_from_with_scrub(Uri::File(path.clone()), *scrubbed_override, Some(filename.as_str()))?;
+            context
+                .inputs
+                .bind_bundle(binding.clone(), receiver, path.clone(), None);
+            Input::LoadBinding { binding }
+        }
         JobInput::FromServiceLink { uri, .. } => {
             let binding = BindingKey::try_new(format!("web-service-link-{job_id}"))?;
-            context.inputs.bind_uri(binding.clone(), uri.clone(), None);
+            context
+                .inputs
+                .bind_uri_with_scrub(binding.clone(), uri.clone(), None, None, Some(source.to_string()));
             Input::LoadBinding { binding }
         }
         JobInput::FromRemoteHost {
@@ -1034,6 +1047,7 @@ mod tests {
                 filename: "upload.zip".to_string(),
                 path: "/tmp/upload.zip".into(),
                 cleanup_path: None,
+                scrubbed_override: None,
             },
         };
 
@@ -1067,6 +1081,7 @@ mod tests {
                 filename: "uploaded.zip".to_string(),
                 path: archive,
                 cleanup_path: Some(std::path::PathBuf::from("/tmp/unused-cleanup-path")),
+                scrubbed_override: None,
             },
         };
         let (tx, mut rx) = mpsc::channel(32);
@@ -1127,6 +1142,7 @@ mod tests {
                 filename: "upload.zip".to_string(),
                 path: "/tmp/upload.zip".into(),
                 cleanup_path: Some("/tmp/upload.zip".into()),
+                scrubbed_override: None,
             },
         };
 

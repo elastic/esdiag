@@ -51,6 +51,7 @@ pub use metadata::ElasticsearchMetadata;
 use tokio::sync::mpsc;
 pub use {
     licenses::{License, Licenses},
+    nodes::Nodes,
     version::{Cluster, ClusterMetadata, Version},
 };
 
@@ -82,7 +83,7 @@ use {
     indices_settings::{IndexSettings, IndicesSettings},
     indices_stats::IndicesStats,
     mapping_stats::{MappingStats, MappingSummary},
-    nodes::{NodeDocument, Nodes},
+    nodes::NodeDocument,
     nodes_stats::NodesStats,
     pending_tasks::PendingTasks,
     searchable_snapshots_cache_stats::{SearchableSnapshotsCacheStats, SharedCacheStats},

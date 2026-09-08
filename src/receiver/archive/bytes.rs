@@ -2,10 +2,12 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use super::resolve_archive_path;
+use super::{
+    normalize_supported_content, normalize_supported_reader_to_temp, resolve_archive_path, supports_json_normalization,
+};
 use crate::{
     processor::{DataSource, SourceContext, StreamingDataSource},
-    receiver::{MissingSource, Receive, ReceiveMultiple},
+    receiver::{MissingSource, Receive, ReceiveMultiple, ReceiveRaw, has_json_content},
 };
 use bytes::Bytes;
 use eyre::{Result, WrapErr, eyre};
@@ -28,6 +30,7 @@ pub struct ArchiveBytesReceiver {
     archive: ArchivePointer,
     subdir: Option<PathBuf>,
     source_product: Arc<OnceLock<&'static str>>,
+    scrubbed: bool,
 }
 
 /// A receiver for the Elastic Uploader service (https://upload.elastic.co).
@@ -58,14 +61,17 @@ impl Receive for ArchiveBytesReceiver {
         for source_path in source_paths {
             match resolve_archive_path(self.subdir.as_ref(), &mut *archive, &source_path) {
                 Ok(filename) => {
-                    tracing::debug!("Reading {}", filename);
+                    if self.scrubbed {
+                        tracing::debug!("Reading {} (scrubbed mode)", filename);
+                    } else {
+                        tracing::debug!("Reading {}", filename);
+                    }
                     let file = match archive.by_name(&filename) {
                         Ok(file) => file,
                         Err(_) => return Err(eyre!("Failed to read file {filename} from archive")),
                     };
-                    let mut contents = String::new();
-                    BufReader::new(file).read_to_string(&mut contents)?;
-                    if contents.trim().is_empty() {
+                    let mut reader = BufReader::new(file);
+                    if !has_json_content(&mut reader)? {
                         last_resolve_error = Some(
                             MissingSource::Empty {
                                 path: filename.to_string(),
@@ -74,8 +80,22 @@ impl Receive for ArchiveBytesReceiver {
                         );
                         continue;
                     }
-                    let data: T = serde_json::from_str(&contents)
-                        .wrap_err_with(|| format!("Failed to parse {filename} for {}", T::name()))?;
+                    let data: T = if self.scrubbed && supports_json_normalization(&filename) {
+                        let mut transformed = normalize_supported_reader_to_temp(&filename, reader)?;
+                        tracing::debug!(
+                            "Unscrubbed {} address fields in {}",
+                            transformed.transformed_fields,
+                            filename
+                        );
+                        let reader = BufReader::new(transformed.file.as_file_mut());
+                        serde_json::from_reader(reader)
+                    } else {
+                        if self.scrubbed {
+                            tracing::debug!("Scrubbed mode read {} (no normalization rules)", filename);
+                        }
+                        serde_json::from_reader(reader)
+                    }
+                    .wrap_err_with(|| format!("Failed to parse {filename} for {}", T::name()))?;
                     return Ok(data);
                 }
                 Err(e) => {
@@ -97,8 +117,70 @@ impl Receive for ArchiveBytesReceiver {
         T::Item: DeserializeOwned + Send + 'static,
     {
         let ctx = self.source_context()?;
-        super::get_stream_from_archive::<BufReader<Cursor<Bytes>>, T>(self.archive.clone(), self.subdir.clone(), ctx)
-            .await
+        super::get_stream_from_archive::<BufReader<Cursor<Bytes>>, T>(
+            self.archive.clone(),
+            self.subdir.clone(),
+            ctx,
+            self.scrubbed,
+        )
+        .await
+    }
+}
+
+impl ReceiveRaw for ArchiveBytesReceiver {
+    async fn get_raw<T>(&self) -> Result<String>
+    where
+        T: DataSource,
+    {
+        let mut archive = self.archive.write().await;
+        let ctx = self.source_context()?;
+        let source_paths = T::candidate_source_file_paths(&ctx)?;
+        let mut last_resolve_error = None;
+
+        for source_path in source_paths {
+            match resolve_archive_path(self.subdir.as_ref(), &mut *archive, &source_path) {
+                Ok(filename) => {
+                    if self.scrubbed {
+                        tracing::debug!("Reading {} (scrubbed mode)", filename);
+                    } else {
+                        tracing::debug!("Reading {}", filename);
+                    }
+
+                    let file = match archive.by_name(&filename) {
+                        Ok(file) => file,
+                        Err(_) => return Err(eyre!("Failed to read file {filename} from archive")),
+                    };
+                    let mut reader = BufReader::new(file);
+                    let mut data = String::new();
+                    reader.read_to_string(&mut data)?;
+
+                    if self.scrubbed {
+                        let transformed = normalize_supported_content(&filename, data)?;
+                        if transformed.supported {
+                            tracing::debug!(
+                                "Unscrubbed {} address fields in {}",
+                                transformed.transformed_fields,
+                                filename
+                            );
+                        } else {
+                            tracing::debug!("Scrubbed mode read {} (no normalization rules)", filename);
+                        }
+                        return Ok(transformed.content);
+                    }
+
+                    return Ok(data);
+                }
+                Err(e) => {
+                    last_resolve_error = Some(e);
+                    continue;
+                }
+            }
+        }
+
+        match last_resolve_error {
+            Some(e) => Err(e),
+            None => Err(eyre!("No candidate source files available for {}", T::name())),
+        }
     }
 }
 
@@ -120,6 +202,7 @@ impl TryFrom<Bytes> for ArchiveBytesReceiver {
             archive: Arc::new(RwLock::new(archive)),
             subdir: None,
             source_product: Arc::new(OnceLock::new()),
+            scrubbed: false,
         })
     }
 }
@@ -136,6 +219,7 @@ impl ArchiveBytesReceiver {
             archive: self.archive.clone(),
             subdir: Some(PathBuf::from(work_dir)),
             source_product: Arc::new(OnceLock::new()),
+            scrubbed: self.scrubbed,
         }
     }
 
@@ -186,5 +270,9 @@ impl ArchiveBytesReceiver {
 
     pub fn source_context(&self) -> Result<SourceContext> {
         Ok(SourceContext::new(self.source_product()?, None))
+    }
+
+    pub fn set_scrubbed(&mut self, scrubbed: bool) {
+        self.scrubbed = scrubbed;
     }
 }
