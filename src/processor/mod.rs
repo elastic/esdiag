@@ -46,6 +46,7 @@ use futures::{
     future::BoxFuture,
     stream::{BoxStream, FuturesUnordered},
 };
+use kibana::KibanaDiagnostic;
 use kubernetes_platform::KubernetesPlatformDiagnostic;
 use logstash::LogstashDiagnostic;
 use std::sync::{
@@ -57,7 +58,6 @@ use tokio::{sync::mpsc, time::Instant};
 /// A recognized application whose processor is still being written carries its
 /// own message, because "we have not built this yet" and "we deliberately do not
 /// do this" are opposite answers to the same question (ADR-0019).
-const KIBANA_PROCESSING_NOT_IMPLEMENTED: &str = "Kibana processing is not yet implemented";
 const AGENT_PROCESSING_NOT_IMPLEMENTED: &str = "Elastic Agent processing is not yet implemented";
 const UNSUPPORTED_PRODUCT_OR_DIAGNOSTIC_BUNDLE: &str = "Unsupported product or diagnostic bundle";
 /// The license holder Elastic Cloud Hosted issues every deployment license to.
@@ -372,7 +372,7 @@ fn failed_child_outcome_with_context(
 }
 
 /// Why an unsupported child is skipped (ADR-0019): platform-only bundles are
-/// out of scope by design; Kibana/Agent processing is work in progress.
+/// out of scope by design; Agent processing is work in progress.
 ///
 /// The by-design boundary governs *collection* — ESDiag will never pull Agent or
 /// platform APIs — so it must not be borrowed for an application whose processor
@@ -380,7 +380,7 @@ fn failed_child_outcome_with_context(
 /// are waiting on is never coming.
 pub(crate) fn skip_kind_for(error: &str) -> Option<SkipKind> {
     match error {
-        KIBANA_PROCESSING_NOT_IMPLEMENTED | AGENT_PROCESSING_NOT_IMPLEMENTED => Some(SkipKind::NotImplemented),
+        AGENT_PROCESSING_NOT_IMPLEMENTED => Some(SkipKind::NotImplemented),
         UNSUPPORTED_PRODUCT_OR_DIAGNOSTIC_BUNDLE => Some(SkipKind::ByDesign),
         _ => None,
     }
@@ -388,7 +388,6 @@ pub(crate) fn skip_kind_for(error: &str) -> Option<SkipKind> {
 
 pub(crate) fn skipped_application(error: &str) -> Option<Application> {
     match error {
-        KIBANA_PROCESSING_NOT_IMPLEMENTED => Some(Application::Kibana),
         AGENT_PROCESSING_NOT_IMPLEMENTED => Some(Application::Agent),
         _ => None,
     }
@@ -837,7 +836,7 @@ enum Diagnostic {
     Elasticsearch(Box<ElasticsearchDiagnostic>),
     ElasticCloudKubernetes(Box<ElasticCloudKubernetesDiagnostic>),
     KubernetesPlatform(Box<KubernetesPlatformDiagnostic>),
-    //Kibana(KibanaDiagnostic)
+    Kibana(Box<KibanaDiagnostic>),
     Logstash(Box<LogstashDiagnostic>),
 }
 
@@ -848,6 +847,7 @@ impl Diagnostic {
             Diagnostic::Elasticsearch(diagnostic) => Some(diagnostic.uuid().to_string()),
             Diagnostic::ElasticCloudKubernetes(diagnostic) => Some(diagnostic.uuid().to_string()),
             Diagnostic::KubernetesPlatform(diagnostic) => Some(diagnostic.uuid().to_string()),
+            Diagnostic::Kibana(diagnostic) => Some(diagnostic.uuid().to_string()),
             Diagnostic::Logstash(diagnostic) => Some(diagnostic.uuid().to_string()),
         }
     }
@@ -883,7 +883,11 @@ impl Diagnostic {
                     LogstashDiagnostic::try_new(receiver, exporter, manifest, process_selection).await?;
                 Ok((Self::Logstash(diagnostic), report))
             }
-            Some(Application::Kibana) => Err(eyre!(KIBANA_PROCESSING_NOT_IMPLEMENTED)),
+            Some(Application::Kibana) => {
+                let (diagnostic, report) =
+                    KibanaDiagnostic::try_new(receiver, exporter, manifest, process_selection).await?;
+                Ok((Self::Kibana(diagnostic), report))
+            }
             Some(Application::Agent) => Err(eyre!(AGENT_PROCESSING_NOT_IMPLEMENTED)),
             // A platform-only diagnostic: dispatch on the platform axis.
             None => match manifest.platform() {
@@ -908,7 +912,7 @@ impl Diagnostic {
             Diagnostic::Elasticsearch(diagnostic) => diagnostic.process(summary_tx).await,
             Diagnostic::ElasticCloudKubernetes(diagnostic) => diagnostic.process(summary_tx).await,
             Diagnostic::KubernetesPlatform(diagnostic) => diagnostic.process(summary_tx).await,
-            //Diagnostic::Kibana(diagnostic) => diagnostic.run().await?,
+            Diagnostic::Kibana(diagnostic) => diagnostic.process(summary_tx).await,
             Diagnostic::Logstash(diagnostic) => diagnostic.process(summary_tx).await,
         }
     }
@@ -918,7 +922,7 @@ impl Diagnostic {
             Diagnostic::Elasticsearch(diagnostic) => diagnostic.origin(),
             Diagnostic::ElasticCloudKubernetes(diagnostic) => diagnostic.origin(),
             Diagnostic::KubernetesPlatform(diagnostic) => diagnostic.origin(),
-            //Diagnostic::Kibana(diagnostic) => diagnostic.origin(),
+            Diagnostic::Kibana(diagnostic) => diagnostic.origin(),
             Diagnostic::Logstash(diagnostic) => diagnostic.origin(),
         }
     }
@@ -926,6 +930,11 @@ impl Diagnostic {
 
 trait DocumentExporter<T, U> {
     async fn documents_export(self, exporter: &Exporter, lookups: &T, metadata: &U) -> ProcessorSummary;
+
+    #[allow(unused_variables)]
+    async fn export_raw(data: String, exporter: &Exporter, lookups: &T, metadata: &U) -> ProcessorSummary {
+        ProcessorSummary::new("error".to_string())
+    }
 }
 
 trait StreamingDocumentExporter<T, U>: StreamingDataSource {
@@ -1075,26 +1084,45 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn unsupported_readable_child_returns_skipped_outcome() {
+    async fn kibana_child_returns_completed_outcome() {
         let root = parent_with_children(&[("kibana-child", "kibana-api-diagnostics-9.3.3.zip")]);
 
         let completed = process_parent_bundle(root.path()).await;
 
         assert_eq!(completed.state.included_diagnostics.len(), 1);
         let child = &completed.state.included_diagnostics[0];
-        // Kibana processing is work in progress: skipped as not-implemented
-        // (ADR-0016/0019), while the parent still completes
-        assert_eq!(child.outcome, DiagnosticOutcome::Skipped(SkipKind::NotImplemented));
-        assert_eq!(child.application, Some(Application::Kibana));
+        assert_eq!(child.outcome, DiagnosticOutcome::Complete);
         assert_eq!(child.platform, Platform::ECK);
-        assert!(
-            child
-                .reason
-                .as_deref()
-                .unwrap_or_default()
-                .contains("Kibana processing is not yet implemented")
-        );
+        let report = child.report.as_ref().expect("completed child carries its report");
+        assert_eq!(report.diagnostic.application, Some(Application::Kibana));
+        assert!(report.diagnostic.docs.created > 0);
         assert_eq!(completed.state.report.outcome(), DiagnosticOutcome::Complete);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn kibana_processing() {
+        let root = tempfile::tempdir().expect("bundle directory");
+        extract_archive("kibana-api-diagnostics-8.19.3.zip", root.path());
+
+        let receiver = Arc::new(Receiver::try_from(Uri::Directory(root.path().to_path_buf())).expect("receiver"));
+        let output = tempfile::tempdir().expect("output directory");
+        let exporter = Arc::new(Exporter::try_from(Uri::Directory(output.path().to_path_buf())).expect("exporter"));
+        let processor = Processor::try_new(receiver, exporter, Identifiers::default())
+            .await
+            .expect("ready processor");
+        let processing = processor
+            .start()
+            .await
+            .map_err(|failed| failed.state.error)
+            .expect("processing processor");
+        let completed = processing
+            .process()
+            .await
+            .map_err(|failed| failed.state.error)
+            .expect("completed processor");
+
+        assert_eq!(completed.state.report.diagnostic.application, Some(Application::Kibana));
+        assert!(completed.state.report.diagnostic.docs.created > 0);
     }
 
     /// A child diagnostic ESDiag recognizes but has no processor for. Written as
@@ -1151,12 +1179,8 @@ mod tests {
 
     #[test]
     fn the_two_gap_kinds_stay_separable() {
-        // Both surface as a skip, and each is one shared error constant away
-        // from being reported as the other (ADR-0019).
-        assert_eq!(
-            skip_kind_for(KIBANA_PROCESSING_NOT_IMPLEMENTED),
-            Some(SkipKind::NotImplemented)
-        );
+        // These cases surface as a skip rather than a processing failure
+        // (ADR-0019).
         assert_eq!(
             skip_kind_for(AGENT_PROCESSING_NOT_IMPLEMENTED),
             Some(SkipKind::NotImplemented)

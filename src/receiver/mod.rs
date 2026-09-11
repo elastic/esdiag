@@ -188,6 +188,22 @@ impl Receiver {
         }
     }
 
+    /// Read every collected instance of a source.
+    ///
+    /// Bundle receivers include root, space-scoped, paginated, and legacy
+    /// numbered files. Live receivers return the single API response.
+    pub async fn get_all<T>(&self) -> Result<Vec<Result<T>>>
+    where
+        T: DataSource + DeserializeOwned,
+    {
+        match self {
+            Receiver::ArchiveBytes(receiver) => receiver.get_all::<T>().await,
+            Receiver::ArchiveFile(receiver) => receiver.get_all::<T>().await,
+            Receiver::Directory(receiver) => receiver.get_all::<T>().await,
+            _ => Ok(vec![self.get::<T>().await]),
+        }
+    }
+
     #[tracing::instrument(skip(self))]
     pub async fn get_stream<T>(&self) -> Result<BoxStream<'static, Result<T::Item>>>
     where
@@ -403,6 +419,81 @@ impl Receiver {
     }
 }
 
+/// Match a source file relative to a bundle root.
+///
+/// Collector-owned scope prefixes are deliberately explicit so a parent
+/// receiver cannot consume a similarly named file from an included diagnostic.
+pub(crate) fn is_source_instance_path(path: &str, candidates: &[String]) -> bool {
+    let path_components: Vec<&str> = path
+        .split(['/', '\\'])
+        .filter(|component| !component.is_empty() && *component != ".")
+        .collect();
+
+    candidates.iter().any(|candidate| {
+        let candidate_components: Vec<&str> = candidate
+            .split(['/', '\\'])
+            .filter(|component| !component.is_empty() && *component != ".")
+            .collect();
+        if path_components.len() < candidate_components.len() || candidate_components.is_empty() {
+            return false;
+        }
+
+        let split = path_components.len() - candidate_components.len();
+        let (scope, source_path) = path_components.split_at(split);
+        let Some((candidate_file, candidate_dirs)) = candidate_components.split_last() else {
+            return false;
+        };
+        let Some((source_file, source_dirs)) = source_path.split_last() else {
+            return false;
+        };
+
+        source_dirs == candidate_dirs
+            && source_filename_matches(source_file, candidate_file)
+            && valid_source_scope(scope)
+    })
+}
+
+fn source_filename_matches(actual: &str, candidate: &str) -> bool {
+    if actual == candidate {
+        return true;
+    }
+
+    let candidate_path = Path::new(candidate);
+    let Some(stem) = candidate_path.file_stem().and_then(|stem| stem.to_str()) else {
+        return false;
+    };
+    let extension = candidate_path.extension().and_then(|extension| extension.to_str());
+    let actual_path = Path::new(actual);
+    if actual_path.extension().and_then(|value| value.to_str()) != extension {
+        return false;
+    }
+    let Some(actual_stem) = actual_path.file_stem().and_then(|value| value.to_str()) else {
+        return false;
+    };
+    let Some(page) = actual_stem
+        .strip_prefix(stem)
+        .and_then(|suffix| suffix.strip_prefix('_'))
+    else {
+        return false;
+    };
+    !page.is_empty() && page.chars().all(|character| character.is_ascii_digit())
+}
+
+fn valid_source_scope(scope: &[&str]) -> bool {
+    match scope {
+        [] => true,
+        ["spaces", space] => !space.is_empty(),
+        ["pages", page] => valid_page_directory(page),
+        ["spaces", space, "pages", page] => !space.is_empty() && valid_page_directory(page),
+        _ => false,
+    }
+}
+
+fn valid_page_directory(page: &str) -> bool {
+    page.strip_prefix("page-")
+        .is_some_and(|number| !number.is_empty() && number.chars().all(|character| character.is_ascii_digit()))
+}
+
 fn validate_relative_subdir(sub_dir: &str) -> Result<()> {
     let path = Path::new(sub_dir);
     if path.as_os_str().is_empty() {
@@ -488,7 +579,7 @@ impl std::fmt::Display for Receiver {
 
 #[cfg(test)]
 mod tests {
-    use super::{DirectoryReceiver, Receiver};
+    use super::{DirectoryReceiver, Receiver, is_source_instance_path};
     use crate::data::{Application, KnownHostBuilder};
     use url::Url;
 
@@ -539,5 +630,36 @@ mod tests {
 
         assert!(err.to_string().contains("out of scope by design for Agent"));
         assert!(err.to_string().contains("read/Load"));
+    }
+
+    #[test]
+    fn source_instance_paths_accept_collector_and_legacy_layouts() {
+        let candidates = vec!["kibana_alerts.json".to_string()];
+
+        for path in [
+            "kibana_alerts.json",
+            "kibana_alerts_1.json",
+            "spaces/default/kibana_alerts.json",
+            "spaces/default/kibana_alerts_2.json",
+            "pages/page-0001/kibana_alerts.json",
+            "spaces/marketing/pages/page-0002/kibana_alerts.json",
+        ] {
+            assert!(is_source_instance_path(path, &candidates), "{path}");
+        }
+    }
+
+    #[test]
+    fn source_instance_paths_reject_unowned_subtrees_and_lookalikes() {
+        let candidates = vec!["kibana_alerts.json".to_string()];
+
+        for path in [
+            "included/kibana_alerts.json",
+            "spaces/default/included/kibana_alerts.json",
+            "pages/not-a-page/kibana_alerts.json",
+            "kibana_alerts_copy.json",
+            "kibana_alerts_1.ndjson",
+        ] {
+            assert!(!is_source_instance_path(path, &candidates), "{path}");
+        }
     }
 }

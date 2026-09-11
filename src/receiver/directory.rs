@@ -10,7 +10,7 @@ use serde::de::DeserializeOwned;
 use std::{
     fs::File,
     io::{BufReader, Read},
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::Arc,
     sync::OnceLock,
     time::SystemTime,
@@ -206,6 +206,42 @@ impl std::fmt::Display for DirectoryReceiver {
 }
 
 impl DirectoryReceiver {
+    pub async fn get_all<T>(&self) -> Result<Vec<Result<T>>>
+    where
+        T: DataSource + DeserializeOwned,
+    {
+        let ctx = self.source_context()?;
+        let candidates = T::candidate_source_file_paths(&ctx)?;
+        let root = self.path.join(&self.work_dir);
+        let mut filenames = Vec::new();
+        collect_source_files(&root, &root, &candidates, &mut filenames)?;
+        filenames.sort();
+
+        if filenames.is_empty() {
+            return Err(MissingSource::NoCandidates { source: T::name() }.into());
+        }
+
+        Ok(filenames
+            .into_iter()
+            .map(|filename| {
+                let file = File::open(&filename)
+                    .wrap_err_with(|| format!("Failed to read {} for {}", filename.display(), T::name()))?;
+                let mut contents = String::new();
+                BufReader::new(file)
+                    .read_to_string(&mut contents)
+                    .wrap_err_with(|| format!("Failed to read {} for {}", filename.display(), T::name()))?;
+                if contents.trim().is_empty() {
+                    return Err(MissingSource::Empty {
+                        path: filename.display().to_string(),
+                    }
+                    .into());
+                }
+                serde_json::from_str(&contents)
+                    .wrap_err_with(|| format!("Failed to parse {} for {}", filename.display(), T::name()))
+            })
+            .collect())
+    }
+
     pub(crate) fn clone_for_subdir(&self, work_dir: &str) -> Self {
         Self {
             path: self.path.clone(),
@@ -258,4 +294,28 @@ impl DirectoryReceiver {
     pub fn source_context(&self) -> Result<SourceContext> {
         Ok(SourceContext::new(self.source_product()?, None))
     }
+}
+
+fn collect_source_files(
+    root: &Path,
+    directory: &Path,
+    candidates: &[String],
+    filenames: &mut Vec<PathBuf>,
+) -> Result<()> {
+    for entry in std::fs::read_dir(directory)? {
+        let entry = entry?;
+        let file_type = entry.file_type()?;
+        let path = entry.path();
+        if file_type.is_dir() {
+            collect_source_files(root, &path, candidates, filenames)?;
+        } else if file_type.is_file() {
+            let relative = path
+                .strip_prefix(root)
+                .map_err(|_| eyre!("Source path escaped diagnostic root: {}", path.display()))?;
+            if super::is_source_instance_path(relative.to_string_lossy().as_ref(), candidates) {
+                filenames.push(path);
+            }
+        }
+    }
+    Ok(())
 }

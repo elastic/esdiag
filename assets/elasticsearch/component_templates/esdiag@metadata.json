@@ -93,6 +93,9 @@
             "runner": {
               "type": "keyword"
             },
+            "version": {
+              "type": "keyword"
+            },
             "uuid": {
               "type": "keyword"
             },
