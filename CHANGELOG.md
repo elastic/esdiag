@@ -22,6 +22,8 @@ published release notes, maintenance branches, and tagged history.
 - Added optional Elastic Upload Service forwarding to `esdiag-lite.sh` for newly collected and existing ZIP archives.
 - Added `esdiag-lite.ps1` for version-aware Elasticsearch diagnostic collection on Windows PowerShell.
 - Added the Index Detail dashboard showing the full vertical slice of metrics (operations, documents, storage, settings, shard distribution, data stream/alias membership, and shard workload balance) for a single selected index.
+- Added the Node Detail dashboard, scoped by the incoming `diagnostic.id` and `node.name` drilldown filters, breaking a single node down by its own sub-dimensions: operation volume and cost, thread pool queueing and rejections, circuit breaker headroom, JVM memory pools, cache effectiveness, indexing pressure by stage, filesystem and allocation, and the indices holding shards on that node.
+- Added the Ingest Pipeline Detail dashboard, scoped by the incoming `diagnostic.id` and `ingest.pipeline.name` drilldown filters, breaking a single pipeline down by processor, processor type, and executing node, with per-processor execution order, cost, and failure rate. Surfaces processor failures separately from pipeline failures, so errors absorbed by `on_failure` or `ignore_failure` stay visible.
 
 ### Changed
 

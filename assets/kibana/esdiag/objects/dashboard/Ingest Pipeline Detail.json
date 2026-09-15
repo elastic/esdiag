@@ -1,0 +1,1396 @@
+{
+  "attributes": {
+    "description": "Component detail for a single Elasticsearch ingest pipeline. Scoped by the diagnostic.id and ingest.pipeline.name filters carried in from a drilldown; every panel breaks that pipeline down by its own sub-dimensions (processor, processor type, and the nodes that executed it). Processor failures are counted separately from pipeline failures, because on_failure and ignore_failure absorb processor errors — a pipeline can report zero failures while dropping a field on every document.",
+    "kibanaSavedObjectMeta": {
+      "searchSourceJSON": {}
+    },
+    "optionsJSON": {
+      "autoApplyFilters": true,
+      "hidePanelBorders": false,
+      "hidePanelTitles": false,
+      "syncColors": false,
+      "syncCursor": true,
+      "syncTooltips": false,
+      "useMargins": true
+    },
+    "panelsJSON": [
+      {
+        "embeddableConfig": {
+          "enhancements": {}
+        },
+        "gridData": {
+          "h": 3,
+          "i": "3c9eb062-5d74-4fa3-9b8c-4e6a07d92f33",
+          "w": 22,
+          "x": 0,
+          "y": 0
+        },
+        "panelIndex": "3c9eb062-5d74-4fa3-9b8c-4e6a07d92f33",
+        "panelRefName": "panel_3c9eb062-5d74-4fa3-9b8c-4e6a07d92f33",
+        "type": "links"
+      },
+      {
+        "embeddableConfig": {
+          "enhancements": {}
+        },
+        "gridData": {
+          "h": 3,
+          "i": "4da0c173-6e85-4ab4-8c9d-5f7b18ea3044",
+          "w": 24,
+          "x": 22,
+          "y": 0
+        },
+        "panelIndex": "4da0c173-6e85-4ab4-8c9d-5f7b18ea3044",
+        "panelRefName": "panel_4da0c173-6e85-4ab4-8c9d-5f7b18ea3044",
+        "type": "links"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [],
+            "state": {
+              "adHocDataViews": {
+                "metrics-ingest.pipeline-*-ca3b5eb5e99d45802296c126e0266638828ac5949963325e6ffa426858b49f1c": {
+                  "allowHidden": false,
+                  "allowNoIndex": false,
+                  "fieldAttrs": {},
+                  "fieldFormats": {},
+                  "id": "metrics-ingest.pipeline-*-ca3b5eb5e99d45802296c126e0266638828ac5949963325e6ffa426858b49f1c",
+                  "name": "metrics-ingest.pipeline-*",
+                  "runtimeFieldMap": {},
+                  "sourceFilters": [],
+                  "title": "metrics-ingest.pipeline-*",
+                  "type": "esql"
+                }
+              },
+              "datasourceStates": {
+                "textBased": {
+                  "layers": {
+                    "layer_0": {
+                      "columns": [
+                        {
+                          "columnId": "metric_accessor_metric",
+                          "fieldName": "Documents",
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "compact": true,
+                                "decimals": 1
+                              }
+                            }
+                          }
+                        }
+                      ],
+                      "index": "metrics-ingest.pipeline-*-ca3b5eb5e99d45802296c126e0266638828ac5949963325e6ffa426858b49f1c",
+                      "query": {
+                        "esql": "FROM metrics-ingest.pipeline-* | STATS `Documents` = SUM(ingest.pipeline.count)"
+                      }
+                    }
+                  }
+                }
+              },
+              "filters": [],
+              "internalReferences": [
+                {
+                  "id": "metrics-ingest.pipeline-*-ca3b5eb5e99d45802296c126e0266638828ac5949963325e6ffa426858b49f1c",
+                  "name": "indexpattern-datasource-layer-layer_0",
+                  "type": "index-pattern"
+                }
+              ],
+              "query": {
+                "esql": "FROM metrics-ingest.pipeline-* | STATS `Documents` = SUM(ingest.pipeline.count)"
+              },
+              "visualization": {
+                "layerId": "layer_0",
+                "layerType": "data",
+                "metricAccessor": "metric_accessor_metric",
+                "showBar": false
+              }
+            },
+            "title": "",
+            "visualizationType": "lnsMetric"
+          },
+          "title": ""
+        },
+        "gridData": {
+          "h": 5,
+          "i": "kpi-documents",
+          "w": 8,
+          "x": 0,
+          "y": 3
+        },
+        "panelIndex": "kpi-documents",
+        "type": "vis"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [],
+            "state": {
+              "adHocDataViews": {
+                "metrics-ingest.pipeline-*-0ab898d1c400be17d713db9662133fe3d3d870004103c36e415981dfcf297dc4": {
+                  "allowHidden": false,
+                  "allowNoIndex": false,
+                  "fieldAttrs": {},
+                  "fieldFormats": {},
+                  "id": "metrics-ingest.pipeline-*-0ab898d1c400be17d713db9662133fe3d3d870004103c36e415981dfcf297dc4",
+                  "name": "metrics-ingest.pipeline-*",
+                  "runtimeFieldMap": {},
+                  "sourceFilters": [],
+                  "title": "metrics-ingest.pipeline-*",
+                  "type": "esql"
+                }
+              },
+              "datasourceStates": {
+                "textBased": {
+                  "layers": {
+                    "layer_0": {
+                      "columns": [
+                        {
+                          "columnId": "metric_accessor_metric",
+                          "fieldName": "Total time",
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "duration",
+                              "params": {
+                                "decimals": 2,
+                                "fromUnit": "milliseconds",
+                                "toUnit": "hours"
+                              }
+                            }
+                          }
+                        }
+                      ],
+                      "index": "metrics-ingest.pipeline-*-0ab898d1c400be17d713db9662133fe3d3d870004103c36e415981dfcf297dc4",
+                      "query": {
+                        "esql": "FROM metrics-ingest.pipeline-* | STATS `Total time` = SUM(ingest.pipeline.time_in_millis)"
+                      }
+                    }
+                  }
+                }
+              },
+              "filters": [],
+              "internalReferences": [
+                {
+                  "id": "metrics-ingest.pipeline-*-0ab898d1c400be17d713db9662133fe3d3d870004103c36e415981dfcf297dc4",
+                  "name": "indexpattern-datasource-layer-layer_0",
+                  "type": "index-pattern"
+                }
+              ],
+              "query": {
+                "esql": "FROM metrics-ingest.pipeline-* | STATS `Total time` = SUM(ingest.pipeline.time_in_millis)"
+              },
+              "visualization": {
+                "layerId": "layer_0",
+                "layerType": "data",
+                "metricAccessor": "metric_accessor_metric",
+                "showBar": false
+              }
+            },
+            "title": "",
+            "visualizationType": "lnsMetric"
+          },
+          "title": ""
+        },
+        "gridData": {
+          "h": 5,
+          "i": "kpi-total-time",
+          "w": 8,
+          "x": 8,
+          "y": 3
+        },
+        "panelIndex": "kpi-total-time",
+        "type": "vis"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [],
+            "state": {
+              "adHocDataViews": {
+                "metrics-ingest.pipeline-*-d5c4164c8eead8601f469f62042a55d3c4f716ca6301ab1b657122251ff73575": {
+                  "allowHidden": false,
+                  "allowNoIndex": false,
+                  "fieldAttrs": {},
+                  "fieldFormats": {},
+                  "id": "metrics-ingest.pipeline-*-d5c4164c8eead8601f469f62042a55d3c4f716ca6301ab1b657122251ff73575",
+                  "name": "metrics-ingest.pipeline-*",
+                  "runtimeFieldMap": {},
+                  "sourceFilters": [],
+                  "title": "metrics-ingest.pipeline-*",
+                  "type": "esql"
+                }
+              },
+              "datasourceStates": {
+                "textBased": {
+                  "layers": {
+                    "layer_0": {
+                      "columns": [
+                        {
+                          "columnId": "metric_accessor_metric",
+                          "fieldName": "Time per document",
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "compact": false,
+                                "decimals": 1,
+                                "suffix": " µs"
+                              }
+                            }
+                          }
+                        }
+                      ],
+                      "index": "metrics-ingest.pipeline-*-d5c4164c8eead8601f469f62042a55d3c4f716ca6301ab1b657122251ff73575",
+                      "query": {
+                        "esql": "FROM metrics-ingest.pipeline-* | STATS t = SUM(ingest.pipeline.time_in_millis), c = SUM(ingest.pipeline.count) | EVAL `Time per document` = CASE(c > 0, t * 1000.0 / c, null) | KEEP `Time per document`"
+                      }
+                    }
+                  }
+                }
+              },
+              "filters": [],
+              "internalReferences": [
+                {
+                  "id": "metrics-ingest.pipeline-*-d5c4164c8eead8601f469f62042a55d3c4f716ca6301ab1b657122251ff73575",
+                  "name": "indexpattern-datasource-layer-layer_0",
+                  "type": "index-pattern"
+                }
+              ],
+              "query": {
+                "esql": "FROM metrics-ingest.pipeline-* | STATS t = SUM(ingest.pipeline.time_in_millis), c = SUM(ingest.pipeline.count) | EVAL `Time per document` = CASE(c > 0, t * 1000.0 / c, null) | KEEP `Time per document`"
+              },
+              "visualization": {
+                "layerId": "layer_0",
+                "layerType": "data",
+                "metricAccessor": "metric_accessor_metric",
+                "showBar": false
+              }
+            },
+            "title": "",
+            "visualizationType": "lnsMetric"
+          },
+          "title": ""
+        },
+        "gridData": {
+          "h": 5,
+          "i": "kpi-time-per-doc",
+          "w": 8,
+          "x": 16,
+          "y": 3
+        },
+        "panelIndex": "kpi-time-per-doc",
+        "type": "vis"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [],
+            "state": {
+              "adHocDataViews": {
+                "metrics-ingest.processor-esdiag*-78b43d6222d418ce8b7f33f4ad0a048dcf14df48c38399dac8edf712c1cf1818": {
+                  "allowHidden": false,
+                  "allowNoIndex": false,
+                  "fieldAttrs": {},
+                  "fieldFormats": {},
+                  "id": "metrics-ingest.processor-esdiag*-78b43d6222d418ce8b7f33f4ad0a048dcf14df48c38399dac8edf712c1cf1818",
+                  "name": "metrics-ingest.processor-esdiag*",
+                  "runtimeFieldMap": {},
+                  "sourceFilters": [],
+                  "title": "metrics-ingest.processor-esdiag*",
+                  "type": "esql"
+                }
+              },
+              "datasourceStates": {
+                "textBased": {
+                  "layers": {
+                    "layer_0": {
+                      "columns": [
+                        {
+                          "columnId": "metric_accessor_metric",
+                          "fieldName": "Processor failures",
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "compact": true,
+                                "decimals": 1
+                              }
+                            }
+                          }
+                        }
+                      ],
+                      "index": "metrics-ingest.processor-esdiag*-78b43d6222d418ce8b7f33f4ad0a048dcf14df48c38399dac8edf712c1cf1818",
+                      "query": {
+                        "esql": "FROM metrics-ingest.processor-esdiag* | STATS `Processor failures` = SUM(ingest.processor.failed)"
+                      }
+                    }
+                  }
+                }
+              },
+              "filters": [],
+              "internalReferences": [
+                {
+                  "id": "metrics-ingest.processor-esdiag*-78b43d6222d418ce8b7f33f4ad0a048dcf14df48c38399dac8edf712c1cf1818",
+                  "name": "indexpattern-datasource-layer-layer_0",
+                  "type": "index-pattern"
+                }
+              ],
+              "query": {
+                "esql": "FROM metrics-ingest.processor-esdiag* | STATS `Processor failures` = SUM(ingest.processor.failed)"
+              },
+              "visualization": {
+                "layerId": "layer_0",
+                "layerType": "data",
+                "metricAccessor": "metric_accessor_metric",
+                "showBar": false
+              }
+            },
+            "title": "",
+            "visualizationType": "lnsMetric"
+          },
+          "title": ""
+        },
+        "gridData": {
+          "h": 5,
+          "i": "kpi-processor-failures",
+          "w": 8,
+          "x": 24,
+          "y": 3
+        },
+        "panelIndex": "kpi-processor-failures",
+        "type": "vis"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [],
+            "state": {
+              "adHocDataViews": {
+                "metrics-ingest.pipeline-*-d8f3a1c58d7c14c1f9850776ba266224629781d2a171363011dca05a96e272f3": {
+                  "allowHidden": false,
+                  "allowNoIndex": false,
+                  "fieldAttrs": {},
+                  "fieldFormats": {},
+                  "id": "metrics-ingest.pipeline-*-d8f3a1c58d7c14c1f9850776ba266224629781d2a171363011dca05a96e272f3",
+                  "name": "metrics-ingest.pipeline-*",
+                  "runtimeFieldMap": {},
+                  "sourceFilters": [],
+                  "title": "metrics-ingest.pipeline-*",
+                  "type": "esql"
+                }
+              },
+              "datasourceStates": {
+                "textBased": {
+                  "layers": {
+                    "layer_0": {
+                      "columns": [
+                        {
+                          "columnId": "metric_accessor_metric",
+                          "fieldName": "Pipeline failures",
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "compact": false,
+                                "decimals": 0
+                              }
+                            }
+                          }
+                        }
+                      ],
+                      "index": "metrics-ingest.pipeline-*-d8f3a1c58d7c14c1f9850776ba266224629781d2a171363011dca05a96e272f3",
+                      "query": {
+                        "esql": "FROM metrics-ingest.pipeline-* | STATS `Pipeline failures` = SUM(ingest.pipeline.failed)"
+                      }
+                    }
+                  }
+                }
+              },
+              "filters": [],
+              "internalReferences": [
+                {
+                  "id": "metrics-ingest.pipeline-*-d8f3a1c58d7c14c1f9850776ba266224629781d2a171363011dca05a96e272f3",
+                  "name": "indexpattern-datasource-layer-layer_0",
+                  "type": "index-pattern"
+                }
+              ],
+              "query": {
+                "esql": "FROM metrics-ingest.pipeline-* | STATS `Pipeline failures` = SUM(ingest.pipeline.failed)"
+              },
+              "visualization": {
+                "layerId": "layer_0",
+                "layerType": "data",
+                "metricAccessor": "metric_accessor_metric",
+                "showBar": false
+              }
+            },
+            "title": "",
+            "visualizationType": "lnsMetric"
+          },
+          "title": ""
+        },
+        "gridData": {
+          "h": 5,
+          "i": "kpi-pipeline-failures",
+          "w": 8,
+          "x": 32,
+          "y": 3
+        },
+        "panelIndex": "kpi-pipeline-failures",
+        "type": "vis"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [],
+            "state": {
+              "adHocDataViews": {
+                "metrics-ingest.pipeline-*-92ccf59d630fa74ce211f7413affdccdc373729a249dedb442e3e9c0d1e5cac2": {
+                  "allowHidden": false,
+                  "allowNoIndex": false,
+                  "fieldAttrs": {},
+                  "fieldFormats": {},
+                  "id": "metrics-ingest.pipeline-*-92ccf59d630fa74ce211f7413affdccdc373729a249dedb442e3e9c0d1e5cac2",
+                  "name": "metrics-ingest.pipeline-*",
+                  "runtimeFieldMap": {},
+                  "sourceFilters": [],
+                  "title": "metrics-ingest.pipeline-*",
+                  "type": "esql"
+                }
+              },
+              "datasourceStates": {
+                "textBased": {
+                  "layers": {
+                    "layer_0": {
+                      "columns": [
+                        {
+                          "columnId": "metric_accessor_metric",
+                          "fieldName": "In flight",
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "compact": false,
+                                "decimals": 0
+                              }
+                            }
+                          }
+                        }
+                      ],
+                      "index": "metrics-ingest.pipeline-*-92ccf59d630fa74ce211f7413affdccdc373729a249dedb442e3e9c0d1e5cac2",
+                      "query": {
+                        "esql": "FROM metrics-ingest.pipeline-* | STATS `In flight` = SUM(ingest.pipeline.current)"
+                      }
+                    }
+                  }
+                }
+              },
+              "filters": [],
+              "internalReferences": [
+                {
+                  "id": "metrics-ingest.pipeline-*-92ccf59d630fa74ce211f7413affdccdc373729a249dedb442e3e9c0d1e5cac2",
+                  "name": "indexpattern-datasource-layer-layer_0",
+                  "type": "index-pattern"
+                }
+              ],
+              "query": {
+                "esql": "FROM metrics-ingest.pipeline-* | STATS `In flight` = SUM(ingest.pipeline.current)"
+              },
+              "visualization": {
+                "layerId": "layer_0",
+                "layerType": "data",
+                "metricAccessor": "metric_accessor_metric",
+                "showBar": false
+              }
+            },
+            "title": "",
+            "visualizationType": "lnsMetric"
+          },
+          "title": ""
+        },
+        "gridData": {
+          "h": 5,
+          "i": "kpi-in-flight",
+          "w": 8,
+          "x": 40,
+          "y": 3
+        },
+        "panelIndex": "kpi-in-flight",
+        "type": "vis"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [],
+            "state": {
+              "adHocDataViews": {
+                "metrics-ingest.processor-esdiag*-e93c80e8f863b9578ac6ddae48a20dae5a77fa994b3aeca09cfd8a9eb1c72f45": {
+                  "allowHidden": false,
+                  "allowNoIndex": false,
+                  "fieldAttrs": {},
+                  "fieldFormats": {},
+                  "id": "metrics-ingest.processor-esdiag*-e93c80e8f863b9578ac6ddae48a20dae5a77fa994b3aeca09cfd8a9eb1c72f45",
+                  "name": "metrics-ingest.processor-esdiag*",
+                  "runtimeFieldMap": {},
+                  "sourceFilters": [],
+                  "title": "metrics-ingest.processor-esdiag*",
+                  "type": "esql"
+                }
+              },
+              "datasourceStates": {
+                "textBased": {
+                  "layers": {
+                    "bar_horizontal_0": {
+                      "columns": [
+                        {
+                          "columnId": "bar_horizontal_x",
+                          "fieldName": "Processor",
+                          "meta": {
+                            "type": "string"
+                          }
+                        },
+                        {
+                          "columnId": "bar_horizontal_y_0",
+                          "fieldName": "Total time",
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "duration",
+                              "params": {
+                                "decimals": 2,
+                                "fromUnit": "milliseconds",
+                                "toUnit": "seconds"
+                              }
+                            }
+                          }
+                        }
+                      ],
+                      "index": "metrics-ingest.processor-esdiag*-e93c80e8f863b9578ac6ddae48a20dae5a77fa994b3aeca09cfd8a9eb1c72f45",
+                      "query": {
+                        "esql": "FROM metrics-ingest.processor-esdiag* | STATS `Total time` = SUM(ingest.processor.time_in_millis) BY `Processor` = ingest.processor.name | WHERE `Total time` > 0 | SORT `Total time` DESC NULLS LAST | LIMIT 15"
+                      }
+                    }
+                  }
+                }
+              },
+              "filters": [],
+              "internalReferences": [
+                {
+                  "id": "metrics-ingest.processor-esdiag*-e93c80e8f863b9578ac6ddae48a20dae5a77fa994b3aeca09cfd8a9eb1c72f45",
+                  "name": "indexpattern-datasource-layer-bar_horizontal_0",
+                  "type": "index-pattern"
+                }
+              ],
+              "query": {
+                "esql": "FROM metrics-ingest.processor-esdiag* | STATS `Total time` = SUM(ingest.processor.time_in_millis) BY `Processor` = ingest.processor.name | WHERE `Total time` > 0 | SORT `Total time` DESC NULLS LAST | LIMIT 15"
+              },
+              "visualization": {
+                "axisTitlesVisibilitySettings": {
+                  "x": false,
+                  "yLeft": false,
+                  "yRight": true
+                },
+                "layers": [
+                  {
+                    "accessors": [
+                      "bar_horizontal_y_0"
+                    ],
+                    "layerId": "bar_horizontal_0",
+                    "layerType": "data",
+                    "seriesType": "bar_horizontal",
+                    "xAccessor": "bar_horizontal_x",
+                    "yConfig": [
+                      {
+                        "axisMode": "left",
+                        "forAccessor": "bar_horizontal_y_0"
+                      }
+                    ]
+                  }
+                ],
+                "legend": {
+                  "isVisible": false,
+                  "position": "right"
+                },
+                "preferredSeriesType": "bar_horizontal"
+              }
+            },
+            "title": "",
+            "visualizationType": "lnsXY"
+          },
+          "title": "Where this pipeline spends its time, by processor"
+        },
+        "gridData": {
+          "h": 11,
+          "i": "processor-time",
+          "w": 24,
+          "x": 0,
+          "y": 8
+        },
+        "panelIndex": "processor-time",
+        "type": "vis"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [],
+            "state": {
+              "adHocDataViews": {
+                "metrics-ingest.processor-esdiag*-e8a9d5011a3f1ac649773b6989052c515624c2c8d43b2e74571fb574f7b1de16": {
+                  "allowHidden": false,
+                  "allowNoIndex": false,
+                  "fieldAttrs": {},
+                  "fieldFormats": {},
+                  "id": "metrics-ingest.processor-esdiag*-e8a9d5011a3f1ac649773b6989052c515624c2c8d43b2e74571fb574f7b1de16",
+                  "name": "metrics-ingest.processor-esdiag*",
+                  "runtimeFieldMap": {},
+                  "sourceFilters": [],
+                  "title": "metrics-ingest.processor-esdiag*",
+                  "type": "esql"
+                }
+              },
+              "datasourceStates": {
+                "textBased": {
+                  "layers": {
+                    "bar_horizontal_0": {
+                      "columns": [
+                        {
+                          "columnId": "bar_horizontal_x",
+                          "fieldName": "Processor",
+                          "meta": {
+                            "type": "string"
+                          }
+                        },
+                        {
+                          "columnId": "bar_horizontal_y_0",
+                          "fieldName": "Failure rate",
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "percent",
+                              "params": {
+                                "compact": false,
+                                "decimals": 2
+                              }
+                            }
+                          }
+                        }
+                      ],
+                      "index": "metrics-ingest.processor-esdiag*-e8a9d5011a3f1ac649773b6989052c515624c2c8d43b2e74571fb574f7b1de16",
+                      "query": {
+                        "esql": "FROM metrics-ingest.processor-esdiag* | STATS f = SUM(ingest.processor.failed), c = SUM(ingest.processor.count) BY `Processor` = ingest.processor.name | EVAL `Failure rate` = CASE(c > 0, f * 1.0 / c, null) | WHERE `Failure rate` > 0 | KEEP `Processor`, `Failure rate` | SORT `Failure rate` DESC NULLS LAST | LIMIT 15"
+                      }
+                    }
+                  }
+                }
+              },
+              "filters": [],
+              "internalReferences": [
+                {
+                  "id": "metrics-ingest.processor-esdiag*-e8a9d5011a3f1ac649773b6989052c515624c2c8d43b2e74571fb574f7b1de16",
+                  "name": "indexpattern-datasource-layer-bar_horizontal_0",
+                  "type": "index-pattern"
+                }
+              ],
+              "query": {
+                "esql": "FROM metrics-ingest.processor-esdiag* | STATS f = SUM(ingest.processor.failed), c = SUM(ingest.processor.count) BY `Processor` = ingest.processor.name | EVAL `Failure rate` = CASE(c > 0, f * 1.0 / c, null) | WHERE `Failure rate` > 0 | KEEP `Processor`, `Failure rate` | SORT `Failure rate` DESC NULLS LAST | LIMIT 15"
+              },
+              "visualization": {
+                "axisTitlesVisibilitySettings": {
+                  "x": false,
+                  "yLeft": false,
+                  "yRight": true
+                },
+                "layers": [
+                  {
+                    "accessors": [
+                      "bar_horizontal_y_0"
+                    ],
+                    "layerId": "bar_horizontal_0",
+                    "layerType": "data",
+                    "seriesType": "bar_horizontal",
+                    "xAccessor": "bar_horizontal_x",
+                    "yConfig": [
+                      {
+                        "axisMode": "left",
+                        "forAccessor": "bar_horizontal_y_0"
+                      }
+                    ]
+                  }
+                ],
+                "legend": {
+                  "isVisible": false,
+                  "position": "right"
+                },
+                "preferredSeriesType": "bar_horizontal"
+              }
+            },
+            "title": "",
+            "visualizationType": "lnsXY"
+          },
+          "title": "Processor failure rate (empty means no failures)"
+        },
+        "gridData": {
+          "h": 11,
+          "i": "processor-failrate",
+          "w": 24,
+          "x": 24,
+          "y": 8
+        },
+        "panelIndex": "processor-failrate",
+        "type": "vis"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [],
+            "state": {
+              "adHocDataViews": {
+                "metrics-ingest.processor-esdiag*-f96699185250f63727e96bfe7e6997370407556fe7c51de477cea19bce72a750": {
+                  "allowHidden": false,
+                  "allowNoIndex": false,
+                  "fieldAttrs": {},
+                  "fieldFormats": {},
+                  "id": "metrics-ingest.processor-esdiag*-f96699185250f63727e96bfe7e6997370407556fe7c51de477cea19bce72a750",
+                  "name": "metrics-ingest.processor-esdiag*",
+                  "runtimeFieldMap": {},
+                  "sourceFilters": [],
+                  "title": "metrics-ingest.processor-esdiag*",
+                  "type": "esql"
+                }
+              },
+              "datasourceStates": {
+                "textBased": {
+                  "layers": {
+                    "layer_0": {
+                      "columns": [
+                        {
+                          "columnId": "datatable_accessor_row_0",
+                          "fieldName": "Order",
+                          "meta": {
+                            "type": "string"
+                          }
+                        },
+                        {
+                          "columnId": "datatable_accessor_row_1",
+                          "fieldName": "Processor",
+                          "meta": {
+                            "type": "string"
+                          }
+                        },
+                        {
+                          "columnId": "datatable_accessor_row_2",
+                          "fieldName": "Type",
+                          "meta": {
+                            "type": "string"
+                          }
+                        },
+                        {
+                          "columnId": "datatable_accessor_metric_0",
+                          "fieldName": "Count",
+                          "inMetricDimension": true,
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "compact": true,
+                                "decimals": 1
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "columnId": "datatable_accessor_metric_1",
+                          "fieldName": "Total time",
+                          "inMetricDimension": true,
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "duration",
+                              "params": {
+                                "decimals": 2,
+                                "fromUnit": "milliseconds",
+                                "toUnit": "seconds"
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "columnId": "datatable_accessor_metric_2",
+                          "fieldName": "Time per document",
+                          "inMetricDimension": true,
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "compact": false,
+                                "decimals": 1,
+                                "suffix": " µs"
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "columnId": "datatable_accessor_metric_3",
+                          "fieldName": "Failed",
+                          "inMetricDimension": true,
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "compact": true,
+                                "decimals": 1
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "columnId": "datatable_accessor_metric_4",
+                          "fieldName": "Failure rate",
+                          "inMetricDimension": true,
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "percent",
+                              "params": {
+                                "compact": false,
+                                "decimals": 2
+                              }
+                            }
+                          }
+                        }
+                      ],
+                      "index": "metrics-ingest.processor-esdiag*-f96699185250f63727e96bfe7e6997370407556fe7c51de477cea19bce72a750",
+                      "query": {
+                        "esql": "FROM metrics-ingest.processor-esdiag* | STATS `Count` = SUM(ingest.processor.count), `Failed` = SUM(ingest.processor.failed), `Total time` = SUM(ingest.processor.time_in_millis), `Order` = MIN(ingest.processor.order) BY `Processor` = ingest.processor.name, `Type` = ingest.processor.type | EVAL `Failure rate` = CASE(`Count` > 0, `Failed` * 1.0 / `Count`, null), `Time per document` = CASE(`Count` > 0, `Total time` * 1000.0 / `Count`, null) | SORT `Order` ASC NULLS LAST | LIMIT 200"
+                      }
+                    }
+                  }
+                }
+              },
+              "filters": [],
+              "internalReferences": [
+                {
+                  "id": "metrics-ingest.processor-esdiag*-f96699185250f63727e96bfe7e6997370407556fe7c51de477cea19bce72a750",
+                  "name": "indexpattern-datasource-layer-layer_0",
+                  "type": "index-pattern"
+                }
+              ],
+              "query": {
+                "esql": "FROM metrics-ingest.processor-esdiag* | STATS `Count` = SUM(ingest.processor.count), `Failed` = SUM(ingest.processor.failed), `Total time` = SUM(ingest.processor.time_in_millis), `Order` = MIN(ingest.processor.order) BY `Processor` = ingest.processor.name, `Type` = ingest.processor.type | EVAL `Failure rate` = CASE(`Count` > 0, `Failed` * 1.0 / `Count`, null), `Time per document` = CASE(`Count` > 0, `Total time` * 1000.0 / `Count`, null) | SORT `Order` ASC NULLS LAST | LIMIT 200"
+              },
+              "visualization": {
+                "columns": [
+                  {
+                    "columnId": "datatable_accessor_row_0",
+                    "isMetric": false,
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "datatable_accessor_row_1",
+                    "isMetric": false,
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "datatable_accessor_row_2",
+                    "isMetric": false,
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "datatable_accessor_metric_0",
+                    "isMetric": true,
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "datatable_accessor_metric_1",
+                    "isMetric": true,
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "datatable_accessor_metric_2",
+                    "isMetric": true,
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "datatable_accessor_metric_3",
+                    "isMetric": true,
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "datatable_accessor_metric_4",
+                    "isMetric": true,
+                    "isTransposed": false
+                  }
+                ],
+                "layerId": "layer_0",
+                "layerType": "data"
+              }
+            },
+            "title": "",
+            "version": 2,
+            "visualizationType": "lnsDatatable"
+          },
+          "title": "Processor breakdown in execution order"
+        },
+        "gridData": {
+          "h": 13,
+          "i": "processor-breakdown",
+          "w": 48,
+          "x": 0,
+          "y": 19
+        },
+        "panelIndex": "processor-breakdown",
+        "type": "vis"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [],
+            "state": {
+              "adHocDataViews": {
+                "metrics-ingest.processor-esdiag*-a6c246b8c5bb4a8228ba3d716e65eb98748902349011dd701978c480dea0c8cb": {
+                  "allowHidden": false,
+                  "allowNoIndex": false,
+                  "fieldAttrs": {},
+                  "fieldFormats": {},
+                  "id": "metrics-ingest.processor-esdiag*-a6c246b8c5bb4a8228ba3d716e65eb98748902349011dd701978c480dea0c8cb",
+                  "name": "metrics-ingest.processor-esdiag*",
+                  "runtimeFieldMap": {},
+                  "sourceFilters": [],
+                  "title": "metrics-ingest.processor-esdiag*",
+                  "type": "esql"
+                }
+              },
+              "datasourceStates": {
+                "textBased": {
+                  "layers": {
+                    "layer_0": {
+                      "columns": [
+                        {
+                          "columnId": "datatable_accessor_row_0",
+                          "fieldName": "Type",
+                          "meta": {
+                            "type": "string"
+                          }
+                        },
+                        {
+                          "columnId": "datatable_accessor_metric_0",
+                          "fieldName": "Processors",
+                          "inMetricDimension": true,
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "compact": false,
+                                "decimals": 0
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "columnId": "datatable_accessor_metric_1",
+                          "fieldName": "Count",
+                          "inMetricDimension": true,
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "compact": true,
+                                "decimals": 1
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "columnId": "datatable_accessor_metric_2",
+                          "fieldName": "Total time",
+                          "inMetricDimension": true,
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "duration",
+                              "params": {
+                                "decimals": 2,
+                                "fromUnit": "milliseconds",
+                                "toUnit": "seconds"
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "columnId": "datatable_accessor_metric_3",
+                          "fieldName": "Time per document",
+                          "inMetricDimension": true,
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "compact": false,
+                                "decimals": 1,
+                                "suffix": " µs"
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "columnId": "datatable_accessor_metric_4",
+                          "fieldName": "Failure rate",
+                          "inMetricDimension": true,
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "percent",
+                              "params": {
+                                "compact": false,
+                                "decimals": 2
+                              }
+                            }
+                          }
+                        }
+                      ],
+                      "index": "metrics-ingest.processor-esdiag*-a6c246b8c5bb4a8228ba3d716e65eb98748902349011dd701978c480dea0c8cb",
+                      "query": {
+                        "esql": "FROM metrics-ingest.processor-esdiag* | STATS `Count` = SUM(ingest.processor.count), `Failed` = SUM(ingest.processor.failed), `Total time` = SUM(ingest.processor.time_in_millis), `Processors` = COUNT_DISTINCT(ingest.processor.name) BY `Type` = ingest.processor.type | EVAL `Failure rate` = CASE(`Count` > 0, `Failed` * 1.0 / `Count`, null), `Time per document` = CASE(`Count` > 0, `Total time` * 1000.0 / `Count`, null) | SORT `Total time` DESC NULLS LAST | LIMIT 40"
+                      }
+                    }
+                  }
+                }
+              },
+              "filters": [],
+              "internalReferences": [
+                {
+                  "id": "metrics-ingest.processor-esdiag*-a6c246b8c5bb4a8228ba3d716e65eb98748902349011dd701978c480dea0c8cb",
+                  "name": "indexpattern-datasource-layer-layer_0",
+                  "type": "index-pattern"
+                }
+              ],
+              "query": {
+                "esql": "FROM metrics-ingest.processor-esdiag* | STATS `Count` = SUM(ingest.processor.count), `Failed` = SUM(ingest.processor.failed), `Total time` = SUM(ingest.processor.time_in_millis), `Processors` = COUNT_DISTINCT(ingest.processor.name) BY `Type` = ingest.processor.type | EVAL `Failure rate` = CASE(`Count` > 0, `Failed` * 1.0 / `Count`, null), `Time per document` = CASE(`Count` > 0, `Total time` * 1000.0 / `Count`, null) | SORT `Total time` DESC NULLS LAST | LIMIT 40"
+              },
+              "visualization": {
+                "columns": [
+                  {
+                    "columnId": "datatable_accessor_row_0",
+                    "isMetric": false,
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "datatable_accessor_metric_0",
+                    "isMetric": true,
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "datatable_accessor_metric_1",
+                    "isMetric": true,
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "datatable_accessor_metric_2",
+                    "isMetric": true,
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "datatable_accessor_metric_3",
+                    "isMetric": true,
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "datatable_accessor_metric_4",
+                    "isMetric": true,
+                    "isTransposed": false
+                  }
+                ],
+                "layerId": "layer_0",
+                "layerType": "data"
+              }
+            },
+            "title": "",
+            "version": 2,
+            "visualizationType": "lnsDatatable"
+          },
+          "title": "Processor type summary"
+        },
+        "gridData": {
+          "h": 10,
+          "i": "processor-type-summary",
+          "w": 24,
+          "x": 0,
+          "y": 32
+        },
+        "panelIndex": "processor-type-summary",
+        "type": "vis"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [],
+            "state": {
+              "adHocDataViews": {
+                "metrics-ingest.pipeline-*-6943ba6f30cde323fa396c7b9efddbd7574f99848e6aa29e07c32d62e770e153": {
+                  "allowHidden": false,
+                  "allowNoIndex": false,
+                  "fieldAttrs": {},
+                  "fieldFormats": {},
+                  "id": "metrics-ingest.pipeline-*-6943ba6f30cde323fa396c7b9efddbd7574f99848e6aa29e07c32d62e770e153",
+                  "name": "metrics-ingest.pipeline-*",
+                  "runtimeFieldMap": {},
+                  "sourceFilters": [],
+                  "title": "metrics-ingest.pipeline-*",
+                  "type": "esql"
+                }
+              },
+              "datasourceStates": {
+                "textBased": {
+                  "layers": {
+                    "layer_0": {
+                      "columns": [
+                        {
+                          "columnId": "datatable_accessor_row_0",
+                          "fieldName": "Node",
+                          "meta": {
+                            "type": "string"
+                          }
+                        },
+                        {
+                          "columnId": "datatable_accessor_metric_0",
+                          "fieldName": "Documents",
+                          "inMetricDimension": true,
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "compact": true,
+                                "decimals": 1
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "columnId": "datatable_accessor_metric_1",
+                          "fieldName": "Total time",
+                          "inMetricDimension": true,
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "duration",
+                              "params": {
+                                "decimals": 2,
+                                "fromUnit": "milliseconds",
+                                "toUnit": "seconds"
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "columnId": "datatable_accessor_metric_2",
+                          "fieldName": "Time per document",
+                          "inMetricDimension": true,
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "compact": false,
+                                "decimals": 1,
+                                "suffix": " µs"
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "columnId": "datatable_accessor_metric_3",
+                          "fieldName": "Failed",
+                          "inMetricDimension": true,
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "compact": false,
+                                "decimals": 0
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "columnId": "datatable_accessor_metric_4",
+                          "fieldName": "In flight",
+                          "inMetricDimension": true,
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "compact": false,
+                                "decimals": 0
+                              }
+                            }
+                          }
+                        }
+                      ],
+                      "index": "metrics-ingest.pipeline-*-6943ba6f30cde323fa396c7b9efddbd7574f99848e6aa29e07c32d62e770e153",
+                      "query": {
+                        "esql": "FROM metrics-ingest.pipeline-* | STATS `Documents` = SUM(ingest.pipeline.count), `Total time` = SUM(ingest.pipeline.time_in_millis), `Failed` = SUM(ingest.pipeline.failed), `In flight` = SUM(ingest.pipeline.current) BY `Node` = node.name | EVAL `Time per document` = CASE(`Documents` > 0, `Total time` * 1000.0 / `Documents`, null) | WHERE `Documents` > 0 | SORT `Documents` DESC NULLS LAST | LIMIT 50"
+                      }
+                    }
+                  }
+                }
+              },
+              "filters": [],
+              "internalReferences": [
+                {
+                  "id": "metrics-ingest.pipeline-*-6943ba6f30cde323fa396c7b9efddbd7574f99848e6aa29e07c32d62e770e153",
+                  "name": "indexpattern-datasource-layer-layer_0",
+                  "type": "index-pattern"
+                }
+              ],
+              "query": {
+                "esql": "FROM metrics-ingest.pipeline-* | STATS `Documents` = SUM(ingest.pipeline.count), `Total time` = SUM(ingest.pipeline.time_in_millis), `Failed` = SUM(ingest.pipeline.failed), `In flight` = SUM(ingest.pipeline.current) BY `Node` = node.name | EVAL `Time per document` = CASE(`Documents` > 0, `Total time` * 1000.0 / `Documents`, null) | WHERE `Documents` > 0 | SORT `Documents` DESC NULLS LAST | LIMIT 50"
+              },
+              "visualization": {
+                "columns": [
+                  {
+                    "columnId": "datatable_accessor_row_0",
+                    "isMetric": false,
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "datatable_accessor_metric_0",
+                    "isMetric": true,
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "datatable_accessor_metric_1",
+                    "isMetric": true,
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "datatable_accessor_metric_2",
+                    "isMetric": true,
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "datatable_accessor_metric_3",
+                    "isMetric": true,
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "datatable_accessor_metric_4",
+                    "isMetric": true,
+                    "isTransposed": false
+                  }
+                ],
+                "layerId": "layer_0",
+                "layerType": "data"
+              }
+            },
+            "title": "",
+            "version": 2,
+            "visualizationType": "lnsDatatable"
+          },
+          "title": "Nodes that executed this pipeline"
+        },
+        "gridData": {
+          "h": 10,
+          "i": "execution-by-node",
+          "w": 24,
+          "x": 24,
+          "y": 32
+        },
+        "panelIndex": "execution-by-node",
+        "type": "vis"
+      }
+    ],
+    "timeFrom": "now-1y",
+    "timeRestore": true,
+    "timeTo": "now",
+    "title": "Ingest Pipeline Detail",
+    "version": 3
+  },
+  "coreMigrationVersion": "8.8.0",
+  "id": "ingest-pipeline-detail",
+  "references": [
+    {
+      "id": "d277872a-9c33-4d95-84f0-6dba30dcbdf1",
+      "name": "3c9eb062-5d74-4fa3-9b8c-4e6a07d92f33:panel_3c9eb062-5d74-4fa3-9b8c-4e6a07d92f33",
+      "type": "links"
+    },
+    {
+      "id": "d8498491-d030-4674-9a8c-4fd43996fdd5",
+      "name": "4da0c173-6e85-4ab4-8c9d-5f7b18ea3044:panel_4da0c173-6e85-4ab4-8c9d-5f7b18ea3044",
+      "type": "links"
+    },
+    {
+      "id": "5e05b9ee-3e49-4efd-8a16-94de208ebb83",
+      "name": "tag-ref-5e05b9ee-3e49-4efd-8a16-94de208ebb83",
+      "type": "tag"
+    },
+    {
+      "id": "b210de37-7ebf-4ced-9a28-13c1620db46c",
+      "name": "tag-ref-b210de37-7ebf-4ced-9a28-13c1620db46c",
+      "type": "tag"
+    }
+  ],
+  "type": "dashboard",
+  "typeMigrationVersion": "10.3.0"
+}
