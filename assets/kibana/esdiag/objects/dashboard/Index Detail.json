@@ -143,8 +143,7 @@
     "panelsJSON": [
       {
         "embeddableConfig": {
-          "enhancements": {},
-          "savedObjectId": "d277872a-9c33-4d95-84f0-6dba30dcbdf1"
+          "enhancements": {}
         },
         "gridData": {
           "h": 3,
@@ -162,7 +161,6 @@
           "description": "Navigation links for Elasticsearch data overview dashboards",
           "enhancements": {},
           "hidePanelTitles": false,
-          "savedObjectId": "b45c7e74-37d1-4cae-a491-f8c097f2d3b3",
           "title": "Data Overviews"
         },
         "gridData": {
