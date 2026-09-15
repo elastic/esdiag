@@ -31,7 +31,7 @@
         "faffdbe1-1292-511b-8514-80ca403c4fa4": {
           "explicitInput": {
             "dataViewId": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
-            "fieldName": "diagnostic.uuid",
+            "fieldName": "diagnostic.id",
             "id": "faffdbe1-1292-511b-8514-80ca403c4fa4",
             "searchTechnique": "prefix",
             "selectedOptions": [],
@@ -39,7 +39,7 @@
               "by": "_count",
               "direction": "desc"
             },
-            "title": "diagnostic.uuid"
+            "title": "diagnostic.id"
           },
           "grow": true,
           "order": 0,
