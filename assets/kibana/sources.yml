@@ -21,6 +21,9 @@
 
 kibana_actions:
   tags: standard,light,support
+  processable: true
+  required: false
+  dependencies: [kibana_status]
   versions:
     ">= 7.0.0":
       url: "/api/actions"
@@ -28,6 +31,9 @@ kibana_actions:
 
 kibana_alerts:
   tags: standard,light,support
+  processable: true
+  required: false
+  dependencies: [kibana_status]
   versions:
     ">= 7.9.0":
       url: "/api/alerts/_find"
@@ -36,6 +42,9 @@ kibana_alerts:
 
 kibana_alerts_health:
   tags: standard,light,support
+  processable: true
+  required: false
+  dependencies: [kibana_status]
   versions:
     ">= 7.11.0, < 7.13.0": "/api/alerts/_health"
     ">= 7.13.0": "/api/alerting/_health"
@@ -52,6 +61,9 @@ kibana_data_views:
 # https://github.com/elastic/kibana/blob/main/x-pack/plugins/security_solution/common/detection_engine/rule_monitoring/api/detection_engine_health/README.md
 kibana_detection_engine_health_cluster:
   tags: standard,light,support
+  processable: true
+  required: false
+  dependencies: [kibana_status]
   versions:
     ">= 8.8.2": "/internal/detection_engine/health/_cluster"
 
@@ -72,6 +84,9 @@ kibana_detection_engine_privileges:
 # Scope: current/default Kibana space.
 kibana_detection_engine_rules_installed:
   tags: standard,light,support
+  processable: true
+  required: false
+  dependencies: [kibana_status]
   versions:
     ">= 7.6.0":
       url: "/api/detection_engine/rules/_find?sort_field=enabled&sort_order=asc"
@@ -88,6 +103,9 @@ kibana_detection_engine_rules_prebuilt_status:
 
 kibana_fleet_agents:
   tags: standard,light,support
+  processable: true
+  required: false
+  dependencies: [kibana_status]
   versions:
     ">= 7.10.0":
       url: "/api/fleet/agents"
@@ -95,6 +113,9 @@ kibana_fleet_agents:
 
 kibana_fleet_agent_policies:
   tags: standard,light,support
+  processable: true
+  required: false
+  dependencies: [kibana_status]
   versions:
     ">= 7.10.0":
       url: "/api/fleet/agent_policies"
@@ -102,11 +123,17 @@ kibana_fleet_agent_policies:
 
 kibana_fleet_packages:
   tags: standard,light,support
+  processable: true
+  required: false
+  dependencies: [kibana_status]
   versions:
     ">= 7.11.0": "/api/fleet/epm/packages?experimental=true"
 
 kibana_fleet_agent_status:
   tags: standard,light,support
+  processable: true
+  required: false
+  dependencies: [kibana_status]
   versions:
     ">= 7.11.0, < 8.0.0": "/api/fleet/agent-status"
     ">= 8.0.0": "/api/fleet/agent_status"
@@ -123,6 +150,9 @@ kibana_lists_privileges:
 
 kibana_fleet_settings:
   tags: standard,light,support
+  processable: true
+  required: false
+  dependencies: [kibana_status]
   versions:
     ">= 7.14.0": "/api/fleet/settings"
 
@@ -133,6 +163,9 @@ kibana_reporting_diagnose_browser:
 
 kibana_roles:
   tags: standard,light,support
+  processable: true
+  required: false
+  dependencies: [kibana_status]
   versions:
     ">= 6.4.0": "/api/security/role"
 
@@ -192,11 +225,17 @@ kibana_settings:
 
 kibana_spaces:
   tags: standard,light,support
+  processable: true
+  required: false
+  dependencies: [kibana_status]
   versions:
     ">= 6.5.0": "/api/spaces/space"
 
 kibana_stats:
   tags: standard,light,support
+  processable: true
+  required: false
+  dependencies: [kibana_status]
   versions:
     ">= 6.5.0": "/api/stats"
 
@@ -207,11 +246,16 @@ kibana_stats:
 
 kibana_status:
   tags: standard,light,support
+  processable: true
+  required: true
   versions:
     ">= 5.0.0": "/api/status"
 
 kibana_synthetics_monitor_filters:
   tags: standard,light,support
+  processable: true
+  required: false
+  dependencies: [kibana_status]
   versions:
     ">= 8.12.0": "/internal/synthetics/monitor/filters"
 
@@ -229,6 +273,9 @@ kibana_synthetics_private_locations:
 
 kibana_task_manager_health:
   tags: standard,light,support
+  processable: true
+  required: false
+  dependencies: [kibana_status]
   versions:
     ">= 7.11.0": "/api/task_manager/_health"
 
@@ -239,21 +286,33 @@ kibana_upgrade_assistant:
 
 kibana_uptime_locations:
   tags: standard,light,support
+  processable: true
+  required: false
+  dependencies: [kibana_status]
   versions:
     ">= 8.12.0": "/internal/uptime/service/locations"
 
 kibana_uptime_settings:
   tags: standard,light,support
+  processable: true
+  required: false
+  dependencies: [kibana_status]
   versions:
     ">= 8.12.0": "/api/uptime/settings"
 
 kibana_user:
   tags: standard,light,support
+  processable: true
+  required: false
+  dependencies: [kibana_status]
   versions:
     ">= 7.6.0": "/internal/security/me"
     ">= 5.0.0, < 7.6.0": "/api/security/v1/me"
 
 kibana_stack_monitoring_health:
   tags: standard,light,support
+  processable: true
+  required: false
+  dependencies: [kibana_status]
   versions:
     ">= 8.3.1": "/api/monitoring/v1/_health"

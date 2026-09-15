@@ -3,8 +3,8 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use crate::processor::{DataSource, SourceContext, StreamingDataSource};
-use crate::receiver::MissingSource;
-use eyre::Result;
+use crate::receiver::{MissingSource, is_source_instance_path};
+use eyre::{Result, WrapErr};
 use futures::stream::{self, BoxStream};
 use serde::de::DeserializeOwned;
 use std::{
@@ -20,6 +20,65 @@ mod file;
 
 pub use bytes::*;
 pub use file::*;
+
+pub fn get_all_from_archive<R, T>(
+    archive: &mut ZipArchive<R>,
+    subdir: Option<&PathBuf>,
+    ctx: &SourceContext,
+) -> Result<Vec<Result<T>>>
+where
+    R: Read + Seek,
+    T: DataSource + DeserializeOwned,
+{
+    let candidates = T::candidate_source_file_paths(ctx)?;
+    let mut root = PathBuf::from(archive.by_index(0)?.name());
+    trim_to_working_directory(&mut root);
+    if let Some(subdir) = subdir {
+        root.push(subdir);
+    }
+    let root = root.to_string_lossy().replace('\\', "/");
+    let root = root.trim_matches('/');
+
+    let mut filenames: Vec<String> = archive
+        .file_names()
+        .filter_map(|filename| {
+            let normalized = filename.replace('\\', "/");
+            let relative = strip_archive_root(&normalized, root)?;
+            is_source_instance_path(relative, &candidates).then_some(normalized)
+        })
+        .collect();
+    filenames.sort();
+    filenames.dedup();
+
+    if filenames.is_empty() {
+        return Err(MissingSource::NoCandidates { source: T::name() }.into());
+    }
+
+    Ok(filenames
+        .into_iter()
+        .map(|filename| {
+            let file = archive
+                .by_name(&filename)
+                .wrap_err_with(|| format!("Failed to read {filename} from archive"))?;
+            let mut contents = String::new();
+            BufReader::new(file)
+                .read_to_string(&mut contents)
+                .wrap_err_with(|| format!("Failed to read {filename} for {}", T::name()))?;
+            if contents.trim().is_empty() {
+                return Err(MissingSource::Empty { path: filename }.into());
+            }
+            serde_json::from_str(&contents).wrap_err_with(|| format!("Failed to parse {filename} for {}", T::name()))
+        })
+        .collect())
+}
+
+fn strip_archive_root<'a>(filename: &'a str, root: &str) -> Option<&'a str> {
+    if root.is_empty() {
+        return Some(filename);
+    }
+    let relative = filename.strip_prefix(root)?.strip_prefix('/')?;
+    Some(relative.trim_start_matches('/'))
+}
 
 pub async fn get_stream_from_archive<R, T>(
     archive: Arc<RwLock<ZipArchive<R>>>,
@@ -293,6 +352,22 @@ mod tests {
         let mut archive = ZipArchive::new(Cursor::new(archive_data)).unwrap();
         let result = resolve_archive_path(None, &mut archive, "missing.json");
         assert!(result.unwrap_err().to_string().contains("File not found"));
+    }
+
+    #[test]
+    fn archive_root_requires_a_component_boundary() {
+        assert_eq!(
+            strip_archive_root("bundle/spaces/default/kibana_alerts.json", "bundle"),
+            Some("spaces/default/kibana_alerts.json")
+        );
+        assert_eq!(
+            strip_archive_root("bundle//spaces/default/kibana_alerts.json", "bundle"),
+            Some("spaces/default/kibana_alerts.json")
+        );
+        assert_eq!(
+            strip_archive_root("bundlespaces/default/kibana_alerts.json", "bundle"),
+            None
+        );
     }
 
     #[test]

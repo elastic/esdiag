@@ -1108,6 +1108,7 @@ mod tests {
             id: "test".to_string(),
             collection_date: 0,
             runner: "test".to_string(),
+            version: None,
             uuid: "test".to_string(),
         };
         let mut report =
@@ -1132,6 +1133,7 @@ mod tests {
             id: "test".to_string(),
             collection_date: 0,
             runner: "test".to_string(),
+            version: None,
             uuid: "test".to_string(),
         };
         let mut report =
@@ -1293,6 +1295,7 @@ user: ada
             id: "test".to_string(),
             collection_date: 0,
             runner: "test".to_string(),
+            version: None,
             uuid: "test".to_string(),
         };
         let mut report =
@@ -1327,6 +1330,7 @@ user: ada
             id: "test".to_string(),
             collection_date: 0,
             runner: "test".to_string(),
+            version: None,
             uuid: "test".to_string(),
         };
         let mut report =
@@ -1528,6 +1532,7 @@ user: ada
             id: "test".to_string(),
             collection_date: 0,
             runner: "test".to_string(),
+            version: None,
             uuid: "test".to_string(),
         };
         let mut report =

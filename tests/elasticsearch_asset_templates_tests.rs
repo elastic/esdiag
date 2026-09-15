@@ -330,6 +330,45 @@ fn emitted_output_streams_and_index_templates_stay_in_sync() {
 }
 
 #[test]
+fn kibana_metrics_template_maps_dashboard_metadata_and_keeps_payload_dynamic() {
+    let template = index_template("metrics-kibana.json");
+    let mappings = &template["template"]["mappings"];
+    let properties = &mappings["properties"];
+    let diagnostic = component_template("esdiag@metadata.json");
+
+    assert_eq!(mappings["dynamic"], true);
+    assert_eq!(properties["@timestamp"]["type"], "date");
+    assert_eq!(
+        properties["data_stream"]["properties"]["dataset"]["type"],
+        "constant_keyword"
+    );
+    assert_eq!(properties["data_stream"]["properties"]["type"]["value"], "metrics");
+    assert_eq!(properties["node"]["properties"]["id"]["type"], "keyword");
+    assert_eq!(properties["node"]["properties"]["name"]["type"], "keyword");
+    assert_eq!(
+        properties["node"]["properties"]["version"]["properties"]["number"]["type"],
+        "version"
+    );
+    assert_eq!(diagnostic_properties(&diagnostic)["version"]["type"], "keyword");
+
+    let explicitly_mapped: BTreeSet<&str> = properties
+        .as_object()
+        .expect("Kibana template properties")
+        .keys()
+        .map(String::as_str)
+        .collect();
+    assert_eq!(explicitly_mapped, BTreeSet::from(["@timestamp", "data_stream", "node"]));
+    assert!(
+        template["composed_of"]
+            .as_array()
+            .expect("composed_of")
+            .iter()
+            .any(|component| component == "esdiag@mappings"),
+        "version-dependent Kibana payloads must use the shared dynamic mappings"
+    );
+}
+
+#[test]
 fn stream_template_drift_check_reports_injected_drift() {
     let streams = BTreeSet::from(["metrics-node-esdiag".to_string(), "metrics-missing-esdiag".to_string()]);
     let patterns = BTreeSet::from([

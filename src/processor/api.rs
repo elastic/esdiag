@@ -428,6 +428,7 @@ impl ApiResolver {
 
         match product {
             "elasticsearch" => Self::resolve_es(&diag_type, include, exclude),
+            "kibana" => Self::resolve_kb(&diag_type, include, exclude),
             "logstash" => Self::resolve_ls(&diag_type, include, exclude),
             _ => Err(eyre!("Unsupported processing product: {}", product)),
         }
@@ -435,7 +436,7 @@ impl ApiResolver {
 
     pub fn processing_catalog() -> Result<HashMap<String, HashMap<String, Vec<ProcessingOption>>>> {
         let mut catalog = HashMap::new();
-        for product in ["elasticsearch", "logstash"] {
+        for product in ["elasticsearch", "kibana", "logstash"] {
             let mut by_type = HashMap::new();
             for diag_type in ["minimal", "light", "standard", "support", "custom"] {
                 by_type.insert(
@@ -451,6 +452,7 @@ impl ApiResolver {
     fn default_processing_selection(product: &str, diag_type: &DiagnosticType) -> Result<Vec<String>> {
         let resolved = match product {
             "elasticsearch" => Self::resolve_es(diag_type, None, None)?,
+            "kibana" => Self::resolve_kb(diag_type, None, None)?,
             "logstash" => Self::resolve_ls(diag_type, None, None)?,
             _ => return Err(eyre!("Unsupported processing product: {}", product)),
         };
@@ -863,6 +865,21 @@ mod tests {
     }
 
     #[test]
+    fn test_kibana_processing_selection_rejects_sources_not_collected() {
+        let err = ApiResolver::validate_processing_selection_with_collect_filters(
+            "kibana",
+            "standard",
+            None,
+            Some(&vec!["kibana_alerts".to_string()]),
+            &["kibana_alerts".to_string()],
+        )
+        .expect_err("selected Kibana source must be present in collected sources");
+
+        assert!(err.to_string().contains("kibana_alerts"));
+        assert!(err.to_string().contains("remove the matching exclusions"));
+    }
+
+    #[test]
     fn test_processing_selection_with_collect_filters_supports_custom() {
         let selected = ApiResolver::resolve_processing_selection_with_collect_filters(
             "elasticsearch",
@@ -902,5 +919,16 @@ mod tests {
         assert!(options.iter().any(|option| option.key == "searchable_snapshots_stats"));
         // Processing options derive from the registry, not a hardcoded list
         assert!(options.iter().any(|option| option.key == "cluster_pending_tasks"));
+    }
+
+    #[test]
+    fn test_processing_catalog_publishes_kibana_options() {
+        let catalog = ApiResolver::processing_catalog().expect("processing catalog");
+
+        assert!(
+            catalog["kibana"]["standard"]
+                .iter()
+                .any(|option| option.key == "kibana_alerts")
+        );
     }
 }

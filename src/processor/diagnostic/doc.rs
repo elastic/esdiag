@@ -13,6 +13,9 @@ pub struct DiagnosticMetadata {
     pub collection_date: u64,
     /// Collection utility or method
     pub runner: String,
+    /// Diagnostic collector version recorded by the bundle
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
     /// User-friendly diagnostic identifier
     pub id: String,
     /// Unique identifier
@@ -20,10 +23,11 @@ pub struct DiagnosticMetadata {
 }
 
 impl DiagnosticMetadata {
-    pub fn new(collection_date: u64, id: String, runner: String, uuid: String) -> Self {
+    pub fn new(collection_date: u64, id: String, runner: String, version: Option<String>, uuid: String) -> Self {
         DiagnosticMetadata {
             collection_date,
             runner,
+            version,
             id,
             uuid,
         }
@@ -45,6 +49,7 @@ impl TryFrom<DiagnosticManifest> for DiagnosticMetadata {
             manifest.collection_date_in_millis(),
             manifest.diagnostic_id(&uuid),
             runner,
+            manifest.diagnostic,
             uuid,
         ))
     }

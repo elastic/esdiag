@@ -729,6 +729,7 @@ fn collect_process_selection(
 ) -> Result<Option<ProcessSelection>> {
     let product = match application {
         Application::Elasticsearch => "elasticsearch",
+        Application::Kibana => "kibana",
         Application::Logstash => "logstash",
         _ => return Ok(None),
     };
@@ -1150,7 +1151,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn child_processing_gap_remains_a_typed_skip() {
+    async fn kibana_child_processing_completes_through_staged_executor() {
         let bundle = parent_with_children(&[("kibana-child", "kibana-api-diagnostics-9.3.3.zip")]);
         let output = tempfile::tempdir().expect("output");
         let job = Job::try_new(
@@ -1173,15 +1174,12 @@ mod tests {
 
         assert!(outcome.succeeded());
         let child = outcome.children.first().expect("child outcome");
-        assert_eq!(
-            child.diagnostic_outcome,
-            DiagnosticOutcome::Skipped(crate::processor::SkipKind::NotImplemented)
-        );
+        assert_eq!(child.diagnostic_outcome, DiagnosticOutcome::Complete);
         assert_eq!(child.application(), Some(Application::Kibana));
-        assert_eq!(
-            child.execution_error(),
-            Some("Kibana processing is not yet implemented")
-        );
+        assert_eq!(child.execution.stage(Stage::Process), Some(&StageStatus::Succeeded));
+        assert_eq!(child.execution.stage(Stage::Export), Some(&StageStatus::Succeeded));
+        assert!(child.report().is_some_and(|report| report.diagnostic.docs.created > 0));
+        assert_eq!(child.execution_error(), None);
     }
 
     #[tokio::test(flavor = "multi_thread")]
