@@ -275,11 +275,13 @@ impl Receiver {
         T: DataSource,
     {
         match self {
+            Receiver::ArchiveBytes(receiver) => receiver.get_raw_response::<T>().await,
+            Receiver::ArchiveFile(receiver) => receiver.get_raw_response::<T>().await,
+            Receiver::Directory(receiver) => receiver.get_raw_response::<T>().await,
             Receiver::Elasticsearch(receiver) => receiver.get_raw_response::<T>().await,
             Receiver::Kibana(receiver) => receiver.get_raw_response::<T>().await,
             Receiver::Logstash(receiver) => receiver.get_raw_response::<T>().await,
             Receiver::ElasticCloudAdmin(receiver) => receiver.get_raw_response::<T>().await,
-            _ => Err(eyre!("Raw data is not supported for this receiver")),
         }
     }
 
