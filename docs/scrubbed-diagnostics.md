@@ -11,7 +11,7 @@ esdiag can repair deterministic malformed IPv4 values in scrubbed Elasticsearch 
 
 ## When normalization runs
 
-Normalization runs in the **receiver read path** for archive and directory inputs (`process` CLI and upload UI). Processors always receive either original or already-normalized JSON.
+Normalization runs in the **receiver read path** for archive and directory inputs (`process` CLI and upload UI). Processors always receive either original or already-normalized JSON. The `Receiver::get_raw` and `Receiver::get_raw_response` APIs also support file archives, in-memory archives, and directories with the same scrub controls.
 
 | Channel | Control | Default when unset |
 |---------|---------|-------------------|
@@ -42,7 +42,7 @@ Identifiers, including `http.clients[].id`, retain their original values and JSO
 
 ## Normalization rules
 
-- Malformed IPv4 octets use deterministic modulo: `octet % 255`.
+- Malformed IPv4 octets use deterministic modulo: `octet % 255`, including decimal octets larger than machine integer limits.
 - Valid IPv4 values (all octets `<= 255`) pass through unchanged.
 - For `ip:port` fields, only the IP component is normalized; the port is preserved.
 - For pure IP fields (`ip`, `host`), normalized output is IP-only (no port suffix).
@@ -118,7 +118,7 @@ Use the `Maximum resident set size` line from each run.
 | Node metrics missing in Kibana | Time picker excludes collection date | Metric docs use manifest collection date for `@timestamp`, not ingest time |
 | Scrub normalization did not run | Auto mode off or directory path without scrub wiring (fixed in feature branch) | Use `./target/release/esdiag` from this branch; pass `--scrubbed true`; prefer `*.zip` or ensure extracted folder name contains `scrubbed` |
 | Valid IPs changed unexpectedly | Scrub mode forced on non-scrubbed bundle | Re-run with `--scrubbed false` |
-| Partial node summary fields | Node lookup miss | Debug logs show `Node lookup not found`; fallback summary patch should still populate `node.id` and tier fields |
+| Partial node summary fields | Node lookup miss | Check that `nodes.json` contains the reported node ID or one unique matching name. Missing or ambiguous matches leave lookup-derived identity and tier fields absent; no fallback metadata is synthesized. |
 
 Enable debug logging to see per-file normalization:
 

@@ -1,10 +1,12 @@
 # Code validation gates — normalize-malformed-scrubbed-ips
 
-**Date:** 2026-06-02 (refreshed for final PR state)  
+**Original measurement date:** 2026-06-02  
 **Host:** WSL2 (Linux)  
 **Branch:** `asa/normalize-malformed-ips-openspec`  
 **Repo:** `/home/asa/repos/test-esdiag/esdiag`  
 **Env file:** `/home/asa/repos/ya-esdiag/esdiag/.env` (`ESDIAG_OUTPUT_URL=http://localhost:9201`)
+
+**Current-checkout clarification (2026-09-18):** Recorded test counts, live-ingest outcomes, and memory measurements below are historical, not rerun results for the current branch. Current fixture and field-scope references are updated below; use `docs/scrubbed-diagnostics.md` for the current deterministic commands. The historical debug-log wording test has been removed in favor of behavioral coverage.
 
 ---
 
@@ -22,7 +24,7 @@
 
 ## 2. Deterministic gates (CI-safe)
 
-### Commands
+### Historical commands and results
 
 | Command | Result |
 |---------|--------|
@@ -46,7 +48,7 @@
 
 ### Integration test coverage (`cargo test --test scrubbed_normalization_tests`)
 
-Synthetic malformed IPs are injected at runtime from the golden archive (`tests/archives/elasticsearch-api-diagnostics-9.1.3.zip`); **no committed customer scrubbed bundle**.
+Current integration tests inject synthetic malformed IPs at runtime from `tests/archives/elasticsearch-api-diagnostics-9.3.3.zip`; **no committed customer scrubbed bundle**. The original June measurements used the now-retired `elasticsearch-api-diagnostics-9.1.3.zip` fixture and must not be read as measurements of the current fixture.
 
 | Test | What it proves |
 |------|----------------|
@@ -70,7 +72,8 @@ Shared assertions (`tests/scrub_normalization_assertions.rs`) verify:
 | Input types | Archive (zip) **and** directory (extracted folder) |
 | Scrub activation | CLI explicit flag, path auto-detect, upload filename hint (unit-tested); directory auto-detect (integration) |
 | JSON files | All `*.json` except `diagnostic_manifest.json` and `version.json` |
-| Address fields | `ip`, `host`, `publish_host`, `bind_host`, `transport_address`, `publish_address`, `bound_address`, `local_address`, `remote_address`, `x_forwarded_for`, malformed `http.clients[].id` |
+| Address fields | `ip`, `host`, `publish_host`, `bind_host`, `transport_address`, `publish_address`, `bound_address`, `local_address`, `remote_address`, `x_forwarded_for` |
+| Identifier pass-through (current behavior) | `http.clients[].id` is a non-address identifier; raw and streaming tests require its original value and JSON type to remain unchanged |
 | Non-goals | No rewrite of hyphenated K8s hostnames (`ip-10-36-…`); no global free-text replace |
 
 Operator reference: `docs/scrubbed-diagnostics.md`.
@@ -136,16 +139,16 @@ Notes:
 
 ## 4. Memory spot-check (WSL / Linux)
 
-Directory output (`-o /tmp/...`), golden archive `tests/archives/elasticsearch-api-diagnostics-9.1.3.zip`:
+Current reproduction commands use the available `tests/archives/elasticsearch-api-diagnostics-9.3.3.zip` fixture and positional directory output. The measurements below remain the original June results from the retired 9.1.3 fixture; these updated commands have not been re-measured here.
 
 ```bash
 /usr/bin/time -v ./target/release/esdiag process \
-  tests/archives/elasticsearch-api-diagnostics-9.1.3.zip \
-  --scrubbed false -o /tmp/esdiag-out-base 2>&1 | tee /tmp/esdiag-mem-base.txt
+  tests/archives/elasticsearch-api-diagnostics-9.3.3.zip \
+  /tmp/esdiag-out-base --scrubbed false 2>&1 | tee /tmp/esdiag-mem-base.txt
 
 /usr/bin/time -v ./target/release/esdiag process \
-  tests/archives/elasticsearch-api-diagnostics-9.1.3.zip \
-  --scrubbed true -o /tmp/esdiag-out-scrub 2>&1 | tee /tmp/esdiag-mem-scrub.txt
+  tests/archives/elasticsearch-api-diagnostics-9.3.3.zip \
+  /tmp/esdiag-out-scrub --scrubbed true 2>&1 | tee /tmp/esdiag-mem-scrub.txt
 ```
 
 | Run | Maximum resident set size |

@@ -303,16 +303,13 @@ fn normalize_value(value: &mut Value, field: Option<&str>, transformed: &mut usi
 
 fn normalize_pure_ip(value: &str) -> Option<String> {
     let (candidate_ip, port) = split_ip_port(value);
-    if port.is_none() {
-        return normalize_malformed_ipv4(candidate_ip);
-    }
-
-    normalize_malformed_ipv4(candidate_ip).or_else(|| parse_ipv4_octets(candidate_ip).map(|_| candidate_ip.to_string()))
+    let octets = parse_ipv4_octets(candidate_ip)?;
+    normalize_malformed_ipv4(octets).or_else(|| port.map(|_| candidate_ip.to_string()))
 }
 
 fn normalize_ip_or_ip_port(value: &str) -> Option<String> {
     let (candidate_ip, port) = split_ip_port(value);
-    let normalized_ip = normalize_malformed_ipv4(candidate_ip)?;
+    let normalized_ip = normalize_malformed_ipv4(parse_ipv4_octets(candidate_ip)?)?;
     match port {
         Some(port) => Some(format!("{normalized_ip}:{port}")),
         None => Some(normalized_ip),
@@ -331,36 +328,45 @@ fn split_ip_port(value: &str) -> (&str, Option<&str>) {
     (ip, Some(port))
 }
 
-fn normalize_malformed_ipv4(value: &str) -> Option<String> {
-    let octets = parse_ipv4_octets(value)?;
+struct ParsedIpv4 {
+    remainders: [u16; 4],
+    in_range: bool,
+}
 
-    if octets.iter().all(|octet| *octet <= 255) {
+fn normalize_malformed_ipv4(octets: ParsedIpv4) -> Option<String> {
+    if octets.in_range {
         return None;
     }
 
-    Some(
-        octets
-            .iter()
-            .map(|octet| (octet % 255).to_string())
-            .collect::<Vec<String>>()
-            .join("."),
-    )
+    let [a, b, c, d] = octets.remainders;
+    Some(format!("{a}.{b}.{c}.{d}"))
 }
 
-fn parse_ipv4_octets(value: &str) -> Option<[u16; 4]> {
-    let mut octets = [0u16; 4];
+fn parse_ipv4_octets(value: &str) -> Option<ParsedIpv4> {
+    let mut remainders = [0u16; 4];
+    let mut in_range = true;
     let mut parts = value.split('.');
-    for octet in &mut octets {
+    for remainder in &mut remainders {
         let part = parts.next()?;
-        if part.is_empty() || !part.chars().all(|c| c.is_ascii_digit()) {
+        if part.is_empty() {
             return None;
         }
-        *octet = part.parse().ok()?;
+        let mut bounded = 0u16;
+        for byte in part.bytes() {
+            if !byte.is_ascii_digit() {
+                return None;
+            }
+            let digit = u16::from(byte - b'0');
+            *remainder = (*remainder * 10 + digit) % 255;
+            // Retain the valid 255 boundary without accumulating an unbounded integer.
+            bounded = (bounded * 10 + digit).min(256);
+        }
+        in_range &= bounded <= 255;
     }
     if parts.next().is_some() {
         return None;
     }
-    Some(octets)
+    Some(ParsedIpv4 { remainders, in_range })
 }
 
 #[cfg(test)]
@@ -513,6 +519,71 @@ mod tests {
             "http": {"clients": [{"id": v::MALFORMED_HTTP_CLIENT_ID}]}
         });
         let input = input.to_string();
+        let mut streamed = normalize_supported_reader_to_temp("nodes.json", input.as_bytes()).unwrap();
+        let raw = normalize_supported_content("nodes.json", input).unwrap();
+        assert_eq!(
+            serde_json::from_reader::<_, Value>(streamed.file.as_file_mut()).unwrap(),
+            expected
+        );
+        assert_eq!(serde_json::from_str::<Value>(&raw.content).unwrap(), expected);
+    }
+
+    #[test]
+    fn raw_and_streaming_normalization_handle_unbounded_decimal_octets() {
+        // Concatenated multiples of 255 remain divisible by 255 at any length.
+        let huge = format!("{}.255.256.1", "255".repeat(128));
+        for (address, expected_address) in [
+            ("65536.1.2.3", "1.1.2.3"),
+            ("18446744073709551616.255.256.1", "1.0.1.1"),
+            (huge.as_str(), "0.0.1.1"),
+            ("000255.255.0.1", "000255.255.0.1"),
+        ] {
+            let input = serde_json::json!({
+                "ip": address,
+                "host": format!("{address}:9300"),
+                "transport_address": format!("{address}:9300"),
+                "name": address,
+                "http": {"clients": [{"id": address}]}
+            })
+            .to_string();
+            let expected = serde_json::json!({
+                "ip": expected_address,
+                "host": expected_address,
+                "transport_address": format!("{expected_address}:9300"),
+                "name": address,
+                "http": {"clients": [{"id": address}]}
+            });
+            let mut streamed = normalize_supported_reader_to_temp("nodes.json", input.as_bytes()).unwrap();
+            let raw = normalize_supported_content("nodes.json", input).unwrap();
+            assert_eq!(
+                serde_json::from_reader::<_, Value>(streamed.file.as_file_mut()).unwrap(),
+                expected,
+                "streamed address: {address}"
+            );
+            assert_eq!(
+                serde_json::from_str::<Value>(&raw.content).unwrap(),
+                expected,
+                "raw address: {address}"
+            );
+        }
+    }
+
+    #[test]
+    fn raw_and_streaming_normalization_preserve_invalid_address_structure() {
+        let expected = serde_json::json!({
+            "ip": [
+                "65536.1.2",
+                "65536.1.2.3.4",
+                "65536..2.3",
+                "-65536.1.2.3",
+                "+65536.1.2.3",
+                "65536.1.2.３",
+                "node-65536.1.2.3",
+                "65536.1.2.3:not-a-port",
+                "2001:db8::1"
+            ]
+        });
+        let input = expected.to_string();
         let mut streamed = normalize_supported_reader_to_temp("nodes.json", input.as_bytes()).unwrap();
         let raw = normalize_supported_content("nodes.json", input).unwrap();
         assert_eq!(
