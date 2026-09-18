@@ -27,6 +27,7 @@ published release notes, maintenance branches, and tagged history.
 - Added resumable user-mode web onboarding at `/welcome`, including masked keystore and API-key forms for configuring a diagnostic workflow.
 - Added optional Elastic Upload Service forwarding to `esdiag-lite.sh` for newly collected and existing ZIP archives.
 - Added `esdiag-lite.ps1` for version-aware Elasticsearch diagnostic collection on Windows PowerShell.
+- Added the Index Detail dashboard showing the full vertical slice of metrics (operations, documents, storage, settings, shard distribution, data stream/alias membership, and shard workload balance) for a single selected index.
 
 ### Changed
 
