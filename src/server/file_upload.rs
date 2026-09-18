@@ -152,7 +152,8 @@ pub async fn submit(
                 <div class="spinner"></div>
                 <span>Processing diagnostic</span>
                 <p><b>Filename:</b> {filename}</p>
-            </div>"#
+            </div>"#,
+            filename = askama::filters::escape(&filename, askama::filters::Html).expect("HTML escaping is infallible"),
         );
 
         state
@@ -378,7 +379,7 @@ mod tests {
         "zip-bytes\r\n",
     );
 
-    async fn submit_multipart(body: &str) -> (Arc<ServerState>, StatusCode, u64) {
+    async fn submit_multipart(body: &str) -> (Arc<ServerState>, StatusCode, u64, String) {
         let state = test_server_state();
         let request = Request::builder()
             .header("content-type", "multipart/form-data; boundary=upload-boundary")
@@ -404,11 +405,11 @@ mod tests {
             .0
             .parse()
             .expect("job ID");
-        (state, status, job_id)
+        (state, status, job_id, html.to_owned())
     }
 
     async fn assert_rejected_upload(body: &str) {
-        let (state, status, job_id) = submit_multipart(body).await;
+        let (state, status, job_id, _) = submit_multipart(body).await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
         assert!(
             state.job_requests.read().await.is_empty(),
@@ -463,7 +464,7 @@ mod tests {
         let body = format!(
             "{FILE_PART}--upload-boundary\r\nContent-Disposition: form-data; name=\"scrubbed\"\r\n\r\nfalse\r\n--upload-boundary--\r\n"
         );
-        let (state, status, job_id) = submit_multipart(&body).await;
+        let (state, status, job_id, _) = submit_multipart(&body).await;
         assert_eq!(status, StatusCode::OK);
         let job = state.pop_job_request(job_id).await.expect("staged upload");
         let JobInput::LocalArchive {
@@ -477,6 +478,28 @@ mod tests {
         assert_eq!(*scrubbed_override, Some(false));
         assert_eq!(tokio::fs::read(path).await.expect("staged file"), b"zip-bytes");
         job.cleanup().await;
+    }
+
+    #[tokio::test]
+    async fn submit_escapes_filename_html_without_changing_staged_name() {
+        let filename = "<img src=x onerror=alert(1)>&'scrubbed.zip";
+        let body = format!(
+            "{}--upload-boundary--\r\n",
+            FILE_PART.replace("diagnostic.zip", filename)
+        );
+        let (state, status, job_id, html) = submit_multipart(&body).await;
+        assert_eq!(status, StatusCode::OK);
+        let job = state.pop_job_request(job_id).await.expect("staged upload");
+        job.cleanup().await;
+        let JobInput::LocalArchive {
+            filename: staged_name, ..
+        } = &job.input
+        else {
+            panic!("expected local upload archive");
+        };
+        assert_eq!(staged_name, filename);
+        assert!(!html.contains("<img"), "filename must not create an HTML element");
+        assert!(html.contains("&#60;img src=x onerror=alert(1)&#62;&#38;&#39;scrubbed.zip"));
     }
 
     #[tokio::test]
