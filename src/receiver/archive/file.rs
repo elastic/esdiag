@@ -2,9 +2,7 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use super::{
-    normalize_supported_content, normalize_supported_reader_to_temp, resolve_archive_path, supports_json_normalization,
-};
+use super::{normalize_supported_content, resolve_archive_path, with_normalized_json_reader};
 use crate::{
     processor::{DataSource, SourceContext, StreamingDataSource},
     receiver::{MissingSource, RawResponse, Receive, ReceiveMultiple, ReceiveRaw},
@@ -110,22 +108,10 @@ impl Receive for ArchiveFileReceiver {
                         );
                         continue;
                     }
-                    let parsed = if self.scrubbed && supports_json_normalization(&filename) {
-                        let mut transformed = normalize_supported_reader_to_temp(&filename, reader)?;
-                        tracing::debug!(
-                            "Unscrubbed {} address fields in {}",
-                            transformed.transformed_fields,
-                            filename
-                        );
-                        let reader = BufReader::new(transformed.file.as_file_mut());
-                        serde_json::from_reader(reader)
-                    } else {
-                        if self.scrubbed {
-                            tracing::debug!("Scrubbed mode read {} (no normalization rules)", filename);
-                        }
-                        serde_json::from_reader(reader)
-                    };
-                    let data: T = parsed.wrap_err_with(|| format!("Failed to parse {filename} for {}", T::name()))?;
+                    let data: T = with_normalized_json_reader(&filename, reader, self.scrubbed, |reader| {
+                        Ok(serde_json::from_reader(reader)?)
+                    })
+                    .wrap_err_with(|| format!("Failed to parse {filename} for {}", T::name()))?;
                     return Ok(data);
                 }
                 Err(e) => {

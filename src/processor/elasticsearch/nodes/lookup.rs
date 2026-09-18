@@ -7,7 +7,7 @@ use eyre::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 use serde_with::skip_serializing_none;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 #[skip_serializing_none]
 #[derive(Clone, Deserialize, Serialize)]
@@ -64,15 +64,39 @@ impl From<&Node> for NodeDocument {
     }
 }
 
+impl Lookup<NodeDocument> {
+    /// Resolve a node by exact ID, falling back only to an unambiguous name.
+    pub fn by_id_or_name(&self, id: &str, name: Option<&str>) -> Option<&NodeDocument> {
+        self.by_id(id).or_else(|| {
+            name.and_then(|name| {
+                let node = self.by_name(name);
+                if node.is_some() {
+                    tracing::debug!(
+                        "Resolved node lookup by name fallback: node_id={} node_name={}",
+                        id,
+                        name
+                    );
+                }
+                node
+            })
+        })
+    }
+}
+
 impl From<Nodes> for Lookup<NodeDocument> {
-    fn from(mut nodes: Nodes) -> Self {
+    fn from(nodes: Nodes) -> Self {
+        let mut name_counts = HashMap::with_capacity(nodes.nodes.len());
+        for node in nodes.nodes.values() {
+            *name_counts.entry(node.name.as_str()).or_insert(0usize) += 1;
+        }
+
         let mut lookup = Lookup::<NodeDocument>::new();
-        nodes.nodes.drain().for_each(|(id, node)| {
-            lookup
-                .add(NodeDocument::from(&node).with_id(&id))
-                .with_name(&node.name)
-                .with_id(&id);
-        });
+        for (id, node) in &nodes.nodes {
+            lookup.add(NodeDocument::from(node).with_id(id)).with_id(id);
+            if name_counts[node.name.as_str()] == 1 {
+                lookup.with_name(&node.name);
+            }
+        }
         lookup
     }
 }
@@ -196,7 +220,77 @@ fn get_roles_abbreviation(role_list: &HashSet<String>) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::get_tier_node_name;
+    use super::{Lookup, NodeDocument, Nodes, get_tier_node_name};
+    use serde_json::json;
+
+    fn node_lookup(entries: &[(&str, &str, usize)]) -> Lookup<NodeDocument> {
+        let mut nodes: Nodes = serde_json::from_value(json!({"_nodes": {}, "nodes": {}})).unwrap();
+        for &(id, name, processors) in entries {
+            let node = serde_json::from_value(json!({
+                "name": name,
+                "host": format!("{id}.example"),
+                "build_flavor": "default",
+                "build_hash": "test",
+                "build_type": "tar",
+                "jvm": {},
+                "os": {
+                    "refresh_interval_in_millis": 1000,
+                    "available_processors": processors,
+                    "allocated_processors": processors
+                },
+                "process": {},
+                "roles": ["data_hot"],
+                "thread_pool": {}
+            }))
+            .unwrap();
+            nodes.nodes.insert(id.to_string(), node);
+        }
+        Lookup::from(nodes)
+    }
+
+    #[test]
+    fn ambiguous_node_names_never_resolve_but_distinct_ids_remain_available() {
+        let entries = [
+            ("node-a", "shared", 2),
+            ("node-b", "shared", 4),
+            ("node-c", "shared", 8),
+        ];
+        for ordered in [entries, [entries[2], entries[1], entries[0]]] {
+            let lookup = node_lookup(&ordered);
+            assert!(lookup.by_name("shared").is_none());
+            assert!(lookup.by_id_or_name("unknown-id", Some("shared")).is_none());
+            for (id, name, processors) in entries {
+                let node = lookup.by_id_or_name(id, Some(name)).unwrap();
+                assert_eq!(node.id.as_deref(), Some(id));
+                assert_eq!(node.host.as_deref(), Some(format!("{id}.example").as_str()));
+                assert_eq!(node.os.allocated_processors, processors);
+            }
+        }
+    }
+
+    #[test]
+    fn unique_node_name_fallback_resolves_only_the_matching_node() {
+        let lookup = node_lookup(&[
+            ("node-a", "shared", 2),
+            ("node-b", "shared", 4),
+            ("node-c", "unique", 8),
+        ]);
+        let node = lookup.by_id_or_name("unknown-id", Some("unique")).unwrap();
+        assert_eq!(node.id.as_deref(), Some("node-c"));
+        assert_eq!(node.host.as_deref(), Some("node-c.example"));
+        assert_eq!(node.os.allocated_processors, 8);
+        assert!(lookup.by_id_or_name("unknown-id", Some("absent")).is_none());
+        assert!(lookup.by_id_or_name("unknown-id", None).is_none());
+    }
+
+    #[test]
+    fn exact_node_id_takes_precedence_over_another_nodes_name() {
+        let lookup = node_lookup(&[("node-a", "first", 2), ("node-b", "second", 8)]);
+        let node = lookup.by_id_or_name("node-a", Some("second")).unwrap();
+        assert_eq!(node.id.as_deref(), Some("node-a"));
+        assert_eq!(node.host.as_deref(), Some("node-a.example"));
+        assert_eq!(node.os.allocated_processors, 2);
+    }
 
     #[test]
     fn preserves_existing_instance_rename_behavior() {

@@ -88,6 +88,10 @@ published release notes, maintenance branches, and tagged history.
 - Changed `esdiag local up`, `esdiag local open`, `esdiag init`, and `esdiag-local` to ask before copying the Kibana `elastic` password to the clipboard, and not to copy it without an interactive terminal unless `--copy-password=true` is passed.
 - Changed the diagnostic selector
  and diagnostic counts in the Elasticsearch Indexing Hotspots - Nodes, Index Workload Balance, and Search Summary dashboards to use `diagnostic.id` instead of `diagnostic.uuid`, so captures are identified by cluster name and collection date rather than an opaque UUID.
+- Buffered scrub normalization output to avoid per-byte temporary-file writes.
+- Changed uploads to reject malformed multipart data and discard staged files rather than silently selecting a scrub override.
+- Limited node-name fallback enrichment to unambiguous matches, preserving exact node-ID precedence.
+- Preserved HTTP-client identifiers unchanged during scrub normalization.
 - Made source-tree notice generation opt-in so Cargo package verification and registry installation use committed notices.
 - Limited web onboarding to builds with both keystore and setup support, preserving host and keystore management in builds without setup.
 - Restored the published Elasticsearch client dependency with a response compatibility adapter so ESDiag can be packaged from registry dependencies.

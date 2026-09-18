@@ -3,7 +3,7 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::super::processor::{DataSource, SourceContext, StreamingDataSource};
-use super::archive::{normalize_supported_content, normalize_supported_reader_to_temp, supports_json_normalization};
+use super::archive::{normalize_supported_content, supports_json_normalization, with_normalized_json_reader};
 use super::{MissingSource, RawResponse, Receive, ReceiveMultiple, ReceiveRaw};
 use eyre::{Result, WrapErr, eyre};
 use futures::stream::{self, BoxStream};
@@ -89,24 +89,10 @@ impl Receive for DirectoryReceiver {
                         );
                         continue;
                     }
-                    let parsed = if should_normalize_file(&source_path, self.scrubbed) {
-                        tracing::debug!("Reading {} (scrubbed mode)", source_path);
-                        let mut transformed = normalize_supported_reader_to_temp(&source_path, reader)?;
-                        tracing::debug!(
-                            "Unscrubbed {} address fields in {}",
-                            transformed.transformed_fields,
-                            source_path
-                        );
-                        let reader = BufReader::new(transformed.file.as_file_mut());
-                        serde_json::from_reader(reader)
-                    } else {
-                        if self.scrubbed {
-                            tracing::debug!("Scrubbed mode read {} (no normalization rules)", source_path);
-                        }
-                        serde_json::from_reader(reader)
-                    };
-                    let data: T = parsed
-                        .wrap_err_with(|| format!("Failed to parse {} for {}", filename.display(), T::name()))?;
+                    let data: T = with_normalized_json_reader(&source_path, reader, self.scrubbed, |reader| {
+                        Ok(serde_json::from_reader(reader)?)
+                    })
+                    .wrap_err_with(|| format!("Failed to parse {} for {}", filename.display(), T::name()))?;
                     return Ok(data);
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -136,43 +122,19 @@ impl Receive for DirectoryReceiver {
         let filename_clone = filename.clone();
         let scrubbed = self.scrubbed;
         let source_path_for_scrub = source_path.clone();
-        let should_normalize = should_normalize_file(&source_path, scrubbed);
         let (tx, rx) = mpsc::channel(100);
 
         let tx_err = tx.clone();
         let handle = tokio::task::spawn_blocking(move || match File::open(&filename_clone) {
             Ok(file) => {
-                if should_normalize {
-                    tracing::debug!("Reading {} (scrubbed mode)", source_path_for_scrub);
-                    let reader = BufReader::new(file);
-                    match normalize_supported_reader_to_temp(&source_path_for_scrub, reader) {
-                        Ok(mut transformed) => {
-                            tracing::debug!(
-                                "Unscrubbed {} address fields in {}",
-                                transformed.transformed_fields,
-                                source_path_for_scrub
-                            );
-                            let reader = BufReader::new(transformed.file.as_file_mut());
-                            let mut deserializer = serde_json::Deserializer::from_reader(reader);
-                            if let Err(e) = T::deserialize_stream(&mut deserializer, tx.clone()) {
-                                tracing::error!("Error deserializing stream: {}", e);
-                                let _ = tx.blocking_send(Err(eyre!(e)));
-                            }
-                        }
-                        Err(e) => {
-                            let _ = tx.blocking_send(Err(eyre!(e)));
-                        }
-                    }
-                } else {
-                    if scrubbed {
-                        tracing::debug!("Scrubbed mode read {} (no normalization rules)", source_path_for_scrub);
-                    }
-                    let reader = BufReader::new(file);
-                    let mut deserializer = serde_json::Deserializer::from_reader(reader);
-                    if let Err(e) = T::deserialize_stream(&mut deserializer, tx.clone()) {
-                        tracing::error!("Error deserializing stream: {}", e);
-                        let _ = tx.blocking_send(Err(eyre!(e)));
-                    }
+                let result =
+                    with_normalized_json_reader(&source_path_for_scrub, BufReader::new(file), scrubbed, |reader| {
+                        let mut deserializer = serde_json::Deserializer::from_reader(reader);
+                        T::deserialize_stream(&mut deserializer, tx.clone()).map_err(|e| eyre!(e))
+                    });
+                if let Err(e) = result {
+                    tracing::error!("Error deserializing stream: {}", e);
+                    let _ = tx.blocking_send(Err(e));
                 }
             }
             Err(e) => {
