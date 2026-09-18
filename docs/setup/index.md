@@ -1,10 +1,3 @@
----
-type: Guide
-title: Set up ESDiag
-description: Pick an installation, a diagnostic destination, and a way to work.
-tags: [setup, onboarding]
----
-
 # Set up ESDiag
 
 Start with the job you need to do.
@@ -25,6 +18,9 @@ owns that service's exporter, credentials, and upgrades.
 1. [Install ESDiag](installation.md)
 2. [Configure ESDiag](configuration.md)
 3. [Use ESDiag](usage.md)
+4. [Collect and share diagnostics](local-binary.md)
+5. [Run a local diagnostic cluster](esdiag-local.md)
+6. [Use an existing cluster](existing-cluster.md)
 
 Agent Builder also needs an inference model. For an OpenAI-compatible model
 running on your network, see

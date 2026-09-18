@@ -159,6 +159,13 @@ enum Commands {
         /// Request authentication provider for the server
         #[arg(long, value_enum, help = "Request authentication provider: google-iap or none")]
         auth_provider: Option<AuthProvider>,
+        /// Header that supplies the authenticated user identity
+        #[arg(
+            long,
+            value_name = "HEADER",
+            help = "Identity header for authenticated service requests"
+        )]
+        identity_header: Option<String>,
         /// Optional comma-separated web feature allowlist (advanced, job-builder)
         #[arg(long, value_name = "FEATURES")]
         web_features: Option<String>,
@@ -1102,6 +1109,7 @@ async fn run(cli: Cli, format: OutputFormat) -> Result<CommandResult> {
                 output,
                 mode,
                 auth_provider,
+                identity_header,
                 web_features,
                 onboarding,
                 kibana,
@@ -1138,6 +1146,7 @@ async fn run(cli: Cli, format: OutputFormat) -> Result<CommandResult> {
                     runtime_mode,
                     ServerStartOptions {
                         auth_provider,
+                        identity_header: identity_header.as_deref(),
                         web_features: web_features.as_deref(),
                         onboarding,
                         ..ServerStartOptions::default()
@@ -4656,6 +4665,19 @@ mod tests {
         match cli.command {
             Some(Commands::Serve { web_features, .. }) => {
                 assert_eq!(web_features.as_deref(), Some("advanced,job-builder"));
+            }
+            other => panic!("expected serve command, got {other:?}"),
+        }
+    }
+
+    #[cfg(feature = "server")]
+    #[test]
+    fn serve_parses_identity_header_flag() {
+        let cli = Cli::parse_from(["esdiag", "serve", "--identity-header", "X-Authenticated-User"]);
+
+        match cli.command {
+            Some(Commands::Serve { identity_header, .. }) => {
+                assert_eq!(identity_header.as_deref(), Some("X-Authenticated-User"));
             }
             other => panic!("expected serve command, got {other:?}"),
         }

@@ -42,6 +42,9 @@ http://localhost:2501/?link_id=456789
 
 ## Process an Elasticsearch endpoint
 
+This endpoint requires a local ESDiag server in `user` mode. Shared services do
+not accept API keys.
+
 Add `wait_for_completion=true` when the caller needs the result in the HTTP
 response:
 

@@ -15,7 +15,10 @@ port. The default local URL is `http://localhost:2501`.
 
 Authentication follows the server's configured authentication provider. A local
 user-mode server normally has no request authentication. A shared service
-should sit behind its identity-aware proxy.
+should sit behind its identity-aware proxy. Service administrators can select
+the trusted user header with `--identity-header` or
+`ESDIAG_IDENTITY_HEADER`. The `none` provider accepts requests without a header
+for controlled local development.
 
 ## Endpoints
 
@@ -24,6 +27,10 @@ should sit behind its identity-aware proxy.
 | `GET` | `/` | Web UI. Pass `?job_id=<ID>` to open a saved job. |
 | `POST` | `/api/service_link` | Submit an Elastic Upload Service link. |
 | `POST` | `/api/api_key` | Submit an Elasticsearch URL and API key. |
+
+`/api/api_key` is available only in `user` mode. Service mode does not mount
+this endpoint and returns `404 Not Found`. Run ESDiag locally in `user` mode
+when direct API-key collection is required.
 
 The two `POST` endpoints accept `wait_for_completion`:
 

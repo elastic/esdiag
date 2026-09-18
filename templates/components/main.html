@@ -22,7 +22,9 @@
             data-effect="
                 if (!$keystore.locked && $_pending_job_action) {
                     const buttonId = {
+                        {% if show_api_key %}
                         'api-key': 'es-api-key-button',
+                        {% endif %}
                         'service-link': 'service-link-button',
                         'upload-process': 'main-upload-process-button',
                     }[$_pending_job_action];
@@ -51,6 +53,7 @@
                 >
                     Service Link
                 </button>
+                {% if show_api_key %}
                 <button
                     id="tab-api-key"
                     class="tab"
@@ -59,6 +62,7 @@
                 >
                     API Key
                 </button>
+                {% endif %}
             </tab-links>
             <tab-content class="tab-content">
                 <form
@@ -329,6 +333,7 @@
                     </script>
                 </form>
 
+                {% if show_api_key %}
                 <form id="api-key-form" data-show="$tab === 'api-key'" style="display: none">
                     <info-text class="margin-after">Process directly from an Elasticsearch cluster's API.</info-text>
                     <input-group>
@@ -367,6 +372,7 @@
                         data-attr:disabled="$loading || !$es_api.url || !$es_api.key"
                     />
                 </form>
+                {% endif %}
             </tab-content>
         </diagnostic-form>
         <metadata-form id="metadata">
@@ -381,7 +387,11 @@
                     placeholder="Username"
                     autocomplete="none"
                     class="form-input"
-                    data-attr:disabled="$auth.header || $processing || $loading"
+                    {% if identity_locked %}
+                    disabled
+                    {% else %}
+                    data-attr:disabled="$processing || $loading"
+                    {% endif %}
                 />
             </input-group>
             <input-group>

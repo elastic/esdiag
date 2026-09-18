@@ -53,16 +53,42 @@ mode and MUST NOT be re-granted by any authentication configuration.
 - **WHEN** any authentication provider (including none) is configured
 - **THEN** the shared keystore and user-editable exporter remain unavailable and all processed diagnostics go to the single startup-defined exporter
 
+### Requirement: Mode-Aware API Key Inputs
+The web server SHALL allow ad hoc Elasticsearch URL and API key inputs only in
+`user` mode. In `service` mode, the main web interface MUST omit API key input
+controls and the router MUST NOT mount `/api/api_key`, `/api_key`, or
+`/api_key/{id}`. This restriction MUST apply regardless of the configured
+authentication provider.
+
+#### Scenario: Service mode omits API key inputs
+- **GIVEN** the web server is running in `service` mode
+- **WHEN** an authenticated user opens the main web interface
+- **THEN** the page does not contain an API key tab, form, or input
+
+#### Scenario: Service mode rejects API key endpoints
+- **GIVEN** the web server is running in `service` mode
+- **WHEN** a client posts to `/api/api_key`, `/api_key`, or `/api_key/{id}`
+- **THEN** the router responds that the endpoint is not found
+- **AND** no API key is accepted or queued
+
+#### Scenario: User mode retains API key inputs
+- **GIVEN** the web server is running in `user` mode
+- **WHEN** a user opens the main web interface or submits an API key request
+- **THEN** the API key UI and routes remain available
+
 ### Requirement: Pluggable Authentication Axis
 The system SHALL treat request authentication as a provider-agnostic axis configured
 independently of runtime mode. Supported providers SHALL include Google identity-aware
 proxy, and the design MUST admit additional providers (another identity-aware proxy or
 Elastic Cloud SSO) and a `none` provider, without changing the runtime-mode enum. The
 selected provider SHALL determine how requests are authenticated and how user identity is
-resolved. Authentication SHALL serve both access control (gating a shared instance) and
-identity provenance: the authenticated identity MUST populate `Identifiers` (user and
-account) on bundles and MAY authorize outbound `Send` to the support portal, in either
-runtime mode.
+resolved. A header-based provider SHALL read identity from the explicit
+`--identity-header` value, then `ESDIAG_IDENTITY_HEADER`, then
+`X-Goog-Authenticated-User-Email`. Authentication SHALL serve both access control
+(gating a shared instance) and identity provenance: the authenticated identity MUST
+populate `Identifiers` (user and account) on bundles and MAY authorize outbound `Send`
+to the support portal, in either runtime mode. Authentication policy state MUST remain
+server-owned and MUST NOT appear in Datastar signals or request signal models.
 
 #### Scenario: Service mode without an authentication provider
 - **GIVEN** the web server starts in `service` mode with authentication provider `none`
@@ -73,6 +99,18 @@ runtime mode.
 - **GIVEN** the web server starts in `service` mode with an identity-aware-proxy provider configured
 - **WHEN** a request arrives
 - **THEN** the system MUST resolve the user identity from that provider and MUST reject requests that fail the provider's authentication
+
+#### Scenario: Service mode uses a configured identity header
+- **GIVEN** the web server starts in `service` mode with `--identity-header X-Authenticated-User`
+- **WHEN** a request contains `X-Authenticated-User: operator@example.com`
+- **THEN** the request is authenticated as `operator@example.com`
+- **AND** the default Google IAP header does not satisfy authentication
+
+#### Scenario: Authentication state is absent from signals
+- **GIVEN** the web interface is running in either runtime mode
+- **WHEN** the server renders a page or reads a Datastar request
+- **THEN** no `auth` signal is created, submitted, or deserialized
+- **AND** identity locking is derived only from server-owned request identity
 
 #### Scenario: Authenticated identity populates provenance
 - **WHEN** a job executes under an authenticated identity in either runtime mode

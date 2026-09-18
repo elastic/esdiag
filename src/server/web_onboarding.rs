@@ -253,7 +253,7 @@ struct RuntimeOutputStatus {
 
 async fn render_page(state: &Arc<ServerState>, headers: &HeaderMap, message: String) -> String {
     let model = journey_model(state).await;
-    let (auth_header, request_user) = state
+    let (_, request_user) = state
         .resolve_user_email(headers)
         .unwrap_or((false, super::DEFAULT_OWNER.to_string()));
     let user = if model.user.is_empty() {
@@ -264,7 +264,6 @@ async fn render_page(state: &Arc<ServerState>, headers: &HeaderMap, message: Str
     let user_initial = user.chars().next().unwrap_or('_').to_ascii_uppercase();
     let keystore_state = state.keystore_page_state().await;
     WelcomePage {
-        auth_header,
         debug: tracing::enabled!(tracing::Level::DEBUG),
         desktop: cfg!(feature = "desktop"),
         kibana_url: state.kibana_url.read().await.clone(),

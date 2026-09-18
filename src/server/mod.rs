@@ -67,7 +67,7 @@ use tokio::sync::{Mutex, RwLock, broadcast, mpsc, watch};
 use uuid::Uuid;
 
 type UploadReceiver = Arc<RwLock<mpsc::Receiver<(Identifiers, Bytes)>>>;
-const IAP_USER_EMAIL_HEADER: &str = "X-Goog-Authenticated-User-Email";
+const DEFAULT_IDENTITY_HEADER: &str = "X-Goog-Authenticated-User-Email";
 pub(crate) const DEFAULT_OWNER: &str = "Anonymous";
 pub type Owner = String;
 
@@ -209,15 +209,20 @@ impl JobConcurrencyCaps {
 pub struct ServerPolicy {
     mode: RuntimeMode,
     auth_provider: AuthProvider,
+    identity_header: Option<String>,
     job_caps: JobConcurrencyCaps,
     web_features: WebFeatureSet,
 }
 
 impl ServerPolicy {
     pub fn defaults(mode: RuntimeMode) -> Self {
+        let auth_provider = default_auth_provider(mode);
         Self {
             mode,
-            auth_provider: default_auth_provider(mode),
+            auth_provider,
+            identity_header: auth_provider
+                .requires_identity()
+                .then(|| DEFAULT_IDENTITY_HEADER.to_string()),
             job_caps: JobConcurrencyCaps::default(),
             web_features: WebFeatureSet::defaults_for(mode),
         }
@@ -234,6 +239,16 @@ impl ServerPolicy {
     pub fn new_with_options(
         mode: RuntimeMode,
         auth_provider: Option<AuthProvider>,
+        job_caps: Option<JobConcurrencyCaps>,
+        web_features: Option<&str>,
+    ) -> Result<Self> {
+        Self::new_with_identity_options(mode, auth_provider, None, job_caps, web_features)
+    }
+
+    fn new_with_identity_options(
+        mode: RuntimeMode,
+        auth_provider: Option<AuthProvider>,
+        identity_header: Option<&str>,
         job_caps: Option<JobConcurrencyCaps>,
         web_features: Option<&str>,
     ) -> Result<Self> {
@@ -262,6 +277,20 @@ impl ServerPolicy {
             },
         };
 
+        let identity_header = if auth_provider.requires_identity() {
+            let value = match identity_header {
+                Some(value) => value.to_string(),
+                None => match std::env::var("ESDIAG_IDENTITY_HEADER") {
+                    Ok(value) => value,
+                    Err(std::env::VarError::NotPresent) => DEFAULT_IDENTITY_HEADER.to_string(),
+                    Err(err) => return Err(err.into()),
+                },
+            };
+            Some(validate_identity_header(value)?)
+        } else {
+            None
+        };
+
         let job_caps = match job_caps {
             Some(caps) => caps,
             None if mode == RuntimeMode::Service => JobConcurrencyCaps::from_env()?,
@@ -271,6 +300,7 @@ impl ServerPolicy {
         Ok(Self {
             mode,
             auth_provider,
+            identity_header,
             job_caps,
             web_features,
         })
@@ -282,6 +312,10 @@ impl ServerPolicy {
 
     pub fn auth_provider(&self) -> AuthProvider {
         self.auth_provider
+    }
+
+    pub fn identity_header(&self) -> Option<&str> {
+        self.identity_header.as_deref()
     }
 
     pub fn requires_authentication(&self) -> bool {
@@ -304,6 +338,10 @@ impl ServerPolicy {
         self.mode == RuntimeMode::User
     }
 
+    pub fn allows_api_key_inputs(&self) -> bool {
+        self.mode == RuntimeMode::User
+    }
+
     pub fn allows_advanced(&self) -> bool {
         self.allows_local_runtime_features() && self.web_features.contains(WebFeature::Advanced)
     }
@@ -320,6 +358,16 @@ fn default_auth_provider(mode: RuntimeMode) -> AuthProvider {
         RuntimeMode::Service => AuthProvider::GoogleIap,
         RuntimeMode::User => AuthProvider::None,
     }
+}
+
+fn validate_identity_header(value: String) -> Result<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err(eyre!("Identity header name cannot be empty"));
+    }
+    HeaderName::from_bytes(trimmed.as_bytes())
+        .map_err(|err| eyre!("Invalid identity header name '{trimmed}': {err}"))?;
+    Ok(trimmed.to_string())
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -431,6 +479,7 @@ pub struct Server {
 #[derive(Default)]
 pub struct ServerStartOptions<'a> {
     pub auth_provider: Option<AuthProvider>,
+    pub identity_header: Option<&'a str>,
     pub job_caps: Option<JobConcurrencyCaps>,
     pub web_features: Option<&'a str>,
     pub onboarding: bool,
@@ -484,9 +533,10 @@ impl Server {
         let (stats_updates_tx, stats_updates_rx) = watch::channel(0u64);
 
         let (event_tx, _event_rx) = broadcast::channel::<ServerEvent>(256);
-        let server_policy = ServerPolicy::new_with_options(
+        let server_policy = ServerPolicy::new_with_identity_options(
             runtime_mode,
             options.auth_provider,
+            options.identity_header,
             options.job_caps,
             options.web_features,
         )?;
@@ -536,9 +586,6 @@ impl Server {
             let app = Router::new()
                 .route("/", get(index::handler))
                 .route("/api/service_link", post(api::service_link))
-                .route("/api/api_key", post(api::api_key))
-                .route("/api_key", post(api_key::form))
-                .route("/api_key/{id}", post(api_key::id))
                 .route("/known_host", post(known_host::form))
                 .route("/datastar.js", get(assets::datastar))
                 .route("/datastar.js.map", get(assets::datastar_map))
@@ -565,6 +612,14 @@ impl Server {
                 .route("/upload/process", post(file_upload::process))
                 .route("/upload/submit", post(file_upload::submit))
                 .route("/events", patch(events));
+
+            let app = if route_policy.allows_api_key_inputs() {
+                app.route("/api/api_key", post(api::api_key))
+                    .route("/api_key", post(api_key::form))
+                    .route("/api_key/{id}", post(api_key::id))
+            } else {
+                app
+            };
 
             #[cfg(feature = "keystore")]
             let app = app.route("/jobs/draft", post(saved_jobs::normalize_draft));
@@ -666,11 +721,13 @@ impl Server {
             .ok_or_else(|| eyre::eyre!("Server failed to bind"))?;
         tracing::info!("Starting {}-mode server on port {}", runtime_mode, bound_addr.port());
         tracing::debug!(
-            "Server policy => auth_provider={}, allows_local_runtime_features={}, allows_exporter_updates={}, allows_host_management={}, service_job_cap={}, service_owner_job_cap={}",
+            "Server policy => auth_provider={}, identity_header={}, allows_local_runtime_features={}, allows_exporter_updates={}, allows_host_management={}, allows_api_key_inputs={}, service_job_cap={}, service_owner_job_cap={}",
             server_policy.auth_provider(),
+            server_policy.identity_header().unwrap_or("<none>"),
             server_policy.allows_local_runtime_features(),
             server_policy.allows_exporter_updates(),
             server_policy.allows_host_management(),
+            server_policy.allows_api_key_inputs(),
             server_policy.job_caps().global,
             server_policy.job_caps().per_owner
         );
@@ -809,14 +866,18 @@ impl ServerState {
     pub fn resolve_identity(&self, headers: &HeaderMap) -> Result<ResolvedIdentity> {
         match self.server_policy.auth_provider() {
             AuthProvider::GoogleIap => {
+                let identity_header = self
+                    .server_policy
+                    .identity_header()
+                    .expect("identity-requiring provider must configure a header");
                 let raw = headers
-                    .get(IAP_USER_EMAIL_HEADER)
-                    .ok_or_else(|| eyre!("Missing required header: {}", IAP_USER_EMAIL_HEADER))?
+                    .get(identity_header)
+                    .ok_or_else(|| eyre!("Missing required header: {identity_header}"))?
                     .to_str()
-                    .map_err(|_| eyre!("Invalid {} header", IAP_USER_EMAIL_HEADER))?;
+                    .map_err(|_| eyre!("Invalid {identity_header} header"))?;
                 let (account, user) = parse_iap_identity(raw);
                 if user.is_empty() {
-                    return Err(eyre!("{} header is empty", IAP_USER_EMAIL_HEADER));
+                    return Err(eyre!("{identity_header} header is empty"));
                 }
                 Ok(ResolvedIdentity {
                     authenticated: true,
@@ -1851,9 +1912,9 @@ async fn add_client_hint_headers(mut response: Response) -> Response {
 #[cfg(test)]
 mod tests {
     use super::{
-        ApiKeyFormSignals, JobConcurrencyCaps, JobRunSignals, RuntimeMode, Server, ServerEvent, ServerPolicy,
-        ServerState, Stats, broadcast_receiver_stream, event_visible_to_user, receiver_stream, replace_job_event,
-        signal_event, stats_event, targeted_signal_event, test_server_state,
+        ApiKeyFormSignals, AuthProvider, JobConcurrencyCaps, JobRunSignals, RuntimeMode, Server, ServerEvent,
+        ServerPolicy, ServerState, Stats, broadcast_receiver_stream, event_visible_to_user, receiver_stream,
+        replace_job_event, signal_event, stats_event, targeted_signal_event, test_server_state,
     };
     use crate::data::{Auth, KnownHostBuilder};
     #[cfg(feature = "keystore")]
@@ -1926,7 +1987,7 @@ mod tests {
 
     #[tokio::test]
     async fn queued_ad_hoc_input_key_is_consumed_once() {
-        let state = test_state(RuntimeMode::Service);
+        let state = test_state(RuntimeMode::User);
         let ad_hoc_key = "one-time-ad-hoc-api-key";
         let host = KnownHostBuilder::new(url::Url::parse("http://cluster.example:9200").expect("url"))
             .apikey(Some(ad_hoc_key.to_string()))
@@ -1995,6 +2056,7 @@ mod tests {
     fn web_feature_defaults_enable_only_advanced_for_user_mode() {
         let policy = ServerPolicy::defaults(RuntimeMode::User);
 
+        assert!(policy.allows_api_key_inputs());
         assert!(policy.allows_advanced());
         assert!(!policy.allows_job_builder());
     }
@@ -2003,6 +2065,7 @@ mod tests {
     fn web_feature_defaults_disable_optional_features_for_service_mode() {
         let policy = ServerPolicy::defaults(RuntimeMode::Service);
 
+        assert!(!policy.allows_api_key_inputs());
         assert!(!policy.allows_advanced());
         assert!(!policy.allows_job_builder());
     }
@@ -2120,6 +2183,7 @@ mod tests {
         assert!(!policy.allows_local_runtime_features());
         assert!(!policy.allows_exporter_updates());
         assert!(!policy.allows_host_management());
+        assert!(!policy.allows_api_key_inputs());
     }
 
     #[test]
@@ -2217,7 +2281,7 @@ mod tests {
 
         let mut headers = HeaderMap::new();
         headers.insert(
-            super::IAP_USER_EMAIL_HEADER,
+            super::DEFAULT_IDENTITY_HEADER,
             "accounts.google.com:alice@example.com".parse().expect("valid header"),
         );
         let allowed = super::events(axum::extract::State(state), headers).await;
@@ -2290,7 +2354,7 @@ mod tests {
 
         assert!(state.resolve_identity(&headers).is_err());
         headers.insert(
-            super::IAP_USER_EMAIL_HEADER,
+            super::DEFAULT_IDENTITY_HEADER,
             "accounts.google.com:alice@example.com".parse().expect("valid header"),
         );
 
@@ -2301,6 +2365,72 @@ mod tests {
     }
 
     #[test]
+    fn service_auth_resolves_identity_from_configured_header() {
+        let mut state = test_state(RuntimeMode::Service);
+        state.server_policy = ServerPolicy::new_with_identity_options(
+            RuntimeMode::Service,
+            Some(AuthProvider::GoogleIap),
+            Some("X-Authenticated-User"),
+            None,
+            None,
+        )
+        .expect("custom identity header policy");
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "X-Authenticated-User",
+            "alice@example.com".parse().expect("valid header"),
+        );
+
+        let identity = state.resolve_identity(&headers).expect("identity");
+
+        assert!(identity.authenticated);
+        assert_eq!(identity.user, "alice@example.com");
+        assert!(identity.account.is_none());
+    }
+
+    #[test]
+    fn service_auth_rejects_invalid_identity_header_name() {
+        let err = ServerPolicy::new_with_identity_options(
+            RuntimeMode::Service,
+            Some(AuthProvider::GoogleIap),
+            Some("invalid header"),
+            None,
+            None,
+        )
+        .expect_err("invalid identity header");
+
+        assert!(err.to_string().contains("Invalid identity header name"));
+    }
+
+    #[test]
+    fn service_auth_reads_identity_header_from_environment() {
+        let mut env = crate::TestEnv::new();
+        env.set("ESDIAG_IDENTITY_HEADER", "X-Environment-User");
+
+        let policy = ServerPolicy::new_with_identity_options(
+            RuntimeMode::Service,
+            Some(AuthProvider::GoogleIap),
+            None,
+            None,
+            None,
+        )
+        .expect("environment identity header policy");
+
+        assert_eq!(policy.identity_header(), Some("X-Environment-User"));
+
+        let explicit = ServerPolicy::new_with_identity_options(
+            RuntimeMode::Service,
+            Some(AuthProvider::GoogleIap),
+            Some("X-Explicit-User"),
+            None,
+            None,
+        )
+        .expect("explicit identity header policy");
+
+        assert_eq!(explicit.identity_header(), Some("X-Explicit-User"));
+    }
+
+    #[test]
     fn no_auth_provider_ignores_iap_identity_header() {
         let mut state = test_state(RuntimeMode::Service);
         state.server_policy =
@@ -2308,13 +2438,14 @@ mod tests {
                 .expect("policy");
         let mut headers = HeaderMap::new();
         headers.insert(
-            super::IAP_USER_EMAIL_HEADER,
+            super::DEFAULT_IDENTITY_HEADER,
             "accounts.google.com:alice@example.com".parse().expect("valid header"),
         );
 
         let identity = state.resolve_identity(&headers).expect("identity");
 
         assert!(!identity.authenticated);
+        assert!(state.server_policy.identity_header().is_none());
         assert_eq!(identity.user, super::DEFAULT_OWNER);
         assert!(identity.account.is_none());
     }

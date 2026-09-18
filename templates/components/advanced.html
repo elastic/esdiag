@@ -766,7 +766,11 @@
                     placeholder="Username"
                     autocomplete="none"
                     class="form-input"
-                    data-attr:disabled="$auth.header || $processing || $loading"
+                    {% if identity_locked %}
+                    disabled
+                    {% else %}
+                    data-attr:disabled="$processing || $loading"
+                    {% endif %}
                 />
             </input-group>
             <input-group>

@@ -25,7 +25,6 @@ pub struct DocsTemplate {
     pub current_path: String,
     pub html_content: String,
     // Add layout vars
-    pub auth_header: bool,
     pub debug: bool,
     pub desktop: bool,
     pub user: String,
@@ -196,7 +195,7 @@ pub async fn handler(
                     }
                 }
             } else {
-                let (auth_header, user_email) = match state.resolve_user_email(&headers) {
+                let (_, user_email) = match state.resolve_user_email(&headers) {
                     Ok(result) => result,
                     Err(err) => {
                         return (StatusCode::UNAUTHORIZED, format!("Unauthorized: {err}")).into_response();
@@ -210,7 +209,6 @@ pub async fn handler(
                     nav_sections,
                     current_path,
                     html_content,
-                    auth_header,
                     debug: tracing::enabled!(tracing::Level::DEBUG),
                     desktop: cfg!(feature = "desktop"),
                     kibana_url: state.kibana_url.read().await.clone(),

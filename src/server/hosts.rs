@@ -164,7 +164,7 @@ struct ClusterDraftSignal {
 }
 
 pub async fn page(State(state): State<Arc<ServerState>>, headers: HeaderMap) -> impl IntoResponse {
-    let (auth_header, user_email) = match state.resolve_user_email(&headers) {
+    let (_, user_email) = match state.resolve_user_email(&headers) {
         Ok(result) => result,
         Err(err) => {
             return (
@@ -205,7 +205,6 @@ pub async fn page(State(state): State<Arc<ServerState>>, headers: HeaderMap) -> 
         .unwrap_or_else(|err| format!("<panel id=\"clusters-table-panel\"><div>Error: {err}</div></panel>"));
 
     let page = template::HostsPage {
-        auth_header,
         debug: tracing::enabled!(tracing::Level::DEBUG),
         desktop: cfg!(feature = "desktop"),
         kibana_url: state.kibana_url.read().await.clone(),

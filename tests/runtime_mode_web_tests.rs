@@ -2,7 +2,7 @@
 
 use esdiag::{
     exporter::Exporter,
-    server::{RuntimeMode, Server},
+    server::{AuthProvider, RuntimeMode, Server, ServerStartOptions},
 };
 use reqwest::Client;
 use std::time::Duration;
@@ -17,16 +17,21 @@ async fn start_server(mode: RuntimeMode) -> (Server, Client, String) {
 }
 
 async fn start_server_with_features(mode: RuntimeMode, web_features: Option<&str>) -> (Server, Client, String) {
-    let (server, bound_addr) = Server::start_with_web_features(
-        [127, 0, 0, 1],
-        0,
-        Exporter::default(),
-        String::new(),
+    start_server_with_options(
         mode,
-        web_features,
+        ServerStartOptions {
+            web_features,
+            ..ServerStartOptions::default()
+        },
     )
     .await
-    .expect("start local server");
+}
+
+async fn start_server_with_options(mode: RuntimeMode, options: ServerStartOptions<'_>) -> (Server, Client, String) {
+    let (server, bound_addr) =
+        Server::start_with_options([127, 0, 0, 1], 0, Exporter::default(), String::new(), mode, options)
+            .await
+            .expect("start local server");
 
     let client = Client::new();
     let base = format!("http://127.0.0.1:{}", bound_addr.port());
@@ -61,6 +66,73 @@ async fn service_mode_requires_iap_header_for_web_access() {
     assert_eq!(authorized.status(), reqwest::StatusCode::OK);
     let body = authorized.text().await.expect("authorized body");
     assert!(body.contains("ops@example.com"));
+    assert!(!body.contains("data-signals:auth"));
+    assert!(!body.contains("$auth.header"));
+
+    server.shutdown().await;
+}
+
+#[tokio::test]
+async fn service_mode_reads_user_from_configured_identity_header() {
+    let (mut server, client, base) = start_server_with_options(
+        RuntimeMode::Service,
+        ServerStartOptions {
+            auth_provider: Some(AuthProvider::GoogleIap),
+            identity_header: Some("X-Authenticated-User"),
+            web_features: Some(""),
+            ..ServerStartOptions::default()
+        },
+    )
+    .await;
+
+    let default_header = client
+        .get(format!("{base}/"))
+        .header(
+            "X-Goog-Authenticated-User-Email",
+            "accounts.google.com:wrong@example.com",
+        )
+        .send()
+        .await
+        .expect("default header request");
+    assert_eq!(default_header.status(), reqwest::StatusCode::UNAUTHORIZED);
+
+    let configured_header = client
+        .get(format!("{base}/"))
+        .header("X-Authenticated-User", "ops@example.com")
+        .send()
+        .await
+        .expect("configured header request");
+    assert_eq!(configured_header.status(), reqwest::StatusCode::OK);
+    assert!(
+        configured_header
+            .text()
+            .await
+            .expect("configured header body")
+            .contains("ops@example.com")
+    );
+
+    server.shutdown().await;
+}
+
+#[tokio::test]
+async fn service_mode_none_auth_accepts_requests_without_identity_header() {
+    let (mut server, client, base) = start_server_with_options(
+        RuntimeMode::Service,
+        ServerStartOptions {
+            auth_provider: Some(AuthProvider::None),
+            web_features: Some(""),
+            ..ServerStartOptions::default()
+        },
+    )
+    .await;
+
+    let response = client
+        .get(format!("{base}/"))
+        .send()
+        .await
+        .expect("local service request");
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    assert!(response.text().await.expect("local service body").contains("Anonymous"));
 
     server.shutdown().await;
 }
@@ -84,6 +156,45 @@ async fn service_mode_does_not_mount_advanced_or_jobs_routes() {
         .await
         .expect("service mode jobs request");
     assert_eq!(jobs_response.status(), reqwest::StatusCode::NOT_FOUND);
+
+    server.shutdown().await;
+}
+
+#[tokio::test]
+async fn service_mode_omits_api_key_ui_and_routes() {
+    let (mut server, client, base) = start_server(RuntimeMode::Service).await;
+    let identity = ("X-Goog-Authenticated-User-Email", "accounts.google.com:ops@example.com");
+
+    let response = client
+        .get(format!("{base}/"))
+        .header(identity.0, identity.1)
+        .send()
+        .await
+        .expect("service mode page");
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let body = response.text().await.expect("service mode body");
+    assert!(!body.contains("id=\"tab-api-key\""));
+    assert!(!body.contains("id=\"api-key-form\""));
+    assert!(!body.contains("Elasticsearch API Key"));
+
+    for path in ["/api/api_key", "/api_key", "/api_key/42"] {
+        let response = client
+            .post(format!("{base}{path}"))
+            .header(identity.0, identity.1)
+            .json(&serde_json::json!({
+                "apikey": "must-not-be-accepted",
+                "url": "https://elasticsearch.example.com",
+                "metadata": {}
+            }))
+            .send()
+            .await
+            .expect("service mode API key request");
+        assert_eq!(
+            response.status(),
+            reqwest::StatusCode::NOT_FOUND,
+            "service mode mounted {path}"
+        );
+    }
 
     server.shutdown().await;
 }
@@ -309,6 +420,10 @@ async fn user_mode_allows_anonymous_web_access() {
     let body = response.text().await.expect("user mode body");
     assert!(body.contains("Anonymous"));
     assert!(body.contains("Process Diagnostics"));
+    assert!(body.contains("id=\"tab-api-key\""));
+    assert!(body.contains("id=\"api-key-form\""));
+    assert!(!body.contains("data-signals:auth"));
+    assert!(!body.contains("$auth.header"));
     assert!(!body.contains("id=\"workflow-go-button\""));
 
     server.shutdown().await;

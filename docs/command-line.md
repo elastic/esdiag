@@ -304,6 +304,22 @@ Service mode uses one startup-defined exporter. It does not persist user hosts,
 jobs, or keystore state. Use `--auth-provider google-iap|none` to select
 request authentication. Use `none` only for controlled local testing.
 
+The `google-iap` provider reads the user identity from
+`X-Goog-Authenticated-User-Email` by default. Set `--identity-header <HEADER>`
+or `ESDIAG_IDENTITY_HEADER` when the identity-aware proxy uses another header.
+The command-line value takes precedence over the environment. Configure the
+proxy to remove client-supplied values and set the trusted identity header.
+
+For local service-mode development without an identity header, use:
+
+```sh
+esdiag serve --mode service --auth-provider none
+```
+
+Service mode does not show API key inputs or mount API key submission routes.
+Run `esdiag serve --mode user` locally for direct API-key collection. Prefer a
+saved host with its credential in the encrypted keystore.
+
 In user mode, an incomplete local workflow opens the `/welcome` onboarding
 flow. It creates or unlocks the encrypted keystore with a masked form and
 configures the same persistent workflow as `esdiag init`. Service mode shows an
