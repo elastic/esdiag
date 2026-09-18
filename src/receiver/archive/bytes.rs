@@ -2,44 +2,7 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-17: use super::{IndexedArchive, normalize_supported_content, normalize_supported_reader_to_temp, resolve_archive_path, supports_json_normalization};
-19: use super::{IndexedArchive, normalize_supported_content, normalize_supported_reader_to_temp, resolve_archive_path, supports_json_normalization};
-18:     async fn resolve_stable_load(
-        &self,
-        uri: &Uri,
-        materialize_remote: bool,
-        scrubbed_override: Option<bool>,
-        filename_hint: Option<&str>,
-    ) -> Result<ResolvedInput> {
-15:     pub fn set_scrubbed(&mut self, scrubbed: bool) {
-        self.scrubbed = scrubbed;
-    }
-
-    /// `relative` beneath the working directory. Bundle paths are built from
-    /// names inside the bundle, so they must not climb out of it.
-    fn bundle_path(&self, relative: &str) -> Result<PathBuf> {
-        let escapes = Path::new(relative)
-            .components()
-            .any(|component| !matches!(component, Component::Normal(_) | Component::CurDir));
-        if escapes {
-            return Err(eyre!("Bundle path leaves the diagnostic directory: {relative}"));
-        }
-        Ok(self.path.join(&self.work_dir).join(relative))
-16:         let file = File::open(&path)?;
-        let mut reader = BufReader::new(file);
-        if !crate::receiver::source_has_json(&mut reader)? {
-            return Err(MissingSource::Empty {
-                path: path.display().to_string(),
-            }
-            .into());
-        }
-        if !should_normalize_file(filename, self.scrubbed) {
-            return serde_json::from_reader(reader).map_err(Into::into);
-        }
-        let mut content = String::new();
-        reader.read_to_string(&mut content)?;
-        let content = normalize_file_content_if_needed(filename, self.scrubbed, content)?;
-        serde_json::from_str(&content).map_err(Into::into)
+use super::{IndexedArchive, normalize_supported_content, resolve_archive_path, with_normalized_json_reader};
 use crate::{
     processor::{DataSource, SourceContext, StreamingDataSource},
     receiver::{MissingSource, Receive, ReceiveMultiple, ReceiveRaw},
@@ -115,22 +78,10 @@ impl Receive for ArchiveBytesReceiver {
                         );
                         continue;
                     }
-                    let parsed = if self.scrubbed && supports_json_normalization(&filename) {
-                        let mut transformed = normalize_supported_reader_to_temp(&filename, reader)?;
-                        tracing::debug!(
-                            "Unscrubbed {} address fields in {}",
-                            transformed.transformed_fields,
-                            filename
-                        );
-                        let reader = BufReader::new(transformed.file.as_file_mut());
-                        serde_json::from_reader(reader)
-                    } else {
-                        if self.scrubbed {
-                            tracing::debug!("Scrubbed mode read {} (no normalization rules)", filename);
-                        }
-                        serde_json::from_reader(reader)
-                    };
-                    let data: T = parsed.wrap_err_with(|| format!("Failed to parse {filename} for {}", T::name()))?;
+                    let data: T = with_normalized_json_reader(&filename, reader, self.scrubbed, |reader| {
+                        Ok(serde_json::from_reader(reader)?)
+                    })
+                    .wrap_err_with(|| format!("Failed to parse {filename} for {}", T::name()))?;
                     return Ok(data);
                 }
                 Err(e) => {

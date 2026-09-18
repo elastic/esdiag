@@ -9,18 +9,24 @@ use std::{
     path::Path,
 };
 
-/// NDJSON exports that embed `node.id` with `node.host` / `node.ip` from node lookup.
-const NODE_IP_STREAMS: &[&str] = &[
+// The 9.3.3 synthetic fixture duplicates a node with stats, tasks, HTTP clients,
+// applier recordings, adaptive selections, and ingest pipelines/processors.
+// Every required stream must therefore contain both fixture node IDs.
+const REQUIRED_NODE_IP_STREAMS: &[&str] = &[
     "metrics-node-esdiag.ndjson",
     "metrics-task-esdiag.ndjson",
-    "metrics-node.transport.actions-esdiag.ndjson",
     "metrics-node.http.clients-esdiag.ndjson",
     "metrics-node.discovery.cluster_applier-esdiag.ndjson",
     "metrics-node.discovery.cluster_adaptive-esdiag.ndjson",
     "metrics-ingest.pipeline-esdiag.ndjson",
     "metrics-ingest.processor-esdiag.ndjson",
-    "metrics-shard-esdiag.ndjson",
     "settings-node-esdiag.ndjson",
+];
+
+// Transport actions are empty and shard input is omitted from the fixture.
+const OPTIONAL_NODE_IP_STREAMS: &[&str] = &[
+    "metrics-node.transport.actions-esdiag.ndjson",
+    "metrics-shard-esdiag.ndjson",
 ];
 
 pub const SECOND_NODE_ID: &str = "syntheticSecondNode0123456789ab";
@@ -182,74 +188,6 @@ pub fn inject_malformed_ips_in_tasks_json(content: &str, expectations: &ScrubFix
 }
 
 pub fn assert_scrubbed_export(output_dir: &Path, expectations: &ScrubFixtureExpectations) {
-    let mut observed_by_node: HashMap<String, HashSet<String>> = HashMap::new();
-
-    for stream in NODE_IP_STREAMS {
-        let path = output_dir.join(stream);
-        if !path.exists() {
-            continue;
-        }
-
-        let content = fs::read_to_string(&path).unwrap_or_else(|err| {
-            panic!("read {}: {err}", path.display());
-        });
-
-        for (line_no, line) in content.lines().enumerate() {
-            if line.trim().is_empty() {
-                continue;
-            }
-            let doc: Value = serde_json::from_str(line).unwrap_or_else(|err| {
-                panic!("parse {stream} line {}: {err}", line_no + 1);
-            });
-            let Some(node) = doc.get("node").and_then(Value::as_object) else {
-                continue;
-            };
-            let Some(node_id) = node.get("id").and_then(Value::as_str) else {
-                continue;
-            };
-            let Some(expected_ip) = expectations.normalized_by_node_id.get(node_id) else {
-                continue;
-            };
-
-            for field in ["host", "ip", "transport_address"] {
-                let Some(raw) = node.get(field).and_then(Value::as_str) else {
-                    continue;
-                };
-                assert_normalized_address_field(
-                    stream,
-                    line_no + 1,
-                    &format!("node.{field}"),
-                    raw,
-                    expected_ip,
-                    expectations,
-                );
-
-                observed_by_node
-                    .entry(node_id.to_string())
-                    .or_default()
-                    .insert(strip_port(raw).to_string());
-            }
-
-            if *stream == "settings-node-esdiag.ndjson"
-                && let Some(publish_host) = node
-                    .get("settings")
-                    .and_then(|settings| settings.get("network"))
-                    .and_then(|network| network.get("publish_host"))
-                    .and_then(Value::as_str)
-                && looks_like_dotted_quad(publish_host)
-            {
-                assert_normalized_address_field(
-                    stream,
-                    line_no + 1,
-                    "node.settings.network.publish_host",
-                    publish_host,
-                    expected_ip,
-                    expectations,
-                );
-            }
-        }
-    }
-
     assert!(
         expectations.node_count() >= 2,
         "fixture must include at least two nodes to validate mapping isolation"
@@ -260,27 +198,89 @@ pub fn assert_scrubbed_export(output_dir: &Path, expectations: &ScrubFixtureExpe
         expectations.node_count(),
         "each node must have a distinct normalized IP in the fixture"
     );
+    let expected_node_ids: HashSet<_> = expectations.normalized_by_node_id.keys().cloned().collect();
 
-    for (node_id, expected_ip) in &expectations.normalized_by_node_id {
-        let seen = observed_by_node.get(node_id).cloned().unwrap_or_default();
-        assert!(
-            seen.contains(expected_ip),
-            "expected normalized IP {expected_ip} for node_id={node_id} in at least one export stream, saw {seen:?}"
-        );
-        assert_eq!(
-            seen.len(),
-            1,
-            "node_id={node_id} should map to exactly one normalized IP across streams, saw {seen:?}"
-        );
+    for stream in REQUIRED_NODE_IP_STREAMS.iter().chain(OPTIONAL_NODE_IP_STREAMS) {
+        let required = REQUIRED_NODE_IP_STREAMS.contains(stream);
+        let path = output_dir.join(stream);
+        if !required && !path.exists() {
+            continue;
+        }
+
+        let content = fs::read_to_string(&path).unwrap_or_else(|err| {
+            panic!("read {}: {err}", path.display());
+        });
+        let mut observed_node_ids = HashSet::new();
+
+        for (line_no, line) in content.lines().enumerate() {
+            if line.trim().is_empty() {
+                continue;
+            }
+            let doc: Value = serde_json::from_str(line).unwrap_or_else(|err| {
+                panic!("parse {stream} line {}: {err}", line_no + 1);
+            });
+            let node = doc.get("node").and_then(Value::as_object).unwrap_or_else(|| {
+                panic!("{stream} line {} missing node object", line_no + 1);
+            });
+            let node_id = node.get("id").and_then(Value::as_str).unwrap_or_else(|| {
+                panic!("{stream} line {} missing node.id", line_no + 1);
+            });
+            let expected_ip = expectations.normalized_by_node_id.get(node_id).unwrap_or_else(|| {
+                panic!("{stream} line {} unexpected node.id={node_id}", line_no + 1);
+            });
+
+            for field in ["host", "ip", "transport_address"] {
+                let field_required = field != "transport_address"
+                    || matches!(*stream, "metrics-node-esdiag.ndjson" | "settings-node-esdiag.ndjson");
+                let Some(raw) = node.get(field).and_then(Value::as_str) else {
+                    assert!(
+                        !field_required,
+                        "{stream} line {} missing node.{field} for node_id={node_id}",
+                        line_no + 1
+                    );
+                    continue;
+                };
+                assert_normalized_address_field(
+                    stream,
+                    line_no + 1,
+                    &format!("node.{field}"),
+                    raw,
+                    expected_ip,
+                    expectations,
+                );
+            }
+
+            if *stream == "settings-node-esdiag.ndjson" {
+                let publish_host = node
+                    .get("settings")
+                    .and_then(|settings| settings.get("network"))
+                    .and_then(|network| network.get("publish_host"))
+                    .and_then(Value::as_str)
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "{stream} line {} missing node.settings.network.publish_host",
+                            line_no + 1
+                        );
+                    });
+                assert_normalized_address_field(
+                    stream,
+                    line_no + 1,
+                    "node.settings.network.publish_host",
+                    publish_host,
+                    expected_ip,
+                    expectations,
+                );
+            }
+            observed_node_ids.insert(node_id.to_string());
+        }
+
+        if required {
+            assert_eq!(
+                observed_node_ids, expected_node_ids,
+                "{stream} must contain every fixture node ID"
+            );
+        }
     }
-}
-
-fn looks_like_dotted_quad(value: &str) -> bool {
-    let ip = strip_port(value);
-    ip.split('.').count() == 4
-        && ip
-            .split('.')
-            .all(|part| !part.is_empty() && part.chars().all(|ch| ch.is_ascii_digit()))
 }
 
 fn assert_normalized_address_field(
@@ -330,6 +330,50 @@ mod tests {
             let fixed = expected_normalized_ip(&malformed);
             assert!(is_valid_ipv4(&fixed));
             assert!(normalized.insert(fixed));
+        }
+    }
+
+    #[test]
+    fn required_streams_cannot_borrow_node_coverage_from_other_streams() {
+        let output = tempfile::tempdir().expect("output tempdir");
+        let nodes = ensure_two_nodes_in_nodes_json(r#"{"nodes":{"first":{}}}"#);
+        let (_, expectations) = inject_malformed_ips_in_nodes_json(&nodes);
+        let documents: Vec<_> = expectations
+            .normalized_by_node_id
+            .iter()
+            .map(|(node_id, ip)| {
+                serde_json::json!({
+                    "node": {
+                        "id": node_id,
+                        "host": ip,
+                        "ip": ip,
+                        "transport_address": format!("{ip}:9300"),
+                        "settings": {"network": {"publish_host": ip}}
+                    }
+                })
+                .to_string()
+            })
+            .collect();
+        let complete_stream = documents.join("\n");
+        for stream in REQUIRED_NODE_IP_STREAMS {
+            fs::write(output.path().join(stream), &complete_stream).expect("write complete stream");
+        }
+        assert_scrubbed_export(output.path(), &expectations);
+
+        for stream in ["metrics-node-esdiag.ndjson", "metrics-task-esdiag.ndjson"] {
+            let path = output.path().join(stream);
+            fs::remove_file(&path).expect("remove required stream");
+            assert!(
+                std::panic::catch_unwind(|| assert_scrubbed_export(output.path(), &expectations)).is_err(),
+                "missing {stream} must fail even when all other streams are complete"
+            );
+
+            fs::write(&path, &documents[0]).expect("write stream missing one node");
+            assert!(
+                std::panic::catch_unwind(|| assert_scrubbed_export(output.path(), &expectations)).is_err(),
+                "missing node in {stream} must fail even when all other streams contain it"
+            );
+            fs::write(&path, &complete_stream).expect("restore complete stream");
         }
     }
 }

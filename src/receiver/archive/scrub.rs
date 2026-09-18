@@ -4,7 +4,7 @@
 
 use eyre::Result;
 use serde_json::Value;
-use std::io::{BufRead, Seek, SeekFrom, Write};
+use std::io::{BufRead, BufReader, BufWriter, Seek, SeekFrom, Write};
 use std::path::Path;
 
 /// Fields mapped as `ip` or keyword mirrors of node addresses in esdiag exports.
@@ -30,6 +30,29 @@ pub struct TempTransformResult {
     pub transformed_fields: usize,
 }
 
+/// Keep temporary normalized content alive for either eager or streaming deserialization.
+pub(crate) fn with_normalized_json_reader<R: BufRead, T>(
+    path: &str,
+    mut reader: R,
+    scrubbed: bool,
+    deserialize: impl FnOnce(&mut dyn BufRead) -> Result<T>,
+) -> Result<T> {
+    if scrubbed && supports_json_normalization(path) {
+        let mut transformed = normalize_supported_reader_to_temp(path, reader)?;
+        tracing::debug!(
+            "Unscrubbed {} address fields in {}",
+            transformed.transformed_fields,
+            path
+        );
+        deserialize(&mut BufReader::new(transformed.file.as_file_mut()))
+    } else {
+        if scrubbed {
+            tracing::debug!("Scrubbed mode read {} (no normalization rules)", path);
+        }
+        deserialize(&mut reader)
+    }
+}
+
 pub fn supports_json_normalization(path: &str) -> bool {
     let normalized = path.replace('\\', "/");
     let filename = Path::new(&normalized)
@@ -50,7 +73,7 @@ pub fn normalize_supported_content(path: &str, input: String) -> Result<Transfor
 
     let mut json: Value = serde_json::from_str(&input)?;
     let mut transformed = 0usize;
-    normalize_value(&mut json, &mut Vec::new(), &mut transformed);
+    normalize_value(&mut json, None, &mut transformed);
 
     Ok(TransformResult {
         content: serde_json::to_string(&json)?,
@@ -71,7 +94,11 @@ pub fn normalize_supported_reader_to_temp<R: BufRead>(path: &str, mut reader: R)
     }
 
     let mut transformed = 0usize;
-    normalize_json_stream(reader, &mut file, &mut transformed)?;
+    {
+        let mut writer = BufWriter::new(file.as_file_mut());
+        normalize_json_stream(reader, &mut writer, &mut transformed)?;
+        writer.flush()?;
+    }
     file.as_file_mut().seek(SeekFrom::Start(0))?;
 
     Ok(TempTransformResult {
@@ -97,17 +124,7 @@ fn normalize_json_stream<R: BufRead, W: Write>(reader: R, writer: &mut W, transf
                     }
                 } else {
                     let value = serde_json::from_str::<String>(&format!("\"{raw}\""))?;
-                    let path = path_for_string_value(&stack);
-                    if matches_http_client_id(&path)
-                        && let Some(client_id) = normalize_http_client_id(&value)
-                    {
-                        write!(writer, "{client_id}")?;
-                        *transformed += 1;
-                        mark_value_written(&mut stack);
-                        continue;
-                    }
-
-                    match normalize_string_for_path(&path, &value) {
+                    match normalize_string_for_field(field_for_value(&stack), &value) {
                         Some(updated) if updated != value => {
                             serde_json::to_writer(&mut *writer, &updated)?;
                             *transformed += 1;
@@ -118,18 +135,20 @@ fn normalize_json_stream<R: BufRead, W: Write>(reader: R, writer: &mut W, transf
                 }
             }
             b'{' => {
-                let segment = take_pending_key(&mut stack);
                 writer.write_all(b"{")?;
                 stack.push(JsonContext::Object {
-                    segment,
                     pending_key: None,
                     expecting_key: true,
                 });
             }
             b'[' => {
-                let segment = take_pending_key(&mut stack);
+                let field = match stack.last_mut() {
+                    Some(JsonContext::Object { pending_key, .. }) => pending_key.take(),
+                    Some(JsonContext::Array { field }) => field.clone(),
+                    None => None,
+                };
                 writer.write_all(b"[")?;
-                stack.push(JsonContext::Array { segment });
+                stack.push(JsonContext::Array { field });
             }
             b'}' | b']' => {
                 writer.write_all(&[byte])?;
@@ -168,21 +187,12 @@ fn normalize_json_stream<R: BufRead, W: Write>(reader: R, writer: &mut W, transf
 
 enum JsonContext {
     Object {
-        segment: Option<String>,
         pending_key: Option<String>,
         expecting_key: bool,
     },
     Array {
-        segment: Option<String>,
+        field: Option<String>,
     },
-}
-
-impl JsonContext {
-    fn segment(&self) -> Option<&str> {
-        match self {
-            JsonContext::Object { segment, .. } | JsonContext::Array { segment } => segment.as_deref(),
-        }
-    }
 }
 
 fn read_json_string_body<I>(bytes: &mut std::iter::Peekable<I>) -> Result<String>
@@ -218,13 +228,6 @@ fn is_object_key_context(stack: &[JsonContext]) -> bool {
     )
 }
 
-fn take_pending_key(stack: &mut [JsonContext]) -> Option<String> {
-    match stack.last_mut() {
-        Some(JsonContext::Object { pending_key, .. }) => pending_key.take(),
-        _ => None,
-    }
-}
-
 fn mark_value_written(stack: &mut [JsonContext]) {
     if let Some(JsonContext::Object {
         pending_key,
@@ -237,22 +240,15 @@ fn mark_value_written(stack: &mut [JsonContext]) {
     }
 }
 
-fn path_for_string_value(stack: &[JsonContext]) -> Vec<String> {
-    let mut path: Vec<String> = stack
-        .iter()
-        .filter_map(|ctx| ctx.segment().map(ToString::to_string))
-        .collect();
-    if let Some(JsonContext::Object {
-        pending_key: Some(key), ..
-    }) = stack.last()
-    {
-        path.push(key.clone());
+fn field_for_value(stack: &[JsonContext]) -> Option<&str> {
+    match stack.last()? {
+        JsonContext::Object { pending_key, .. } => pending_key.as_deref(),
+        JsonContext::Array { field } => field.as_deref(),
     }
-    path
 }
 
-fn normalize_string_for_path(path: &[String], raw: &str) -> Option<String> {
-    let key = path.last().map(String::as_str)?;
+fn normalize_string_for_field(field: Option<&str>, raw: &str) -> Option<String> {
+    let key = field?;
     if PURE_IP_FIELDS.contains(&key) {
         normalize_pure_ip(raw)
     } else if IP_OR_PORT_FIELDS.contains(&key) {
@@ -281,43 +277,20 @@ where
     Ok(())
 }
 
-fn normalize_value(value: &mut Value, path: &mut Vec<String>, transformed: &mut usize) {
-    if matches_http_client_id(path)
-        && let Value::String(raw) = value
-        && let Some(client_id) = normalize_http_client_id(raw)
-    {
-        *value = Value::Number(client_id.into());
-        *transformed += 1;
-        return;
-    }
-
+fn normalize_value(value: &mut Value, field: Option<&str>, transformed: &mut usize) {
     match value {
         Value::Object(object) => {
             for (key, child) in object.iter_mut() {
-                path.push(key.clone());
-                normalize_value(child, path, transformed);
-                path.pop();
+                normalize_value(child, Some(key), transformed);
             }
         }
         Value::Array(array) => {
             for child in array.iter_mut() {
-                normalize_value(child, path, transformed);
+                normalize_value(child, field, transformed);
             }
         }
         Value::String(raw) => {
-            let Some(key) = path.last().map(String::as_str) else {
-                return;
-            };
-
-            let normalized = if PURE_IP_FIELDS.contains(&key) {
-                normalize_pure_ip(raw)
-            } else if IP_OR_PORT_FIELDS.contains(&key) {
-                normalize_ip_or_ip_port(raw)
-            } else {
-                None
-            };
-
-            if let Some(updated) = normalized
+            if let Some(updated) = normalize_string_for_field(field, raw)
                 && updated != *raw
             {
                 *raw = updated;
@@ -374,27 +347,6 @@ fn normalize_malformed_ipv4(value: &str) -> Option<String> {
     )
 }
 
-fn normalize_http_client_id(value: &str) -> Option<u64> {
-    let octets = parse_ipv4_octets(value)?;
-    if octets.iter().all(|octet| *octet <= 255) {
-        return None;
-    }
-
-    let normalized = octets.map(|octet| octet % 255);
-    let id = ((normalized[0] as u64) << 24)
-        | ((normalized[1] as u64) << 16)
-        | ((normalized[2] as u64) << 8)
-        | normalized[3] as u64;
-    Some(id)
-}
-
-fn matches_http_client_id(path: &[String]) -> bool {
-    path.len() >= 3
-        && path[path.len() - 3] == "http"
-        && path[path.len() - 2] == "clients"
-        && path[path.len() - 1] == "id"
-}
-
 fn parse_ipv4_octets(value: &str) -> Option<[u16; 4]> {
     let mut octets = [0u16; 4];
     let mut parts = value.split('.');
@@ -427,7 +379,6 @@ pub(super) mod synthetic_vectors {
     pub const NORMALIZED_IP_SECONDARY_WITH_PORT: &str = "3.4.5.6:19033";
 
     pub const MALFORMED_HTTP_CLIENT_ID: &str = "516.772.1028.1284";
-    pub const NORMALIZED_HTTP_CLIENT_ID: u64 = 101_124_105;
 
     /// RFC 5737 TEST-NET-1 address for valid pass-through cases.
     pub const VALID_IP: &str = "192.0.2.50";
@@ -475,7 +426,7 @@ mod tests {
         let result = normalize_supported_content("diag/nodes.json", input).expect("normalize");
 
         assert!(result.supported);
-        assert_eq!(result.transformed_fields, 6);
+        assert_eq!(result.transformed_fields, 5);
         assert!(result.content.contains(&format!("\"ip\":\"{}\"", v::NORMALIZED_IP)));
         assert!(result.content.contains(&format!("\"host\":\"{}\"", v::NORMALIZED_IP)));
         assert!(
@@ -496,7 +447,7 @@ mod tests {
         assert!(
             result
                 .content
-                .contains(&format!("\"id\":{}", v::NORMALIZED_HTTP_CLIENT_ID))
+                .contains(&format!("\"id\":\"{}\"", v::MALFORMED_HTTP_CLIENT_ID))
         );
     }
 
@@ -529,10 +480,46 @@ mod tests {
             .read_to_string(&mut content)
             .expect("read normalized temp");
 
-        assert_eq!(result.transformed_fields, 3);
+        assert_eq!(result.transformed_fields, 2);
         assert!(content.contains(&format!("\"{}\"", v::NORMALIZED_IP)));
         assert!(content.contains(&format!("\"{}\"", v::NORMALIZED_IP_WITH_PORT)));
-        assert!(content.contains(&v::NORMALIZED_HTTP_CLIENT_ID.to_string()));
+        let doc: Value = serde_json::from_str(&content).expect("parse normalized JSON");
+        assert_eq!(
+            doc["nodes"]["a"]["http"]["clients"][0]["id"],
+            v::MALFORMED_HTTP_CLIENT_ID
+        );
+    }
+
+    #[test]
+    fn raw_and_streaming_normalization_preserve_field_scope_through_arrays() {
+        let input = serde_json::json!({
+            "bound_address": [
+                v::MALFORMED_IP_WITH_PORT,
+                [v::MALFORMED_IP_SECONDARY_WITH_PORT],
+                {"name": v::MALFORMED_IP, "host": v::MALFORMED_IP}
+            ],
+            "host": {"name": v::MALFORMED_IP},
+            "name": [v::MALFORMED_IP],
+            "http": {"clients": [{"id": v::MALFORMED_HTTP_CLIENT_ID}]}
+        });
+        let expected = serde_json::json!({
+            "bound_address": [
+                v::NORMALIZED_IP_WITH_PORT,
+                [v::NORMALIZED_IP_SECONDARY_WITH_PORT],
+                {"name": v::MALFORMED_IP, "host": v::NORMALIZED_IP}
+            ],
+            "host": {"name": v::MALFORMED_IP},
+            "name": [v::MALFORMED_IP],
+            "http": {"clients": [{"id": v::MALFORMED_HTTP_CLIENT_ID}]}
+        });
+        let input = input.to_string();
+        let mut streamed = normalize_supported_reader_to_temp("nodes.json", input.as_bytes()).unwrap();
+        let raw = normalize_supported_content("nodes.json", input).unwrap();
+        assert_eq!(
+            serde_json::from_reader::<_, Value>(streamed.file.as_file_mut()).unwrap(),
+            expected
+        );
+        assert_eq!(serde_json::from_str::<Value>(&raw.content).unwrap(), expected);
     }
 
     #[test]

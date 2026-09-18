@@ -23,7 +23,7 @@ Precedence is **channel-local**:
 
 - CLI `--scrubbed true` forces normalization even if the filename does not contain a `scrubbed` token.
 - CLI `--scrubbed false` disables normalization even for `*scrubbed*.zip` inputs.
-- Checking the upload checkbox explicitly enables scrub mode. When unchecked, the field is omitted and the uploaded filename controls auto-detection. API clients may send other explicit values to disable scrub mode. If the checkbox field is present but unreadable, scrub mode defaults to enabled.
+- Checking the upload checkbox explicitly enables scrub mode. When unchecked, the field is omitted and the uploaded filename controls auto-detection. API clients may send other explicit values to disable scrub mode. Malformed multipart data or unreadable fields reject the upload and remove any staged file; they never select a scrub override.
 
 CLI and UI are independent execution channels; one does not override the other.
 
@@ -35,9 +35,8 @@ Only explicit address fields are rewritten:
 
 - Pure IP semantics (`ip` mapping and keyword mirrors): `ip`, `host`, `publish_host`, `bind_host`
 - IP with optional port: `transport_address`, `publish_address`, `bound_address`, `local_address`, `remote_address`, `x_forwarded_for`
-- HTTP client IDs under `http.clients[].id` when the value is a malformed dotted-quad
 
-All other `.json` diagnostic files are scanned (except `diagnostic_manifest.json` and `version.json`).
+Identifiers, including `http.clients[].id`, retain their original values and JSON types. They are not address fields.
 
 ## Normalization rules
 
@@ -47,6 +46,8 @@ All other `.json` diagnostic files are scanned (except `diagnostic_manifest.json
 - For pure IP fields (`ip`, `host`), normalized output is IP-only (no port suffix).
 
 Scrubbed 19-character lowercase hex node names are humanized during node lookup processing (for example `aaaabbbbccccddddee0` → `hot-dee0`).
+
+Node-stat enrichment first matches the node ID. When that ID is absent from the lookup, a name fallback is used only if exactly one node has that name. Duplicate names remain unresolved rather than attaching another node's identity, address, tier, or CPU allocation.
 
 ## Customer diagnostics policy
 
@@ -59,12 +60,12 @@ Automated tests build synthetic malformed IPs at runtime from the esdiag golden 
 ```bash
 cargo test --lib scrub
 cargo test --test scrubbed_normalization_tests
-cargo test --test scrub_debug_log_tests
+cargo test --lib server::file_upload::tests
+cargo test --lib processor::elasticsearch::nodes::lookup::tests
 cargo clippy --workspace --all-targets
-npx openspec validate normalize-malformed-scrubbed-ips
 ```
 
-The integration test transforms the golden archive in a temp directory (malformed IP substitution), runs `process` → directory export, and asserts normalized node metrics — no committed scrubbed zip or helper scripts required.
+The integration test transforms the golden archive in a temp directory (malformed IP substitution), runs `process` → directory export, and requires every fixture node in each guaranteed export stream. Missing node-stats or task streams fail independently of node-settings output. No committed scrubbed zip or helper scripts are required.
 
 ## Dev ingest verification (environment-gated)
 
@@ -131,8 +132,8 @@ Look for lines like `Unscrubbed N address fields in .../nodes.json`.
 |------|-------|---------|
 | Deterministic unit tests | Scrub helpers, receiver wiring, upload parsing, node rename | `cargo test --lib scrub` |
 | Deterministic integration | In-process `process` → directory export; per-node IP mapping across NDJSON streams; archive **and** directory paths; scrub disabled regression | `cargo test --test scrubbed_normalization_tests` |
-| Debug log assertions | Scrub mode context + per-file unscrubbed counts | `cargo test --test scrub_debug_log_tests` |
+| Upload rejection and cleanup | Truncated bodies, malformed trailing parts, valid explicit override | `cargo test --lib server::file_upload::tests` |
+| Node lookup disambiguation | Duplicate names, unique fallback, exact-ID precedence | `cargo test --lib processor::elasticsearch::nodes::lookup::tests` |
 | Workspace lint | Changed Rust sources | `cargo clippy --workspace --all-targets` |
-| OpenSpec | Change artifacts | `npx openspec validate normalize-malformed-scrubbed-ips` |
 | Environment-gated ingest | Live Elasticsearch target | Manual `esdiag process --debug` + `report.json` checks (see above) |
 | Environment-gated full suite | Known-host / container dependent tests | `cargo test --workspace` (classify pre-existing failures) |
