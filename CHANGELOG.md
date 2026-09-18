@@ -61,6 +61,10 @@ published release notes, maintenance branches, and tagged history.
 - Added a native Windows x86_64 release archive, `esdiag-VERSION-x86_64-pc-windows-msvc.zip`, that runs without the Visual C++ Redistributable.
 - Added receiver-stage normalization for malformed IPv4 values in scrubbed diagnostics, with `--scrubbed` CLI flag and upload checkbox (#330).
 
+### Security
+
+- Escaped uploaded filenames in HTML responses to prevent markup and script injection.
+
 ### Changed
 
 - Changed native Windows local-stack lifecycle commands to identify the managed web service by executable and creation time, report its running status, and stop it during restart and shutdown.

@@ -27,6 +27,8 @@ Precedence is **channel-local**:
 
 CLI and UI are independent execution channels; one does not override the other.
 
+Uploaded filenames are displayed as literal text, not HTML. Escaping affects only the response; the original filename is retained for scrub auto-detection and processing.
+
 ## Supported files and fields
 
 Normalization applies to address fields in **all diagnostic `.json` files** except `diagnostic_manifest.json` and `version.json` (including `nodes.json`, `nodes_stats.json`, `tasks.json`, `master.json`, `shards.json`, etc.).
