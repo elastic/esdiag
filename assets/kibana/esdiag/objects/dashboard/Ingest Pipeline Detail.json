@@ -50,16 +50,16 @@
             "references": [],
             "state": {
               "adHocDataViews": {
-                "metrics-ingest.pipeline-*-ca3b5eb5e99d45802296c126e0266638828ac5949963325e6ffa426858b49f1c": {
+                "metrics-ingest.pipeline-esdiag*-ca3b5eb5e99d45802296c126e0266638828ac5949963325e6ffa426858b49f1c": {
                   "allowHidden": false,
                   "allowNoIndex": false,
                   "fieldAttrs": {},
                   "fieldFormats": {},
-                  "id": "metrics-ingest.pipeline-*-ca3b5eb5e99d45802296c126e0266638828ac5949963325e6ffa426858b49f1c",
-                  "name": "metrics-ingest.pipeline-*",
+                  "id": "metrics-ingest.pipeline-esdiag*-ca3b5eb5e99d45802296c126e0266638828ac5949963325e6ffa426858b49f1c",
+                  "name": "metrics-ingest.pipeline-esdiag*",
                   "runtimeFieldMap": {},
                   "sourceFilters": [],
-                  "title": "metrics-ingest.pipeline-*",
+                  "title": "metrics-ingest.pipeline-esdiag*",
                   "type": "esql"
                 }
               },
@@ -85,9 +85,9 @@
                           }
                         }
                       ],
-                      "index": "metrics-ingest.pipeline-*-ca3b5eb5e99d45802296c126e0266638828ac5949963325e6ffa426858b49f1c",
+                      "index": "metrics-ingest.pipeline-esdiag*-ca3b5eb5e99d45802296c126e0266638828ac5949963325e6ffa426858b49f1c",
                       "query": {
-                        "esql": "FROM metrics-ingest.pipeline-* | STATS `Documents` = SUM(ingest.pipeline.count)"
+                        "esql": "FROM metrics-ingest.pipeline-esdiag* | STATS `Documents` = SUM(ingest.pipeline.count)"
                       }
                     }
                   }
@@ -96,13 +96,13 @@
               "filters": [],
               "internalReferences": [
                 {
-                  "id": "metrics-ingest.pipeline-*-ca3b5eb5e99d45802296c126e0266638828ac5949963325e6ffa426858b49f1c",
+                  "id": "metrics-ingest.pipeline-esdiag*-ca3b5eb5e99d45802296c126e0266638828ac5949963325e6ffa426858b49f1c",
                   "name": "indexpattern-datasource-layer-layer_0",
                   "type": "index-pattern"
                 }
               ],
               "query": {
-                "esql": "FROM metrics-ingest.pipeline-* | STATS `Documents` = SUM(ingest.pipeline.count)"
+                "esql": "FROM metrics-ingest.pipeline-esdiag* | STATS `Documents` = SUM(ingest.pipeline.count)"
               },
               "visualization": {
                 "layerId": "layer_0",
@@ -132,16 +132,16 @@
             "references": [],
             "state": {
               "adHocDataViews": {
-                "metrics-ingest.pipeline-*-0ab898d1c400be17d713db9662133fe3d3d870004103c36e415981dfcf297dc4": {
+                "metrics-ingest.pipeline-esdiag*-0ab898d1c400be17d713db9662133fe3d3d870004103c36e415981dfcf297dc4": {
                   "allowHidden": false,
                   "allowNoIndex": false,
                   "fieldAttrs": {},
                   "fieldFormats": {},
-                  "id": "metrics-ingest.pipeline-*-0ab898d1c400be17d713db9662133fe3d3d870004103c36e415981dfcf297dc4",
-                  "name": "metrics-ingest.pipeline-*",
+                  "id": "metrics-ingest.pipeline-esdiag*-0ab898d1c400be17d713db9662133fe3d3d870004103c36e415981dfcf297dc4",
+                  "name": "metrics-ingest.pipeline-esdiag*",
                   "runtimeFieldMap": {},
                   "sourceFilters": [],
-                  "title": "metrics-ingest.pipeline-*",
+                  "title": "metrics-ingest.pipeline-esdiag*",
                   "type": "esql"
                 }
               },
@@ -168,9 +168,9 @@
                           }
                         }
                       ],
-                      "index": "metrics-ingest.pipeline-*-0ab898d1c400be17d713db9662133fe3d3d870004103c36e415981dfcf297dc4",
+                      "index": "metrics-ingest.pipeline-esdiag*-0ab898d1c400be17d713db9662133fe3d3d870004103c36e415981dfcf297dc4",
                       "query": {
-                        "esql": "FROM metrics-ingest.pipeline-* | STATS `Total time` = SUM(ingest.pipeline.time_in_millis)"
+                        "esql": "FROM metrics-ingest.pipeline-esdiag* | STATS `Total time` = SUM(ingest.pipeline.time_in_millis)"
                       }
                     }
                   }
@@ -179,13 +179,13 @@
               "filters": [],
               "internalReferences": [
                 {
-                  "id": "metrics-ingest.pipeline-*-0ab898d1c400be17d713db9662133fe3d3d870004103c36e415981dfcf297dc4",
+                  "id": "metrics-ingest.pipeline-esdiag*-0ab898d1c400be17d713db9662133fe3d3d870004103c36e415981dfcf297dc4",
                   "name": "indexpattern-datasource-layer-layer_0",
                   "type": "index-pattern"
                 }
               ],
               "query": {
-                "esql": "FROM metrics-ingest.pipeline-* | STATS `Total time` = SUM(ingest.pipeline.time_in_millis)"
+                "esql": "FROM metrics-ingest.pipeline-esdiag* | STATS `Total time` = SUM(ingest.pipeline.time_in_millis)"
               },
               "visualization": {
                 "layerId": "layer_0",
@@ -215,16 +215,16 @@
             "references": [],
             "state": {
               "adHocDataViews": {
-                "metrics-ingest.pipeline-*-d5c4164c8eead8601f469f62042a55d3c4f716ca6301ab1b657122251ff73575": {
+                "metrics-ingest.pipeline-esdiag*-d5c4164c8eead8601f469f62042a55d3c4f716ca6301ab1b657122251ff73575": {
                   "allowHidden": false,
                   "allowNoIndex": false,
                   "fieldAttrs": {},
                   "fieldFormats": {},
-                  "id": "metrics-ingest.pipeline-*-d5c4164c8eead8601f469f62042a55d3c4f716ca6301ab1b657122251ff73575",
-                  "name": "metrics-ingest.pipeline-*",
+                  "id": "metrics-ingest.pipeline-esdiag*-d5c4164c8eead8601f469f62042a55d3c4f716ca6301ab1b657122251ff73575",
+                  "name": "metrics-ingest.pipeline-esdiag*",
                   "runtimeFieldMap": {},
                   "sourceFilters": [],
-                  "title": "metrics-ingest.pipeline-*",
+                  "title": "metrics-ingest.pipeline-esdiag*",
                   "type": "esql"
                 }
               },
@@ -251,9 +251,9 @@
                           }
                         }
                       ],
-                      "index": "metrics-ingest.pipeline-*-d5c4164c8eead8601f469f62042a55d3c4f716ca6301ab1b657122251ff73575",
+                      "index": "metrics-ingest.pipeline-esdiag*-d5c4164c8eead8601f469f62042a55d3c4f716ca6301ab1b657122251ff73575",
                       "query": {
-                        "esql": "FROM metrics-ingest.pipeline-* | STATS t = SUM(ingest.pipeline.time_in_millis), c = SUM(ingest.pipeline.count) | EVAL `Time per document` = CASE(c > 0, t * 1000.0 / c, null) | KEEP `Time per document`"
+                        "esql": "FROM metrics-ingest.pipeline-esdiag* | STATS t = SUM(ingest.pipeline.time_in_millis), c = SUM(ingest.pipeline.count) | EVAL `Time per document` = CASE(c > 0, t * 1000.0 / c, null) | KEEP `Time per document`"
                       }
                     }
                   }
@@ -262,13 +262,13 @@
               "filters": [],
               "internalReferences": [
                 {
-                  "id": "metrics-ingest.pipeline-*-d5c4164c8eead8601f469f62042a55d3c4f716ca6301ab1b657122251ff73575",
+                  "id": "metrics-ingest.pipeline-esdiag*-d5c4164c8eead8601f469f62042a55d3c4f716ca6301ab1b657122251ff73575",
                   "name": "indexpattern-datasource-layer-layer_0",
                   "type": "index-pattern"
                 }
               ],
               "query": {
-                "esql": "FROM metrics-ingest.pipeline-* | STATS t = SUM(ingest.pipeline.time_in_millis), c = SUM(ingest.pipeline.count) | EVAL `Time per document` = CASE(c > 0, t * 1000.0 / c, null) | KEEP `Time per document`"
+                "esql": "FROM metrics-ingest.pipeline-esdiag* | STATS t = SUM(ingest.pipeline.time_in_millis), c = SUM(ingest.pipeline.count) | EVAL `Time per document` = CASE(c > 0, t * 1000.0 / c, null) | KEEP `Time per document`"
               },
               "visualization": {
                 "layerId": "layer_0",
@@ -380,16 +380,16 @@
             "references": [],
             "state": {
               "adHocDataViews": {
-                "metrics-ingest.pipeline-*-d8f3a1c58d7c14c1f9850776ba266224629781d2a171363011dca05a96e272f3": {
+                "metrics-ingest.pipeline-esdiag*-d8f3a1c58d7c14c1f9850776ba266224629781d2a171363011dca05a96e272f3": {
                   "allowHidden": false,
                   "allowNoIndex": false,
                   "fieldAttrs": {},
                   "fieldFormats": {},
-                  "id": "metrics-ingest.pipeline-*-d8f3a1c58d7c14c1f9850776ba266224629781d2a171363011dca05a96e272f3",
-                  "name": "metrics-ingest.pipeline-*",
+                  "id": "metrics-ingest.pipeline-esdiag*-d8f3a1c58d7c14c1f9850776ba266224629781d2a171363011dca05a96e272f3",
+                  "name": "metrics-ingest.pipeline-esdiag*",
                   "runtimeFieldMap": {},
                   "sourceFilters": [],
-                  "title": "metrics-ingest.pipeline-*",
+                  "title": "metrics-ingest.pipeline-esdiag*",
                   "type": "esql"
                 }
               },
@@ -415,9 +415,9 @@
                           }
                         }
                       ],
-                      "index": "metrics-ingest.pipeline-*-d8f3a1c58d7c14c1f9850776ba266224629781d2a171363011dca05a96e272f3",
+                      "index": "metrics-ingest.pipeline-esdiag*-d8f3a1c58d7c14c1f9850776ba266224629781d2a171363011dca05a96e272f3",
                       "query": {
-                        "esql": "FROM metrics-ingest.pipeline-* | STATS `Pipeline failures` = SUM(ingest.pipeline.failed)"
+                        "esql": "FROM metrics-ingest.pipeline-esdiag* | STATS `Pipeline failures` = SUM(ingest.pipeline.failed)"
                       }
                     }
                   }
@@ -426,13 +426,13 @@
               "filters": [],
               "internalReferences": [
                 {
-                  "id": "metrics-ingest.pipeline-*-d8f3a1c58d7c14c1f9850776ba266224629781d2a171363011dca05a96e272f3",
+                  "id": "metrics-ingest.pipeline-esdiag*-d8f3a1c58d7c14c1f9850776ba266224629781d2a171363011dca05a96e272f3",
                   "name": "indexpattern-datasource-layer-layer_0",
                   "type": "index-pattern"
                 }
               ],
               "query": {
-                "esql": "FROM metrics-ingest.pipeline-* | STATS `Pipeline failures` = SUM(ingest.pipeline.failed)"
+                "esql": "FROM metrics-ingest.pipeline-esdiag* | STATS `Pipeline failures` = SUM(ingest.pipeline.failed)"
               },
               "visualization": {
                 "layerId": "layer_0",
@@ -462,16 +462,16 @@
             "references": [],
             "state": {
               "adHocDataViews": {
-                "metrics-ingest.pipeline-*-92ccf59d630fa74ce211f7413affdccdc373729a249dedb442e3e9c0d1e5cac2": {
+                "metrics-ingest.pipeline-esdiag*-92ccf59d630fa74ce211f7413affdccdc373729a249dedb442e3e9c0d1e5cac2": {
                   "allowHidden": false,
                   "allowNoIndex": false,
                   "fieldAttrs": {},
                   "fieldFormats": {},
-                  "id": "metrics-ingest.pipeline-*-92ccf59d630fa74ce211f7413affdccdc373729a249dedb442e3e9c0d1e5cac2",
-                  "name": "metrics-ingest.pipeline-*",
+                  "id": "metrics-ingest.pipeline-esdiag*-92ccf59d630fa74ce211f7413affdccdc373729a249dedb442e3e9c0d1e5cac2",
+                  "name": "metrics-ingest.pipeline-esdiag*",
                   "runtimeFieldMap": {},
                   "sourceFilters": [],
-                  "title": "metrics-ingest.pipeline-*",
+                  "title": "metrics-ingest.pipeline-esdiag*",
                   "type": "esql"
                 }
               },
@@ -497,9 +497,9 @@
                           }
                         }
                       ],
-                      "index": "metrics-ingest.pipeline-*-92ccf59d630fa74ce211f7413affdccdc373729a249dedb442e3e9c0d1e5cac2",
+                      "index": "metrics-ingest.pipeline-esdiag*-92ccf59d630fa74ce211f7413affdccdc373729a249dedb442e3e9c0d1e5cac2",
                       "query": {
-                        "esql": "FROM metrics-ingest.pipeline-* | STATS `In flight` = SUM(ingest.pipeline.current)"
+                        "esql": "FROM metrics-ingest.pipeline-esdiag* | STATS `In flight` = SUM(ingest.pipeline.current)"
                       }
                     }
                   }
@@ -508,13 +508,13 @@
               "filters": [],
               "internalReferences": [
                 {
-                  "id": "metrics-ingest.pipeline-*-92ccf59d630fa74ce211f7413affdccdc373729a249dedb442e3e9c0d1e5cac2",
+                  "id": "metrics-ingest.pipeline-esdiag*-92ccf59d630fa74ce211f7413affdccdc373729a249dedb442e3e9c0d1e5cac2",
                   "name": "indexpattern-datasource-layer-layer_0",
                   "type": "index-pattern"
                 }
               ],
               "query": {
-                "esql": "FROM metrics-ingest.pipeline-* | STATS `In flight` = SUM(ingest.pipeline.current)"
+                "esql": "FROM metrics-ingest.pipeline-esdiag* | STATS `In flight` = SUM(ingest.pipeline.current)"
               },
               "visualization": {
                 "layerId": "layer_0",
@@ -1175,16 +1175,16 @@
             "references": [],
             "state": {
               "adHocDataViews": {
-                "metrics-ingest.pipeline-*-6943ba6f30cde323fa396c7b9efddbd7574f99848e6aa29e07c32d62e770e153": {
+                "metrics-ingest.pipeline-esdiag*-6943ba6f30cde323fa396c7b9efddbd7574f99848e6aa29e07c32d62e770e153": {
                   "allowHidden": false,
                   "allowNoIndex": false,
                   "fieldAttrs": {},
                   "fieldFormats": {},
-                  "id": "metrics-ingest.pipeline-*-6943ba6f30cde323fa396c7b9efddbd7574f99848e6aa29e07c32d62e770e153",
-                  "name": "metrics-ingest.pipeline-*",
+                  "id": "metrics-ingest.pipeline-esdiag*-6943ba6f30cde323fa396c7b9efddbd7574f99848e6aa29e07c32d62e770e153",
+                  "name": "metrics-ingest.pipeline-esdiag*",
                   "runtimeFieldMap": {},
                   "sourceFilters": [],
-                  "title": "metrics-ingest.pipeline-*",
+                  "title": "metrics-ingest.pipeline-esdiag*",
                   "type": "esql"
                 }
               },
@@ -1288,9 +1288,9 @@
                           }
                         }
                       ],
-                      "index": "metrics-ingest.pipeline-*-6943ba6f30cde323fa396c7b9efddbd7574f99848e6aa29e07c32d62e770e153",
+                      "index": "metrics-ingest.pipeline-esdiag*-6943ba6f30cde323fa396c7b9efddbd7574f99848e6aa29e07c32d62e770e153",
                       "query": {
-                        "esql": "FROM metrics-ingest.pipeline-* | STATS `Documents` = SUM(ingest.pipeline.count), `Total time` = SUM(ingest.pipeline.time_in_millis), `Failed` = SUM(ingest.pipeline.failed), `In flight` = SUM(ingest.pipeline.current) BY `Node` = node.name | EVAL `Time per document` = CASE(`Documents` > 0, `Total time` * 1000.0 / `Documents`, null) | WHERE `Documents` > 0 | SORT `Documents` DESC NULLS LAST | LIMIT 50"
+                        "esql": "FROM metrics-ingest.pipeline-esdiag* | STATS `Documents` = SUM(ingest.pipeline.count), `Total time` = SUM(ingest.pipeline.time_in_millis), `Failed` = SUM(ingest.pipeline.failed), `In flight` = SUM(ingest.pipeline.current) BY `Node` = node.name | EVAL `Time per document` = CASE(`Documents` > 0, `Total time` * 1000.0 / `Documents`, null) | WHERE `Documents` > 0 | SORT `Documents` DESC NULLS LAST | LIMIT 50"
                       }
                     }
                   }
@@ -1299,13 +1299,13 @@
               "filters": [],
               "internalReferences": [
                 {
-                  "id": "metrics-ingest.pipeline-*-6943ba6f30cde323fa396c7b9efddbd7574f99848e6aa29e07c32d62e770e153",
+                  "id": "metrics-ingest.pipeline-esdiag*-6943ba6f30cde323fa396c7b9efddbd7574f99848e6aa29e07c32d62e770e153",
                   "name": "indexpattern-datasource-layer-layer_0",
                   "type": "index-pattern"
                 }
               ],
               "query": {
-                "esql": "FROM metrics-ingest.pipeline-* | STATS `Documents` = SUM(ingest.pipeline.count), `Total time` = SUM(ingest.pipeline.time_in_millis), `Failed` = SUM(ingest.pipeline.failed), `In flight` = SUM(ingest.pipeline.current) BY `Node` = node.name | EVAL `Time per document` = CASE(`Documents` > 0, `Total time` * 1000.0 / `Documents`, null) | WHERE `Documents` > 0 | SORT `Documents` DESC NULLS LAST | LIMIT 50"
+                "esql": "FROM metrics-ingest.pipeline-esdiag* | STATS `Documents` = SUM(ingest.pipeline.count), `Total time` = SUM(ingest.pipeline.time_in_millis), `Failed` = SUM(ingest.pipeline.failed), `In flight` = SUM(ingest.pipeline.current) BY `Node` = node.name | EVAL `Time per document` = CASE(`Documents` > 0, `Total time` * 1000.0 / `Documents`, null) | WHERE `Documents` > 0 | SORT `Documents` DESC NULLS LAST | LIMIT 50"
               },
               "visualization": {
                 "columns": [
