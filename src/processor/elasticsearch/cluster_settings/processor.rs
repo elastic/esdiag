@@ -96,14 +96,16 @@ async fn export_cluster_settings_docs(
                     "type.current": settings.get("http.type"),
                     "type.default": settings.get("http.type.default"),
                 },
-                "thread_pool.estimated_time_interval.warn_threshold": null,
+                "thread_pool.estimated_time_interval": null,
+                "thread_pool.estimated_time_interval.current": settings.get("thread_pool.estimated_time_interval"),
                 "transport.type": null,
                 "transport.type.default": null,
                 "transport": {
                     "type.current": settings.get("transport.type"),
                     "type.default": settings.get("transport.type.default"),
                 },
-                "xpack.searchable.snapshot.shared_cache.size.max_headroom": null,
+                "xpack.searchable.snapshot.shared_cache.size": null,
+                "xpack.searchable.snapshot.shared_cache.size.current": settings.get("xpack.searchable.snapshot.shared_cache.size"),
             });
             let mut cluster_settings_doc = cluster_settings_doc.clone().with(priority, settings);
             merge(&mut cluster_settings_doc.cluster, &cluster_patch);

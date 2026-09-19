@@ -32,7 +32,7 @@ pub use elasticsearch::Cluster as ElasticsearchCluster;
 
 pub use crate::processor::diagnostic::data_source::StreamingDataSource;
 use crate::{
-    data::{Application, Platform},
+    data::{self, Application, Platform},
     exporter::{DocumentExporter as StageDocumentExporter, Exporter},
     receiver::Receiver,
 };
@@ -134,7 +134,8 @@ pub struct IncludedDiagnosticOutcome {
     pub reason: Option<String>,
     pub runtime: Option<u128>,
     /// A hard Export-stage failure after this child produced its report.
-    /// The report-derived `outcome` remains unchanged.
+    /// The report-derived `outcome` is retained independently of the stage
+    /// failure, including any report-persistence event recorded in that report.
     pub export_error: Option<String>,
 }
 
@@ -794,12 +795,30 @@ impl Processor<Processing> {
         report.add_identifiers(identifiers);
         report.add_origin(origin);
         report.add_processing_duration(self.start_time.elapsed().as_millis());
-        let output = self.exporter.outcome_uri();
-        if let Err(e) = self.exporter.save_report(&report).await {
-            tracing::error!("Failed to save report: {}", e);
+        let mut report_error = match self.exporter.save_report(&report).await {
+            Ok(()) => None,
+            Err(error) => {
+                let reason = format!("Failed to save diagnostic report: {error}");
+                tracing::error!("{reason}");
+                report.record_event(DiagnosticEvent::error("report", reason.clone()));
+                Some(eyre!(reason))
+            }
+        };
+
+        // Save the definitive outcome once, after the remote report attempt.
+        // Keep its error primary if the local recovery record also cannot be saved.
+        if matches!(self.exporter.as_ref(), Exporter::Elasticsearch(_))
+            && let Err(local_error) = data::save_file("report.json", &report)
+        {
+            let reason = format!("Failed to save diagnostic report locally: {local_error}");
+            tracing::error!("{reason}");
+            report.record_event(DiagnosticEvent::error("report", reason.clone()));
+            if report_error.is_none() {
+                report_error = Some(eyre!(reason));
+            }
         }
 
-        if let Some(error) = process_error {
+        if let Some(error) = process_error.or(report_error) {
             return Err(Processor {
                 receiver: self.receiver,
                 exporter: self.exporter,
@@ -815,6 +834,7 @@ impl Processor<Processing> {
             });
         }
 
+        let output = self.exporter.outcome_uri();
         Ok(Processor {
             exporter: self.exporter,
             receiver: self.receiver,

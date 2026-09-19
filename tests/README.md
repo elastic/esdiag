@@ -152,3 +152,33 @@ ESDIAG_TEST_ES_URL=http://localhost:19278 cargo test --test provenance_writers_t
 
 The test is ignored by default. Elasticsearch 9.4.2 on
 Ironhide is the regression environment for mixed-version provenance writes.
+
+## Settings indexing and failure-store access
+
+Run the live tests in `elasticsearch_feedback_tests.rs` only on a disposable
+Elasticsearch 9.4+ cluster. They create temporary resources with unique names
+and delete them afterward.
+
+On a cluster without authentication, check that settings and their sub-settings
+are searchable and that rejected documents can be recovered:
+
+```sh
+ESDIAG_TEST_ELASTICSEARCH_URL=http://localhost:19281 \
+  cargo test --test elasticsearch_feedback_tests \
+  settings_values_and_subsettings_index_and_failures_are_recoverable -- --ignored --exact
+```
+
+For the role test, use an authenticated cluster. Set
+`ESDIAG_TEST_ELASTICSEARCH_URL` to its URL and set
+`ESDIAG_TEST_ELASTICSEARCH_USERNAME` and `ESDIAG_TEST_ELASTICSEARCH_PASSWORD`
+to administrator credentials. Then run:
+
+```sh
+cargo test --test elasticsearch_feedback_tests \
+  diagnostic_role_reads_failures_without_managing_them -- --ignored --exact
+```
+
+This test installs the bundled role under a temporary name and creates a user
+with that role. It checks that the user can read the rejected document and its
+error, but cannot disable the failure store. The test deletes its user and role
+afterward.

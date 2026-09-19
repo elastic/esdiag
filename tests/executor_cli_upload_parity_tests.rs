@@ -246,6 +246,73 @@ async fn process_uses_environment_output_when_output_is_omitted() {
     server.abort();
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn report_capture_fails_cli_without_discarding_indexed_document_counts() {
+    async fn bulk(State(accepted): State<Arc<AtomicUsize>>, body: Bytes) -> impl IntoResponse {
+        let documents = body.iter().filter(|byte| **byte == b'\n').count() / 2;
+        accepted.fetch_add(documents, Ordering::Relaxed);
+        let items: Vec<_> = (0..documents)
+            .map(|_| serde_json::json!({"create":{"status":201}}))
+            .collect();
+        axum::Json(serde_json::json!({"errors":false,"items":items}))
+    }
+    let accepted = Arc::new(AtomicUsize::new(0));
+    let app = Router::new()
+        .route(
+            "/",
+            get(|| async { axum::Json(serde_json::json!({"name":"mock-output","version":{"number":"9.4.2"}})) }),
+        )
+        .route(
+            "/metrics-diagnostic-esdiag/_doc",
+            post(|| async {
+                (
+                    StatusCode::CREATED,
+                    axum::Json(serde_json::json!({
+                        "_index":".fs-metrics-diagnostic-esdiag-2026.09.19-000001", "failure_store":"used"
+                    })),
+                )
+            }),
+        )
+        .route("/{*path}", post(bulk))
+        .with_state(accepted.clone());
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let output = tokio::task::spawn_blocking(move || {
+        let home = tempfile::tempdir().unwrap();
+        Command::new(env!("CARGO_BIN_EXE_esdiag"))
+            .args(["--format", "json", "process", fixture_archive()])
+            .env("HOME", home.path())
+            .env("ESDIAG_HOME", home.path())
+            .env("ESDIAG_OUTPUT_URL", format!("http://{address}"))
+            .env_remove("ESDIAG_OUTPUT_APIKEY")
+            .env_remove("ESDIAG_OUTPUT_USERNAME")
+            .env_remove("ESDIAG_OUTPUT_PASSWORD")
+            .env_remove("ESDIAG_KIBANA_URL")
+            .output()
+            .unwrap()
+    })
+    .await
+    .unwrap();
+    assert!(!output.status.success());
+    let result: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(result["result"], "command_failed");
+    assert_eq!(result["category"], "processing_failed");
+    assert_eq!(result["failed_stage"], "process");
+    assert_eq!(result["retry_safe"], false);
+    let diagnostic = &result["completed"]["process"]["diagnostic"];
+    assert_eq!(diagnostic["documents"], accepted.load(Ordering::Relaxed));
+    assert_eq!(diagnostic["documents_failed"], 0);
+    assert_eq!(
+        diagnostic["outcome"],
+        "partial",
+        "result: {result}; stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(String::from_utf8_lossy(&output.stderr).contains("metrics-diagnostic-esdiag::failures"));
+    server.abort();
+}
+
 #[cfg(feature = "agent")]
 #[tokio::test(flavor = "multi_thread")]
 async fn process_ask_sends_the_completed_diagnostic_to_its_output_deployment_agent() {

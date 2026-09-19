@@ -67,6 +67,39 @@ fn searchable_snapshot_template_matches_processed_documents() {
     }
 }
 
+#[test]
+fn cluster_settings_preserves_values_with_subsettings() {
+    let input = tempdir().expect("temporary diagnostic directory");
+    let archive = fs::File::open("tests/archives/elasticsearch-api-diagnostics-9.3.3.zip").unwrap();
+    zip::ZipArchive::new(archive).unwrap().extract(input.path()).unwrap();
+    let settings = serde_json::json!({
+        "rest.incremental_bulk": "true",
+        "rest.incremental_bulk.request_timeout": "-1",
+        "thread_pool.estimated_time_interval": "200ms",
+        "thread_pool.estimated_time_interval.warn_threshold": "7s",
+        "xpack.searchable.snapshot.shared_cache.size": "42%",
+        "xpack.searchable.snapshot.shared_cache.size.max_headroom": "17GB"
+    });
+    fs::write(
+        input.path().join("cluster_settings_defaults.json"),
+        serde_json::to_vec(&serde_json::json!({"defaults": settings, "persistent": {}, "transient": {}})).unwrap(),
+    )
+    .unwrap();
+
+    let output = process_archive(input.path());
+    let docs = read_docs(&output, "settings-cluster-esdiag.ndjson");
+    let defaults = docs.iter().find(|doc| doc["priority"] == "default").unwrap();
+    assert_eq!(defaults["rest.incremental_bulk"], "true");
+    assert_eq!(defaults["rest.incremental_bulk.request_timeout"], "-1");
+    assert_eq!(defaults["thread_pool.estimated_time_interval.current"], "200ms");
+    assert_eq!(defaults["thread_pool.estimated_time_interval.warn_threshold"], "7s");
+    assert_eq!(defaults["xpack.searchable.snapshot.shared_cache.size.current"], "42%");
+    assert_eq!(
+        defaults["xpack.searchable.snapshot.shared_cache.size.max_headroom"],
+        "17GB"
+    );
+}
+
 fn archive_fixtures() -> Vec<PathBuf> {
     let archives_dir = Path::new("tests/archives");
     let mut archives = Vec::new();
