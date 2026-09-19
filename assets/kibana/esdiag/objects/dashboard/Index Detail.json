@@ -17,6 +17,7 @@
             "id": "bd377bfa-9b5b-5549-80f7-02d07312bc07",
             "searchTechnique": "prefix",
             "selectedOptions": [],
+            "singleSelect": true,
             "sort": {
               "by": "_count",
               "direction": "desc"
@@ -35,6 +36,7 @@
             "id": "ceb23708-84c1-565b-980f-438951bb392a",
             "searchTechnique": "prefix",
             "selectedOptions": [],
+            "singleSelect": true,
             "sort": {
               "by": "_count",
               "direction": "desc"
