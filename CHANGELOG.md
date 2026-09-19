@@ -27,6 +27,7 @@ published release notes, maintenance branches, and tagged history.
 
 ### Changed
 
+- Changed the diagnostic selector and diagnostic counts in the Elasticsearch Indexing Hotspots - Nodes, Index Workload Balance, and Search Summary dashboards to use `diagnostic.id` instead of `diagnostic.uuid`, so captures are identified by cluster name and collection date rather than an opaque UUID.
 - Made source-tree notice generation opt-in so Cargo package verification and registry installation use committed notices.
 - Limited web onboarding to builds with both keystore and setup support, preserving host and keystore management in builds without setup.
 - Restored the published Elasticsearch client dependency with a response compatibility adapter so ESDiag can be packaged from registry dependencies.

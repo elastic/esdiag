@@ -77,13 +77,13 @@
         "b1509bba-30f6-430b-b260-075ce90775e7": {
           "explicitInput": {
             "enhancements": {},
-            "fieldName": "diagnostic.uuid",
+            "fieldName": "diagnostic.id",
             "grow": true,
             "id": "b1509bba-30f6-430b-b260-075ce90775e7",
             "searchTechnique": "prefix",
             "selectedOptions": [],
             "singleSelect": true,
-            "title": "diagnostic.uuid",
+            "title": "diagnostic.id",
             "width": "medium"
           },
           "grow": true,
@@ -375,7 +375,7 @@
                             "emptyAsNull": true
                           },
                           "scale": "ratio",
-                          "sourceField": "diagnostic.uuid"
+                          "sourceField": "diagnostic.id"
                         }
                       },
                       "incompleteColumns": {},
