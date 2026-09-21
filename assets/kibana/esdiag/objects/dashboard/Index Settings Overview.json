@@ -2101,7 +2101,26 @@ a:link { text-decoration: none; }""",
           "description": "Data distribution of indices assigned a rollover alias. Prefer migrating these to data streams unless the data cannot be append-only.",
           "enhancements": {
             "dynamicActions": {
-              "events": []
+              "events": [
+                {
+                  "action": {
+                    "config": {
+                      "encodeUrl": false,
+                      "openInNewTab": false,
+                      "url": {
+                        "format": "handlebars",
+                        "template": "{{kibanaUrl}}/app/dashboards#/view/alias-detail?_g=(filters:!(('$state':(store:globalState),meta:(alias:!n,disabled:!f,index:'dcd2bed3-21b8-475c-9ac4-1bb22339a672',key:index.alias.name,negate:!f,params:(query:'{{event.value}}'),type:phrase),query:(match_phrase:(index.alias.name:'{{event.value}}')))),time:(from:'{{context.panel.timeRange.from}}',to:'{{context.panel.timeRange.to}}'))"
+                      }
+                    },
+                    "factoryId": "URL_DRILLDOWN",
+                    "name": "Alias Detail"
+                  },
+                  "eventId": "afda3256-e5eb-55a4-918f-c15c6e38244c",
+                  "triggers": [
+                    "VALUE_CLICK_TRIGGER"
+                  ]
+                }
+              ]
             }
           },
           "filters": [],
@@ -2270,7 +2289,26 @@ a:link { text-decoration: none; }""",
           "description": "Total data size assigned to each rollover alias.",
           "enhancements": {
             "dynamicActions": {
-              "events": []
+              "events": [
+                {
+                  "action": {
+                    "config": {
+                      "encodeUrl": false,
+                      "openInNewTab": false,
+                      "url": {
+                        "format": "handlebars",
+                        "template": "{{kibanaUrl}}/app/dashboards#/view/alias-detail?_g=(filters:!(('$state':(store:globalState),meta:(alias:!n,disabled:!f,index:'dcd2bed3-21b8-475c-9ac4-1bb22339a672',key:index.alias.name,negate:!f,params:(query:'{{event.values.[0]}}'),type:phrase),query:(match_phrase:(index.alias.name:'{{event.values.[0]}}')))),time:(from:'{{context.panel.timeRange.from}}',to:'{{context.panel.timeRange.to}}'))"
+                      }
+                    },
+                    "factoryId": "URL_DRILLDOWN",
+                    "name": "Alias Detail"
+                  },
+                  "eventId": "8d4587c1-ba60-53cf-af61-a7ff57e3b4c5",
+                  "triggers": [
+                    "ROW_CLICK_TRIGGER"
+                  ]
+                }
+              ]
             }
           },
           "filters": [],
@@ -2544,7 +2582,44 @@ a:link { text-decoration: none; }""",
           "description": "A list of the 20 most recently created indices.",
           "enhancements": {
             "dynamicActions": {
-              "events": []
+              "events": [
+                {
+                  "action": {
+                    "config": {
+                      "encodeUrl": false,
+                      "openInNewTab": false,
+                      "url": {
+                        "format": "handlebars",
+                        "template": "{{kibanaUrl}}/app/dashboards#/view/index-detail?_g=(filters:!(('$state':(store:globalState),meta:(alias:!n,disabled:!f,index:'dcd2bed3-21b8-475c-9ac4-1bb22339a672',key:index.name,negate:!f,params:(query:'{{event.values.[0]}}'),type:phrase),query:(match_phrase:(index.name:'{{event.values.[0]}}')))),time:(from:'{{context.panel.timeRange.from}}',to:'{{context.panel.timeRange.to}}'))"
+                      }
+                    },
+                    "factoryId": "URL_DRILLDOWN",
+                    "name": "Index Detail"
+                  },
+                  "eventId": "1cfaf20f-04be-5c03-a49c-a16147de8b77",
+                  "triggers": [
+                    "ROW_CLICK_TRIGGER"
+                  ]
+                },
+                {
+                  "action": {
+                    "config": {
+                      "encodeUrl": false,
+                      "openInNewTab": false,
+                      "url": {
+                        "format": "handlebars",
+                        "template": "{{kibanaUrl}}/app/dashboards#/view/data-stream-detail?_g=(filters:!(('$state':(store:globalState),meta:(alias:!n,disabled:!f,index:'dcd2bed3-21b8-475c-9ac4-1bb22339a672',key:index.data_stream.name,negate:!f,params:(query:'{{event.values.[1]}}'),type:phrase),query:(match_phrase:(index.data_stream.name:'{{event.values.[1]}}')))),time:(from:'{{context.panel.timeRange.from}}',to:'{{context.panel.timeRange.to}}'))"
+                      }
+                    },
+                    "factoryId": "URL_DRILLDOWN",
+                    "name": "Data Stream Detail"
+                  },
+                  "eventId": "6a3a8eb5-f654-5649-8a0a-648fc657967a",
+                  "triggers": [
+                    "ROW_CLICK_TRIGGER"
+                  ]
+                }
+              ]
             }
           },
           "filters": [],
