@@ -3345,7 +3345,26 @@ a:link { text-decoration: none; }""",
           },
           "enhancements": {
             "dynamicActions": {
-              "events": []
+              "events": [
+                {
+                  "action": {
+                    "config": {
+                      "encodeUrl": false,
+                      "openInNewTab": false,
+                      "url": {
+                        "format": "handlebars",
+                        "template": "{{kibanaUrl}}/app/dashboards#/view/index-detail?_g=(filters:!(('$state':(store:globalState),meta:(alias:!n,disabled:!f,index:'dcd2bed3-21b8-475c-9ac4-1bb22339a672',key:index.name,negate:!f,params:(query:'{{event.points.[1].value}}'),type:phrase),query:(match_phrase:(index.name:'{{event.points.[1].value}}')))),time:(from:'{{context.panel.timeRange.from}}',to:'{{context.panel.timeRange.to}}'))"
+                      }
+                    },
+                    "factoryId": "URL_DRILLDOWN",
+                    "name": "Index Detail"
+                  },
+                  "eventId": "1644a4b2-f4cf-50ec-a9f6-e57e48579a32",
+                  "triggers": [
+                    "VALUE_CLICK_TRIGGER"
+                  ]
+                }
+              ]
             }
           },
           "filters": [],
