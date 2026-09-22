@@ -64,11 +64,15 @@ If you need the full maintainer branch and release policy, see `docs/repository/
 PR Attribution
 --------------
 
-For PRs created with Codex, end the description with this exact Markdown line:
+For PRs created with AI assistance, end the description with this exact Markdown line, naming the harness
+(the tool you drove, such as Cursor, Claude Code, or Codex) and the model it ran:
 
 ```markdown
-Created with [Codex](https://chatgpt.com/codex/)
+Assisted by: ${harness} with ${model}
 ```
+
+For example: `Assisted by: Cursor with Claude Fable 5.1`. Harnesses and models are different things, and both
+matter when reading a change later, so name both rather than one or the other.
 
 Sign the Contributor License Agreement
 --------------------------------------
