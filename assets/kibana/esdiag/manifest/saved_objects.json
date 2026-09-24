@@ -82,6 +82,10 @@
     },
     {
       "type": "dashboard",
+      "id": "ingest-pipeline-detail"
+    },
+    {
+      "type": "dashboard",
       "id": "ingest-pipelines-overview"
     },
     {
@@ -103,6 +107,10 @@
     {
       "type": "dashboard",
       "id": "logstash-pipeline-summary"
+    },
+    {
+      "type": "dashboard",
+      "id": "node-detail"
     },
     {
       "type": "dashboard",

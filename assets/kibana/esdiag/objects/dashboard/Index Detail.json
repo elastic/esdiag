@@ -13,15 +13,16 @@
         "bd377bfa-9b5b-5549-80f7-02d07312bc07": {
           "explicitInput": {
             "dataViewId": "590e8f4c-4fe2-4794-9007-29de4d07e489",
-            "fieldName": "diagnostic.uuid",
+            "fieldName": "diagnostic.id",
             "id": "bd377bfa-9b5b-5549-80f7-02d07312bc07",
             "searchTechnique": "prefix",
             "selectedOptions": [],
+            "singleSelect": true,
             "sort": {
               "by": "_count",
               "direction": "desc"
             },
-            "title": "diagnostic.uuid"
+            "title": "diagnostic.id"
           },
           "grow": true,
           "order": 0,
@@ -35,6 +36,7 @@
             "id": "ceb23708-84c1-565b-980f-438951bb392a",
             "searchTechnique": "prefix",
             "selectedOptions": [],
+            "singleSelect": true,
             "sort": {
               "by": "_count",
               "direction": "desc"

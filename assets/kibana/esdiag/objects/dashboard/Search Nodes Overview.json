@@ -3143,7 +3143,26 @@ a:link { text-decoration: none; }""",
           },
           "enhancements": {
             "dynamicActions": {
-              "events": []
+              "events": [
+                {
+                  "action": {
+                    "config": {
+                      "encodeUrl": false,
+                      "openInNewTab": false,
+                      "url": {
+                        "format": "handlebars",
+                        "template": "{{kibanaUrl}}/app/dashboards#/view/node-detail?_g=(filters:!(('$state':(store:globalState),meta:(alias:!n,disabled:!f,index:'837271ec-b73e-4fb3-b7e4-190dba34bbf5',key:node.name,negate:!f,params:(query:'{{event.value}}'),type:phrase),query:(match_phrase:(node.name:'{{event.value}}')))),time:(from:'{{context.panel.timeRange.from}}',to:'{{context.panel.timeRange.to}}'))"
+                      }
+                    },
+                    "factoryId": "URL_DRILLDOWN",
+                    "name": "Node Detail"
+                  },
+                  "eventId": "1f2d5acc-0ca5-5e49-8cec-bb8d6f0b6d14",
+                  "triggers": [
+                    "VALUE_CLICK_TRIGGER"
+                  ]
+                }
+              ]
             }
           },
           "filters": [],
@@ -3345,7 +3364,44 @@ a:link { text-decoration: none; }""",
           },
           "enhancements": {
             "dynamicActions": {
-              "events": []
+              "events": [
+                {
+                  "action": {
+                    "config": {
+                      "encodeUrl": false,
+                      "openInNewTab": false,
+                      "url": {
+                        "format": "handlebars",
+                        "template": "{{kibanaUrl}}/app/dashboards#/view/index-detail?_g=(filters:!(('$state':(store:globalState),meta:(alias:!n,disabled:!f,index:'dcd2bed3-21b8-475c-9ac4-1bb22339a672',key:index.name,negate:!f,params:(query:'{{event.points.[1].value}}'),type:phrase),query:(match_phrase:(index.name:'{{event.points.[1].value}}')))),time:(from:'{{context.panel.timeRange.from}}',to:'{{context.panel.timeRange.to}}'))"
+                      }
+                    },
+                    "factoryId": "URL_DRILLDOWN",
+                    "name": "Index Detail"
+                  },
+                  "eventId": "1644a4b2-f4cf-50ec-a9f6-e57e48579a32",
+                  "triggers": [
+                    "VALUE_CLICK_TRIGGER"
+                  ]
+                },
+                {
+                  "action": {
+                    "config": {
+                      "encodeUrl": false,
+                      "openInNewTab": false,
+                      "url": {
+                        "format": "handlebars",
+                        "template": "{{kibanaUrl}}/app/dashboards#/view/node-detail?_g=(filters:!(('$state':(store:globalState),meta:(alias:!n,disabled:!f,index:'837271ec-b73e-4fb3-b7e4-190dba34bbf5',key:node.name,negate:!f,params:(query:'{{event.value}}'),type:phrase),query:(match_phrase:(node.name:'{{event.value}}')))),time:(from:'{{context.panel.timeRange.from}}',to:'{{context.panel.timeRange.to}}'))"
+                      }
+                    },
+                    "factoryId": "URL_DRILLDOWN",
+                    "name": "Node Detail"
+                  },
+                  "eventId": "1d05d97b-a777-5f18-a32e-305ce815f5b1",
+                  "triggers": [
+                    "VALUE_CLICK_TRIGGER"
+                  ]
+                }
+              ]
             }
           },
           "filters": [],
@@ -3875,7 +3931,26 @@ a:link { text-decoration: none; }""",
           },
           "enhancements": {
             "dynamicActions": {
-              "events": []
+              "events": [
+                {
+                  "action": {
+                    "config": {
+                      "encodeUrl": false,
+                      "openInNewTab": false,
+                      "url": {
+                        "format": "handlebars",
+                        "template": "{{kibanaUrl}}/app/dashboards#/view/node-detail?_g=(filters:!(('$state':(store:globalState),meta:(alias:!n,disabled:!f,index:'837271ec-b73e-4fb3-b7e4-190dba34bbf5',key:node.name,negate:!f,params:(query:'{{event.value}}'),type:phrase),query:(match_phrase:(node.name:'{{event.value}}')))),time:(from:'{{context.panel.timeRange.from}}',to:'{{context.panel.timeRange.to}}'))"
+                      }
+                    },
+                    "factoryId": "URL_DRILLDOWN",
+                    "name": "Node Detail"
+                  },
+                  "eventId": "2c046983-64c1-5f64-a993-8b4311488cff",
+                  "triggers": [
+                    "VALUE_CLICK_TRIGGER"
+                  ]
+                }
+              ]
             }
           },
           "filters": [],
@@ -4606,7 +4681,26 @@ a:link { text-decoration: none; }""",
           },
           "enhancements": {
             "dynamicActions": {
-              "events": []
+              "events": [
+                {
+                  "action": {
+                    "config": {
+                      "encodeUrl": false,
+                      "openInNewTab": false,
+                      "url": {
+                        "format": "handlebars",
+                        "template": "{{kibanaUrl}}/app/dashboards#/view/node-detail?_g=(filters:!(('$state':(store:globalState),meta:(alias:!n,disabled:!f,index:'837271ec-b73e-4fb3-b7e4-190dba34bbf5',key:node.name,negate:!f,params:(query:'{{event.values.[0]}}'),type:phrase),query:(match_phrase:(node.name:'{{event.values.[0]}}')))),time:(from:'{{context.panel.timeRange.from}}',to:'{{context.panel.timeRange.to}}'))"
+                      }
+                    },
+                    "factoryId": "URL_DRILLDOWN",
+                    "name": "Node Detail"
+                  },
+                  "eventId": "449418ff-574d-5739-a704-b2e75d3501e1",
+                  "triggers": [
+                    "ROW_CLICK_TRIGGER"
+                  ]
+                }
+              ]
             }
           },
           "filters": [],
@@ -4961,7 +5055,26 @@ a:link { text-decoration: none; }""",
           },
           "enhancements": {
             "dynamicActions": {
-              "events": []
+              "events": [
+                {
+                  "action": {
+                    "config": {
+                      "encodeUrl": false,
+                      "openInNewTab": false,
+                      "url": {
+                        "format": "handlebars",
+                        "template": "{{kibanaUrl}}/app/dashboards#/view/node-detail?_g=(filters:!(('$state':(store:globalState),meta:(alias:!n,disabled:!f,index:'837271ec-b73e-4fb3-b7e4-190dba34bbf5',key:node.name,negate:!f,params:(query:'{{event.values.[0]}}'),type:phrase),query:(match_phrase:(node.name:'{{event.values.[0]}}')))),time:(from:'{{context.panel.timeRange.from}}',to:'{{context.panel.timeRange.to}}'))"
+                      }
+                    },
+                    "factoryId": "URL_DRILLDOWN",
+                    "name": "Node Detail"
+                  },
+                  "eventId": "af2c2f0b-1e3b-5944-83df-feed3c52a0f6",
+                  "triggers": [
+                    "ROW_CLICK_TRIGGER"
+                  ]
+                }
+              ]
             }
           },
           "filters": [],
@@ -5317,7 +5430,26 @@ a:link { text-decoration: none; }""",
           "description": "Not applicable after 8.16 and 9.0",
           "enhancements": {
             "dynamicActions": {
-              "events": []
+              "events": [
+                {
+                  "action": {
+                    "config": {
+                      "encodeUrl": false,
+                      "openInNewTab": false,
+                      "url": {
+                        "format": "handlebars",
+                        "template": "{{kibanaUrl}}/app/dashboards#/view/node-detail?_g=(filters:!(('$state':(store:globalState),meta:(alias:!n,disabled:!f,index:'837271ec-b73e-4fb3-b7e4-190dba34bbf5',key:node.name,negate:!f,params:(query:'{{event.values.[0]}}'),type:phrase),query:(match_phrase:(node.name:'{{event.values.[0]}}')))),time:(from:'{{context.panel.timeRange.from}}',to:'{{context.panel.timeRange.to}}'))"
+                      }
+                    },
+                    "factoryId": "URL_DRILLDOWN",
+                    "name": "Node Detail"
+                  },
+                  "eventId": "bbf3d96a-9374-5185-9426-21744eb850c8",
+                  "triggers": [
+                    "ROW_CLICK_TRIGGER"
+                  ]
+                }
+              ]
             }
           },
           "filters": [],
@@ -5672,7 +5804,26 @@ a:link { text-decoration: none; }""",
           },
           "enhancements": {
             "dynamicActions": {
-              "events": []
+              "events": [
+                {
+                  "action": {
+                    "config": {
+                      "encodeUrl": false,
+                      "openInNewTab": false,
+                      "url": {
+                        "format": "handlebars",
+                        "template": "{{kibanaUrl}}/app/dashboards#/view/node-detail?_g=(filters:!(('$state':(store:globalState),meta:(alias:!n,disabled:!f,index:'837271ec-b73e-4fb3-b7e4-190dba34bbf5',key:node.name,negate:!f,params:(query:'{{event.values.[0]}}'),type:phrase),query:(match_phrase:(node.name:'{{event.values.[0]}}')))),time:(from:'{{context.panel.timeRange.from}}',to:'{{context.panel.timeRange.to}}'))"
+                      }
+                    },
+                    "factoryId": "URL_DRILLDOWN",
+                    "name": "Node Detail"
+                  },
+                  "eventId": "114dfcf2-3c14-5ff0-8308-6e29ae678b08",
+                  "triggers": [
+                    "ROW_CLICK_TRIGGER"
+                  ]
+                }
+              ]
             }
           },
           "filters": [],
@@ -6027,7 +6178,26 @@ a:link { text-decoration: none; }""",
           },
           "enhancements": {
             "dynamicActions": {
-              "events": []
+              "events": [
+                {
+                  "action": {
+                    "config": {
+                      "encodeUrl": false,
+                      "openInNewTab": false,
+                      "url": {
+                        "format": "handlebars",
+                        "template": "{{kibanaUrl}}/app/dashboards#/view/node-detail?_g=(filters:!(('$state':(store:globalState),meta:(alias:!n,disabled:!f,index:'837271ec-b73e-4fb3-b7e4-190dba34bbf5',key:node.name,negate:!f,params:(query:'{{event.values.[0]}}'),type:phrase),query:(match_phrase:(node.name:'{{event.values.[0]}}')))),time:(from:'{{context.panel.timeRange.from}}',to:'{{context.panel.timeRange.to}}'))"
+                      }
+                    },
+                    "factoryId": "URL_DRILLDOWN",
+                    "name": "Node Detail"
+                  },
+                  "eventId": "c251c589-175d-54b2-bc14-74c19ea685e7",
+                  "triggers": [
+                    "ROW_CLICK_TRIGGER"
+                  ]
+                }
+              ]
             }
           },
           "filters": [],
@@ -7457,7 +7627,32 @@ a:link { text-decoration: none; }""",
         "type": "lens"
       },
       {
-        "embeddableConfig": {},
+        "embeddableConfig": {
+          "enhancements": {
+            "dynamicActions": {
+              "events": [
+                {
+                  "action": {
+                    "config": {
+                      "encodeUrl": false,
+                      "openInNewTab": false,
+                      "url": {
+                        "format": "handlebars",
+                        "template": "{{kibanaUrl}}/app/dashboards#/view/node-detail?_g=(filters:!(('$state':(store:globalState),meta:(alias:!n,disabled:!f,index:'837271ec-b73e-4fb3-b7e4-190dba34bbf5',key:node.name,negate:!f,params:(query:'{{event.value}}'),type:phrase),query:(match_phrase:(node.name:'{{event.value}}')))),time:(from:'{{context.panel.timeRange.from}}',to:'{{context.panel.timeRange.to}}'))"
+                      }
+                    },
+                    "factoryId": "URL_DRILLDOWN",
+                    "name": "Node Detail"
+                  },
+                  "eventId": "f3aa7414-ab47-5228-a17b-65a32f0c3fbc",
+                  "triggers": [
+                    "VALUE_CLICK_TRIGGER"
+                  ]
+                }
+              ]
+            }
+          }
+        },
         "gridData": {
           "h": 15,
           "i": "4e10ee55-1484-4fab-8cbe-930d6866e553",

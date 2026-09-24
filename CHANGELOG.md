@@ -28,9 +28,14 @@ published release notes, maintenance branches, and tagged history.
 - Added optional Elastic Upload Service forwarding to `esdiag-lite.sh` for newly collected and existing ZIP archives.
 - Added `esdiag-lite.ps1` for version-aware Elasticsearch diagnostic collection on Windows PowerShell.
 - Added the Index Detail dashboard showing the full vertical slice of metrics (operations, documents, storage, settings, shard distribution, data stream/alias membership, and shard workload balance) for a single selected index.
+- Added the Node Detail dashboard, scoped by the incoming `diagnostic.id` and `node.name` drilldown filters, breaking a single node down by its own sub-dimensions: operation volume and cost, thread pool queueing and rejections, circuit breaker headroom, JVM memory pools, cache effectiveness, indexing pressure by stage, filesystem and allocation, and the indices holding shards on that node.
+- Added the Ingest Pipeline Detail dashboard, scoped by the incoming `diagnostic.id` and `ingest.pipeline.name` drilldown filters, breaking a single pipeline down by processor, processor type, and executing node, with per-processor execution order, cost, and failure rate. Surfaces processor failures separately from pipeline failures, so errors absorbed by `on_failure` or `ignore_failure` stay visible.
+- Added drilldowns to the Index Detail, Data Stream Detail, and Alias Detail dashboards from the bulk and indexing rate charts on Daily Indexing Overview, the per-node operation charts on Index Operations Overview and Datastream Operations Overview, the per-node shard CPU time charts on Ingest Nodes Overview and Search Nodes Overview, and the rollover alias and newest indices panels on Index Settings Overview.
+- Added drilldowns to the Node Detail dashboard from every per-node chart and thread pool table on Ingest Nodes Overview and Search Nodes Overview.
 
 ### Changed
 
+- Changed the diagnostic selector and diagnostic counts in the Elasticsearch Indexing Hotspots - Nodes, Index Workload Balance, and Search Summary dashboards to use `diagnostic.id` instead of `diagnostic.uuid`, so captures are identified by cluster name and collection date rather than an opaque UUID.
 - Made source-tree notice generation opt-in so Cargo package verification and registry installation use committed notices.
 - Limited web onboarding to builds with both keystore and setup support, preserving host and keystore management in builds without setup.
 - Restored the published Elasticsearch client dependency with a response compatibility adapter so ESDiag can be packaged from registry dependencies.

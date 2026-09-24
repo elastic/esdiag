@@ -321,7 +321,30 @@ a:link { text-decoration: none; }""",
             "type": "lens",
             "visualizationType": "lnsXY"
           },
-          "enhancements": {}
+          "enhancements": {
+            "dynamicActions": {
+              "events": [
+                {
+                  "action": {
+                    "config": {
+                      "encodeUrl": false,
+                      "openInNewTab": false,
+                      "url": {
+                        "format": "handlebars",
+                        "template": "{{kibanaUrl}}/app/dashboards#/view/data-stream-detail?_g=(filters:!(('$state':(store:globalState),meta:(alias:!n,disabled:!f,index:'dcd2bed3-21b8-475c-9ac4-1bb22339a672',key:index.data_stream.name,negate:!f,params:(query:'{{event.points.[1].value}}'),type:phrase),query:(match_phrase:(index.data_stream.name:'{{event.points.[1].value}}')))),time:(from:'{{context.panel.timeRange.from}}',to:'{{context.panel.timeRange.to}}'))"
+                      }
+                    },
+                    "factoryId": "URL_DRILLDOWN",
+                    "name": "Data Stream Detail"
+                  },
+                  "eventId": "7e3e8218-2f69-501c-8c8d-5eb72f2ac8f9",
+                  "triggers": [
+                    "VALUE_CLICK_TRIGGER"
+                  ]
+                }
+              ]
+            }
+          }
         },
         "gridData": {
           "h": 31,
@@ -515,7 +538,30 @@ a:link { text-decoration: none; }""",
             "type": "lens",
             "visualizationType": "lnsXY"
           },
-          "enhancements": {}
+          "enhancements": {
+            "dynamicActions": {
+              "events": [
+                {
+                  "action": {
+                    "config": {
+                      "encodeUrl": false,
+                      "openInNewTab": false,
+                      "url": {
+                        "format": "handlebars",
+                        "template": "{{kibanaUrl}}/app/dashboards#/view/data-stream-detail?_g=(filters:!(('$state':(store:globalState),meta:(alias:!n,disabled:!f,index:'dcd2bed3-21b8-475c-9ac4-1bb22339a672',key:index.data_stream.name,negate:!f,params:(query:'{{event.points.[1].value}}'),type:phrase),query:(match_phrase:(index.data_stream.name:'{{event.points.[1].value}}')))),time:(from:'{{context.panel.timeRange.from}}',to:'{{context.panel.timeRange.to}}'))"
+                      }
+                    },
+                    "factoryId": "URL_DRILLDOWN",
+                    "name": "Data Stream Detail"
+                  },
+                  "eventId": "b5493da9-9ad1-5e32-a53d-0564e481dfcc",
+                  "triggers": [
+                    "VALUE_CLICK_TRIGGER"
+                  ]
+                }
+              ]
+            }
+          }
         },
         "gridData": {
           "h": 31,
@@ -711,7 +757,30 @@ a:link { text-decoration: none; }""",
             "type": "lens",
             "visualizationType": "lnsXY"
           },
-          "enhancements": {}
+          "enhancements": {
+            "dynamicActions": {
+              "events": [
+                {
+                  "action": {
+                    "config": {
+                      "encodeUrl": false,
+                      "openInNewTab": false,
+                      "url": {
+                        "format": "handlebars",
+                        "template": "{{kibanaUrl}}/app/dashboards#/view/data-stream-detail?_g=(filters:!(('$state':(store:globalState),meta:(alias:!n,disabled:!f,index:'dcd2bed3-21b8-475c-9ac4-1bb22339a672',key:index.data_stream.name,negate:!f,params:(query:'{{event.points.[1].value}}'),type:phrase),query:(match_phrase:(index.data_stream.name:'{{event.points.[1].value}}')))),time:(from:'{{context.panel.timeRange.from}}',to:'{{context.panel.timeRange.to}}'))"
+                      }
+                    },
+                    "factoryId": "URL_DRILLDOWN",
+                    "name": "Data Stream Detail"
+                  },
+                  "eventId": "e4618053-8803-523e-b5ed-5f85604b286d",
+                  "triggers": [
+                    "VALUE_CLICK_TRIGGER"
+                  ]
+                }
+              ]
+            }
+          }
         },
         "gridData": {
           "h": 32,
@@ -905,7 +974,30 @@ a:link { text-decoration: none; }""",
             "type": "lens",
             "visualizationType": "lnsXY"
           },
-          "enhancements": {}
+          "enhancements": {
+            "dynamicActions": {
+              "events": [
+                {
+                  "action": {
+                    "config": {
+                      "encodeUrl": false,
+                      "openInNewTab": false,
+                      "url": {
+                        "format": "handlebars",
+                        "template": "{{kibanaUrl}}/app/dashboards#/view/data-stream-detail?_g=(filters:!(('$state':(store:globalState),meta:(alias:!n,disabled:!f,index:'dcd2bed3-21b8-475c-9ac4-1bb22339a672',key:index.data_stream.name,negate:!f,params:(query:'{{event.points.[1].value}}'),type:phrase),query:(match_phrase:(index.data_stream.name:'{{event.points.[1].value}}')))),time:(from:'{{context.panel.timeRange.from}}',to:'{{context.panel.timeRange.to}}'))"
+                      }
+                    },
+                    "factoryId": "URL_DRILLDOWN",
+                    "name": "Data Stream Detail"
+                  },
+                  "eventId": "ff598580-e8d0-5639-84af-84150d588e70",
+                  "triggers": [
+                    "VALUE_CLICK_TRIGGER"
+                  ]
+                }
+              ]
+            }
+          }
         },
         "gridData": {
           "h": 32,
@@ -1101,7 +1193,30 @@ a:link { text-decoration: none; }""",
             "type": "lens",
             "visualizationType": "lnsXY"
           },
-          "enhancements": {}
+          "enhancements": {
+            "dynamicActions": {
+              "events": [
+                {
+                  "action": {
+                    "config": {
+                      "encodeUrl": false,
+                      "openInNewTab": false,
+                      "url": {
+                        "format": "handlebars",
+                        "template": "{{kibanaUrl}}/app/dashboards#/view/data-stream-detail?_g=(filters:!(('$state':(store:globalState),meta:(alias:!n,disabled:!f,index:'dcd2bed3-21b8-475c-9ac4-1bb22339a672',key:index.data_stream.name,negate:!f,params:(query:'{{event.points.[1].value}}'),type:phrase),query:(match_phrase:(index.data_stream.name:'{{event.points.[1].value}}')))),time:(from:'{{context.panel.timeRange.from}}',to:'{{context.panel.timeRange.to}}'))"
+                      }
+                    },
+                    "factoryId": "URL_DRILLDOWN",
+                    "name": "Data Stream Detail"
+                  },
+                  "eventId": "65d11cb3-5f91-5dd9-80b7-141a7a463437",
+                  "triggers": [
+                    "VALUE_CLICK_TRIGGER"
+                  ]
+                }
+              ]
+            }
+          }
         },
         "gridData": {
           "h": 32,
@@ -1295,7 +1410,30 @@ a:link { text-decoration: none; }""",
             "type": "lens",
             "visualizationType": "lnsXY"
           },
-          "enhancements": {}
+          "enhancements": {
+            "dynamicActions": {
+              "events": [
+                {
+                  "action": {
+                    "config": {
+                      "encodeUrl": false,
+                      "openInNewTab": false,
+                      "url": {
+                        "format": "handlebars",
+                        "template": "{{kibanaUrl}}/app/dashboards#/view/data-stream-detail?_g=(filters:!(('$state':(store:globalState),meta:(alias:!n,disabled:!f,index:'dcd2bed3-21b8-475c-9ac4-1bb22339a672',key:index.data_stream.name,negate:!f,params:(query:'{{event.points.[1].value}}'),type:phrase),query:(match_phrase:(index.data_stream.name:'{{event.points.[1].value}}')))),time:(from:'{{context.panel.timeRange.from}}',to:'{{context.panel.timeRange.to}}'))"
+                      }
+                    },
+                    "factoryId": "URL_DRILLDOWN",
+                    "name": "Data Stream Detail"
+                  },
+                  "eventId": "7bc4d900-175b-5b49-96fe-8693458cb18a",
+                  "triggers": [
+                    "VALUE_CLICK_TRIGGER"
+                  ]
+                }
+              ]
+            }
+          }
         },
         "gridData": {
           "h": 32,
@@ -1491,7 +1629,30 @@ a:link { text-decoration: none; }""",
             "type": "lens",
             "visualizationType": "lnsXY"
           },
-          "enhancements": {}
+          "enhancements": {
+            "dynamicActions": {
+              "events": [
+                {
+                  "action": {
+                    "config": {
+                      "encodeUrl": false,
+                      "openInNewTab": false,
+                      "url": {
+                        "format": "handlebars",
+                        "template": "{{kibanaUrl}}/app/dashboards#/view/data-stream-detail?_g=(filters:!(('$state':(store:globalState),meta:(alias:!n,disabled:!f,index:'dcd2bed3-21b8-475c-9ac4-1bb22339a672',key:index.data_stream.name,negate:!f,params:(query:'{{event.points.[1].value}}'),type:phrase),query:(match_phrase:(index.data_stream.name:'{{event.points.[1].value}}')))),time:(from:'{{context.panel.timeRange.from}}',to:'{{context.panel.timeRange.to}}'))"
+                      }
+                    },
+                    "factoryId": "URL_DRILLDOWN",
+                    "name": "Data Stream Detail"
+                  },
+                  "eventId": "230c47f9-3aa3-599c-852c-4612dd888e1a",
+                  "triggers": [
+                    "VALUE_CLICK_TRIGGER"
+                  ]
+                }
+              ]
+            }
+          }
         },
         "gridData": {
           "h": 34,
@@ -1685,7 +1846,30 @@ a:link { text-decoration: none; }""",
             "type": "lens",
             "visualizationType": "lnsXY"
           },
-          "enhancements": {}
+          "enhancements": {
+            "dynamicActions": {
+              "events": [
+                {
+                  "action": {
+                    "config": {
+                      "encodeUrl": false,
+                      "openInNewTab": false,
+                      "url": {
+                        "format": "handlebars",
+                        "template": "{{kibanaUrl}}/app/dashboards#/view/data-stream-detail?_g=(filters:!(('$state':(store:globalState),meta:(alias:!n,disabled:!f,index:'dcd2bed3-21b8-475c-9ac4-1bb22339a672',key:index.data_stream.name,negate:!f,params:(query:'{{event.points.[1].value}}'),type:phrase),query:(match_phrase:(index.data_stream.name:'{{event.points.[1].value}}')))),time:(from:'{{context.panel.timeRange.from}}',to:'{{context.panel.timeRange.to}}'))"
+                      }
+                    },
+                    "factoryId": "URL_DRILLDOWN",
+                    "name": "Data Stream Detail"
+                  },
+                  "eventId": "34cfe475-0fa0-5f79-be8f-c2590cbd2b61",
+                  "triggers": [
+                    "VALUE_CLICK_TRIGGER"
+                  ]
+                }
+              ]
+            }
+          }
         },
         "gridData": {
           "h": 34,

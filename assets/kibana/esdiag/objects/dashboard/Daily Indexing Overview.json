@@ -926,7 +926,23 @@ a:link { text-decoration: none; }
           "description": "The bulk size is measured after ingest pipelines; it is not a \"raw\" measurement. Does not include replicas.",
           "enhancements": {
             "dynamicActions": {
-              "events": []
+              "events": [
+                {
+                  "action": {
+                    "config": {
+                      "openInNewTab": false,
+                      "useCurrentDateRange": false,
+                      "useCurrentFilters": false
+                    },
+                    "factoryId": "DASHBOARD_TO_DASHBOARD_DRILLDOWN",
+                    "name": "Index Detail"
+                  },
+                  "eventId": "c8c849a3-b3b6-5b0a-8b5f-0df4cc0b22e5",
+                  "triggers": [
+                    "FILTER_TRIGGER"
+                  ]
+                }
+              ]
             }
           },
           "filters": [],
@@ -1270,7 +1286,23 @@ a:link { text-decoration: none; }
           "description": "The bulk size is measured after ingest pipelines; it is not a \"raw\" measurement. Does not include replicas.",
           "enhancements": {
             "dynamicActions": {
-              "events": []
+              "events": [
+                {
+                  "action": {
+                    "config": {
+                      "openInNewTab": false,
+                      "useCurrentDateRange": false,
+                      "useCurrentFilters": false
+                    },
+                    "factoryId": "DASHBOARD_TO_DASHBOARD_DRILLDOWN",
+                    "name": "Data Stream Detail"
+                  },
+                  "eventId": "172fcfcf-f33f-500a-8c7b-7cc21af82a67",
+                  "triggers": [
+                    "FILTER_TRIGGER"
+                  ]
+                }
+              ]
             }
           },
           "filters": [],
@@ -1615,7 +1647,23 @@ a:link { text-decoration: none; }
           "description": "The bulk size is measured after ingest pipelines; it is not a \"raw\" measurement. Does not include replicas.",
           "enhancements": {
             "dynamicActions": {
-              "events": []
+              "events": [
+                {
+                  "action": {
+                    "config": {
+                      "openInNewTab": false,
+                      "useCurrentDateRange": false,
+                      "useCurrentFilters": false
+                    },
+                    "factoryId": "DASHBOARD_TO_DASHBOARD_DRILLDOWN",
+                    "name": "Alias Detail"
+                  },
+                  "eventId": "e512dae9-e748-5d6d-9b06-44142fb09d30",
+                  "triggers": [
+                    "FILTER_TRIGGER"
+                  ]
+                }
+              ]
             }
           },
           "filters": [],
@@ -1777,7 +1825,23 @@ a:link { text-decoration: none; }
           "description": "The bulk size is measured after ingest pipelines; it is not a \"raw\" measurement. Does not include replicas.",
           "enhancements": {
             "dynamicActions": {
-              "events": []
+              "events": [
+                {
+                  "action": {
+                    "config": {
+                      "openInNewTab": false,
+                      "useCurrentDateRange": false,
+                      "useCurrentFilters": false
+                    },
+                    "factoryId": "DASHBOARD_TO_DASHBOARD_DRILLDOWN",
+                    "name": "Index Detail"
+                  },
+                  "eventId": "676453e4-1ffe-568b-91ab-1752bfa24c9f",
+                  "triggers": [
+                    "FILTER_TRIGGER"
+                  ]
+                }
+              ]
             }
           },
           "filters": [],
@@ -1946,7 +2010,23 @@ a:link { text-decoration: none; }
           "description": "The bulk size is measured after ingest pipelines; it is not a \"raw\" measurement. Does not include replicas.",
           "enhancements": {
             "dynamicActions": {
-              "events": []
+              "events": [
+                {
+                  "action": {
+                    "config": {
+                      "openInNewTab": false,
+                      "useCurrentDateRange": false,
+                      "useCurrentFilters": false
+                    },
+                    "factoryId": "DASHBOARD_TO_DASHBOARD_DRILLDOWN",
+                    "name": "Data Stream Detail"
+                  },
+                  "eventId": "40bd1edc-ce9e-5eff-9ac3-358f37abf849",
+                  "triggers": [
+                    "FILTER_TRIGGER"
+                  ]
+                }
+              ]
             }
           },
           "filters": [],
@@ -2097,7 +2177,23 @@ a:link { text-decoration: none; }
           "description": "The bulk size is measured after ingest pipelines; it is not a \"raw\" measurement. Does not include replicas.",
           "enhancements": {
             "dynamicActions": {
-              "events": []
+              "events": [
+                {
+                  "action": {
+                    "config": {
+                      "openInNewTab": false,
+                      "useCurrentDateRange": false,
+                      "useCurrentFilters": false
+                    },
+                    "factoryId": "DASHBOARD_TO_DASHBOARD_DRILLDOWN",
+                    "name": "Alias Detail"
+                  },
+                  "eventId": "36fed84c-dcdd-586b-9cb1-a830f3918cd4",
+                  "triggers": [
+                    "FILTER_TRIGGER"
+                  ]
+                }
+              ]
             }
           },
           "filters": [],
@@ -2444,7 +2540,23 @@ a:link { text-decoration: none; }
           "description": "Indexing rate is final storage on disk after all indexing and compression. Does not include replicas.",
           "enhancements": {
             "dynamicActions": {
-              "events": []
+              "events": [
+                {
+                  "action": {
+                    "config": {
+                      "openInNewTab": false,
+                      "useCurrentDateRange": false,
+                      "useCurrentFilters": false
+                    },
+                    "factoryId": "DASHBOARD_TO_DASHBOARD_DRILLDOWN",
+                    "name": "Index Detail"
+                  },
+                  "eventId": "6ff23409-e587-514c-862a-96db26856132",
+                  "triggers": [
+                    "FILTER_TRIGGER"
+                  ]
+                }
+              ]
             }
           },
           "filters": [],
@@ -2634,7 +2746,23 @@ a:link { text-decoration: none; }
           "description": "Does not include replicas",
           "enhancements": {
             "dynamicActions": {
-              "events": []
+              "events": [
+                {
+                  "action": {
+                    "config": {
+                      "openInNewTab": false,
+                      "useCurrentDateRange": false,
+                      "useCurrentFilters": false
+                    },
+                    "factoryId": "DASHBOARD_TO_DASHBOARD_DRILLDOWN",
+                    "name": "Index Detail"
+                  },
+                  "eventId": "4f4bfda1-767d-5c3b-a362-961de631fc03",
+                  "triggers": [
+                    "FILTER_TRIGGER"
+                  ]
+                }
+              ]
             }
           },
           "filters": [],
@@ -2978,7 +3106,23 @@ a:link { text-decoration: none; }
           "description": "Indexing rate is final storage on disk after all indexing and compression. Does not include replicas.",
           "enhancements": {
             "dynamicActions": {
-              "events": []
+              "events": [
+                {
+                  "action": {
+                    "config": {
+                      "openInNewTab": false,
+                      "useCurrentDateRange": false,
+                      "useCurrentFilters": false
+                    },
+                    "factoryId": "DASHBOARD_TO_DASHBOARD_DRILLDOWN",
+                    "name": "Data Stream Detail"
+                  },
+                  "eventId": "b590cfc6-1d80-5906-9570-a4ae12f3cac5",
+                  "triggers": [
+                    "FILTER_TRIGGER"
+                  ]
+                }
+              ]
             }
           },
           "filters": [],
@@ -3175,7 +3319,23 @@ a:link { text-decoration: none; }
           "description": "Does not include replicas",
           "enhancements": {
             "dynamicActions": {
-              "events": []
+              "events": [
+                {
+                  "action": {
+                    "config": {
+                      "openInNewTab": false,
+                      "useCurrentDateRange": false,
+                      "useCurrentFilters": false
+                    },
+                    "factoryId": "DASHBOARD_TO_DASHBOARD_DRILLDOWN",
+                    "name": "Data Stream Detail"
+                  },
+                  "eventId": "8ce8c9ef-420b-509d-b345-60f0cf892e22",
+                  "triggers": [
+                    "FILTER_TRIGGER"
+                  ]
+                }
+              ]
             }
           },
           "filters": [],
@@ -3520,7 +3680,23 @@ a:link { text-decoration: none; }
           "description": "Indexing rate is final storage on disk after all indexing and compression. Does not include replicas.",
           "enhancements": {
             "dynamicActions": {
-              "events": []
+              "events": [
+                {
+                  "action": {
+                    "config": {
+                      "openInNewTab": false,
+                      "useCurrentDateRange": false,
+                      "useCurrentFilters": false
+                    },
+                    "factoryId": "DASHBOARD_TO_DASHBOARD_DRILLDOWN",
+                    "name": "Alias Detail"
+                  },
+                  "eventId": "c304a319-9145-5d64-bd96-a8151fb4f24d",
+                  "triggers": [
+                    "FILTER_TRIGGER"
+                  ]
+                }
+              ]
             }
           },
           "filters": [],
@@ -3713,7 +3889,23 @@ a:link { text-decoration: none; }
           "description": "Does not include replicas",
           "enhancements": {
             "dynamicActions": {
-              "events": []
+              "events": [
+                {
+                  "action": {
+                    "config": {
+                      "openInNewTab": false,
+                      "useCurrentDateRange": false,
+                      "useCurrentFilters": false
+                    },
+                    "factoryId": "DASHBOARD_TO_DASHBOARD_DRILLDOWN",
+                    "name": "Alias Detail"
+                  },
+                  "eventId": "be822c6e-68a1-541f-8112-901766139f38",
+                  "triggers": [
+                    "FILTER_TRIGGER"
+                  ]
+                }
+              ]
             }
           },
           "filters": [],
@@ -3873,6 +4065,66 @@ a:link { text-decoration: none; }
       "id": "dcd2bed3-21b8-475c-9ac4-1bb22339a672",
       "name": "64899185-bee5-44e8-a4f1-66ffc7c7e326:indexpattern-datasource-layer-42d09652-ff79-4292-87d0-efe15e216254",
       "type": "index-pattern"
+    },
+    {
+      "id": "index-detail",
+      "name": "e7c23425-b11e-421e-acff-add1bdbaeb1c:drilldown:DASHBOARD_TO_DASHBOARD_DRILLDOWN:c8c849a3-b3b6-5b0a-8b5f-0df4cc0b22e5:dashboardId",
+      "type": "dashboard"
+    },
+    {
+      "id": "data-stream-detail",
+      "name": "3e250dfa-7977-45d7-a449-b28b25ea4148:drilldown:DASHBOARD_TO_DASHBOARD_DRILLDOWN:172fcfcf-f33f-500a-8c7b-7cc21af82a67:dashboardId",
+      "type": "dashboard"
+    },
+    {
+      "id": "alias-detail",
+      "name": "14cc7d55-cf1a-4ec9-93d1-6b209fdea331:drilldown:DASHBOARD_TO_DASHBOARD_DRILLDOWN:e512dae9-e748-5d6d-9b06-44142fb09d30:dashboardId",
+      "type": "dashboard"
+    },
+    {
+      "id": "index-detail",
+      "name": "9f6bca47-7300-4dae-b0d2-8d376e118cd5:drilldown:DASHBOARD_TO_DASHBOARD_DRILLDOWN:676453e4-1ffe-568b-91ab-1752bfa24c9f:dashboardId",
+      "type": "dashboard"
+    },
+    {
+      "id": "data-stream-detail",
+      "name": "a05891e8-ee3f-4bbc-80e4-e09d92446d3d:drilldown:DASHBOARD_TO_DASHBOARD_DRILLDOWN:40bd1edc-ce9e-5eff-9ac3-358f37abf849:dashboardId",
+      "type": "dashboard"
+    },
+    {
+      "id": "alias-detail",
+      "name": "1de2849f-02a5-4bf5-9c48-194f4465e0e6:drilldown:DASHBOARD_TO_DASHBOARD_DRILLDOWN:36fed84c-dcdd-586b-9cb1-a830f3918cd4:dashboardId",
+      "type": "dashboard"
+    },
+    {
+      "id": "index-detail",
+      "name": "e76409e6-6ef0-476c-a4b0-131436dc6a61:drilldown:DASHBOARD_TO_DASHBOARD_DRILLDOWN:6ff23409-e587-514c-862a-96db26856132:dashboardId",
+      "type": "dashboard"
+    },
+    {
+      "id": "index-detail",
+      "name": "52c14877-9119-46e9-9613-53ee6a5ef1e4:drilldown:DASHBOARD_TO_DASHBOARD_DRILLDOWN:4f4bfda1-767d-5c3b-a362-961de631fc03:dashboardId",
+      "type": "dashboard"
+    },
+    {
+      "id": "data-stream-detail",
+      "name": "f3a441bd-1075-4ce8-a665-68b14e685271:drilldown:DASHBOARD_TO_DASHBOARD_DRILLDOWN:b590cfc6-1d80-5906-9570-a4ae12f3cac5:dashboardId",
+      "type": "dashboard"
+    },
+    {
+      "id": "data-stream-detail",
+      "name": "f17f237f-f998-46b1-b7a7-a524dd9ce8a4:drilldown:DASHBOARD_TO_DASHBOARD_DRILLDOWN:8ce8c9ef-420b-509d-b345-60f0cf892e22:dashboardId",
+      "type": "dashboard"
+    },
+    {
+      "id": "alias-detail",
+      "name": "49edcc4c-8845-4e56-b092-a9405f886452:drilldown:DASHBOARD_TO_DASHBOARD_DRILLDOWN:c304a319-9145-5d64-bd96-a8151fb4f24d:dashboardId",
+      "type": "dashboard"
+    },
+    {
+      "id": "alias-detail",
+      "name": "64899185-bee5-44e8-a4f1-66ffc7c7e326:drilldown:DASHBOARD_TO_DASHBOARD_DRILLDOWN:be822c6e-68a1-541f-8112-901766139f38:dashboardId",
+      "type": "dashboard"
     }
   ],
   "type": "dashboard",

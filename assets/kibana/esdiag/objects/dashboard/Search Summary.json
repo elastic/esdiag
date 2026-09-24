@@ -311,7 +311,7 @@ a:link { text-decoration: none; }""",
                             "emptyAsNull": true
                           },
                           "scale": "ratio",
-                          "sourceField": "diagnostic.uuid"
+                          "sourceField": "diagnostic.id"
                         },
                         "863ad5a5-42e7-4cd4-8239-2841352192f1": {
                           "dataType": "string",

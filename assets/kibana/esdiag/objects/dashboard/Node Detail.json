@@ -1,0 +1,2048 @@
+{
+  "attributes": {
+    "description": "Component detail for a single Elasticsearch node. Scoped by the diagnostic.id and node.name filters carried in from a drilldown; every panel breaks that node down by its own sub-dimensions (operation, thread pool, circuit breaker, JVM pool, cache, indexing-pressure stage, and the indices whose shards it holds). Use it to determine root cause or correlate specific data points, then drill down to Index Detail. An empty panel is signal: a frozen node shows no indexing, a coordinating-only node holds no shards.",
+    "kibanaSavedObjectMeta": {
+      "searchSourceJSON": {}
+    },
+    "optionsJSON": {
+      "autoApplyFilters": true,
+      "hidePanelBorders": false,
+      "hidePanelTitles": false,
+      "syncColors": false,
+      "syncCursor": true,
+      "syncTooltips": false,
+      "useMargins": true
+    },
+    "panelsJSON": [
+      {
+        "embeddableConfig": {
+          "enhancements": {}
+        },
+        "gridData": {
+          "h": 3,
+          "i": "1a7c9e40-3b52-4d81-9f6a-2c48e5b70d11",
+          "w": 22,
+          "x": 0,
+          "y": 0
+        },
+        "panelIndex": "1a7c9e40-3b52-4d81-9f6a-2c48e5b70d11",
+        "panelRefName": "panel_1a7c9e40-3b52-4d81-9f6a-2c48e5b70d11",
+        "type": "links"
+      },
+      {
+        "embeddableConfig": {
+          "enhancements": {}
+        },
+        "gridData": {
+          "h": 3,
+          "i": "2b8daf51-4c63-4e92-8a7b-3d59f6c81e22",
+          "w": 24,
+          "x": 22,
+          "y": 0
+        },
+        "panelIndex": "2b8daf51-4c63-4e92-8a7b-3d59f6c81e22",
+        "panelRefName": "panel_2b8daf51-4c63-4e92-8a7b-3d59f6c81e22",
+        "type": "links"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [],
+            "state": {
+              "adHocDataViews": {
+                "metrics-node-esdiag*-58e9bdd51672b2eb3030293319a5633d891ba4275bb8bfab1b2123488008d574": {
+                  "allowHidden": false,
+                  "allowNoIndex": false,
+                  "fieldAttrs": {},
+                  "fieldFormats": {},
+                  "id": "metrics-node-esdiag*-58e9bdd51672b2eb3030293319a5633d891ba4275bb8bfab1b2123488008d574",
+                  "name": "metrics-node-esdiag*",
+                  "runtimeFieldMap": {},
+                  "sourceFilters": [],
+                  "title": "metrics-node-esdiag*",
+                  "type": "esql"
+                }
+              },
+              "datasourceStates": {
+                "textBased": {
+                  "layers": {
+                    "layer_0": {
+                      "columns": [
+                        {
+                          "columnId": "metric_accessor_metric",
+                          "fieldName": "Heap used",
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "compact": false,
+                                "decimals": 1,
+                                "suffix": "%"
+                              }
+                            }
+                          }
+                        }
+                      ],
+                      "index": "metrics-node-esdiag*-58e9bdd51672b2eb3030293319a5633d891ba4275bb8bfab1b2123488008d574",
+                      "query": {
+                        "esql": "FROM metrics-node-esdiag* | STATS `Heap used` = MAX(node.jvm.mem.heap_used_percent)"
+                      }
+                    }
+                  }
+                }
+              },
+              "filters": [],
+              "internalReferences": [
+                {
+                  "id": "metrics-node-esdiag*-58e9bdd51672b2eb3030293319a5633d891ba4275bb8bfab1b2123488008d574",
+                  "name": "indexpattern-datasource-layer-layer_0",
+                  "type": "index-pattern"
+                }
+              ],
+              "query": {
+                "esql": "FROM metrics-node-esdiag* | STATS `Heap used` = MAX(node.jvm.mem.heap_used_percent)"
+              },
+              "visualization": {
+                "layerId": "layer_0",
+                "layerType": "data",
+                "metricAccessor": "metric_accessor_metric",
+                "showBar": false
+              }
+            },
+            "title": "",
+            "visualizationType": "lnsMetric"
+          },
+          "title": ""
+        },
+        "gridData": {
+          "h": 5,
+          "i": "kpi-heap",
+          "w": 8,
+          "x": 0,
+          "y": 3
+        },
+        "panelIndex": "kpi-heap",
+        "type": "vis"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [],
+            "state": {
+              "adHocDataViews": {
+                "metrics-node-esdiag*-4fc8af8d3aac8b758289c2902776b4ce376ff85b72f38278e9a955d764ffec0b": {
+                  "allowHidden": false,
+                  "allowNoIndex": false,
+                  "fieldAttrs": {},
+                  "fieldFormats": {},
+                  "id": "metrics-node-esdiag*-4fc8af8d3aac8b758289c2902776b4ce376ff85b72f38278e9a955d764ffec0b",
+                  "name": "metrics-node-esdiag*",
+                  "runtimeFieldMap": {},
+                  "sourceFilters": [],
+                  "title": "metrics-node-esdiag*",
+                  "type": "esql"
+                }
+              },
+              "datasourceStates": {
+                "textBased": {
+                  "layers": {
+                    "layer_0": {
+                      "columns": [
+                        {
+                          "columnId": "metric_accessor_metric",
+                          "fieldName": "CPU",
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "compact": false,
+                                "decimals": 0,
+                                "suffix": "%"
+                              }
+                            }
+                          }
+                        }
+                      ],
+                      "index": "metrics-node-esdiag*-4fc8af8d3aac8b758289c2902776b4ce376ff85b72f38278e9a955d764ffec0b",
+                      "query": {
+                        "esql": "FROM metrics-node-esdiag* | STATS `CPU` = MAX(node.os.cpu.percent)"
+                      }
+                    }
+                  }
+                }
+              },
+              "filters": [],
+              "internalReferences": [
+                {
+                  "id": "metrics-node-esdiag*-4fc8af8d3aac8b758289c2902776b4ce376ff85b72f38278e9a955d764ffec0b",
+                  "name": "indexpattern-datasource-layer-layer_0",
+                  "type": "index-pattern"
+                }
+              ],
+              "query": {
+                "esql": "FROM metrics-node-esdiag* | STATS `CPU` = MAX(node.os.cpu.percent)"
+              },
+              "visualization": {
+                "layerId": "layer_0",
+                "layerType": "data",
+                "metricAccessor": "metric_accessor_metric",
+                "showBar": false
+              }
+            },
+            "title": "",
+            "visualizationType": "lnsMetric"
+          },
+          "title": ""
+        },
+        "gridData": {
+          "h": 5,
+          "i": "kpi-cpu",
+          "w": 8,
+          "x": 8,
+          "y": 3
+        },
+        "panelIndex": "kpi-cpu",
+        "type": "vis"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [],
+            "state": {
+              "adHocDataViews": {
+                "metrics-node-esdiag*-70e71e39344efd5d431bf3f288615aa8f4b9c470215b7199169621381173c4de": {
+                  "allowHidden": false,
+                  "allowNoIndex": false,
+                  "fieldAttrs": {},
+                  "fieldFormats": {},
+                  "id": "metrics-node-esdiag*-70e71e39344efd5d431bf3f288615aa8f4b9c470215b7199169621381173c4de",
+                  "name": "metrics-node-esdiag*",
+                  "runtimeFieldMap": {},
+                  "sourceFilters": [],
+                  "title": "metrics-node-esdiag*",
+                  "type": "esql"
+                }
+              },
+              "datasourceStates": {
+                "textBased": {
+                  "layers": {
+                    "layer_0": {
+                      "columns": [
+                        {
+                          "columnId": "metric_accessor_metric",
+                          "fieldName": "Disk used",
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "compact": false,
+                                "decimals": 1,
+                                "suffix": "%"
+                              }
+                            }
+                          }
+                        }
+                      ],
+                      "index": "metrics-node-esdiag*-70e71e39344efd5d431bf3f288615aa8f4b9c470215b7199169621381173c4de",
+                      "query": {
+                        "esql": "FROM metrics-node-esdiag* | STATS `Disk used` = MAX(node.fs.total.used_percent)"
+                      }
+                    }
+                  }
+                }
+              },
+              "filters": [],
+              "internalReferences": [
+                {
+                  "id": "metrics-node-esdiag*-70e71e39344efd5d431bf3f288615aa8f4b9c470215b7199169621381173c4de",
+                  "name": "indexpattern-datasource-layer-layer_0",
+                  "type": "index-pattern"
+                }
+              ],
+              "query": {
+                "esql": "FROM metrics-node-esdiag* | STATS `Disk used` = MAX(node.fs.total.used_percent)"
+              },
+              "visualization": {
+                "layerId": "layer_0",
+                "layerType": "data",
+                "metricAccessor": "metric_accessor_metric",
+                "showBar": false
+              }
+            },
+            "title": "",
+            "visualizationType": "lnsMetric"
+          },
+          "title": ""
+        },
+        "gridData": {
+          "h": 5,
+          "i": "kpi-disk",
+          "w": 8,
+          "x": 16,
+          "y": 3
+        },
+        "panelIndex": "kpi-disk",
+        "type": "vis"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [],
+            "state": {
+              "adHocDataViews": {
+                "metrics-node-esdiag*-ce8a69d74d28935ff801fb0de91cc78448ecdec4d32cb837dfb3453e11e8500c": {
+                  "allowHidden": false,
+                  "allowNoIndex": false,
+                  "fieldAttrs": {},
+                  "fieldFormats": {},
+                  "id": "metrics-node-esdiag*-ce8a69d74d28935ff801fb0de91cc78448ecdec4d32cb837dfb3453e11e8500c",
+                  "name": "metrics-node-esdiag*",
+                  "runtimeFieldMap": {},
+                  "sourceFilters": [],
+                  "title": "metrics-node-esdiag*",
+                  "type": "esql"
+                }
+              },
+              "datasourceStates": {
+                "textBased": {
+                  "layers": {
+                    "layer_0": {
+                      "columns": [
+                        {
+                          "columnId": "metric_accessor_metric",
+                          "fieldName": "Shards",
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "compact": false,
+                                "decimals": 0
+                              }
+                            }
+                          }
+                        }
+                      ],
+                      "index": "metrics-node-esdiag*-ce8a69d74d28935ff801fb0de91cc78448ecdec4d32cb837dfb3453e11e8500c",
+                      "query": {
+                        "esql": "FROM metrics-node-esdiag* | STATS `Shards` = MAX(node.allocations.shards)"
+                      }
+                    }
+                  }
+                }
+              },
+              "filters": [],
+              "internalReferences": [
+                {
+                  "id": "metrics-node-esdiag*-ce8a69d74d28935ff801fb0de91cc78448ecdec4d32cb837dfb3453e11e8500c",
+                  "name": "indexpattern-datasource-layer-layer_0",
+                  "type": "index-pattern"
+                }
+              ],
+              "query": {
+                "esql": "FROM metrics-node-esdiag* | STATS `Shards` = MAX(node.allocations.shards)"
+              },
+              "visualization": {
+                "layerId": "layer_0",
+                "layerType": "data",
+                "metricAccessor": "metric_accessor_metric",
+                "showBar": false
+              }
+            },
+            "title": "",
+            "visualizationType": "lnsMetric"
+          },
+          "title": ""
+        },
+        "gridData": {
+          "h": 5,
+          "i": "kpi-shards",
+          "w": 8,
+          "x": 24,
+          "y": 3
+        },
+        "panelIndex": "kpi-shards",
+        "type": "vis"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [],
+            "state": {
+              "adHocDataViews": {
+                "metrics-node-esdiag*-676e56171d147c95668a409a88ae43663f3b4b8579265e13e743584803a38ce6": {
+                  "allowHidden": false,
+                  "allowNoIndex": false,
+                  "fieldAttrs": {},
+                  "fieldFormats": {},
+                  "id": "metrics-node-esdiag*-676e56171d147c95668a409a88ae43663f3b4b8579265e13e743584803a38ce6",
+                  "name": "metrics-node-esdiag*",
+                  "runtimeFieldMap": {},
+                  "sourceFilters": [],
+                  "title": "metrics-node-esdiag*",
+                  "type": "esql"
+                }
+              },
+              "datasourceStates": {
+                "textBased": {
+                  "layers": {
+                    "layer_0": {
+                      "columns": [
+                        {
+                          "columnId": "metric_accessor_metric",
+                          "fieldName": "Documents",
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "compact": true,
+                                "decimals": 1
+                              }
+                            }
+                          }
+                        }
+                      ],
+                      "index": "metrics-node-esdiag*-676e56171d147c95668a409a88ae43663f3b4b8579265e13e743584803a38ce6",
+                      "query": {
+                        "esql": "FROM metrics-node-esdiag* | STATS `Documents` = MAX(node.indices.docs.count)"
+                      }
+                    }
+                  }
+                }
+              },
+              "filters": [],
+              "internalReferences": [
+                {
+                  "id": "metrics-node-esdiag*-676e56171d147c95668a409a88ae43663f3b4b8579265e13e743584803a38ce6",
+                  "name": "indexpattern-datasource-layer-layer_0",
+                  "type": "index-pattern"
+                }
+              ],
+              "query": {
+                "esql": "FROM metrics-node-esdiag* | STATS `Documents` = MAX(node.indices.docs.count)"
+              },
+              "visualization": {
+                "layerId": "layer_0",
+                "layerType": "data",
+                "metricAccessor": "metric_accessor_metric",
+                "showBar": false
+              }
+            },
+            "title": "",
+            "visualizationType": "lnsMetric"
+          },
+          "title": ""
+        },
+        "gridData": {
+          "h": 5,
+          "i": "kpi-docs",
+          "w": 8,
+          "x": 32,
+          "y": 3
+        },
+        "panelIndex": "kpi-docs",
+        "type": "vis"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [],
+            "state": {
+              "adHocDataViews": {
+                "metrics-node-esdiag*-374d428bc4f82c13f5949e42641bd8f2014ab4d6dba42c4b1cf5129cf6dd22f7": {
+                  "allowHidden": false,
+                  "allowNoIndex": false,
+                  "fieldAttrs": {},
+                  "fieldFormats": {},
+                  "id": "metrics-node-esdiag*-374d428bc4f82c13f5949e42641bd8f2014ab4d6dba42c4b1cf5129cf6dd22f7",
+                  "name": "metrics-node-esdiag*",
+                  "runtimeFieldMap": {},
+                  "sourceFilters": [],
+                  "title": "metrics-node-esdiag*",
+                  "type": "esql"
+                }
+              },
+              "datasourceStates": {
+                "textBased": {
+                  "layers": {
+                    "layer_0": {
+                      "columns": [
+                        {
+                          "columnId": "metric_accessor_metric",
+                          "fieldName": "Store size",
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "bytes",
+                              "params": {
+                                "decimals": 1
+                              }
+                            }
+                          }
+                        }
+                      ],
+                      "index": "metrics-node-esdiag*-374d428bc4f82c13f5949e42641bd8f2014ab4d6dba42c4b1cf5129cf6dd22f7",
+                      "query": {
+                        "esql": "FROM metrics-node-esdiag* | STATS `Store size` = MAX(node.indices.store.size_in_bytes)"
+                      }
+                    }
+                  }
+                }
+              },
+              "filters": [],
+              "internalReferences": [
+                {
+                  "id": "metrics-node-esdiag*-374d428bc4f82c13f5949e42641bd8f2014ab4d6dba42c4b1cf5129cf6dd22f7",
+                  "name": "indexpattern-datasource-layer-layer_0",
+                  "type": "index-pattern"
+                }
+              ],
+              "query": {
+                "esql": "FROM metrics-node-esdiag* | STATS `Store size` = MAX(node.indices.store.size_in_bytes)"
+              },
+              "visualization": {
+                "layerId": "layer_0",
+                "layerType": "data",
+                "metricAccessor": "metric_accessor_metric",
+                "showBar": false
+              }
+            },
+            "title": "",
+            "visualizationType": "lnsMetric"
+          },
+          "title": ""
+        },
+        "gridData": {
+          "h": 5,
+          "i": "kpi-store",
+          "w": 8,
+          "x": 40,
+          "y": 3
+        },
+        "panelIndex": "kpi-store",
+        "type": "vis"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [],
+            "state": {
+              "adHocDataViews": {
+                "metrics-node-esdiag*-df098d6089123d32fdc891b69df7e75eacfc9d33e59d187eb3f7b323f7fe58c8": {
+                  "allowHidden": false,
+                  "allowNoIndex": false,
+                  "fieldAttrs": {},
+                  "fieldFormats": {},
+                  "id": "metrics-node-esdiag*-df098d6089123d32fdc891b69df7e75eacfc9d33e59d187eb3f7b323f7fe58c8",
+                  "name": "metrics-node-esdiag*",
+                  "runtimeFieldMap": {},
+                  "sourceFilters": [],
+                  "title": "metrics-node-esdiag*",
+                  "type": "esql"
+                }
+              },
+              "datasourceStates": {
+                "textBased": {
+                  "layers": {
+                    "layer_0": {
+                      "columns": [
+                        {
+                          "columnId": "datatable_accessor_row_0",
+                          "fieldName": "Node",
+                          "meta": {
+                            "type": "string"
+                          }
+                        },
+                        {
+                          "columnId": "datatable_accessor_row_1",
+                          "fieldName": "Roles",
+                          "meta": {
+                            "type": "string"
+                          }
+                        },
+                        {
+                          "columnId": "datatable_accessor_row_2",
+                          "fieldName": "Host",
+                          "meta": {
+                            "type": "string"
+                          }
+                        },
+                        {
+                          "columnId": "datatable_accessor_row_3",
+                          "fieldName": "Zone",
+                          "meta": {
+                            "type": "string"
+                          }
+                        },
+                        {
+                          "columnId": "datatable_accessor_row_4",
+                          "fieldName": "Version",
+                          "meta": {
+                            "type": "string"
+                          }
+                        },
+                        {
+                          "columnId": "datatable_accessor_metric_0",
+                          "fieldName": "Processors",
+                          "inMetricDimension": true,
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "compact": false,
+                                "decimals": 0
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "columnId": "datatable_accessor_metric_1",
+                          "fieldName": "Uptime",
+                          "inMetricDimension": true,
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "duration",
+                              "params": {
+                                "decimals": 2,
+                                "fromUnit": "milliseconds",
+                                "toUnit": "hours"
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "columnId": "datatable_accessor_metric_2",
+                          "fieldName": "Open HTTP",
+                          "inMetricDimension": true,
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "compact": false,
+                                "decimals": 0
+                              }
+                            }
+                          }
+                        }
+                      ],
+                      "index": "metrics-node-esdiag*-df098d6089123d32fdc891b69df7e75eacfc9d33e59d187eb3f7b323f7fe58c8",
+                      "query": {
+                        "esql": "FROM metrics-node-esdiag* | STATS `Roles` = VALUES(node.roles), `Host` = VALUES(node.host), `Zone` = VALUES(node.attributes.availability_zone), `Version` = VALUES(cluster.version.number), `Processors` = MAX(node.os.available_processors), `Uptime` = MAX(node.jvm.uptime_in_millis), `Open HTTP` = MAX(node.http.current_open) BY `Node` = node.name | SORT `Node` ASC | LIMIT 5"
+                      }
+                    }
+                  }
+                }
+              },
+              "filters": [],
+              "internalReferences": [
+                {
+                  "id": "metrics-node-esdiag*-df098d6089123d32fdc891b69df7e75eacfc9d33e59d187eb3f7b323f7fe58c8",
+                  "name": "indexpattern-datasource-layer-layer_0",
+                  "type": "index-pattern"
+                }
+              ],
+              "query": {
+                "esql": "FROM metrics-node-esdiag* | STATS `Roles` = VALUES(node.roles), `Host` = VALUES(node.host), `Zone` = VALUES(node.attributes.availability_zone), `Version` = VALUES(cluster.version.number), `Processors` = MAX(node.os.available_processors), `Uptime` = MAX(node.jvm.uptime_in_millis), `Open HTTP` = MAX(node.http.current_open) BY `Node` = node.name | SORT `Node` ASC | LIMIT 5"
+              },
+              "visualization": {
+                "columns": [
+                  {
+                    "columnId": "datatable_accessor_row_0",
+                    "isMetric": false,
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "datatable_accessor_row_1",
+                    "isMetric": false,
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "datatable_accessor_row_2",
+                    "isMetric": false,
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "datatable_accessor_row_3",
+                    "isMetric": false,
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "datatable_accessor_row_4",
+                    "isMetric": false,
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "datatable_accessor_metric_0",
+                    "isMetric": true,
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "datatable_accessor_metric_1",
+                    "isMetric": true,
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "datatable_accessor_metric_2",
+                    "isMetric": true,
+                    "isTransposed": false
+                  }
+                ],
+                "layerId": "layer_0",
+                "layerType": "data"
+              }
+            },
+            "title": "",
+            "version": 2,
+            "visualizationType": "lnsDatatable"
+          },
+          "title": "Identity and capacity"
+        },
+        "gridData": {
+          "h": 10,
+          "i": "node-identity",
+          "w": 24,
+          "x": 0,
+          "y": 8
+        },
+        "panelIndex": "node-identity",
+        "type": "vis"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [],
+            "state": {
+              "adHocDataViews": {
+                "metrics-node-esdiag*-b22291c220dca2b2d8c23e95e9497ad5dad50de1ed50841f3cb95eb80c24f1d9": {
+                  "allowHidden": false,
+                  "allowNoIndex": false,
+                  "fieldAttrs": {},
+                  "fieldFormats": {},
+                  "id": "metrics-node-esdiag*-b22291c220dca2b2d8c23e95e9497ad5dad50de1ed50841f3cb95eb80c24f1d9",
+                  "name": "metrics-node-esdiag*",
+                  "runtimeFieldMap": {},
+                  "sourceFilters": [],
+                  "title": "metrics-node-esdiag*",
+                  "type": "esql"
+                }
+              },
+              "datasourceStates": {
+                "textBased": {
+                  "layers": {
+                    "layer_0": {
+                      "columns": [
+                        {
+                          "columnId": "datatable_accessor_row_0",
+                          "fieldName": "Operation",
+                          "meta": {
+                            "type": "string"
+                          }
+                        },
+                        {
+                          "columnId": "datatable_accessor_metric_0",
+                          "fieldName": "Count",
+                          "inMetricDimension": true,
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "compact": true,
+                                "decimals": 1
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "columnId": "datatable_accessor_metric_1",
+                          "fieldName": "Total time",
+                          "inMetricDimension": true,
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "duration",
+                              "params": {
+                                "decimals": 2,
+                                "fromUnit": "milliseconds",
+                                "toUnit": "seconds"
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "columnId": "datatable_accessor_metric_2",
+                          "fieldName": "Time per operation",
+                          "inMetricDimension": true,
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "compact": false,
+                                "decimals": 1,
+                                "suffix": " µs"
+                              }
+                            }
+                          }
+                        }
+                      ],
+                      "index": "metrics-node-esdiag*-b22291c220dca2b2d8c23e95e9497ad5dad50de1ed50841f3cb95eb80c24f1d9",
+                      "query": {
+                        "esql": "FROM metrics-node-esdiag* | EVAL `Operation` = [\"index\", \"delete\", \"get\", \"search query\", \"search fetch\", \"merge\", \"refresh\", \"flush\"] | MV_EXPAND `Operation` | EVAL n = CASE(`Operation` == \"index\", node.indices.indexing.index_total, `Operation` == \"delete\", node.indices.indexing.delete_total, `Operation` == \"get\", node.indices.get.total, `Operation` == \"search query\", node.indices.search.query_total, `Operation` == \"search fetch\", node.indices.search.fetch_total, `Operation` == \"merge\", node.indices.merges.total, `Operation` == \"refresh\", node.indices.refresh.total, node.indices.flush.total), ms = CASE(`Operation` == \"index\", node.indices.indexing.index_time_in_millis, `Operation` == \"delete\", node.indices.indexing.delete_time_in_millis, `Operation` == \"get\", node.indices.get.time_in_millis, `Operation` == \"search query\", node.indices.search.query_time_in_millis, `Operation` == \"search fetch\", node.indices.search.fetch_time_in_millis, `Operation` == \"merge\", node.indices.merges.total_time_in_millis, `Operation` == \"refresh\", node.indices.refresh.total_time_in_millis, node.indices.flush.total_time_in_millis) | STATS `Count` = SUM(n), `Total time` = SUM(ms) BY `Operation` | EVAL `Time per operation` = CASE(`Count` > 0, `Total time` * 1000.0 / `Count`, null) | WHERE `Count` IS NOT NULL | SORT `Total time` DESC NULLS LAST"
+                      }
+                    }
+                  }
+                }
+              },
+              "filters": [],
+              "internalReferences": [
+                {
+                  "id": "metrics-node-esdiag*-b22291c220dca2b2d8c23e95e9497ad5dad50de1ed50841f3cb95eb80c24f1d9",
+                  "name": "indexpattern-datasource-layer-layer_0",
+                  "type": "index-pattern"
+                }
+              ],
+              "query": {
+                "esql": "FROM metrics-node-esdiag* | EVAL `Operation` = [\"index\", \"delete\", \"get\", \"search query\", \"search fetch\", \"merge\", \"refresh\", \"flush\"] | MV_EXPAND `Operation` | EVAL n = CASE(`Operation` == \"index\", node.indices.indexing.index_total, `Operation` == \"delete\", node.indices.indexing.delete_total, `Operation` == \"get\", node.indices.get.total, `Operation` == \"search query\", node.indices.search.query_total, `Operation` == \"search fetch\", node.indices.search.fetch_total, `Operation` == \"merge\", node.indices.merges.total, `Operation` == \"refresh\", node.indices.refresh.total, node.indices.flush.total), ms = CASE(`Operation` == \"index\", node.indices.indexing.index_time_in_millis, `Operation` == \"delete\", node.indices.indexing.delete_time_in_millis, `Operation` == \"get\", node.indices.get.time_in_millis, `Operation` == \"search query\", node.indices.search.query_time_in_millis, `Operation` == \"search fetch\", node.indices.search.fetch_time_in_millis, `Operation` == \"merge\", node.indices.merges.total_time_in_millis, `Operation` == \"refresh\", node.indices.refresh.total_time_in_millis, node.indices.flush.total_time_in_millis) | STATS `Count` = SUM(n), `Total time` = SUM(ms) BY `Operation` | EVAL `Time per operation` = CASE(`Count` > 0, `Total time` * 1000.0 / `Count`, null) | WHERE `Count` IS NOT NULL | SORT `Total time` DESC NULLS LAST"
+              },
+              "visualization": {
+                "columns": [
+                  {
+                    "columnId": "datatable_accessor_row_0",
+                    "isMetric": false,
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "datatable_accessor_metric_0",
+                    "isMetric": true,
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "datatable_accessor_metric_1",
+                    "isMetric": true,
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "datatable_accessor_metric_2",
+                    "isMetric": true,
+                    "isTransposed": false
+                  }
+                ],
+                "layerId": "layer_0",
+                "layerType": "data"
+              }
+            },
+            "title": "",
+            "version": 2,
+            "visualizationType": "lnsDatatable"
+          },
+          "title": "Operations on this node — volume and cost"
+        },
+        "gridData": {
+          "h": 10,
+          "i": "operations",
+          "w": 24,
+          "x": 24,
+          "y": 8
+        },
+        "panelIndex": "operations",
+        "type": "vis"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [],
+            "state": {
+              "adHocDataViews": {
+                "metrics-node-esdiag*-876b3853a97be2ca0de5cf9973a7ae69230ba8635323e93005dab9fa7cc08da6": {
+                  "allowHidden": false,
+                  "allowNoIndex": false,
+                  "fieldAttrs": {},
+                  "fieldFormats": {},
+                  "id": "metrics-node-esdiag*-876b3853a97be2ca0de5cf9973a7ae69230ba8635323e93005dab9fa7cc08da6",
+                  "name": "metrics-node-esdiag*",
+                  "runtimeFieldMap": {},
+                  "sourceFilters": [],
+                  "title": "metrics-node-esdiag*",
+                  "type": "esql"
+                }
+              },
+              "datasourceStates": {
+                "textBased": {
+                  "layers": {
+                    "layer_0": {
+                      "columns": [
+                        {
+                          "columnId": "datatable_accessor_row_0",
+                          "fieldName": "Thread pool",
+                          "meta": {
+                            "type": "string"
+                          }
+                        },
+                        {
+                          "columnId": "datatable_accessor_metric_0",
+                          "fieldName": "Active",
+                          "inMetricDimension": true,
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "compact": false,
+                                "decimals": 0
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "columnId": "datatable_accessor_metric_1",
+                          "fieldName": "Queued",
+                          "inMetricDimension": true,
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "compact": false,
+                                "decimals": 0
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "columnId": "datatable_accessor_metric_2",
+                          "fieldName": "Rejected",
+                          "inMetricDimension": true,
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "compact": false,
+                                "decimals": 0
+                              }
+                            }
+                          }
+                        }
+                      ],
+                      "index": "metrics-node-esdiag*-876b3853a97be2ca0de5cf9973a7ae69230ba8635323e93005dab9fa7cc08da6",
+                      "query": {
+                        "esql": "FROM metrics-node-esdiag* | EVAL `Thread pool` = [\"write\", \"write_coordination\", \"search\", \"search_worker\", \"search_coordination\", \"get\", \"merge\", \"refresh\", \"flush\", \"force_merge\", \"management\", \"snapshot\"] | MV_EXPAND `Thread pool` | EVAL a = CASE(`Thread pool` == \"write\", node.thread_pool.write.active, `Thread pool` == \"write_coordination\", node.thread_pool.write_coordination.active, `Thread pool` == \"search\", node.thread_pool.search.active, `Thread pool` == \"search_worker\", node.thread_pool.search_worker.active, `Thread pool` == \"search_coordination\", node.thread_pool.search_coordination.active, `Thread pool` == \"get\", node.thread_pool.get.active, `Thread pool` == \"merge\", node.thread_pool.merge.active, `Thread pool` == \"refresh\", node.thread_pool.refresh.active, `Thread pool` == \"flush\", node.thread_pool.flush.active, `Thread pool` == \"force_merge\", node.thread_pool.force_merge.active, `Thread pool` == \"management\", node.thread_pool.management.active, node.thread_pool.snapshot.active), q = CASE(`Thread pool` == \"write\", node.thread_pool.write.queue, `Thread pool` == \"write_coordination\", node.thread_pool.write_coordination.queue, `Thread pool` == \"search\", node.thread_pool.search.queue, `Thread pool` == \"search_worker\", node.thread_pool.search_worker.queue, `Thread pool` == \"search_coordination\", node.thread_pool.search_coordination.queue, `Thread pool` == \"get\", node.thread_pool.get.queue, `Thread pool` == \"merge\", node.thread_pool.merge.queue, `Thread pool` == \"refresh\", node.thread_pool.refresh.queue, `Thread pool` == \"flush\", node.thread_pool.flush.queue, `Thread pool` == \"force_merge\", node.thread_pool.force_merge.queue, `Thread pool` == \"management\", node.thread_pool.management.queue, node.thread_pool.snapshot.queue), r = CASE(`Thread pool` == \"write\", node.thread_pool.write.rejected, `Thread pool` == \"write_coordination\", node.thread_pool.write_coordination.rejected, `Thread pool` == \"search\", node.thread_pool.search.rejected, `Thread pool` == \"search_worker\", node.thread_pool.search_worker.rejected, `Thread pool` == \"search_coordination\", node.thread_pool.search_coordination.rejected, `Thread pool` == \"get\", node.thread_pool.get.rejected, `Thread pool` == \"merge\", node.thread_pool.merge.rejected, `Thread pool` == \"refresh\", node.thread_pool.refresh.rejected, `Thread pool` == \"flush\", node.thread_pool.flush.rejected, `Thread pool` == \"force_merge\", node.thread_pool.force_merge.rejected, `Thread pool` == \"management\", node.thread_pool.management.rejected, node.thread_pool.snapshot.rejected) | STATS `Active` = SUM(a), `Queued` = SUM(q), `Rejected` = SUM(r) BY `Thread pool` | WHERE `Rejected` IS NOT NULL OR `Queued` IS NOT NULL OR `Active` IS NOT NULL | SORT `Rejected` DESC NULLS LAST, `Queued` DESC NULLS LAST, `Thread pool` ASC"
+                      }
+                    }
+                  }
+                }
+              },
+              "filters": [],
+              "internalReferences": [
+                {
+                  "id": "metrics-node-esdiag*-876b3853a97be2ca0de5cf9973a7ae69230ba8635323e93005dab9fa7cc08da6",
+                  "name": "indexpattern-datasource-layer-layer_0",
+                  "type": "index-pattern"
+                }
+              ],
+              "query": {
+                "esql": "FROM metrics-node-esdiag* | EVAL `Thread pool` = [\"write\", \"write_coordination\", \"search\", \"search_worker\", \"search_coordination\", \"get\", \"merge\", \"refresh\", \"flush\", \"force_merge\", \"management\", \"snapshot\"] | MV_EXPAND `Thread pool` | EVAL a = CASE(`Thread pool` == \"write\", node.thread_pool.write.active, `Thread pool` == \"write_coordination\", node.thread_pool.write_coordination.active, `Thread pool` == \"search\", node.thread_pool.search.active, `Thread pool` == \"search_worker\", node.thread_pool.search_worker.active, `Thread pool` == \"search_coordination\", node.thread_pool.search_coordination.active, `Thread pool` == \"get\", node.thread_pool.get.active, `Thread pool` == \"merge\", node.thread_pool.merge.active, `Thread pool` == \"refresh\", node.thread_pool.refresh.active, `Thread pool` == \"flush\", node.thread_pool.flush.active, `Thread pool` == \"force_merge\", node.thread_pool.force_merge.active, `Thread pool` == \"management\", node.thread_pool.management.active, node.thread_pool.snapshot.active), q = CASE(`Thread pool` == \"write\", node.thread_pool.write.queue, `Thread pool` == \"write_coordination\", node.thread_pool.write_coordination.queue, `Thread pool` == \"search\", node.thread_pool.search.queue, `Thread pool` == \"search_worker\", node.thread_pool.search_worker.queue, `Thread pool` == \"search_coordination\", node.thread_pool.search_coordination.queue, `Thread pool` == \"get\", node.thread_pool.get.queue, `Thread pool` == \"merge\", node.thread_pool.merge.queue, `Thread pool` == \"refresh\", node.thread_pool.refresh.queue, `Thread pool` == \"flush\", node.thread_pool.flush.queue, `Thread pool` == \"force_merge\", node.thread_pool.force_merge.queue, `Thread pool` == \"management\", node.thread_pool.management.queue, node.thread_pool.snapshot.queue), r = CASE(`Thread pool` == \"write\", node.thread_pool.write.rejected, `Thread pool` == \"write_coordination\", node.thread_pool.write_coordination.rejected, `Thread pool` == \"search\", node.thread_pool.search.rejected, `Thread pool` == \"search_worker\", node.thread_pool.search_worker.rejected, `Thread pool` == \"search_coordination\", node.thread_pool.search_coordination.rejected, `Thread pool` == \"get\", node.thread_pool.get.rejected, `Thread pool` == \"merge\", node.thread_pool.merge.rejected, `Thread pool` == \"refresh\", node.thread_pool.refresh.rejected, `Thread pool` == \"flush\", node.thread_pool.flush.rejected, `Thread pool` == \"force_merge\", node.thread_pool.force_merge.rejected, `Thread pool` == \"management\", node.thread_pool.management.rejected, node.thread_pool.snapshot.rejected) | STATS `Active` = SUM(a), `Queued` = SUM(q), `Rejected` = SUM(r) BY `Thread pool` | WHERE `Rejected` IS NOT NULL OR `Queued` IS NOT NULL OR `Active` IS NOT NULL | SORT `Rejected` DESC NULLS LAST, `Queued` DESC NULLS LAST, `Thread pool` ASC"
+              },
+              "visualization": {
+                "columns": [
+                  {
+                    "columnId": "datatable_accessor_row_0",
+                    "isMetric": false,
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "datatable_accessor_metric_0",
+                    "isMetric": true,
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "datatable_accessor_metric_1",
+                    "isMetric": true,
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "datatable_accessor_metric_2",
+                    "isMetric": true,
+                    "isTransposed": false
+                  }
+                ],
+                "layerId": "layer_0",
+                "layerType": "data"
+              }
+            },
+            "title": "",
+            "version": 2,
+            "visualizationType": "lnsDatatable"
+          },
+          "title": "Thread pools — active, queued and rejected"
+        },
+        "gridData": {
+          "h": 11,
+          "i": "thread-pools",
+          "w": 24,
+          "x": 0,
+          "y": 18
+        },
+        "panelIndex": "thread-pools",
+        "type": "vis"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [],
+            "state": {
+              "adHocDataViews": {
+                "metrics-node-esdiag*-02c0104cccdd173faf969a898ac28219f448ea7dfdc41860213896aaacd4adc3": {
+                  "allowHidden": false,
+                  "allowNoIndex": false,
+                  "fieldAttrs": {},
+                  "fieldFormats": {},
+                  "id": "metrics-node-esdiag*-02c0104cccdd173faf969a898ac28219f448ea7dfdc41860213896aaacd4adc3",
+                  "name": "metrics-node-esdiag*",
+                  "runtimeFieldMap": {},
+                  "sourceFilters": [],
+                  "title": "metrics-node-esdiag*",
+                  "type": "esql"
+                }
+              },
+              "datasourceStates": {
+                "textBased": {
+                  "layers": {
+                    "layer_0": {
+                      "columns": [
+                        {
+                          "columnId": "datatable_accessor_row_0",
+                          "fieldName": "Breaker",
+                          "meta": {
+                            "type": "string"
+                          }
+                        },
+                        {
+                          "columnId": "datatable_accessor_metric_0",
+                          "fieldName": "Estimated",
+                          "inMetricDimension": true,
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "bytes",
+                              "params": {
+                                "decimals": 1
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "columnId": "datatable_accessor_metric_1",
+                          "fieldName": "Limit",
+                          "inMetricDimension": true,
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "bytes",
+                              "params": {
+                                "decimals": 1
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "columnId": "datatable_accessor_metric_2",
+                          "fieldName": "Used of limit",
+                          "inMetricDimension": true,
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "percent",
+                              "params": {
+                                "compact": false,
+                                "decimals": 1
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "columnId": "datatable_accessor_metric_3",
+                          "fieldName": "Tripped",
+                          "inMetricDimension": true,
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "compact": false,
+                                "decimals": 0
+                              }
+                            }
+                          }
+                        }
+                      ],
+                      "index": "metrics-node-esdiag*-02c0104cccdd173faf969a898ac28219f448ea7dfdc41860213896aaacd4adc3",
+                      "query": {
+                        "esql": "FROM metrics-node-esdiag* | EVAL `Breaker` = [\"parent\", \"fielddata\", \"request\", \"inflight_requests\", \"model_inference\", \"eql_sequence\"] | MV_EXPAND `Breaker` | EVAL est = CASE(`Breaker` == \"parent\", node.breakers.parent.estimated_size_in_bytes, `Breaker` == \"fielddata\", node.breakers.fielddata.estimated_size_in_bytes, `Breaker` == \"request\", node.breakers.request.estimated_size_in_bytes, `Breaker` == \"inflight_requests\", node.breakers.inflight_requests.estimated_size_in_bytes, `Breaker` == \"model_inference\", node.breakers.model_inference.estimated_size_in_bytes, node.breakers.eql_sequence.estimated_size_in_bytes), lim = CASE(`Breaker` == \"parent\", node.breakers.parent.limit_size_in_bytes, `Breaker` == \"fielddata\", node.breakers.fielddata.limit_size_in_bytes, `Breaker` == \"request\", node.breakers.request.limit_size_in_bytes, `Breaker` == \"inflight_requests\", node.breakers.inflight_requests.limit_size_in_bytes, `Breaker` == \"model_inference\", node.breakers.model_inference.limit_size_in_bytes, node.breakers.eql_sequence.limit_size_in_bytes), trp = CASE(`Breaker` == \"parent\", node.breakers.parent.tripped, `Breaker` == \"fielddata\", node.breakers.fielddata.tripped, `Breaker` == \"request\", node.breakers.request.tripped, `Breaker` == \"inflight_requests\", node.breakers.inflight_requests.tripped, `Breaker` == \"model_inference\", node.breakers.model_inference.tripped, node.breakers.eql_sequence.tripped) | STATS `Estimated` = SUM(est), `Limit` = SUM(lim), `Tripped` = SUM(trp) BY `Breaker` | EVAL `Used of limit` = `Estimated` * 1.0 / `Limit` | WHERE `Limit` IS NOT NULL | SORT `Tripped` DESC NULLS LAST, `Used of limit` DESC NULLS LAST"
+                      }
+                    }
+                  }
+                }
+              },
+              "filters": [],
+              "internalReferences": [
+                {
+                  "id": "metrics-node-esdiag*-02c0104cccdd173faf969a898ac28219f448ea7dfdc41860213896aaacd4adc3",
+                  "name": "indexpattern-datasource-layer-layer_0",
+                  "type": "index-pattern"
+                }
+              ],
+              "query": {
+                "esql": "FROM metrics-node-esdiag* | EVAL `Breaker` = [\"parent\", \"fielddata\", \"request\", \"inflight_requests\", \"model_inference\", \"eql_sequence\"] | MV_EXPAND `Breaker` | EVAL est = CASE(`Breaker` == \"parent\", node.breakers.parent.estimated_size_in_bytes, `Breaker` == \"fielddata\", node.breakers.fielddata.estimated_size_in_bytes, `Breaker` == \"request\", node.breakers.request.estimated_size_in_bytes, `Breaker` == \"inflight_requests\", node.breakers.inflight_requests.estimated_size_in_bytes, `Breaker` == \"model_inference\", node.breakers.model_inference.estimated_size_in_bytes, node.breakers.eql_sequence.estimated_size_in_bytes), lim = CASE(`Breaker` == \"parent\", node.breakers.parent.limit_size_in_bytes, `Breaker` == \"fielddata\", node.breakers.fielddata.limit_size_in_bytes, `Breaker` == \"request\", node.breakers.request.limit_size_in_bytes, `Breaker` == \"inflight_requests\", node.breakers.inflight_requests.limit_size_in_bytes, `Breaker` == \"model_inference\", node.breakers.model_inference.limit_size_in_bytes, node.breakers.eql_sequence.limit_size_in_bytes), trp = CASE(`Breaker` == \"parent\", node.breakers.parent.tripped, `Breaker` == \"fielddata\", node.breakers.fielddata.tripped, `Breaker` == \"request\", node.breakers.request.tripped, `Breaker` == \"inflight_requests\", node.breakers.inflight_requests.tripped, `Breaker` == \"model_inference\", node.breakers.model_inference.tripped, node.breakers.eql_sequence.tripped) | STATS `Estimated` = SUM(est), `Limit` = SUM(lim), `Tripped` = SUM(trp) BY `Breaker` | EVAL `Used of limit` = `Estimated` * 1.0 / `Limit` | WHERE `Limit` IS NOT NULL | SORT `Tripped` DESC NULLS LAST, `Used of limit` DESC NULLS LAST"
+              },
+              "visualization": {
+                "columns": [
+                  {
+                    "columnId": "datatable_accessor_row_0",
+                    "isMetric": false,
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "datatable_accessor_metric_0",
+                    "isMetric": true,
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "datatable_accessor_metric_1",
+                    "isMetric": true,
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "datatable_accessor_metric_2",
+                    "isMetric": true,
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "datatable_accessor_metric_3",
+                    "isMetric": true,
+                    "isTransposed": false
+                  }
+                ],
+                "layerId": "layer_0",
+                "layerType": "data"
+              }
+            },
+            "title": "",
+            "version": 2,
+            "visualizationType": "lnsDatatable"
+          },
+          "title": "Circuit breakers — headroom and trips"
+        },
+        "gridData": {
+          "h": 11,
+          "i": "circuit-breakers",
+          "w": 24,
+          "x": 24,
+          "y": 18
+        },
+        "panelIndex": "circuit-breakers",
+        "type": "vis"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [],
+            "state": {
+              "adHocDataViews": {
+                "metrics-node-esdiag*-65bf63379109a97f7c40fa7099e8d9610b6a8490006e05b5879a026a56b2f667": {
+                  "allowHidden": false,
+                  "allowNoIndex": false,
+                  "fieldAttrs": {},
+                  "fieldFormats": {},
+                  "id": "metrics-node-esdiag*-65bf63379109a97f7c40fa7099e8d9610b6a8490006e05b5879a026a56b2f667",
+                  "name": "metrics-node-esdiag*",
+                  "runtimeFieldMap": {},
+                  "sourceFilters": [],
+                  "title": "metrics-node-esdiag*",
+                  "type": "esql"
+                }
+              },
+              "datasourceStates": {
+                "textBased": {
+                  "layers": {
+                    "layer_0": {
+                      "columns": [
+                        {
+                          "columnId": "datatable_accessor_row_0",
+                          "fieldName": "Pool",
+                          "meta": {
+                            "type": "string"
+                          }
+                        },
+                        {
+                          "columnId": "datatable_accessor_metric_0",
+                          "fieldName": "Used",
+                          "inMetricDimension": true,
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "bytes",
+                              "params": {
+                                "decimals": 1
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "columnId": "datatable_accessor_metric_1",
+                          "fieldName": "Peak used",
+                          "inMetricDimension": true,
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "bytes",
+                              "params": {
+                                "decimals": 1
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "columnId": "datatable_accessor_metric_2",
+                          "fieldName": "Max",
+                          "inMetricDimension": true,
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "bytes",
+                              "params": {
+                                "decimals": 1
+                              }
+                            }
+                          }
+                        }
+                      ],
+                      "index": "metrics-node-esdiag*-65bf63379109a97f7c40fa7099e8d9610b6a8490006e05b5879a026a56b2f667",
+                      "query": {
+                        "esql": "FROM metrics-node-esdiag* | EVAL `Pool` = [\"young\", \"survivor\", \"old\"] | MV_EXPAND `Pool` | EVAL u = CASE(`Pool` == \"young\", node.jvm.mem.pools.young.used_in_bytes, `Pool` == \"survivor\", node.jvm.mem.pools.survivor.used_in_bytes, node.jvm.mem.pools.old.used_in_bytes), m = CASE(`Pool` == \"young\", node.jvm.mem.pools.young.max_in_bytes, `Pool` == \"survivor\", node.jvm.mem.pools.survivor.max_in_bytes, node.jvm.mem.pools.old.max_in_bytes), p = CASE(`Pool` == \"young\", node.jvm.mem.pools.young.peak_used_in_bytes, `Pool` == \"survivor\", node.jvm.mem.pools.survivor.peak_used_in_bytes, node.jvm.mem.pools.old.peak_used_in_bytes) | STATS `Used` = SUM(u), `Max` = SUM(m), `Peak used` = SUM(p) BY `Pool` | WHERE `Used` IS NOT NULL | SORT `Max` DESC NULLS LAST"
+                      }
+                    }
+                  }
+                }
+              },
+              "filters": [],
+              "internalReferences": [
+                {
+                  "id": "metrics-node-esdiag*-65bf63379109a97f7c40fa7099e8d9610b6a8490006e05b5879a026a56b2f667",
+                  "name": "indexpattern-datasource-layer-layer_0",
+                  "type": "index-pattern"
+                }
+              ],
+              "query": {
+                "esql": "FROM metrics-node-esdiag* | EVAL `Pool` = [\"young\", \"survivor\", \"old\"] | MV_EXPAND `Pool` | EVAL u = CASE(`Pool` == \"young\", node.jvm.mem.pools.young.used_in_bytes, `Pool` == \"survivor\", node.jvm.mem.pools.survivor.used_in_bytes, node.jvm.mem.pools.old.used_in_bytes), m = CASE(`Pool` == \"young\", node.jvm.mem.pools.young.max_in_bytes, `Pool` == \"survivor\", node.jvm.mem.pools.survivor.max_in_bytes, node.jvm.mem.pools.old.max_in_bytes), p = CASE(`Pool` == \"young\", node.jvm.mem.pools.young.peak_used_in_bytes, `Pool` == \"survivor\", node.jvm.mem.pools.survivor.peak_used_in_bytes, node.jvm.mem.pools.old.peak_used_in_bytes) | STATS `Used` = SUM(u), `Max` = SUM(m), `Peak used` = SUM(p) BY `Pool` | WHERE `Used` IS NOT NULL | SORT `Max` DESC NULLS LAST"
+              },
+              "visualization": {
+                "columns": [
+                  {
+                    "columnId": "datatable_accessor_row_0",
+                    "isMetric": false,
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "datatable_accessor_metric_0",
+                    "isMetric": true,
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "datatable_accessor_metric_1",
+                    "isMetric": true,
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "datatable_accessor_metric_2",
+                    "isMetric": true,
+                    "isTransposed": false
+                  }
+                ],
+                "layerId": "layer_0",
+                "layerType": "data"
+              }
+            },
+            "title": "",
+            "version": 2,
+            "visualizationType": "lnsDatatable"
+          },
+          "title": "JVM memory pools"
+        },
+        "gridData": {
+          "h": 9,
+          "i": "jvm-pools",
+          "w": 24,
+          "x": 0,
+          "y": 29
+        },
+        "panelIndex": "jvm-pools",
+        "type": "vis"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [],
+            "state": {
+              "adHocDataViews": {
+                "metrics-node-esdiag*-0ccbee61d3913e23bb4061f1f1adbd846fa75ff0f3d7d43aa9b175f418457699": {
+                  "allowHidden": false,
+                  "allowNoIndex": false,
+                  "fieldAttrs": {},
+                  "fieldFormats": {},
+                  "id": "metrics-node-esdiag*-0ccbee61d3913e23bb4061f1f1adbd846fa75ff0f3d7d43aa9b175f418457699",
+                  "name": "metrics-node-esdiag*",
+                  "runtimeFieldMap": {},
+                  "sourceFilters": [],
+                  "title": "metrics-node-esdiag*",
+                  "type": "esql"
+                }
+              },
+              "datasourceStates": {
+                "textBased": {
+                  "layers": {
+                    "layer_0": {
+                      "columns": [
+                        {
+                          "columnId": "datatable_accessor_row_0",
+                          "fieldName": "Cache",
+                          "meta": {
+                            "type": "string"
+                          }
+                        },
+                        {
+                          "columnId": "datatable_accessor_metric_0",
+                          "fieldName": "Hit rate",
+                          "inMetricDimension": true,
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "percent",
+                              "params": {
+                                "compact": false,
+                                "decimals": 1
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "columnId": "datatable_accessor_metric_1",
+                          "fieldName": "Evictions",
+                          "inMetricDimension": true,
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "compact": true,
+                                "decimals": 1
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "columnId": "datatable_accessor_metric_2",
+                          "fieldName": "Memory",
+                          "inMetricDimension": true,
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "bytes",
+                              "params": {
+                                "decimals": 1
+                              }
+                            }
+                          }
+                        }
+                      ],
+                      "index": "metrics-node-esdiag*-0ccbee61d3913e23bb4061f1f1adbd846fa75ff0f3d7d43aa9b175f418457699",
+                      "query": {
+                        "esql": "FROM metrics-node-esdiag* | EVAL `Cache` = [\"query\", \"request\", \"fielddata\"] | MV_EXPAND `Cache` | EVAL h = CASE(`Cache` == \"query\", node.indices.query_cache.hit_count, `Cache` == \"request\", node.indices.request_cache.hit_count, null), mi = CASE(`Cache` == \"query\", node.indices.query_cache.miss_count, `Cache` == \"request\", node.indices.request_cache.miss_count, null), ev = CASE(`Cache` == \"query\", node.indices.query_cache.evictions, `Cache` == \"request\", node.indices.request_cache.evictions, node.indices.fielddata.evictions), sz = CASE(`Cache` == \"query\", node.indices.query_cache.memory_size_in_bytes, `Cache` == \"request\", node.indices.request_cache.memory_size_in_bytes, node.indices.fielddata.memory_size_in_bytes) | STATS hits = SUM(h), misses = SUM(mi), `Evictions` = SUM(ev), `Memory` = SUM(sz) BY `Cache` | EVAL `Hit rate` = CASE(hits + misses > 0, hits * 1.0 / (hits + misses), null) | KEEP `Cache`, `Hit rate`, `Evictions`, `Memory` | SORT `Memory` DESC NULLS LAST"
+                      }
+                    }
+                  }
+                }
+              },
+              "filters": [],
+              "internalReferences": [
+                {
+                  "id": "metrics-node-esdiag*-0ccbee61d3913e23bb4061f1f1adbd846fa75ff0f3d7d43aa9b175f418457699",
+                  "name": "indexpattern-datasource-layer-layer_0",
+                  "type": "index-pattern"
+                }
+              ],
+              "query": {
+                "esql": "FROM metrics-node-esdiag* | EVAL `Cache` = [\"query\", \"request\", \"fielddata\"] | MV_EXPAND `Cache` | EVAL h = CASE(`Cache` == \"query\", node.indices.query_cache.hit_count, `Cache` == \"request\", node.indices.request_cache.hit_count, null), mi = CASE(`Cache` == \"query\", node.indices.query_cache.miss_count, `Cache` == \"request\", node.indices.request_cache.miss_count, null), ev = CASE(`Cache` == \"query\", node.indices.query_cache.evictions, `Cache` == \"request\", node.indices.request_cache.evictions, node.indices.fielddata.evictions), sz = CASE(`Cache` == \"query\", node.indices.query_cache.memory_size_in_bytes, `Cache` == \"request\", node.indices.request_cache.memory_size_in_bytes, node.indices.fielddata.memory_size_in_bytes) | STATS hits = SUM(h), misses = SUM(mi), `Evictions` = SUM(ev), `Memory` = SUM(sz) BY `Cache` | EVAL `Hit rate` = CASE(hits + misses > 0, hits * 1.0 / (hits + misses), null) | KEEP `Cache`, `Hit rate`, `Evictions`, `Memory` | SORT `Memory` DESC NULLS LAST"
+              },
+              "visualization": {
+                "columns": [
+                  {
+                    "columnId": "datatable_accessor_row_0",
+                    "isMetric": false,
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "datatable_accessor_metric_0",
+                    "isMetric": true,
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "datatable_accessor_metric_1",
+                    "isMetric": true,
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "datatable_accessor_metric_2",
+                    "isMetric": true,
+                    "isTransposed": false
+                  }
+                ],
+                "layerId": "layer_0",
+                "layerType": "data"
+              }
+            },
+            "title": "",
+            "version": 2,
+            "visualizationType": "lnsDatatable"
+          },
+          "title": "Cache effectiveness"
+        },
+        "gridData": {
+          "h": 9,
+          "i": "caches",
+          "w": 24,
+          "x": 24,
+          "y": 29
+        },
+        "panelIndex": "caches",
+        "type": "vis"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [],
+            "state": {
+              "adHocDataViews": {
+                "metrics-node-esdiag*-8c92ff08dbdade2127d381256b53d3d6dc3d54faf2a49f3c8c08d9221b092624": {
+                  "allowHidden": false,
+                  "allowNoIndex": false,
+                  "fieldAttrs": {},
+                  "fieldFormats": {},
+                  "id": "metrics-node-esdiag*-8c92ff08dbdade2127d381256b53d3d6dc3d54faf2a49f3c8c08d9221b092624",
+                  "name": "metrics-node-esdiag*",
+                  "runtimeFieldMap": {},
+                  "sourceFilters": [],
+                  "title": "metrics-node-esdiag*",
+                  "type": "esql"
+                }
+              },
+              "datasourceStates": {
+                "textBased": {
+                  "layers": {
+                    "layer_0": {
+                      "columns": [
+                        {
+                          "columnId": "datatable_accessor_row_0",
+                          "fieldName": "Stage",
+                          "meta": {
+                            "type": "string"
+                          }
+                        },
+                        {
+                          "columnId": "datatable_accessor_metric_0",
+                          "fieldName": "Current",
+                          "inMetricDimension": true,
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "bytes",
+                              "params": {
+                                "decimals": 1
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "columnId": "datatable_accessor_metric_1",
+                          "fieldName": "Total",
+                          "inMetricDimension": true,
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "bytes",
+                              "params": {
+                                "decimals": 1
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "columnId": "datatable_accessor_metric_2",
+                          "fieldName": "Rejections",
+                          "inMetricDimension": true,
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "compact": false,
+                                "decimals": 0
+                              }
+                            }
+                          }
+                        }
+                      ],
+                      "index": "metrics-node-esdiag*-8c92ff08dbdade2127d381256b53d3d6dc3d54faf2a49f3c8c08d9221b092624",
+                      "query": {
+                        "esql": "FROM metrics-node-esdiag* | EVAL `Stage` = [\"coordinating\", \"primary\", \"replica\"] | MV_EXPAND `Stage` | EVAL cur = CASE(`Stage` == \"coordinating\", node.indexing_pressure.memory.current.coordinating_in_bytes, `Stage` == \"primary\", node.indexing_pressure.memory.current.primary_in_bytes, node.indexing_pressure.memory.current.replica_in_bytes), tot = CASE(`Stage` == \"coordinating\", node.indexing_pressure.memory.total.coordinating_in_bytes, `Stage` == \"primary\", node.indexing_pressure.memory.total.primary_in_bytes, node.indexing_pressure.memory.total.replica_in_bytes), rej = CASE(`Stage` == \"coordinating\", node.indexing_pressure.memory.total.coordinating_rejections, `Stage` == \"primary\", node.indexing_pressure.memory.total.primary_rejections, node.indexing_pressure.memory.total.replica_rejections) | STATS `Current` = SUM(cur), `Total` = SUM(tot), `Rejections` = SUM(rej) BY `Stage` | WHERE `Total` IS NOT NULL | SORT `Total` DESC NULLS LAST"
+                      }
+                    }
+                  }
+                }
+              },
+              "filters": [],
+              "internalReferences": [
+                {
+                  "id": "metrics-node-esdiag*-8c92ff08dbdade2127d381256b53d3d6dc3d54faf2a49f3c8c08d9221b092624",
+                  "name": "indexpattern-datasource-layer-layer_0",
+                  "type": "index-pattern"
+                }
+              ],
+              "query": {
+                "esql": "FROM metrics-node-esdiag* | EVAL `Stage` = [\"coordinating\", \"primary\", \"replica\"] | MV_EXPAND `Stage` | EVAL cur = CASE(`Stage` == \"coordinating\", node.indexing_pressure.memory.current.coordinating_in_bytes, `Stage` == \"primary\", node.indexing_pressure.memory.current.primary_in_bytes, node.indexing_pressure.memory.current.replica_in_bytes), tot = CASE(`Stage` == \"coordinating\", node.indexing_pressure.memory.total.coordinating_in_bytes, `Stage` == \"primary\", node.indexing_pressure.memory.total.primary_in_bytes, node.indexing_pressure.memory.total.replica_in_bytes), rej = CASE(`Stage` == \"coordinating\", node.indexing_pressure.memory.total.coordinating_rejections, `Stage` == \"primary\", node.indexing_pressure.memory.total.primary_rejections, node.indexing_pressure.memory.total.replica_rejections) | STATS `Current` = SUM(cur), `Total` = SUM(tot), `Rejections` = SUM(rej) BY `Stage` | WHERE `Total` IS NOT NULL | SORT `Total` DESC NULLS LAST"
+              },
+              "visualization": {
+                "columns": [
+                  {
+                    "columnId": "datatable_accessor_row_0",
+                    "isMetric": false,
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "datatable_accessor_metric_0",
+                    "isMetric": true,
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "datatable_accessor_metric_1",
+                    "isMetric": true,
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "datatable_accessor_metric_2",
+                    "isMetric": true,
+                    "isTransposed": false
+                  }
+                ],
+                "layerId": "layer_0",
+                "layerType": "data"
+              }
+            },
+            "title": "",
+            "version": 2,
+            "visualizationType": "lnsDatatable"
+          },
+          "title": "Indexing pressure by stage"
+        },
+        "gridData": {
+          "h": 9,
+          "i": "indexing-pressure",
+          "w": 24,
+          "x": 0,
+          "y": 38
+        },
+        "panelIndex": "indexing-pressure",
+        "type": "vis"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [],
+            "state": {
+              "adHocDataViews": {
+                "metrics-node-esdiag*-88abda0d3721923503390f6350e40d9c2947a097cc7a0938e2ecaf8499e4ebfa": {
+                  "allowHidden": false,
+                  "allowNoIndex": false,
+                  "fieldAttrs": {},
+                  "fieldFormats": {},
+                  "id": "metrics-node-esdiag*-88abda0d3721923503390f6350e40d9c2947a097cc7a0938e2ecaf8499e4ebfa",
+                  "name": "metrics-node-esdiag*",
+                  "runtimeFieldMap": {},
+                  "sourceFilters": [],
+                  "title": "metrics-node-esdiag*",
+                  "type": "esql"
+                }
+              },
+              "datasourceStates": {
+                "textBased": {
+                  "layers": {
+                    "layer_0": {
+                      "columns": [
+                        {
+                          "columnId": "datatable_accessor_row_0",
+                          "fieldName": "Node",
+                          "meta": {
+                            "type": "string"
+                          }
+                        },
+                        {
+                          "columnId": "datatable_accessor_metric_0",
+                          "fieldName": "Used",
+                          "inMetricDimension": true,
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "bytes",
+                              "params": {
+                                "decimals": 1
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "columnId": "datatable_accessor_metric_1",
+                          "fieldName": "Available",
+                          "inMetricDimension": true,
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "bytes",
+                              "params": {
+                                "decimals": 1
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "columnId": "datatable_accessor_metric_2",
+                          "fieldName": "Total",
+                          "inMetricDimension": true,
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "bytes",
+                              "params": {
+                                "decimals": 1
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "columnId": "datatable_accessor_metric_3",
+                          "fieldName": "Forecasted usage",
+                          "inMetricDimension": true,
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "bytes",
+                              "params": {
+                                "decimals": 1
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "columnId": "datatable_accessor_metric_4",
+                          "fieldName": "Undesired shards",
+                          "inMetricDimension": true,
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "compact": false,
+                                "decimals": 0
+                              }
+                            }
+                          }
+                        }
+                      ],
+                      "index": "metrics-node-esdiag*-88abda0d3721923503390f6350e40d9c2947a097cc7a0938e2ecaf8499e4ebfa",
+                      "query": {
+                        "esql": "FROM metrics-node-esdiag* | STATS `Total` = MAX(node.fs.total.total_in_bytes), `Used` = MAX(node.fs.total.used_in_bytes), `Available` = MAX(node.fs.total.available_in_bytes), `Forecasted usage` = MAX(node.allocations.forecasted_disk_usage_in_bytes), `Undesired shards` = MAX(node.allocations.undesired_shards) BY `Node` = node.name | SORT `Node` ASC | LIMIT 5"
+                      }
+                    }
+                  }
+                }
+              },
+              "filters": [],
+              "internalReferences": [
+                {
+                  "id": "metrics-node-esdiag*-88abda0d3721923503390f6350e40d9c2947a097cc7a0938e2ecaf8499e4ebfa",
+                  "name": "indexpattern-datasource-layer-layer_0",
+                  "type": "index-pattern"
+                }
+              ],
+              "query": {
+                "esql": "FROM metrics-node-esdiag* | STATS `Total` = MAX(node.fs.total.total_in_bytes), `Used` = MAX(node.fs.total.used_in_bytes), `Available` = MAX(node.fs.total.available_in_bytes), `Forecasted usage` = MAX(node.allocations.forecasted_disk_usage_in_bytes), `Undesired shards` = MAX(node.allocations.undesired_shards) BY `Node` = node.name | SORT `Node` ASC | LIMIT 5"
+              },
+              "visualization": {
+                "columns": [
+                  {
+                    "columnId": "datatable_accessor_row_0",
+                    "isMetric": false,
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "datatable_accessor_metric_0",
+                    "isMetric": true,
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "datatable_accessor_metric_1",
+                    "isMetric": true,
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "datatable_accessor_metric_2",
+                    "isMetric": true,
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "datatable_accessor_metric_3",
+                    "isMetric": true,
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "datatable_accessor_metric_4",
+                    "isMetric": true,
+                    "isTransposed": false
+                  }
+                ],
+                "layerId": "layer_0",
+                "layerType": "data"
+              }
+            },
+            "title": "",
+            "version": 2,
+            "visualizationType": "lnsDatatable"
+          },
+          "title": "Filesystem and allocation"
+        },
+        "gridData": {
+          "h": 9,
+          "i": "filesystem",
+          "w": 24,
+          "x": 24,
+          "y": 38
+        },
+        "panelIndex": "filesystem",
+        "type": "vis"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [],
+            "state": {
+              "adHocDataViews": {
+                "metrics-shard-esdiag*-fb5888264f40ed3a82640eff1ef2c25f1f0cf95c2fc05be420f0c5f56b202fb8": {
+                  "allowHidden": false,
+                  "allowNoIndex": false,
+                  "fieldAttrs": {},
+                  "fieldFormats": {},
+                  "id": "metrics-shard-esdiag*-fb5888264f40ed3a82640eff1ef2c25f1f0cf95c2fc05be420f0c5f56b202fb8",
+                  "name": "metrics-shard-esdiag*",
+                  "runtimeFieldMap": {},
+                  "sourceFilters": [],
+                  "title": "metrics-shard-esdiag*",
+                  "type": "esql"
+                }
+              },
+              "datasourceStates": {
+                "textBased": {
+                  "layers": {
+                    "layer_0": {
+                      "columns": [
+                        {
+                          "columnId": "datatable_accessor_row_0",
+                          "fieldName": "Index",
+                          "meta": {
+                            "type": "string"
+                          }
+                        },
+                        {
+                          "columnId": "datatable_accessor_metric_0",
+                          "fieldName": "Shards",
+                          "inMetricDimension": true,
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "compact": false,
+                                "decimals": 0
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "columnId": "datatable_accessor_metric_1",
+                          "fieldName": "Store",
+                          "inMetricDimension": true,
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "bytes",
+                              "params": {
+                                "decimals": 1
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "columnId": "datatable_accessor_metric_2",
+                          "fieldName": "Largest shard",
+                          "inMetricDimension": true,
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "bytes",
+                              "params": {
+                                "decimals": 1
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "columnId": "datatable_accessor_metric_3",
+                          "fieldName": "Documents",
+                          "inMetricDimension": true,
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "compact": true,
+                                "decimals": 1
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "columnId": "datatable_accessor_metric_4",
+                          "fieldName": "Deleted",
+                          "inMetricDimension": true,
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "compact": true,
+                                "decimals": 1
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "columnId": "datatable_accessor_metric_5",
+                          "fieldName": "Segments",
+                          "inMetricDimension": true,
+                          "meta": {
+                            "type": "number"
+                          },
+                          "params": {
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "compact": false,
+                                "decimals": 0
+                              }
+                            }
+                          }
+                        }
+                      ],
+                      "index": "metrics-shard-esdiag*-fb5888264f40ed3a82640eff1ef2c25f1f0cf95c2fc05be420f0c5f56b202fb8",
+                      "query": {
+                        "esql": "FROM metrics-shard-esdiag* | WHERE shard.routing.state == \"STARTED\" | STATS `Shards` = COUNT(*), `Store` = SUM(shard.store.size_in_bytes), `Largest shard` = MAX(shard.store.size_in_bytes), `Documents` = SUM(shard.docs.count), `Deleted` = SUM(shard.docs.deleted), `Segments` = SUM(shard.segments.count) BY `Index` = index.name | SORT `Store` DESC NULLS LAST | LIMIT 200"
+                      }
+                    }
+                  }
+                }
+              },
+              "filters": [],
+              "internalReferences": [
+                {
+                  "id": "metrics-shard-esdiag*-fb5888264f40ed3a82640eff1ef2c25f1f0cf95c2fc05be420f0c5f56b202fb8",
+                  "name": "indexpattern-datasource-layer-layer_0",
+                  "type": "index-pattern"
+                }
+              ],
+              "query": {
+                "esql": "FROM metrics-shard-esdiag* | WHERE shard.routing.state == \"STARTED\" | STATS `Shards` = COUNT(*), `Store` = SUM(shard.store.size_in_bytes), `Largest shard` = MAX(shard.store.size_in_bytes), `Documents` = SUM(shard.docs.count), `Deleted` = SUM(shard.docs.deleted), `Segments` = SUM(shard.segments.count) BY `Index` = index.name | SORT `Store` DESC NULLS LAST | LIMIT 200"
+              },
+              "visualization": {
+                "columns": [
+                  {
+                    "columnId": "datatable_accessor_row_0",
+                    "isMetric": false,
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "datatable_accessor_metric_0",
+                    "isMetric": true,
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "datatable_accessor_metric_1",
+                    "isMetric": true,
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "datatable_accessor_metric_2",
+                    "isMetric": true,
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "datatable_accessor_metric_3",
+                    "isMetric": true,
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "datatable_accessor_metric_4",
+                    "isMetric": true,
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "datatable_accessor_metric_5",
+                    "isMetric": true,
+                    "isTransposed": false
+                  }
+                ],
+                "layerId": "layer_0",
+                "layerType": "data"
+              }
+            },
+            "title": "",
+            "version": 2,
+            "visualizationType": "lnsDatatable"
+          },
+          "title": "Indices with shards on this node"
+        },
+        "gridData": {
+          "h": 12,
+          "i": "indices-on-node",
+          "w": 48,
+          "x": 0,
+          "y": 47
+        },
+        "panelIndex": "indices-on-node",
+        "type": "vis"
+      }
+    ],
+    "timeFrom": "now-1y",
+    "timeRestore": true,
+    "timeTo": "now",
+    "title": "Node Detail",
+    "version": 3
+  },
+  "coreMigrationVersion": "8.8.0",
+  "id": "node-detail",
+  "references": [
+    {
+      "id": "d277872a-9c33-4d95-84f0-6dba30dcbdf1",
+      "name": "1a7c9e40-3b52-4d81-9f6a-2c48e5b70d11:panel_1a7c9e40-3b52-4d81-9f6a-2c48e5b70d11",
+      "type": "links"
+    },
+    {
+      "id": "e38aefc8-2e13-4bc6-b56f-b104670c4d28",
+      "name": "2b8daf51-4c63-4e92-8a7b-3d59f6c81e22:panel_2b8daf51-4c63-4e92-8a7b-3d59f6c81e22",
+      "type": "links"
+    },
+    {
+      "id": "5e05b9ee-3e49-4efd-8a16-94de208ebb83",
+      "name": "tag-ref-5e05b9ee-3e49-4efd-8a16-94de208ebb83",
+      "type": "tag"
+    },
+    {
+      "id": "b210de37-7ebf-4ced-9a28-13c1620db46c",
+      "name": "tag-ref-b210de37-7ebf-4ced-9a28-13c1620db46c",
+      "type": "tag"
+    }
+  ],
+  "type": "dashboard",
+  "typeMigrationVersion": "10.3.0"
+}
