@@ -67,6 +67,17 @@ pub struct JobExecutionFailure {
     source: eyre::Report,
 }
 
+impl JobExecutionFailure {
+    pub fn new(stage: FailedStage, outcome: JobOutcome, source: eyre::Report) -> Self {
+        Self {
+            stage,
+            outcome,
+            message: source.to_string(),
+            source,
+        }
+    }
+}
+
 impl std::fmt::Debug for JobExecutionFailure {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
@@ -113,15 +124,6 @@ fn failed_stage(outcome: &ExecutionOutcome) -> FailedStage {
         .unwrap_or(FailedStage::Process)
 }
 
-fn failed(stage: FailedStage, outcome: JobOutcome, error: eyre::Report) -> eyre::Report {
-    eyre::Report::new(JobExecutionFailure {
-        stage,
-        outcome,
-        message: error.to_string(),
-        source: error,
-    })
-}
-
 /// Execute one job: resolve the Phase-1 input, honor the derived mode
 /// (staged vs streaming), and run the selected stages. Phase 3 is and/or —
 /// `Export` (inside `Process`) and `Send` may both run in one job.
@@ -138,11 +140,9 @@ pub async fn execute(job: Job) -> Result<JobOutcome> {
             .collect::<Vec<_>>()
             .join("; ");
         let stage = failed_stage(&outcome);
-        return Err(failed(
-            stage,
-            job_outcome(outcome),
-            eyre!("Job execution failed: {failures}"),
-        ));
+        return Err(
+            JobExecutionFailure::new(stage, job_outcome(outcome), eyre!("Job execution failed: {failures}")).into(),
+        );
     }
     Ok(job_outcome(outcome))
 }
@@ -769,6 +769,7 @@ impl Drop for TempDirCleanup {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::data::HostRole;
     use crate::job::{
         context::{ExecutionIdentity, ExecutionObserver},
         model::{BindingKey, ExportTarget, SendTarget},
@@ -1290,11 +1291,19 @@ mod tests {
 
         let outcome = execute_with_context(job, context).await;
 
-        assert!(outcome.succeeded(), "child failure must not fail the parent");
+        assert!(
+            !outcome.succeeded(),
+            "the unavailable output also rejects the parent report"
+        );
+        assert!(matches!(outcome.stage(Stage::Export), Some(StageStatus::Failed(_))));
         let child = outcome.children.first().expect("child outcome");
         let report = child.report().expect("completed child report");
         assert_eq!(child.diagnostic_outcome, report.outcome());
-        assert_eq!(child.diagnostic_outcome, DiagnosticOutcome::Complete);
+        assert_ne!(
+            child.diagnostic_outcome,
+            DiagnosticOutcome::Complete,
+            "a failed report persistence stage must not leave the child complete"
+        );
         assert!(
             child.export_error().is_some(),
             "the child Export failure must remain separately available"
@@ -1333,6 +1342,120 @@ mod tests {
         assert_eq!(outcome.stage(Stage::Process), Some(&StageStatus::Succeeded));
         assert!(matches!(outcome.stage(Stage::Export), Some(StageStatus::Failed(_))));
         assert!(!outcome.succeeded());
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn report_persistence_failure_fails_execution_without_fabricating_data_rejections() {
+        let mut env = crate::TestEnv::new();
+        env.set_path("ESDIAG_HOME", env.tmp.path().join(".esdiag"));
+        let bundle = tempfile::tempdir().expect("bundle dir");
+        extract_fixture("elasticsearch-api-diagnostics-9.3.3.zip", bundle.path());
+
+        async fn export_handler(
+            axum::extract::State(accepted): axum::extract::State<std::sync::Arc<std::sync::atomic::AtomicU32>>,
+            uri: axum::http::Uri,
+            body: axum::body::Bytes,
+        ) -> (axum::http::StatusCode, axum::Json<serde_json::Value>) {
+            if uri.path().contains("metrics-diagnostic-esdiag") {
+                (
+                    axum::http::StatusCode::CREATED,
+                    axum::Json(serde_json::json!({
+                        "_index": ".fs-metrics-diagnostic-esdiag-2026.09.18-000001",
+                        "failure_store": "used",
+                        "error": {"message": "diagnostic.report rejected"}
+                    })),
+                )
+            } else {
+                let documents = String::from_utf8_lossy(&body).lines().count() / 2;
+                accepted.fetch_add(documents as u32, std::sync::atomic::Ordering::Relaxed);
+                (
+                    axum::http::StatusCode::OK,
+                    axum::Json(serde_json::json!({
+                        "took": 1,
+                        "errors": false,
+                        "items": (0..documents).map(|_| serde_json::json!({"create": {"_index": "metrics-node-esdiag", "status": 201}})).collect::<Vec<_>>()
+                    })),
+                )
+            }
+        }
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("mock output listener");
+        let address = listener.local_addr().expect("mock output address");
+        let accepted = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let app = axum::Router::new()
+            .fallback(export_handler)
+            .with_state(accepted.clone());
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.expect("mock output server");
+        });
+
+        let output_binding = BindingKey::try_new("report-failing-export").expect("binding");
+        let host = crate::data::KnownHost::new_no_auth(
+            Application::Elasticsearch,
+            url::Url::parse(&format!("http://{address}")).expect("output URL"),
+            vec![HostRole::Send],
+            None,
+            false,
+        );
+        let job = Job::try_new(
+            Identifiers::default(),
+            Input::Load {
+                uri: Uri::Directory(bundle.path().to_path_buf()),
+            },
+            None,
+            Some(Process {
+                selection: None,
+                export: ExportTarget::Binding {
+                    binding: output_binding.clone(),
+                },
+            }),
+            None,
+        )
+        .expect("load process job");
+        let mut context = ExecutionContext::default();
+        context.bind_document_exporter(
+            output_binding,
+            crate::exporter::DocumentExporter::try_from(host).expect("document exporter"),
+        );
+
+        let outcome = execute_with_context(job, context).await;
+        assert!(!outcome.succeeded(), "captured report must fail execution");
+        assert_eq!(outcome.stage(Stage::Process), Some(&StageStatus::Succeeded));
+        assert!(matches!(outcome.stage(Stage::Export), Some(StageStatus::Failed(_))));
+        let report = outcome
+            .report
+            .as_ref()
+            .expect("report retained after persistence failure");
+        assert_eq!(
+            report.diagnostic.docs.created,
+            accepted.load(std::sync::atomic::Ordering::Relaxed)
+        );
+        assert_eq!(
+            report.diagnostic.docs.errors, 0,
+            "report persistence is not a data rejection"
+        );
+        assert_eq!(report.outcome(), DiagnosticOutcome::Partial);
+        assert!(
+            report
+                .events()
+                .iter()
+                .any(|event| event.source == "report" && event.reason.contains("::failures"))
+        );
+
+        let local_report = env.tmp.path().join(".esdiag/last_run/report.json");
+        let local_records = std::fs::read_to_string(local_report).expect("local diagnostic records");
+        let records: Vec<serde_json::Value> = serde_json::Deserializer::from_str(&local_records)
+            .into_iter::<serde_json::Value>()
+            .map(|record| record.expect("report JSON"))
+            .filter(|record| record["diagnostic"]["uuid"].as_str() == Some(report.diagnostic.metadata.uuid.as_str()))
+            .collect();
+        assert_eq!(records.len(), 1, "one diagnostic must have one definitive local report");
+        let last = records.last().expect("failure-enriched report record");
+        assert_eq!(last["diagnostic"]["outcome"], "partial");
+        assert!(last["diagnostic"]["events"].to_string().contains("::failures"));
+        server.abort();
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -1484,11 +1607,11 @@ mod tests {
 
     #[test]
     fn failed_job_preserves_source_error_for_downcasting() {
-        let report = failed(
+        let report = eyre::Report::new(JobExecutionFailure::new(
             FailedStage::Process,
             JobOutcome::default(),
             eyre::Report::new(SourceError),
-        );
+        ));
 
         assert!(
             report

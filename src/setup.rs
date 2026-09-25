@@ -16,10 +16,12 @@ use kibana_sync::{
 use reqwest::{Method, StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::io::{Cursor, Read};
 use std::path::{Path, PathBuf};
 use url::Url;
+use uuid::Uuid;
 use zip::ZipArchive;
 
 // Subdirectory for templates and configs files
@@ -724,9 +726,6 @@ async fn sync_kibana_bundle(client: &kibana_sync::KibanaClient, bundle: &SyncBun
 
 fn target_kibana_bundle(bundle: &mut SyncBundle, space: Option<&str>) -> Result<()> {
     let target = space.unwrap_or("default");
-    if target == "esdiag" {
-        return Ok(());
-    }
     if bundle.by_space.len() != 1 || !bundle.by_space.contains_key("esdiag") {
         return Err(eyre!(
             "Expected a single esdiag asset space before selecting a destination"
@@ -736,6 +735,13 @@ fn target_kibana_bundle(bundle: &mut SyncBundle, space: Option<&str>) -> Result<
     let prefix = space
         .map(|s| format!("/s/{}", urlencoding::encode(s)))
         .unwrap_or_default();
+
+    let workflow_ids = assets
+        .workflows
+        .iter()
+        .filter_map(|workflow| workflow.get("id").and_then(Value::as_str))
+        .map(|source_id| (source_id.to_string(), destination_workflow_id(target, source_id)))
+        .collect::<HashMap<_, _>>();
     for value in assets
         .saved_objects
         .iter_mut()
@@ -745,6 +751,7 @@ fn target_kibana_bundle(bundle: &mut SyncBundle, space: Option<&str>) -> Result<
         .chain(&mut assets.skills)
     {
         rewrite_kibana_asset_links(value, &prefix);
+        rewrite_kibana_workflow_references(value, &workflow_ids);
     }
     bundle.by_space.insert(target.to_string(), assets);
     if space.is_none() {
@@ -756,6 +763,43 @@ fn target_kibana_bundle(bundle: &mut SyncBundle, space: Option<&str>) -> Result<
         }
     }
     Ok(())
+}
+
+/// Keep every workflow ID in the Kibana format while making it unique to the
+/// destination space. The digest is stable across setup runs and the UUID
+/// version 8/variant bits identify this as a custom SHA-256-derived value
+/// acceptable to Kibana's workflow API.
+fn destination_workflow_id(space: &str, source_id: &str) -> String {
+    let mut digest = Sha256::new();
+    digest.update(b"esdiag:kibana-workflow:");
+    digest.update(space.as_bytes());
+    digest.update([0]);
+    digest.update(source_id.as_bytes());
+    let digest = digest.finalize();
+    let mut bytes = [0_u8; 16];
+    bytes.copy_from_slice(&digest[..16]);
+    bytes[6] = (bytes[6] & 0x0f) | 0x80;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    format!("workflow-{}", Uuid::from_bytes(bytes))
+}
+
+fn rewrite_kibana_workflow_references(value: &mut Value, workflow_ids: &HashMap<String, String>) {
+    match value {
+        Value::String(text) => {
+            for (source_id, destination_id) in workflow_ids {
+                if text.contains(source_id) {
+                    *text = text.replace(source_id, destination_id);
+                }
+            }
+        }
+        Value::Array(values) => values
+            .iter_mut()
+            .for_each(|value| rewrite_kibana_workflow_references(value, workflow_ids)),
+        Value::Object(values) => values
+            .values_mut()
+            .for_each(|value| rewrite_kibana_workflow_references(value, workflow_ids)),
+        _ => {}
+    }
 }
 
 fn rewrite_kibana_asset_links(value: &mut Value, prefix: &str) {

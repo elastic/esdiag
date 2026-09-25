@@ -180,12 +180,31 @@ async fn settings_values_and_subsettings_index_and_failures_are_recoverable() {
         (
             "index_templates/settings-cluster.json",
             vec![
-                json!({"rest.incremental_bulk":"true","rest.incremental_bulk.request_timeout":"-1"}),
-                json!({"rest":{"incremental_bulk":"true","incremental_bulk.request_timeout":"-1"}}),
+                json!({
+                    "rest.incremental_bulk":"true", "rest.incremental_bulk.request_timeout":"-1",
+                    "thread_pool.estimated_time_interval.current":"200ms", "thread_pool.estimated_time_interval.warn_threshold":"7s",
+                    "xpack.searchable.snapshot.shared_cache.size.current":"42%", "xpack.searchable.snapshot.shared_cache.size.max_headroom":"17GB",
+                    "cluster.routing.allocation.disk.watermark.flood_stage":"95%", "cluster.routing.allocation.disk.watermark.flood_stage.max_headroom":"17GB"
+                }),
+                json!({
+                    "rest":{"incremental_bulk":"true", "incremental_bulk.request_timeout":"-1"},
+                    "thread_pool":{"estimated_time_interval":{"current":"200ms", "warn_threshold":"7s"}},
+                    "xpack":{"searchable":{"snapshot":{"shared_cache":{"size":{"current":"42%", "max_headroom":"17GB"}}}}},
+                    "cluster":{"routing":{"allocation":{"disk":{"watermark":{"flood_stage":"95%", "flood_stage.max_headroom":"17GB"}}}}}
+                }),
             ],
             vec![
                 ("rest.incremental_bulk", "true"),
                 ("rest.incremental_bulk.request_timeout", "-1"),
+                ("thread_pool.estimated_time_interval.current", "200ms"),
+                ("thread_pool.estimated_time_interval.warn_threshold", "7s"),
+                ("xpack.searchable.snapshot.shared_cache.size.current", "42%"),
+                ("xpack.searchable.snapshot.shared_cache.size.max_headroom", "17GB"),
+                ("cluster.routing.allocation.disk.watermark.flood_stage", "95%"),
+                (
+                    "cluster.routing.allocation.disk.watermark.flood_stage.max_headroom",
+                    "17GB",
+                ),
             ],
         ),
         (
@@ -311,4 +330,107 @@ async fn settings_values_and_subsettings_index_and_failures_are_recoverable() {
         }
         result.unwrap();
     }
+}
+
+#[tokio::test]
+#[ignore = "requires authenticated Elasticsearch 9.4+ at ESDIAG_TEST_ELASTICSEARCH_URL with ESDIAG_TEST_ELASTICSEARCH_USERNAME and ESDIAG_TEST_ELASTICSEARCH_PASSWORD"]
+async fn diagnostic_role_reads_failures_without_managing_them() {
+    let base = std::env::var("ESDIAG_TEST_ELASTICSEARCH_URL").unwrap();
+    let username = std::env::var("ESDIAG_TEST_ELASTICSEARCH_USERNAME").unwrap();
+    let password = std::env::var("ESDIAG_TEST_ELASTICSEARCH_PASSWORD").unwrap();
+    let admin = reqwest::Client::new();
+    let name = format!("esdiag-feedback-{}", uuid::Uuid::new_v4());
+    let stream = format!("{name}-esdiag");
+    let reader_password = uuid::Uuid::new_v4().to_string();
+    let result: eyre::Result<()> = async {
+        for (path, body) in [
+            (format!("_security/role/{name}"), asset("roles/esdiag-user.json")),
+            (
+                format!("_security/user/{name}"),
+                json!({"password":reader_password,"roles":[name]}),
+            ),
+            (
+                format!("_index_template/{name}"),
+                json!({
+                    "index_patterns":[stream], "data_stream":{},
+                    "template":{
+                        "data_stream_options":{"failure_store":{"enabled":true}},
+                        "mappings":{"properties":{"@timestamp":{"type":"date"},"value":{"type":"keyword"}}}
+                    }
+                }),
+            ),
+        ] {
+            admin
+                .put(format!("{base}/{path}"))
+                .basic_auth(&username, Some(&password))
+                .json(&body)
+                .send()
+                .await?
+                .error_for_status()?;
+        }
+        let rejected: Value = admin
+            .post(format!("{base}/{stream}/_doc?refresh=true"))
+            .basic_auth(&username, Some(&password))
+            .json(&json!({"@timestamp":"2026-09-19T00:00:00Z","value":{"original":"retained"}}))
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        eyre::ensure!(rejected["failure_store"] == "used", "{rejected}");
+
+        let reader = reqwest::Client::new();
+        reader
+            .get(format!("{base}/{stream}/_search"))
+            .basic_auth(&name, Some(&reader_password))
+            .send()
+            .await?
+            .error_for_status()?;
+        let recovered: Value = reader
+            .get(format!("{base}/{stream}::failures/_search"))
+            .basic_auth(&name, Some(&reader_password))
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        let source = &recovered["hits"]["hits"][0]["_source"];
+        eyre::ensure!(
+            source["document"]["source"]["value"]["original"] == "retained",
+            "{recovered}"
+        );
+        eyre::ensure!(source["error"]["type"] == "document_parsing_exception", "{source}");
+        let forbidden = reader
+            .put(format!("{base}/_data_stream/{stream}/_options"))
+            .basic_auth(&name, Some(&reader_password))
+            .json(&json!({"failure_store":{"enabled":false}}))
+            .send()
+            .await?;
+        eyre::ensure!(
+            forbidden.status() == reqwest::StatusCode::FORBIDDEN,
+            "diagnostic readers must not manage failure-store options: {}",
+            forbidden.status()
+        );
+        Ok(())
+    }
+    .await;
+    for path in [
+        format!("_data_stream/{stream}"),
+        format!("_index_template/{name}"),
+        format!("_security/user/{name}"),
+        format!("_security/role/{name}"),
+    ] {
+        let response = admin
+            .delete(format!("{base}/{path}"))
+            .basic_auth(&username, Some(&password))
+            .send()
+            .await
+            .unwrap();
+        assert!(
+            response.status().is_success() || response.status() == reqwest::StatusCode::NOT_FOUND,
+            "cleanup {path}: {}",
+            response.status()
+        );
+    }
+    result.unwrap();
 }

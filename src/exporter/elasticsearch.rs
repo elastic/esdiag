@@ -382,7 +382,6 @@ impl Export for ElasticsearchExporter {
 
     /// Sends the final diagnostic report document to Elasticsearch.
     async fn save_report(&self, report: &DiagnosticReport) -> Result<()> {
-        data::save_file("report.json", report)?;
         let diagnostic_id = report.diagnostic.metadata.id.clone();
         match timeout(
             Self::request_timeout(),
@@ -403,6 +402,20 @@ impl Export for ElasticsearchExporter {
                 Ok(res) => {
                     let status_code = res.status_code().as_u16();
                     let body = res.json::<Value>().await?;
+                    if matches!(body.get("failure_store").and_then(Value::as_str), Some("used")) {
+                        let destination = body
+                            .get("_index")
+                            .and_then(Value::as_str)
+                            .filter(|value| !value.is_empty())
+                            .map(rejected_data_stream)
+                            .unwrap_or("metrics-diagnostic-esdiag");
+                        return Err(eyre!(
+                            "Diagnostic report {} was retained in {}::failures; inspect error.message for the rejection reason: {}",
+                            diagnostic_id,
+                            destination,
+                            body
+                        ));
+                    }
                     match status_code {
                         200 | 201 => {
                             tracing::info!("metrics-diagnostic-esdiag, created diagnostic report {}", diagnostic_id);
@@ -699,6 +712,20 @@ mod tests {
         format!("http://{addr}").parse().unwrap()
     }
 
+    fn test_report() -> DiagnosticReport {
+        let metadata = crate::processor::diagnostic::DiagnosticMetadata {
+            id: "report-save-test".to_string(),
+            collection_date: 0,
+            runner: "test".to_string(),
+            uuid: "report-save-test".to_string(),
+        };
+        DiagnosticReport::try_from(
+            crate::processor::diagnostic::DiagnosticReportBuilder::from(metadata)
+                .receiver("file report-save-test.zip".to_string()),
+        )
+        .expect("diagnostic report")
+    }
+
     static ENV_LOCK: Mutex<()> = Mutex::const_new(());
 
     #[test]
@@ -769,6 +796,55 @@ mod tests {
         let rendered = serde_json::to_value(&report.diagnostic).unwrap()["events"].to_string();
         assert!(rendered.contains("Cannot write to a field alias [diagnostic.platform]"));
         assert!(rendered.contains("health-impact-esdiag::failures"));
+    }
+
+    #[tokio::test]
+    async fn save_report_failure_store_capture_is_not_report_success() {
+        let mut env = crate::TestEnv::new();
+        env.set_path("ESDIAG_HOME", env.tmp.path().to_path_buf());
+        let url = mock_bulk_server_raw(
+            201,
+            r#"{"_index":".fs-metrics-diagnostic-esdiag-2026.09.18-000001","failure_store":"used","error":{"message":"report rejected"}}"#,
+        )
+        .await;
+        let exporter = ElasticsearchExporter::try_new(url, Auth::None).unwrap();
+
+        let error = exporter
+            .save_report(&test_report())
+            .await
+            .expect_err("failure-store capture must fail report persistence");
+        let message = error.to_string();
+        assert!(
+            message.contains("metrics-diagnostic-esdiag::failures"),
+            "missing recovery guidance: {message}"
+        );
+        assert!(
+            message.contains("error.message"),
+            "missing failure-store inspection guidance: {message}"
+        );
+    }
+
+    #[tokio::test]
+    async fn save_report_regular_http_and_transport_failures_are_errors() {
+        let mut env = crate::TestEnv::new();
+        env.set_path("ESDIAG_HOME", env.tmp.path().to_path_buf());
+        let url = mock_bulk_server_raw(400, r#"{"error":{"reason":"mapping rejected"}}"#).await;
+        let exporter = ElasticsearchExporter::try_new(url, Auth::None).unwrap();
+        let error = exporter
+            .save_report(&test_report())
+            .await
+            .expect_err("HTTP report rejection must fail persistence");
+        assert!(error.to_string().contains("http 400"), "unexpected HTTP error: {error}");
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        drop(listener);
+        let exporter =
+            ElasticsearchExporter::try_new(format!("http://{address}").parse().unwrap(), Auth::None).unwrap();
+        assert!(
+            exporter.save_report(&test_report()).await.is_err(),
+            "transport report failure must fail persistence"
+        );
     }
 
     struct RetryEnvGuard {

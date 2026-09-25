@@ -6,6 +6,7 @@
       "privileges": [
         "create_doc",
         "read",
+        "read_failure_store",
         "view_index_metadata",
         "write",
         "monitor"

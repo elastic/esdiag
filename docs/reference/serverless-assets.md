@@ -37,6 +37,14 @@ The agent update follows the
 [partial update API](https://www.elastic.co/docs/api/doc/kibana/operation/operation-put-agent-builder-agents-id).
 It does not modify the agent's access controls.
 
+Setup gives each workflow a stable ID for its space, including the default and
+`esdiag` spaces. It updates the bundled tool and workflow references to match.
+Setup in one space cannot overwrite a workflow in another. Rerunning setup
+updates the same workflow.
+
+Setup does not delete workflows installed under the old IDs. It updates the
+bundled tools to use the new IDs.
+
 ## Retention
 
 The shared `esdiag@settings` component configures
@@ -65,6 +73,17 @@ These documents still count toward `documents_failed` and the diagnostic's
 partial or failed outcome, even when Elasticsearch returns HTTP 201 with
 `failure_store: used`.
 
+ESDiag writes the final report separately from the processed documents. If that
+write fails, the command fails and the web result shows an output failure. This
+includes HTTP 201 responses with `failure_store: used`.
+
+The CLI error keeps the completed document counts. A failed report write does
+not increase `documents_failed`. Data may already be indexed, so check before
+retrying the whole job. The CLI marks these failures as unsafe to retry.
+
+The local report records the write error. If Elasticsearch retained the report
+in the failure store, inspect `metrics-diagnostic-esdiag::failures`.
+
 The shared template sets `index.codec: best_compression` for regular backing
 indices. Elasticsearch currently filters this setting out when creating failure
 indices; its [failure-store settings allowlist](https://github.com/elastic/elasticsearch/blob/main/server/src/main/java/org/elasticsearch/cluster/metadata/DataStreamFailureStoreDefinition.java)
@@ -83,10 +102,15 @@ GET /health-impact-esdiag::failures/_search
 
 Inspect `document.source` for the rejected document and `error` for its cause.
 Failure-store retention is separate from the diagnostic stream's retention.
-The [failure store documentation](https://www.elastic.co/docs/manage-data/data-store/data-streams/failure-store)
-describes retention and the required `read_failure_store` and
-`manage_failure_store` privileges. Configure these privileges in Serverless
-project roles where needed.
+On stateful clusters, setup gives `esdiag-user` the `read_failure_store`
+privilege on `*-esdiag` streams. Users with this role can read rejected documents
+and their errors. They cannot change failure-store options or retention because
+the role does not include `manage_failure_store`.
+
+Run setup with administrator credentials to update an existing role. Serverless
+does not install bundled roles. Configure the read privilege in the project's
+roles instead. See the [failure store documentation](https://www.elastic.co/docs/manage-data/data-store/data-streams/failure-store)
+for permissions and retention.
 
 Indexing failures name the destination returned for each bulk item, including
 destinations selected by the ingest pipeline. ESDiag reports the stream name
@@ -109,6 +133,20 @@ need a rollover after setup before replaying affected diagnostics:
 ```http
 POST /settings-cluster-esdiag/_rollover
 ```
+
+ESDiag saves the scalar values of `thread_pool.estimated_time_interval` and
+`xpack.searchable.snapshot.shared_cache.size` in `.current` fields, as it already
+does for HTTP and transport types. It keeps `warn_threshold` and `max_headroom`
+at their original paths.
+
+The template maps these fields and
+`cluster.routing.allocation.disk.watermark.flood_stage.max_headroom` as searchable
+keywords. Flattening the entire namespace would conflict with the shared rules
+that suppress human-readable size fields.
+
+For an existing cluster-settings stream, run setup, then roll over the write
+index with the command above. This changes the mapping for new writes. It does
+not rewrite historical documents.
 
 Node settings use the same rule beneath `node.settings.http` and
 `node.settings.transport`, preserving both `type` and `type.default`.

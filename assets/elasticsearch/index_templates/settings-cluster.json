@@ -83,6 +83,9 @@
                             "flood_stage": {
                               "type": "keyword"
                             },
+                            "flood_stage.max_headroom": {
+                              "type": "keyword"
+                            },
                             "high": {
                               "type": "keyword"
                             },
@@ -172,6 +175,17 @@
             }
           }
         },
+        "thread_pool.estimated_time_interval": {
+          "type": "object",
+          "properties": {
+            "current": {
+              "type": "keyword"
+            },
+            "warn_threshold": {
+              "type": "keyword"
+            }
+          }
+        },
         "tribe.blocks.metadata": {
           "enabled": false
         },
@@ -214,7 +228,15 @@
           "subobjects": false
         },
         "xpack.searchable.snapshot.shared_cache.size": {
-          "type": "keyword"
+          "type": "object",
+          "properties": {
+            "current": {
+              "type": "keyword"
+            },
+            "max_headroom": {
+              "type": "keyword"
+            }
+          }
         }
       }
     }

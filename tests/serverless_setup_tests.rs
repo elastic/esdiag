@@ -6,18 +6,297 @@
 
 use axum::{
     Router,
-    body::Body,
+    body::{Body, to_bytes},
     http::{Request, StatusCode},
     response::IntoResponse,
 };
 use esdiag::client::{Client, ElasticsearchBuilder};
+use serde_json::Value;
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-
 struct MockCluster {
     client: Client,
     url: url::Url,
     paths: Arc<Mutex<Vec<String>>>,
     task: tokio::task::JoinHandle<()>,
+}
+
+#[derive(Default)]
+struct KibanaSetupState {
+    workflows: HashMap<String, Value>,
+    tools: HashMap<String, Value>,
+    skills: HashMap<String, Value>,
+    spaces: HashMap<String, Value>,
+    requests: Vec<(String, String)>,
+}
+
+#[tokio::test]
+async fn serverless_setup_uses_destination_workflows_and_updates_on_rerun() {
+    let state = Arc::new(Mutex::new(KibanaSetupState::default()));
+    let requests = state.clone();
+    let app = Router::new().fallback(move |request: Request<Body>| {
+        let state = requests.clone();
+        async move {
+            let method = request.method().as_str().to_string();
+            let path = request.uri().path().to_string();
+            let body = to_bytes(request.into_body(), 64 * 1024 * 1024)
+                .await
+                .unwrap_or_default();
+            let payload = serde_json::from_slice::<Value>(&body).unwrap_or(Value::Null);
+            let mut state = state.lock().unwrap();
+            state.requests.push((method.clone(), path.clone()));
+
+            let response = |status: StatusCode, value: Value| {
+                (status, [("content-type", "application/json")], value.to_string()).into_response()
+            };
+            if path == "/api/status" {
+                return response(
+                    StatusCode::OK,
+                    serde_json::json!({"version":{"number":"9.4.2","build_flavor":"serverless"}}),
+                );
+            }
+
+            if path.contains("/api/workflows/workflow/") {
+                match method.as_str() {
+                    "GET" => {
+                        return state.workflows.get(&path).cloned().map_or_else(
+                            || response(StatusCode::NOT_FOUND, Value::Null),
+                            |workflow| response(StatusCode::OK, workflow),
+                        );
+                    }
+                    "PUT" => {
+                        state.workflows.insert(path, payload);
+                        return response(StatusCode::OK, serde_json::json!({}));
+                    }
+                    _ => return response(StatusCode::METHOD_NOT_ALLOWED, Value::Null),
+                }
+            }
+            if method == "POST" && path.ends_with("/api/workflows/workflow") {
+                let Some(id) = payload.get("id").and_then(Value::as_str) else {
+                    return response(StatusCode::BAD_REQUEST, Value::Null);
+                };
+                let item_path = format!("{path}/{id}");
+                if !state.workflows.contains_key(&item_path)
+                    && state
+                        .workflows
+                        .values()
+                        .any(|workflow| workflow.get("id").and_then(Value::as_str) == Some(id))
+                {
+                    return response(
+                        StatusCode::CONFLICT,
+                        serde_json::json!({"error":"workflow already exists"}),
+                    );
+                }
+                state.workflows.insert(item_path, payload);
+                return response(StatusCode::OK, serde_json::json!({}));
+            }
+
+            if path.contains("/api/agent_builder/tools/") {
+                match method.as_str() {
+                    "HEAD" => {
+                        return response(
+                            if state.tools.contains_key(&path) {
+                                StatusCode::OK
+                            } else {
+                                StatusCode::NOT_FOUND
+                            },
+                            Value::Null,
+                        );
+                    }
+                    "GET" => return response(StatusCode::OK, serde_json::json!({"readonly": false})),
+                    "PUT" => {
+                        let scope = path.split("/api/").next().unwrap_or("");
+                        let Some(workflow_id) = payload.pointer("/configuration/workflow_id").and_then(Value::as_str)
+                        else {
+                            return response(StatusCode::BAD_REQUEST, Value::Null);
+                        };
+                        let workflow_path = format!("{scope}/api/workflows/workflow/{workflow_id}");
+                        if !state.workflows.contains_key(&workflow_path) {
+                            return response(
+                                StatusCode::BAD_REQUEST,
+                                serde_json::json!({"error":"workflow not found"}),
+                            );
+                        }
+                        state.tools.insert(path, payload);
+                        return response(StatusCode::OK, serde_json::json!({}));
+                    }
+                    _ => return response(StatusCode::METHOD_NOT_ALLOWED, Value::Null),
+                }
+            }
+            if method == "POST" && path.ends_with("/api/agent_builder/tools") {
+                let Some(id) = payload.get("id").and_then(Value::as_str) else {
+                    return response(StatusCode::BAD_REQUEST, Value::Null);
+                };
+                let scope = path.split("/api/").next().unwrap_or("");
+                let Some(workflow_id) = payload.pointer("/configuration/workflow_id").and_then(Value::as_str) else {
+                    return response(StatusCode::BAD_REQUEST, Value::Null);
+                };
+                let workflow_path = format!("{scope}/api/workflows/workflow/{workflow_id}");
+                if !state.workflows.contains_key(&workflow_path) {
+                    return response(
+                        StatusCode::BAD_REQUEST,
+                        serde_json::json!({"error":"workflow not found"}),
+                    );
+                }
+                state.tools.insert(format!("{path}/{id}"), payload);
+                return response(StatusCode::OK, serde_json::json!({}));
+            }
+
+            if path.contains("/api/agent_builder/skills/") {
+                return match method.as_str() {
+                    "GET" => state.skills.get(&path).map_or_else(
+                        || response(StatusCode::NOT_FOUND, Value::Null),
+                        |_| response(StatusCode::OK, serde_json::json!({"readonly": false})),
+                    ),
+                    "PUT" => {
+                        let scope = path.split("/api/").next().unwrap_or("");
+                        let invalid_tool = payload
+                            .get("tool_ids")
+                            .and_then(Value::as_array)
+                            .is_some_and(|tool_ids| {
+                                tool_ids.iter().filter_map(Value::as_str).any(|tool_id| {
+                                    !state
+                                        .tools
+                                        .contains_key(&format!("{scope}/api/agent_builder/tools/{tool_id}"))
+                                })
+                            });
+                        if invalid_tool {
+                            return response(StatusCode::BAD_REQUEST, serde_json::json!({"error":"tool not found"}));
+                        }
+                        state.skills.insert(path, payload);
+                        response(StatusCode::OK, serde_json::json!({}))
+                    }
+                    _ => response(StatusCode::NOT_FOUND, Value::Null),
+                };
+            }
+            if method == "POST" && path.ends_with("/api/agent_builder/skills") {
+                let scope = path.split("/api/").next().unwrap_or("");
+                let invalid_tool = payload
+                    .get("tool_ids")
+                    .and_then(Value::as_array)
+                    .is_some_and(|tool_ids| {
+                        tool_ids.iter().filter_map(Value::as_str).any(|tool_id| {
+                            !state
+                                .tools
+                                .contains_key(&format!("{scope}/api/agent_builder/tools/{tool_id}"))
+                        })
+                    });
+                if invalid_tool {
+                    return response(StatusCode::BAD_REQUEST, serde_json::json!({"error":"tool not found"}));
+                }
+                if let Some(id) = payload.get("id").and_then(Value::as_str) {
+                    state.skills.insert(format!("{path}/{id}"), payload);
+                }
+                return response(StatusCode::OK, serde_json::json!({}));
+            }
+
+            if path.contains("/api/spaces/space/") {
+                return match method.as_str() {
+                    "GET" => state.spaces.get(&path).cloned().map_or_else(
+                        || response(StatusCode::NOT_FOUND, Value::Null),
+                        |space| response(StatusCode::OK, space),
+                    ),
+                    "PUT" => {
+                        state.spaces.insert(path, payload);
+                        response(StatusCode::OK, serde_json::json!({}))
+                    }
+                    _ => response(StatusCode::METHOD_NOT_ALLOWED, Value::Null),
+                };
+            }
+            if method == "POST" && path == "/api/spaces/space" {
+                if let Some(id) = payload.get("id").and_then(Value::as_str) {
+                    state.spaces.insert(format!("/api/spaces/space/{id}"), payload);
+                }
+                return response(StatusCode::OK, serde_json::json!({}));
+            }
+
+            if method == "GET" && path.ends_with("/api/agent_builder/agents/elastic-ai-agent") {
+                return response(
+                    StatusCode::OK,
+                    serde_json::json!({"id":"elastic-ai-agent","configuration":{"skill_ids":[]}}),
+                );
+            }
+            if path.contains("/api/saved_objects/_import") {
+                return response(StatusCode::OK, serde_json::json!({"success":true,"errors":[]}));
+            }
+            if method == "HEAD" {
+                return response(StatusCode::NOT_FOUND, Value::Null);
+            }
+            response(StatusCode::OK, serde_json::json!({}))
+        }
+    });
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url: url::Url = format!("http://{}", listener.local_addr().unwrap()).parse().unwrap();
+    let task = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let home = tempfile::tempdir().unwrap();
+    let hosts = home.path().join("hosts.yml");
+    std::fs::write(
+        &hosts,
+        serde_json::to_vec(&serde_json::json!({
+            "kibana": {"app":"kibana", "roles":["view"], "url":url.as_str()}
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    for destination in ["default", "support", "operations", "support"] {
+        let home = home.path().to_path_buf();
+        let hosts = hosts.clone();
+        let output = tokio::task::spawn_blocking(move || {
+            std::process::Command::new(env!("CARGO_BIN_EXE_esdiag"))
+                .args(["setup", "kibana"])
+                .env("HOME", &home)
+                .env("ESDIAG_HOME", &home)
+                .env("ESDIAG_HOSTS", hosts)
+                .env("ESDIAG_KIBANA_SPACE", destination)
+                .output()
+                .unwrap()
+        })
+        .await
+        .unwrap();
+        assert!(
+            output.status.success(),
+            "setup {destination}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    task.abort();
+
+    let state = state.lock().unwrap();
+    let workflow_ids: std::collections::HashSet<_> = state
+        .workflows
+        .values()
+        .filter_map(|workflow| workflow.get("id").and_then(Value::as_str))
+        .collect();
+    assert_eq!(state.workflows.len(), 3, "reruns must update the destination workflow");
+    assert_eq!(
+        workflow_ids.len(),
+        3,
+        "destination workflow IDs must be globally unique"
+    );
+    let tool_workflow_ids: std::collections::HashSet<_> = state
+        .tools
+        .values()
+        .filter_map(|tool| tool.pointer("/configuration/workflow_id").and_then(Value::as_str))
+        .collect();
+    assert_eq!(
+        tool_workflow_ids, workflow_ids,
+        "each tool must reference its destination workflow"
+    );
+    assert_eq!(
+        state
+            .requests
+            .iter()
+            .filter(|(method, path)| method == "POST" && path.ends_with("/api/workflows/workflow"))
+            .count(),
+        3,
+        "one workflow must be created per destination"
+    );
+    assert!(
+        state
+            .requests
+            .iter()
+            .any(|(method, path)| method == "PUT" && path.contains("/api/workflows/workflow/"))
+    );
 }
 
 #[tokio::test]

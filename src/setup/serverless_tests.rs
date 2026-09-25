@@ -6,17 +6,36 @@ use super::*;
 use std::collections::BTreeSet;
 
 #[test]
-fn kibana_setup_targets_default_and_named_spaces_without_losing_assets() {
+fn kibana_setup_assigns_unique_workflows_to_each_destination_space() {
     let original = kibana_bundle(&EmbeddedAssets::new().unwrap())
         .unwrap()
         .read_all()
         .unwrap();
-    for target in [None, Some("support"), Some("esdiag")] {
+    let source_workflow_id = original.by_space["esdiag"].workflows[0]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let mut workflow_ids = BTreeSet::new();
+
+    for target in [None, Some("support"), Some("operations"), Some("esdiag")] {
         let mut bundle = original.clone();
         target_kibana_bundle(&mut bundle, target).unwrap();
         let destination = target.unwrap_or("default");
         assert_eq!(bundle.by_space.len(), 1);
         let assets = &bundle.by_space[destination];
+        let workflow_id = assets.workflows[0]["id"].as_str().unwrap();
+        assert_ne!(workflow_id, source_workflow_id);
+        assert!(workflow_id.starts_with("workflow-"));
+        assert!(uuid::Uuid::parse_str(workflow_id.trim_start_matches("workflow-")).is_ok());
+        assert!(
+            workflow_ids.insert(workflow_id.to_string()),
+            "workflow IDs must be globally unique"
+        );
+        assert_eq!(
+            assets.tools[0]["configuration"]["workflow_id"].as_str(),
+            Some(workflow_id)
+        );
+
         let source = &original.by_space["esdiag"];
         assert_eq!(assets.saved_objects.len(), source.saved_objects.len());
         assert_eq!(assets.workflows.len(), source.workflows.len());
@@ -52,8 +71,6 @@ fn kibana_setup_targets_default_and_named_spaces_without_losing_assets() {
                 .map(|space| format!("/s/{space}/app/dashboards"))
                 .unwrap_or_else(|| "/app/dashboards".to_string());
             assert!(skill_text.contains(&expected));
-        } else {
-            assert_eq!(bundle, original);
         }
     }
 }
