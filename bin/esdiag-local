@@ -644,7 +644,7 @@ launch_browser() {
         if [[ -t 0 && -t 1 ]]; then
             printf 'Copy the Kibana elastic password to the clipboard? [Y/n] ' >&2
             read -r answer || answer=n
-            [[ -z "$answer" || "$answer" == y || "$answer" == Y ]] && copy_password=true
+            case "$answer" in "" | [yY] | [yY][eE][sS]) copy_password=true ;; esac
         fi
         [[ "$copy_password" == true ]] || info "Sign in to Kibana as elastic; use: ${command_name} secrets password$(clipboard_example)"
     fi

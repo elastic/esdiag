@@ -4756,6 +4756,17 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "server")]
+    #[test]
+    fn serve_logs_to_stderr_without_a_run_log() {
+        let serve = Cli::parse_from(["esdiag", "serve"]);
+
+        assert!(resolve_log_file_filter(&serve).is_none());
+        if std::env::var_os("LOG_LEVEL").is_none() {
+            assert_eq!(resolve_tracing_filter(&serve).to_string(), "info");
+        }
+    }
+
     #[test]
     fn agent_mode_uses_warn_filter_without_debug() {
         let cli = Cli {
