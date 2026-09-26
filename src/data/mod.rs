@@ -82,13 +82,22 @@ pub fn is_collectable_app(app: Option<Application>) -> bool {
     )
 }
 
-/// Save an arbitrary serializable object to a file
-pub fn save_file<T: Serialize>(filename: &str, content: &T) -> Result<()> {
-    let home_file = PathBuf::from(env::get_string("HOME")?)
+/// File name of the per-run log written to the `last_run` directory.
+pub const RUN_LOG: &str = "esdiag.log";
+
+/// Path of `filename` inside the `last_run` directory, creating the directory.
+pub fn last_run_path(filename: &str) -> Result<PathBuf> {
+    let path = PathBuf::from(env::get_string("HOME")?)
         .join(env::get_string("ESDIAG_HOME")?)
         .join("last_run")
         .join(filename);
-    std::fs::create_dir_all(home_file.parent().expect("last_run directory"))?;
+    std::fs::create_dir_all(path.parent().expect("last_run directory"))?;
+    Ok(path)
+}
+
+/// Save an arbitrary serializable object to a file
+pub fn save_file<T: Serialize>(filename: &str, content: &T) -> Result<()> {
+    let home_file = last_run_path(filename)?;
     let mut file = OpenOptions::new().create(true).append(true).open(home_file)?;
     let body = serde_json::to_string(&content)?;
     file.write_all(body.as_bytes())?;

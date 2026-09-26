@@ -49,9 +49,10 @@ The directory is private and `.env` has mode `0600`.
 
 The stack binds Elasticsearch to `127.0.0.1:9200`, Kibana to
 `127.0.0.1:5601`, and the ESDiag web UI to `127.0.0.1:2501` by default.
-`esdiag local up` and `esdiag local open` copy the generated Elastic password
-to the clipboard when a platform clipboard helper is available; pass
-`--copy-password=false` to opt out.
+Before opening the browser, `esdiag local up` and `esdiag local open` ask
+whether to copy the generated Elastic password to the clipboard. Without an
+interactive terminal they don't copy it. Pass `--copy-password=true` or
+`--copy-password=false` to skip the question.
 
 The stack stores generated Elasticsearch credentials and API keys in `.env`.
 Do not copy them into `hosts.yml`, `settings.yml`, or `secrets.yml`.

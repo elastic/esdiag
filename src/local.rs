@@ -3,6 +3,7 @@ use std::{
     collections::BTreeMap,
     ffi::OsString,
     fs,
+    io::IsTerminal,
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     time::Duration,
@@ -112,7 +113,7 @@ struct LocalOptions {
     runtime: Option<String>,
     stack: StackMode,
     open_browser: bool,
-    copy_password: bool,
+    copy_password: Option<bool>,
     start_native_service: bool,
     persist_onboarding_output: bool,
     log_level: Option<String>,
@@ -127,7 +128,7 @@ impl LocalOptions {
             runtime: None,
             stack: StackMode::Auto,
             open_browser: true,
-            copy_password: true,
+            copy_password: None,
             start_native_service: true,
             persist_onboarding_output: false,
             log_level: None,
@@ -163,8 +164,8 @@ impl LocalOptions {
                 }
                 "--open-browser=false" => options.open_browser = false,
                 "--open-browser=true" => options.open_browser = true,
-                "--copy-password=false" => options.copy_password = false,
-                "--copy-password=true" => options.copy_password = true,
+                "--copy-password=false" => options.copy_password = Some(false),
+                "--copy-password=true" => options.copy_password = Some(true),
                 "--start-native-service=false" => options.start_native_service = false,
                 "--start-native-service=true" => options.start_native_service = true,
                 "--persist-onboarding-output" => options.persist_onboarding_output = true,
@@ -202,7 +203,8 @@ struct LocalState {
     values: BTreeMap<String, String>,
     runtime: Option<String>,
     open_browser: bool,
-    copy_password: bool,
+    /// `None` asks at an interactive terminal and skips copying otherwise.
+    copy_password: Option<bool>,
     has_existing_state: bool,
 }
 
@@ -220,7 +222,7 @@ impl LocalState {
             values,
             runtime: None,
             open_browser: true,
-            copy_password: true,
+            copy_password: None,
             has_existing_state,
         })
     }
@@ -249,11 +251,28 @@ impl LocalState {
             self.values.insert("LOG_LEVEL".to_string(), level);
         }
         self.write()?;
-        if previous_mode == Some(StackMode::Full) && mode == StackMode::Core {
-            self.compose(&["down", "--remove-orphans"])?;
+        if let Ok(log) = esdiag::data::last_run_path(esdiag::data::RUN_LOG) {
+            eprintln!(
+                "Starting the local ESDiag stack. Details are logged to {}",
+                log.display()
+            );
         }
-        self.compose(&["pull", "elasticsearch", "kibana"])?;
-        self.compose(&["up", "-d", "elasticsearch", "kibana"])?;
+        if previous_mode == Some(StackMode::Full) && mode == StackMode::Core {
+            self.compose_logged("Stopping the previous full-mode stack", &["down", "--remove-orphans"])?;
+        }
+        let version = self
+            .required("STACK_ELASTIC_VERSION")
+            .unwrap_or(ELASTIC_VERSION)
+            .to_string();
+        self.compose_logged(
+            &format!("Pulling Elasticsearch and Kibana {version} images"),
+            &["pull", "elasticsearch", "kibana"],
+        )?;
+        self.compose_logged(
+            "Starting Elasticsearch and Kibana",
+            &["up", "-d", "elasticsearch", "kibana"],
+        )?;
+        progress("Waiting for Elasticsearch");
         self.wait_url_for_startup(
             &self.elasticsearch_url(),
             Some(("elastic", self.required("ELASTIC_PASSWORD")?)),
@@ -263,13 +282,15 @@ impl LocalState {
         .await?;
         self.configure_security().await?;
         self.write()?;
+        progress("Waiting for Kibana");
         self.wait_kibana().await?;
         self.setup_mode(mode).await?;
         let mut native_child = if mode == StackMode::Full {
             self.stop_native_service()?;
-            self.compose(&["up", "-d", "esdiag"])?;
+            self.compose_logged("Starting the ESDiag web service", &["up", "-d", "esdiag"])?;
             None
         } else if options.start_native_service {
+            progress("Starting the ESDiag web service");
             Some(self.start_native_service()?)
         } else {
             None
@@ -468,8 +489,12 @@ impl LocalState {
 
     async fn setup_mode(&mut self, mode: StackMode) -> Result<()> {
         if mode == StackMode::Full {
-            self.compose(&["--profile", "setup", "run", "--rm", "--no-deps", "setup"])
+            self.compose_logged(
+                "Installing ESDiag assets",
+                &["--profile", "setup", "run", "--rm", "--no-deps", "setup"],
+            )
         } else {
+            progress("Installing ESDiag assets");
             self.native_setup().await
         }
     }
@@ -641,7 +666,7 @@ impl LocalState {
     fn down(&mut self) -> Result<()> {
         self.runtime = Some(detect_runtime(None)?);
         self.stop_native_service()?;
-        self.compose(&["down"])
+        self.compose_logged("Stopping the local stack", &["down"])
     }
 
     fn restart(&mut self, services: Vec<String>) -> Result<()> {
@@ -650,7 +675,10 @@ impl LocalState {
             if service == "esdiag" && self.values.get("STACK_MODE").map(String::as_str) == Some("core") {
                 self.start_native_service()?;
             } else {
-                self.compose(&["up", "-d", "--no-deps", "--force-recreate", &service])?;
+                self.compose_logged(
+                    &format!("Restarting {service}"),
+                    &["up", "-d", "--no-deps", "--force-recreate", &service],
+                )?;
             }
         }
         Ok(())
@@ -690,7 +718,10 @@ impl LocalState {
         }
         self.runtime = Some(detect_runtime(None)?);
         self.stop_native_service()?;
-        self.compose(&["down", "--volumes", "--remove-orphans"])?;
+        self.compose_logged(
+            "Removing local containers and volumes",
+            &["down", "--volumes", "--remove-orphans"],
+        )?;
         fs::remove_dir_all(&self.dir)?;
         Ok(())
     }
@@ -710,8 +741,12 @@ impl LocalState {
     }
 
     fn open_browser_to(&self, path: &str) -> Result<()> {
-        if self.copy_password {
-            self.copy_password_to_clipboard();
+        let interactive = std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
+        let copied = should_copy_password(self.copy_password, interactive, || {
+            crate::prompt_confirm_default_yes("Copy the Kibana `elastic` password to the clipboard? [Y/n]: ")
+        })? && self.copy_password_to_clipboard();
+        if !copied && self.copy_password != Some(false) {
+            eprintln!("Sign in to Kibana as `elastic`; `esdiag local secrets password` prints the password.");
         }
         let url = format!("{}{path}", self.esdiag_url());
         #[cfg(target_os = "macos")]
@@ -733,16 +768,16 @@ impl LocalState {
         Ok(())
     }
 
-    fn copy_password_to_clipboard(&self) {
+    fn copy_password_to_clipboard(&self) -> bool {
         let password = match self.required("ELASTIC_PASSWORD") {
             Ok(password) => password,
             Err(error) => {
                 eprintln!("Could not retrieve the Kibana password for the clipboard: {error}");
-                return;
+                return false;
             }
         };
         #[cfg(not(any(target_os = "macos", target_os = "linux")))]
-        return;
+        return false;
         #[cfg(target_os = "macos")]
         let copied = write_clipboard("pbcopy", &[], password);
         #[cfg(target_os = "linux")]
@@ -755,23 +790,56 @@ impl LocalState {
         .any(|(command, args)| write_clipboard(command, &args, password));
         if copied {
             eprintln!("Copied the elastic password to the clipboard");
-        } else {
-            eprintln!("Could not copy the elastic password; use `esdiag local secrets password`.");
         }
+        copied
     }
 
-    fn compose(&self, arguments: &[&str]) -> Result<()> {
+    fn compose_command(&self, arguments: &[&str]) -> Result<(String, Command)> {
         let runtime = self
             .runtime
             .as_deref()
             .ok_or_else(|| eyre!("Container runtime is not initialized"))?;
         let project = format!("esdiag-local-{}", stable_project_id(&self.dir));
-        let status = Command::new(runtime)
+        let mut command = Command::new(runtime);
+        command
+            .env("PODMAN_COMPOSE_WARNING_LOGS", "false")
             .args(["compose", "--project-name", &project, "--env-file"])
             .arg(self.dir.join(".env"))
             .args(["--file"])
             .arg(self.dir.join("compose.yml"))
-            .args(arguments)
+            .args(arguments);
+        Ok((runtime.to_string(), command))
+    }
+
+    /// Runs a lifecycle action with its compose output appended to the run log.
+    fn compose_logged(&self, message: &str, arguments: &[&str]) -> Result<()> {
+        progress(message);
+        let log = esdiag::data::last_run_path(esdiag::data::RUN_LOG)?;
+        let mut options = fs::OpenOptions::new();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let file = options.create(true).append(true).open(&log)?;
+        let (runtime, mut command) = self.compose_command(arguments)?;
+        let status = command
+            .stdin(Stdio::null())
+            .stdout(Stdio::from(file.try_clone()?))
+            .stderr(Stdio::from(file))
+            .status()?;
+        status.success().then_some(()).ok_or_else(|| {
+            eyre!(
+                "`{runtime} compose {}` failed; see {}",
+                arguments.join(" "),
+                log.display()
+            )
+        })
+    }
+
+    fn compose(&self, arguments: &[&str]) -> Result<()> {
+        let (runtime, mut command) = self.compose_command(arguments)?;
+        let status = command
             .stdin(Stdio::inherit())
             .stdout(Stdio::from(std::io::stderr()))
             .stderr(Stdio::inherit())
@@ -893,6 +961,22 @@ impl LocalState {
             esdiag_url: Some(self.esdiag_url()),
             kibana_url: Some(self.kibana_url()),
         }
+    }
+}
+
+fn progress(message: &str) {
+    eprintln!("{message}...");
+}
+
+fn should_copy_password(
+    requested: Option<bool>,
+    interactive: bool,
+    approved: impl FnOnce() -> Result<bool>,
+) -> Result<bool> {
+    match requested {
+        Some(copy) => Ok(copy),
+        None if interactive => approved(),
+        None => Ok(false),
     }
 }
 
@@ -1029,7 +1113,7 @@ fn secure_dir(path: &Path) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{LocalState, StackMode, kibana_is_available, stable_project_id};
+    use super::{LocalState, StackMode, kibana_is_available, should_copy_password, stable_project_id};
     use esdiag::cli_output::CliOutcome;
     use std::{collections::BTreeMap, fs, path::Path};
     use tempfile::TempDir;
@@ -1041,7 +1125,7 @@ mod tests {
             values: BTreeMap::new(),
             runtime: None,
             open_browser: false,
-            copy_password: false,
+            copy_password: Some(false),
             has_existing_state: false,
         };
         (directory, state)
@@ -1121,6 +1205,17 @@ mod tests {
         };
         assert_eq!(mode.as_deref(), Some("core"));
         assert_eq!(native_service.as_deref(), Some("stopped"));
+    }
+
+    #[test]
+    fn password_is_copied_only_when_requested_or_approved() {
+        let unasked = || -> eyre::Result<bool> { panic!("an explicit choice or missing terminal does not ask") };
+
+        assert!(should_copy_password(Some(true), false, unasked).unwrap());
+        assert!(!should_copy_password(Some(false), true, unasked).unwrap());
+        assert!(!should_copy_password(None, false, unasked).unwrap());
+        assert!(should_copy_password(None, true, || Ok(true)).unwrap());
+        assert!(!should_copy_password(None, true, || Ok(false)).unwrap());
     }
 
     #[test]
