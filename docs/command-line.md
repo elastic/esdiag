@@ -172,8 +172,9 @@ legacy plaintext host credentials into the keystore.
 
 It stores credentials in `secrets.yml`, not `esdiag.yml`.
 
-Enter an email address or another diagnostic user identifier. `EMAIL`, when
-set to an email address, supplies the default; the shell username does not.
+Enter an email address or another diagnostic user identifier. The default is
+`EMAIL` when it holds an email address, then `git config user.email`, then the
+`whoami` login name.
 Invalid yes/no answers, endpoint URLs, and default-job host selections prompt
 again. The default job requires a saved collection host name, not a URL.
 Resuming displays the saved workflow, and changing it displays both choices.
