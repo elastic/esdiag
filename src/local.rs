@@ -815,13 +815,7 @@ impl LocalState {
     fn compose_logged(&self, message: &str, arguments: &[&str]) -> Result<()> {
         progress(message);
         let log = esdiag::data::last_run_path(esdiag::data::RUN_LOG)?;
-        let mut options = fs::OpenOptions::new();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            options.mode(0o600);
-        }
-        let file = options.create(true).append(true).open(&log)?;
+        let file = esdiag::data::open_run_log(false)?;
         let (runtime, mut command) = self.compose_command(arguments)?;
         let status = command
             .stdin(Stdio::null())

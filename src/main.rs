@@ -618,7 +618,7 @@ fn init_tracing(terminal_filter: EnvFilter, file_filter: Option<EnvFilter>) {
         .with_ansi(std::io::stderr().is_terminal() && std::env::var_os("NO_COLOR").is_none())
         .with_writer(std::io::stderr)
         .with_filter(terminal_filter);
-    let file = file_filter.and_then(|filter| match open_run_log() {
+    let file = file_filter.and_then(|filter| match esdiag::data::open_run_log(true) {
         Ok(file) => Some(
             fmt::layer()
                 .with_ansi(false)
@@ -753,19 +753,6 @@ fn logs_to_terminal(cli: &Cli) -> bool {
         let _ = cli;
         false
     }
-}
-
-/// Truncates the run log, then reopens it for appending so child processes can share it.
-fn open_run_log() -> Result<std::fs::File> {
-    let path = esdiag::data::last_run_path(esdiag::data::RUN_LOG)?;
-    let mut options = std::fs::OpenOptions::new();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
-    }
-    options.create(true).write(true).truncate(true).open(&path)?;
-    Ok(std::fs::OpenOptions::new().append(true).open(path)?)
 }
 
 async fn run_local_lifecycle(args: Vec<OsString>) -> Result<CommandResult> {

@@ -95,6 +95,29 @@ pub fn last_run_path(filename: &str) -> Result<PathBuf> {
     Ok(path)
 }
 
+/// Opens the run log for appending, optionally truncating it first. The log is
+/// owner-only even when an earlier file had broader permissions.
+pub fn open_run_log(truncate: bool) -> Result<std::fs::File> {
+    let path = last_run_path(RUN_LOG)?;
+    let mut options = OpenOptions::new();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    options.create(true);
+    if truncate {
+        options.clone().write(true).truncate(true).open(&path)?;
+    }
+    let file = options.append(true).open(&path)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+    }
+    Ok(file)
+}
+
 /// Save an arbitrary serializable object to a file
 pub fn save_file<T: Serialize>(filename: &str, content: &T) -> Result<()> {
     let home_file = last_run_path(filename)?;
@@ -226,6 +249,29 @@ mod tests {
             .map(|line| serde_json::from_str(line).unwrap())
             .collect();
         assert_eq!(records, vec![serde_json::json!({"id":1}), serde_json::json!({"id":2})]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn open_run_log_tightens_existing_permissions() {
+        use std::{io::Write, os::unix::fs::PermissionsExt};
+
+        let mut env = crate::TestEnv::new();
+        let home = env.tmp.path().join("run-log-home");
+        env.set_path("ESDIAG_HOME", home.clone());
+        let log = home.join("last_run").join(super::RUN_LOG);
+        std::fs::create_dir_all(log.parent().unwrap()).unwrap();
+        std::fs::write(&log, "previous run\n").unwrap();
+        std::fs::set_permissions(&log, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+        super::open_run_log(false).unwrap().write_all(b"appended\n").unwrap();
+        assert_eq!(std::fs::metadata(&log).unwrap().permissions().mode() & 0o777, 0o600);
+        assert_eq!(std::fs::read_to_string(&log).unwrap(), "previous run\nappended\n");
+
+        std::fs::set_permissions(&log, std::fs::Permissions::from_mode(0o644)).unwrap();
+        super::open_run_log(true).unwrap();
+        assert_eq!(std::fs::metadata(&log).unwrap().permissions().mode() & 0o777, 0o600);
+        assert_eq!(std::fs::read_to_string(&log).unwrap(), "");
     }
 
     #[test]
