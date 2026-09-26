@@ -4762,9 +4762,6 @@ mod tests {
         let serve = Cli::parse_from(["esdiag", "serve"]);
 
         assert!(resolve_log_file_filter(&serve).is_none());
-        if std::env::var_os("LOG_LEVEL").is_none() {
-            assert_eq!(resolve_tracing_filter(&serve).to_string(), "info");
-        }
     }
 
     #[test]

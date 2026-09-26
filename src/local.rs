@@ -741,9 +741,9 @@ impl LocalState {
     }
 
     fn open_browser_to(&self, path: &str) -> Result<()> {
-        let interactive = std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
+        let interactive = std::io::stdin().is_terminal() && std::io::stderr().is_terminal();
         let copied = should_copy_password(self.copy_password, interactive, || {
-            crate::prompt_confirm_default_yes("Copy the Kibana `elastic` password to the clipboard? [Y/n]: ")
+            confirm_on_stderr("Copy the Kibana `elastic` password to the clipboard? [Y/n]: ", true)
         })? && self.copy_password_to_clipboard();
         if !copied && self.copy_password != Some(false) {
             eprintln!("Sign in to Kibana as `elastic`; `esdiag local secrets password` prints the password.");
@@ -960,6 +960,24 @@ impl LocalState {
 
 fn progress(message: &str) {
     eprintln!("{message}...");
+}
+
+/// Asks on stderr so stdout carries only the command's result.
+fn confirm_on_stderr(message: &str, default: bool) -> Result<bool> {
+    use std::io::Write;
+    let mut stderr = std::io::stderr();
+    loop {
+        write!(stderr, "{message}")?;
+        stderr.flush()?;
+        let mut line = String::new();
+        if std::io::stdin().read_line(&mut line)? == 0 {
+            return Ok(false);
+        }
+        if let Some(answer) = crate::parse_confirmation(&line, default) {
+            return Ok(answer);
+        }
+        writeln!(stderr, "Enter y or n, or press Enter to accept the default.")?;
+    }
 }
 
 fn should_copy_password(
