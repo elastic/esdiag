@@ -245,10 +245,13 @@ if run_local up --runtime podman --state-dir "$tmp/overrides" --pull never 2>"$t
 assert_contains "$tmp/upgrade-error" 'up --upgrade'
 run_local up --runtime podman --state-dir "$tmp/overrides" --pull never --upgrade --open-browser=false
 
-# Clipboard ordering and opt-out.
+# Clipboard: skipped without a terminal to ask, copied on request, and opt-out.
 : >"$tmp/clipboard"; : >"$tmp/ui.log"
 PATH="$fake_bin:$PATH" ESDIAG_LOCAL_BINARY=/nonexistent ESDIAG_TEST_OS=Darwin ESDIAG_TEST_MEMORY_MB=8192 ESDIAG_TEST_DISK_MB=8192 \
-    "$script" up --runtime podman --state-dir "$tmp/clipboard-state" --pull never --open-browser=true
+    "$script" up --runtime podman --state-dir "$tmp/clipboard-state" --pull never --open-browser=true </dev/null
+[[ ! -s "$tmp/clipboard" ]] || fail 'password copied without asking'
+PATH="$fake_bin:$PATH" ESDIAG_LOCAL_BINARY=/nonexistent ESDIAG_TEST_OS=Darwin ESDIAG_TEST_MEMORY_MB=8192 ESDIAG_TEST_DISK_MB=8192 \
+    "$script" up --runtime podman --state-dir "$tmp/clipboard-state" --pull never --open-browser=true --copy-password=true
 [[ -s "$tmp/clipboard" ]] || fail 'password was not copied'
 : >"$tmp/clipboard"
 PATH="$fake_bin:$PATH" ESDIAG_LOCAL_BINARY=/nonexistent ESDIAG_TEST_OS=Darwin ESDIAG_TEST_MEMORY_MB=8192 ESDIAG_TEST_DISK_MB=8192 \

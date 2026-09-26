@@ -35,7 +35,13 @@ published release notes, maintenance branches, and tagged history.
 
 ### Changed
 
-- Changed the diagnostic selector and diagnostic counts in the Elasticsearch Indexing Hotspots - Nodes, Index Workload Balance, and Search Summary dashboards to use `diagnostic.id` instead of `diagnostic.uuid`, so captures are identified by cluster name and collection date rather than an opaque UUID.
+- Changed CLI commands to write their full log to `~/.esdiag/last_run/esdiag.log` and show only warnings and errors in the terminal unless `--debug` or `LOG_LEVEL` is set. `esdiag serve` still logs to stderr.
+- Changed `esdiag local` lifecycle commands and `esdiag init` to show short progress messages, with container runtime output sent to the run log. Podman's external compose provider banner is suppressed.
+- Changed `esdiag init` prompt defaults to follow earlier answers: local storage is the default when a container runtime is available, starting a local stack defaults to yes after choosing local storage, and adding the collect role to an existing host at the same URL defaults to yes.
+- Changed `esdiag init` to suggest the diagnostic user from `$EMAIL`, then `git config user.email`, then `whoami`.
+- Changed `esdiag local up`, `esdiag local open`, `esdiag init`, and `esdiag-local` to ask before copying the Kibana `elastic` password to the clipboard, and not to copy it without an interactive terminal unless `--copy-password=true` is passed.
+- Changed the diagnostic selector
+ and diagnostic counts in the Elasticsearch Indexing Hotspots - Nodes, Index Workload Balance, and Search Summary dashboards to use `diagnostic.id` instead of `diagnostic.uuid`, so captures are identified by cluster name and collection date rather than an opaque UUID.
 - Made source-tree notice generation opt-in so Cargo package verification and registry installation use committed notices.
 - Limited web onboarding to builds with both keystore and setup support, preserving host and keystore management in builds without setup.
 - Restored the published Elasticsearch client dependency with a response compatibility adapter so ESDiag can be packaged from registry dependencies.
@@ -99,6 +105,7 @@ published release notes, maintenance branches, and tagged history.
 
 ### Fixed
 
+- Fixed `esdiag init` asking to replace the default job it had just created when setting up both collection and processing.
 - Fixed repeated `esdiag setup` runs failing when a bundled Kibana workflow already exists.
 - Fixed incomplete Kibana setup summaries omitting assets installed before a later failure.
 - Fixed HTTP 409 failures reporting the `invalid_input` category instead of `conflict`.
