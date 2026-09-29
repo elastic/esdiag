@@ -59,7 +59,7 @@ use std::{
     str::FromStr,
     time::Duration,
 };
-use tracing_subscriber::{EnvFilter, fmt};
+use tracing_subscriber::{EnvFilter, Layer, fmt, layer::SubscriberExt};
 use url::Url;
 
 // CLI Styling
@@ -575,8 +575,7 @@ fn main() -> ExitCode {
 async fn async_main() -> Result<ExitCode> {
     // Parse CLI early to configure execution mode and logging.
     let cli = Cli::parse();
-    let filter = resolve_tracing_filter(&cli);
-    init_tracing(filter);
+    init_tracing(resolve_tracing_filter(&cli), resolve_log_file_filter(&cli));
     let stdout_owned = command_owns_stdout(&cli);
     let no_command = cli.command.is_none();
 
@@ -608,14 +607,30 @@ async fn async_main() -> Result<ExitCode> {
     }
 }
 
-fn init_tracing(filter: EnvFilter) {
+fn init_tracing(terminal_filter: EnvFilter, file_filter: Option<EnvFilter>) {
     // Bridge `log` records from dependencies when available, but tolerate hosts that
     // already installed a global logger before invoking this binary.
     if let Err(err) = tracing_log::LogTracer::init() {
         eprintln!("tracing log bridge already initialized: {err}");
     }
 
-    let subscriber = fmt().with_env_filter(filter).with_writer(std::io::stderr).finish();
+    let terminal = fmt::layer()
+        .with_ansi(std::io::stderr().is_terminal() && std::env::var_os("NO_COLOR").is_none())
+        .with_writer(std::io::stderr)
+        .with_filter(terminal_filter);
+    let file = file_filter.and_then(|filter| match esdiag::data::open_run_log(true) {
+        Ok(file) => Some(
+            fmt::layer()
+                .with_ansi(false)
+                .with_writer(std::sync::Mutex::new(file))
+                .with_filter(filter),
+        ),
+        Err(err) => {
+            eprintln!("Could not open the run log: {err}");
+            None
+        }
+    });
+    let subscriber = tracing_subscriber::registry().with(terminal).with(file);
     if let Err(err) = tracing::subscriber::set_global_default(subscriber) {
         eprintln!("tracing subscriber already initialized: {err}");
     }
@@ -708,8 +723,35 @@ fn resolve_tracing_filter(cli: &Cli) -> EnvFilter {
         EnvFilter::new("debug")
     } else if is_agent_mode(cli) {
         EnvFilter::new("warn")
+    } else if let Ok(filter) = EnvFilter::try_from_env("LOG_LEVEL") {
+        filter
+    } else if logs_to_terminal(cli) {
+        EnvFilter::new(LOG_LEVEL)
     } else {
-        EnvFilter::try_from_env("LOG_LEVEL").unwrap_or_else(|_| EnvFilter::new(LOG_LEVEL))
+        EnvFilter::new("warn")
+    }
+}
+
+fn resolve_log_file_filter(cli: &Cli) -> Option<EnvFilter> {
+    if logs_to_terminal(cli) {
+        None
+    } else if cli.debug {
+        Some(EnvFilter::new("debug"))
+    } else {
+        Some(EnvFilter::try_from_env("LOG_LEVEL").unwrap_or_else(|_| EnvFilter::new(LOG_LEVEL)))
+    }
+}
+
+/// Long-running services log to stderr, which their supervisor captures.
+fn logs_to_terminal(cli: &Cli) -> bool {
+    #[cfg(feature = "server")]
+    {
+        matches!(cli.command, Some(Commands::Serve { .. }))
+    }
+    #[cfg(not(feature = "server"))]
+    {
+        let _ = cli;
+        false
     }
 }
 
@@ -933,9 +975,10 @@ fn collection_outcome(result: CollectionResult, upload_destination: Option<Strin
 }
 
 fn child_failure_message(child: &esdiag::job::outcome::ChildExecutionOutcome) -> Option<&str> {
-    child
-        .export_error()
-        .or_else(|| (child.diagnostic_outcome == DiagnosticOutcome::Failed).then_some("included diagnostic failed"))
+    child.export_error().or_else(|| {
+        (child.diagnostic_outcome == DiagnosticOutcome::Failed)
+            .then(|| child.execution_error().unwrap_or("included diagnostic failed"))
+    })
 }
 
 fn has_child_execution_failure(outcome: &esdiag::job::outcome::ExecutionOutcome) -> bool {
@@ -970,12 +1013,12 @@ fn execution_process_result(outcome: &esdiag::job::outcome::ExecutionOutcome) ->
     let included = outcome
         .children
         .iter()
-        .map(|child| match (child.diagnostic_outcome, child.report()) {
-            (_, Some(_)) if let Some(error) = child_failure_message(child) => IncludedDiagnosticResult::Failed {
+        .map(|child| match (child.diagnostic_outcome, child.report(), child_failure_message(child)) {
+            (_, Some(_), Some(error)) => IncludedDiagnosticResult::Failed {
                 source: child.path.clone(),
                 error: error.to_string(),
             },
-            (DiagnosticOutcome::Skipped(_), _) => IncludedDiagnosticResult::Skipped {
+            (DiagnosticOutcome::Skipped(_), _, _) => IncludedDiagnosticResult::Skipped {
                 source: child.path.clone(),
                 product: Some(esdiag::processor::display_label(child.application(), child.platform())),
                 reason: child
@@ -983,7 +1026,7 @@ fn execution_process_result(outcome: &esdiag::job::outcome::ExecutionOutcome) ->
                     .unwrap_or("diagnostic processing skipped")
                     .to_string(),
             },
-            (_, Some(report)) => IncludedDiagnosticResult::Completed {
+            (_, Some(report), None) => IncludedDiagnosticResult::Completed {
                 source: child.path.clone(),
                 diagnostic: DiagnosticResult {
                     id: report.diagnostic.metadata.id.clone(),
@@ -1006,7 +1049,7 @@ fn execution_process_result(outcome: &esdiag::job::outcome::ExecutionOutcome) ->
                     kibana_url: report.diagnostic.kibana_link.clone(),
                 },
             },
-            (_, None) => IncludedDiagnosticResult::Failed {
+            (_, None, _) => IncludedDiagnosticResult::Failed {
                 source: child.path.clone(),
                 error: child
                     .execution_error()
@@ -2128,12 +2171,13 @@ fn parse_onboarding_workflow(selection: &str) -> Option<OnboardingWorkflow> {
     }
 }
 
-fn prompt_output_location() -> Result<OutputLocation> {
+fn prompt_output_location(local_available: bool) -> Result<OutputLocation> {
     loop {
         println!("Will processed diagnostics be stored locally or remotely?");
         println!("  1. Local ESDiag deployment");
         println!("  2. Remote Elasticsearch and Kibana deployment");
-        match prompt_with_default("Selection", "2")?.to_ascii_lowercase().as_str() {
+        let default = if local_available { "1" } else { "2" };
+        match prompt_with_default("Selection", default)?.to_ascii_lowercase().as_str() {
             "1" | "local" => return Ok(OutputLocation::Local),
             "2" | "remote" => return Ok(OutputLocation::Remote),
             _ => println!("Choose 1 or 2."),
@@ -2302,7 +2346,9 @@ async fn run_init_wizard() -> Result<CommandResult> {
             let keystore_password = get_password_for_secret_commands()?;
             let (output_name, output_url, viewer_url, viewer_name, secret_id, auth, output_client, viewer_client) = loop {
                 let (output_name, output_url, viewer_url, viewer_api_url, secret_id, auth) =
-                    match prompt_output_location()? {
+                    match prompt_output_location(
+                        detected_esdiag_local_preset().is_some() || local::detected_runtime().is_some(),
+                    )? {
                         OutputLocation::Local => {
                             let local_output = |preset: EsdiagLocalPreset| -> Result<_> {
                                 let apikey = preset.apikey.ok_or_else(|| {
@@ -2338,8 +2384,8 @@ async fn run_init_wizard() -> Result<CommandResult> {
                                 existing.is_none(),
                                 runtime_available,
                                 || {
-                                    prompt_confirm(
-                                        "No local ESDiag deployment was detected. Start a local core stack now? [y/N]: ",
+                                    prompt_confirm_default_yes(
+                                        "No local ESDiag deployment was detected. Start a local core stack now? [Y/n]: ",
                                     )
                                 },
                             )?;
@@ -2347,6 +2393,7 @@ async fn run_init_wizard() -> Result<CommandResult> {
                                 Some(preset) => Some(preset),
                                 None if start_core => {
                                     run_local_lifecycle(local_core_stack_start_args()).await?;
+                                    println!("Local ESDiag stack is ready.");
                                     started_local_stack = true;
                                     detected_esdiag_local_preset()
                                 }
@@ -2450,6 +2497,7 @@ async fn run_init_wizard() -> Result<CommandResult> {
             if started_local_stack {
                 output_config.output.assets_version = Some(env!("CARGO_PKG_VERSION").to_string());
             } else if run_output_setup {
+                eprintln!("Installing ESDiag assets...");
                 setup::assets(&output_client).await?;
                 setup::ensure_agent_builder_license(&output_client).await?;
                 setup::assets(&viewer_client).await?;
@@ -2499,10 +2547,19 @@ async fn run_init_wizard() -> Result<CommandResult> {
             } else {
                 None
             };
-            if KnownHost::get_known(&name).is_some()
-                && !prompt_confirm(&format!("Add the collect role to existing host '{name}'? [y/N]: "))?
-            {
-                return Err(eyre!("Collection host replacement was declined."));
+            if let Some(existing) = KnownHost::get_known(&name) {
+                let add_role = match existing.concrete_url() {
+                    Some(existing_url) if *existing_url == url => {
+                        prompt_confirm_default_yes(&format!("Add the collect role to existing host '{name}'? [Y/n]: "))?
+                    }
+                    Some(existing_url) => prompt_confirm(&format!(
+                        "Host '{name}' already exists at {existing_url}. Add the collect role and keep that URL? [y/N]: "
+                    ))?,
+                    None => prompt_confirm(&format!("Add the collect role to existing host '{name}'? [y/N]: "))?,
+                };
+                if !add_role {
+                    return Err(eyre!("Collection host replacement was declined."));
+                }
             }
             save_collect_host(
                 CollectHostInput {
@@ -2526,15 +2583,15 @@ async fn run_init_wizard() -> Result<CommandResult> {
         let collect_job = esdiag::data::Job::builder()
             .collect_from(collect_host.clone())?
             .collect_to(format!("diagnostics/{collect_host}"))?;
-        confirm_default_job_replacement(&collect_job_name)?;
-        save_default_job(collect_job_name, collect_job)?;
+        confirm_default_job_replacement(&collect_job_name, None)?;
+        save_default_job(collect_job_name.clone(), collect_job)?;
         if workflow.processes_diagnostics() {
             let output = esdiag::data::ApplicationConfig::load()?
                 .output
                 .default
                 .ok_or_else(|| eyre!("A processing workflow requires an output deployment"))?;
             let process_job_name = format!("{collect_host}-process-{output}");
-            confirm_default_job_replacement(&process_job_name)?;
+            confirm_default_job_replacement(&process_job_name, Some(&collect_job_name))?;
             save_default_processing_job(process_job_name, collect_host)?;
         }
     }
@@ -2710,11 +2767,13 @@ fn default_collect_host_name() -> Option<String> {
         .find_map(|(name, host)| host.has_role(HostRole::Collect).then_some(name))
 }
 
-fn confirm_default_job_replacement(name: &str) -> Result<()> {
+/// `set_this_run` is a default job this initialization already chose, which may
+/// be replaced without asking.
+fn confirm_default_job_replacement(name: &str, set_this_run: Option<&str>) -> Result<()> {
     let jobs = esdiag::data::load_saved_jobs()?;
     let config = esdiag::data::ApplicationConfig::load()?;
     let replaces_job = jobs.contains_key(name);
-    let replaces_default = config.job.default.as_deref().is_some_and(|current| current != name);
+    let replaces_default = replaces_other_default(config.job.default.as_deref(), name, set_this_run);
     if (replaces_job || replaces_default)
         && !prompt_confirm(&format!(
             "Replace {}? [y/N]: ",
@@ -2859,7 +2918,11 @@ fn prompt_required(message: &str) -> Result<String> {
 }
 
 fn prompt_with_default(message: &str, default: &str) -> Result<String> {
-    print!("{message} [{default}]: ");
+    if default.is_empty() {
+        print!("{message}: ");
+    } else {
+        print!("{message} [{default}]: ");
+    }
     std::io::stdout().flush()?;
     let mut line = String::new();
     if std::io::stdin().read_line(&mut line)? == 0 {
@@ -3324,17 +3387,41 @@ const fn skill_reload_guidance() -> &'static str {
     "Restart or reload running coding agents before using the installed skill."
 }
 
-fn default_diagnostic_user() -> String {
-    default_diagnostic_user_from(|name| std::env::var(name).ok())
+fn replaces_other_default(current: Option<&str>, name: &str, set_this_run: Option<&str>) -> bool {
+    current.is_some_and(|current| current != name && Some(current) != set_this_run)
 }
 
-fn default_diagnostic_user_from<F>(get_environment: F) -> String
-where
-    F: Fn(&str) -> Option<String>,
-{
-    get_environment("EMAIL")
-        .filter(|email| email.contains('@'))
+fn default_diagnostic_user() -> String {
+    default_diagnostic_user_from(
+        std::env::var("EMAIL").ok(),
+        || command_stdout("git", &["config", "--get", "user.email"]),
+        || command_stdout("whoami", &[]),
+    )
+}
+
+fn default_diagnostic_user_from(
+    email: Option<String>,
+    git_email: impl FnOnce() -> Option<String>,
+    login: impl FnOnce() -> Option<String>,
+) -> String {
+    let is_email = |value: &String| value.contains('@');
+    email
+        .filter(is_email)
+        .or_else(|| git_email().filter(is_email))
+        .or_else(login)
+        .map(|value| value.trim().to_string())
         .unwrap_or_default()
+}
+
+fn command_stdout(program: &str, arguments: &[&str]) -> Option<String> {
+    let output = std::process::Command::new(program)
+        .args(arguments)
+        .stdin(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .ok()?;
+    Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
+        .filter(|value| output.status.success() && !value.is_empty())
 }
 
 fn format_epoch(epoch_seconds: i64) -> String {
@@ -3634,9 +3721,9 @@ mod tests {
         command_owns_stdout, default_diagnostic_user_from, detected_esdiag_local_preset,
         ensure_output_deployment_valid, format_keystore_lock_status, format_keystore_lock_status_at,
         format_remaining_duration_from, host_connection_uses_receiver, is_agent_mode, local_core_stack_start_args,
-        local_stack_outcome, resolve_host_secret_auth, resolve_secret_input_with_prompt, resolve_tracing_filter,
-        should_error_for_missing_subcommand, should_run_output_setup, should_start_local_core_stack,
-        structured_failure,
+        local_stack_outcome, replaces_other_default, resolve_host_secret_auth, resolve_log_file_filter,
+        resolve_secret_input_with_prompt, resolve_tracing_filter, should_error_for_missing_subcommand,
+        should_run_output_setup, should_start_local_core_stack, structured_failure,
     };
     #[cfg(feature = "keystore")]
     use super::{derive_collect_job, derive_process_job};
@@ -3838,7 +3925,10 @@ mod tests {
     fn included_report_failure_is_not_rendered_as_completed() {
         let child_execution = esdiag::job::outcome::ExecutionOutcome {
             identity: esdiag::job::context::ExecutionIdentity::new(2, "test"),
-            stages: Vec::new(),
+            stages: vec![esdiag::job::outcome::StageOutcome {
+                stage: esdiag::job::outcome::Stage::Process,
+                status: esdiag::job::outcome::StageStatus::Failed("report write rejected".to_string()),
+            }],
             collection: None,
             report: None,
             children: Vec::new(),
@@ -3857,7 +3947,10 @@ mod tests {
             esdiag::job::outcome::ExecutionOutcome::new(esdiag::job::context::ExecutionIdentity::new(1, "test"));
         outcome.children.push(child);
         assert!(super::has_child_execution_failure(&outcome));
-        assert!(super::format_execution_failure(&outcome).contains("child-es"));
+        assert_eq!(
+            super::format_execution_failure(&outcome),
+            "Included diagnostic child-es failed: report write rejected"
+        );
     }
 
     #[cfg(feature = "agent")]
@@ -3996,19 +4089,39 @@ mod tests {
     }
 
     #[test]
-    fn default_diagnostic_user_uses_environment_without_spawning_processes() {
-        let email = default_diagnostic_user_from(|name| match name {
-            "EMAIL" => Some("operator@example.com".to_string()),
-            "USER" => Some("shell-user".to_string()),
-            _ => None,
-        });
-        let user = default_diagnostic_user_from(|name| match name {
-            "USER" => Some("shell-user".to_string()),
-            _ => None,
-        });
+    fn default_diagnostic_user_prefers_email_then_git_then_login() {
+        let some = |value: &str| Some(value.to_string());
+        let unused = || -> Option<String> { panic!("later sources are not consulted") };
 
-        assert_eq!(email, "operator@example.com");
-        assert_eq!(user, "");
+        assert_eq!(
+            default_diagnostic_user_from(some("operator@example.com"), unused, unused),
+            "operator@example.com"
+        );
+        assert_eq!(
+            default_diagnostic_user_from(some("not-an-email"), || some("git@example.com"), unused),
+            "git@example.com"
+        );
+        assert_eq!(
+            default_diagnostic_user_from(None, || some("no-at-sign"), || some("shell-user\n")),
+            "shell-user"
+        );
+        assert_eq!(default_diagnostic_user_from(None, || None, || None), "");
+    }
+
+    #[test]
+    fn default_job_set_this_run_is_replaced_without_asking() {
+        assert!(!replaces_other_default(None, "local-process", None));
+        assert!(!replaces_other_default(Some("local-process"), "local-process", None));
+        assert!(!replaces_other_default(
+            Some("local-collect"),
+            "local-process",
+            Some("local-collect")
+        ));
+        assert!(replaces_other_default(
+            Some("older-job"),
+            "local-process",
+            Some("local-collect")
+        ));
     }
 
     #[test]
@@ -4675,6 +4788,46 @@ mod tests {
         };
 
         assert_eq!(resolve_tracing_filter(&cli).to_string(), "debug");
+    }
+
+    #[test]
+    fn cli_commands_log_to_the_run_log_and_keep_the_terminal_quiet() {
+        let cli = Cli {
+            debug: false,
+            agent: false,
+            format: OutputFormat::Yaml,
+            command: None,
+        };
+        let debug = Cli {
+            debug: true,
+            agent: false,
+            format: OutputFormat::Yaml,
+            command: None,
+        };
+
+        if std::env::var_os("LOG_LEVEL").is_none() {
+            assert_eq!(resolve_tracing_filter(&cli).to_string(), "warn");
+            assert_eq!(
+                resolve_log_file_filter(&cli)
+                    .map(|filter| filter.to_string())
+                    .as_deref(),
+                Some("info")
+            );
+        }
+        assert_eq!(
+            resolve_log_file_filter(&debug)
+                .map(|filter| filter.to_string())
+                .as_deref(),
+            Some("debug")
+        );
+    }
+
+    #[cfg(feature = "server")]
+    #[test]
+    fn serve_logs_to_stderr_without_a_run_log() {
+        let serve = Cli::parse_from(["esdiag", "serve"]);
+
+        assert!(resolve_log_file_filter(&serve).is_none());
     }
 
     #[test]

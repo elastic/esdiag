@@ -418,7 +418,30 @@ a:link { text-decoration: none; }""",
             "type": "lens",
             "visualizationType": "lnsXY"
           },
-          "enhancements": {},
+          "enhancements": {
+            "dynamicActions": {
+              "events": [
+                {
+                  "action": {
+                    "config": {
+                      "encodeUrl": false,
+                      "openInNewTab": false,
+                      "url": {
+                        "format": "handlebars",
+                        "template": "{{kibanaUrl}}/app/dashboards#/view/index-detail?_g=(filters:!(('$state':(store:globalState),meta:(alias:!n,disabled:!f,index:'dcd2bed3-21b8-475c-9ac4-1bb22339a672',key:index.name,negate:!f,params:(query:'{{event.points.[1].value}}'),type:phrase),query:(match_phrase:(index.name:'{{event.points.[1].value}}')))),time:(from:'{{context.panel.timeRange.from}}',to:'{{context.panel.timeRange.to}}'))"
+                      }
+                    },
+                    "factoryId": "URL_DRILLDOWN",
+                    "name": "Index Detail"
+                  },
+                  "eventId": "e8ed07df-55d4-54d2-8495-ed4c7efbd4e0",
+                  "triggers": [
+                    "VALUE_CLICK_TRIGGER"
+                  ]
+                }
+              ]
+            }
+          },
           "title": "Shard indexing time by node"
         },
         "gridData": {
@@ -611,7 +634,30 @@ a:link { text-decoration: none; }""",
             "type": "lens",
             "visualizationType": "lnsXY"
           },
-          "enhancements": {},
+          "enhancements": {
+            "dynamicActions": {
+              "events": [
+                {
+                  "action": {
+                    "config": {
+                      "encodeUrl": false,
+                      "openInNewTab": false,
+                      "url": {
+                        "format": "handlebars",
+                        "template": "{{kibanaUrl}}/app/dashboards#/view/index-detail?_g=(filters:!(('$state':(store:globalState),meta:(alias:!n,disabled:!f,index:'dcd2bed3-21b8-475c-9ac4-1bb22339a672',key:index.name,negate:!f,params:(query:'{{event.points.[1].value}}'),type:phrase),query:(match_phrase:(index.name:'{{event.points.[1].value}}')))),time:(from:'{{context.panel.timeRange.from}}',to:'{{context.panel.timeRange.to}}'))"
+                      }
+                    },
+                    "factoryId": "URL_DRILLDOWN",
+                    "name": "Index Detail"
+                  },
+                  "eventId": "c74e7f42-88b8-5540-b9f2-7e3321de0f9a",
+                  "triggers": [
+                    "VALUE_CLICK_TRIGGER"
+                  ]
+                }
+              ]
+            }
+          },
           "title": "Shard indexing count by node"
         },
         "gridData": {
@@ -806,7 +852,30 @@ a:link { text-decoration: none; }""",
             "type": "lens",
             "visualizationType": "lnsXY"
           },
-          "enhancements": {},
+          "enhancements": {
+            "dynamicActions": {
+              "events": [
+                {
+                  "action": {
+                    "config": {
+                      "encodeUrl": false,
+                      "openInNewTab": false,
+                      "url": {
+                        "format": "handlebars",
+                        "template": "{{kibanaUrl}}/app/dashboards#/view/index-detail?_g=(filters:!(('$state':(store:globalState),meta:(alias:!n,disabled:!f,index:'dcd2bed3-21b8-475c-9ac4-1bb22339a672',key:index.name,negate:!f,params:(query:'{{event.points.[1].value}}'),type:phrase),query:(match_phrase:(index.name:'{{event.points.[1].value}}')))),time:(from:'{{context.panel.timeRange.from}}',to:'{{context.panel.timeRange.to}}'))"
+                      }
+                    },
+                    "factoryId": "URL_DRILLDOWN",
+                    "name": "Index Detail"
+                  },
+                  "eventId": "d9fe97d4-80cd-5e82-8c01-c24069e6b12a",
+                  "triggers": [
+                    "VALUE_CLICK_TRIGGER"
+                  ]
+                }
+              ]
+            }
+          },
           "title": "Shard query time by node"
         },
         "gridData": {
@@ -999,7 +1068,30 @@ a:link { text-decoration: none; }""",
             "type": "lens",
             "visualizationType": "lnsXY"
           },
-          "enhancements": {},
+          "enhancements": {
+            "dynamicActions": {
+              "events": [
+                {
+                  "action": {
+                    "config": {
+                      "encodeUrl": false,
+                      "openInNewTab": false,
+                      "url": {
+                        "format": "handlebars",
+                        "template": "{{kibanaUrl}}/app/dashboards#/view/index-detail?_g=(filters:!(('$state':(store:globalState),meta:(alias:!n,disabled:!f,index:'dcd2bed3-21b8-475c-9ac4-1bb22339a672',key:index.name,negate:!f,params:(query:'{{event.points.[1].value}}'),type:phrase),query:(match_phrase:(index.name:'{{event.points.[1].value}}')))),time:(from:'{{context.panel.timeRange.from}}',to:'{{context.panel.timeRange.to}}'))"
+                      }
+                    },
+                    "factoryId": "URL_DRILLDOWN",
+                    "name": "Index Detail"
+                  },
+                  "eventId": "6c450357-447e-56a8-b063-0d4d32e52a73",
+                  "triggers": [
+                    "VALUE_CLICK_TRIGGER"
+                  ]
+                }
+              ]
+            }
+          },
           "title": "Shard query count by node"
         },
         "gridData": {
@@ -1194,7 +1286,30 @@ a:link { text-decoration: none; }""",
             "type": "lens",
             "visualizationType": "lnsXY"
           },
-          "enhancements": {},
+          "enhancements": {
+            "dynamicActions": {
+              "events": [
+                {
+                  "action": {
+                    "config": {
+                      "encodeUrl": false,
+                      "openInNewTab": false,
+                      "url": {
+                        "format": "handlebars",
+                        "template": "{{kibanaUrl}}/app/dashboards#/view/index-detail?_g=(filters:!(('$state':(store:globalState),meta:(alias:!n,disabled:!f,index:'dcd2bed3-21b8-475c-9ac4-1bb22339a672',key:index.name,negate:!f,params:(query:'{{event.points.[1].value}}'),type:phrase),query:(match_phrase:(index.name:'{{event.points.[1].value}}')))),time:(from:'{{context.panel.timeRange.from}}',to:'{{context.panel.timeRange.to}}'))"
+                      }
+                    },
+                    "factoryId": "URL_DRILLDOWN",
+                    "name": "Index Detail"
+                  },
+                  "eventId": "1c44d126-9b9a-54e7-ae65-dbb8b646d7c2",
+                  "triggers": [
+                    "VALUE_CLICK_TRIGGER"
+                  ]
+                }
+              ]
+            }
+          },
           "title": "Shard fetch time by node"
         },
         "gridData": {
@@ -1387,7 +1502,30 @@ a:link { text-decoration: none; }""",
             "type": "lens",
             "visualizationType": "lnsXY"
           },
-          "enhancements": {},
+          "enhancements": {
+            "dynamicActions": {
+              "events": [
+                {
+                  "action": {
+                    "config": {
+                      "encodeUrl": false,
+                      "openInNewTab": false,
+                      "url": {
+                        "format": "handlebars",
+                        "template": "{{kibanaUrl}}/app/dashboards#/view/index-detail?_g=(filters:!(('$state':(store:globalState),meta:(alias:!n,disabled:!f,index:'dcd2bed3-21b8-475c-9ac4-1bb22339a672',key:index.name,negate:!f,params:(query:'{{event.points.[1].value}}'),type:phrase),query:(match_phrase:(index.name:'{{event.points.[1].value}}')))),time:(from:'{{context.panel.timeRange.from}}',to:'{{context.panel.timeRange.to}}'))"
+                      }
+                    },
+                    "factoryId": "URL_DRILLDOWN",
+                    "name": "Index Detail"
+                  },
+                  "eventId": "656cd38e-a6ef-508a-ae3a-a217b2bd982b",
+                  "triggers": [
+                    "VALUE_CLICK_TRIGGER"
+                  ]
+                }
+              ]
+            }
+          },
           "title": "Shard fetch count by node"
         },
         "gridData": {
@@ -1582,7 +1720,30 @@ a:link { text-decoration: none; }""",
             "type": "lens",
             "visualizationType": "lnsXY"
           },
-          "enhancements": {},
+          "enhancements": {
+            "dynamicActions": {
+              "events": [
+                {
+                  "action": {
+                    "config": {
+                      "encodeUrl": false,
+                      "openInNewTab": false,
+                      "url": {
+                        "format": "handlebars",
+                        "template": "{{kibanaUrl}}/app/dashboards#/view/index-detail?_g=(filters:!(('$state':(store:globalState),meta:(alias:!n,disabled:!f,index:'dcd2bed3-21b8-475c-9ac4-1bb22339a672',key:index.name,negate:!f,params:(query:'{{event.points.[1].value}}'),type:phrase),query:(match_phrase:(index.name:'{{event.points.[1].value}}')))),time:(from:'{{context.panel.timeRange.from}}',to:'{{context.panel.timeRange.to}}'))"
+                      }
+                    },
+                    "factoryId": "URL_DRILLDOWN",
+                    "name": "Index Detail"
+                  },
+                  "eventId": "e75de266-50c5-59ce-8e2b-f216732985c3",
+                  "triggers": [
+                    "VALUE_CLICK_TRIGGER"
+                  ]
+                }
+              ]
+            }
+          },
           "title": "Shard GET time by node"
         },
         "gridData": {
@@ -1775,7 +1936,30 @@ a:link { text-decoration: none; }""",
             "type": "lens",
             "visualizationType": "lnsXY"
           },
-          "enhancements": {},
+          "enhancements": {
+            "dynamicActions": {
+              "events": [
+                {
+                  "action": {
+                    "config": {
+                      "encodeUrl": false,
+                      "openInNewTab": false,
+                      "url": {
+                        "format": "handlebars",
+                        "template": "{{kibanaUrl}}/app/dashboards#/view/index-detail?_g=(filters:!(('$state':(store:globalState),meta:(alias:!n,disabled:!f,index:'dcd2bed3-21b8-475c-9ac4-1bb22339a672',key:index.name,negate:!f,params:(query:'{{event.points.[1].value}}'),type:phrase),query:(match_phrase:(index.name:'{{event.points.[1].value}}')))),time:(from:'{{context.panel.timeRange.from}}',to:'{{context.panel.timeRange.to}}'))"
+                      }
+                    },
+                    "factoryId": "URL_DRILLDOWN",
+                    "name": "Index Detail"
+                  },
+                  "eventId": "4cd7bf15-4c7d-5778-9609-fe51b36fe903",
+                  "triggers": [
+                    "VALUE_CLICK_TRIGGER"
+                  ]
+                }
+              ]
+            }
+          },
           "title": "Shard GET count by node"
         },
         "gridData": {

@@ -27,9 +27,21 @@ published release notes, maintenance branches, and tagged history.
 - Added resumable user-mode web onboarding at `/welcome`, including masked keystore and API-key forms for configuring a diagnostic workflow.
 - Added optional Elastic Upload Service forwarding to `esdiag-lite.sh` for newly collected and existing ZIP archives.
 - Added `esdiag-lite.ps1` for version-aware Elasticsearch diagnostic collection on Windows PowerShell.
+- Added the Index Detail dashboard showing the full vertical slice of metrics (operations, documents, storage, settings, shard distribution, data stream/alias membership, and shard workload balance) for a single selected index.
+- Added the Node Detail dashboard, scoped by the incoming `diagnostic.id` and `node.name` drilldown filters, breaking a single node down by its own sub-dimensions: operation volume and cost, thread pool queueing and rejections, circuit breaker headroom, JVM memory pools, cache effectiveness, indexing pressure by stage, filesystem and allocation, and the indices holding shards on that node.
+- Added the Ingest Pipeline Detail dashboard, scoped by the incoming `diagnostic.id` and `ingest.pipeline.name` drilldown filters, breaking a single pipeline down by processor, processor type, and executing node, with per-processor execution order, cost, and failure rate. Surfaces processor failures separately from pipeline failures, so errors absorbed by `on_failure` or `ignore_failure` stay visible.
+- Added drilldowns to the Index Detail, Data Stream Detail, and Alias Detail dashboards from the bulk and indexing rate charts on Daily Indexing Overview, the per-node operation charts on Index Operations Overview and Datastream Operations Overview, the per-node shard CPU time charts on Ingest Nodes Overview and Search Nodes Overview, and the rollover alias and newest indices panels on Index Settings Overview.
+- Added drilldowns to the Node Detail dashboard from every per-node chart and thread pool table on Ingest Nodes Overview and Search Nodes Overview.
 
 ### Changed
 
+- Changed CLI commands to write their full log to `~/.esdiag/last_run/esdiag.log` and show only warnings and errors in the terminal unless `--debug` or `LOG_LEVEL` is set. `esdiag serve` still logs to stderr.
+- Changed `esdiag local` lifecycle commands and `esdiag init` to show short progress messages, with container runtime output sent to the run log. Podman's external compose provider banner is suppressed.
+- Changed `esdiag init` prompt defaults to follow earlier answers: local storage is the default when a container runtime is available, starting a local stack defaults to yes after choosing local storage, and adding the collect role to an existing host at the same URL defaults to yes.
+- Changed `esdiag init` to suggest the diagnostic user from `$EMAIL`, then `git config user.email`, then `whoami`.
+- Changed `esdiag local up`, `esdiag local open`, `esdiag init`, and `esdiag-local` to ask before copying the Kibana `elastic` password to the clipboard, and not to copy it without an interactive terminal unless `--copy-password=true` is passed.
+- Changed the diagnostic selector
+ and diagnostic counts in the Elasticsearch Indexing Hotspots - Nodes, Index Workload Balance, and Search Summary dashboards to use `diagnostic.id` instead of `diagnostic.uuid`, so captures are identified by cluster name and collection date rather than an opaque UUID.
 - Made source-tree notice generation opt-in so Cargo package verification and registry installation use committed notices.
 - Limited web onboarding to builds with both keystore and setup support, preserving host and keystore management in builds without setup.
 - Restored the published Elasticsearch client dependency with a response compatibility adapter so ESDiag can be packaged from registry dependencies.
@@ -95,9 +107,10 @@ published release notes, maintenance branches, and tagged history.
 
 - Fixed Kibana workflow ID collisions when setup targets multiple spaces. Setup now assigns stable workflow IDs per space and updates their references.
 - Report write failures now fail the command, even when Elasticsearch returns HTTP 201 after failure-store capture. CLI errors keep completed document counts, and local reports include the error.
-- Kept thread-pool warning thresholds and searchable-snapshot cache headroom settings instead of dropping them. Their scalar parent values now use `.current` fields.
+- Kept thread-pool warning thresholds and searchable-snapshot cache headroom settings instead of dropping them. Their scalar parent values now use `.current` fields. Existing deployments need `esdiag setup` followed by a rollover of `settings-*-esdiag` data streams to apply the corrected mappings; until then, settings documents rejected by the old mappings are reported as failures instead of passing silently through the failure store.
 - Added a searchable mapping for the cluster flood-stage maximum headroom setting.
 - Added failure-store read access to the bundled diagnostic user role. The role still cannot change failure-store options or retention.
+- Fixed `esdiag init` asking to replace the default job it had just created when setting up both collection and processing.
 - Fixed repeated `esdiag setup` runs failing when a bundled Kibana workflow already exists.
 - Fixed incomplete Kibana setup summaries omitting assets installed before a later failure.
 - Fixed HTTP 409 failures reporting the `invalid_input` category instead of `conflict`.

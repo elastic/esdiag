@@ -20,7 +20,7 @@ runtime="${ESDIAG_CONTAINER_RUNTIME:-}"
 compose=()
 pull_policy="always"
 open_browser=true
-copy_password=true
+copy_password=ask
 upgrade=false
 force=false
 stack_mode="auto"
@@ -88,7 +88,7 @@ Options:
   --pull always|missing|never Image pull policy
   --upgrade                  Upgrade existing stack versions transactionally
   --open-browser=false       Do not launch ESDiag after startup
-  --copy-password=false      Do not copy the Kibana password before launch
+  --copy-password=true|false Copy the Kibana password before launch (asks by default)
   --mount PATH               Make an additional host path available to exec
   --force                    Confirm destructive reset
 
@@ -430,6 +430,7 @@ detect_runtime() {
     project_id=$(printf '%s' "$state_dir" | cksum | cut -d' ' -f1)
     project_name="esdiag-local-${project_id}"
     if [[ "$runtime" == podman ]]; then
+        export PODMAN_COMPOSE_WARNING_LOGS=false
         compose=("$runtime" compose --project-name "$project_name" --env-file "${state_dir}/.env" --file "${state_dir}/compose.yml")
     else
         compose=("$runtime" compose --project-name "$project_name" --project-directory "$state_dir" --env-file "${state_dir}/.env" --file "${state_dir}/compose.yml")
@@ -638,6 +639,15 @@ launch_browser() {
     [[ "$open_browser" == true ]] || return 0
     local url clip
     url="http://127.0.0.1:$(env_get ESDIAG_PORT)"
+    if [[ "$copy_password" == ask ]]; then
+        copy_password=false
+        if [[ -t 0 && -t 1 ]]; then
+            printf 'Copy the Kibana elastic password to the clipboard? [Y/n] ' >&2
+            read -r answer || answer=n
+            case "$answer" in "" | [yY] | [yY][eE][sS]) copy_password=true ;; esac
+        fi
+        [[ "$copy_password" == true ]] || info "Sign in to Kibana as elastic; use: ${command_name} secrets password$(clipboard_example)"
+    fi
     if [[ "$copy_password" == true ]]; then
         clip=$(clipboard_command || true)
         if [[ -n "$clip" ]] && printf '%s' "$(env_get ELASTIC_PASSWORD)" | sh -c "$clip"; then

@@ -36,7 +36,11 @@ esdiag <command> --help
 `--debug` writes debug logs. `--format yaml|json` selects the result format for
 finite commands. YAML is the default.
 
-Finite commands write one result to stdout. Progress and errors go to stderr.
+Finite commands write one result to stdout. Short progress messages, warnings,
+and errors go to stderr. Each command's full log, including container runtime
+output from `esdiag local`, goes to `~/.esdiag/last_run/esdiag.log`, which is
+replaced on the next run. `--debug` adds debug detail to the log and the
+terminal. `esdiag serve` logs to stderr instead.
 Processing results include `outcome`, `documents_failed`, and `indexing_failures`
 with destination data stream names and rejection counts, including documents
 redirected to a failure store. `output` identifies the resolved
@@ -71,7 +75,7 @@ By default, ESDiag stores user state in `~/.esdiag`:
 | `esdiag.yml` | Non-secret user defaults. |
 | `settings.yml` | Saved UI settings. |
 | `jobs.yml` | Saved jobs. |
-| `last_run/` | Debug files from recent commands. |
+| `last_run/` | The last command's `esdiag.log` and debug files. |
 
 `ESDIAG_HOSTS` and `ESDIAG_KEYSTORE` override the paths to `hosts.yml` and
 `secrets.yml`.
@@ -88,8 +92,9 @@ one:
 ESDiag uses one complete output definition. It does not combine endpoints or
 credentials from command arguments, environment variables, and `esdiag.yml`.
 
-`LOG_LEVEL` sets the default log level. `ESDIAG_KEYSTORE_PASSWORD` supplies a
-keystore password for non-interactive use.
+`LOG_LEVEL` sets the log level for the run log and the terminal. Without it, the
+run log records `info` and the terminal shows warnings and errors.
+`ESDIAG_KEYSTORE_PASSWORD` supplies a keystore password for non-interactive use.
 
 ## Output selection
 
@@ -167,8 +172,9 @@ legacy plaintext host credentials into the keystore.
 
 It stores credentials in `secrets.yml`, not `esdiag.yml`.
 
-Enter an email address or another diagnostic user identifier. `EMAIL`, when
-set to an email address, supplies the default; the shell username does not.
+Enter an email address or another diagnostic user identifier. The default is
+`EMAIL` when it holds an email address, then `git config user.email`, then the
+`whoami` login name.
 Invalid yes/no answers, endpoint URLs, and default-job host selections prompt
 again. The default job requires a saved collection host name, not a URL.
 Resuming displays the saved workflow, and changing it displays both choices.
