@@ -461,7 +461,7 @@ async fn render_child_outcomes(tx: &mpsc::Sender<ServerEvent>, owner: &str, outc
                 docs_created: report.diagnostic.docs.created,
                 duration_ms: child.runtime.unwrap_or_default(),
                 kibana_link: report.diagnostic.kibana_link.clone(),
-                execution_error: child.export_error().map(str::to_string),
+                execution_error: child.failure().map(str::to_string),
                 recorded_failures: recorded_report_failures(report),
             },
             (_, None) => IncludedDiagnosticJobEvent::Failed {
@@ -555,7 +555,7 @@ async fn render_child_diagnostic_events(
                             } else {
                                 completed_status_class(&outcome)
                             },
-                            heading: if execution_error.is_some() {
+                            heading: if execution_error.is_some() && !matches!(outcome, DiagnosticOutcome::Failed) {
                                 "⚠️ Diagnostic completed with output failures"
                             } else {
                                 completed_heading(&outcome)
@@ -1215,6 +1215,61 @@ mod tests {
             event,
             ServerEvent::ReplaceSelector { selector, html, .. }
                 if selector == "#job-7" && html.contains("Processing Failed")
+        )));
+    }
+
+    #[tokio::test]
+    async fn failed_child_with_report_renders_process_error() {
+        let (tx, mut rx) = tokio::sync::mpsc::channel(8);
+        let mut outcome = crate::job::outcome::ExecutionOutcome::new(crate::job::context::ExecutionIdentity::new(
+            1,
+            "alice@example.com",
+        ));
+        let mut manifest = crate::processor::DiagnosticManifest::new(
+            "2024-01-01T00:00:00Z".to_string(),
+            Some("esdiag-test".to_string()),
+            None,
+            None,
+            Some("standard".to_string()),
+            Some(Application::Elasticsearch),
+            Some("elasticsearch_diagnostic".to_string()),
+            Some("esdiag".to_string()),
+            Some("9.3.3".to_string()),
+        );
+        manifest.set_platform(crate::data::Platform::ECK);
+        let mut child_execution = crate::job::outcome::ExecutionOutcome::new(
+            crate::job::context::ExecutionIdentity::new(7, "alice@example.com"),
+        );
+        child_execution.report = Some(
+            crate::processor::diagnostic::DiagnosticReportBuilder::try_from(manifest)
+                .expect("report builder")
+                .receiver("Directory /tmp/diag".to_string())
+                .build()
+                .expect("report"),
+        );
+        child_execution.record(
+            crate::job::outcome::Stage::Process,
+            crate::job::outcome::StageStatus::Failed("report write rejected".to_string()),
+        );
+        outcome.children.push(crate::job::outcome::ChildExecutionOutcome {
+            path: "elasticsearch".to_string(),
+            execution: Box::new(child_execution),
+            diagnostic_outcome: DiagnosticOutcome::Failed,
+            application: Some(Application::Elasticsearch),
+            platform: crate::data::Platform::ECK,
+            runtime: None,
+        });
+
+        super::render_child_outcomes(&tx, "alice@example.com", &outcome).await;
+
+        let events: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
+        assert!(events.iter().any(|event| matches!(
+            event,
+            ServerEvent::ReplaceSelector { selector, html, .. }
+                if selector == "#job-7"
+                    && html.contains("❌ Processing failed")
+                    && html.contains("report write rejected")
+                    && !html.contains("output failures")
         )));
     }
 
