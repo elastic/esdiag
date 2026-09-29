@@ -57,7 +57,7 @@ async fn execute_synchronous_processing(
         None,
     )?;
     let outcome = execute_with_context(job, context).await;
-    if outcome.succeeded() {
+    if outcome.succeeded() && !outcome.has_child_failures() {
         Ok(outcome)
     } else {
         Err(eyre::eyre!(execution_failure(&outcome)))
@@ -73,6 +73,10 @@ fn execution_failure(outcome: &ExecutionOutcome) -> String {
                 Some(error.clone())
             }
             crate::job::outcome::StageStatus::Succeeded | crate::job::outcome::StageStatus::Skipped(_) => None,
+        })
+        .or_else(|| {
+            let failures = outcome.child_failures().collect::<Vec<_>>();
+            (!failures.is_empty()).then(|| failures.join("; "))
         })
         .unwrap_or_else(|| "Diagnostic execution failed".to_string())
 }
