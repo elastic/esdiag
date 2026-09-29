@@ -102,12 +102,14 @@ published release notes, maintenance branches, and tagged history.
 - Changed `esdiag-local` to retain `auto`, `core`, or `full` stack mode per
   deployment. Core mode uses the matching native binary and avoids an ESDiag
   container; full mode preserves the containerized runtime.
+- Changed scalar thread-pool warning threshold and searchable-snapshot cache headroom settings to use `.current` fields beside their nested values.
+- Existing deployments need `esdiag setup` followed by a rollover of `settings-*-esdiag` data streams to apply the corrected settings mappings. Until then, settings documents rejected by the old mappings are reported as failures.
 
 ### Fixed
 
 - Fixed Kibana workflow ID collisions when setup targets multiple spaces. Setup now assigns stable workflow IDs per space and updates their references.
 - Report write failures now fail the command, even when Elasticsearch returns HTTP 201 after failure-store capture. CLI errors keep completed document counts, and local reports include the error.
-- Kept thread-pool warning thresholds and searchable-snapshot cache headroom settings instead of dropping them. Their scalar parent values now use `.current` fields. Existing deployments need `esdiag setup` followed by a rollover of `settings-*-esdiag` data streams to apply the corrected mappings; until then, settings documents rejected by the old mappings are reported as failures instead of passing silently through the failure store.
+- Kept thread-pool warning thresholds and searchable-snapshot cache headroom settings instead of dropping them.
 - Added a searchable mapping for the cluster flood-stage maximum headroom setting.
 - Added failure-store read access to the bundled diagnostic user role. The role still cannot change failure-store options or retention.
 - Fixed `esdiag init` asking to replace the default job it had just created when setting up both collection and processing.
