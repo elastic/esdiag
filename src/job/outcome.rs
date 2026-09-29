@@ -82,10 +82,14 @@ impl ChildExecutionOutcome {
     /// Export failures and failed diagnostics fail the parent job; typed skips
     /// and other internal stage failures of a skipped child do not.
     pub fn failure(&self) -> Option<&str> {
-        self.export_error().or_else(|| {
-            (self.diagnostic_outcome == DiagnosticOutcome::Failed)
-                .then(|| self.execution_error().unwrap_or("included diagnostic failed"))
-        })
+        match self.diagnostic_outcome {
+            DiagnosticOutcome::Skipped(_) => None,
+            DiagnosticOutcome::Failed => Some(self.execution_error().unwrap_or("included diagnostic failed")),
+            _ => match self.execution.stage(Stage::Export) {
+                Some(StageStatus::Failed(error)) => Some(error.as_str()),
+                _ => None,
+            },
+        }
     }
 
     pub fn application(&self) -> Option<Application> {
@@ -236,12 +240,24 @@ mod tests {
         outcome.children.push(child(
             "missing",
             DiagnosticOutcome::Failed,
-            &[(Stage::Load, StageStatus::Failed("archive not found".to_string()))],
+            &[
+                (Stage::Process, StageStatus::Failed("archive not found".to_string())),
+                (
+                    Stage::Export,
+                    StageStatus::Blocked("Process did not complete".to_string()),
+                ),
+            ],
         ));
         outcome.children.push(child(
             "kibana",
             DiagnosticOutcome::Skipped(crate::processor::SkipKind::NotImplemented),
-            &[(Stage::Process, StageStatus::Failed("not implemented".to_string()))],
+            &[
+                (Stage::Process, StageStatus::Failed("not implemented".to_string())),
+                (
+                    Stage::Export,
+                    StageStatus::Blocked("Process did not complete".to_string()),
+                ),
+            ],
         ));
 
         assert!(
@@ -264,7 +280,13 @@ mod tests {
         outcome.children.push(child(
             "kibana",
             DiagnosticOutcome::Skipped(crate::processor::SkipKind::NotImplemented),
-            &[(Stage::Process, StageStatus::Failed("not implemented".to_string()))],
+            &[
+                (Stage::Process, StageStatus::Failed("not implemented".to_string())),
+                (
+                    Stage::Export,
+                    StageStatus::Blocked("Process did not complete".to_string()),
+                ),
+            ],
         ));
 
         assert!(!outcome.has_child_failures());

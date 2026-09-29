@@ -102,7 +102,7 @@ published release notes, maintenance branches, and tagged history.
 - Changed `esdiag-local` to retain `auto`, `core`, or `full` stack mode per
   deployment. Core mode uses the matching native binary and avoids an ESDiag
   container; full mode preserves the containerized runtime.
-- Changed scalar thread-pool warning threshold and searchable-snapshot cache headroom settings to use `.current` fields beside their nested values.
+- Changed the scalar `thread_pool.estimated_time_interval` and `xpack.searchable.snapshot.shared_cache.size` values to map to `.current` fields, so they no longer conflict with the nested `warn_threshold` and `max_headroom` settings, which keep their original paths.
 - Existing deployments need `esdiag setup` followed by a rollover of `settings-*-esdiag` data streams to apply the corrected settings mappings. Until then, settings documents rejected by the old mappings are reported as failures.
 
 ### Fixed
