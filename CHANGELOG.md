@@ -106,7 +106,7 @@ published release notes, maintenance branches, and tagged history.
 ### Fixed
 
 - Fixed `esdiag init` asking to replace the default job it had just created when setting up both collection and processing.
-- Fixed `esdiag init` failing when you declined to replace an existing default or saved job; it now keeps the existing job and completes.
+- Fixed `esdiag init` failing when you declined to replace an existing default or saved job. It now keeps a job that fits the selected workflow and completes; for a job that doesn't fit, it asks before replacing it and explains how to recover if you keep it.
 - Fixed repeated `esdiag setup` runs failing when a bundled Kibana workflow already exists.
 - Fixed incomplete Kibana setup summaries omitting assets installed before a later failure.
 - Fixed HTTP 409 failures reporting the `invalid_input` category instead of `conflict`.

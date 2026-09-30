@@ -173,6 +173,16 @@ fn environment_output_is_configured() -> bool {
     runtime_output_is_declared() && OutputDeployment::resolve(None, true).is_ok()
 }
 
+/// Whether the saved job `name` is a valid default job for the configured
+/// workflow and output deployment.
+pub fn saved_job_fits_workflow(name: &str) -> Result<bool> {
+    let config = ApplicationConfig::load()?;
+    let hosts = KnownHost::parse_hosts_yml()?;
+    Ok(crate::data::load_saved_jobs()?
+        .get(name)
+        .is_some_and(|job| workflow_job_is_valid(job, &hosts, config.workflow, config.output.default.as_deref())))
+}
+
 pub fn save_user(user: String) -> Result<ApplicationConfig> {
     let user = user.trim();
     if user.is_empty() {

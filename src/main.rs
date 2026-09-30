@@ -40,7 +40,7 @@ use esdiag::{
     onboarding::{
         CollectHostInput, OutputDeploymentInput, clear_collection_deferral, inspect as inspect_onboarding,
         save_collect_host, save_default_job, save_default_processing_job, save_output_deployment, save_user,
-        save_workflow,
+        save_workflow, saved_job_fits_workflow,
     },
     processor::{CollectionResult, DiagnosticOutcome, Identifiers, default_collect_archive_name},
     receiver::{
@@ -2549,7 +2549,8 @@ async fn run_init_wizard() -> Result<CommandResult> {
         let collect_job = esdiag::data::Job::builder()
             .collect_from(collect_host.clone())?
             .collect_to(format!("diagnostics/{collect_host}"))?;
-        let collect_job_saved = confirm_default_job_replacement(&collect_job_name, None)?;
+        let collect_job_saved =
+            confirm_default_job_replacement(&collect_job_name, None, !workflow.processes_diagnostics())?;
         if collect_job_saved {
             save_default_job(collect_job_name.clone(), collect_job)?;
         }
@@ -2559,7 +2560,7 @@ async fn run_init_wizard() -> Result<CommandResult> {
                 .default
                 .ok_or_else(|| eyre!("A processing workflow requires an output deployment"))?;
             let process_job_name = format!("{collect_host}-process-{output}");
-            if confirm_default_job_replacement(&process_job_name, Some(&collect_job_name))? {
+            if confirm_default_job_replacement(&process_job_name, Some(&collect_job_name), true)? {
                 save_default_processing_job(process_job_name, collect_host)?;
             }
         }
@@ -2761,8 +2762,9 @@ fn configured_default_job(set_this_run: Option<&str>) -> Result<Option<Configure
 /// Asks before overwriting the saved job `name` or the configured default job,
 /// and returns whether to save `name` as the default. `set_this_run` is a
 /// default job this initialization already chose, which may be replaced
-/// without asking.
-fn confirm_default_job_replacement(name: &str, set_this_run: Option<&str>) -> Result<bool> {
+/// without asking. `last_step` is false when a later step creates another
+/// default job, so a kept saved job only has to fit the workflow at the end.
+fn confirm_default_job_replacement(name: &str, set_this_run: Option<&str>, last_step: bool) -> Result<bool> {
     let replaces_job = esdiag::data::load_saved_jobs()?.contains_key(name);
     let current = configured_default_job(set_this_run)?;
     let replaces_default = current.as_ref().is_some_and(|current| current.name != name);
@@ -2775,16 +2777,19 @@ fn confirm_default_job_replacement(name: &str, set_this_run: Option<&str>) -> Re
         (false, true) => "the configured default job".to_string(),
         (false, false) => unreachable!(),
     };
-    if let Some(current) = current.as_ref().filter(|current| !current.fits_workflow) {
+    let misfit = match current.as_ref() {
+        Some(current) => (!current.fits_workflow).then(|| ("default", current.name.clone())),
+        None if last_step && !saved_job_fits_workflow(name)? => Some(("saved", name.to_string())),
+        None => None,
+    };
+    if let Some((kind, job)) = misfit {
         if prompt_confirm_default_yes(&format!(
-            "Default job '{}' does not fit the selected workflow. Replace {replaced}? [Y/n]: ",
-            current.name
+            "The {kind} job '{job}' does not fit the selected workflow. Replace {replaced}? [Y/n]: "
         ))? {
             return Ok(true);
         }
         return Err(eyre!(
-            "Kept default job '{}', which does not fit the selected workflow. Run `esdiag init` again to choose a compatible default job.",
-            current.name
+            "Kept the {kind} job '{job}', which does not fit the selected workflow. Run `esdiag init` again to choose a compatible default job."
         ));
     }
     if prompt_confirm(&format!("Replace {replaced}? [y/N]: "))? {
@@ -3745,8 +3750,8 @@ mod tests {
         format_keystore_lock_status_at, format_remaining_duration_from, host_connection_uses_receiver, is_agent_mode,
         keep_default_job, local_core_stack_start_args, local_stack_outcome, needs_processing_default_job,
         resolve_host_secret_auth, resolve_log_file_filter, resolve_secret_input_with_prompt, resolve_tracing_filter,
-        should_error_for_missing_subcommand, should_run_output_setup, should_start_local_core_stack,
-        structured_failure,
+        saved_job_fits_workflow, should_error_for_missing_subcommand, should_run_output_setup,
+        should_start_local_core_stack, structured_failure,
     };
     #[cfg(feature = "keystore")]
     use super::{derive_collect_job, derive_process_job};
@@ -4230,6 +4235,16 @@ mod tests {
         keep_default_job("src-collect", None).expect("keep default job");
 
         assert!(needs_processing_default_job(false).expect("processing default"));
+    }
+
+    #[test]
+    fn a_saved_job_fits_only_the_workflow_it_was_built_for() {
+        let _guard = env_lock().lock().expect("env lock");
+        let tmp = setup_env();
+        configure_jobs(&tmp, esdiag::data::OnboardingWorkflow::CollectOnly, None);
+        assert!(saved_job_fits_workflow("src-collect").expect("fits workflow"));
+        assert!(!saved_job_fits_workflow("src-process-out").expect("fits workflow"));
+        assert!(!saved_job_fits_workflow("missing").expect("fits workflow"));
     }
 
     #[test]
