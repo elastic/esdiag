@@ -663,23 +663,40 @@ async fn setup_rolls_over_only_data_streams_with_updated_templates() {
     assert_eq!(
         take_rollovers(),
         vec!["metrics-logstash-esdiag", "settings-cluster-esdiag"],
-        "templates without a recorded hash count as updated"
+        "templates that were not installed before count as updated"
     );
 
     esdiag::setup::assets(&client).await.unwrap();
-    assert!(take_rollovers().is_empty(), "unchanged templates must not roll over");
+    assert!(
+        take_rollovers().is_empty(),
+        "templates at the bundled version must not roll over"
+    );
 
     state
         .lock()
         .unwrap()
         .templates
-        .get_mut("/_component_template/esdiag@ls-metadata")
-        .unwrap()["_meta"]["esdiag_asset_hash"] = Value::from("stale");
+        .get_mut("/_index_template/settings-cluster-esdiag")
+        .unwrap()["_meta"]["description"] = Value::from("edited");
+    esdiag::setup::assets(&client).await.unwrap();
+    assert!(
+        take_rollovers().is_empty(),
+        "content changes without a version bump must not roll over"
+    );
+
+    {
+        let mut state = state.lock().unwrap();
+        let component = state
+            .templates
+            .get_mut("/_component_template/esdiag@ls-metadata")
+            .unwrap();
+        component["version"] = Value::from(component["version"].as_u64().unwrap() - 1);
+    }
     esdiag::setup::assets(&client).await.unwrap();
     assert_eq!(
         take_rollovers(),
         vec!["metrics-logstash-esdiag"],
-        "a component template change rolls over streams whose templates compose it"
+        "a component template version bump rolls over streams whose templates compose it"
     );
     task.abort();
 }

@@ -103,7 +103,7 @@ published release notes, maintenance branches, and tagged history.
   deployment. Core mode uses the matching native binary and avoids an ESDiag
   container; full mode preserves the containerized runtime.
 - Changed the scalar `thread_pool.estimated_time_interval` and `xpack.searchable.snapshot.shared_cache.size` values to map to `.current` fields, so they no longer conflict with the nested `warn_threshold` and `max_headroom` settings, which keep their original paths.
-- Changed `esdiag setup` to roll over existing ESDiag data streams whose index or component templates changed, logging each rollover, so corrected mappings apply to new writes without a manual rollover.
+- Changed `esdiag setup` to roll over existing ESDiag data streams when a bundled index or component template has a higher `version` than the installed one, logging each rollover, so corrected mappings apply to new writes without a manual rollover. Every bundled template now has a `version`, bumped by hand only when a rollover is needed.
 
 ### Fixed
 

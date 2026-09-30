@@ -308,29 +308,8 @@ fn serverless_asset_contents(asset: &Asset, contents: &[u8]) -> Result<Vec<u8>> 
     Ok(serde_json::to_vec(&body)?)
 }
 
-/// Stamped into template `_meta` so setup can tell which templates it changed.
-const ASSET_HASH_META: &str = "esdiag_asset_hash";
-
-/// Add the content hash of a template body to its `_meta`.
-fn stamp_asset_hash(contents: &[u8]) -> Result<(Vec<u8>, String)> {
-    let hash: String = Sha256::digest(contents)
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect();
-    let mut body: Value = serde_json::from_slice(contents)?;
-    let meta = body
-        .as_object_mut()
-        .ok_or_else(|| eyre!("Template body is not a JSON object"))?
-        .entry("_meta")
-        .or_insert_with(|| Value::Object(serde_json::Map::new()));
-    meta.as_object_mut()
-        .ok_or_else(|| eyre!("Template _meta is not a JSON object"))?
-        .insert(ASSET_HASH_META.to_string(), Value::String(hash.clone()));
-    Ok((serde_json::to_vec(&body)?, hash))
-}
-
-/// The content hash stamped on the installed template, if there is one.
-async fn installed_asset_hash(client: &Client, asset: &Asset, name: &str) -> Option<String> {
+/// The `version` of the installed template, if it exists and has one.
+async fn installed_template_version(client: &Client, asset: &Asset, name: &str) -> Option<u64> {
     let path = format!("{}/{name}", asset.endpoint);
     let response = client
         .request(Method::GET, &default_headers(), &path, None)
@@ -340,10 +319,10 @@ async fn installed_asset_hash(client: &Client, asset: &Asset, name: &str) -> Opt
         return None;
     }
     let body: Value = response.json().await.ok()?;
-    installed_template_hash(&body, asset.endpoint.trim_matches('/'), name)
+    template_version(&body, asset.endpoint.trim_matches('/'), name)
 }
 
-fn installed_template_hash(body: &Value, endpoint: &str, name: &str) -> Option<String> {
+fn template_version(body: &Value, endpoint: &str, name: &str) -> Option<u64> {
     let (list, item) = match endpoint {
         "_index_template" => ("index_templates", "index_template"),
         _ => ("component_templates", "component_template"),
@@ -352,12 +331,21 @@ fn installed_template_hash(body: &Value, endpoint: &str, name: &str) -> Option<S
         .as_array()?
         .iter()
         .find(|template| template["name"] == name)?
-        .pointer(&format!("/{item}/_meta/{ASSET_HASH_META}"))?
-        .as_str()
-        .map(str::to_string)
+        .pointer(&format!("/{item}/version"))?
+        .as_u64()
 }
 
-/// Templates installed by this setup run whose content differs from what was installed before.
+/// Bundled templates are versioned by hand, and the version is only bumped when
+/// existing data streams need a rollover to pick up the change.
+fn template_version_bumped(installed: Option<u64>, bundled: Option<u64>) -> bool {
+    match (installed, bundled) {
+        (_, None) => false,
+        (None, Some(_)) => true,
+        (Some(installed), Some(bundled)) => installed < bundled,
+    }
+}
+
+/// Templates installed by this setup run with a higher version than was installed before.
 #[derive(Default)]
 struct TemplateChanges {
     component_templates: HashSet<String>,
@@ -627,17 +615,18 @@ pub async fn assets_report(client: &Client) -> Result<SetupReport> {
                     true => {
                         let stem = file_path.file_stem().and_then(|stem| stem.to_str()).unwrap_or("");
                         let name = format!("{stem}{}", asset.suffix.as_deref().unwrap_or(""));
-                        let installed_hash = installed_asset_hash(client, &asset, &name).await;
-                        let (stamped, hash) = stamp_asset_hash(&contents)?;
-                        Some((name, installed_hash != Some(hash), stamped))
+                        let installed = installed_template_version(client, &asset, &name).await;
+                        let bundled = serde_json::from_slice::<Value>(&contents)
+                            .ok()
+                            .and_then(|body| body["version"].as_u64());
+                        Some((name, template_version_bumped(installed, bundled)))
                     }
                     false => None,
                 };
-                let body = template.as_ref().map_or(&contents[..], |(_, _, stamped)| &stamped[..]);
-                match send_asset(client, &asset, &file_path, body, true).await {
+                match send_asset(client, &asset, &file_path, &contents, true).await {
                     Ok(res) => {
                         tracing::debug!("Response: {:?}", res);
-                        if let Some((name, changed, _)) = &template {
+                        if let Some((name, changed)) = &template {
                             template_changes.record(&asset, name, &contents, *changed);
                         }
                     }
@@ -1280,25 +1269,43 @@ mod tests {
     use super::*;
 
     #[test]
-    fn stamped_asset_hash_is_readable_from_installed_templates() {
-        let (stamped, hash) = stamp_asset_hash(br#"{"_meta":{"description":"d"},"priority":1}"#).unwrap();
-        let body: Value = serde_json::from_slice(&stamped).unwrap();
-        assert_eq!(body["_meta"]["description"], "d");
+    fn installed_template_version_is_read_from_get_responses() {
         let installed = serde_json::json!({
-            "index_templates": [{ "name": "a-esdiag", "index_template": body }]
+            "index_templates": [
+                { "name": "a-esdiag", "index_template": { "version": 3 } },
+                { "name": "b-esdiag", "index_template": {} }
+            ]
         });
-        assert_eq!(
-            installed_template_hash(&installed, "_index_template", "a-esdiag"),
-            Some(hash.clone())
-        );
-        assert_eq!(installed_template_hash(&installed, "_index_template", "b-esdiag"), None);
+        assert_eq!(template_version(&installed, "_index_template", "a-esdiag"), Some(3));
+        assert_eq!(template_version(&installed, "_index_template", "b-esdiag"), None);
+        assert_eq!(template_version(&installed, "_index_template", "c-esdiag"), None);
 
-        let (stamped, _) = stamp_asset_hash(br#"{"template":{}}"#).unwrap();
-        let body: Value = serde_json::from_slice(&stamped).unwrap();
         let installed = serde_json::json!({
-            "component_templates": [{ "name": "esdiag@x", "component_template": body }]
+            "component_templates": [{ "name": "esdiag@x", "component_template": { "version": 2 } }]
         });
-        assert!(installed_template_hash(&installed, "_component_template", "esdiag@x").is_some());
+        assert_eq!(template_version(&installed, "_component_template", "esdiag@x"), Some(2));
+    }
+
+    #[test]
+    fn only_higher_bundled_versions_trigger_rollover() {
+        assert!(template_version_bumped(None, Some(1)));
+        assert!(template_version_bumped(Some(1), Some(2)));
+        assert!(!template_version_bumped(Some(2), Some(2)));
+        assert!(!template_version_bumped(Some(3), Some(2)));
+        assert!(!template_version_bumped(None, None));
+    }
+
+    #[test]
+    fn every_bundled_template_has_a_version() {
+        let assets = EmbeddedAssets::new().unwrap();
+        for dir in ["index_templates", "component_templates"] {
+            let files = assets.get_dir_files(&PathBuf::from(format!("elasticsearch/{dir}")));
+            assert!(!files.is_empty(), "no bundled {dir}");
+            for (path, contents) in files {
+                let body: Value = serde_json::from_slice(&contents).unwrap();
+                assert!(body["version"].as_u64().is_some(), "{} has no version", path.display());
+            }
+        }
     }
 
     #[test]

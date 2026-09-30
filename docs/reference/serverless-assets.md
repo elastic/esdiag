@@ -67,14 +67,18 @@ PUT /_data_stream/metrics-diagnostic-esdiag/_lifecycle
 
 ## Template updates and rollover
 
-Templates shape only backing indices created after installation. Setup records a
-content hash in each template's `_meta.esdiag_asset_hash`. When a template
-differs from the installed version, setup rolls over the ESDiag data streams
-that use it,
-including streams whose index template composes a changed component template.
-Each rollover is logged at info level. Setup skips streams whose templates have
-not changed. A failed rollover makes setup partial and names the stream to roll
-over manually with `POST /<stream>/_rollover`.
+Templates shape only backing indices created after installation. Every bundled
+template carries a `version`. When the bundled version is higher than the
+installed one, or the installed template has no version, setup rolls over the
+ESDiag data streams that use it. This includes streams whose index template
+composes a component template with a higher version. Each rollover is logged
+at info level. A failed rollover makes setup partial and names the stream to
+roll over manually with `POST /<stream>/_rollover`.
+
+Versions are bumped by hand, and only when existing data streams need a rollover
+to pick up the change. Template edits that keep the version are still installed
+but do not trigger a rollover. Deployments set up before templates were
+versioned see a one-time rollover of streams whose templates had no `version`.
 
 ## Indexing failures and recovery
 
