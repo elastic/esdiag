@@ -577,3 +577,109 @@ async fn serverless_metadata_avoids_stateful_security_and_license_apis() {
     );
     assert!(paths.iter().any(|p| p.starts_with("/_index_template/")));
 }
+
+#[derive(Default)]
+struct TemplateState {
+    templates: HashMap<String, Value>,
+    rollovers: Vec<String>,
+}
+
+async fn template_cluster(state: Arc<Mutex<TemplateState>>) -> (Client, tokio::task::JoinHandle<()>) {
+    let app = Router::new().fallback(move |request: Request<Body>| {
+        let state = state.clone();
+        async move {
+            let method = request.method().clone();
+            let path = request.uri().path().to_string();
+            let body = to_bytes(request.into_body(), usize::MAX).await.unwrap();
+            let mut state = state.lock().unwrap();
+            let template_kind = ["_index_template", "_component_template"]
+                .into_iter()
+                .find(|kind| path.starts_with(&format!("/{kind}/")));
+            let (status, body) = if path == "/" {
+                (StatusCode::OK, r#"{"version":{"build_flavor":"default"}}"#.to_string())
+            } else if path == "/_xpack/usage" {
+                (StatusCode::OK, r#"{"security":{"enabled":false}}"#.to_string())
+            } else if let Some(kind) = template_kind {
+                let name = path.rsplit('/').next().unwrap().to_string();
+                if method == "PUT" {
+                    let body = flate2::read::GzDecoder::new(&body[..]);
+                    state.templates.insert(path, serde_json::from_reader(body).unwrap());
+                    (StatusCode::OK, r#"{"acknowledged":true}"#.to_string())
+                } else if let Some(template) = state.templates.get(&path) {
+                    let (list, item) = match kind {
+                        "_index_template" => ("index_templates", "index_template"),
+                        _ => ("component_templates", "component_template"),
+                    };
+                    let body = serde_json::json!({ list: [{ "name": name, item: template }] });
+                    (StatusCode::OK, body.to_string())
+                } else {
+                    (StatusCode::NOT_FOUND, "{}".to_string())
+                }
+            } else if path.starts_with("/_data_stream/") {
+                let body = serde_json::json!({ "data_streams": [
+                    { "name": "metrics-logstash-esdiag", "template": "metrics-logstash-esdiag" },
+                    { "name": "settings-cluster-esdiag", "template": "settings-cluster-esdiag" },
+                    { "name": "custom-esdiag", "template": "custom" },
+                ]});
+                (StatusCode::OK, body.to_string())
+            } else if let Some(stream) = path.strip_suffix("/_rollover") {
+                state.rollovers.push(stream.trim_start_matches('/').to_string());
+                (StatusCode::OK, r#"{"acknowledged":true}"#.to_string())
+            } else if path.ends_with("/_mapping") {
+                (StatusCode::OK, "{}".to_string())
+            } else {
+                (StatusCode::OK, r#"{"acknowledged":true}"#.to_string())
+            };
+            (
+                status,
+                [
+                    ("content-type", "application/json"),
+                    ("x-elastic-product", "Elasticsearch"),
+                ],
+                body,
+            )
+                .into_response()
+        }
+    });
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url: url::Url = format!("http://{}", listener.local_addr().unwrap()).parse().unwrap();
+    let task = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let client = Client::Elasticsearch(
+        ElasticsearchBuilder::new(url)
+            .apikey("test-key".into())
+            .build()
+            .unwrap(),
+    );
+    (client, task)
+}
+
+#[tokio::test]
+async fn setup_rolls_over_only_data_streams_with_updated_templates() {
+    let state = Arc::new(Mutex::new(TemplateState::default()));
+    let (client, task) = template_cluster(state.clone()).await;
+    let take_rollovers = || std::mem::take(&mut state.lock().unwrap().rollovers);
+
+    esdiag::setup::assets(&client).await.unwrap();
+    assert_eq!(
+        take_rollovers(),
+        vec!["metrics-logstash-esdiag", "settings-cluster-esdiag"],
+        "templates without a recorded hash count as updated"
+    );
+
+    esdiag::setup::assets(&client).await.unwrap();
+    assert!(take_rollovers().is_empty(), "unchanged templates must not roll over");
+
+    state
+        .lock()
+        .unwrap()
+        .templates
+        .get_mut("/_component_template/esdiag@ls-metadata")
+        .unwrap()["_meta"]["esdiag_asset_hash"] = Value::from("stale");
+    esdiag::setup::assets(&client).await.unwrap();
+    assert_eq!(
+        take_rollovers(),
+        vec!["metrics-logstash-esdiag"],
+        "a component template change rolls over streams whose templates compose it"
+    );
+    task.abort();
+}

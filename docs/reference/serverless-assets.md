@@ -65,6 +65,17 @@ PUT /_data_stream/metrics-diagnostic-esdiag/_lifecycle
 {"enabled": true, "data_retention": "3650d"}
 ```
 
+## Template updates and rollover
+
+Templates shape only backing indices created after installation. Setup records a
+content hash in each template's `_meta.esdiag_asset_hash`. When a template
+differs from the installed version, setup rolls over the ESDiag data streams
+that use it,
+including streams whose index template composes a changed component template.
+Each rollover is logged at info level. Setup skips streams whose templates have
+not changed. A failed rollover makes setup partial and names the stream to roll
+over manually with `POST /<stream>/_rollover`.
+
 ## Indexing failures and recovery
 
 Setup enables the failure store through the shared `esdiag@settings` component.
@@ -90,8 +101,8 @@ indices; its [failure-store settings allowlist](https://github.com/elastic/elast
 does not include `index.codec`. Template configuration therefore cannot enforce
 failure-store compression.
 
-Existing streams need a separate options update. Template updates and rollover
-do not change their failure-store options:
+Existing streams need a separate options update. Template updates and the
+rollovers setup performs do not change their failure-store options:
 
 ```http
 PUT /_data_stream/*-esdiag/_options
@@ -127,12 +138,9 @@ Cluster settings can contain both `rest.incremental_bulk` and
 dots literal beneath `rest` with `subobjects: false`, preserving both values
 without renaming settings. This follows the same mapping rule as the existing
 watermark and logger namespaces: disable subobject expansion at the namespace
-that permits value and sub-setting keys. Existing cluster-settings streams
-need a rollover after setup before replaying affected diagnostics:
-
-```http
-POST /settings-cluster-esdiag/_rollover
-```
+that permits value and sub-setting keys. Setup rolls over existing
+cluster-settings streams to apply the new mapping. Replay affected diagnostics
+after setup.
 
 ESDiag saves the scalar values of `thread_pool.estimated_time_interval` and
 `xpack.searchable.snapshot.shared_cache.size` in `.current` fields, as it already
@@ -144,14 +152,12 @@ The template maps these fields and
 keywords. Flattening the entire namespace would conflict with the shared rules
 that suppress human-readable size fields.
 
-For an existing cluster-settings stream, run setup, then roll over the write
-index with the command above. This changes the mapping for new writes. It does
-not rewrite historical documents.
+The rollover changes the mapping for new writes. It does not rewrite historical
+documents.
 
 Node settings use the same rule beneath `node.settings.http` and
 `node.settings.transport`, preserving both `type` and `type.default`.
-Existing node-settings streams also need `POST /settings-node-esdiag/_rollover`
-after setup.
+Setup rolls over existing node-settings streams in the same way.
 
 The node-settings template explicitly maps `http.max_warning_header_size` as a
 keyword. Dynamic templates apply only to unmapped fields, so this prevents the

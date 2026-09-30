@@ -17,7 +17,7 @@ use reqwest::{Method, StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::{Cursor, Read};
 use std::path::{Path, PathBuf};
 use url::Url;
@@ -308,6 +308,166 @@ fn serverless_asset_contents(asset: &Asset, contents: &[u8]) -> Result<Vec<u8>> 
     Ok(serde_json::to_vec(&body)?)
 }
 
+/// Stamped into template `_meta` so setup can tell which templates it changed.
+const ASSET_HASH_META: &str = "esdiag_asset_hash";
+
+/// Add the content hash of a template body to its `_meta`.
+fn stamp_asset_hash(contents: &[u8]) -> Result<(Vec<u8>, String)> {
+    let hash: String = Sha256::digest(contents)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    let mut body: Value = serde_json::from_slice(contents)?;
+    let meta = body
+        .as_object_mut()
+        .ok_or_else(|| eyre!("Template body is not a JSON object"))?
+        .entry("_meta")
+        .or_insert_with(|| Value::Object(serde_json::Map::new()));
+    meta.as_object_mut()
+        .ok_or_else(|| eyre!("Template _meta is not a JSON object"))?
+        .insert(ASSET_HASH_META.to_string(), Value::String(hash.clone()));
+    Ok((serde_json::to_vec(&body)?, hash))
+}
+
+/// The content hash stamped on the installed template, if there is one.
+async fn installed_asset_hash(client: &Client, asset: &Asset, name: &str) -> Option<String> {
+    let path = format!("{}/{name}", asset.endpoint);
+    let response = client
+        .request(Method::GET, &default_headers(), &path, None)
+        .await
+        .ok()?;
+    if !response.status().is_success() {
+        return None;
+    }
+    let body: Value = response.json().await.ok()?;
+    installed_template_hash(&body, asset.endpoint.trim_matches('/'), name)
+}
+
+fn installed_template_hash(body: &Value, endpoint: &str, name: &str) -> Option<String> {
+    let (list, item) = match endpoint {
+        "_index_template" => ("index_templates", "index_template"),
+        _ => ("component_templates", "component_template"),
+    };
+    body.get(list)?
+        .as_array()?
+        .iter()
+        .find(|template| template["name"] == name)?
+        .pointer(&format!("/{item}/_meta/{ASSET_HASH_META}"))?
+        .as_str()
+        .map(str::to_string)
+}
+
+/// Templates installed by this setup run whose content differs from what was installed before.
+#[derive(Default)]
+struct TemplateChanges {
+    component_templates: HashSet<String>,
+    index_templates: HashSet<String>,
+    composed_of: HashMap<String, Vec<String>>,
+}
+
+impl TemplateChanges {
+    fn record(&mut self, asset: &Asset, name: &str, contents: &[u8], changed: bool) {
+        let index_template = asset.endpoint.trim_matches('/') == "_index_template";
+        if index_template && let Ok(body) = serde_json::from_slice::<Value>(contents) {
+            let components = body["composed_of"]
+                .as_array()
+                .map(|names| names.iter().filter_map(Value::as_str).map(str::to_string).collect())
+                .unwrap_or_default();
+            self.composed_of.insert(name.to_string(), components);
+        }
+        if !changed {
+            return;
+        }
+        match index_template {
+            true => self.index_templates.insert(name.to_string()),
+            false => self.component_templates.insert(name.to_string()),
+        };
+    }
+
+    /// Index templates that changed directly or through a component template.
+    fn updated_index_templates(&self) -> HashSet<String> {
+        let mut updated = self.index_templates.clone();
+        for (template, components) in &self.composed_of {
+            if components.iter().any(|name| self.component_templates.contains(name)) {
+                updated.insert(template.clone());
+            }
+        }
+        updated
+    }
+}
+
+/// `(data stream, index template)` pairs from a `GET _data_stream` response for
+/// streams that currently resolve to one of the updated templates.
+fn data_streams_to_roll_over(data_streams: &Value, updated_templates: &HashSet<String>) -> Vec<(String, String)> {
+    let mut streams: Vec<_> = data_streams["data_streams"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|stream| {
+            let name = stream["name"].as_str()?;
+            let template = stream["template"].as_str()?;
+            updated_templates
+                .contains(template)
+                .then(|| (name.to_string(), template.to_string()))
+        })
+        .collect();
+    streams.sort();
+    streams
+}
+
+/// Templates only shape backing indices created after they are installed, so
+/// existing data streams keep their old mappings and settings until rollover.
+/// Returns the streams that could not be rolled over.
+async fn rollover_updated_data_streams(client: &Client, updated_templates: &HashSet<String>) -> Result<Vec<String>> {
+    let headers = default_headers();
+    let path = format!("/_data_stream/{ESDIAG_INDEX_PATTERN}");
+    let response = client.request(Method::GET, &headers, &path, None).await?;
+    if response.status() == StatusCode::NOT_FOUND {
+        return Ok(vec![]);
+    }
+    if !response.status().is_success() {
+        return Err(eyre!(
+            "Listing ESDiag data streams returned {}: {}",
+            response.status(),
+            response.text().await.unwrap_or_default()
+        ));
+    }
+    let data_streams: Value = response.json().await?;
+    let streams = data_streams_to_roll_over(&data_streams, updated_templates);
+
+    let mut failures = Vec::new();
+    for (stream, template) in &streams {
+        let result = client
+            .request(Method::POST, &headers, &format!("/{stream}/_rollover"), None)
+            .await;
+        match result {
+            Ok(response) if response.status().is_success() => {
+                tracing::info!("Rolled over data stream {stream} to apply the updated {template} index template");
+            }
+            Ok(response) => {
+                failures.push(stream.clone());
+                tracing::warn!(
+                    "Could not roll over data stream {stream}: {} {}",
+                    response.status(),
+                    response.text().await.unwrap_or_default()
+                );
+            }
+            Err(err) => {
+                failures.push(stream.clone());
+                tracing::warn!("Could not roll over data stream {stream}: {err}");
+            }
+        }
+    }
+    if !streams.is_empty() {
+        tracing::info!(
+            "Rolled over {} of {} data streams with updated templates",
+            streams.len() - failures.len(),
+            streams.len()
+        );
+    }
+    Ok(failures)
+}
+
 fn is_template_asset(asset: &Asset) -> bool {
     matches!(
         asset.endpoint.trim_matches('/'),
@@ -441,6 +601,7 @@ pub async fn assets_report(client: &Client) -> Result<SetupReport> {
     let supports_security_assets = security_enabled && !serverless;
 
     let mut error_count = 0;
+    let mut template_changes = TemplateChanges::default();
 
     for asset in assets {
         if should_skip_asset(&asset, supports_security_assets) {
@@ -462,8 +623,24 @@ pub async fn assets_report(client: &Client) -> Result<SetupReport> {
                     contents
                 };
                 tracing::debug!("file.path: {:?}", file_path);
-                match send_asset(client, &asset, &file_path, &contents, true).await {
-                    Ok(res) => tracing::debug!("Response: {:?}", res),
+                let template = match is_template_asset(&asset) {
+                    true => {
+                        let stem = file_path.file_stem().and_then(|stem| stem.to_str()).unwrap_or("");
+                        let name = format!("{stem}{}", asset.suffix.as_deref().unwrap_or(""));
+                        let installed_hash = installed_asset_hash(client, &asset, &name).await;
+                        let (stamped, hash) = stamp_asset_hash(&contents)?;
+                        Some((name, installed_hash != Some(hash), stamped))
+                    }
+                    false => None,
+                };
+                let body = template.as_ref().map_or(&contents[..], |(_, _, stamped)| &stamped[..]);
+                match send_asset(client, &asset, &file_path, body, true).await {
+                    Ok(res) => {
+                        tracing::debug!("Response: {:?}", res);
+                        if let Some((name, changed, _)) = &template {
+                            template_changes.record(&asset, name, &contents, *changed);
+                        }
+                    }
                     Err(e) => {
                         tracing::error!("Failed to send asset: {e:?}");
                         report.warnings.push(format!(
@@ -503,6 +680,20 @@ pub async fn assets_report(client: &Client) -> Result<SetupReport> {
     // meaningful there — asking any other product for its mappings would warn
     // about a call that never made sense.
     if matches!(client, Client::Elasticsearch(_)) {
+        let updated_templates = template_changes.updated_index_templates();
+        if !updated_templates.is_empty() {
+            match rollover_updated_data_streams(client, &updated_templates).await {
+                Ok(failed) if failed.is_empty() => {}
+                Ok(failed) => report.warnings.push(format!(
+                    "Could not roll over data streams {} to apply updated templates. Roll them over manually, then rerun failed diagnostics.",
+                    failed.join(", ")
+                )),
+                Err(err) => {
+                    tracing::warn!("Could not roll over data streams with updated templates: {err}");
+                    report.warnings.push("Could not list ESDiag data streams to apply updated templates. Check connectivity and data stream privileges, then rerun setup.".to_string());
+                }
+            }
+        }
         match install_provenance_aliases(client).await {
             Ok(indices) => report.failed_indices = indices,
             Err(err) => {
@@ -1087,6 +1278,81 @@ mod serverless_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn stamped_asset_hash_is_readable_from_installed_templates() {
+        let (stamped, hash) = stamp_asset_hash(br#"{"_meta":{"description":"d"},"priority":1}"#).unwrap();
+        let body: Value = serde_json::from_slice(&stamped).unwrap();
+        assert_eq!(body["_meta"]["description"], "d");
+        let installed = serde_json::json!({
+            "index_templates": [{ "name": "a-esdiag", "index_template": body }]
+        });
+        assert_eq!(
+            installed_template_hash(&installed, "_index_template", "a-esdiag"),
+            Some(hash.clone())
+        );
+        assert_eq!(installed_template_hash(&installed, "_index_template", "b-esdiag"), None);
+
+        let (stamped, _) = stamp_asset_hash(br#"{"template":{}}"#).unwrap();
+        let body: Value = serde_json::from_slice(&stamped).unwrap();
+        let installed = serde_json::json!({
+            "component_templates": [{ "name": "esdiag@x", "component_template": body }]
+        });
+        assert!(installed_template_hash(&installed, "_component_template", "esdiag@x").is_some());
+    }
+
+    #[test]
+    fn only_streams_resolving_to_updated_templates_roll_over() {
+        let asset = |endpoint: &str| Asset {
+            endpoint: endpoint.to_string(),
+            method: "PUT".to_string(),
+            name: String::new(),
+            headers: default_headers(),
+            suffix: None,
+            query: None,
+            requires_security: false,
+        };
+        let mut changes = TemplateChanges::default();
+        changes.record(&asset("_component_template"), "esdiag@ls", b"{}", true);
+        changes.record(&asset("_component_template"), "esdiag@mappings", b"{}", false);
+        changes.record(
+            &asset("_index_template"),
+            "ls-esdiag",
+            br#"{"composed_of":["esdiag@ls"]}"#,
+            false,
+        );
+        changes.record(
+            &asset("_index_template"),
+            "a-esdiag",
+            br#"{"composed_of":["esdiag@mappings"]}"#,
+            true,
+        );
+        changes.record(
+            &asset("_index_template"),
+            "b-esdiag",
+            br#"{"composed_of":["esdiag@mappings"]}"#,
+            false,
+        );
+        let updated = changes.updated_index_templates();
+        assert_eq!(
+            updated,
+            HashSet::from(["ls-esdiag".to_string(), "a-esdiag".to_string()])
+        );
+
+        let data_streams = serde_json::json!({ "data_streams": [
+            { "name": "b-esdiag", "template": "b-esdiag" },
+            { "name": "a-esdiag", "template": "a-esdiag" },
+            { "name": "ls-esdiag", "template": "ls-esdiag" },
+            { "name": "no-template-esdiag" },
+        ]});
+        assert_eq!(
+            data_streams_to_roll_over(&data_streams, &updated),
+            vec![
+                ("a-esdiag".to_string(), "a-esdiag".to_string()),
+                ("ls-esdiag".to_string(), "ls-esdiag".to_string()),
+            ]
+        );
+    }
 
     /// The `diagnostic` properties an index created from the current templates
     /// carries, read from the template itself so the test moves with it.
