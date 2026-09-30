@@ -36,8 +36,8 @@ outcome; the parent does not.
   `Partial`; total failure → `Failed`; unsupported → `Skipped`; all good → `Complete`.
 - **`Skipped` must distinguish *by-design* from *not-implemented*.** Per ADR-0019
   these are opposite meanings behind the same skip today: out-of-scope by design
-  (e.g. platform-level API collection) vs work-in-progress (Kibana processing, Agent
-  processing/PR293). The outcome should carry which, so a skip reads as "nothing to
+  (e.g. platform-level API collection) vs work-in-progress (Agent processing/PR293).
+  The outcome should carry which, so a skip reads as "nothing to
   do here" vs "TODO" rather than an undifferentiated non-result.
 - **Failures are collected, not logged-and-dropped.** `ProcessorSummary::merge(Err)`
   records a failure event (source + reason + severity) into the report instead of

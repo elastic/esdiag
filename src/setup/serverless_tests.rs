@@ -522,7 +522,7 @@ fn serverless_templates_only_use_audited_settings() {
             count += 1;
         }
     }
-    assert_eq!(count, 33);
+    assert_eq!(count, 34);
 }
 
 #[test]
