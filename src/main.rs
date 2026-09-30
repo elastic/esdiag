@@ -2549,16 +2549,18 @@ async fn run_init_wizard() -> Result<CommandResult> {
         let collect_job = esdiag::data::Job::builder()
             .collect_from(collect_host.clone())?
             .collect_to(format!("diagnostics/{collect_host}"))?;
-        confirm_default_job_replacement(&collect_job_name, None)?;
-        save_default_job(collect_job_name.clone(), collect_job)?;
-        if workflow.processes_diagnostics() {
-            let output = esdiag::data::ApplicationConfig::load()?
-                .output
-                .default
-                .ok_or_else(|| eyre!("A processing workflow requires an output deployment"))?;
-            let process_job_name = format!("{collect_host}-process-{output}");
-            confirm_default_job_replacement(&process_job_name, Some(&collect_job_name))?;
-            save_default_processing_job(process_job_name, collect_host)?;
+        if confirm_default_job_replacement(&collect_job_name, None)? {
+            save_default_job(collect_job_name.clone(), collect_job)?;
+            if workflow.processes_diagnostics() {
+                let output = esdiag::data::ApplicationConfig::load()?
+                    .output
+                    .default
+                    .ok_or_else(|| eyre!("A processing workflow requires an output deployment"))?;
+                let process_job_name = format!("{collect_host}-process-{output}");
+                if confirm_default_job_replacement(&process_job_name, Some(&collect_job_name))? {
+                    save_default_processing_job(process_job_name, collect_host)?;
+                }
+            }
         }
     }
 
@@ -2733,27 +2735,39 @@ fn default_collect_host_name() -> Option<String> {
         .find_map(|(name, host)| host.has_role(HostRole::Collect).then_some(name))
 }
 
+/// Returns whether the default job `name` should be saved. Declining keeps the
+/// existing saved job, and makes it the default when none is configured.
 /// `set_this_run` is a default job this initialization already chose, which may
 /// be replaced without asking.
-fn confirm_default_job_replacement(name: &str, set_this_run: Option<&str>) -> Result<()> {
+fn confirm_default_job_replacement(name: &str, set_this_run: Option<&str>) -> Result<bool> {
     let jobs = esdiag::data::load_saved_jobs()?;
     let config = esdiag::data::ApplicationConfig::load()?;
     let replaces_job = jobs.contains_key(name);
     let replaces_default = replaces_other_default(config.job.default.as_deref(), name, set_this_run);
-    if (replaces_job || replaces_default)
-        && !prompt_confirm(&format!(
-            "Replace {}? [y/N]: ",
-            match (replaces_job, replaces_default) {
-                (true, true) => format!("existing job '{name}' and configured default job"),
-                (true, false) => format!("existing job '{name}'"),
-                (false, true) => "the configured default job".to_string(),
-                (false, false) => unreachable!(),
-            }
-        ))?
-    {
-        return Err(eyre!("Default job replacement was declined."));
+    if !(replaces_job || replaces_default) {
+        return Ok(true);
     }
-    Ok(())
+    let replace = prompt_confirm(&format!(
+        "Replace {}? [y/N]: ",
+        match (replaces_job, replaces_default) {
+            (true, true) => format!("existing job '{name}' and configured default job"),
+            (true, false) => format!("existing job '{name}'"),
+            (false, true) => "the configured default job".to_string(),
+            (false, false) => unreachable!(),
+        }
+    ))?;
+    if !replace {
+        match config.job.default.as_deref() {
+            Some(default) => println!("Keeping existing default job '{default}'."),
+            None => {
+                let mut config = config;
+                config.job.default = Some(name.to_string());
+                config.save()?;
+                println!("Keeping existing job '{name}' as the default job.");
+            }
+        }
+    }
+    Ok(replace)
 }
 
 fn should_run_output_setup(started_local_stack: bool, approved: impl FnOnce() -> Result<bool>) -> Result<bool> {
