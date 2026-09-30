@@ -2553,7 +2553,7 @@ async fn run_init_wizard() -> Result<CommandResult> {
         if collect_choice == DefaultJobChoice::Replace {
             save_default_job(collect_job_name.clone(), collect_job)?;
         }
-        if workflow.processes_diagnostics() && !collect_choice.keeps_other_default(&collect_job_name) {
+        if workflow.processes_diagnostics() && !collect_choice.keeps_durable_default() {
             let output = esdiag::data::ApplicationConfig::load()?
                 .output
                 .default
@@ -2740,15 +2740,19 @@ fn default_collect_host_name() -> Option<String> {
 #[derive(Debug, PartialEq, Eq)]
 enum DefaultJobChoice {
     Replace,
-    /// Replacement was declined and `default` is the configured default job.
-    Keep {
+    /// Replacement was declined and the configured default job stays.
+    KeepDefault {
+        default: String,
+    },
+    /// Replacement was declined and the existing saved job became the default.
+    PromoteSaved {
         default: String,
     },
 }
 
 impl DefaultJobChoice {
-    fn keeps_other_default(&self, name: &str) -> bool {
-        matches!(self, Self::Keep { default } if default != name)
+    fn keeps_durable_default(&self) -> bool {
+        matches!(self, Self::KeepDefault { .. })
     }
 }
 
@@ -2801,9 +2805,9 @@ fn confirm_default_job_replacement(name: &str, set_this_run: Option<&str>) -> Re
 /// Leaves saved jobs unchanged after a declined replacement. Without a
 /// `durable_default` to keep, the existing saved `name` becomes the default.
 fn keep_default_job(name: &str, durable_default: Option<&str>) -> Result<DefaultJobChoice> {
-    if let Some(current) = durable_default.filter(|current| *current != name) {
+    if let Some(current) = durable_default {
         println!("Keeping existing default job '{current}'.");
-        return Ok(DefaultJobChoice::Keep {
+        return Ok(DefaultJobChoice::KeepDefault {
             default: current.to_string(),
         });
     }
@@ -2811,7 +2815,7 @@ fn keep_default_job(name: &str, durable_default: Option<&str>) -> Result<Default
     config.job.default = Some(name.to_string());
     config.save()?;
     println!("Keeping existing job '{name}' as the default job.");
-    Ok(DefaultJobChoice::Keep {
+    Ok(DefaultJobChoice::PromoteSaved {
         default: name.to_string(),
     })
 }
@@ -4142,12 +4146,30 @@ mod tests {
 
         assert_eq!(
             choice,
-            DefaultJobChoice::Keep {
+            DefaultJobChoice::KeepDefault {
                 default: "old-job".to_string()
             }
         );
-        assert!(choice.keeps_other_default("src-collect"));
+        assert!(choice.keeps_durable_default());
         assert_eq!(configured_default_job().as_deref(), Some("old-job"));
+    }
+
+    #[test]
+    fn declining_replacement_of_a_same_named_durable_default_keeps_it() {
+        let _guard = env_lock().lock().expect("env lock");
+        let _tmp = setup_env();
+        configure_default_job(Some("src-collect"));
+
+        let choice = keep_default_job("src-collect", Some("src-collect")).expect("keep default job");
+
+        assert_eq!(
+            choice,
+            DefaultJobChoice::KeepDefault {
+                default: "src-collect".to_string()
+            }
+        );
+        assert!(choice.keeps_durable_default());
+        assert_eq!(configured_default_job().as_deref(), Some("src-collect"));
     }
 
     #[test]
@@ -4160,11 +4182,11 @@ mod tests {
 
         assert_eq!(
             choice,
-            DefaultJobChoice::Keep {
+            DefaultJobChoice::PromoteSaved {
                 default: "src-collect".to_string()
             }
         );
-        assert!(!choice.keeps_other_default("src-collect"));
+        assert!(!choice.keeps_durable_default());
         assert_eq!(configured_default_job().as_deref(), Some("src-collect"));
     }
 
@@ -4180,7 +4202,7 @@ mod tests {
 
         assert_eq!(
             choice,
-            DefaultJobChoice::Keep {
+            DefaultJobChoice::PromoteSaved {
                 default: "src-process-out".to_string()
             }
         );
@@ -4216,13 +4238,13 @@ mod tests {
         assert_eq!(durable_default_job(None).expect("durable default"), None);
 
         let choice = keep_default_job("src-collect", None).expect("keep default job");
-        assert!(!choice.keeps_other_default("src-collect"));
+        assert!(!choice.keeps_durable_default());
         assert_eq!(configured_default_job().as_deref(), Some("src-collect"));
     }
 
     #[test]
-    fn accepted_replacement_does_not_keep_another_default() {
-        assert!(!DefaultJobChoice::Replace.keeps_other_default("src-collect"));
+    fn accepted_replacement_does_not_keep_the_durable_default() {
+        assert!(!DefaultJobChoice::Replace.keeps_durable_default());
     }
 
     #[test]
