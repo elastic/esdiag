@@ -129,7 +129,7 @@ fn failed_stage(outcome: &ExecutionOutcome) -> FailedStage {
 /// `Export` (inside `Process`) and `Send` may both run in one job.
 pub async fn execute(job: Job) -> Result<JobOutcome> {
     let outcome = execute_with_context(job, ExecutionContext::default()).await;
-    if !outcome.succeeded() || outcome.has_child_failures() {
+    if outcome.failed() {
         let failures = outcome
             .stages
             .iter()
@@ -138,8 +138,8 @@ pub async fn execute(job: Job) -> Result<JobOutcome> {
                 _ => None,
             })
             .chain(outcome.child_failures())
-            .collect::<Vec<_>>()
-            .join("; ");
+            .reduce(|joined, error| format!("{joined}; {error}"))
+            .unwrap_or_else(|| "diagnostic report failed".to_string());
         let stage = failed_stage(&outcome);
         return Err(
             JobExecutionFailure::new(stage, job_outcome(outcome), eyre!("Job execution failed: {failures}")).into(),

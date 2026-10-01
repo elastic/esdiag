@@ -265,8 +265,7 @@ async fn execute_unified_web_job(
 
     let job = Job::try_new(identifiers, input, save, process, send)?;
     let outcome = execute_with_context(job, context).await;
-    let execution_error =
-        (!outcome.succeeded() || outcome.has_child_failures()).then(|| execution_outcome_error(&outcome));
+    let execution_error = outcome.failed().then(|| execution_outcome_error(&outcome));
 
     if let Some(path) = outcome.retained_bundle.as_ref()
         && (draft.collect.save || draft.send.raw_local)
@@ -427,8 +426,8 @@ fn execution_outcome_error(outcome: &ExecutionOutcome) -> String {
             crate::job::outcome::StageStatus::Succeeded | crate::job::outcome::StageStatus::Skipped(_) => None,
         })
         .chain(outcome.child_failures())
-        .collect::<Vec<_>>()
-        .join("; ")
+        .reduce(|joined, error| format!("{joined}; {error}"))
+        .unwrap_or_else(|| "Diagnostic report failed".to_string())
 }
 
 async fn render_child_outcomes(tx: &mpsc::Sender<ServerEvent>, owner: &str, outcome: &ExecutionOutcome) {

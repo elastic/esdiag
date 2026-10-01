@@ -57,7 +57,7 @@ async fn execute_synchronous_processing(
         None,
     )?;
     let outcome = execute_with_context(job, context).await;
-    if outcome.succeeded() && !outcome.has_child_failures() {
+    if !outcome.failed() {
         Ok(outcome)
     } else {
         Err(eyre::eyre!(execution_failure(&outcome)))
