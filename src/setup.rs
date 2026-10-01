@@ -373,6 +373,16 @@ fn template_version_bumped(installed: Option<u64>, bundled: Option<u64>) -> bool
     }
 }
 
+/// A newer ESDiag release installed this template; an older binary must not
+/// overwrite it, because its streams would not roll over back to the old mappings.
+fn template_version_downgrade(installed: Option<u64>, bundled: Option<u64>) -> bool {
+    match (installed, bundled) {
+        (Some(installed), Some(bundled)) => installed > bundled,
+        (Some(_), None) => true,
+        (None, _) => false,
+    }
+}
+
 /// Templates installed by this setup run with a higher version than was installed before.
 #[derive(Default)]
 struct TemplateChanges {
@@ -641,6 +651,13 @@ pub async fn assets_report(client: &Client) -> Result<SetupReport> {
                         let bundled = serde_json::from_slice::<Value>(&contents)
                             .ok()
                             .and_then(|body| body["version"].as_u64());
+                        if template_version_downgrade(installed, bundled) {
+                            tracing::warn!(
+                                "Keeping installed template {name} (version {}), which is newer than this ESDiag release's bundled version. Upgrade ESDiag to update it.",
+                                installed.unwrap_or_default()
+                            );
+                            continue;
+                        }
                         Some((name, template_version_bumped(installed, bundled)))
                     }
                     false => None,
@@ -1375,6 +1392,12 @@ mod tests {
         assert!(!template_version_bumped(Some(2), Some(2)));
         assert!(!template_version_bumped(Some(3), Some(2)));
         assert!(!template_version_bumped(None, None));
+        assert!(template_version_downgrade(Some(3), Some(2)));
+        assert!(template_version_downgrade(Some(1), None));
+        assert!(!template_version_downgrade(Some(2), Some(2)));
+        assert!(!template_version_downgrade(Some(1), Some(2)));
+        assert!(!template_version_downgrade(None, Some(1)));
+        assert!(!template_version_downgrade(None, None));
     }
 
     #[test]

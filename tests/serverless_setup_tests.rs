@@ -570,5 +570,23 @@ async fn setup_rolls_over_only_data_streams_with_updated_templates() {
         vec!["metrics-logstash-esdiag"],
         "a component template version bump rolls over streams whose templates compose it"
     );
+
+    let newer = {
+        let mut state = state.lock().unwrap();
+        let template = state
+            .templates
+            .get_mut("/_index_template/settings-cluster-esdiag")
+            .unwrap();
+        let newer = template["version"].as_u64().unwrap() + 1;
+        template["version"] = Value::from(newer);
+        newer
+    };
+    esdiag::setup::assets(&client).await.unwrap();
+    assert_eq!(
+        state.lock().unwrap().templates["/_index_template/settings-cluster-esdiag"]["version"],
+        newer,
+        "an older bundled template must not overwrite a newer installed one"
+    );
+    assert!(take_rollovers().is_empty());
     task.abort();
 }
