@@ -77,6 +77,11 @@ links. An empty value or Kibana's `default` ID also selects the default space. A
 prefix in the configured Kibana URL. Keep the same environment setting when
 running `process`, `serve`, or `agent ask` so their links use that destination.
 
+Install ESDiag assets into only one Kibana space. If they already exist in
+another space, setup stops before importing and names that space. Set
+`ESDIAG_KIBANA_SPACE` to that space to update it, or remove the assets from it
+before installing elsewhere.
+
 The output needs ESDiag templates and ingest pipelines:
 
 ```sh

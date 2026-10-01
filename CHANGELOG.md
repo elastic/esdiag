@@ -107,7 +107,7 @@ published release notes, maintenance branches, and tagged history.
 
 ### Fixed
 
-- Fixed Kibana workflow ID collisions when setup targets multiple spaces. Setup now assigns stable workflow IDs per space and updates their references.
+- Fixed setup duplicating Kibana assets across spaces. When ESDiag assets already exist in another Kibana space, setup now stops before importing anything and names that space.
 - Report write failures now fail the command, even when Elasticsearch returns HTTP 201 after failure-store capture. CLI errors keep completed document counts, and local reports include the error.
 - Kept thread-pool warning thresholds and searchable-snapshot cache headroom settings instead of dropping them.
 - Added a searchable mapping for the cluster flood-stage maximum headroom setting.

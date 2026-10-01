@@ -37,13 +37,11 @@ The agent update follows the
 [partial update API](https://www.elastic.co/docs/api/doc/kibana/operation/operation-put-agent-builder-agents-id).
 It does not modify the agent's access controls.
 
-Setup gives each workflow a stable ID for its space, including the default and
-`esdiag` spaces. It updates the bundled tool and workflow references to match.
-Setup in one space cannot overwrite a workflow in another. Rerunning setup
-updates the same workflow.
-
-Setup does not delete workflows installed under the old IDs. It updates the
-bundled tools to use the new IDs.
+ESDiag Kibana assets belong in one space per deployment. Kibana assigns new
+saved object IDs when an existing ID is imported into another space, which
+breaks dashboard links, and workflow IDs are global. Before importing, setup
+searches the other spaces for ESDiag dashboards by ID or `originId`. If it finds
+any, it stops without changing Kibana and names the space that holds them.
 
 ## Retention
 

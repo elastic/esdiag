@@ -16,12 +16,10 @@ use kibana_sync::{
 use reqwest::{Method, StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::io::{Cursor, Read};
 use std::path::{Path, PathBuf};
 use url::Url;
-use uuid::Uuid;
 use zip::ZipArchive;
 
 // Subdirectory for templates and configs files
@@ -845,7 +843,9 @@ fn agent_builder_license_is_active(response: &Value) -> bool {
 
 async fn kibana_assets(client: &Client, embedded_assets: &EmbeddedAssets) -> Result<()> {
     let mut bundle = kibana_bundle(embedded_assets)?.read_all()?;
-    target_kibana_bundle(&mut bundle, crate::env::get_kibana_space().as_deref())?;
+    let space = crate::env::get_kibana_space();
+    ensure_single_kibana_space(client, &bundle, space.as_deref().unwrap_or("default")).await?;
+    target_kibana_bundle(&mut bundle, space.as_deref())?;
     if client.is_serverless().await? {
         adapt_serverless_kibana_bundle(&mut bundle);
     }
@@ -879,6 +879,96 @@ async fn kibana_assets(client: &Client, embedded_assets: &EmbeddedAssets) -> Res
     Ok(())
 }
 
+/// Saved object IDs are not space safe and workflow IDs are global, so ESDiag
+/// Kibana assets may only live in one space per deployment.
+async fn ensure_single_kibana_space(client: &Client, bundle: &SyncBundle, target: &str) -> Result<()> {
+    let dashboard_ids = bundled_dashboard_ids(bundle);
+    if dashboard_ids.is_empty() {
+        return Ok(());
+    }
+    let response = client
+        .request(Method::GET, &HashMap::new(), "api/spaces/space", None)
+        .await?;
+    let status = response.status();
+    if status == StatusCode::NOT_FOUND {
+        return Ok(());
+    }
+    if !status.is_success() {
+        return Err(eyre!(
+            "Failed to list Kibana spaces ({status}): {}",
+            response.text().await?
+        ));
+    }
+    let spaces: Vec<Value> = response.json().await?;
+    for space in spaces
+        .iter()
+        .filter_map(|space| space.get("id").and_then(Value::as_str))
+        .filter(|space| *space != target)
+    {
+        if space_has_esdiag_dashboards(client, space, &dashboard_ids).await? {
+            let setting = if space == "default" { "_default" } else { space };
+            return Err(eyre!(
+                "ESDiag Kibana assets are already installed in the '{space}' space. \
+                 ESDiag assets can only be installed in one Kibana space: set \
+                 ESDIAG_KIBANA_SPACE={setting} to update that install, or remove the \
+                 ESDiag assets from '{space}' before installing into '{target}'."
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn bundled_dashboard_ids(bundle: &SyncBundle) -> HashSet<String> {
+    bundle
+        .by_space
+        .values()
+        .flat_map(|assets| &assets.saved_objects)
+        .filter(|object| object.get("type").and_then(Value::as_str) == Some("dashboard"))
+        .filter_map(|object| object.get("id").and_then(Value::as_str).map(str::to_string))
+        .collect()
+}
+
+async fn space_has_esdiag_dashboards(client: &Client, space: &str, dashboard_ids: &HashSet<String>) -> Result<bool> {
+    const PER_PAGE: u64 = 1000;
+    for page in 1.. {
+        let path = kibana_space_path(
+            space,
+            &format!("api/saved_objects/_find?type=dashboard&fields=title&per_page={PER_PAGE}&page={page}"),
+        );
+        let response = client.request(Method::GET, &HashMap::new(), &path, None).await?;
+        let status = response.status();
+        if !status.is_success() {
+            return Err(eyre!(
+                "Failed to search Kibana space '{space}' for ESDiag assets ({status}): {}",
+                response.text().await?
+            ));
+        }
+        let body: Value = response.json().await?;
+        if contains_esdiag_saved_object(&body, dashboard_ids) {
+            return Ok(true);
+        }
+        let total = body.get("total").and_then(Value::as_u64).unwrap_or(0);
+        if page * PER_PAGE >= total {
+            break;
+        }
+    }
+    Ok(false)
+}
+
+/// Kibana regenerates saved object IDs when an existing ID is imported into
+/// another space and keeps the original in `originId`.
+fn contains_esdiag_saved_object(find_response: &Value, ids: &HashSet<String>) -> bool {
+    find_response
+        .get("saved_objects")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .flat_map(|object| [object.get("id"), object.get("originId")])
+        .flatten()
+        .filter_map(Value::as_str)
+        .any(|id| ids.contains(id))
+}
+
 async fn sync_kibana_bundle(client: &kibana_sync::KibanaClient, bundle: &SyncBundle) -> Result<()> {
     let mut summary = SyncSummary::default();
     accumulate_sync_result(
@@ -906,6 +996,9 @@ async fn sync_kibana_bundle(client: &kibana_sync::KibanaClient, bundle: &SyncBun
 
 fn target_kibana_bundle(bundle: &mut SyncBundle, space: Option<&str>) -> Result<()> {
     let target = space.unwrap_or("default");
+    if target == "esdiag" {
+        return Ok(());
+    }
     if bundle.by_space.len() != 1 || !bundle.by_space.contains_key("esdiag") {
         return Err(eyre!(
             "Expected a single esdiag asset space before selecting a destination"
@@ -915,13 +1008,6 @@ fn target_kibana_bundle(bundle: &mut SyncBundle, space: Option<&str>) -> Result<
     let prefix = space
         .map(|s| format!("/s/{}", urlencoding::encode(s)))
         .unwrap_or_default();
-
-    let workflow_ids = assets
-        .workflows
-        .iter()
-        .filter_map(|workflow| workflow.get("id").and_then(Value::as_str))
-        .map(|source_id| (source_id.to_string(), destination_workflow_id(target, source_id)))
-        .collect::<HashMap<_, _>>();
     for value in assets
         .saved_objects
         .iter_mut()
@@ -931,7 +1017,6 @@ fn target_kibana_bundle(bundle: &mut SyncBundle, space: Option<&str>) -> Result<
         .chain(&mut assets.skills)
     {
         rewrite_kibana_asset_links(value, &prefix);
-        rewrite_kibana_workflow_references(value, &workflow_ids);
     }
     bundle.by_space.insert(target.to_string(), assets);
     if space.is_none() {
@@ -943,43 +1028,6 @@ fn target_kibana_bundle(bundle: &mut SyncBundle, space: Option<&str>) -> Result<
         }
     }
     Ok(())
-}
-
-/// Keep every workflow ID in the Kibana format while making it unique to the
-/// destination space. The digest is stable across setup runs and the UUID
-/// version 8/variant bits identify this as a custom SHA-256-derived value
-/// acceptable to Kibana's workflow API.
-fn destination_workflow_id(space: &str, source_id: &str) -> String {
-    let mut digest = Sha256::new();
-    digest.update(b"esdiag:kibana-workflow:");
-    digest.update(space.as_bytes());
-    digest.update([0]);
-    digest.update(source_id.as_bytes());
-    let digest = digest.finalize();
-    let mut bytes = [0_u8; 16];
-    bytes.copy_from_slice(&digest[..16]);
-    bytes[6] = (bytes[6] & 0x0f) | 0x80;
-    bytes[8] = (bytes[8] & 0x3f) | 0x80;
-    format!("workflow-{}", Uuid::from_bytes(bytes))
-}
-
-fn rewrite_kibana_workflow_references(value: &mut Value, workflow_ids: &HashMap<String, String>) {
-    match value {
-        Value::String(text) => {
-            for (source_id, destination_id) in workflow_ids {
-                if text.contains(source_id) {
-                    *text = text.replace(source_id, destination_id);
-                }
-            }
-        }
-        Value::Array(values) => values
-            .iter_mut()
-            .for_each(|value| rewrite_kibana_workflow_references(value, workflow_ids)),
-        Value::Object(values) => values
-            .values_mut()
-            .for_each(|value| rewrite_kibana_workflow_references(value, workflow_ids)),
-        _ => {}
-    }
 }
 
 fn rewrite_kibana_asset_links(value: &mut Value, prefix: &str) {
@@ -1198,7 +1246,10 @@ async fn attach_skills_to_default_agent(client: &Client, space_id: &str, skill_i
 }
 
 fn default_agent_path(space_id: &str) -> String {
-    let endpoint = "api/agent_builder/agents/elastic-ai-agent";
+    kibana_space_path(space_id, "api/agent_builder/agents/elastic-ai-agent")
+}
+
+fn kibana_space_path(space_id: &str, endpoint: &str) -> String {
     if space_id == "default" {
         endpoint.to_string()
     } else {
@@ -1543,6 +1594,25 @@ mod tests {
         // Security disabled: skip security asset
         assert!(should_skip_asset(&security_asset, false));
         assert!(!should_skip_asset(&normal_asset, false));
+    }
+
+    #[test]
+    fn existing_esdiag_dashboards_are_found_by_id_or_origin_id() {
+        let ids = HashSet::from(["esdiag-readme".to_string()]);
+        let found = |objects: Value| contains_esdiag_saved_object(&serde_json::json!({"saved_objects": objects}), &ids);
+
+        assert!(found(serde_json::json!([{"id": "esdiag-readme"}])));
+        assert!(found(
+            serde_json::json!([{"id": "a1b2c3", "originId": "esdiag-readme"}])
+        ));
+        assert!(!found(serde_json::json!([{"id": "my-dashboard"}])));
+        assert!(!found(serde_json::json!([])));
+    }
+
+    #[test]
+    fn kibana_space_paths_omit_the_default_space() {
+        assert_eq!(kibana_space_path("default", "api/x"), "api/x");
+        assert_eq!(kibana_space_path("ops team", "api/x"), "s/ops%20team/api/x");
     }
 
     #[test]
