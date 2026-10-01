@@ -91,8 +91,9 @@ esdiag setup diagnostics-output
 On Elasticsearch Serverless, `setup` detects the deployment, omits unsupported
 ILM settings, and keeps the 30-day data stream retention policy for ordinary
 diagnostic data. Diagnostic reports are retained indefinitely. It installs
-templates and ingest pipelines and skips bundled security-dependent role
-assets. Configure project roles separately. Serverless security is always
+templates, ingest pipelines, and the bundled `esdiag-user` role. If the setup
+credentials cannot manage roles, setup logs a warning and continues; ask a
+project administrator to create the role. Serverless security is always
 enabled; a `410 Gone` security usage response also reports security as enabled.
 
 Run `esdiag setup <saved-kibana-host>` to install the Kibana assets separately.

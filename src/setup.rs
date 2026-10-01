@@ -280,8 +280,38 @@ async fn install_provenance_aliases(client: &Client) -> Result<Vec<String>> {
     Ok(failures)
 }
 
-fn should_skip_asset(asset: &Asset, security_assets_supported: bool) -> bool {
-    asset.requires_security && !security_assets_supported
+fn should_skip_asset(asset: &Asset, security_enabled: bool) -> bool {
+    asset.requires_security && !security_enabled
+}
+
+#[derive(Debug)]
+struct AssetRejected {
+    status: StatusCode,
+    body: Value,
+}
+
+impl std::fmt::Display for AssetRejected {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Asset: {}", self.body)
+    }
+}
+
+impl std::error::Error for AssetRejected {}
+
+/// Serverless setup credentials often lack `manage_security`; the rest of
+/// setup must still complete so onboarding can proceed.
+fn is_forbidden_security_asset(asset: &Asset, error: &eyre::Report) -> bool {
+    asset.requires_security
+        && error
+            .downcast_ref::<AssetRejected>()
+            .is_some_and(|rejected| rejected.status == StatusCode::FORBIDDEN)
+}
+
+fn warn_forbidden_security_asset(path: &Path) {
+    let name = path.file_stem().and_then(|stem| stem.to_str()).unwrap_or("");
+    tracing::warn!(
+        "Setup credentials cannot manage roles in this Serverless project. Ask an administrator to create the {name} role from the bundled definition so users can read failure stores."
+    );
 }
 
 async fn send_asset(client: &Client, asset: &Asset, path: &Path, contents: &[u8], named: bool) -> Result<()> {
@@ -512,8 +542,7 @@ async fn send_asset_with_allowed_statuses(
                 false => {
                     let bytes = response.bytes().await?;
                     let body = serde_json::from_slice::<Value>(&bytes)?;
-                    let message = format!("Asset: {body}");
-                    Err(eyre!(message))
+                    Err(AssetRejected { status, body }.into())
                 }
             }
         }
@@ -577,20 +606,15 @@ pub async fn assets_report(client: &Client) -> Result<SetupReport> {
             .has_security_enabled()
             .await
             .wrap_err("Failed to determine security status")?;
-    if serverless {
-        tracing::info!(
-            "Serverless security is always enabled. Skipping bundled security-dependent assets; configure project roles separately."
-        );
-    } else if !security_enabled {
+    if !security_enabled {
         tracing::info!("Security is disabled on the cluster. Security-dependent assets will be skipped.");
     }
-    let supports_security_assets = security_enabled && !serverless;
 
     let mut error_count = 0;
     let mut template_changes = TemplateChanges::default();
 
     for asset in assets {
-        if should_skip_asset(&asset, supports_security_assets) {
+        if should_skip_asset(&asset, security_enabled) {
             tracing::debug!("Skipping security-dependent asset: {}", &asset.name);
             continue;
         }
@@ -628,6 +652,9 @@ pub async fn assets_report(client: &Client) -> Result<SetupReport> {
                             template_changes.record(&asset, name, &contents, *changed);
                         }
                     }
+                    Err(e) if serverless && is_forbidden_security_asset(&asset, &e) => {
+                        warn_forbidden_security_asset(&file_path);
+                    }
                     Err(e) => {
                         tracing::error!("Failed to send asset: {e:?}");
                         report.warnings.push(format!(
@@ -647,14 +674,18 @@ pub async fn assets_report(client: &Client) -> Result<SetupReport> {
             };
             // do something with the file
             tracing::debug!("file.path: {:?}", &path);
-            if let Err(e) = send_asset(client, &asset, &path, &contents, false).await {
-                tracing::error!("Failed to send asset: {e:?}");
-                report.warnings.push(format!(
-                    "Failed to install {} asset {}. Check setup logs and rerun setup.",
-                    client,
-                    path.display()
-                ));
-                error_count += 1;
+            match send_asset(client, &asset, &path, &contents, false).await {
+                Err(e) if serverless && is_forbidden_security_asset(&asset, &e) => warn_forbidden_security_asset(&path),
+                Err(e) => {
+                    tracing::error!("Failed to send asset: {e:?}");
+                    report.warnings.push(format!(
+                        "Failed to install {} asset {}. Check setup logs and rerun setup.",
+                        client,
+                        path.display()
+                    ));
+                    error_count += 1;
+                }
+                Ok(()) => {}
             }
         } else {
             tracing::error!("Asset not found: {}", &asset.name);

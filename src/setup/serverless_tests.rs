@@ -273,7 +273,7 @@ async fn live_serverless_asset_audit() -> Result<()> {
     let assets = parse_assets_yml(Application::Elasticsearch, &store)?;
     let mut installed = 0;
     let mut simulated = 0;
-    for asset in assets.iter().filter(|asset| !asset.requires_security) {
+    for asset in &assets {
         for (path, _) in store.get_dir_files(&PathBuf::from(format!("elasticsearch/{}", asset.name))) {
             let stem = path.file_stem().unwrap().to_str().unwrap();
             let name = format!("{stem}{}", asset.suffix.as_deref().unwrap_or(""));

@@ -226,6 +226,16 @@ async fn cluster_with_flavor(
     asset_status: StatusCode,
     serverless: bool,
 ) -> MockCluster {
+    cluster_with_role_status(probe_status, probe_body, asset_status, serverless, asset_status).await
+}
+
+async fn cluster_with_role_status(
+    probe_status: StatusCode,
+    probe_body: &'static str,
+    asset_status: StatusCode,
+    serverless: bool,
+    role_status: StatusCode,
+) -> MockCluster {
     let paths = Arc::new(Mutex::new(Vec::new()));
     let requests = paths.clone();
     let app = Router::new().fallback(move |request: Request<Body>| {
@@ -247,8 +257,8 @@ async fn cluster_with_flavor(
                 (probe_status, probe_body)
             } else if path.ends_with("/_mapping") {
                 (StatusCode::OK, "{}")
-            } else if path.starts_with("/_security/") && probe_status == StatusCode::GONE {
-                (StatusCode::GONE, r#"{"error":"unsupported role"}"#)
+            } else if path.starts_with("/_security/role/") && role_status != asset_status {
+                (role_status, r#"{"error":"security_exception"}"#)
             } else {
                 (asset_status, r#"{"acknowledged":true}"#)
             };
@@ -356,7 +366,7 @@ async fn security_probe_preserves_stateful_behavior_and_handles_gone() {
 #[tokio::test]
 async fn setup_installs_assets_and_skips_roles_only_when_needed() {
     for (status, body, expects_roles) in [
-        (StatusCode::GONE, "", false),
+        (StatusCode::GONE, "", true),
         (StatusCode::OK, r#"{"security":{"enabled":false}}"#, false),
         (StatusCode::OK, r#"{"security":{"enabled":true}}"#, true),
         (StatusCode::FORBIDDEN, "", true),
@@ -401,12 +411,43 @@ async fn serverless_metadata_avoids_stateful_security_and_license_apis() {
     esdiag::setup::assets(&mock.client).await.unwrap();
     esdiag::setup::ensure_agent_builder_license(&mock.client).await.unwrap();
     let paths = mock.paths.lock().unwrap();
-    assert!(
-        !paths
-            .iter()
-            .any(|p| p.starts_with("/_security/") || p == "/_xpack/usage" || p.starts_with("/_license"))
-    );
+    assert!(!paths.iter().any(|p| {
+        (p.starts_with("/_security/") && !p.starts_with("/_security/role/"))
+            || p == "/_xpack/usage"
+            || p.starts_with("/_license")
+    }));
+    assert!(paths.iter().any(|p| p.starts_with("/_security/role/esdiag-user")));
     assert!(paths.iter().any(|p| p.starts_with("/_index_template/")));
+}
+
+#[tokio::test]
+async fn forbidden_role_install_warns_only_on_serverless() {
+    let mock = cluster_with_role_status(StatusCode::GONE, "", StatusCode::OK, true, StatusCode::FORBIDDEN).await;
+    let report = esdiag::setup::assets_report(&mock.client).await.unwrap();
+    assert!(report.is_complete(), "unexpected warnings: {:?}", report.warnings);
+    assert!(
+        mock.paths
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|p| p.starts_with("/_security/role/esdiag-user"))
+    );
+    esdiag::setup::assets(&mock.client).await.unwrap();
+
+    let mock = cluster_with_role_status(
+        StatusCode::OK,
+        r#"{"security":{"enabled":true}}"#,
+        StatusCode::OK,
+        false,
+        StatusCode::FORBIDDEN,
+    )
+    .await;
+    let report = esdiag::setup::assets_report(&mock.client).await.unwrap();
+    assert!(
+        report.warnings.iter().any(|warning| warning.contains("esdiag-user")),
+        "stateful role rejection must stay visible: {:?}",
+        report.warnings
+    );
 }
 
 #[derive(Default)]

@@ -112,6 +112,7 @@ published release notes, maintenance branches, and tagged history.
 - Kept thread-pool warning thresholds and searchable-snapshot cache headroom settings instead of dropping them.
 - Added a searchable mapping for the cluster flood-stage maximum headroom setting.
 - Added failure-store read access to the bundled diagnostic user role. The role still cannot change failure-store options or retention.
+- Fixed setup skipping the bundled diagnostic user role on Serverless. Setup now installs it and, when the credentials cannot manage roles, logs a warning instead of failing.
 - Fixed `esdiag init` asking to replace the default job it had just created when setting up both collection and processing.
 - Fixed repeated `esdiag setup` runs failing when a bundled Kibana workflow already exists.
 - Fixed incomplete Kibana setup summaries omitting assets installed before a later failure.

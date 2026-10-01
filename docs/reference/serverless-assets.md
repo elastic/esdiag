@@ -18,7 +18,7 @@ security status does not determine deployment compatibility.
 | Item | Finding | Setup behavior |
 | --- | --- | --- |
 | Security usage | `/_xpack/usage` returns HTTP 410; Serverless always has security enabled | Skip the probe on a known Serverless deployment and report security as enabled for HTTP 410. |
-| Bundled role | The stateful role asset is not provisioned on Serverless | Skip security-dependent assets and tell the administrator to configure project roles separately. Authentication remains enabled. |
+| Bundled role | Serverless accepts the bundled `esdiag-user` role through `_security/role` | Install the role. If the setup credentials lack `manage_security` and the project returns HTTP 403, log a warning asking an administrator to create the role and finish the remaining setup. |
 | `esdiag@settings` | `index.lifecycle.prefer_ilm` and `index.lifecycle.name` are unsupported ILM settings | Remove these settings from outgoing Serverless templates. Keep stateful assets unchanged. |
 | Retention | Data stream lifecycle is supported | Preserve `template.lifecycle.data_retention: 30d`. |
 | Kibana space | The project rejects `solution` and a nonempty `disabledFeatures` list | Omit both controls for Serverless. Preserve the space ID, name, description, and appearance. |
@@ -115,14 +115,15 @@ GET /health-impact-esdiag::failures/_search
 
 Inspect `document.source` for the rejected document and `error` for its cause.
 Failure-store retention is separate from the diagnostic stream's retention.
-On stateful clusters, setup gives `esdiag-user` the `read_failure_store`
-privilege on `*-esdiag` streams. Users with this role can read rejected documents
+Setup gives `esdiag-user` the `read_failure_store` privilege on `*-esdiag`
+streams. Users with this role can read rejected documents
 and their errors. They cannot change failure-store options or retention because
 the role does not include `manage_failure_store`.
 
-Run setup with administrator credentials to update an existing role. Serverless
-does not install bundled roles. Configure the read privilege in the project's
-roles instead. See the [failure store documentation](https://www.elastic.co/docs/manage-data/data-store/data-streams/failure-store)
+Run setup with administrator credentials to update an existing role. On
+Serverless, setup credentials without `manage_security` cannot install the role;
+setup logs a warning and an administrator must create `esdiag-user` from the
+bundled definition. See the [failure store documentation](https://www.elastic.co/docs/manage-data/data-store/data-streams/failure-store)
 for permissions and retention.
 
 Indexing failures name the destination returned for each bulk item, including
@@ -194,7 +195,7 @@ fail the command.
 | Elasticsearch ingest pipelines | 1 | `set` processors and `reroute`; installation and simulation |
 | Elasticsearch component templates | 7 | Settings, mappings, metadata, and composition |
 | Elasticsearch index templates | 26 | Settings, mappings, data streams, and composition |
-| Elasticsearch roles | 1 | Skipped on Serverless |
+| Elasticsearch roles | 1 | Installation; HTTP 403 on Serverless is a warning |
 | Kibana spaces | 1 | Creation and update with project-managed controls omitted |
 | Kibana saved objects | 90 | Dashboards, data views, Lens, saved searches, Vega visualizations, links, and tags |
 | Kibana workflows | 1 | Installation and its Elasticsearch authentication and ES|QL request definitions |
