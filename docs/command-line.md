@@ -175,8 +175,8 @@ It stores credentials in `secrets.yml`, not `esdiag.yml`.
 Enter an email address or another diagnostic user identifier. The default is
 `EMAIL` when it holds an email address, then `git config user.email`, then the
 `whoami` login name.
-Invalid yes/no answers, endpoint URLs, and default-job host selections prompt
-again. The default job requires a saved collection host name, not a URL.
+Invalid yes/no answers, endpoint URLs, default-job host selections, and empty
+or mismatched new keystore passwords prompt again. The default job requires a saved collection host name, not a URL.
 Resuming displays the saved workflow, and changing it displays both choices.
 
 Pasted keys are hidden and used to validate Elasticsearch and Kibana before
@@ -188,15 +188,18 @@ only when a usable local key is detected.
 To replace a referenced API key later, run `esdiag keystore update <name> --apikey`
 at a terminal. It prompts for the key without putting it in shell history.
 
-Before configuration begins, an incomplete workflow can continue in the web
-interface. `init` starts `esdiag serve --mode user`, opens `/welcome`, and
-keeps the terminal attached until you stop the server with Ctrl+C. The terminal
-and web flows persist the same user, workflow, host, job, output, and keystore
-state.
+The diagnostic user is the first question, and `init` saves it before
+anything else. An incomplete workflow can then continue in the web interface:
+`init` starts `esdiag serve --mode user`, opens `/welcome`, and keeps the
+terminal attached until you stop the server with Ctrl+C. The web flow starts
+with the saved user. The terminal and web flows persist the same user,
+workflow, host, job, output, and keystore state.
 
 When you select local processing and no stack exists, `init` can start a
 binary-owned core stack. Its approval includes that new stack's required
-assets; declining returns to remote output setup.
+assets; declining returns to remote output setup. After a terminal setup that
+started a stack, `init` asks whether to open the web interface. The default is
+no.
 
 See [Configure ESDiag](setup/configuration.md) for the prompts and paths.
 

@@ -103,3 +103,7 @@ esdiag-local up --upgrade
 The update verifies the release checksum, then replaces a writable regular
 script. It refuses symlinks. Updating the script does not upgrade a running
 stack.
+
+### Windows Subsystem for Linux
+
+esdiag uses Windows browser and clipboard tools under WSL when Windows interoperability is enabled. Passwords are passed to clip.exe through standard input. If Windows tools cannot be launched, esdiag tries available Linux desktop tools and reports browser failures. Clipboard copying still requires the existing confirmation or explicit --copy-password=true option.

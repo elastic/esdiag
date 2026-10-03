@@ -167,9 +167,10 @@ pub async fn page(State(state): State<Arc<ServerState>>, headers: HeaderMap) -> 
     let (_, user_email) = match state.resolve_user_email(&headers) {
         Ok(result) => result,
         Err(err) => {
+            let (status, label) = super::identity_failure(&err);
             return (
-                StatusCode::UNAUTHORIZED,
-                Html(format!("<html><body><h1>Unauthorized</h1><p>{}</p></body></html>", err)),
+                status,
+                Html(format!("<html><body><h1>{label}</h1><p>{err}</p></body></html>")),
             )
                 .into_response();
         }

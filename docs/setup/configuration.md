@@ -63,6 +63,9 @@ of `esdiag init`. It opens `/welcome`, where the same workflow is persisted in
 stages. The keystore password and endpoint API keys use masked form controls
 and are never stored in browser state or `esdiag.yml`.
 
+Submitting each stage updates the current page directly, including when a
+diagnostic user was already configured by terminal setup.
+
 At the Diagnostic Source stage, choose **Add later** to open ESDiag without a
 collection host or source-dependent default job. Return to `/welcome` when you
 are ready to add the source.

@@ -17,7 +17,7 @@ use askama::Template;
 use axum::response::Response;
 use axum::{
     extract::{Query, State},
-    http::{HeaderMap, StatusCode},
+    http::HeaderMap,
     response::{Html, IntoResponse, Redirect},
 };
 use serde::{Deserialize, Deserializer, Serialize, de};
@@ -75,10 +75,11 @@ pub async fn handler(
     let (identity_locked, user_email) = match state.resolve_user_email(&headers) {
         Ok(result) => result,
         Err(err) => {
-            tracing::warn!("Authentication header validation failed: {err}");
+            tracing::warn!("Identity resolution failed: {err}");
+            let (status, label) = super::identity_failure(&err);
             return (
-                StatusCode::UNAUTHORIZED,
-                Html(format!("<html><body><h1>Unauthorized</h1><p>{}</p></body></html>", err)),
+                status,
+                Html(format!("<html><body><h1>{label}</h1><p>{err}</p></body></html>")),
             )
                 .into_response();
         }
@@ -163,10 +164,11 @@ pub async fn advanced_page(
     let (identity_locked, user_email) = match state.resolve_user_email(&headers) {
         Ok(result) => result,
         Err(err) => {
-            tracing::warn!("Authentication header validation failed: {err}");
+            tracing::warn!("Identity resolution failed: {err}");
+            let (status, label) = super::identity_failure(&err);
             return (
-                StatusCode::UNAUTHORIZED,
-                Html(format!("<html><body><h1>Unauthorized</h1><p>{}</p></body></html>", err)),
+                status,
+                Html(format!("<html><body><h1>{label}</h1><p>{err}</p></body></html>")),
             )
                 .into_response();
         }
@@ -248,10 +250,11 @@ async fn build_jobs_page(
     let (identity_locked, user_email) = match state.resolve_user_email(&headers) {
         Ok(result) => result,
         Err(err) => {
-            tracing::warn!("Authentication header validation failed: {err}");
+            tracing::warn!("Identity resolution failed: {err}");
+            let (status, label) = super::identity_failure(&err);
             return (
-                StatusCode::UNAUTHORIZED,
-                Html(format!("<html><body><h1>Unauthorized</h1><p>{}</p></body></html>", err)),
+                status,
+                Html(format!("<html><body><h1>{label}</h1><p>{err}</p></body></html>")),
             )
                 .into_response();
         }

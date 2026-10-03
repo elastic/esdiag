@@ -1,4 +1,4 @@
-use super::{ServerState, get_theme_dark, html_event, signal_event};
+use super::{ServerState, get_theme_dark, html_event, server_event_to_sse, signal_event};
 use crate::{
     client::Client,
     data::{
@@ -13,7 +13,7 @@ use askama::Template;
 use axum::{
     extract::{Form, State},
     http::{HeaderMap, StatusCode},
-    response::{Html, IntoResponse, Response},
+    response::{Html, IntoResponse, Response, Sse},
 };
 use serde::Deserialize;
 use std::{process::Command, sync::Arc, time::Duration};
@@ -203,9 +203,13 @@ pub(crate) async fn save_default_job(
 async fn refresh(state: &Arc<ServerState>, message: String) -> Response {
     match render_panel(state, message).await {
         Ok(html) => {
-            state.publish_event(html_event(html));
-            state.publish_event(signal_event(r#"{"_welcomeProvisioning":false}"#));
-            StatusCode::NO_CONTENT.into_response()
+            // Onboarding updates belong to the submitting browser. Deliver them
+            // directly rather than through the owner-filtered shared event bus.
+            Sse::new(futures::stream::iter([
+                server_event_to_sse(html_event(html)),
+                server_event_to_sse(signal_event(r#"{"_welcomeProvisioning":false}"#)),
+            ]))
+            .into_response()
         }
         Err(err) => {
             tracing::error!("Failed to render web onboarding stage: {err}");
@@ -917,6 +921,33 @@ mod tests {
         assert_eq!(journey_model(&state).await.stage, WelcomeStage::Output);
         authenticate("password").expect("create keystore");
         assert_eq!(journey_model(&state).await.stage, WelcomeStage::Output);
+    }
+
+    #[tokio::test]
+    async fn identity_submission_returns_next_step_without_an_event_subscription() {
+        let _env = crate::TestEnv::new();
+        save_user("operator@example.com".to_string()).expect("save configured user");
+        let state = test_server_state();
+        let response = super::save_identity(
+            axum::extract::State(state),
+            axum::extract::Form(super::IdentityForm {
+                user: "operator@example.com".to_string(),
+                workflow: "process-existing".to_string(),
+            }),
+        )
+        .await;
+
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+        assert_eq!(response.headers()["content-type"], "text/event-stream");
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("read onboarding response");
+        let body = String::from_utf8(body.to_vec()).expect("UTF-8 response");
+        assert!(body.contains("event: datastar-patch-elements"));
+        assert!(body.contains("Diagnostic Cluster"));
+        assert!(body.contains("operator@example.com"));
+        assert!(body.contains("event: datastar-patch-signals"));
+        assert!(body.contains(r#""_welcomeProvisioning":false"#));
     }
 
     #[tokio::test]

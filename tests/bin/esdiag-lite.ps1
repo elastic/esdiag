@@ -102,12 +102,26 @@ try {
   Assert-True ($global:Requests.Method -contains 'Head') 'upload should check whether a part already exists'
   Assert-True ($global:Requests.Method -contains 'Put') 'upload should send a missing part'
   Assert-True ($global:Requests.Method -contains 'Post') 'upload should finalize the file'
+  $putRequest = $global:Requests | Where-Object Method -EQ 'Put' | Select-Object -Last 1
+  Assert-True ($putRequest.Uri.StartsWith('https://upload.elastic.co/api/uploads/upload-id?part_number=1&')) 'upload URL should retain the upload id and query separator'
 
   $requestCount = $global:Requests.Count
   $global:UploadPartExists = $true
   Assert-True (Invoke-DiagnosticUpload) 'upload should resume when all parts already exist'
   $resumeMethods = $global:Requests[$requestCount..($global:Requests.Count - 1)].Method
   Assert-True (-not ($resumeMethods -contains 'Put')) 'upload should skip existing parts'
+
+  # Use a real child PowerShell process and jobs: mocks cannot validate job
+  # argument serialization, working directories, or child exit statuses.
+  $env:ELASTIC_ES_URL = 'http://127.0.0.1:1'
+  $env:COLLECTION_COUNT = '1'
+  $watchLog = Join-Path $temporaryDirectory 'watch.log'
+  $shell = (Get-Process -Id $PID).Path
+  $watchProcess = Start-Process -FilePath $shell -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ('"{0}"' -f $collector), 'watch', '--archive=none') -WorkingDirectory $temporaryDirectory -RedirectStandardOutput $watchLog -RedirectStandardError (Join-Path $temporaryDirectory 'watch-error.log') -WindowStyle Hidden -Wait -PassThru
+  Assert-Equal 1 $watchProcess.ExitCode 'watch should fail when a child collection fails'
+  $watchOutput = Get-Content -LiteralPath $watchLog -Raw
+  Assert-True ($watchOutput -match 'saving / to') 'watch should pass collect arguments to its child'
+  Assert-True (@(Get-ChildItem -LiteralPath $temporaryDirectory -Directory -Filter 'api-diagnostics-*').Count -eq 1) 'watch should create its diagnostic in the invoking directory'
 
   Write-Host 'esdiag-lite PowerShell tests passed'
 }

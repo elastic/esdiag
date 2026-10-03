@@ -47,7 +47,7 @@ pub async fn download_retained_bundle(
 ) -> impl IntoResponse {
     let (_, request_user) = match state.resolve_user_email(&headers) {
         Ok(result) => result,
-        Err(err) => return (StatusCode::UNAUTHORIZED, err.to_string()).into_response(),
+        Err(err) => return (super::identity_failure(&err).0, err.to_string()).into_response(),
     };
 
     let Some(bundle) = state.retained_bundle(&token).await else {

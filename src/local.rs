@@ -206,6 +206,9 @@ struct LocalState {
     /// `None` asks at an interactive terminal and skips copying otherwise.
     copy_password: Option<bool>,
     has_existing_state: bool,
+    /// Resolved from the host on each start and never written to `.env`,
+    /// where Compose would interpolate `$` in the value.
+    user: Option<String>,
 }
 
 impl LocalState {
@@ -224,6 +227,7 @@ impl LocalState {
             open_browser: true,
             copy_password: None,
             has_existing_state,
+            user: None,
         })
     }
 
@@ -250,6 +254,10 @@ impl LocalState {
         if let Some(level) = options.log_level {
             self.values.insert("LOG_LEVEL".to_string(), level);
         }
+        // Only the full-mode container consumes the user; core mode's native
+        // server reads esdiag.yml itself.
+        self.user = if mode == StackMode::Full { host_user()? } else { None };
+        self.values.remove("ESDIAG_USER");
         self.write()?;
         if let Ok(log) = esdiag::data::last_run_path(esdiag::data::RUN_LOG) {
             eprintln!(
@@ -433,7 +441,7 @@ impl LocalState {
         let compose = format!(
             "name: esdiag-local\nservices:\n  elasticsearch:\n    image: ${{ELASTICSEARCH_IMAGE}}\n    environment:\n      discovery.type: single-node\n      xpack.security.enabled: \"true\"\n      xpack.security.http.ssl.enabled: \"false\"\n      ELASTIC_PASSWORD: ${{ELASTIC_PASSWORD}}\n    ports: [\"127.0.0.1:${{ESDIAG_ELASTICSEARCH_PORT}}:9200\"]\n    volumes: [\"elasticsearch-data:/usr/share/elasticsearch/data\"]\n  kibana:\n    image: ${{KIBANA_IMAGE}}\n    environment:\n      ELASTICSEARCH_HOSTS: http://elasticsearch:9200\n      ELASTICSEARCH_USERNAME: kibana_system\n      ELASTICSEARCH_PASSWORD: ${{KIBANA_SYSTEM_PASSWORD}}\n      XPACK_ENCRYPTEDSAVEDOBJECTS_ENCRYPTIONKEY: ${{KIBANA_ENCRYPTION_KEY}}\n    ports: [\"127.0.0.1:${{ESDIAG_KIBANA_PORT}}:5601\"]\n    volumes: [\"kibana-data:/usr/share/kibana/data\"]\n{full_services}volumes:\n  elasticsearch-data:\n  kibana-data:\n{full_volume}",
             full_services = if full {
-                "  setup:\n    image: ${ESDIAG_IMAGE}\n    profiles: [\"setup\"]\n    environment:\n      ESDIAG_OUTPUT_URL: http://elasticsearch:9200\n      ESDIAG_OUTPUT_APIKEY: ${ESDIAG_OUTPUT_APIKEY}\n      ESDIAG_KIBANA_SPACE: ${ESDIAG_KIBANA_SPACE}\n      ESDIAG_KIBANA_URL: http://kibana:5601\n    command: [\"setup\"]\n  esdiag:\n    image: ${ESDIAG_IMAGE}\n    environment:\n      ESDIAG_MODE: user\n      ESDIAG_CONTAINER_LOCAL_STACK: full\n      ESDIAG_OUTPUT_URL: http://elasticsearch:9200\n      ESDIAG_OUTPUT_APIKEY: ${ESDIAG_OUTPUT_APIKEY}\n      ESDIAG_KIBANA_SPACE: ${ESDIAG_KIBANA_SPACE}\n      ESDIAG_KIBANA_URL: http://kibana:5601\n      ESDIAG_KIBANA_INTERNAL_URL: http://kibana:5601\n      ESDIAG_KIBANA_PUBLIC_URL: ${ESDIAG_KIBANA_PUBLIC_URL}\n    command: [\"serve\"]\n    ports: [\"127.0.0.1:${ESDIAG_PORT}:2501\"]\n    volumes: [\"esdiag-data:/root/.esdiag\"]\n"
+                "  setup:\n    image: ${ESDIAG_IMAGE}\n    profiles: [\"setup\"]\n    environment:\n      ESDIAG_OUTPUT_URL: http://elasticsearch:9200\n      ESDIAG_OUTPUT_APIKEY: ${ESDIAG_OUTPUT_APIKEY}\n      ESDIAG_KIBANA_SPACE: ${ESDIAG_KIBANA_SPACE}\n      ESDIAG_KIBANA_URL: http://kibana:5601\n    command: [\"setup\"]\n  esdiag:\n    image: ${ESDIAG_IMAGE}\n    environment:\n      ESDIAG_MODE: user\n      ESDIAG_CONTAINER_LOCAL_STACK: full\n      ESDIAG_OUTPUT_URL: http://elasticsearch:9200\n      ESDIAG_OUTPUT_APIKEY: ${ESDIAG_OUTPUT_APIKEY}\n      ESDIAG_KIBANA_SPACE: ${ESDIAG_KIBANA_SPACE}\n      ESDIAG_KIBANA_URL: http://kibana:5601\n      ESDIAG_KIBANA_INTERNAL_URL: http://kibana:5601\n      ESDIAG_KIBANA_PUBLIC_URL: ${ESDIAG_KIBANA_PUBLIC_URL}\n      ESDIAG_USER: ${ESDIAG_USER:-}\n    command: [\"serve\"]\n    ports: [\"127.0.0.1:${ESDIAG_PORT}:2501\"]\n    volumes: [\"esdiag-data:/root/.esdiag\"]\n"
             } else {
                 ""
             },
@@ -671,6 +679,9 @@ impl LocalState {
 
     fn restart(&mut self, services: Vec<String>) -> Result<()> {
         self.runtime = Some(detect_runtime(None)?);
+        if self.active_mode() == StackMode::Full && services.iter().any(|service| service == "esdiag") {
+            self.user = host_user()?;
+        }
         for service in services {
             if service == "esdiag" && self.values.get("STACK_MODE").map(String::as_str) == Some("core") {
                 self.start_native_service()?;
@@ -749,20 +760,7 @@ impl LocalState {
             eprintln!("Sign in to Kibana as `elastic`; `esdiag local secrets password` prints the password.");
         }
         let url = format!("{}{path}", self.esdiag_url());
-        #[cfg(target_os = "macos")]
-        let opener = Command::new("open")
-            .arg(&url)
-            .stdout(Stdio::null())
-            .stderr(Stdio::inherit())
-            .status();
-        #[cfg(target_os = "linux")]
-        let opener = Command::new("xdg-open")
-            .arg(&url)
-            .stdout(Stdio::null())
-            .stderr(Stdio::inherit())
-            .status();
-        #[cfg(any(target_os = "macos", target_os = "linux"))]
-        if let Err(error) = opener {
+        if let Err(error) = esdiag::system_integration::open_browser(&url) {
             eprintln!("Could not open the browser: {error}. Open {url} manually.");
         }
         Ok(())
@@ -776,18 +774,7 @@ impl LocalState {
                 return false;
             }
         };
-        #[cfg(not(any(target_os = "macos", target_os = "linux")))]
-        return false;
-        #[cfg(target_os = "macos")]
-        let copied = write_clipboard("pbcopy", &[], password);
-        #[cfg(target_os = "linux")]
-        let copied = [
-            ("wl-copy", Vec::new()),
-            ("xclip", vec!["-selection", "clipboard"]),
-            ("xsel", vec!["--clipboard", "--input"]),
-        ]
-        .into_iter()
-        .any(|(command, args)| write_clipboard(command, &args, password));
+        let copied = esdiag::system_integration::copy_to_clipboard(password);
         if copied {
             eprintln!("Copied the elastic password to the clipboard");
         }
@@ -801,6 +788,12 @@ impl LocalState {
             .ok_or_else(|| eyre!("Container runtime is not initialized"))?;
         let project = format!("esdiag-local-{}", stable_project_id(&self.dir));
         let mut command = Command::new(runtime);
+        // Compose takes process environment values literally and prefers them
+        // over `--env-file`, so the resolved user always replaces an inherited one.
+        match &self.user {
+            Some(user) => command.env("ESDIAG_USER", user),
+            None => command.env_remove("ESDIAG_USER"),
+        };
         command
             .env("PODMAN_COMPOSE_WARNING_LOGS", "false")
             .args(["compose", "--project-name", &project, "--env-file"])
@@ -992,25 +985,6 @@ fn should_copy_password(
     }
 }
 
-fn write_clipboard(command: &str, arguments: &[&str], value: &str) -> bool {
-    Command::new(command)
-        .args(arguments)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .and_then(|mut child| {
-            use std::io::Write;
-            child
-                .stdin
-                .as_mut()
-                .expect("piped clipboard stdin")
-                .write_all(value.as_bytes())?;
-            child.wait()
-        })
-        .is_ok_and(|status| status.success())
-}
-
 fn process_start_time(pid: i32) -> Result<Option<String>> {
     #[cfg(unix)]
     {
@@ -1059,6 +1033,29 @@ fn detect_runtime(requested: Option<String>) -> Result<String> {
 
 pub fn detected_runtime() -> Option<String> {
     detect_runtime(None).ok()
+}
+
+/// The container cannot read the host's `esdiag.yml`, so the host resolves the user.
+fn host_user() -> Result<Option<String>> {
+    resolve_host_user(std::env::var("ESDIAG_USER").ok(), || {
+        ApplicationConfig::load()
+            .map(|config| config.user)
+            .wrap_err("Could not read the configured user from esdiag.yml")
+    })
+}
+
+fn resolve_host_user(
+    environment: Option<String>,
+    configured: impl FnOnce() -> Result<Option<String>>,
+) -> Result<Option<String>> {
+    let usable = |user: String| {
+        let user = user.trim();
+        (!user.is_empty() && !user.contains(['\n', '\r'])).then(|| user.to_string())
+    };
+    match environment.and_then(usable) {
+        Some(user) => Ok(Some(user)),
+        None => Ok(configured()?.and_then(usable)),
+    }
 }
 
 fn parse_env(contents: &str) -> Result<BTreeMap<String, String>> {
@@ -1139,6 +1136,7 @@ mod tests {
             open_browser: false,
             copy_password: Some(false),
             has_existing_state: false,
+            user: None,
         };
         (directory, state)
     }
@@ -1191,6 +1189,69 @@ mod tests {
         let full = fs::read_to_string(state.dir.join("compose.yml")).expect("read full compose");
         assert!(full.contains("\n  esdiag:\n"));
         assert!(full.contains("esdiag-data"));
+    }
+
+    #[test]
+    fn full_compose_passes_the_host_user_to_the_container() {
+        let (_directory, mut state) = state();
+        state.initialize(StackMode::Full).expect("initialize full state");
+        let full = fs::read_to_string(state.dir.join("compose.yml")).expect("read full compose");
+        assert!(full.contains("      ESDIAG_USER: ${ESDIAG_USER:-}\n    command: [\"serve\"]"));
+    }
+
+    #[test]
+    fn compose_receives_the_resolved_user_through_its_environment() {
+        let (_directory, mut state) = state();
+        state.runtime = Some("docker".to_string());
+        let user_env = |state: &LocalState| {
+            let (_, command) = state.compose_command(&["config"]).expect("compose command");
+            command
+                .get_envs()
+                .find(|(key, _)| *key == "ESDIAG_USER")
+                .map(|(_, value)| value.map(|value| value.to_string_lossy().into_owned()))
+        };
+
+        assert_eq!(user_env(&state), Some(None));
+
+        state.user = Some("ops$team@example.com".to_string());
+        assert_eq!(user_env(&state), Some(Some("ops$team@example.com".to_string())));
+        state.write().expect("write state");
+        let env = fs::read_to_string(state.dir.join(".env")).expect("read state");
+        assert!(!env.contains("ESDIAG_USER"));
+    }
+
+    #[test]
+    fn empty_environment_user_falls_back_to_configured_user() {
+        fn resolve(
+            environment: Option<&str>,
+            configured: impl FnOnce() -> eyre::Result<Option<String>>,
+        ) -> Option<String> {
+            super::resolve_host_user(environment.map(str::to_string), configured).expect("resolve user")
+        }
+        let configured = || Ok(Some("configured@example.com".to_string()));
+
+        assert_eq!(
+            resolve(Some("  "), configured).as_deref(),
+            Some("configured@example.com")
+        );
+        assert_eq!(
+            resolve(Some("env@example.com"), configured).as_deref(),
+            Some("env@example.com")
+        );
+        assert_eq!(resolve(None, || Ok(Some(" ".to_string()))), None);
+    }
+
+    #[test]
+    fn unreadable_configuration_fails_instead_of_clearing_the_user() {
+        let unreadable = || Err(eyre::eyre!("invalid esdiag.yml"));
+
+        assert!(super::resolve_host_user(None, unreadable).is_err());
+        assert_eq!(
+            super::resolve_host_user(Some("env@example.com".to_string()), unreadable)
+                .expect("environment user wins")
+                .as_deref(),
+            Some("env@example.com")
+        );
     }
 
     #[test]

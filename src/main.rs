@@ -2220,15 +2220,21 @@ fn prompt_new_keystore_password() -> Result<String> {
     if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
         return Err(eyre!("A new keystore password requires an interactive terminal."));
     }
-    let password = rpassword::prompt_password("Enter new keystore password: ")?;
-    if password.is_empty() {
-        return Err(eyre!("Keystore password cannot be empty."));
+    prompt_new_password_with(|prompt| Ok(rpassword::prompt_password(prompt)?))
+}
+
+fn prompt_new_password_with(mut prompt: impl FnMut(&str) -> Result<String>) -> Result<String> {
+    loop {
+        let password = prompt("Enter new keystore password: ")?;
+        if password.is_empty() {
+            eprintln!("Keystore password cannot be empty. Try again.");
+            continue;
+        }
+        if prompt("Confirm new keystore password: ")? == password {
+            return Ok(password);
+        }
+        eprintln!("Passwords did not match. Try again.");
     }
-    let confirm = rpassword::prompt_password("Confirm new keystore password: ")?;
-    if password != confirm {
-        return Err(eyre!("Keystore password confirmation did not match."));
-    }
-    Ok(password)
 }
 
 fn unlock_keystore(ttl: Duration) -> Result<std::path::PathBuf> {
@@ -2257,17 +2263,6 @@ async fn run_init_wizard() -> Result<CommandResult> {
 
     let initial = inspect_onboarding()?;
     println!("ESDiag first-run initialization");
-    #[cfg(feature = "server")]
-    if !initial.is_complete() && prompt_confirm("Continue setup in the web interface? [y/N]: ")? {
-        return run_gui_onboarding().await;
-    }
-    let mut output_name_for_defaults = esdiag::data::ApplicationConfig::load()?.output.default;
-    let mut output_url_for_defaults = output_name_for_defaults
-        .as_ref()
-        .and_then(KnownHost::get_known)
-        .and_then(|host| host.concrete_url().map(Url::to_string));
-    let mut most_recent_collect_host = None;
-    let mut started_local_stack = false;
     if initial.is_complete() && !prompt_confirm("A complete configuration already exists. Replace values? [y/N]: ")? {
         return Ok(CommandResult::outcome(initialization_outcome(
             initialization_skill_installation()?,
@@ -2288,6 +2283,21 @@ async fn run_init_wizard() -> Result<CommandResult> {
             &default_diagnostic_user(),
         )?)?;
     }
+
+    #[cfg(feature = "server")]
+    if !initial.is_complete()
+        && !inspect_onboarding()?.is_complete()
+        && prompt_confirm("Continue setup in the web interface? [y/N]: ")?
+    {
+        return run_gui_onboarding().await;
+    }
+    let mut output_name_for_defaults = esdiag::data::ApplicationConfig::load()?.output.default;
+    let mut output_url_for_defaults = output_name_for_defaults
+        .as_ref()
+        .and_then(KnownHost::get_known)
+        .and_then(|host| host.concrete_url().map(Url::to_string));
+    let mut most_recent_collect_host = None;
+    let mut started_local_stack = false;
 
     let workflow = match config.workflow {
         Some(workflow) if prompt_confirm_default_yes(&format!("Resume workflow: {} [Y/n]: ", workflow.as_str()))? => {
@@ -2588,7 +2598,7 @@ async fn run_init_wizard() -> Result<CommandResult> {
         return Err(eyre!("Initialization did not produce a complete reusable workflow."));
     }
     let outcome = initialization_outcome(initialization_skill_installation()?)?;
-    if started_local_stack {
+    if started_local_stack && prompt_confirm("Open the ESDiag web interface? [y/N]: ")? {
         run_local_lifecycle(vec![OsString::from("open")]).await?;
     }
     Ok(CommandResult::outcome(outcome))
@@ -2728,14 +2738,7 @@ async fn run_gui_onboarding() -> Result<CommandResult> {
 
 #[cfg(feature = "server")]
 fn open_gui_onboarding_browser(url: &str) {
-    let browser_result = if cfg!(target_os = "macos") {
-        Command::new("open").arg(url).spawn()
-    } else if cfg!(target_os = "windows") {
-        Command::new("cmd").args(["/C", "start", "", url]).spawn()
-    } else {
-        Command::new("xdg-open").arg(url).spawn()
-    };
-    if let Err(err) = browser_result {
+    if let Err(err) = esdiag::system_integration::open_browser(url) {
         tracing::warn!("ESDiag is running at {url}, but the browser could not be opened: {err}");
     }
 }
@@ -3691,6 +3694,22 @@ mod tests {
         assert_eq!(direct, "https://example.test:9200/path");
         assert_eq!(resolved, direct);
     }
+    #[test]
+    fn new_password_prompt_retries_until_confirmed() {
+        let mut answers = ["", "first", "typo", "second", "second"].into_iter();
+        let mut prompts = Vec::new();
+
+        let password = super::prompt_new_password_with(|prompt| {
+            prompts.push(prompt.to_string());
+            Ok(answers.next().expect("unexpected prompt").to_string())
+        })
+        .expect("password");
+
+        assert_eq!(password, "second");
+        assert_eq!(prompts.len(), 5);
+        assert!(answers.next().is_none());
+    }
+
     #[test]
     fn confirmations_require_yes_or_no() {
         assert_eq!(super::parse_confirmation("claude", false), None);
