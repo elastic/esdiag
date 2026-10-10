@@ -6,11 +6,8 @@
 set -euo pipefail
 
 readonly ESDIAG_VERSION="0.17.0-rc1"
-readonly ELASTIC_VERSION="9.4.2"
+readonly ELASTIC_VERSION="9.5.5"
 readonly STATE_SCHEMA_VERSION="3"
-readonly DEFAULT_ESDIAG_IMAGE="docker.elastic.co/esdiag/esdiag:${ESDIAG_VERSION}"
-readonly DEFAULT_ES_IMAGE="docker.elastic.co/elasticsearch/elasticsearch:${ELASTIC_VERSION}"
-readonly DEFAULT_KIBANA_IMAGE="docker.elastic.co/kibana/kibana:${ELASTIC_VERSION}"
 readonly UPDATE_SCRIPT_URL="https://github.com/elastic/esdiag/releases/latest/download/esdiag-local"
 readonly UPDATE_CHECKSUM_URL="https://github.com/elastic/esdiag/releases/latest/download/esdiag-local.sha256"
 
@@ -21,7 +18,7 @@ compose=()
 pull_policy="always"
 open_browser=true
 copy_password=ask
-upgrade=false
+refresh_images=false
 force=false
 stack_mode="auto"
 resolved_stack_mode=""
@@ -61,6 +58,7 @@ Usage: ${command_name} <command> [options]
 
 Commands:
   up        Configure and start the local stack
+  upgrade   Move an existing stack to this script's image versions
   down      Stop containers while retaining data and credentials
   restart   Recreate one or more services
   status    Show container and endpoint status
@@ -82,15 +80,14 @@ Options:
   --image IMAGE              Override the ESDiag image
   --esdiag-registry URL      Override the ESDiag image registry
   --elastic-registry URL     Override the Elastic image registry
-  --esdiag-version VERSION   Override the ESDiag image version
-  --elastic-version VERSION  Override Elasticsearch and Kibana versions
+  --esdiag-version VERSION   ESDiag image version for a new stack or upgrade
+  --elastic-version VERSION  Elasticsearch and Kibana version for a new stack or upgrade
   --log-level FILTER         Set the ESDiag log filter (or use LOG_LEVEL)
   --pull always|missing|never Image pull policy
-  --upgrade                  Upgrade existing stack versions transactionally
   --open-browser=false       Do not launch ESDiag after startup
   --copy-password=true|false Copy the Kibana password before launch (asks by default)
   --mount PATH               Make an additional host path available to exec
-  --force                    Confirm destructive reset
+  --force                    Confirm reset or upgrade without asking
 
 Secrets:
   ${command_name} secrets password$(clipboard_example)
@@ -366,8 +363,8 @@ init_state() {
     validate_env
     [[ -f "${state_dir}/.env" ]] || : >"${state_dir}/.env"
     chmod 600 "${state_dir}/.env"
-    selected_esdiag_version=${esdiag_version_override:-$ESDIAG_VERSION}
-    selected_elastic_version=${elastic_version_override:-$ELASTIC_VERSION}
+    selected_esdiag_version=$(env_get STACK_ESDIAG_VERSION 2>/dev/null || printf '%s' "${esdiag_version_override:-$ESDIAG_VERSION}")
+    selected_elastic_version=$(env_get STACK_ELASTIC_VERSION 2>/dev/null || printf '%s' "${elastic_version_override:-$ELASTIC_VERSION}")
     esdiag_registry=${esdiag_registry_override:-${ESDIAG_REGISTRY:-docker.elastic.co}}
     elastic_registry=${elastic_registry_override:-${ELASTIC_CONTAINER_REGISTRY:-docker.elastic.co}}
     esdiag_registry=${esdiag_registry%/}
@@ -376,8 +373,8 @@ init_state() {
     default_es="${elastic_registry}/elasticsearch/elasticsearch:${selected_elastic_version}"
     default_kibana="${elastic_registry}/kibana/kibana:${selected_elastic_version}"
     env_set STATE_SCHEMA_VERSION "$(env_get STATE_SCHEMA_VERSION 2>/dev/null || printf '%s' "$STATE_SCHEMA_VERSION")"
-    env_set STACK_ESDIAG_VERSION "$(env_get STACK_ESDIAG_VERSION 2>/dev/null || printf '%s' "$selected_esdiag_version")"
-    env_set STACK_ELASTIC_VERSION "$(env_get STACK_ELASTIC_VERSION 2>/dev/null || printf '%s' "$selected_elastic_version")"
+    env_set STACK_ESDIAG_VERSION "$selected_esdiag_version"
+    env_set STACK_ELASTIC_VERSION "$selected_elastic_version"
     [[ "$(env_get ELASTIC_SECURITY_ENABLED 2>/dev/null || printf true)" == true ]] || die "Security-disabled state is unsupported; run '${command_name} reset --force'"
     env_set ELASTIC_SECURITY_ENABLED true
     env_set ELASTIC_PASSWORD "$(env_get ELASTIC_PASSWORD 2>/dev/null || random_value)"
@@ -388,10 +385,10 @@ init_state() {
         env_set ESDIAG_IMAGE "$image_override"
     elif [[ -n "${ESDIAG_IMAGE_TAG:-}" ]]; then
         env_set ESDIAG_IMAGE "$ESDIAG_IMAGE_TAG"
-    elif [[ -n "$esdiag_registry_override" || -n "$esdiag_version_override" ]]; then
+    elif [[ -n "$esdiag_registry_override" || "$refresh_images" == true ]]; then
         env_set ESDIAG_IMAGE "$default_esdiag"
     else env_set ESDIAG_IMAGE "$(env_get ESDIAG_IMAGE 2>/dev/null || printf '%s' "$default_esdiag")"; fi
-    if [[ -n "$elastic_registry_override" || -n "$elastic_version_override" ]]; then
+    if [[ -n "$elastic_registry_override" || "$refresh_images" == true ]]; then
         env_set ELASTICSEARCH_IMAGE "$default_es"
         env_set KIBANA_IMAGE "$default_kibana"
     else
@@ -488,22 +485,28 @@ validate_port_availability() {
     return 0
 }
 
-check_versions() {
-    local old_esdiag old_elastic desired_esdiag desired_elastic
-    old_esdiag=$(env_get STACK_ESDIAG_VERSION)
-    old_elastic=$(env_get STACK_ELASTIC_VERSION)
-    desired_esdiag=${esdiag_version_override:-$ESDIAG_VERSION}
-    desired_elastic=${elastic_version_override:-$ELASTIC_VERSION}
-    if [[ "$old_esdiag" != "$desired_esdiag" || "$old_elastic" != "$desired_elastic" ]]; then
-        [[ "$upgrade" == true ]] || die "State uses ESDiag ${old_esdiag}/Elastic ${old_elastic}; run '${command_name} up --upgrade'"
-        if [[ -z "$image_override" && -z "${ESDIAG_IMAGE_TAG:-}" && -z "$esdiag_registry_override" && -z "$esdiag_version_override" ]]; then
-            env_set ESDIAG_IMAGE "$DEFAULT_ESDIAG_IMAGE"
-        fi
-        if [[ -z "$elastic_registry_override" && -z "$elastic_version_override" ]]; then
-            env_set ELASTICSEARCH_IMAGE "$DEFAULT_ES_IMAGE"
-            env_set KIBANA_IMAGE "$DEFAULT_KIBANA_IMAGE"
-        fi
+# Prints the version changes an upgrade to the target versions would make.
+# Core mode runs the native binary, so its ESDiag image version is not listed.
+pending_upgrades() {
+    local target_esdiag="$1" target_elastic="$2" recorded changes=""
+    recorded=$(env_get STACK_ELASTIC_VERSION)
+    [[ "$recorded" != "$target_elastic" ]] && changes="Elastic ${recorded} to ${target_elastic}"
+    recorded=$(env_get STACK_ESDIAG_VERSION)
+    if [[ "$resolved_stack_mode" == full && "$recorded" != "$target_esdiag" ]]; then
+        changes="${changes:+${changes} and }ESDiag ${recorded} to ${target_esdiag}"
     fi
+    printf '%s' "$changes"
+}
+
+warn_version_drift() {
+    local recorded changes
+    recorded=$(env_get STACK_ELASTIC_VERSION)
+    if semver_gt "$recorded" "$ELASTIC_VERSION"; then
+        warn "This stack runs Elastic ${recorded}, which is newer than Elastic ${ELASTIC_VERSION} in this script; run '${command_name} update'"
+        return 0
+    fi
+    changes=$(pending_upgrades "$ESDIAG_VERSION" "$ELASTIC_VERSION")
+    [[ -z "$changes" ]] || warn "This stack can be upgraded from ${changes}; run '${command_name} upgrade'"
 }
 
 pull_images() {
@@ -664,26 +667,38 @@ launch_browser() {
 }
 
 command_up() {
-    local existed=false recorded_mode=""
-    [[ -n "$esdiag_version_override" || -n "$elastic_version_override" ]] && upgrade=true
+    local existed=false recorded_mode="" recorded
     detect_runtime
     validate_state_coupling
     [[ -f "${state_dir}/.env" ]] && existed=true
-    [[ "$existed" == true ]] && recorded_mode=$(env_get STACK_MODE 2>/dev/null || printf full)
+    if [[ "$existed" == true ]]; then
+        recorded_mode=$(env_get STACK_MODE 2>/dev/null || printf full)
+        recorded=$(env_get STACK_ESDIAG_VERSION 2>/dev/null || true)
+        [[ -z "$esdiag_version_override" || "$esdiag_version_override" == "$recorded" ]] ||
+            die "This stack runs ESDiag ${recorded}; change it with '${command_name} upgrade --esdiag-version ${esdiag_version_override}'"
+        recorded=$(env_get STACK_ELASTIC_VERSION 2>/dev/null || true)
+        [[ -z "$elastic_version_override" || "$elastic_version_override" == "$recorded" ]] ||
+            die "This stack runs Elastic ${recorded}; change it with '${command_name} upgrade --elastic-version ${elastic_version_override}'"
+    fi
     resolve_stack_mode
     [[ "$resolved_stack_mode" == full ]] && stop_native_service
     init_state
-    if [[ "$upgrade" == true && "$existed" == true ]]; then
-        upgrade_backup="${state_dir}/.env.pre-upgrade.$$"
-        cp "${state_dir}/.env" "$upgrade_backup"
-        chmod 600 "$upgrade_backup"
-    fi
-    check_versions
+    [[ "$existed" == true ]] && warn_version_drift
     validate_ports
     validate_resources
     [[ "$deployment_initialized" == false ]] && validate_port_availability
     [[ "$recorded_mode" == full && "$resolved_stack_mode" == core ]] && remove_full_mode_services
     pull_images
+    start_services
+    env_set STATE_SCHEMA_VERSION "$STATE_SCHEMA_VERSION"
+    env_set STACK_MODE "$resolved_stack_mode"
+    info "ESDiag ${resolved_stack_mode} stack is ready at http://127.0.0.1:$(env_get ESDIAG_PORT)"
+    [[ "$recorded_mode" != "" && "$recorded_mode" != "$resolved_stack_mode" ]] && info "ESDiag user state is separate between full and core modes; no migration was performed"
+    [[ "$existed" == false ]] && info "Retrieve the Kibana password with: ${command_name} secrets password"
+    launch_browser
+}
+
+start_services() {
     "${compose[@]}" up -d --no-deps elasticsearch
     wait_url "http://127.0.0.1:$(env_get ESDIAG_ELASTICSEARCH_PORT)" "elastic:$(env_get ELASTIC_PASSWORD)"
     configure_security
@@ -697,18 +712,60 @@ command_up() {
     else
         start_native_service
     fi
-    if [[ "$upgrade" == true ]]; then
-        env_set STACK_ESDIAG_VERSION "${esdiag_version_override:-$ESDIAG_VERSION}"
-        env_set STACK_ELASTIC_VERSION "${elastic_version_override:-$ELASTIC_VERSION}"
-        rm -f "$upgrade_backup"
-        upgrade_backup=""
+}
+
+# Upgrades the recorded image versions of an existing stack. A running stack is
+# restarted on the new images; a stopped stack stays stopped.
+command_upgrade() {
+    local target_esdiag target_elastic recorded changes running=false answer
+    [[ -f "${state_dir}/.env" ]] || die "No local stack exists at ${state_dir}; start one with '${command_name} up'"
+    validate_env
+    resolved_stack_mode=$(env_get STACK_MODE 2>/dev/null || printf full)
+    [[ "$stack_mode" == auto || "$stack_mode" == "$resolved_stack_mode" ]] ||
+        die "upgrade keeps the current stack mode; change modes with '${command_name} up --stack=${stack_mode}'"
+    [[ "$resolved_stack_mode" != core ]] || native_esdiag >/dev/null ||
+        die "Upgrading a core-mode stack requires an ESDiag ${ESDIAG_VERSION} binary in PATH; install it, then retry"
+    target_esdiag=${esdiag_version_override:-$ESDIAG_VERSION}
+    target_elastic=${elastic_version_override:-$ELASTIC_VERSION}
+    recorded=$(env_get STACK_ELASTIC_VERSION)
+    semver_gt "$recorded" "$target_elastic" &&
+        die "This stack runs Elastic ${recorded}, which is newer than Elastic ${target_elastic}. Elasticsearch cannot be downgraded; run '${command_name} update' or '${command_name} reset --force'"
+    changes=$(pending_upgrades "$target_esdiag" "$target_elastic")
+    if [[ -z "$changes" ]]; then
+        info "This stack already runs Elastic ${target_elastic}"
+        return 0
     fi
-    env_set STATE_SCHEMA_VERSION "$STATE_SCHEMA_VERSION"
-    env_set STACK_MODE "$resolved_stack_mode"
-    info "ESDiag ${resolved_stack_mode} stack is ready at http://127.0.0.1:$(env_get ESDIAG_PORT)"
-    [[ "$recorded_mode" != "" && "$recorded_mode" != "$resolved_stack_mode" ]] && info "ESDiag user state is separate between full and core modes; no migration was performed"
-    [[ "$existed" == false ]] && info "Retrieve the Kibana password with: ${command_name} secrets password"
-    launch_browser
+    if [[ "$force" != true ]]; then
+        [[ -t 0 && -t 2 ]] || die "upgrade requires --force in non-interactive use"
+        printf 'Upgrade the local stack from %s? Elasticsearch data cannot be downgraded afterward. [y/N] ' "$changes" >&2
+        read -r answer || answer=n
+        case "$answer" in [yY] | [yY][eE][sS]) ;; *) die "Upgrade cancelled" ;; esac
+    fi
+    detect_runtime
+    validate_state_coupling
+    service_running elasticsearch && running=true
+    upgrade_backup="${state_dir}/.env.pre-upgrade.$$"
+    cp "${state_dir}/.env" "$upgrade_backup"
+    chmod 600 "$upgrade_backup"
+    env_set STACK_ESDIAG_VERSION "$target_esdiag"
+    env_set STACK_ELASTIC_VERSION "$target_elastic"
+    refresh_images=true
+    init_state
+    info "Pulling images for ${changes}"
+    pull_images
+    # Elasticsearch may rewrite its data once it starts on the new image, so the
+    # previous versions are no longer a safe recovery point after this.
+    rm -f "$upgrade_backup"
+    upgrade_backup=""
+    if [[ "$running" == true ]]; then
+        info "Upgrading the running stack from ${changes}"
+        validate_ports
+        start_services
+        env_set STATE_SCHEMA_VERSION "$STATE_SCHEMA_VERSION"
+        info "ESDiag ${resolved_stack_mode} stack is ready at http://127.0.0.1:$(env_get ESDIAG_PORT)"
+    else
+        info "Upgraded the stopped stack from ${changes}; '${command_name} up' starts it on the new versions"
+    fi
 }
 
 command_down() {
@@ -876,13 +933,36 @@ command_reset() {
     rm -rf "${state_dir}"
 }
 
+# Follows SemVer 2.0.0 precedence; build metadata is ignored.
 semver_gt() {
-    local left="${1%%-*}" right="${2%%-*}" l1 l2 l3 r1 r2 r3
-    IFS=. read -r l1 l2 l3 <<<"$left"
-    IFS=. read -r r1 r2 r3 <<<"$right"
+    local LC_ALL=C left="${1%%+*}" right="${2%%+*}" left_tag="" right_tag="" l1 l2 l3 r1 r2 r3 i a b
+    local -a left_ids right_ids
+    [[ "$left" == *-* ]] && left_tag="${left#*-}"
+    [[ "$right" == *-* ]] && right_tag="${right#*-}"
+    IFS=. read -r l1 l2 l3 <<<"${left%%-*}"
+    IFS=. read -r r1 r2 r3 <<<"${right%%-*}"
     [[ "$l1" =~ ^[0-9]+$ && "$l2" =~ ^[0-9]+$ && "$l3" =~ ^[0-9]+$ ]] || return 1
     [[ "$r1" =~ ^[0-9]+$ && "$r2" =~ ^[0-9]+$ && "$r3" =~ ^[0-9]+$ ]] || return 1
-    ((l1 > r1)) || ((l1 == r1 && l2 > r2)) || ((l1 == r1 && l2 == r2 && l3 > r3))
+    ((10#$l1 != 10#$r1)) && { ((10#$l1 > 10#$r1)); return; }
+    ((10#$l2 != 10#$r2)) && { ((10#$l2 > 10#$r2)); return; }
+    ((10#$l3 != 10#$r3)) && { ((10#$l3 > 10#$r3)); return; }
+    [[ -n "$right_tag" ]] || return 1
+    [[ -n "$left_tag" ]] || return 0
+    IFS=. read -r -a left_ids <<<"$left_tag"
+    IFS=. read -r -a right_ids <<<"$right_tag"
+    for ((i = 0; i < ${#left_ids[@]} && i < ${#right_ids[@]}; i++)); do
+        a=${left_ids[i]} b=${right_ids[i]}
+        [[ "$a" == "$b" ]] && continue
+        if [[ "$a" =~ ^[0-9]+$ && "$b" =~ ^[0-9]+$ ]]; then
+            ((10#$a > 10#$b))
+            return
+        fi
+        [[ "$a" =~ ^[0-9]+$ ]] && return 1
+        [[ "$b" =~ ^[0-9]+$ ]] && return 0
+        [[ "$a" > "$b" ]]
+        return
+    done
+    ((${#left_ids[@]} > ${#right_ids[@]}))
 }
 
 script_path() {
@@ -926,7 +1006,7 @@ command_update() {
     bash -n "$candidate" || die "Downloaded script failed shell validation; no files changed"
     chmod 755 "$candidate"
     mv "$candidate" "$path"
-    info "Updated to ${latest}. Stack versions are unchanged; run '${command_name} up --upgrade' to upgrade them."
+    info "Updated to ${latest}. Stack versions are unchanged; run '${command_name} upgrade' to upgrade them."
 }
 
 [[ "${BASH_SOURCE[0]}" == "$0" ]] || die "esdiag-local must be executed, not sourced"
@@ -1027,10 +1107,7 @@ while [[ $# -gt 0 ]]; do
         shift
         ;;
     --insecure) die "--insecure is no longer supported; Elastic security is required" ;;
-    --upgrade)
-        upgrade=true
-        shift
-        ;;
+    --upgrade) die "--upgrade was replaced by '${command_name} upgrade'" ;;
     --force)
         force=true
         shift
@@ -1073,7 +1150,7 @@ done
 [[ "$pull_policy" == always || "$pull_policy" == missing || "$pull_policy" == never ]] || die "Pull policy must be always, missing, or never"
 
 case "$command" in
-up) command_up ;; down) command_down ;; restart) command_restart ${remaining[@]+"${remaining[@]}"} ;; status) command_status ;; logs) command_logs ${remaining[@]+"${remaining[@]}"} ;;
+up) command_up ;; upgrade) command_upgrade ;; down) command_down ;; restart) command_restart ${remaining[@]+"${remaining[@]}"} ;; status) command_status ;; logs) command_logs ${remaining[@]+"${remaining[@]}"} ;;
 setup)
     detect_runtime
     validate_state_coupling

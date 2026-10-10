@@ -37,7 +37,7 @@ if [[ "$1" == compose ]]; then
     touch "${FAKE_VOLUMES}/${project}_elasticsearch-data" "${FAKE_VOLUMES}/${project}_kibana-data"
     grep -q '^  esdiag:$' "$compose_file" && touch "${FAKE_VOLUMES}/${project}_esdiag-data"
   fi
-  if [[ "$action" == ps ]]; then printf '%s\n' fixture-container; fi
+  if [[ "$action" == ps && "${FAKE_STOPPED:-false}" != true ]]; then printf '%s\n' fixture-container; fi
   if [[ "$action" == down && "$*" == *--volumes* ]]; then rm -f "${FAKE_VOLUMES}/${project}_elasticsearch-data" "${FAKE_VOLUMES}/${project}_kibana-data" "${FAKE_VOLUMES}/${project}_esdiag-data"; fi
 fi
 exit 0
@@ -232,7 +232,7 @@ cp -R "$tmp/overrides" "$tmp/schema-one"
 sed -i.bak 's/^STATE_SCHEMA_VERSION=.*/STATE_SCHEMA_VERSION=1/' "$tmp/schema-one/.env"
 schema_one_project_id=$(printf '%s' "$tmp/schema-one" | cksum | cut -d' ' -f1)
 touch "$tmp/volumes/esdiag-local-${schema_one_project_id}_elasticsearch-data" "$tmp/volumes/esdiag-local-${schema_one_project_id}_kibana-data"
-run_local up --runtime podman --state-dir "$tmp/schema-one" --pull never --upgrade --open-browser=false
+run_local up --runtime podman --state-dir "$tmp/schema-one" --pull never --open-browser=false
 assert_contains "$tmp/schema-one/.env" 'STATE_SCHEMA_VERSION=3'
 [[ -f "$tmp/volumes/esdiag-local-${schema_one_project_id}_esdiag-data" ]] || fail 'schema migration did not add ESDiag volume'
 rm -f "$tmp/volumes/esdiag-local-${schema_one_project_id}_esdiag-data"
@@ -240,10 +240,74 @@ run_local up --runtime podman --state-dir "$tmp/schema-one" --pull never --open-
 [[ -f "$tmp/volumes/esdiag-local-${schema_one_project_id}_esdiag-data" ]] || fail 'missing ESDiag volume was not restored'
 
 # Script-versus-stack upgrade behavior.
-sed -i.bak 's/^STACK_ESDIAG_VERSION=.*/STACK_ESDIAG_VERSION=0.1.0/' "$tmp/overrides/.env"
-if run_local up --runtime podman --state-dir "$tmp/overrides" --pull never 2>"$tmp/upgrade-error"; then fail 'implicit upgrade accepted'; fi
-assert_contains "$tmp/upgrade-error" 'up --upgrade'
-run_local up --runtime podman --state-dir "$tmp/overrides" --pull never --upgrade --open-browser=false
+pin_old_versions() {
+    sed -i.bak -e 's/^STACK_ESDIAG_VERSION=.*/STACK_ESDIAG_VERSION=0.1.0/' -e 's/^STACK_ELASTIC_VERSION=.*/STACK_ELASTIC_VERSION=9.4.2/' \
+        -e 's#^ELASTICSEARCH_IMAGE=.*#ELASTICSEARCH_IMAGE=docker.elastic.co/elasticsearch/elasticsearch:9.4.2#' \
+        -e 's#^ESDIAG_IMAGE=.*#ESDIAG_IMAGE=docker.elastic.co/esdiag/esdiag:0.1.0#' "$tmp/upgrade/.env"
+}
+elastic_version=$(sed -n 's/^readonly ELASTIC_VERSION="\(.*\)"/\1/p' "$script")
+run_local up --runtime podman --state-dir "$tmp/upgrade" --pull never --open-browser=false
+pin_old_versions
+run_local up --runtime podman --state-dir "$tmp/upgrade" --pull never --open-browser=false 2>"$tmp/drift-warning"
+assert_contains "$tmp/drift-warning" "can be upgraded from Elastic 9.4.2 to ${elastic_version} and ESDiag 0.1.0 to 0.17.0-rc1"
+assert_contains "$tmp/drift-warning" 'esdiag-local upgrade'
+assert_contains "$tmp/upgrade/.env" 'ELASTICSEARCH_IMAGE=docker.elastic.co/elasticsearch/elasticsearch:9.4.2'
+if run_local up --runtime podman --state-dir "$tmp/upgrade" --pull never --upgrade 2>"$tmp/upgrade-flag-error"; then fail '--upgrade accepted'; fi
+assert_contains "$tmp/upgrade-flag-error" "replaced by 'esdiag-local upgrade'"
+if run_local up --runtime podman --state-dir "$tmp/upgrade" --pull never --elastic-version "$elastic_version" 2>"$tmp/up-version-error"; then fail 'up changed an existing version'; fi
+assert_contains "$tmp/up-version-error" "upgrade --elastic-version ${elastic_version}"
+if run_local upgrade --runtime podman --state-dir "$tmp/upgrade" --pull never </dev/null 2>"$tmp/upgrade-confirm-error"; then fail 'upgrade lacked confirmation'; fi
+assert_contains "$tmp/upgrade-confirm-error" 'requires --force'
+assert_contains "$tmp/upgrade/.env" 'STACK_ELASTIC_VERSION=9.4.2'
+
+: >"$FAKE_LOG"
+FAKE_STOPPED=true run_local upgrade --runtime podman --state-dir "$tmp/upgrade" --pull never --force 2>"$tmp/upgrade-stopped"
+assert_contains "$tmp/upgrade-stopped" 'Upgraded the stopped stack'
+assert_contains "$tmp/upgrade/.env" "STACK_ELASTIC_VERSION=${elastic_version}"
+assert_contains "$tmp/upgrade/.env" "ELASTICSEARCH_IMAGE=docker.elastic.co/elasticsearch/elasticsearch:${elastic_version}"
+assert_contains "$tmp/upgrade/.env" "KIBANA_IMAGE=docker.elastic.co/kibana/kibana:${elastic_version}"
+assert_contains "$tmp/upgrade/.env" 'ESDIAG_IMAGE=docker.elastic.co/esdiag/esdiag:0.17.0-rc1'
+assert_not_contains "$FAKE_LOG" 'up -d'
+! compgen -G "$tmp/upgrade/.env.pre-upgrade.*" >/dev/null || fail 'upgrade left a state backup'
+
+pin_old_versions
+: >"$FAKE_LOG"
+run_local upgrade --runtime podman --state-dir "$tmp/upgrade" --pull never --force 2>"$tmp/upgrade-running"
+assert_contains "$FAKE_LOG" 'up -d --no-deps elasticsearch'
+assert_contains "$FAKE_LOG" 'up -d --no-deps esdiag'
+assert_contains "$tmp/upgrade-running" 'stack is ready'
+assert_contains "$tmp/upgrade/.env" "STACK_ELASTIC_VERSION=${elastic_version}"
+
+run_local upgrade --runtime podman --state-dir "$tmp/upgrade" --pull never 2>"$tmp/upgrade-current" </dev/null
+assert_contains "$tmp/upgrade-current" 'already runs'
+sed -i.bak 's/^STACK_ELASTIC_VERSION=.*/STACK_ELASTIC_VERSION=99.0.0/' "$tmp/upgrade/.env"
+if run_local upgrade --runtime podman --state-dir "$tmp/upgrade" --pull never --force 2>"$tmp/downgrade-error"; then fail 'downgrade accepted'; fi
+assert_contains "$tmp/downgrade-error" 'cannot be downgraded'
+sed -i.bak 's/^STACK_ELASTIC_VERSION=.*/STACK_ELASTIC_VERSION=9.6.0/' "$tmp/upgrade/.env"
+if run_local upgrade --runtime podman --state-dir "$tmp/upgrade" --pull never --force --elastic-version 9.6.0-SNAPSHOT 2>"$tmp/prerelease-error"; then fail 'release-to-prerelease downgrade accepted'; fi
+assert_contains "$tmp/prerelease-error" 'cannot be downgraded'
+semver_cases=$(sed -n '/^semver_gt() {/,/^}/p' "$script")
+bash -c "$semver_cases"'
+chain=(1.0.0-alpha 1.0.0-alpha.1 1.0.0-alpha.beta 1.0.0-beta 1.0.0-beta.2 1.0.0-beta.11 1.0.0-rc.1 1.0.0 1.0.1 1.10.0)
+for ((i = 1; i < ${#chain[@]}; i++)); do
+    semver_gt "${chain[i]}" "${chain[i-1]}" && ! semver_gt "${chain[i-1]}" "${chain[i]}" || exit 1
+done
+semver_gt 0.17.0 0.17.0-rc1 && semver_gt 10.0.0-beta1 9.5.5 && semver_gt 09.0.0 8.0.0 &&
+! semver_gt 9.5.5 9.5.5 && ! semver_gt 1.0.0+build.9 1.0.0+build.1 && ! semver_gt 9.6 9.5.5' || fail 'semver_gt precedence'
+
+PATH="$fake_bin:$PATH" ESDIAG_LOCAL_BINARY="$fake_bin/esdiag" ESDIAG_TEST_MEMORY_MB=8192 ESDIAG_TEST_DISK_MB=8192 \
+    "$script" up --runtime podman --state-dir "$tmp/core-upgrade" --stack=core --pull never --open-browser=false
+sed -i.bak 's/^STACK_ELASTIC_VERSION=.*/STACK_ELASTIC_VERSION=9.4.2/' "$tmp/core-upgrade/.env"
+: >"$FAKE_LOG"
+if FAKE_ESDIAG_VERSION=0.0.0 PATH="$fake_bin:$PATH" ESDIAG_LOCAL_BINARY="$fake_bin/esdiag" \
+    "$script" upgrade --runtime podman --state-dir "$tmp/core-upgrade" --pull never --force 2>"$tmp/core-upgrade-error"; then
+    fail 'core upgrade accepted a mismatched native binary'
+fi
+assert_contains "$tmp/core-upgrade-error" 'requires an ESDiag 0.17.0-rc1 binary'
+assert_contains "$tmp/core-upgrade/.env" 'STACK_ELASTIC_VERSION=9.4.2'
+assert_not_contains "$FAKE_LOG" 'up -d'
+if run_local upgrade --runtime podman --state-dir "$tmp/no-stack" --force 2>"$tmp/no-stack-error"; then fail 'upgrade without state accepted'; fi
+assert_contains "$tmp/no-stack-error" "start one with 'esdiag-local up'"
 
 # Clipboard: skipped without a terminal to ask, copied on request, and opt-out.
 : >"$tmp/clipboard"; : >"$tmp/ui.log"

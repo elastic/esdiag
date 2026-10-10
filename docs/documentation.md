@@ -11,10 +11,13 @@ New users should start with [Set up ESDiag](setup/index.md).
 
 ## Setup
 
-- [Install ESDiag](setup/installation.md)
-- [Configure ESDiag](setup/configuration.md)
-- [Use ESDiag](setup/usage.md)
+- [Collect and share diagnostics](setup/collect-and-share.md)
+- [Run a local stack](setup/local-stack.md)
+- [Use a remote cluster](setup/remote-cluster.md)
+- [Use a Serverless project](setup/serverless.md)
 - [Use a shared ESDiag service](setup/shared-service.md)
+- [Install ESDiag](setup/installation.md)
+- [Use ESDiag from a coding agent](setup/agent-skills.md)
 - [Connect Agent Builder to a local LLM](setup/local-llm.md)
 
 ## Reference

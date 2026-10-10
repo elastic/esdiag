@@ -65,19 +65,23 @@ esdiag keystore update prod-es-apikey --apikey
 
 ## Reference Secrets from hosts.yml
 
-Use `--secret` when adding or updating hosts:
+`host add` references the keystore entry with the same name as the host when one
+exists:
 
 ```bash
-esdiag host add prod-es http://localhost:9200 --app elasticsearch --secret prod-es-apikey
+esdiag keystore add prod-es --apikey
+esdiag host add prod-es http://localhost:9200
 ```
 
-The stored host entry keeps `secret` and omits plaintext auth values.
-
-You can combine secret references with host roles:
+Use `--secret` to reference a differently named entry, or to change the
+reference with `host update`:
 
 ```bash
-esdiag host add prod-es http://localhost:9200 --app elasticsearch --secret prod-es-apikey --roles collect,send
+esdiag host add prod-es http://localhost:9200 --secret prod-es-apikey --roles collect,send
 ```
+
+The stored host entry keeps `secret` and omits plaintext auth values. Passing
+`--apikey` or `--user` with `--password` skips the same-name lookup.
 
 Role values are `collect`, `send`, and `view`.
 
@@ -123,7 +127,7 @@ If you do not use keystore secrets, keep legacy auth fields in `hosts.yml`.
 
 ## Related CLI Arguments
 
-- `esdiag host add|update ... --secret <secret_id>` stores a secret reference instead of plaintext credentials
+- `esdiag host add|update ... --secret <secret_id>` stores a secret reference instead of plaintext credentials; `host add` defaults to the host's own name when that secret exists
 - `esdiag host add|update ... --roles collect,send,view` assigns workflow roles to a host
 - Legacy plaintext basic auth fields in `hosts.yml` use `username`/`password` (CLI alias: `--user`/`--username` with `--password`) and remain read-compatible for migration
 - Legacy plaintext API key auth in `hosts.yml` uses `apikey` and remains read-compatible for migration

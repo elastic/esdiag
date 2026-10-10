@@ -87,10 +87,7 @@ pub const RUN_LOG: &str = "esdiag.log";
 
 /// Path of `filename` inside the `last_run` directory, creating the directory.
 pub fn last_run_path(filename: &str) -> Result<PathBuf> {
-    let path = PathBuf::from(env::get_string("HOME")?)
-        .join(env::get_string("ESDIAG_HOME")?)
-        .join("last_run")
-        .join(filename);
+    let path = env::runtime_config_dir()?.join("last_run").join(filename);
     std::fs::create_dir_all(path.parent().expect("last_run directory"))?;
     Ok(path)
 }

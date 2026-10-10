@@ -23,7 +23,10 @@ use esdiag::{
 use url::Url;
 
 const STATE_SCHEMA_VERSION: &str = "3";
-const ELASTIC_VERSION: &str = "9.4.2";
+const ELASTIC_VERSION: &str = "9.5.5";
+
+#[cfg(windows)]
+mod windows;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum StackMode {
@@ -60,6 +63,7 @@ pub async fn run(args: &[OsString]) -> Result<CliOutcome> {
 
     match command {
         "up" => state.up(options).await?,
+        "upgrade" => state.upgrade(options).await?,
         "down" => state.down()?,
         "restart" => {
             if let Some(level) = options.log_level {
@@ -89,7 +93,7 @@ pub async fn run(args: &[OsString]) -> Result<CliOutcome> {
             return Ok(empty_outcome(command));
         }
         "help" | "--help" | "-h" => {
-            println!("Use `esdiag local <up|down|restart|status|logs|setup|open|auth|secrets|reset>`.");
+            println!("Use `esdiag local <up|upgrade|down|restart|status|logs|setup|open|auth|secrets|reset>`.");
             return Ok(empty_outcome(command));
         }
         _ => return Err(eyre!("Unknown local command: {command}")),
@@ -116,6 +120,8 @@ struct LocalOptions {
     copy_password: Option<bool>,
     start_native_service: bool,
     persist_onboarding_output: bool,
+    /// Not a command-line option; `upgrade` clears it after its own pull.
+    pull_images: bool,
     log_level: Option<String>,
     force: bool,
     remaining: Vec<String>,
@@ -131,6 +137,7 @@ impl LocalOptions {
             copy_password: None,
             start_native_service: true,
             persist_onboarding_output: false,
+            pull_images: true,
             log_level: None,
             force: false,
             remaining: Vec::new(),
@@ -206,6 +213,9 @@ struct LocalState {
     /// `None` asks at an interactive terminal and skips copying otherwise.
     copy_password: Option<bool>,
     has_existing_state: bool,
+    /// Resolved from the host on each start and never written to `.env`,
+    /// where Compose would interpolate `$` in the value.
+    user: Option<String>,
 }
 
 impl LocalState {
@@ -224,10 +234,15 @@ impl LocalState {
             open_browser: true,
             copy_password: None,
             has_existing_state,
+            user: None,
         })
     }
 
     async fn up(&mut self, options: LocalOptions) -> Result<()> {
+        if self.has_existing_state {
+            let mode = self.resolve_mode(options.stack)?;
+            self.warn_version_drift(mode);
+        }
         self.up_inner(options).await.map_err(|error| {
             let message = format!(
                 "Local startup did not complete: {error}. Generated state is retained at {}. Inspect `esdiag local logs --state-dir {}`, then retry `esdiag local up --state-dir {}` or stop with `esdiag local down --state-dir {}`.",
@@ -250,6 +265,10 @@ impl LocalState {
         if let Some(level) = options.log_level {
             self.values.insert("LOG_LEVEL".to_string(), level);
         }
+        // Only the full-mode container consumes the user; core mode's native
+        // server reads esdiag.yml itself.
+        self.user = if mode == StackMode::Full { host_user()? } else { None };
+        self.values.remove("ESDIAG_USER");
         self.write()?;
         if let Ok(log) = esdiag::data::last_run_path(esdiag::data::RUN_LOG) {
             eprintln!(
@@ -260,14 +279,16 @@ impl LocalState {
         if previous_mode == Some(StackMode::Full) && mode == StackMode::Core {
             self.compose_logged("Stopping the previous full-mode stack", &["down", "--remove-orphans"])?;
         }
-        let version = self
-            .required("STACK_ELASTIC_VERSION")
-            .unwrap_or(ELASTIC_VERSION)
-            .to_string();
-        self.compose_logged(
-            &format!("Pulling Elasticsearch and Kibana {version} images"),
-            &["pull", "elasticsearch", "kibana"],
-        )?;
+        if options.pull_images {
+            let version = self
+                .required("STACK_ELASTIC_VERSION")
+                .unwrap_or(ELASTIC_VERSION)
+                .to_string();
+            self.compose_logged(
+                &format!("Pulling Elasticsearch and Kibana {version} images"),
+                &["pull", "elasticsearch", "kibana"],
+            )?;
+        }
         self.compose_logged(
             "Starting Elasticsearch and Kibana",
             &["up", "-d", "elasticsearch", "kibana"],
@@ -308,6 +329,130 @@ impl LocalState {
             self.open_browser_to("/welcome")?;
         }
         Ok(())
+    }
+
+    /// Upgrades the recorded image versions of an existing stack. A running
+    /// stack is restarted on the new images; a stopped stack stays stopped.
+    async fn upgrade(&mut self, mut options: LocalOptions) -> Result<()> {
+        if !self.has_existing_state {
+            return Err(eyre!(
+                "No local stack exists at {}; start one with `esdiag local up`",
+                self.dir.display()
+            ));
+        }
+        if options.stack != StackMode::Auto {
+            return Err(eyre!(
+                "`esdiag local upgrade` keeps the current stack mode; change modes with `esdiag local up --stack=<mode>`"
+            ));
+        }
+        let mode = self.active_mode();
+        if let Some(recorded) = self.newer_recorded_elastic() {
+            return Err(eyre!(
+                "This local stack runs Elastic {recorded}, which is newer than Elastic {ELASTIC_VERSION} in this ESDiag binary. Elasticsearch cannot be downgraded; install a newer ESDiag binary or run `esdiag local reset --force` to start over."
+            ));
+        }
+        let changes = self.pending_upgrades(mode);
+        if changes.is_empty() {
+            eprintln!("The local stack already runs Elastic {ELASTIC_VERSION}.");
+            return Ok(());
+        }
+        let changes = changes.join(" and ");
+        let interactive = std::io::stdin().is_terminal() && std::io::stderr().is_terminal();
+        upgrade_confirmed(options.force, interactive, || {
+            confirm_on_stderr(
+                &format!(
+                    "Upgrade the local stack from {changes}? Elasticsearch data cannot be downgraded afterward. [y/N]: "
+                ),
+                false,
+            )
+        })?;
+
+        self.runtime = Some(detect_runtime(options.runtime.clone())?);
+        self.validate_state_coupling()?;
+        let running = self.service_running("elasticsearch")?;
+        let previous = self.values.clone();
+        self.record_current_versions();
+        self.write()?;
+        self.write_compose(mode)?;
+        let mut pull = vec!["pull", "elasticsearch", "kibana"];
+        if mode == StackMode::Full {
+            pull.push("esdiag");
+        }
+        if let Err(error) = self.compose_logged(&format!("Pulling images for {changes}"), &pull) {
+            self.values = previous;
+            self.write()?;
+            return Err(error.wrap_err("The upgrade did not start; the previous versions remain recorded"));
+        }
+
+        if running {
+            progress(&format!("Upgrading the running local stack from {changes}"));
+            options.stack = mode;
+            options.open_browser = false;
+            options.copy_password = Some(false);
+            options.persist_onboarding_output = false;
+            options.pull_images = false;
+            options.start_native_service = mode == StackMode::Core && self.native_service_state() == "running";
+            self.up(options).await
+        } else {
+            eprintln!(
+                "Upgraded the stopped local stack from {changes}. `esdiag local up` starts it on the new versions."
+            );
+            Ok(())
+        }
+    }
+
+    fn warn_version_drift(&self, mode: StackMode) {
+        if let Some(recorded) = self.newer_recorded_elastic() {
+            eprintln!(
+                "Warning: this local stack runs Elastic {recorded}, which is newer than Elastic {ELASTIC_VERSION} in this ESDiag binary. Install a newer ESDiag binary."
+            );
+            return;
+        }
+        let changes = self.pending_upgrades(mode);
+        if !changes.is_empty() {
+            eprintln!(
+                "Warning: this local stack can be upgraded from {}. Run `esdiag local upgrade` to upgrade it.",
+                changes.join(" and ")
+            );
+        }
+    }
+
+    fn newer_recorded_elastic(&self) -> Option<&str> {
+        self.values
+            .get("STACK_ELASTIC_VERSION")
+            .map(String::as_str)
+            .filter(|recorded| is_newer_version(recorded, ELASTIC_VERSION))
+    }
+
+    /// Core mode runs the native binary, so its recorded ESDiag image version
+    /// is not an upgrade the user needs to approve.
+    fn pending_upgrades(&self, mode: StackMode) -> Vec<String> {
+        let mut changes = Vec::new();
+        if let Some(recorded) = self.values.get("STACK_ELASTIC_VERSION")
+            && recorded != ELASTIC_VERSION
+        {
+            changes.push(format!("Elastic {recorded} to {ELASTIC_VERSION}"));
+        }
+        let esdiag_version = env!("CARGO_PKG_VERSION");
+        if mode == StackMode::Full
+            && let Some(recorded) = self.values.get("STACK_ESDIAG_VERSION")
+            && recorded != esdiag_version
+        {
+            changes.push(format!("ESDiag {recorded} to {esdiag_version}"));
+        }
+        changes
+    }
+
+    fn record_current_versions(&mut self) {
+        for (key, value) in [
+            ("STACK_ELASTIC_VERSION", ELASTIC_VERSION.to_string()),
+            ("STACK_ESDIAG_VERSION", env!("CARGO_PKG_VERSION").to_string()),
+            ("ELASTICSEARCH_IMAGE", elasticsearch_image()),
+            ("KIBANA_IMAGE", kibana_image()),
+            ("ESDIAG_IMAGE", esdiag_image()),
+        ] {
+            self.values.insert(key.to_string(), value);
+        }
     }
 
     fn resolve_mode(&self, requested: StackMode) -> Result<StackMode> {
@@ -389,15 +534,9 @@ impl LocalState {
         self.value("KIBANA_SYSTEM_PASSWORD", &random_secret());
         self.value("KIBANA_ENCRYPTION_KEY", &random_secret());
         self.value("ESDIAG_OUTPUT_APIKEY", "pending");
-        self.value(
-            "ELASTICSEARCH_IMAGE",
-            &format!("docker.elastic.co/elasticsearch/elasticsearch:{ELASTIC_VERSION}"),
-        );
-        self.value(
-            "KIBANA_IMAGE",
-            &format!("docker.elastic.co/kibana/kibana:{ELASTIC_VERSION}"),
-        );
-        self.value("ESDIAG_IMAGE", &format!("docker.elastic.co/esdiag/esdiag:{version}"));
+        self.value("ELASTICSEARCH_IMAGE", &elasticsearch_image());
+        self.value("KIBANA_IMAGE", &kibana_image());
+        self.value("ESDIAG_IMAGE", &esdiag_image());
         self.value("ESDIAG_ELASTICSEARCH_PORT", "9200");
         self.value("ESDIAG_KIBANA_PORT", "5601");
         self.value("ESDIAG_PORT", "2501");
@@ -433,7 +572,7 @@ impl LocalState {
         let compose = format!(
             "name: esdiag-local\nservices:\n  elasticsearch:\n    image: ${{ELASTICSEARCH_IMAGE}}\n    environment:\n      discovery.type: single-node\n      xpack.security.enabled: \"true\"\n      xpack.security.http.ssl.enabled: \"false\"\n      ELASTIC_PASSWORD: ${{ELASTIC_PASSWORD}}\n    ports: [\"127.0.0.1:${{ESDIAG_ELASTICSEARCH_PORT}}:9200\"]\n    volumes: [\"elasticsearch-data:/usr/share/elasticsearch/data\"]\n  kibana:\n    image: ${{KIBANA_IMAGE}}\n    environment:\n      ELASTICSEARCH_HOSTS: http://elasticsearch:9200\n      ELASTICSEARCH_USERNAME: kibana_system\n      ELASTICSEARCH_PASSWORD: ${{KIBANA_SYSTEM_PASSWORD}}\n      XPACK_ENCRYPTEDSAVEDOBJECTS_ENCRYPTIONKEY: ${{KIBANA_ENCRYPTION_KEY}}\n    ports: [\"127.0.0.1:${{ESDIAG_KIBANA_PORT}}:5601\"]\n    volumes: [\"kibana-data:/usr/share/kibana/data\"]\n{full_services}volumes:\n  elasticsearch-data:\n  kibana-data:\n{full_volume}",
             full_services = if full {
-                "  setup:\n    image: ${ESDIAG_IMAGE}\n    profiles: [\"setup\"]\n    environment:\n      ESDIAG_OUTPUT_URL: http://elasticsearch:9200\n      ESDIAG_OUTPUT_APIKEY: ${ESDIAG_OUTPUT_APIKEY}\n      ESDIAG_KIBANA_SPACE: ${ESDIAG_KIBANA_SPACE}\n      ESDIAG_KIBANA_URL: http://kibana:5601\n    command: [\"setup\"]\n  esdiag:\n    image: ${ESDIAG_IMAGE}\n    environment:\n      ESDIAG_MODE: user\n      ESDIAG_CONTAINER_LOCAL_STACK: full\n      ESDIAG_OUTPUT_URL: http://elasticsearch:9200\n      ESDIAG_OUTPUT_APIKEY: ${ESDIAG_OUTPUT_APIKEY}\n      ESDIAG_KIBANA_SPACE: ${ESDIAG_KIBANA_SPACE}\n      ESDIAG_KIBANA_URL: http://kibana:5601\n      ESDIAG_KIBANA_INTERNAL_URL: http://kibana:5601\n      ESDIAG_KIBANA_PUBLIC_URL: ${ESDIAG_KIBANA_PUBLIC_URL}\n    command: [\"serve\"]\n    ports: [\"127.0.0.1:${ESDIAG_PORT}:2501\"]\n    volumes: [\"esdiag-data:/root/.esdiag\"]\n"
+                "  setup:\n    image: ${ESDIAG_IMAGE}\n    profiles: [\"setup\"]\n    environment:\n      ESDIAG_OUTPUT_URL: http://elasticsearch:9200\n      ESDIAG_OUTPUT_APIKEY: ${ESDIAG_OUTPUT_APIKEY}\n      ESDIAG_KIBANA_SPACE: ${ESDIAG_KIBANA_SPACE}\n      ESDIAG_KIBANA_URL: http://kibana:5601\n    command: [\"setup\"]\n  esdiag:\n    image: ${ESDIAG_IMAGE}\n    environment:\n      ESDIAG_MODE: user\n      ESDIAG_CONTAINER_LOCAL_STACK: full\n      ESDIAG_OUTPUT_URL: http://elasticsearch:9200\n      ESDIAG_OUTPUT_APIKEY: ${ESDIAG_OUTPUT_APIKEY}\n      ESDIAG_KIBANA_SPACE: ${ESDIAG_KIBANA_SPACE}\n      ESDIAG_KIBANA_URL: http://kibana:5601\n      ESDIAG_KIBANA_INTERNAL_URL: http://kibana:5601\n      ESDIAG_KIBANA_PUBLIC_URL: ${ESDIAG_KIBANA_PUBLIC_URL}\n      ESDIAG_USER: ${ESDIAG_USER:-}\n    command: [\"serve\"]\n    ports: [\"127.0.0.1:${ESDIAG_PORT}:2501\"]\n    volumes: [\"esdiag-data:/root/.esdiag\"]\n"
             } else {
                 ""
             },
@@ -550,6 +689,11 @@ impl LocalState {
         let log = self.dir.join("logs/native-serve.log");
         let stdout = fs::File::create(&log)?;
         let mut command = Command::new(std::env::current_exe()?);
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            command.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        }
         // The managed deployment owns its output and viewer configuration.
         // Other environment entries (PATH, HOME, proxy settings) remain available.
         for (key, _) in std::env::vars_os() {
@@ -575,16 +719,22 @@ impl LocalState {
             .stderr(Stdio::from(stdout))
             .spawn()?;
         self.check_native_child(&mut child)?;
+        let started = match process_start_time(child.id() as i32) {
+            Ok(Some(started)) => started,
+            result => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(result
+                    .err()
+                    .unwrap_or_else(|| eyre!("Could not identify managed native ESDiag service")));
+            }
+        };
         write_private(self.dir.join(".native-serve.pid"), &child.id().to_string())?;
         write_private(
             self.dir.join(".native-serve.binary"),
             &std::env::current_exe()?.to_string_lossy(),
         )?;
-        write_private(
-            self.dir.join(".native-serve.started"),
-            &process_start_time(child.id() as i32)?
-                .ok_or_else(|| eyre!("Could not identify managed native ESDiag service"))?,
-        )?;
+        write_private(self.dir.join(".native-serve.started"), &started)?;
         Ok(child)
     }
 
@@ -612,6 +762,12 @@ impl LocalState {
             .map_err(|_| eyre!("Invalid managed native service PID"))?;
         let binary = fs::read_to_string(&binary_path).unwrap_or_default();
         let started = fs::read_to_string(&started_path).unwrap_or_default();
+        #[cfg(windows)]
+        if let Some(process) = windows::Process::open(pid, true)? {
+            if process.matches(&binary, &started)? {
+                process.stop()?;
+            }
+        }
         #[cfg(unix)]
         {
             let command = Command::new("ps")
@@ -646,20 +802,36 @@ impl LocalState {
         let Some(pid) = pid else {
             return "stopped";
         };
-        let command = Command::new("ps")
-            .args(["-p", &pid.to_string(), "-o", "command="])
-            .output()
-            .ok()
-            .filter(|output| output.status.success())
-            .map(|output| String::from_utf8_lossy(&output.stdout).to_string());
-        if !binary.trim().is_empty()
-            && !started.trim().is_empty()
-            && command.is_some_and(|command| command.contains(binary.trim()) && command.contains("serve"))
-            && process_start_time(pid).ok().flatten().as_deref() == Some(started.trim())
+        #[cfg(windows)]
         {
-            "running"
-        } else {
-            "stale"
+            return if windows::Process::open(pid, false)
+                .and_then(|process| process.map(|process| process.matches(&binary, &started)).transpose())
+                .ok()
+                .flatten()
+                == Some(true)
+            {
+                "running"
+            } else {
+                "stale"
+            };
+        }
+        #[cfg(not(windows))]
+        {
+            let command = Command::new("ps")
+                .args(["-p", &pid.to_string(), "-o", "command="])
+                .output()
+                .ok()
+                .filter(|output| output.status.success())
+                .map(|output| String::from_utf8_lossy(&output.stdout).to_string());
+            if !binary.trim().is_empty()
+                && !started.trim().is_empty()
+                && command.is_some_and(|command| command.contains(binary.trim()) && command.contains("serve"))
+                && process_start_time(pid).ok().flatten().as_deref() == Some(started.trim())
+            {
+                "running"
+            } else {
+                "stale"
+            }
         }
     }
 
@@ -671,6 +843,9 @@ impl LocalState {
 
     fn restart(&mut self, services: Vec<String>) -> Result<()> {
         self.runtime = Some(detect_runtime(None)?);
+        if self.active_mode() == StackMode::Full && services.iter().any(|service| service == "esdiag") {
+            self.user = host_user()?;
+        }
         for service in services {
             if service == "esdiag" && self.values.get("STACK_MODE").map(String::as_str) == Some("core") {
                 self.start_native_service()?;
@@ -749,20 +924,7 @@ impl LocalState {
             eprintln!("Sign in to Kibana as `elastic`; `esdiag local secrets password` prints the password.");
         }
         let url = format!("{}{path}", self.esdiag_url());
-        #[cfg(target_os = "macos")]
-        let opener = Command::new("open")
-            .arg(&url)
-            .stdout(Stdio::null())
-            .stderr(Stdio::inherit())
-            .status();
-        #[cfg(target_os = "linux")]
-        let opener = Command::new("xdg-open")
-            .arg(&url)
-            .stdout(Stdio::null())
-            .stderr(Stdio::inherit())
-            .status();
-        #[cfg(any(target_os = "macos", target_os = "linux"))]
-        if let Err(error) = opener {
+        if let Err(error) = esdiag::system_integration::open_browser(&url) {
             eprintln!("Could not open the browser: {error}. Open {url} manually.");
         }
         Ok(())
@@ -776,18 +938,7 @@ impl LocalState {
                 return false;
             }
         };
-        #[cfg(not(any(target_os = "macos", target_os = "linux")))]
-        return false;
-        #[cfg(target_os = "macos")]
-        let copied = write_clipboard("pbcopy", &[], password);
-        #[cfg(target_os = "linux")]
-        let copied = [
-            ("wl-copy", Vec::new()),
-            ("xclip", vec!["-selection", "clipboard"]),
-            ("xsel", vec!["--clipboard", "--input"]),
-        ]
-        .into_iter()
-        .any(|(command, args)| write_clipboard(command, &args, password));
+        let copied = esdiag::system_integration::copy_to_clipboard(password);
         if copied {
             eprintln!("Copied the elastic password to the clipboard");
         }
@@ -801,6 +952,12 @@ impl LocalState {
             .ok_or_else(|| eyre!("Container runtime is not initialized"))?;
         let project = format!("esdiag-local-{}", stable_project_id(&self.dir));
         let mut command = Command::new(runtime);
+        // Compose takes process environment values literally and prefers them
+        // over `--env-file`, so the resolved user always replaces an inherited one.
+        match &self.user {
+            Some(user) => command.env("ESDIAG_USER", user),
+            None => command.env_remove("ESDIAG_USER"),
+        };
         command
             .env("PODMAN_COMPOSE_WARNING_LOGS", "false")
             .args(["compose", "--project-name", &project, "--env-file"])
@@ -842,6 +999,15 @@ impl LocalState {
             .success()
             .then_some(())
             .ok_or_else(|| eyre!("{runtime} compose command failed"))
+    }
+
+    fn service_running(&self, service: &str) -> Result<bool> {
+        let (runtime, mut command) = self.compose_command(&["ps", "-q", service])?;
+        let output = command.stdin(Stdio::null()).stderr(Stdio::null()).output()?;
+        if !output.status.success() {
+            return Err(eyre!("`{runtime} compose ps` failed while checking {service}"));
+        }
+        Ok(!output.stdout.trim_ascii().is_empty())
     }
 
     async fn wait_elasticsearch(&self) -> Result<()> {
@@ -958,6 +1124,25 @@ impl LocalState {
     }
 }
 
+fn elasticsearch_image() -> String {
+    format!("docker.elastic.co/elasticsearch/elasticsearch:{ELASTIC_VERSION}")
+}
+
+fn kibana_image() -> String {
+    format!("docker.elastic.co/kibana/kibana:{ELASTIC_VERSION}")
+}
+
+fn esdiag_image() -> String {
+    format!("docker.elastic.co/esdiag/esdiag:{}", env!("CARGO_PKG_VERSION"))
+}
+
+fn is_newer_version(recorded: &str, current: &str) -> bool {
+    match (semver::Version::parse(recorded), semver::Version::parse(current)) {
+        (Ok(recorded), Ok(current)) => recorded > current,
+        _ => false,
+    }
+}
+
 fn progress(message: &str) {
     eprintln!("{message}...");
 }
@@ -992,23 +1177,18 @@ fn should_copy_password(
     }
 }
 
-fn write_clipboard(command: &str, arguments: &[&str], value: &str) -> bool {
-    Command::new(command)
-        .args(arguments)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .and_then(|mut child| {
-            use std::io::Write;
-            child
-                .stdin
-                .as_mut()
-                .expect("piped clipboard stdin")
-                .write_all(value.as_bytes())?;
-            child.wait()
-        })
-        .is_ok_and(|status| status.success())
+fn upgrade_confirmed(force: bool, interactive: bool, approved: impl FnOnce() -> Result<bool>) -> Result<()> {
+    if force {
+        return Ok(());
+    }
+    if !interactive {
+        return Err(eyre!("`esdiag local upgrade` requires --force in non-interactive use"));
+    }
+    if approved()? {
+        Ok(())
+    } else {
+        Err(eyre!("Upgrade cancelled"))
+    }
 }
 
 fn process_start_time(pid: i32) -> Result<Option<String>> {
@@ -1023,7 +1203,13 @@ fn process_start_time(pid: i32) -> Result<Option<String>> {
             .then(|| String::from_utf8_lossy(&output.stdout).trim().to_string())
             .filter(|started| !started.is_empty()))
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    {
+        windows::Process::open(pid, false)?
+            .map(|process| process.started())
+            .transpose()
+    }
+    #[cfg(not(any(unix, windows)))]
     {
         let _ = pid;
         Ok(None)
@@ -1033,7 +1219,7 @@ fn process_start_time(pid: i32) -> Result<Option<String>> {
 fn default_state_dir() -> Result<PathBuf> {
     let home = std::env::var_os("ESDIAG_LOCAL_DIR")
         .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".esdiag/local")))
+        .or_else(|| esdiag::env::user_home_dir().ok().map(|home| home.join(".esdiag/local")))
         .ok_or_else(|| eyre!("Cannot determine the local stack state directory"))?;
     Ok(home)
 }
@@ -1059,6 +1245,29 @@ fn detect_runtime(requested: Option<String>) -> Result<String> {
 
 pub fn detected_runtime() -> Option<String> {
     detect_runtime(None).ok()
+}
+
+/// The container cannot read the host's `esdiag.yml`, so the host resolves the user.
+fn host_user() -> Result<Option<String>> {
+    resolve_host_user(std::env::var("ESDIAG_USER").ok(), || {
+        ApplicationConfig::load()
+            .map(|config| config.user)
+            .wrap_err("Could not read the configured user from esdiag.yml")
+    })
+}
+
+fn resolve_host_user(
+    environment: Option<String>,
+    configured: impl FnOnce() -> Result<Option<String>>,
+) -> Result<Option<String>> {
+    let usable = |user: String| {
+        let user = user.trim();
+        (!user.is_empty() && !user.contains(['\n', '\r'])).then(|| user.to_string())
+    };
+    match environment.and_then(usable) {
+        Some(user) => Ok(Some(user)),
+        None => Ok(configured()?.and_then(usable)),
+    }
 }
 
 fn parse_env(contents: &str) -> Result<BTreeMap<String, String>> {
@@ -1125,7 +1334,9 @@ fn secure_dir(path: &Path) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{LocalState, StackMode, kibana_is_available, should_copy_password, stable_project_id};
+    use super::{
+        LocalState, StackMode, kibana_is_available, should_copy_password, stable_project_id, upgrade_confirmed,
+    };
     use esdiag::cli_output::CliOutcome;
     use std::{collections::BTreeMap, fs, path::Path};
     use tempfile::TempDir;
@@ -1139,6 +1350,7 @@ mod tests {
             open_browser: false,
             copy_password: Some(false),
             has_existing_state: false,
+            user: None,
         };
         (directory, state)
     }
@@ -1194,6 +1406,69 @@ mod tests {
     }
 
     #[test]
+    fn full_compose_passes_the_host_user_to_the_container() {
+        let (_directory, mut state) = state();
+        state.initialize(StackMode::Full).expect("initialize full state");
+        let full = fs::read_to_string(state.dir.join("compose.yml")).expect("read full compose");
+        assert!(full.contains("      ESDIAG_USER: ${ESDIAG_USER:-}\n    command: [\"serve\"]"));
+    }
+
+    #[test]
+    fn compose_receives_the_resolved_user_through_its_environment() {
+        let (_directory, mut state) = state();
+        state.runtime = Some("docker".to_string());
+        let user_env = |state: &LocalState| {
+            let (_, command) = state.compose_command(&["config"]).expect("compose command");
+            command
+                .get_envs()
+                .find(|(key, _)| *key == "ESDIAG_USER")
+                .map(|(_, value)| value.map(|value| value.to_string_lossy().into_owned()))
+        };
+
+        assert_eq!(user_env(&state), Some(None));
+
+        state.user = Some("ops$team@example.com".to_string());
+        assert_eq!(user_env(&state), Some(Some("ops$team@example.com".to_string())));
+        state.write().expect("write state");
+        let env = fs::read_to_string(state.dir.join(".env")).expect("read state");
+        assert!(!env.contains("ESDIAG_USER"));
+    }
+
+    #[test]
+    fn empty_environment_user_falls_back_to_configured_user() {
+        fn resolve(
+            environment: Option<&str>,
+            configured: impl FnOnce() -> eyre::Result<Option<String>>,
+        ) -> Option<String> {
+            super::resolve_host_user(environment.map(str::to_string), configured).expect("resolve user")
+        }
+        let configured = || Ok(Some("configured@example.com".to_string()));
+
+        assert_eq!(
+            resolve(Some("  "), configured).as_deref(),
+            Some("configured@example.com")
+        );
+        assert_eq!(
+            resolve(Some("env@example.com"), configured).as_deref(),
+            Some("env@example.com")
+        );
+        assert_eq!(resolve(None, || Ok(Some(" ".to_string()))), None);
+    }
+
+    #[test]
+    fn unreadable_configuration_fails_instead_of_clearing_the_user() {
+        let unreadable = || Err(eyre::eyre!("invalid esdiag.yml"));
+
+        assert!(super::resolve_host_user(None, unreadable).is_err());
+        assert_eq!(
+            super::resolve_host_user(Some("env@example.com".to_string()), unreadable)
+                .expect("environment user wins")
+                .as_deref(),
+            Some("env@example.com")
+        );
+    }
+
+    #[test]
     fn existing_mode_is_retained_by_auto() {
         let (_directory, mut state) = state();
         state.values.insert("STACK_MODE".to_string(), "full".to_string());
@@ -1228,6 +1503,108 @@ mod tests {
         assert!(!should_copy_password(None, false, unasked).unwrap());
         assert!(should_copy_password(None, true, || Ok(true)).unwrap());
         assert!(!should_copy_password(None, true, || Ok(false)).unwrap());
+    }
+
+    #[test]
+    fn upgrade_requires_force_or_interactive_approval() {
+        let unasked = || -> eyre::Result<bool> { panic!("--force or a missing terminal does not ask") };
+
+        assert!(upgrade_confirmed(true, false, unasked).is_ok());
+        assert!(upgrade_confirmed(true, true, unasked).is_ok());
+        let error = upgrade_confirmed(false, false, unasked).unwrap_err().to_string();
+        assert!(error.contains("--force"), "{error}");
+        assert!(upgrade_confirmed(false, true, || Ok(true)).is_ok());
+        assert!(upgrade_confirmed(false, true, || Ok(false)).is_err());
+    }
+
+    #[test]
+    fn pending_upgrades_list_only_images_the_mode_runs() {
+        let (_directory, mut state) = state();
+        state.initialize(StackMode::Full).expect("initialize state");
+        assert!(state.pending_upgrades(StackMode::Full).is_empty());
+
+        state.values.insert("STACK_ELASTIC_VERSION".into(), "9.4.2".into());
+        state.values.insert("STACK_ESDIAG_VERSION".into(), "0.16.0".into());
+        let full = state.pending_upgrades(StackMode::Full);
+        assert_eq!(full.len(), 2);
+        assert_eq!(full[0], format!("Elastic 9.4.2 to {}", super::ELASTIC_VERSION));
+        assert!(full[1].starts_with("ESDiag 0.16.0 to "));
+        assert_eq!(
+            state.pending_upgrades(StackMode::Core),
+            vec![format!("Elastic 9.4.2 to {}", super::ELASTIC_VERSION)]
+        );
+    }
+
+    #[test]
+    fn upgrade_records_current_versions_and_images() {
+        let (_directory, mut state) = state();
+        state.values.insert("STACK_ELASTIC_VERSION".into(), "9.4.2".into());
+        state.values.insert(
+            "ELASTICSEARCH_IMAGE".into(),
+            "docker.elastic.co/elasticsearch/elasticsearch:9.4.2".into(),
+        );
+        state
+            .values
+            .insert("ESDIAG_IMAGE".into(), "docker.elastic.co/esdiag/esdiag:0.16.0".into());
+
+        state.record_current_versions();
+
+        let version = super::ELASTIC_VERSION;
+        assert_eq!(state.values["STACK_ELASTIC_VERSION"], version);
+        assert_eq!(
+            state.values["ELASTICSEARCH_IMAGE"],
+            format!("docker.elastic.co/elasticsearch/elasticsearch:{version}")
+        );
+        assert_eq!(
+            state.values["KIBANA_IMAGE"],
+            format!("docker.elastic.co/kibana/kibana:{version}")
+        );
+        assert_eq!(
+            state.values["ESDIAG_IMAGE"],
+            format!("docker.elastic.co/esdiag/esdiag:{}", env!("CARGO_PKG_VERSION"))
+        );
+        assert!(state.pending_upgrades(StackMode::Full).is_empty());
+    }
+
+    #[test]
+    fn newer_recorded_elastic_is_never_an_upgrade_target() {
+        let (_directory, mut state) = state();
+        state.values.insert("STACK_ELASTIC_VERSION".into(), "99.0.0".into());
+        assert_eq!(state.newer_recorded_elastic(), Some("99.0.0"));
+
+        state.values.insert("STACK_ELASTIC_VERSION".into(), "9.4.2".into());
+        assert_eq!(state.newer_recorded_elastic(), None);
+
+        let next_minor = semver::Version::parse(super::ELASTIC_VERSION).expect("release version");
+        let prerelease = format!("{}.{}.0-SNAPSHOT", next_minor.major, next_minor.minor + 1);
+        state.values.insert("STACK_ELASTIC_VERSION".into(), prerelease.clone());
+        assert_eq!(state.newer_recorded_elastic(), Some(prerelease.as_str()));
+        let own_prerelease = format!("{}-SNAPSHOT", super::ELASTIC_VERSION);
+        state.values.insert("STACK_ELASTIC_VERSION".into(), own_prerelease);
+        assert_eq!(state.newer_recorded_elastic(), None);
+    }
+
+    #[test]
+    fn startup_pulls_images_unless_upgrade_already_did() {
+        let options = super::LocalOptions::parse(&[]).expect("parse options");
+        assert!(options.pull_images);
+        assert!(super::LocalOptions::parse(&["--pull-images=false".into()]).is_err());
+    }
+
+    #[test]
+    fn up_upgrade_option_is_rejected() {
+        let error = super::LocalOptions::parse(&["--upgrade".into()])
+            .err()
+            .expect("--upgrade is rejected");
+        assert!(error.to_string().contains("--upgrade"), "{error}");
+    }
+
+    #[tokio::test]
+    async fn upgrade_requires_existing_state() {
+        let (_directory, mut state) = state();
+        let options = super::LocalOptions::parse(&["--force".into()]).expect("parse options");
+        let error = state.upgrade(options).await.unwrap_err().to_string();
+        assert!(error.contains("esdiag local up"), "{error}");
     }
 
     #[test]
@@ -1359,5 +1736,114 @@ mod onboarding_recovery_tests {
         let env = fs::read_to_string(state_dir.join(".env")).unwrap();
         assert!(parse_env(&env).unwrap().contains_key("ELASTIC_PASSWORD"));
         assert!(state_dir.join("compose.yml").exists());
+    }
+
+    /// Records each invocation in `calls`. Elasticsearch reports running while
+    /// a `running` file exists, and pulls fail while a `fail-pull` file exists.
+    /// Starting containers always fails.
+    #[cfg(unix)]
+    fn fake_upgrade_runtime(dir: &Path) -> PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        let runtime = dir.join("runtime");
+        fs::write(
+            &runtime,
+            format!(
+                "#!/bin/sh\ndir='{}'\nprintf '%s\\n' \"$*\" >> \"$dir/calls\"\ncase \"$*\" in\n  'compose version'|'volume inspect '*) exit 0 ;;\n  *' ps -q elasticsearch') [ -f \"$dir/running\" ] && echo container-id; exit 0 ;;\n  *' pull '*) [ -f \"$dir/fail-pull\" ] && exit 1; exit 0 ;;\n  *) exit 1 ;;\nesac\n",
+                dir.display()
+            ),
+        )
+        .unwrap();
+        fs::set_permissions(&runtime, fs::Permissions::from_mode(0o700)).unwrap();
+        runtime
+    }
+
+    #[cfg(unix)]
+    fn old_stack(dir: &Path, mode: &str) -> LocalState {
+        let state_dir = dir.join("state");
+        fs::create_dir_all(&state_dir).unwrap();
+        fs::write(
+            state_dir.join(".env"),
+            format!(
+                "STACK_MODE={mode}\nSTACK_ELASTIC_VERSION=9.4.2\nSTACK_ESDIAG_VERSION=0.16.0\nELASTICSEARCH_IMAGE=docker.elastic.co/elasticsearch/elasticsearch:9.4.2\nKIBANA_IMAGE=docker.elastic.co/kibana/kibana:9.4.2\nESDIAG_IMAGE=docker.elastic.co/esdiag/esdiag:0.16.0\nESDIAG_OUTPUT_APIKEY=pending\nELASTIC_PASSWORD=test-password\n"
+            ),
+        )
+        .unwrap();
+        LocalState::load(state_dir).unwrap()
+    }
+
+    #[cfg(unix)]
+    fn forced_upgrade(runtime: &Path) -> LocalOptions {
+        let mut options = LocalOptions::parse(&["--force".into()]).unwrap();
+        options.runtime = Some(runtime.to_string_lossy().into_owned());
+        options
+    }
+
+    #[cfg(unix)]
+    fn recorded(state: &LocalState) -> BTreeMap<String, String> {
+        parse_env(&fs::read_to_string(state.dir.join(".env")).unwrap()).unwrap()
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn upgrading_a_stopped_stack_records_new_versions_without_starting_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let runtime = fake_upgrade_runtime(dir.path());
+        let mut state = old_stack(dir.path(), "full");
+
+        state.upgrade(forced_upgrade(&runtime)).await.unwrap();
+
+        let env = recorded(&state);
+        assert_eq!(env["STACK_ELASTIC_VERSION"], ELASTIC_VERSION);
+        assert_eq!(env["ELASTICSEARCH_IMAGE"], elasticsearch_image());
+        assert_eq!(env["KIBANA_IMAGE"], kibana_image());
+        assert_eq!(env["STACK_ESDIAG_VERSION"], env!("CARGO_PKG_VERSION"));
+        assert_eq!(env["ESDIAG_IMAGE"], esdiag_image());
+        assert_eq!(env["STACK_MODE"], "full");
+        let calls = fs::read_to_string(dir.path().join("calls")).unwrap();
+        assert!(calls.contains(" pull elasticsearch kibana esdiag"), "{calls}");
+        assert!(!calls.contains(" up "), "a stopped stack was started:\n{calls}");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn failed_upgrade_pull_restores_the_previous_versions() {
+        let dir = tempfile::tempdir().unwrap();
+        let runtime = fake_upgrade_runtime(dir.path());
+        fs::write(dir.path().join("running"), "").unwrap();
+        fs::write(dir.path().join("fail-pull"), "").unwrap();
+        let mut state = old_stack(dir.path(), "full");
+        let before = recorded(&state);
+
+        let error = state.upgrade(forced_upgrade(&runtime)).await.unwrap_err();
+
+        assert!(
+            format!("{error:#}").contains("previous versions remain recorded"),
+            "{error:#}"
+        );
+        assert_eq!(recorded(&state), before);
+        let calls = fs::read_to_string(dir.path().join("calls")).unwrap();
+        assert!(
+            !calls.contains(" up "),
+            "containers restarted after a failed pull:\n{calls}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn upgrading_a_running_stack_pulls_once_and_keeps_new_versions_after_restart() {
+        let dir = tempfile::tempdir().unwrap();
+        let runtime = fake_upgrade_runtime(dir.path());
+        fs::write(dir.path().join("running"), "").unwrap();
+        let mut state = old_stack(dir.path(), "core");
+
+        assert!(state.upgrade(forced_upgrade(&runtime)).await.is_err());
+
+        let calls = fs::read_to_string(dir.path().join("calls")).unwrap();
+        assert_eq!(calls.matches(" pull ").count(), 1, "{calls}");
+        assert!(calls.contains(" pull elasticsearch kibana\n"), "{calls}");
+        assert!(calls.contains(" up -d elasticsearch kibana"), "{calls}");
+        let env = recorded(&state);
+        assert_eq!(env["STACK_ELASTIC_VERSION"], ELASTIC_VERSION);
+        assert_eq!(env["STACK_MODE"], "core");
     }
 }

@@ -13,4 +13,7 @@ RUN ESDIAG_GENERATE_NOTICE=0 cargo build --release
 FROM cgr.dev/chainguard/wolfi-base:latest
 COPY --from=builder /work/target/release/esdiag /usr/bin/esdiag
 
+# Published container ports cannot reach a server bound to loopback.
+ENV ESDIAG_BIND=0.0.0.0
+
 ENTRYPOINT ["/usr/bin/esdiag"]

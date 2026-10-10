@@ -11,6 +11,26 @@ pub static ESDIAG_KIBANA_URL: &str = "http://localhost:5601";
 pub static ESDIAG_KIBANA_DEFAULT_SPACE: &str = "esdiag";
 pub static ESDIAG_KEYSTORE_PASSWORD: &str = "ESDIAG_KEYSTORE_PASSWORD";
 
+/// Native user directory; Windows does not normally define HOME.
+pub fn user_home_dir() -> std::io::Result<std::path::PathBuf> {
+    let variable = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
+    std::env::var_os(variable)
+        .filter(|value| !value.is_empty())
+        .map(std::path::PathBuf::from)
+        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, format!("{variable} not found")))
+}
+
+pub fn runtime_config_dir() -> std::io::Result<std::path::PathBuf> {
+    let path = std::env::var_os("ESDIAG_HOME")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::PathBuf::from(ESDIAG_HOME));
+    if path.is_absolute() {
+        Ok(path)
+    } else {
+        Ok(user_home_dir()?.join(path))
+    }
+}
+
 fn default_int(name: &str) -> Option<usize> {
     match name {
         "ESDIAG_ES_BULK_BYTES" => Some(ESDIAG_ES_BULK_BYTES),
@@ -126,6 +146,28 @@ pub fn kibana_url_with_space(kibana_url: &str, space: Option<&str>) -> String {
 mod tests {
     use super::{append_kibana_space, get_kibana_space};
     use std::sync::Mutex;
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_runtime_paths_do_not_require_home() {
+        let mut env = crate::TestEnv::new();
+        let profile = env.tmp.path().join("windows-profile");
+        env.set_path("USERPROFILE", profile.clone());
+        env.remove("HOME");
+        env.remove("ESDIAG_HOME");
+        assert_eq!(super::user_home_dir().unwrap(), profile);
+        assert_eq!(super::runtime_config_dir().unwrap(), profile.join(".esdiag"));
+        assert_eq!(
+            crate::data::last_run_path("test.log").unwrap(),
+            profile.join(".esdiag/last_run/test.log")
+        );
+        env.set("ESDIAG_HOME", "custom-state");
+        assert_eq!(super::runtime_config_dir().unwrap(), profile.join("custom-state"));
+        let absolute = env.tmp.path().join("absolute-state");
+        env.set_path("ESDIAG_HOME", absolute.clone());
+        env.remove("USERPROFILE");
+        assert_eq!(super::runtime_config_dir().unwrap(), absolute);
+    }
 
     fn env_lock() -> &'static Mutex<()> {
         crate::test_env_lock()

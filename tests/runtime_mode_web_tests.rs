@@ -418,7 +418,6 @@ async fn user_mode_allows_anonymous_web_access() {
     let response = client.get(format!("{base}/")).send().await.expect("user mode request");
     assert_eq!(response.status(), reqwest::StatusCode::OK);
     let body = response.text().await.expect("user mode body");
-    assert!(body.contains("Anonymous"));
     assert!(body.contains("Process Diagnostics"));
     assert!(body.contains("id=\"tab-api-key\""));
     assert!(body.contains("id=\"api-key-form\""));

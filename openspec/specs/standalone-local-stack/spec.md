@@ -185,26 +185,42 @@ the managed host-native ESDiag web service is healthy.
 - **THEN** the script does not remove the persistent data
 
 ### Requirement: Explicit Upgrade Control
-`esdiag-local` MUST retain the versions recorded in existing deployment state and MUST NOT silently change image versions when invoked from a newer script. Changing those versions SHALL require `up --upgrade` or explicit version overrides. A successful script self-update SHALL report that stack versions remain pinned and direct the user to `esdiag-local up --upgrade`.
+`esdiag-local` and `esdiag local` MUST retain the versions recorded in existing deployment state and MUST NOT silently change image versions when invoked from a newer script or binary. Changing those versions SHALL require the `upgrade` command, which MUST ask for `[y/N]` confirmation at an interactive terminal and MUST require `--force` otherwise. `up` MUST NOT accept `--upgrade`, and on existing state it MUST NOT accept version overrides that differ from the recorded versions. A successful script self-update SHALL report that stack versions remain pinned and direct the user to `esdiag-local upgrade`.
 
 #### Scenario: New script finds older state
 - **GIVEN** an existing deployment is pinned to an older compatible image set
-- **AND** the user replaces the script with a newer release
-- **WHEN** the user executes `esdiag-local up` without `--upgrade`
-- **THEN** the existing image versions remain selected
-- **AND** the command explains how to request an upgrade
+- **AND** the user replaces the script or binary with a newer release
+- **WHEN** the user executes `up`
+- **THEN** the existing image versions remain selected and the stack starts
+- **AND** the command warns that the stack can be upgraded with `upgrade`
 
-#### Scenario: Explicit stack upgrade succeeds
-- **GIVEN** a newer script contains new compatible image defaults and an older deployment exists
-- **WHEN** the user executes `esdiag-local up --upgrade`
-- **THEN** the script stages the new configuration, pulls and validates the new images, reruns asset setup, and verifies the deployment
-- **AND** commits the new versions to durable state only after the deployment reaches ready
+#### Scenario: Upgrade requires confirmation
+- **GIVEN** an existing deployment is pinned to older versions
+- **WHEN** the user executes `upgrade` without `--force` and without an interactive terminal, or declines the prompt
+- **THEN** the recorded versions are unchanged
 
-#### Scenario: Explicit stack upgrade fails
+#### Scenario: Running stack upgrade
+- **GIVEN** an older deployment is running
+- **WHEN** the user confirms `upgrade`
+- **THEN** the tool records the new versions, pulls the new images, restarts the services on them, reruns asset setup, and verifies the deployment
+- **AND** the stack keeps its recorded mode
+
+#### Scenario: Stopped stack upgrade
+- **GIVEN** an older deployment is stopped
+- **WHEN** the user confirms `upgrade`
+- **THEN** the tool records the new versions and pulls the new images
+- **AND** the stack remains stopped until the next `up`
+
+#### Scenario: Upgrade image pull fails
 - **GIVEN** an existing deployment has valid prior version state
-- **WHEN** `esdiag-local up --upgrade` fails before the upgraded deployment reaches ready
-- **THEN** the new version state is not committed
-- **AND** the prior version state remains available for recovery with a normal `up`
+- **WHEN** pulling the new images fails during `upgrade`
+- **THEN** the prior version state is restored
+- **AND** no service was restarted on the new images
+
+#### Scenario: Recorded Elastic version is newer
+- **GIVEN** the deployment records a newer Elastic version than the tool ships
+- **WHEN** the user executes `upgrade`
+- **THEN** the command refuses because Elasticsearch data cannot be downgraded
 
 ### Requirement: Secure Local Defaults
 The generated deployment SHALL enable Elastic security, bind host-facing service ports to loopback, protect credential files, and use separate persistent volumes for Elasticsearch and Kibana. Security SHALL NOT be disabled through a command-line option.

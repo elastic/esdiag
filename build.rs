@@ -10,6 +10,15 @@ use zip::write::SimpleFileOptions;
 use std::fs;
 
 fn main() {
+    // Tokio's worker stack setting does not size the main thread used by
+    // Runtime::block_on. Native Windows asset setup exceeds its 1 MiB default.
+    if env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
+        match env::var("CARGO_CFG_TARGET_ENV").as_deref() {
+            Ok("msvc") => println!("cargo:rustc-link-arg-bin=esdiag=/STACK:8388608"),
+            Ok("gnu") => println!("cargo:rustc-link-arg-bin=esdiag=-Wl,--stack,8388608"),
+            _ => {}
+        }
+    }
     println!("cargo:rerun-if-changed=assets");
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=Cargo.toml");
