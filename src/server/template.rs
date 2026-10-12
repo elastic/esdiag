@@ -162,6 +162,7 @@ pub struct KeystoreBootstrapModal {
 pub struct Welcome {
     pub stage: String,
     pub user: String,
+    pub user_locked: bool,
     pub workflow_value: String,
     pub processes_diagnostics: bool,
     pub show_cluster: bool,
@@ -200,6 +201,7 @@ pub struct WelcomePage {
     pub stats: String,
     pub stage: String,
     pub user: String,
+    pub user_locked: bool,
     pub workflow_value: String,
     pub processes_diagnostics: bool,
     pub show_cluster: bool,

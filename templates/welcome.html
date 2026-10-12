@@ -27,8 +27,14 @@
                                 value="{{ user }}"
                                 autocomplete="username"
                                 required
+                                {% if user_locked %}readonly aria-describedby="welcome-user-locked"{% endif %}
                             />
                         </input-group>
+                        {% if user_locked %}
+                        <info-text id="welcome-user-locked" class="margin-after">
+                            Set by <code>ESDIAG_USER</code> or <code>esdiag.yml</code>. Change it there.
+                        </info-text>
+                        {% endif %}
                         <radio-group aria-label="Choose diagnostic tasks">
                             <label>
                                 <input name="workflow" type="radio" value="collect-only" required

@@ -82,15 +82,34 @@ pub(crate) async fn service_mode_page() -> impl IntoResponse {
     )
 }
 
-pub(crate) async fn save_identity(State(state): State<Arc<ServerState>>, Form(form): Form<IdentityForm>) -> Response {
+pub(crate) async fn save_identity(
+    State(state): State<Arc<ServerState>>,
+    headers: HeaderMap,
+    Form(form): Form<IdentityForm>,
+) -> Response {
     let result = workflow_from_form(&form.workflow)
         .and_then(|workflow| {
-            onboarding::save_user(form.user)?;
+            if let Some(user) = user_to_save(&state, &headers, form.user)? {
+                onboarding::save_user(user)?;
+            }
             onboarding::save_workflow(workflow)?;
             Ok(())
         })
         .map_err(|err| err.to_string());
     refresh(&state, result.err().unwrap_or_default()).await
+}
+
+/// A locked identity is ignored in the submitted form. It is saved only when
+/// esdiag.yml has no user yet, so an `ESDIAG_USER` override never replaces it.
+fn user_to_save(state: &ServerState, headers: &HeaderMap, submitted: String) -> eyre::Result<Option<String>> {
+    let identity = state.resolve_identity(headers)?;
+    if !identity.locked {
+        return Ok(Some(submitted));
+    }
+    let configured = ApplicationConfig::load()?
+        .user
+        .is_some_and(|user| !user.trim().is_empty());
+    Ok((!configured).then_some(identity.user))
 }
 
 pub(crate) async fn save_keystore(State(state): State<Arc<ServerState>>, Form(form): Form<KeystoreForm>) -> Response {
@@ -233,6 +252,7 @@ async fn refresh(state: &Arc<ServerState>, message: String) -> Response {
 struct JourneyModel {
     stage: WelcomeStage,
     user: String,
+    user_locked: bool,
     workflow_value: String,
     processes_diagnostics: bool,
     show_cluster: bool,
@@ -276,12 +296,13 @@ struct RuntimeOutputStatus {
 
 async fn render_page(state: &Arc<ServerState>, headers: &HeaderMap, message: String) -> eyre::Result<String> {
     let model = journey_model(state).await?;
-    let (_, request_user) = state.resolve_user_email(headers)?;
+    let (request_locked, request_user) = state.resolve_user_email(headers)?;
     let user = if model.user.is_empty() {
         request_user
     } else {
         model.user.clone()
     };
+    let user_locked = model.user_locked || request_locked;
     let user_initial = user.chars().next().unwrap_or('_').to_ascii_uppercase();
     let keystore_state = state.keystore_page_state().await;
     Ok(WelcomePage {
@@ -291,6 +312,7 @@ async fn render_page(state: &Arc<ServerState>, headers: &HeaderMap, message: Str
         stats: state.get_stats_as_signals().await,
         stage: stage_name(model.stage).to_string(),
         user,
+        user_locked,
         workflow_value: model.workflow_value,
         processes_diagnostics: model.processes_diagnostics,
         show_cluster: model.show_cluster,
@@ -337,6 +359,7 @@ async fn render_panel(state: &Arc<ServerState>, message: String) -> eyre::Result
     Ok(Welcome {
         stage: stage_name(model.stage).to_string(),
         user: model.user,
+        user_locked: model.user_locked,
         workflow_value: model.workflow_value,
         processes_diagnostics: model.processes_diagnostics,
         show_cluster: model.show_cluster,
@@ -372,7 +395,8 @@ async fn journey_model(state: &Arc<ServerState>) -> eyre::Result<JourneyModel> {
     let config = ApplicationConfig::load()
         .map_err(|err| super::ConfigurationError::report("Could not read esdiag.yml for onboarding", err))?;
     let identity = super::resolve_optional_identity(state.runtime_mode)?;
-    let resolved_user = if identity.locked { identity.user } else { String::new() };
+    let user_locked = identity.locked;
+    let resolved_user = if user_locked { identity.user } else { String::new() };
     let (readiness, output_configured) = match onboarding::inspect() {
         Ok(readiness) => {
             let output_configured = readiness.output_configured;
@@ -461,6 +485,7 @@ async fn journey_model(state: &Arc<ServerState>) -> eyre::Result<JourneyModel> {
     Ok(JourneyModel {
         stage,
         user: resolved_user,
+        user_locked,
         workflow_value: workflow.map(workflow_value).unwrap_or_default().to_string(),
         processes_diagnostics,
         show_cluster,
@@ -985,9 +1010,76 @@ mod tests {
         assert!(body.contains(r#"value="env@example.com""#), "{body}");
         assert!(!body.contains("config@example.com"), "{body}");
 
+        assert!(body.contains("readonly"), "{body}");
+
         let panel = super::render_panel(&state, String::new()).await.expect("render panel");
         assert!(panel.contains(r#"value="env@example.com""#), "{panel}");
         assert!(!panel.contains("config@example.com"), "{panel}");
+        assert!(panel.contains("readonly"), "{panel}");
+    }
+
+    async fn submit_identity(
+        state: &std::sync::Arc<crate::server::ServerState>,
+        user: &str,
+    ) -> axum::response::Response {
+        super::save_identity(
+            axum::extract::State(state.clone()),
+            axum::http::HeaderMap::new(),
+            axum::extract::Form(super::IdentityForm {
+                user: user.to_string(),
+                workflow: "process-existing".to_string(),
+            }),
+        )
+        .await
+    }
+
+    fn saved_user() -> Option<String> {
+        crate::data::ApplicationConfig::load().expect("load config").user
+    }
+
+    #[tokio::test]
+    async fn unset_user_is_editable_and_saved_from_the_form() {
+        let mut env = crate::TestEnv::new();
+        env.remove("ESDIAG_USER");
+        let state = test_server_state();
+
+        let panel = super::render_panel(&state, String::new()).await.expect("render panel");
+        assert!(!panel.contains("readonly"), "{panel}");
+
+        assert_eq!(
+            submit_identity(&state, "typed@example.com").await.status(),
+            axum::http::StatusCode::OK
+        );
+        assert_eq!(saved_user().as_deref(), Some("typed@example.com"));
+    }
+
+    #[tokio::test]
+    async fn submitted_user_cannot_replace_a_locked_user() {
+        let mut env = crate::TestEnv::new();
+        env.remove("ESDIAG_USER");
+        save_user("config@example.com".to_string()).expect("save configured user");
+        let state = test_server_state();
+
+        submit_identity(&state, "attacker@example.com").await;
+        assert_eq!(saved_user().as_deref(), Some("config@example.com"));
+
+        env.set("ESDIAG_USER", "env@example.com");
+        submit_identity(&state, "attacker@example.com").await;
+        assert_eq!(
+            saved_user().as_deref(),
+            Some("config@example.com"),
+            "an ESDIAG_USER override must not be written over esdiag.yml"
+        );
+    }
+
+    #[tokio::test]
+    async fn environment_user_is_saved_when_esdiag_yml_has_none() {
+        let mut env = crate::TestEnv::new();
+        env.set("ESDIAG_USER", "env@example.com");
+        let state = test_server_state();
+
+        submit_identity(&state, "attacker@example.com").await;
+        assert_eq!(saved_user().as_deref(), Some("env@example.com"));
     }
 
     #[tokio::test]
@@ -995,14 +1087,7 @@ mod tests {
         let _env = crate::TestEnv::new();
         save_user("operator@example.com".to_string()).expect("save configured user");
         let state = test_server_state();
-        let response = super::save_identity(
-            axum::extract::State(state),
-            axum::extract::Form(super::IdentityForm {
-                user: "operator@example.com".to_string(),
-                workflow: "process-existing".to_string(),
-            }),
-        )
-        .await;
+        let response = submit_identity(&state, "operator@example.com").await;
 
         assert_eq!(response.status(), axum::http::StatusCode::OK);
         assert_eq!(response.headers()["content-type"], "text/event-stream");
