@@ -346,7 +346,10 @@ impl LocalState {
             ));
         }
         let mode = self.active_mode();
-        if let Some(recorded) = self.newer_recorded_elastic() {
+        let recorded_version = self.newer_recorded_elastic().wrap_err(
+            "Cannot compare the recorded Elastic version, so the upgrade could downgrade Elasticsearch; run `esdiag local reset --force` to start over",
+        )?;
+        if let Some(recorded) = recorded_version {
             return Err(eyre!(
                 "This local stack runs Elastic {recorded}, which is newer than Elastic {ELASTIC_VERSION} in this ESDiag binary. Elasticsearch cannot be downgraded; install a newer ESDiag binary or run `esdiag local reset --force` to start over."
             ));
@@ -402,11 +405,18 @@ impl LocalState {
     }
 
     fn warn_version_drift(&self, mode: StackMode) {
-        if let Some(recorded) = self.newer_recorded_elastic() {
-            eprintln!(
-                "Warning: this local stack runs Elastic {recorded}, which is newer than Elastic {ELASTIC_VERSION} in this ESDiag binary. Install a newer ESDiag binary."
-            );
-            return;
+        match self.newer_recorded_elastic() {
+            Ok(Some(recorded)) => {
+                eprintln!(
+                    "Warning: this local stack runs Elastic {recorded}, which is newer than Elastic {ELASTIC_VERSION} in this ESDiag binary. Install a newer ESDiag binary."
+                );
+                return;
+            }
+            Ok(None) => {}
+            Err(err) => {
+                eprintln!("Warning: {err:#}. `esdiag local upgrade` refuses to run until it can compare versions.");
+                return;
+            }
         }
         let changes = self.pending_upgrades(mode);
         if !changes.is_empty() {
@@ -417,11 +427,11 @@ impl LocalState {
         }
     }
 
-    fn newer_recorded_elastic(&self) -> Option<&str> {
-        self.values
-            .get("STACK_ELASTIC_VERSION")
-            .map(String::as_str)
-            .filter(|recorded| is_newer_version(recorded, ELASTIC_VERSION))
+    fn newer_recorded_elastic(&self) -> Result<Option<&str>> {
+        let Some(recorded) = self.values.get("STACK_ELASTIC_VERSION") else {
+            return Ok(None);
+        };
+        Ok(is_newer_version(recorded, ELASTIC_VERSION)?.then_some(recorded.as_str()))
     }
 
     /// Core mode runs the native binary, so its recorded ESDiag image version
@@ -1136,11 +1146,11 @@ fn esdiag_image() -> String {
     format!("docker.elastic.co/esdiag/esdiag:{}", env!("CARGO_PKG_VERSION"))
 }
 
-fn is_newer_version(recorded: &str, current: &str) -> bool {
-    match (semver::Version::parse(recorded), semver::Version::parse(current)) {
-        (Ok(recorded), Ok(current)) => recorded > current,
-        _ => false,
-    }
+fn is_newer_version(recorded: &str, current: &str) -> Result<bool> {
+    let parse = |version: &str| {
+        semver::Version::parse(version).wrap_err_with(|| format!("Elastic version {version:?} is not a valid version"))
+    };
+    Ok(parse(recorded)? > parse(current)?)
 }
 
 fn progress(message: &str) {
@@ -1260,13 +1270,23 @@ fn resolve_host_user(
     environment: Option<String>,
     configured: impl FnOnce() -> Result<Option<String>>,
 ) -> Result<Option<String>> {
-    let usable = |user: String| {
+    let usable = |user: String, source: &str| -> Result<Option<String>> {
         let user = user.trim();
-        (!user.is_empty() && !user.contains(['\n', '\r'])).then(|| user.to_string())
+        if user.contains(['\n', '\r']) {
+            return Err(eyre!("The user from {source} contains a line break"));
+        }
+        Ok((!user.is_empty()).then(|| user.to_string()))
     };
-    match environment.and_then(usable) {
-        Some(user) => Ok(Some(user)),
-        None => Ok(configured()?.and_then(usable)),
+    if let Some(user) = environment
+        .map(|user| usable(user, "ESDIAG_USER"))
+        .transpose()?
+        .flatten()
+    {
+        return Ok(Some(user));
+    }
+    match configured()? {
+        Some(user) => usable(user, "esdiag.yml"),
+        None => Ok(None),
     }
 }
 
@@ -1456,6 +1476,16 @@ mod tests {
     }
 
     #[test]
+    fn line_breaks_in_a_user_are_rejected_instead_of_ignored() {
+        let configured = || Ok(Some("configured@example.com".to_string()));
+        let error = super::resolve_host_user(Some("ops\nteam".to_string()), configured).unwrap_err();
+        assert!(error.to_string().contains("ESDIAG_USER"), "{error}");
+
+        let error = super::resolve_host_user(None, || Ok(Some("ops\r\nteam".to_string()))).unwrap_err();
+        assert!(error.to_string().contains("esdiag.yml"), "{error}");
+    }
+
+    #[test]
     fn unreadable_configuration_fails_instead_of_clearing_the_user() {
         let unreadable = || Err(eyre::eyre!("invalid esdiag.yml"));
 
@@ -1570,18 +1600,23 @@ mod tests {
     fn newer_recorded_elastic_is_never_an_upgrade_target() {
         let (_directory, mut state) = state();
         state.values.insert("STACK_ELASTIC_VERSION".into(), "99.0.0".into());
-        assert_eq!(state.newer_recorded_elastic(), Some("99.0.0"));
+        assert_eq!(state.newer_recorded_elastic().unwrap(), Some("99.0.0"));
 
         state.values.insert("STACK_ELASTIC_VERSION".into(), "9.4.2".into());
-        assert_eq!(state.newer_recorded_elastic(), None);
+        assert_eq!(state.newer_recorded_elastic().unwrap(), None);
 
         let next_minor = semver::Version::parse(super::ELASTIC_VERSION).expect("release version");
         let prerelease = format!("{}.{}.0-SNAPSHOT", next_minor.major, next_minor.minor + 1);
         state.values.insert("STACK_ELASTIC_VERSION".into(), prerelease.clone());
-        assert_eq!(state.newer_recorded_elastic(), Some(prerelease.as_str()));
+        assert_eq!(state.newer_recorded_elastic().unwrap(), Some(prerelease.as_str()));
         let own_prerelease = format!("{}-SNAPSHOT", super::ELASTIC_VERSION);
         state.values.insert("STACK_ELASTIC_VERSION".into(), own_prerelease);
-        assert_eq!(state.newer_recorded_elastic(), None);
+        assert_eq!(state.newer_recorded_elastic().unwrap(), None);
+
+        for unparseable in ["9.6", "99", "9.6.0-rc..1", "latest"] {
+            state.values.insert("STACK_ELASTIC_VERSION".into(), unparseable.into());
+            assert!(state.newer_recorded_elastic().is_err(), "{unparseable}");
+        }
     }
 
     #[test]
@@ -1802,6 +1837,23 @@ mod onboarding_recovery_tests {
         let calls = fs::read_to_string(dir.path().join("calls")).unwrap();
         assert!(calls.contains(" pull elasticsearch kibana esdiag"), "{calls}");
         assert!(!calls.contains(" up "), "a stopped stack was started:\n{calls}");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn upgrade_refuses_an_unparseable_recorded_version() {
+        let dir = tempfile::tempdir().unwrap();
+        let runtime = fake_upgrade_runtime(dir.path());
+        let mut state = old_stack(dir.path(), "full");
+        state.values.insert("STACK_ELASTIC_VERSION".into(), "9.6".into());
+        state.write().unwrap();
+        let before = recorded(&state);
+
+        let error = state.upgrade(forced_upgrade(&runtime)).await.unwrap_err();
+
+        assert!(format!("{error:#}").contains("\"9.6\""), "{error:#}");
+        assert_eq!(recorded(&state), before);
+        assert!(!dir.path().join("calls").exists(), "the runtime was invoked");
     }
 
     #[cfg(unix)]

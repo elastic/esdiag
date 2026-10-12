@@ -286,6 +286,17 @@ assert_contains "$tmp/downgrade-error" 'cannot be downgraded'
 sed -i.bak 's/^STACK_ELASTIC_VERSION=.*/STACK_ELASTIC_VERSION=9.6.0/' "$tmp/upgrade/.env"
 if run_local upgrade --runtime podman --state-dir "$tmp/upgrade" --pull never --force --elastic-version 9.6.0-SNAPSHOT 2>"$tmp/prerelease-error"; then fail 'release-to-prerelease downgrade accepted'; fi
 assert_contains "$tmp/prerelease-error" 'cannot be downgraded'
+sed -i.bak 's/^STACK_ELASTIC_VERSION=.*/STACK_ELASTIC_VERSION=9.6/' "$tmp/upgrade/.env"
+if run_local upgrade --runtime podman --state-dir "$tmp/upgrade" --pull never --force 2>"$tmp/unparseable-error"; then fail 'upgrade accepted an unparseable recorded version'; fi
+assert_contains "$tmp/unparseable-error" 'cannot be compared'
+assert_contains "$tmp/upgrade/.env" 'STACK_ELASTIC_VERSION=9.6'
+if run_local up --runtime podman --state-dir "$tmp/bad-version" --pull never --elastic-version 9.6 2>"$tmp/bad-version-error"; then fail '--elastic-version accepted 9.6'; fi
+assert_contains "$tmp/bad-version-error" 'must be a full version'
+[[ ! -e "$tmp/bad-version" ]] || fail 'a rejected --elastic-version created state'
+semver_valid_cases=$(sed -n '/^semver_valid() {/,/^}/p' "$script")
+bash -c "$semver_valid_cases"'
+for version in 9.5.5 10.0.0-beta1 9.6.0-SNAPSHOT 1.0.0-rc.1 1.0.0+build.9; do semver_valid "$version" || exit 1; done
+for version in 9.6 9 latest 09.0.0 9.6.0-rc..1 9.6.0-01 "" " 9.5.5"; do ! semver_valid "$version" || exit 1; done' || fail 'semver_valid'
 semver_cases=$(sed -n '/^semver_gt() {/,/^}/p' "$script")
 bash -c "$semver_cases"'
 chain=(1.0.0-alpha 1.0.0-alpha.1 1.0.0-alpha.beta 1.0.0-beta 1.0.0-beta.2 1.0.0-beta.11 1.0.0-rc.1 1.0.0 1.0.1 1.10.0)

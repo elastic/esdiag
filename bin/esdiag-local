@@ -728,6 +728,8 @@ command_upgrade() {
     target_esdiag=${esdiag_version_override:-$ESDIAG_VERSION}
     target_elastic=${elastic_version_override:-$ELASTIC_VERSION}
     recorded=$(env_get STACK_ELASTIC_VERSION)
+    semver_valid "$recorded" ||
+        die "This stack records Elastic version '${recorded}', which cannot be compared, so an upgrade could downgrade Elasticsearch; run '${command_name} reset --force' to start over"
     semver_gt "$recorded" "$target_elastic" &&
         die "This stack runs Elastic ${recorded}, which is newer than Elastic ${target_elastic}. Elasticsearch cannot be downgraded; run '${command_name} update' or '${command_name} reset --force'"
     changes=$(pending_upgrades "$target_esdiag" "$target_elastic")
@@ -931,6 +933,11 @@ command_reset() {
         "${compose[@]}" down --volumes --remove-orphans
     fi
     rm -rf "${state_dir}"
+}
+
+semver_valid() {
+    local id='(0|[1-9][0-9]*)' pre='(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)'
+    [[ "$1" =~ ^${id}\.${id}\.${id}(-${pre}(\.${pre})*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]
 }
 
 # Follows SemVer 2.0.0 precedence; build metadata is ignored.
@@ -1148,6 +1155,8 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 [[ "$pull_policy" == always || "$pull_policy" == missing || "$pull_policy" == never ]] || die "Pull policy must be always, missing, or never"
+[[ -z "$elastic_version_override" ]] || semver_valid "$elastic_version_override" ||
+    die "--elastic-version must be a full version such as 9.5.5, not '${elastic_version_override}'"
 
 case "$command" in
 up) command_up ;; upgrade) command_upgrade ;; down) command_down ;; restart) command_restart ${remaining[@]+"${remaining[@]}"} ;; status) command_status ;; logs) command_logs ${remaining[@]+"${remaining[@]}"} ;;
