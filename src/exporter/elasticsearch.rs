@@ -751,6 +751,7 @@ mod tests {
             id: "test".into(),
             collection_date: 0,
             runner: "test".into(),
+            version: None,
             uuid: "test".into(),
         };
         let mut report =
