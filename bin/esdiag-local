@@ -235,11 +235,18 @@ native_esdiag() {
     printf '%s' "$candidate"
 }
 
+# State without a mode record predates core mode, so it is full mode.
+recorded_stack_mode() {
+    local mode
+    mode=$(env_get STACK_MODE 2>/dev/null || printf full)
+    [[ "$mode" == full || "$mode" == core ]] || die "Unsupported local stack mode in ${state_dir}/.env: ${mode}"
+    printf '%s' "$mode"
+}
+
 resolve_stack_mode() {
     local recorded=""
     if [[ -f "${state_dir}/.env" ]]; then
-        recorded=$(env_get STACK_MODE 2>/dev/null || printf full)
-        [[ "$recorded" == full || "$recorded" == core ]] || die "Unsupported local stack mode in ${state_dir}/.env: ${recorded}"
+        recorded=$(recorded_stack_mode) || exit 1
     fi
     case "$stack_mode" in
     auto)
@@ -672,7 +679,7 @@ command_up() {
     validate_state_coupling
     [[ -f "${state_dir}/.env" ]] && existed=true
     if [[ "$existed" == true ]]; then
-        recorded_mode=$(env_get STACK_MODE 2>/dev/null || printf full)
+        recorded_mode=$(recorded_stack_mode) || exit 1
         recorded=$(env_get STACK_ESDIAG_VERSION 2>/dev/null || true)
         [[ -z "$esdiag_version_override" || "$esdiag_version_override" == "$recorded" ]] ||
             die "This stack runs ESDiag ${recorded}; change it with '${command_name} upgrade --esdiag-version ${esdiag_version_override}'"
@@ -720,7 +727,7 @@ command_upgrade() {
     local target_esdiag target_elastic recorded changes running=false answer
     [[ -f "${state_dir}/.env" ]] || die "No local stack exists at ${state_dir}; start one with '${command_name} up'"
     validate_env
-    resolved_stack_mode=$(env_get STACK_MODE 2>/dev/null || printf full)
+    resolved_stack_mode=$(recorded_stack_mode) || exit 1
     [[ "$stack_mode" == auto || "$stack_mode" == "$resolved_stack_mode" ]] ||
         die "upgrade keeps the current stack mode; change modes with '${command_name} up --stack=${stack_mode}'"
     [[ "$resolved_stack_mode" != core ]] || native_esdiag >/dev/null ||
@@ -786,7 +793,7 @@ command_restart() {
     done
     validate_env
     detect_runtime
-    resolved_stack_mode=$(env_get STACK_MODE 2>/dev/null || printf full)
+    resolved_stack_mode=$(recorded_stack_mode) || exit 1
     init_state
     for service in "$@"; do
         if [[ "$service" == esdiag && "$resolved_stack_mode" == core ]]; then
@@ -800,7 +807,7 @@ command_status() {
     validate_env
     detect_runtime
     "${compose[@]}" ps
-    resolved_stack_mode=$(env_get STACK_MODE 2>/dev/null || printf full)
+    resolved_stack_mode=$(recorded_stack_mode) || exit 1
     info "Stack mode: ${resolved_stack_mode}"
     if [[ "$resolved_stack_mode" == core ]]; then
         if native_service_running; then
@@ -819,7 +826,7 @@ command_logs() {
     [[ -f "${state_dir}/compose.yml" ]] || die "No local state at ${state_dir}"
     validate_env
     detect_runtime
-    resolved_stack_mode=$(env_get STACK_MODE 2>/dev/null || printf full)
+    resolved_stack_mode=$(recorded_stack_mode) || exit 1
     if [[ "$resolved_stack_mode" == core && ("$#" == 0 || "$1" == esdiag) ]]; then
         if [[ -f "$(native_service_log_file)" ]]; then
             cat "$(native_service_log_file)"
@@ -866,7 +873,7 @@ command_exec() {
     validate_env
     detect_runtime
     validate_state_coupling
-    resolved_stack_mode=$(env_get STACK_MODE 2>/dev/null || printf full)
+    resolved_stack_mode=$(recorded_stack_mode) || exit 1
     [[ "$resolved_stack_mode" == full ]] || die "Container CLI execution requires full mode; use a native ESDiag binary for core mode"
     for argument in elasticsearch kibana esdiag; do
         service_running "$argument" || die "Full-mode service '${argument}' is not running; run '${command_name} up --stack=full' first"

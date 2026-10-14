@@ -345,7 +345,7 @@ impl LocalState {
                 "`esdiag local upgrade` keeps the current stack mode; change modes with `esdiag local up --stack=<mode>`"
             ));
         }
-        let mode = self.active_mode();
+        let mode = self.resolve_mode(StackMode::Auto)?;
         let recorded_version = self.newer_recorded_elastic().wrap_err(
             "Cannot compare the recorded Elastic version, so the upgrade could downgrade Elasticsearch; run `esdiag local reset --force` to start over",
         )?;
@@ -1837,6 +1837,24 @@ mod onboarding_recovery_tests {
         let calls = fs::read_to_string(dir.path().join("calls")).unwrap();
         assert!(calls.contains(" pull elasticsearch kibana esdiag"), "{calls}");
         assert!(!calls.contains(" up "), "a stopped stack was started:\n{calls}");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn upgrade_refuses_an_unknown_recorded_mode() {
+        let dir = tempfile::tempdir().unwrap();
+        let runtime = fake_upgrade_runtime(dir.path());
+        let mut state = old_stack(dir.path(), "bogus");
+        let before = recorded(&state);
+
+        let error = state.upgrade(forced_upgrade(&runtime)).await.unwrap_err();
+
+        assert!(
+            error.to_string().contains("Unsupported local stack mode: bogus"),
+            "{error:#}"
+        );
+        assert_eq!(recorded(&state), before);
+        assert!(!dir.path().join("calls").exists(), "the runtime was invoked");
     }
 
     #[cfg(unix)]

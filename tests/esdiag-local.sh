@@ -268,6 +268,17 @@ assert_contains "$tmp/upgrade/.env" 'STACK_ELASTIC_VERSION=9.4.2'
 assert_not_contains "$FAKE_LOG" ' pull '
 ! compgen -G "$tmp/upgrade/.env.pre-upgrade.*" >/dev/null || fail 'a failed status check left a state backup'
 
+sed -i.bak 's/^STACK_MODE=.*/STACK_MODE=bogus/' "$tmp/upgrade/.env"
+: >"$FAKE_LOG"
+if run_local upgrade --runtime podman --state-dir "$tmp/upgrade" --pull never --force 2>"$tmp/upgrade-mode-error"; then fail 'upgrade accepted an unknown stack mode'; fi
+assert_contains "$tmp/upgrade-mode-error" 'Unsupported local stack mode'
+assert_contains "$tmp/upgrade/.env" 'STACK_MODE=bogus'
+assert_contains "$tmp/upgrade/.env" 'STACK_ELASTIC_VERSION=9.4.2'
+assert_not_contains "$FAKE_LOG" ' pull '
+if run_local status --runtime podman --state-dir "$tmp/upgrade" 2>"$tmp/status-mode-error"; then fail 'status accepted an unknown stack mode'; fi
+assert_contains "$tmp/status-mode-error" 'Unsupported local stack mode'
+sed -i.bak 's/^STACK_MODE=.*/STACK_MODE=full/' "$tmp/upgrade/.env"
+
 : >"$FAKE_LOG"
 FAKE_STOPPED=true run_local upgrade --runtime podman --state-dir "$tmp/upgrade" --pull never --force 2>"$tmp/upgrade-stopped"
 assert_contains "$tmp/upgrade-stopped" 'Upgraded the stopped stack'
