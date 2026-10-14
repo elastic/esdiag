@@ -18,6 +18,26 @@ output also needs `zip`. It does not need ESDiag, a container runtime, `jq`,
 `bin/esdiag-lite.ps1` provides the same collection and upload commands for
 Windows PowerShell 5.1 or later.
 
+## Download
+
+Each [GitHub release](https://github.com/elastic/esdiag/releases) includes
+both scripts and a SHA-256 checksum for each:
+
+```sh
+curl -fsSLO https://github.com/elastic/esdiag/releases/latest/download/esdiag-lite.sh
+curl -fsSLO https://github.com/elastic/esdiag/releases/latest/download/esdiag-lite.sh.sha256
+sha256sum --check esdiag-lite.sh.sha256
+```
+
+```powershell
+$release = 'https://github.com/elastic/esdiag/releases/latest/download'
+Invoke-WebRequest -UseBasicParsing "$release/esdiag-lite.ps1" -OutFile esdiag-lite.ps1
+Invoke-WebRequest -UseBasicParsing "$release/esdiag-lite.ps1.sha256" -OutFile esdiag-lite.ps1.sha256
+(Get-FileHash esdiag-lite.ps1 -Algorithm SHA256).Hash -eq (Get-Content esdiag-lite.ps1.sha256).Split(' ')[0]
+```
+
+On macOS, use `shasum -a 256 --check` instead of `sha256sum --check`.
+
 ## Configure access
 
 Set the Elasticsearch URL and an API key:

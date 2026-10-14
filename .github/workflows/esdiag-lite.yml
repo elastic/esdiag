@@ -1,0 +1,34 @@
+name: esdiag-lite
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/esdiag-lite.yml"
+      - "assets/elasticsearch/sources.yml"
+      - "bin/esdiag-lite.*"
+      - "crates/repo-tools/**"
+      - "tests/bin/esdiag-lite.*"
+      - "tests/bin/fixtures/esdiag-lite-*"
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  bash:
+    name: esdiag-lite.sh
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo run --locked -p repo-tools --bin esdiag-lite-generate -- --check
+      - run: shellcheck bin/esdiag-lite.sh
+      - run: bash tests/bin/esdiag-lite.sh
+
+  powershell:
+    name: esdiag-lite.ps1
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File tests/bin/esdiag-lite.ps1
