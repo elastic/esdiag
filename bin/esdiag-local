@@ -853,7 +853,9 @@ path_is_within() {
 }
 
 service_running() {
-    "${compose[@]}" ps -q "$1" | grep -q .
+    local ids
+    ids=$("${compose[@]}" ps -q "$1") || die "Could not check whether $1 is running: '${runtime} compose ps' failed"
+    [[ -n "$ids" ]]
 }
 
 command_exec() {

@@ -607,16 +607,19 @@ function Invoke-Watch {
   Write-Log Info "collecting $($script:CollectionCount) diagnostics, $($script:WaitSeconds) seconds apart, from $($env:ELASTIC_ES_URL)"
   for ($number = 1; $number -le $script:CollectionCount; $number += 1) {
     Write-Log Info "collecting diagnostic $number of $($script:CollectionCount)"
-    $arguments = @('collect', "--archive=$($script:ArchiveFormat)")
-    if ($script:UploadRequested) { $arguments += "--upload=$($script:UploadId)" }
+    $uploadId = if ($script:UploadRequested) { $script:UploadId } else { '' }
+    # Job arguments are serialized, so pass only strings and build the
+    # collection arguments inside the job.
     $jobs += Start-Job -ScriptBlock {
-      param($ScriptPath, $ScriptArguments, $WorkingDirectory)
+      param([string]$ScriptPath, [string]$WorkingDirectory, [string]$ArchiveFormat, [string]$UploadId)
       Set-Location -LiteralPath $WorkingDirectory
       [Environment]::CurrentDirectory = $WorkingDirectory
+      $collectArguments = [string[]]@('collect', "--archive=$ArchiveFormat")
+      if ($UploadId) { $collectArguments += "--upload=$UploadId" }
       $LASTEXITCODE = 0
-      & $ScriptPath @ScriptArguments
+      & $ScriptPath @collectArguments
       if ($LASTEXITCODE -ne 0) { throw "collection failed with exit code $LASTEXITCODE" }
-    } -ArgumentList $PSCommandPath, $arguments, (Get-Location).Path
+    } -ArgumentList $PSCommandPath, (Get-Location).Path, $script:ArchiveFormat, $uploadId
     if ($number -lt $script:CollectionCount) { Start-Sleep -Seconds $script:WaitSeconds }
   }
   $success = $true

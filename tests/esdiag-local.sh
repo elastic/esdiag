@@ -37,6 +37,7 @@ if [[ "$1" == compose ]]; then
     touch "${FAKE_VOLUMES}/${project}_elasticsearch-data" "${FAKE_VOLUMES}/${project}_kibana-data"
     grep -q '^  esdiag:$' "$compose_file" && touch "${FAKE_VOLUMES}/${project}_esdiag-data"
   fi
+  if [[ "$action" == ps && "${FAKE_PS_FAIL:-false}" == true ]]; then exit 1; fi
   if [[ "$action" == ps && "${FAKE_STOPPED:-false}" != true ]]; then printf '%s\n' fixture-container; fi
   if [[ "$action" == down && "$*" == *--volumes* ]]; then rm -f "${FAKE_VOLUMES}/${project}_elasticsearch-data" "${FAKE_VOLUMES}/${project}_kibana-data" "${FAKE_VOLUMES}/${project}_esdiag-data"; fi
 fi
@@ -259,6 +260,13 @@ assert_contains "$tmp/up-version-error" "upgrade --elastic-version ${elastic_ver
 if run_local upgrade --runtime podman --state-dir "$tmp/upgrade" --pull never </dev/null 2>"$tmp/upgrade-confirm-error"; then fail 'upgrade lacked confirmation'; fi
 assert_contains "$tmp/upgrade-confirm-error" 'requires --force'
 assert_contains "$tmp/upgrade/.env" 'STACK_ELASTIC_VERSION=9.4.2'
+
+: >"$FAKE_LOG"
+if FAKE_PS_FAIL=true run_local upgrade --runtime podman --state-dir "$tmp/upgrade" --pull never --force 2>"$tmp/upgrade-ps-error"; then fail 'upgrade ignored a failed compose ps'; fi
+assert_contains "$tmp/upgrade-ps-error" 'Could not check whether elasticsearch is running'
+assert_contains "$tmp/upgrade/.env" 'STACK_ELASTIC_VERSION=9.4.2'
+assert_not_contains "$FAKE_LOG" ' pull '
+! compgen -G "$tmp/upgrade/.env.pre-upgrade.*" >/dev/null || fail 'a failed status check left a state backup'
 
 : >"$FAKE_LOG"
 FAKE_STOPPED=true run_local upgrade --runtime podman --state-dir "$tmp/upgrade" --pull never --force 2>"$tmp/upgrade-stopped"
