@@ -311,11 +311,12 @@ impl DiagnosticManifest {
 
 impl From<Manifest> for DiagnosticManifest {
     fn from(manifest: Manifest) -> Self {
-        let (legacy_platform, legacy_application) = manifest.product.split();
-        let platform = match manifest.diag_type.as_deref() {
-            Some("eck-diagnostics") => Platform::ECK,
-            Some("k8s-platform-diagnostics") => Platform::KubernetesPlatform,
-            _ => legacy_platform,
+        // Platform bundles have no application; `product` is absent from their
+        // manifests and would otherwise default to Elasticsearch.
+        let (platform, application) = match manifest.diag_type.as_deref() {
+            Some("eck-diagnostics") => (Platform::ECK, None),
+            Some("k8s-platform-diagnostics") => (Platform::KubernetesPlatform, None),
+            _ => manifest.product.split(),
         };
         let mut diagnostic = DiagnosticManifest::new(
             manifest.collection_date,
@@ -323,7 +324,7 @@ impl From<Manifest> for DiagnosticManifest {
             manifest.diagnostic_inputs,
             manifest.included_diagnostics,
             Some("compatible".to_string()),
-            legacy_application,
+            application,
             manifest.diag_type,
             manifest.runner,
             manifest
@@ -377,6 +378,17 @@ mod tests {
     fn detects_eck_platform_from_diag_type_indicator() {
         let manifest = manifest_with(None, None, Some("eck-diagnostics"), Some("unknown"));
         assert_eq!(manifest.platform(), Platform::ECK);
+    }
+
+    #[test]
+    fn eck_manifest_json_without_product_is_platform_only() {
+        let manifest: Manifest = serde_json::from_str(
+            r#"{"diagType": "eck-diagnostics", "collectionDate": "2026-01-15T10:00:00.000000000Z"}"#,
+        )
+        .expect("eck manifest.json");
+        let manifest = DiagnosticManifest::from(manifest);
+        assert_eq!(manifest.platform(), Platform::ECK);
+        assert_eq!(manifest.application(), None);
     }
 
     #[test]

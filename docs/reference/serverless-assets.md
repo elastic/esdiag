@@ -146,11 +146,11 @@ fail the command.
 | Asset family | Count | Audit scope |
 | --- | ---: | --- |
 | Elasticsearch ingest pipelines | 1 | `set` processors and `reroute`; installation and simulation |
-| Elasticsearch component templates | 7 | Settings, mappings, metadata, and composition |
-| Elasticsearch index templates | 26 | Settings, mappings, data streams, and composition |
+| Elasticsearch component templates | 9 | Settings, mappings, metadata, and composition |
+| Elasticsearch index templates | 35 | Settings, mappings, data streams, and composition |
 | Elasticsearch roles | 1 | Skipped on Serverless |
 | Kibana spaces | 1 | Creation and update with project-managed controls omitted |
-| Kibana saved objects | 90 | Dashboards, data views, Lens, saved searches, Vega visualizations, links, and tags |
+| Kibana saved objects | 100 | Dashboards, data views, Lens, saved searches, Vega visualizations, links, and tags |
 | Kibana workflows | 1 | Installation and its Elasticsearch authentication and ES|QL request definitions |
 | Agent Builder tools | 1 | Workflow reference and installation |
 | Agent Builder skills | 1 | Installation, referenced diagnostic guides, and attachment to the default agent |

@@ -1,0 +1,272 @@
+{
+  "_meta": {
+    "managed": false,
+    "description": "ESDiag ECK platform and Kubernetes mappings. Kubernetes quantities are cores or bytes. scheduled.* sums only the pods collected in the bundle's namespaces, so it is a lower bound of what the node has scheduled."
+  },
+  "template": {
+    "mappings": {
+      "_routing": {
+        "required": false
+      },
+      "date_detection": false,
+      "numeric_detection": false,
+      "dynamic_date_formats": [
+        "strict_date_optional_time",
+        "yyyy/MM/dd HH:mm:ss Z||yyyy/MM/dd Z"
+      ],
+      "dynamic": true,
+      "dynamic_templates": [
+        {
+          "quantities": {
+            "match_pattern": "regex",
+            "path_match": "^(capacity|allocatable|(resources|scheduled)\\.(requests|limits))\\.[^.]+$",
+            "mapping": {
+              "type": "double"
+            }
+          }
+        },
+        {
+          "conditions_by_type": {
+            "path_match": "condition.*",
+            "mapping": {
+              "type": "keyword"
+            }
+          }
+        },
+        {
+          "strings_as_keywords": {
+            "mapping": {
+              "type": "keyword",
+              "ignore_above": 1024
+            },
+            "match_mapping_type": "string"
+          }
+        }
+      ],
+      "properties": {
+        "data_stream": {
+          "type": "object",
+          "properties": {
+            "namespace": {
+              "type": "constant_keyword",
+              "value": "esdiag"
+            }
+          }
+        },
+        "message": {
+          "type": "match_only_text",
+          "fields": {
+            "keyword": {
+              "type": "keyword",
+              "ignore_above": 1024
+            }
+          }
+        },
+        "error": {
+          "type": "match_only_text"
+        },
+        "took": {
+          "type": "double"
+        },
+        "iteration": {
+          "type": "long"
+        },
+        "count": {
+          "type": "long"
+        },
+        "first_timestamp": {
+          "type": "date"
+        },
+        "last_timestamp": {
+          "type": "date"
+        },
+        "generation_lag": {
+          "type": "long"
+        },
+        "restart_count": {
+          "type": "long"
+        },
+        "not_ready_containers": {
+          "type": "long"
+        },
+        "requested_bytes": {
+          "type": "double"
+        },
+        "capacity_bytes": {
+          "type": "double"
+        },
+        "resize_pending": {
+          "type": "boolean"
+        },
+        "rollout_in_progress": {
+          "type": "boolean"
+        },
+        "unschedulable": {
+          "type": "boolean"
+        },
+        "scheduled": {
+          "type": "object",
+          "properties": {
+            "pods": {
+              "type": "long"
+            }
+          }
+        },
+        "conditions": {
+          "type": "object",
+          "properties": {
+            "message": {
+              "type": "match_only_text"
+            },
+            "last_transition_time": {
+              "type": "date"
+            }
+          }
+        },
+        "status": {
+          "type": "object",
+          "properties": {
+            "inProgressOperations": {
+              "type": "flattened"
+            },
+            "elasticsearchAssociationsStatus": {
+              "type": "flattened"
+            },
+            "conditions": {
+              "type": "object",
+              "properties": {
+                "message": {
+                  "type": "match_only_text"
+                }
+              }
+            },
+            "start_time": {
+              "type": "date"
+            }
+          }
+        },
+        "container": {
+          "type": "object",
+          "properties": {
+            "restart_count": {
+              "type": "long"
+            },
+            "ready": {
+              "type": "boolean"
+            },
+            "started": {
+              "type": "boolean"
+            },
+            "init": {
+              "type": "boolean"
+            }
+          }
+        },
+        "state": {
+          "type": "object",
+          "properties": {
+            "exit_code": {
+              "type": "long"
+            },
+            "started_at": {
+              "type": "date"
+            }
+          }
+        },
+        "last_terminated": {
+          "type": "object",
+          "properties": {
+            "exit_code": {
+              "type": "long"
+            },
+            "finished_at": {
+              "type": "date"
+            }
+          }
+        },
+        "nodeset": {
+          "type": "object",
+          "properties": {
+            "count": {
+              "type": "long"
+            }
+          }
+        },
+        "jvm": {
+          "type": "object",
+          "properties": {
+            "heap": {
+              "type": "object",
+              "properties": {
+                "min_bytes": {
+                  "type": "double"
+                },
+                "max_bytes": {
+                  "type": "double"
+                }
+              }
+            }
+          }
+        },
+        "volume_claims": {
+          "type": "object",
+          "properties": {
+            "storage_bytes": {
+              "type": "double"
+            }
+          }
+        },
+        "statefulset": {
+          "type": "object",
+          "properties": {
+            "replicas": {
+              "type": "long"
+            },
+            "ready_replicas": {
+              "type": "long"
+            },
+            "updated_replicas": {
+              "type": "long"
+            }
+          }
+        },
+        "eck": {
+          "type": "object",
+          "properties": {
+            "operator": {
+              "type": "object",
+              "properties": {
+                "config": {
+                  "type": "flattened"
+                }
+              }
+            },
+            "license": {
+              "type": "object",
+              "properties": {
+                "enterprise_resource_units": {
+                  "type": "double"
+                },
+                "total_managed_memory_bytes": {
+                  "type": "double"
+                },
+                "timestamp": {
+                  "type": "date"
+                }
+              }
+            },
+            "diagnostics": {
+              "type": "object",
+              "properties": {
+                "errors": {
+                  "type": "match_only_text"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "version": 1
+}

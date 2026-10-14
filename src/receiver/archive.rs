@@ -80,6 +80,79 @@ where
     })))
 }
 
+/// Stream the lines of one archive entry. The archive stays locked while the
+/// stream is being read, so consumers must drain it before issuing other reads
+/// on the same receiver.
+pub async fn read_lines_from_archive<R>(
+    archive: Arc<RwLock<ZipArchive<R>>>,
+    subdir: Option<PathBuf>,
+    filename: &str,
+) -> Result<BoxStream<'static, Result<String>>>
+where
+    R: Read + Seek + Send + Sync + 'static,
+{
+    let path = {
+        let mut guard = archive.write().await;
+        resolve_archive_path(subdir.as_ref(), &mut *guard, filename)?
+    };
+    tracing::debug!("Streaming lines from archive: {}", path);
+    let (tx, rx) = mpsc::channel(256);
+    let producer_tx = tx.clone();
+    let handle = tokio::task::spawn_blocking(move || {
+        let mut guard = archive.blocking_write();
+        match guard.by_name(&path) {
+            Ok(file) => crate::receiver::send_bundle_lines(BufReader::new(file), &producer_tx),
+            Err(err) => {
+                let _ = producer_tx.blocking_send(Err(eyre::eyre!(err)));
+            }
+        }
+    });
+    Ok(crate::receiver::bundle_line_stream(rx, handle, tx))
+}
+
+fn path_components(path: &str) -> Vec<String> {
+    path.split(['/', '\\'])
+        .filter(|component| !component.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+/// Directory names directly beneath `dir`, resolved against the same bundle
+/// root and working subdirectory as [`resolve_archive_path`]. Empty path
+/// components are ignored so ECK's `name//file` entries list correctly.
+pub fn list_archive_dirs<A: Read + Seek>(
+    subdir: Option<&PathBuf>,
+    archive: &mut ZipArchive<A>,
+    dir: &str,
+) -> Result<Vec<String>> {
+    let mut root = PathBuf::from(archive.by_index(0)?.name().to_string());
+    trim_to_working_directory(&mut root);
+    let mut prefix = path_components(&root.to_string_lossy());
+    if let Some(subdir) = subdir {
+        prefix.extend(path_components(&subdir.to_string_lossy()));
+    }
+    prefix.extend(path_components(dir));
+
+    let mut found_prefix = false;
+    let mut dirs = std::collections::BTreeSet::new();
+    for name in archive.file_names() {
+        let explicit_dir_entry = name.ends_with('/') || name.ends_with('\\');
+        let components = path_components(name);
+        if components.len() <= prefix.len() || components[..prefix.len()] != prefix[..] {
+            continue;
+        }
+        found_prefix = true;
+        if components.len() > prefix.len() + 1 || explicit_dir_entry {
+            dirs.insert(components[prefix.len()].clone());
+        }
+    }
+
+    if !found_prefix && !prefix.is_empty() {
+        return Err(MissingSource::ArchiveEntry { path: prefix.join("/") }.into());
+    }
+    Ok(dirs.into_iter().collect())
+}
+
 pub fn trim_to_working_directory(path: &mut PathBuf) {
     // Drop any filename
     if path.extension().is_some() {

@@ -203,7 +203,7 @@ mod tests {
             .into_inner();
         assert!(
             exporter
-                .kibana_link("diag", 0)
+                .kibana_link(crate::exporter::KibanaLinkTarget::ClusterReport, "diag", 0)
                 .unwrap()
                 .starts_with("https://less-kb.example/s/esdiag/app/")
         );
@@ -214,7 +214,9 @@ mod tests {
             .unwrap()
             .into_inner();
         assert!(
-            exporter.kibana_link("diag", 0).is_none(),
+            exporter
+                .kibana_link(crate::exporter::KibanaLinkTarget::ClusterReport, "diag", 0)
+                .is_none(),
             "an unrelated configured viewer must not leak into the result"
         );
         let exporter = context
@@ -223,7 +225,7 @@ mod tests {
             .into_inner();
         assert!(
             exporter
-                .kibana_link("diag", 0)
+                .kibana_link(crate::exporter::KibanaLinkTarget::ClusterReport, "diag", 0)
                 .unwrap()
                 .starts_with("https://local-kb.example/s/esdiag/app/")
         );
@@ -233,7 +235,9 @@ mod tests {
             .unwrap()
             .into_inner();
         assert!(
-            exporter.kibana_link("diag", 0).is_none(),
+            exporter
+                .kibana_link(crate::exporter::KibanaLinkTarget::ClusterReport, "diag", 0)
+                .is_none(),
             "an unconfigured environment viewer must not default to localhost"
         );
     }
