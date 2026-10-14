@@ -56,16 +56,18 @@ git tag -a "$TAG" -m "Release $VERSION"
 git push upstream "$TAG"
 ```
 
-Watch `Release esdiag-local`. It must create or reuse a draft, verify the
-full-version container manifests, render and validate `esdiag-local`, upload it
-with `esdiag-local.sha256`, download both assets, verify the checksum, and leave
-the release draft.
+Watch `Release esdiag-local`. It must pass the reusable `esdiag-lite` checks,
+create or reuse a draft, verify the full-version container manifests, render
+and validate `esdiag-local`, upload `esdiag-local`, `esdiag-lite.sh`, and
+`esdiag-lite.ps1` with a `.sha256` file for each, download all six assets,
+verify the checksums, and leave the release draft.
 
 Verify remotely:
 
 - `tagName` is `TAG` and `isDraft` is true.
 - Curated notes cover only `PREVIOUS...TAG`.
-- `esdiag-local` and `esdiag-local.sha256` are uploaded.
+- `esdiag-local`, `esdiag-lite.sh`, `esdiag-lite.ps1`, and their `.sha256`
+  files are uploaded.
 - All required Homebrew assets are uploaded before publication.
 
 ## Publication And Recovery

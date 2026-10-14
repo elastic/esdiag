@@ -8,7 +8,11 @@ permissions:
   contents: write
 
 jobs:
+  lite:
+    uses: ./.github/workflows/esdiag-lite.yml
+
   standalone:
+    needs: lite
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -55,24 +59,36 @@ jobs:
           chmod 755 target/release-assets/esdiag-local
           bash -n target/release-assets/esdiag-local
           test "$(target/release-assets/esdiag-local version)" = "$version"
+      - name: Stage lite collection scripts
+        run: |
+          install -m 755 bin/esdiag-lite.sh target/release-assets/esdiag-lite.sh
+          install -m 644 bin/esdiag-lite.ps1 target/release-assets/esdiag-lite.ps1
+          bash -n target/release-assets/esdiag-lite.sh
       - name: Validate and checksum
         run: |
-          shellcheck target/release-assets/esdiag-local
+          shellcheck target/release-assets/esdiag-local target/release-assets/esdiag-lite.sh
           cd target/release-assets
-          sha256sum esdiag-local > esdiag-local.sha256
+          for asset in esdiag-local esdiag-lite.sh esdiag-lite.ps1; do
+            sha256sum "$asset" > "$asset.sha256"
+          done
       - name: Attach and verify assets
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release upload "${{ github.ref_name }}" \
-            target/release-assets/esdiag-local target/release-assets/esdiag-local.sha256 --clobber
-          gh release view "${{ github.ref_name }}" --json assets \
-            --jq '[.assets[].name] | contains(["esdiag-local", "esdiag-local.sha256"])' | grep -q true
+          assets=(esdiag-local esdiag-lite.sh esdiag-lite.ps1)
+          files=()
+          patterns=()
+          for asset in "${assets[@]}"; do
+            files+=("target/release-assets/$asset" "target/release-assets/$asset.sha256")
+            patterns+=(--pattern "$asset" --pattern "$asset.sha256")
+          done
+          gh release upload "${{ github.ref_name }}" "${files[@]}" --clobber
           mkdir target/release-assets/verification
-          gh release download "${{ github.ref_name }}" --dir target/release-assets/verification \
-            --pattern esdiag-local --pattern esdiag-local.sha256
+          gh release download "${{ github.ref_name }}" --dir target/release-assets/verification "${patterns[@]}"
           cd target/release-assets/verification
-          sha256sum --check esdiag-local.sha256
+          for asset in "${assets[@]}"; do
+            sha256sum --check "$asset.sha256"
+          done
       - name: Leave release draft for human approval
         env:
           GH_TOKEN: ${{ github.token }}
