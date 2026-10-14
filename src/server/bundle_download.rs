@@ -47,7 +47,7 @@ pub async fn download_retained_bundle(
 ) -> impl IntoResponse {
     let (_, request_user) = match state.resolve_user_email(&headers) {
         Ok(result) => result,
-        Err(err) => return (StatusCode::UNAUTHORIZED, err.to_string()).into_response(),
+        Err(err) => return (super::identity_failure(&err).0, err.to_string()).into_response(),
     };
 
     let Some(bundle) = state.retained_bundle(&token).await else {
@@ -112,6 +112,7 @@ pub async fn download_retained_bundle(
 }
 
 #[cfg(test)]
+#[allow(clippy::await_holding_lock)]
 mod tests {
     use super::{download_retained_bundle, sanitize_download_filename};
     use crate::server::{RetainedBundle, now_epoch_seconds, test_server_state};
@@ -125,6 +126,8 @@ mod tests {
 
     #[tokio::test]
     async fn download_retained_bundle_returns_zip_attachment() {
+        let mut env = crate::TestEnv::new();
+        env.remove("ESDIAG_USER");
         let state = test_server_state();
         let path = std::env::temp_dir().join("esdiag-retained-bundle-test.zip");
         tokio::fs::write(&path, b"zip-bytes")
@@ -166,6 +169,8 @@ mod tests {
 
     #[tokio::test]
     async fn download_retained_bundle_discards_expired_entries() {
+        let mut env = crate::TestEnv::new();
+        env.remove("ESDIAG_USER");
         let state = test_server_state();
         let token = "expired-token".to_string();
         let cleanup_dir = std::env::temp_dir().join("esdiag-retained-expired-bundle-test");

@@ -27,7 +27,9 @@ required. Prefer a saved host with its credential in the encrypted keystore.
 
 ## Service administrators
 
-Run one fixed exporter in service mode:
+Run one fixed exporter in service mode, from the
+[native binary](installation.md#native-binary) or the
+[container image](installation.md#container-image):
 
 ```sh
 ESDIAG_MODE=service \
@@ -38,6 +40,10 @@ esdiag serve
 
 Provide `ESDIAG_OUTPUT_*` credentials through your deployment's secret manager.
 Do not put them in a user keystore or command history.
+
+The container image listens on every interface. A native `esdiag serve` only
+accepts local connections, so add `--bind 0.0.0.0` when you run the binary
+behind a proxy on another host.
 
 Before you publish the URL:
 

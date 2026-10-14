@@ -31,11 +31,12 @@ pub async fn submit(
         Err(err) => {
             tracing::warn!("Upload submit denied: {}", err);
             state.record_job_rejected().await;
+            let (status, label) = super::identity_failure(&err);
             return (
-                StatusCode::UNAUTHORIZED,
+                status,
                 Html(format!(
                     r#"<div id="job-{job_id}" class="status-box history-item status-error">
-                        🛑 Unauthorized request
+                        🛑 {label}
                     </div>"#
                 )),
             );
@@ -190,7 +191,7 @@ pub async fn process(
                         job_id,
                         template::JobFailed {
                             job_id,
-                            error: &format!("Unauthorized request: {}", err),
+                            error: &format!("{}: {err}", super::identity_failure(&err).1),
                             source: "User upload",
                         },
                     ),

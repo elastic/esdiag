@@ -50,7 +50,7 @@ pub async fn form(
                     &tx,
                     job_feed_event(template::JobFailed {
                         job_id: new_job_id(),
-                        error: &format!("Unauthorized request: {}", err),
+                        error: &format!("{}: {err}", super::identity_failure(&err).1),
                         source: &signals.service_link.filename,
                     }),
                 )
@@ -82,7 +82,7 @@ pub async fn id(
                     &tx,
                     template_event(template::JobFailed {
                         job_id,
-                        error: &format!("Unauthorized request: {}", err),
+                        error: &format!("{}: {err}", super::identity_failure(&err).1),
                         source: "Forwarded service link job",
                     }),
                 )

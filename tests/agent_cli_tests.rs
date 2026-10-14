@@ -245,6 +245,7 @@ fn read_server_readiness(home: &TempDir, args: &[String]) -> serde_json::Value {
         .env("USERPROFILE", home.path())
         .env("ESDIAG_HOSTS", home.path().join(".esdiag").join("hosts.yml"))
         .env("ESDIAG_KEYSTORE", home.path().join(".esdiag").join("secrets.yml"))
+        .env_remove("ESDIAG_BIND")
         .stdout(Stdio::piped());
     let mut child = command.spawn().expect("start server");
     let stdout = child.stdout.take().expect("server stdout");
@@ -286,7 +287,7 @@ fn serve_emits_readiness_outcome_before_waiting_for_shutdown() {
     let outcome = read_server_readiness(&home, &[home.path().display().to_string()]);
 
     assert_eq!(outcome["result"], "server_ready");
-    assert_eq!(outcome["address"], "0.0.0.0");
+    assert_eq!(outcome["address"], "127.0.0.1");
     assert!(outcome["port"].as_u64().is_some_and(|port| port > 0));
     assert_eq!(outcome["output"], "configured");
 }

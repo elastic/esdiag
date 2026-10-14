@@ -161,7 +161,7 @@ pub async fn service_link(
         Err(err) => {
             tracing::warn!("Rejecting service_link request due to auth policy: {err}");
             return (
-                StatusCode::UNAUTHORIZED,
+                super::identity_failure(&err).0,
                 Json(json!({
                     "error": err.to_string()
                 })),
@@ -290,7 +290,7 @@ pub async fn api_key(
         Err(err) => {
             tracing::warn!("Rejecting api_key request due to auth policy: {err}");
             return (
-                StatusCode::UNAUTHORIZED,
+                super::identity_failure(&err).0,
                 Json(json!({
                     "error": err.to_string()
                 })),

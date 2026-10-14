@@ -12,7 +12,7 @@ the current checkout, then delegates stack lifecycle commands to
 `bin/esdiag-local`.
 
 For published images without a source checkout, use
-[esdiag local](../setup/esdiag-local.md) or the standalone launcher.
+[esdiag local](../setup/local-stack.md) or the standalone launcher.
 
 Run the script from the repository root. It needs Podman or Docker. It refuses
 to run as root.

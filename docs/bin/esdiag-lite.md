@@ -119,7 +119,21 @@ The generator updates and checks both `esdiag-lite.sh` and `esdiag-lite.ps1`.
 powershell -File bin/esdiag-lite.ps1 collect
 powershell -File bin/esdiag-lite.ps1 collect --archive=none
 powershell -File bin/esdiag-lite.ps1 upload api-diagnostics-<timestamp>.zip
+powershell -File bin/esdiag-lite.ps1 collect --upload="<upload-id-or-url>"
 ```
 
 PowerShell uses `Compress-Archive` for ZIP output. Use `--archive=none` when
 that command is unavailable.
+
+Set `ELASTIC_ES_URL` and `ELASTIC_ES_API_KEY` (or the basic authentication
+pair) using `$env:VARIABLE = 'value'` before running the script. Uploads use
+`Get-FileHash` and accept either an upload ID or the full Elastic Upload link.
+
+```powershell
+$env:WAIT_SECONDS = '60'
+$env:COLLECTION_COUNT = '5'
+powershell -File bin/esdiag-lite.ps1 watch --archive=none
+```
+
+Watch jobs save diagnostics in the directory from which you invoke the script.
+The watch command exits with code 1 if any collection fails.

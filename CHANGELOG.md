@@ -35,6 +35,24 @@ published release notes, maintenance branches, and tagged history.
 
 ### Changed
 
+- Changed native Windows local-stack lifecycle commands to identify the managed web service by executable and creation time, report its running status, and stop it during restart and shutdown.
+
+- Increased the native Windows CLI main-thread stack reserve to 8 MiB so local asset installation can run without exhausting the default stack.
+
+- Changed native Windows local-stack state and run logs to resolve from `USERPROFILE` without requiring `HOME`; run-log cleanup now honors `ESDIAG_HOME`.
+- Documented the Windows container paths as WSL on WSL and Hyper-V on PowerShell, including the 8 GiB memory minimum and fixed Hyper-V memory configuration.
+
+- Changed PowerShell Lite uploads to retain the upload ID in request URLs.
+- Changed PowerShell Lite watch jobs to forward collection arguments, preserve the invoking directory, and report failed collections with a nonzero exit code.
+- Changed browser opening and clipboard copying under WSL to use the Windows desktop, including Unicode clipboard text.
+- Changed browser launch failures to try available alternatives and report unsuccessful exit statuses. A launcher that keeps running, such as `xdg-open`, counts as opened instead of blocking until the browser closes.
+- Changed web onboarding to return each next step directly to the submitting browser, so setup advances when a diagnostic user is configured.
+- Changed `esdiag init` to ask for the diagnostic user before offering web setup, so the web interface starts with that user. After a terminal setup that started a local stack, init now asks before opening the web interface, defaulting to no.
+- Changed new keystore password prompts to ask again when the password is empty or the confirmation doesn't match, instead of exiting.
+- Updated the local Elastic Stack default to version 9.5.5 for new `esdiag local` and `esdiag-local` stacks. Existing stacks upgrade with `esdiag local upgrade` or `esdiag-local upgrade`.
+- Replaced `esdiag-local up --upgrade` with an `upgrade` command for `esdiag local` and `esdiag-local`. It asks for `[y/N]` confirmation or accepts `--force`, restarts a running stack on the new images, and leaves a stopped stack stopped. `up` now warns about an older stack and starts its recorded versions instead of failing, and `esdiag-local up` rejects version overrides that differ from an existing stack.
+- Changed `esdiag serve` to bind to `127.0.0.1` by default. Set `--bind` or the new `ESDIAG_BIND` variable to listen elsewhere; the container image sets `ESDIAG_BIND=0.0.0.0`.
+- Changed `esdiag host add` to reference a keystore secret with the host's name when `--secret` and inline credentials are omitted, matching URL-template hosts.
 - Changed CLI commands to write their full log to `~/.esdiag/last_run/esdiag.log` and show only warnings and errors in the terminal unless `--debug` or `LOG_LEVEL` is set. `esdiag serve` still logs to stderr.
 - Changed `esdiag local` lifecycle commands and `esdiag init` to show short progress messages, with container runtime output sent to the run log. Podman's external compose provider banner is suppressed.
 - Changed `esdiag init` prompt defaults to follow earlier answers: local storage is the default when a container runtime is available, starting a local stack defaults to yes after choosing local storage, and adding the collect role to an existing host at the same URL defaults to yes.
@@ -104,6 +122,10 @@ published release notes, maintenance branches, and tagged history.
   container; full mode preserves the containerized runtime.
 - Changed the scalar `thread_pool.estimated_time_interval` and `xpack.searchable.snapshot.shared_cache.size` values to map to `.current` fields, so they no longer conflict with the nested `warn_threshold` and `max_headroom` settings, which keep their original paths.
 - Changed `esdiag setup` to roll over existing ESDiag data streams when a bundled index or component template has a higher `version` than the installed one, logging each rollover, so corrected mappings apply to new writes without a manual rollover. Every bundled template now has a `version`, bumped by hand only when a rollover is needed. Setup keeps an installed template whose version is newer than the bundled one, so an older ESDiag release cannot downgrade it.
+
+- Changed `esdiag serve` in user mode to use the `user` saved in `~/.esdiag/esdiag.yml` instead of `Anonymous`. A configured user, from `ESDIAG_USER` or `esdiag.yml`, now sets the job owner and locks the User field, including on `/welcome`. If `esdiag.yml` can't be read, the server returns a configuration error (HTTP 500) instead of `Anonymous`, including the settings modal and settings save when `ESDIAG_USER` is set.
+- Changed web output settings to report an unreadable `esdiag.yml` instead of replacing it with defaults.
+- Changed the full-mode `esdiag local` web container to run as the host's configured user instead of `Anonymous`. `esdiag local up` and `esdiag local restart esdiag` pass that user to the container.
 
 ### Fixed
 

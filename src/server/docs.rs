@@ -198,7 +198,8 @@ pub async fn handler(
                 let (_, user_email) = match state.resolve_user_email(&headers) {
                     Ok(result) => result,
                     Err(err) => {
-                        return (StatusCode::UNAUTHORIZED, format!("Unauthorized: {err}")).into_response();
+                        let (status, label) = super::identity_failure(&err);
+                        return (status, format!("{label}: {err}")).into_response();
                     }
                 };
                 let user_initial = user_email.chars().next().unwrap_or('_').to_ascii_uppercase();
