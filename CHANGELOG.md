@@ -123,11 +123,12 @@ published release notes, maintenance branches, and tagged history.
 - Changed the scalar `thread_pool.estimated_time_interval` and `xpack.searchable.snapshot.shared_cache.size` values to map to `.current` fields, so they no longer conflict with the nested `warn_threshold` and `max_headroom` settings, which keep their original paths.
 - Changed `esdiag setup` to roll over existing ESDiag data streams when a bundled index or component template has a higher `version` than the installed one, logging each rollover, so corrected mappings apply to new writes without a manual rollover. Every bundled template now has a `version`, bumped by hand only when a rollover is needed. Setup keeps an installed template whose version is newer than the bundled one, so an older ESDiag release cannot downgrade it.
 
+- Changed `esdiag serve` in user mode to use the `user` saved in `~/.esdiag/esdiag.yml` instead of `Anonymous`. A configured user, from `ESDIAG_USER` or `esdiag.yml`, now sets the job owner and locks the User field, including on `/welcome`. If `esdiag.yml` can't be read, the server returns a configuration error (HTTP 500) instead of `Anonymous`, including the settings modal and settings save when `ESDIAG_USER` is set.
+- Changed web output settings to report an unreadable `esdiag.yml` instead of replacing it with defaults.
+- Changed the full-mode `esdiag local` web container to run as the host's configured user instead of `Anonymous`. `esdiag local up` and `esdiag local restart esdiag` pass that user to the container.
+
 ### Fixed
 
-- Fixed `esdiag serve` in user mode ignoring the `user` saved in `~/.esdiag/esdiag.yml`. The web interface showed `Anonymous` and recorded jobs under that name. A configured user, from `ESDIAG_USER` or `esdiag.yml`, now sets the job owner and locks the User field. If `esdiag.yml` can't be read, the server returns a configuration error (HTTP 500) instead of `Anonymous`, including the settings modal and settings save when `ESDIAG_USER` is set.
-- Fixed saving output settings in the web interface replacing an unreadable `esdiag.yml` with defaults.
-- Fixed the full-mode `esdiag local` web container defaulting to `Anonymous`. `esdiag local up` and `esdiag local restart esdiag` now pass the host's configured user to the container.
 - Fixed setup duplicating Kibana assets across spaces. When ESDiag assets already exist in another Kibana space, setup now stops before importing anything and names that space.
 - Report write failures now fail the command, even when Elasticsearch returns HTTP 201 after failure-store capture. CLI errors keep completed document counts, and local reports include the error.
 - Kept thread-pool warning thresholds and searchable-snapshot cache headroom settings instead of dropping them.

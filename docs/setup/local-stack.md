@@ -42,13 +42,14 @@ containers.
 ### Containerized (full mode)
 
 ```sh
-esdiag-local up
+esdiag-local up --stack=full
 esdiag-local auth
 ```
 
-The launcher starts full mode. If the matching `esdiag` binary is also on your
-`PATH`, the launcher uses core mode instead. For every other `esdiag local`
-command in this guide, substitute `esdiag-local` when you use the launcher.
+Pass `--stack=full` on a new stack. Without it, the launcher uses core mode when
+the matching `esdiag` binary is on your `PATH`. The stack keeps its mode after
+that. For every other `esdiag local` command in this guide, substitute
+`esdiag-local` when you use the launcher.
 
 To run full mode from the binary, use `esdiag local up --stack=full`.
 
