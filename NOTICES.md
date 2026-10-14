@@ -5,10 +5,10 @@ Copyright 2012-2025 Elasticsearch B.V.
 This document lists the licenses of the projects used in esdiag.
 
 ## Overview of licenses
-- [Apache License 2.0](#Apache-2.0) (222)
+- [Apache License 2.0](#Apache-2.0) (230)
 - [MIT License](#MIT) (72)
 - [Unicode License v3](#Unicode-3.0) (19)
-- [BSD 3-Clause "New" or "Revised" License](#BSD-3-Clause) (3)
+- [BSD 3-Clause "New" or "Revised" License](#BSD-3-Clause) (5)
 - [zlib License](#Zlib) (2)
 - [BSD Zero Clause License](#0BSD) (1)
 - [Elastic License 2.0](#Elastic-2.0) (1)
@@ -263,7 +263,17 @@ Apache License 2.0
 - [windows-registry]( https://github.com/microsoft/windows-rs ) 0.6.1
 - [windows-result]( https://github.com/microsoft/windows-rs ) 0.4.1
 - [windows-strings]( https://github.com/microsoft/windows-rs ) 0.5.1
+- [windows-sys]( https://github.com/microsoft/windows-rs ) 0.52.0
 - [windows-sys]( https://github.com/microsoft/windows-rs ) 0.61.2
+- [windows-targets]( https://github.com/microsoft/windows-rs ) 0.52.6
+- [windows_aarch64_gnullvm]( https://github.com/microsoft/windows-rs ) 0.52.6
+- [windows_aarch64_msvc]( https://github.com/microsoft/windows-rs ) 0.52.6
+- [windows_i686_gnu]( https://github.com/microsoft/windows-rs ) 0.52.6
+- [windows_i686_gnullvm]( https://github.com/microsoft/windows-rs ) 0.52.6
+- [windows_i686_msvc]( https://github.com/microsoft/windows-rs ) 0.52.6
+- [windows_x86_64_gnu]( https://github.com/microsoft/windows-rs ) 0.52.6
+- [windows_x86_64_gnullvm]( https://github.com/microsoft/windows-rs ) 0.52.6
+- [windows_x86_64_msvc]( https://github.com/microsoft/windows-rs ) 0.52.6
 
 #### License
 ```
@@ -474,7 +484,7 @@ Apache License 2.0
 Apache License 2.0
 
 #### Used by
-- [zerocopy]( https://github.com/google/zerocopy ) 0.8.56
+- [zerocopy]( https://github.com/google/zerocopy ) 0.8.62
 
 #### License
 ```
@@ -897,7 +907,7 @@ Apache License 2.0
 Apache License 2.0
 
 #### Used by
-- [ipnet]( https://github.com/krisprice/ipnet ) 2.12.1
+- [ipnet]( https://github.com/krisprice/ipnet ) 2.12.2
 
 #### License
 ```
@@ -1329,7 +1339,7 @@ Apache License 2.0
 - [clap_derive]( https://github.com/clap-rs/clap ) 4.6.4
 - [clap_lex]( https://github.com/clap-rs/clap ) 1.1.0
 - [colorchoice]( https://github.com/rust-cli/anstyle.git ) 1.0.5
-- [crc32fast]( https://github.com/srijs/rust-crc32fast ) 1.5.1
+- [crc32fast]( https://github.com/srijs/rust-crc32fast ) 1.5.2
 - [foreign-types-shared]( https://github.com/sfackler/foreign-types ) 0.1.1
 - [foreign-types]( https://github.com/sfackler/foreign-types ) 0.3.2
 - [is_terminal_polyfill]( https://github.com/polyfill-rs/is_terminal_polyfill ) 1.70.2
@@ -3671,24 +3681,24 @@ limitations under the License.
 Apache License 2.0
 
 #### Used by
-- [async-compression]( https://github.com/Nullus157/async-compression ) 0.4.43
+- [async-compression]( https://github.com/Nullus157/async-compression ) 0.4.50
 - [atomic-waker]( https://github.com/smol-rs/atomic-waker ) 1.1.2
 - [autocfg]( https://github.com/cuviper/autocfg ) 1.5.1
 - [base64]( https://github.com/marshallpierce/rust-base64 ) 0.22.1
 - [base64]( https://github.com/marshallpierce/rust-base64 ) 0.23.1
-- [bitflags]( https://github.com/bitflags/bitflags ) 2.13.1
+- [bitflags]( https://github.com/bitflags/bitflags ) 2.13.2
 - [bstr]( https://github.com/BurntSushi/bstr ) 1.13.1
 - [bumpalo]( https://github.com/fitzgen/bumpalo ) 3.20.3
-- [cc]( https://github.com/rust-lang/cc-rs ) 1.4.4
-- [cfg-if]( https://github.com/rust-lang/cfg-if ) 1.0.4
-- [compression-codecs]( https://github.com/Nullus157/async-compression ) 0.4.38
-- [compression-core]( https://github.com/Nullus157/async-compression ) 0.4.32
+- [cc]( https://github.com/rust-lang/cc-rs ) 1.6.0
+- [cfg-if]( https://github.com/rust-lang/cfg-if ) 1.0.5
+- [compression-codecs]( https://github.com/Nullus157/async-compression ) 0.4.45
+- [compression-core]( https://github.com/Nullus157/async-compression ) 0.4.33
 - [core-foundation-sys]( https://github.com/servo/core-foundation-rs ) 0.8.7
 - [core-foundation]( https://github.com/servo/core-foundation-rs ) 0.10.1
 - [core-foundation]( https://github.com/servo/core-foundation-rs ) 0.9.4
 - [crossbeam-deque]( https://github.com/crossbeam-rs/crossbeam ) 0.8.7
 - [crossbeam-epoch]( https://github.com/crossbeam-rs/crossbeam ) 0.9.20
-- [crossbeam-utils]( https://github.com/crossbeam-rs/crossbeam ) 0.8.22
+- [crossbeam-utils]( https://github.com/crossbeam-rs/crossbeam ) 0.8.23
 - [displaydoc]( https://github.com/yaahc/displaydoc ) 0.2.7
 - [either]( https://github.com/rayon-rs/either ) 1.18.0
 - [equivalent]( https://github.com/indexmap-rs/equivalent ) 1.0.2
@@ -3696,7 +3706,7 @@ Apache License 2.0
 - [eyre]( https://github.com/eyre-rs/eyre ) 0.6.14
 - [fastrand]( https://github.com/smol-rs/fastrand ) 2.5.0
 - [filetime]( https://github.com/alexcrichton/filetime ) 0.2.29
-- [find-msvc-tools]( https://github.com/rust-lang/cc-rs ) 0.1.11
+- [find-msvc-tools]( https://github.com/rust-lang/cc-rs ) 0.1.14
 - [flate2]( https://github.com/rust-lang/flate2-rs ) 1.1.10
 - [fnv]( https://github.com/servo/rust-fnv ) 1.0.7
 - [form_urlencoded]( https://github.com/servo/rust-url ) 1.2.2
@@ -3708,9 +3718,9 @@ Apache License 2.0
 - [hyper-tls]( https://github.com/hyperium/hyper-tls ) 0.6.0
 - [idna]( https://github.com/servo/rust-url/ ) 1.1.0
 - [idna_adapter]( https://github.com/hsivonen/idna_adapter ) 1.2.2
-- [indexmap]( https://github.com/indexmap-rs/indexmap ) 2.14.1
+- [indexmap]( https://github.com/indexmap-rs/indexmap ) 2.14.2
 - [jobserver]( https://github.com/rust-lang/jobserver-rs ) 0.1.35
-- [js-sys]( https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/js-sys ) 0.3.104
+- [js-sys]( https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/js-sys ) 0.3.106
 - [lazy_static]( https://github.com/rust-lang-nursery/lazy-static.rs ) 1.5.0
 - [linux-raw-sys]( https://github.com/sunfishcode/linux-raw-sys ) 0.12.1
 - [lock_api]( https://github.com/Amanieu/parking_lot ) 0.4.14
@@ -3729,14 +3739,14 @@ Apache License 2.0
 - [regex-syntax]( https://github.com/rust-lang/regex ) 0.8.11
 - [regex]( https://github.com/rust-lang/regex ) 1.13.1
 - [rustc_version]( https://github.com/djc/rustc-version-rs ) 0.4.1
-- [rustix]( https://github.com/bytecodealliance/rustix ) 1.1.4
+- [rustix]( https://github.com/bytecodealliance/rustix ) 1.1.5
 - [scopeguard]( https://github.com/bluss/scopeguard ) 1.2.0
 - [security-framework-sys]( https://github.com/kornelski/rust-security-framework ) 2.17.0
 - [security-framework]( https://github.com/kornelski/rust-security-framework ) 3.7.0
-- [serde_with]( https://github.com/jonasbb/serde_with/ ) 3.22.0
-- [serde_with_macros]( https://github.com/jonasbb/serde_with/ ) 3.22.0
+- [serde_with]( https://github.com/jonasbb/serde_with/ ) 3.24.0
+- [serde_with_macros]( https://github.com/jonasbb/serde_with/ ) 3.24.0
 - [signal-hook-registry]( https://github.com/vorner/signal-hook ) 1.4.8
-- [smallvec]( https://github.com/servo/rust-smallvec ) 1.15.2
+- [smallvec]( https://github.com/servo/rust-smallvec ) 1.16.3
 - [socket2]( https://github.com/rust-lang/socket2 ) 0.6.5
 - [stable_deref_trait]( https://github.com/storyyeller/stable_deref_trait ) 1.2.1
 - [system-configuration-sys]( https://github.com/mullvad/system-configuration-rs ) 0.6.0
@@ -3745,18 +3755,18 @@ Apache License 2.0
 - [tempfile]( https://github.com/Stebalien/tempfile ) 3.27.0
 - [thread_local]( https://github.com/Amanieu/thread_local-rs ) 1.1.10
 - [ucd-trie]( https://github.com/BurntSushi/ucd-generate ) 0.1.7
-- [unicase]( https://github.com/seanmonstar/unicase ) 2.9.0
+- [unicase]( https://github.com/seanmonstar/unicase ) 2.10.0
 - [unicode-width]( https://github.com/unicode-rs/unicode-width ) 0.2.2
 - [url]( https://github.com/servo/rust-url ) 2.5.8
-- [uuid]( https://github.com/uuid-rs/uuid ) 1.26.0
+- [uuid]( https://github.com/uuid-rs/uuid ) 1.28.0
 - [version_check]( https://github.com/SergioBenitez/version_check ) 0.9.5
 - [wasi]( https://github.com/bytecodealliance/wasi ) 0.11.1+wasi-snapshot-preview1
-- [wasm-bindgen-futures]( https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/futures ) 0.4.77
-- [wasm-bindgen-macro-support]( https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/macro-support ) 0.2.127
-- [wasm-bindgen-macro]( https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/macro ) 0.2.127
-- [wasm-bindgen-shared]( https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/shared ) 0.2.127
-- [wasm-bindgen]( https://github.com/wasm-bindgen/wasm-bindgen ) 0.2.127
-- [web-sys]( https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/web-sys ) 0.3.104
+- [wasm-bindgen-futures]( https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/futures ) 0.4.79
+- [wasm-bindgen-macro-support]( https://github.com/wasm-bindgen/wasm-bindgen/tree/main/crates/macro-support ) 0.2.129
+- [wasm-bindgen-macro]( https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/macro ) 0.2.129
+- [wasm-bindgen-shared]( https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/shared ) 0.2.129
+- [wasm-bindgen]( https://github.com/wasm-bindgen/wasm-bindgen ) 0.2.129
+- [web-sys]( https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/web-sys ) 0.3.106
 
 #### License
 ```
@@ -3982,7 +3992,7 @@ Apache License 2.0
 - [digest]( https://github.com/RustCrypto/traits ) 0.10.7
 - [digest]( https://github.com/RustCrypto/traits ) 0.11.3
 - [hmac]( https://github.com/RustCrypto/MACs ) 0.12.1
-- [hybrid-array]( https://github.com/RustCrypto/hybrid-array ) 0.4.14
+- [hybrid-array]( https://github.com/RustCrypto/hybrid-array ) 0.4.15
 - [inout]( https://github.com/RustCrypto/utils ) 0.1.4
 - [opaque-debug]( https://github.com/RustCrypto/utils ) 0.3.1
 - [pbkdf2]( https://github.com/RustCrypto/password-hashes/tree/master/pbkdf2 ) 0.12.2
@@ -5679,13 +5689,13 @@ Apache License 2.0
 - [include-flate-compress]( https://github.com/SOF3/include-flate.git ) 0.3.4
 - [indenter]( https://github.com/yaahc/indenter ) 0.3.4
 - [itoa]( https://github.com/dtolnay/itoa ) 1.0.18
-- [libc]( https://github.com/rust-lang/libc ) 0.2.189
+- [libc]( https://github.com/rust-lang/libc ) 0.2.190
 - [miniz_oxide]( https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide ) 0.9.1
 - [pin-project-lite]( https://github.com/taiki-e/pin-project-lite ) 0.2.17
 - [proc-macro2]( https://github.com/dtolnay/proc-macro2 ) 1.0.107
 - [quote]( https://github.com/dtolnay/quote ) 1.0.47
 - [r-efi]( https://github.com/r-efi/r-efi ) 6.0.0
-- [rand]( https://github.com/rust-random/rand ) 0.10.2
+- [rand]( https://github.com/rust-random/rand ) 0.10.3
 - [rand]( https://github.com/rust-random/rand ) 0.8.8
 - [redact]( https://github.com/eopb/redact ) 0.1.11
 - [rle-decode-fast]( https://github.com/WanzenBug/rle-decode-helper ) 1.0.3
@@ -5698,22 +5708,20 @@ Apache License 2.0
 - [serde]( https://github.com/serde-rs/serde ) 1.0.229
 - [serde_core]( https://github.com/serde-rs/serde ) 1.0.229
 - [serde_derive]( https://github.com/serde-rs/serde ) 1.0.229
-- [serde_json]( https://github.com/serde-rs/json ) 1.0.151
+- [serde_json]( https://github.com/serde-rs/json ) 1.0.154
 - [serde_path_to_error]( https://github.com/dtolnay/path-to-error ) 0.1.20
 - [serde_urlencoded]( https://github.com/nox/serde_urlencoded ) 0.7.1
 - [shlex]( https://github.com/comex/rust-shlex ) 2.0.1
 - [syn]( https://github.com/dtolnay/syn ) 2.0.119
-- [syn]( https://github.com/dtolnay/syn ) 3.0.4
+- [syn]( https://github.com/dtolnay/syn ) 3.0.7
 - [sync_wrapper]( https://github.com/Actyx/sync_wrapper ) 1.0.2
-- [thiserror-impl]( https://github.com/dtolnay/thiserror ) 2.0.20
-- [thiserror]( https://github.com/dtolnay/thiserror ) 2.0.20
+- [thiserror-impl]( https://github.com/dtolnay/thiserror ) 2.0.21
+- [thiserror]( https://github.com/dtolnay/thiserror ) 2.0.21
 - [typed-path]( https://github.com/chipsenkbeil/typed-path ) 0.12.3
-- [unicode-ident]( https://github.com/dtolnay/unicode-ident ) 1.0.24
+- [unicode-ident]( https://github.com/dtolnay/unicode-ident ) 1.0.26
 - [utf8parse]( https://github.com/alacritty/vte ) 0.2.2
 - [wasm-streams]( https://github.com/MattiasBuelens/wasm-streams/ ) 0.4.2
 - [yaml_serde]( https://github.com/yaml/yaml-serde ) 0.10.7
-- [zstd-safe]( https://github.com/gyscos/zstd-rs ) 7.2.4
-- [zstd-sys]( https://github.com/gyscos/zstd-rs ) 2.0.16+zstd.1.5.7
 
 #### License
 ```
@@ -6085,6 +6093,45 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 BSD 3-Clause "New" or "Revised" License
 
 #### Used by
+- [zstd-safe]( https://github.com/gyscos/zstd-rs ) 7.3.0
+- [zstd-sys]( https://github.com/gyscos/zstd-rs ) 2.1.1+zstd.1.5.7
+
+#### License
+```
+BSD 3-Clause License
+
+Copyright (c) 2026, Alexandre Bury
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its
+   contributors may be used to endorse or promote products derived from
+   this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+```
+### BSD-3-Clause
+BSD 3-Clause "New" or "Revised" License
+
+#### Used by
 - [subtle]( https://github.com/dalek-cryptography/subtle ) 2.6.1
 
 #### License
@@ -6160,7 +6207,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 Elastic License 2.0
 
 #### Used by
-- [esdiag]( https://github.com/elastic/esdiag ) 0.17.0-rc1
+- [esdiag]( https://github.com/elastic/esdiag ) 0.17.0
 
 #### License
 ```
@@ -6297,7 +6344,7 @@ DEALINGS IN THE SOFTWARE.
 MIT License
 
 #### Used by
-- [mio]( https://github.com/tokio-rs/mio ) 1.2.2
+- [mio]( https://github.com/tokio-rs/mio ) 1.2.4
 
 #### License
 ```
@@ -6326,7 +6373,7 @@ THE SOFTWARE.
 MIT License
 
 #### Used by
-- [hyper]( https://github.com/hyperium/hyper ) 1.11.1
+- [hyper]( https://github.com/hyperium/hyper ) 1.12.0
 
 #### License
 ```
@@ -6404,7 +6451,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 MIT License
 
 #### Used by
-- [h2]( https://github.com/hyperium/h2 ) 0.4.19
+- [h2]( https://github.com/hyperium/h2 ) 0.4.20
 
 #### License
 ```
@@ -6474,7 +6521,7 @@ DEALINGS IN THE SOFTWARE.
 MIT License
 
 #### Used by
-- [want]( https://github.com/seanmonstar/want ) 0.3.1
+- [want]( https://github.com/seanmonstar/want ) 0.3.2
 
 #### License
 ```
@@ -6811,7 +6858,7 @@ DEALINGS IN THE SOFTWARE.
 MIT License
 
 #### Used by
-- [hyper-util]( https://github.com/hyperium/hyper-util ) 0.1.20
+- [hyper-util]( https://github.com/hyperium/hyper-util ) 0.1.21
 
 #### License
 ```
@@ -6840,7 +6887,7 @@ THE SOFTWARE.
 MIT License
 
 #### Used by
-- [synstructure]( https://github.com/mystor/synstructure ) 0.13.2
+- [synstructure]( https://github.com/mystor/synstructure ) 0.14.0
 
 #### License
 ```
@@ -6954,9 +7001,9 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 MIT License
 
 #### Used by
-- [darling]( https://github.com/TedDriggs/darling ) 0.23.0
-- [darling_core]( https://github.com/TedDriggs/darling ) 0.23.0
-- [darling_macro]( https://github.com/TedDriggs/darling ) 0.23.0
+- [darling]( https://github.com/TedDriggs/darling ) 0.24.1
+- [darling_core]( https://github.com/TedDriggs/darling ) 0.24.1
+- [darling_macro]( https://github.com/TedDriggs/darling ) 0.24.1
 
 #### License
 ```
@@ -7210,9 +7257,9 @@ MIT License
 
 #### Used by
 - [tokio-stream]( https://github.com/tokio-rs/tokio ) 0.1.19
-- [tokio-test]( https://github.com/tokio-rs/tokio ) 0.4.5
-- [tokio-util]( https://github.com/tokio-rs/tokio ) 0.7.19
-- [tokio]( https://github.com/tokio-rs/tokio ) 1.53.1
+- [tokio-test]( https://github.com/tokio-rs/tokio ) 0.4.6
+- [tokio-util]( https://github.com/tokio-rs/tokio ) 0.7.20
+- [tokio]( https://github.com/tokio-rs/tokio ) 1.53.2
 
 #### License
 ```
@@ -7336,7 +7383,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 MIT License
 
 #### Used by
-- [libflate]( https://github.com/sile/libflate ) 2.3.1
+- [libflate]( https://github.com/sile/libflate ) 2.3.2
 - [libflate_lz77]( https://github.com/sile/libflate ) 2.3.0
 
 #### License
@@ -7560,9 +7607,9 @@ THE SOFTWARE.
 MIT License
 
 #### Used by
-- [rust-embed-impl]( https://pyrossh.dev/repos/rust-embed ) 8.12.0
-- [rust-embed-utils]( https://pyrossh.dev/repos/rust-embed ) 8.12.0
-- [rust-embed]( https://pyrossh.dev/repos/rust-embed ) 8.12.0
+- [rust-embed-impl]( https://pyrossh.dev/repos/rust-embed ) 8.13.0
+- [rust-embed-utils]( https://pyrossh.dev/repos/rust-embed ) 8.13.0
+- [rust-embed]( https://pyrossh.dev/repos/rust-embed ) 8.13.0
 
 #### License
 ```
@@ -7736,7 +7783,7 @@ THE SOFTWARE.
 Unicode License v3
 
 #### Used by
-- [unicode-ident]( https://github.com/dtolnay/unicode-ident ) 1.0.24
+- [unicode-ident]( https://github.com/dtolnay/unicode-ident ) 1.0.26
 
 #### License
 ```
@@ -7796,9 +7843,9 @@ Unicode License v3
 - [potential_utf]( https://github.com/unicode-org/icu4x ) 0.1.6
 - [tinystr]( https://github.com/unicode-org/icu4x ) 0.8.4
 - [writeable]( https://github.com/unicode-org/icu4x ) 0.6.4
-- [yoke-derive]( https://github.com/unicode-org/icu4x ) 0.8.2
+- [yoke-derive]( https://github.com/unicode-org/icu4x ) 0.8.4
 - [yoke]( https://github.com/unicode-org/icu4x ) 0.8.3
-- [zerofrom-derive]( https://github.com/unicode-org/icu4x ) 0.1.7
+- [zerofrom-derive]( https://github.com/unicode-org/icu4x ) 0.1.8
 - [zerofrom]( https://github.com/unicode-org/icu4x ) 0.1.8
 - [zerotrie]( https://github.com/unicode-org/icu4x ) 0.2.5
 - [zerovec-derive]( https://github.com/unicode-org/icu4x ) 0.11.6

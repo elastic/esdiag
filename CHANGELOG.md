@@ -10,10 +10,7 @@ published release notes, maintenance branches, and tagged history.
 
 ## [Unreleased]
 
-### Security
-
-- Disabled direct Elasticsearch API key inputs in shared service mode.
-- Removed server-owned authentication state from browser Datastar signals.
+## [0.17.0] - 2026-10-13
 
 ### Added
 
@@ -63,6 +60,7 @@ published release notes, maintenance branches, and tagged history.
 - Made source-tree notice generation opt-in so Cargo package verification and registry installation use committed notices.
 - Limited web onboarding to builds with both keystore and setup support, preserving host and keystore management in builds without setup.
 - Restored the published Elasticsearch client dependency with a response compatibility adapter so ESDiag can be packaged from registry dependencies.
+- Updated semver-compatible Rust crate dependencies and regenerated third-party notices for the release.
 
 - Changed `elasticrc` to parse schema-keyed `ServiceConfig<T>` values that resolve into typed runtime `Service<T>` values.
 
@@ -188,6 +186,8 @@ published release notes, maintenance branches, and tagged history.
 
 ### Security
 
+- Disabled direct Elasticsearch API key inputs in shared service mode.
+- Removed server-owned authentication state from browser Datastar signals.
 - Clarified credential custody so saved credentials are mediated by the user-mode keystore, service-mode outputs use runtime-provided credentials, and ad-hoc input API keys remain transient (#352).
 - Wrapped every API key, password, and cached keystore password in a redacting type, so credential material renders as a marker in debug and log output and can only be serialized where a field opts in (#352).
 
@@ -413,7 +413,8 @@ published release notes, maintenance branches, and tagged history.
   fail on invalid zip paths (#177).
 - Fixed ECK diagnostic path handling for correctly structured archives (#179).
 
-[Unreleased]: https://github.com/elastic/esdiag/compare/0.16.5...main
+[Unreleased]: https://github.com/elastic/esdiag/compare/0.17.0...main
+[0.17.0]: https://github.com/elastic/esdiag/compare/0.16.5...0.17.0
 [0.16.5]: https://github.com/elastic/esdiag/compare/0.16.4...0.16.5
 [0.16.4]: https://github.com/elastic/esdiag/compare/0.16.2...0.16.4
 [0.16.2]: https://github.com/elastic/esdiag/compare/0.16.1...0.16.2
