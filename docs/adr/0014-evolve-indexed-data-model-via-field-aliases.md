@@ -36,7 +36,10 @@ accept values.
   searches over documents already stored there.
 - `setup` warns about existing aliases that reject writes and about two concrete
   names without reciprocal copying, where historical searches may be split.
-  It does not rewrite historical documents or roll over streams automatically.
+  Only indices that can still receive writes are reported individually. Backing
+  indices behind a data stream's write index never see a writer, so their
+  aliases are not reported, and their unlinked fields are summarized once per
+  data stream. `setup` does not rewrite historical documents.
 
 ## Upgrade and recovery
 
