@@ -10,10 +10,7 @@ published release notes, maintenance branches, and tagged history.
 
 ## [Unreleased]
 
-### Security
-
-- Disabled direct Elasticsearch API key inputs in shared service mode.
-- Removed server-owned authentication state from browser Datastar signals.
+## [0.17.0] - 2026-10-13
 
 ### Added
 
@@ -32,6 +29,7 @@ published release notes, maintenance branches, and tagged history.
 - Added the Ingest Pipeline Detail dashboard, scoped by the incoming `diagnostic.id` and `ingest.pipeline.name` drilldown filters, breaking a single pipeline down by processor, processor type, and executing node, with per-processor execution order, cost, and failure rate. Surfaces processor failures separately from pipeline failures, so errors absorbed by `on_failure` or `ignore_failure` stay visible.
 - Added drilldowns to the Index Detail, Data Stream Detail, and Alias Detail dashboards from the bulk and indexing rate charts on Daily Indexing Overview, the per-node operation charts on Index Operations Overview and Datastream Operations Overview, the per-node shard CPU time charts on Ingest Nodes Overview and Search Nodes Overview, and the rollover alias and newest indices panels on Index Settings Overview.
 - Added drilldowns to the Node Detail dashboard from every per-node chart and thread pool table on Ingest Nodes Overview and Search Nodes Overview.
+- Added a native Windows x86_64 release archive, `esdiag-VERSION-x86_64-pc-windows-msvc.zip`, that runs without the Visual C++ Redistributable.
 
 ### Changed
 
@@ -63,6 +61,9 @@ published release notes, maintenance branches, and tagged history.
 - Made source-tree notice generation opt-in so Cargo package verification and registry installation use committed notices.
 - Limited web onboarding to builds with both keystore and setup support, preserving host and keystore management in builds without setup.
 - Restored the published Elasticsearch client dependency with a response compatibility adapter so ESDiag can be packaged from registry dependencies.
+- Updated semver-compatible Rust crate dependencies and regenerated third-party notices for the release.
+- Changed the container image to build and run against OpenSSL 3, so Linux release binaries run on hosts without OpenSSL 4.
+- Changed repository text files to check out with LF line endings on every platform, so Windows builds embed the same assets as other platforms.
 
 - Changed `elasticrc` to parse schema-keyed `ServiceConfig<T>` values that resolve into typed runtime `Service<T>` values.
 
@@ -188,6 +189,8 @@ published release notes, maintenance branches, and tagged history.
 
 ### Security
 
+- Disabled direct Elasticsearch API key inputs in shared service mode.
+- Removed server-owned authentication state from browser Datastar signals.
 - Clarified credential custody so saved credentials are mediated by the user-mode keystore, service-mode outputs use runtime-provided credentials, and ad-hoc input API keys remain transient (#352).
 - Wrapped every API key, password, and cached keystore password in a redacting type, so credential material renders as a marker in debug and log output and can only be serialized where a field opts in (#352).
 
@@ -413,7 +416,8 @@ published release notes, maintenance branches, and tagged history.
   fail on invalid zip paths (#177).
 - Fixed ECK diagnostic path handling for correctly structured archives (#179).
 
-[Unreleased]: https://github.com/elastic/esdiag/compare/0.16.5...main
+[Unreleased]: https://github.com/elastic/esdiag/compare/0.17.0...main
+[0.17.0]: https://github.com/elastic/esdiag/compare/0.16.5...0.17.0
 [0.16.5]: https://github.com/elastic/esdiag/compare/0.16.4...0.16.5
 [0.16.4]: https://github.com/elastic/esdiag/compare/0.16.2...0.16.4
 [0.16.2]: https://github.com/elastic/esdiag/compare/0.16.1...0.16.2

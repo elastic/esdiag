@@ -46,7 +46,7 @@ EOF
 cat >"$fake_bin/esdiag" <<'EOF'
 #!/usr/bin/env bash
 case "$1" in
-  --version) printf 'esdiag %s\n' "${FAKE_ESDIAG_VERSION:-0.17.0-rc1}" ;;
+  --version) printf 'esdiag %s\n' "${FAKE_ESDIAG_VERSION:-0.17.0}" ;;
   setup) printf 'setup\n' >>"${FAKE_ESDIAG_LOG}" ;;
   serve) printf 'serve %s\n' "$*" >>"${FAKE_ESDIAG_LOG}"; while :; do sleep 60; done ;;
 esac
@@ -86,7 +86,7 @@ export FAKE_CLIPBOARD="$tmp/clipboard" FAKE_UI_LOG="$tmp/ui.log"
 
 # Shell, help, platform adapters, and repository-independent execution.
 bash -n "$script"
-[[ "$($script version)" == "0.17.0-rc1" ]] || fail version
+[[ "$($script version)" == "0.17.0" ]] || fail version
 PATH="$fake_bin:$PATH" ESDIAG_TEST_OS=Darwin "$script" help >"$tmp/help-macos"
 PATH="$fake_bin:$PATH" ESDIAG_TEST_OS=Linux "$script" help >"$tmp/help-linux"
 PATH="$fake_bin:$PATH" ESDIAG_TEST_OS=Linux ESDIAG_TEST_WSL=true "$script" help >"$tmp/help-wsl"
@@ -137,7 +137,7 @@ PATH="$fake_bin:$PATH" ESDIAG_LOCAL_BINARY="$fake_bin/esdiag" "$script" down --r
 PATH="$fake_bin:$PATH" ESDIAG_LOCAL_BINARY="$fake_bin/esdiag" "$script" reset --runtime podman --state-dir "$tmp/core" --force
 FAKE_ESDIAG_VERSION=0.0.0 PATH="$fake_bin:$PATH" ESDIAG_LOCAL_BINARY="$fake_bin/esdiag" \
     "$script" up --runtime podman --state-dir "$tmp/mismatched-core" --stack=core --pull never --open-browser=false 2>"$tmp/mismatched-core.err" && fail 'mismatched core binary was accepted'
-assert_contains "$tmp/mismatched-core.err" 'requires an ESDiag 0.17.0-rc1 binary'
+assert_contains "$tmp/mismatched-core.err" 'requires an ESDiag 0.17.0 binary'
 
 # Idempotence, status/auth/log secrecy, raw secrets, setup, down, and reset.
 password=$(sed -n 's/^ELASTIC_PASSWORD=//p' "$tmp/secure/.env")
@@ -250,7 +250,7 @@ elastic_version=$(sed -n 's/^readonly ELASTIC_VERSION="\(.*\)"/\1/p' "$script")
 run_local up --runtime podman --state-dir "$tmp/upgrade" --pull never --open-browser=false
 pin_old_versions
 run_local up --runtime podman --state-dir "$tmp/upgrade" --pull never --open-browser=false 2>"$tmp/drift-warning"
-assert_contains "$tmp/drift-warning" "can be upgraded from Elastic 9.4.2 to ${elastic_version} and ESDiag 0.1.0 to 0.17.0-rc1"
+assert_contains "$tmp/drift-warning" "can be upgraded from Elastic 9.4.2 to ${elastic_version} and ESDiag 0.1.0 to 0.17.0"
 assert_contains "$tmp/drift-warning" 'esdiag-local upgrade'
 assert_contains "$tmp/upgrade/.env" 'ELASTICSEARCH_IMAGE=docker.elastic.co/elasticsearch/elasticsearch:9.4.2'
 if run_local up --runtime podman --state-dir "$tmp/upgrade" --pull never --upgrade 2>"$tmp/upgrade-flag-error"; then fail '--upgrade accepted'; fi
@@ -285,7 +285,7 @@ assert_contains "$tmp/upgrade-stopped" 'Upgraded the stopped stack'
 assert_contains "$tmp/upgrade/.env" "STACK_ELASTIC_VERSION=${elastic_version}"
 assert_contains "$tmp/upgrade/.env" "ELASTICSEARCH_IMAGE=docker.elastic.co/elasticsearch/elasticsearch:${elastic_version}"
 assert_contains "$tmp/upgrade/.env" "KIBANA_IMAGE=docker.elastic.co/kibana/kibana:${elastic_version}"
-assert_contains "$tmp/upgrade/.env" 'ESDIAG_IMAGE=docker.elastic.co/esdiag/esdiag:0.17.0-rc1'
+assert_contains "$tmp/upgrade/.env" 'ESDIAG_IMAGE=docker.elastic.co/esdiag/esdiag:0.17.0'
 assert_not_contains "$FAKE_LOG" 'up -d'
 ! compgen -G "$tmp/upgrade/.env.pre-upgrade.*" >/dev/null || fail 'upgrade left a state backup'
 
@@ -333,7 +333,7 @@ if FAKE_ESDIAG_VERSION=0.0.0 PATH="$fake_bin:$PATH" ESDIAG_LOCAL_BINARY="$fake_b
     "$script" upgrade --runtime podman --state-dir "$tmp/core-upgrade" --pull never --force 2>"$tmp/core-upgrade-error"; then
     fail 'core upgrade accepted a mismatched native binary'
 fi
-assert_contains "$tmp/core-upgrade-error" 'requires an ESDiag 0.17.0-rc1 binary'
+assert_contains "$tmp/core-upgrade-error" 'requires an ESDiag 0.17.0 binary'
 assert_contains "$tmp/core-upgrade/.env" 'STACK_ELASTIC_VERSION=9.4.2'
 assert_not_contains "$FAKE_LOG" 'up -d'
 if run_local upgrade --runtime podman --state-dir "$tmp/no-stack" --force 2>"$tmp/no-stack-error"; then fail 'upgrade without state accepted'; fi

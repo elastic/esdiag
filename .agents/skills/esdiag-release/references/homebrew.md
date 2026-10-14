@@ -22,7 +22,8 @@ LICENSE.txt
 NOTICES.md
 ```
 
-The checksum file contains exactly one lowercase SHA-256 record per archive.
+The checksum file contains exactly one lowercase SHA-256 record per archive,
+including the [Windows archive](windows.md), which uploads with these assets.
 Published release assets are immutable input to the tap. Do not attach or
 replace them after the GitHub release becomes public.
 

@@ -4104,7 +4104,7 @@ mod tests {
             context: AgentSkillsFailureContext {
                 detected_targets: vec!["codex".to_string()],
                 selected_targets: vec!["claude".to_string(), "codex".to_string()],
-                version: "0.17.0-rc1".to_string(),
+                version: "0.17.0".to_string(),
                 digest: "a1b2".to_string(),
                 results: vec![
                     AgentSkillTargetResult {
@@ -4129,7 +4129,7 @@ mod tests {
         let context = &value["agent_skills"];
         assert_eq!(context["detected_targets"], serde_json::json!(["codex"]));
         assert_eq!(context["selected_targets"], serde_json::json!(["claude", "codex"]));
-        assert_eq!(context["version"], "0.17.0-rc1");
+        assert_eq!(context["version"], "0.17.0");
         assert_eq!(context["digest"], "a1b2");
         assert_eq!(context["results"][0]["action"], "installed");
         assert_eq!(context["results"][1]["action"], "conflict");

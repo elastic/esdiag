@@ -5,7 +5,7 @@
 
 set -euo pipefail
 
-readonly ESDIAG_VERSION="0.17.0-rc1"
+readonly ESDIAG_VERSION="0.17.0"
 readonly ELASTIC_VERSION="9.5.5"
 readonly STATE_SCHEMA_VERSION="3"
 readonly UPDATE_SCRIPT_URL="https://github.com/elastic/esdiag/releases/latest/download/esdiag-local"
