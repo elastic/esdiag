@@ -61,6 +61,7 @@ published release notes, maintenance branches, and tagged history.
 - Limited web onboarding to builds with both keystore and setup support, preserving host and keystore management in builds without setup.
 - Restored the published Elasticsearch client dependency with a response compatibility adapter so ESDiag can be packaged from registry dependencies.
 - Updated semver-compatible Rust crate dependencies and regenerated third-party notices for the release.
+- Changed the container image to build and run against OpenSSL 3, so Linux release binaries run on hosts without OpenSSL 4.
 
 - Changed `elasticrc` to parse schema-keyed `ServiceConfig<T>` values that resolve into typed runtime `Service<T>` values.
 
