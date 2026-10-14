@@ -193,11 +193,11 @@ fail the command.
 | Asset family | Count | Audit scope |
 | --- | ---: | --- |
 | Elasticsearch ingest pipelines | 1 | `set` processors and `reroute`; installation and simulation |
-| Elasticsearch component templates | 7 | Settings, mappings, metadata, and composition |
-| Elasticsearch index templates | 26 | Settings, mappings, data streams, and composition |
+| Elasticsearch component templates | 9 | Settings, mappings, metadata, and composition |
+| Elasticsearch index templates | 35 | Settings, mappings, data streams, and composition |
 | Elasticsearch roles | 1 | Installation; HTTP 403 on Serverless is a warning |
 | Kibana spaces | 1 | Creation and update with project-managed controls omitted |
-| Kibana saved objects | 90 | Dashboards, data views, Lens, saved searches, Vega visualizations, links, and tags |
+| Kibana saved objects | 105 | Dashboards, data views, Lens, saved searches, Vega visualizations, links, and tags |
 | Kibana workflows | 1 | Installation and its Elasticsearch authentication and ES|QL request definitions |
 | Agent Builder tools | 1 | Workflow reference and installation |
 | Agent Builder skills | 1 | Installation, referenced diagnostic guides, and attachment to the default agent |
@@ -270,3 +270,21 @@ workflow execution under an interactive user's identity need separate
 functional testing. Agent Builder availability depends on project feature
 tiers and privileges, as described in the
 [Agent Builder setup guide](https://www.elastic.co/docs/explore-analyze/ai-features/agent-builder/get-started).
+
+⚠ 1 unresolved conflict detected
+- ours = HEAD
+- theirs = 37009ea1 (Add ECK platform diagnostic processing (#73))
+NOTICE: Inspect a block by reading `conflict://<N>` (add `/ours` / `/theirs` / `/base` to render a single side). Resolve with `write({ path: "conflict://<N>", content })`, or bulk-resolve every registered conflict with `write({ path: "conflict://*", content })`. Writes replace ONLY the marker block (markers + all sides) — never repeat the lines before/after it; they stay in place.
+`content` shorthand: a line that is exactly `@ours` / `@theirs` / `@base` / `@both` expands to that recorded section. `@both` is ours-then-theirs with no separator — only for additive conflicts where each side adds something different; NEVER for competing edits of the same lines (pick a side or write the combined text). Lines that are not a token pass through verbatim, so `"// keep both\n@ours\n@theirs"` literally writes the comment, then ours, then theirs.
+Per-id bulk: `write({ path: "conflict://*", content: "1: @ours\n2: @theirs\n…" })` resolves each listed id with that side in ONE call — the cheapest way through many pick-one conflicts; unlisted ids stay registered.
+Resolve each block faithfully: keep one side (`@ours`/`@theirs`), or combine them when both intents apply — never invent content beyond the recorded sides, and never stack both sides of competing edits. Resolve several conflicts in a single turn by issuing multiple `write` calls at once; ids stay valid as earlier blocks are resolved.
+
+──── #3  L196-204 ────
+<<< ours
+| Elasticsearch component templates | 7 | Settings, mappings, metadata, and composition |
+| Elasticsearch index templates | 26 | Settings, mappings, data streams, and composition |
+| Elasticsearch roles | 1 | Installation; HTTP 403 on Serverless is a warning |
+>>> theirs
+| Elasticsearch component templates | 9 | Settings, mappings, metadata, and composition |
+| Elasticsearch index templates | 35 | Settings, mappings, data streams, and composition |
+| Elasticsearch roles | 1 | Skipped on Serverless |

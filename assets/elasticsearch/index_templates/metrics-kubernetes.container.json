@@ -1,0 +1,36 @@
+{
+  "_meta": {
+    "description": "ESDiag Kubernetes container statuses, including init containers"
+  },
+  "index_patterns": ["metrics-kubernetes.container-esdiag*"],
+  "composed_of": [
+    "esdiag@eck-mappings",
+    "esdiag@eck-metadata",
+    "esdiag@settings"
+  ],
+  "allow_auto_create": true,
+  "data_stream": {
+    "hidden": false,
+    "allow_custom_routing": false
+  },
+  "priority": 300,
+  "template": {
+    "mappings": {
+      "properties": {
+        "data_stream": {
+          "type": "object",
+          "properties": {
+            "dataset": {
+              "type": "constant_keyword",
+              "value": "kubernetes.container"
+            },
+            "type": {
+              "type": "constant_keyword",
+              "value": "metrics"
+            }
+          }
+        }
+      }
+    }
+  }
+}

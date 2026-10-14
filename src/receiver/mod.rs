@@ -75,6 +75,49 @@ impl std::fmt::Display for MissingSource {
 
 impl std::error::Error for MissingSource {}
 
+/// Send each line of `reader` without its line terminator. Invalid UTF-8 is
+/// replaced rather than failing the whole file, because logs are not
+/// guaranteed to be clean text.
+fn send_bundle_lines(mut reader: impl std::io::BufRead, tx: &tokio::sync::mpsc::Sender<Result<String>>) {
+    let mut buffer = Vec::new();
+    loop {
+        buffer.clear();
+        match reader.read_until(b'\n', &mut buffer) {
+            Ok(0) => return,
+            Ok(_) => {
+                while matches!(buffer.last(), Some(b'\n' | b'\r')) {
+                    buffer.pop();
+                }
+                let line = String::from_utf8_lossy(&buffer).into_owned();
+                if tx.blocking_send(Ok(line)).is_err() {
+                    return;
+                }
+            }
+            Err(err) => {
+                let _ = tx.blocking_send(Err(err.into()));
+                return;
+            }
+        }
+    }
+}
+
+fn bundle_line_stream(
+    rx: tokio::sync::mpsc::Receiver<Result<String>>,
+    handle: tokio::task::JoinHandle<()>,
+    tx: tokio::sync::mpsc::Sender<Result<String>>,
+) -> BoxStream<'static, Result<String>> {
+    tokio::spawn(async move {
+        if let Err(err) = handle.await
+            && err.is_panic()
+        {
+            let _ = tx.send(Err(eyre!("Bundle line reader panicked"))).await;
+        }
+    });
+    Box::pin(futures::stream::unfold(rx, |mut rx| async move {
+        rx.recv().await.map(|item| (item, rx))
+    }))
+}
+
 // Skip JSON whitespace without allocating a second copy of the source payload.
 fn source_has_json(reader: &mut impl std::io::BufRead) -> std::io::Result<bool> {
     loop {
@@ -405,6 +448,32 @@ impl Receiver {
         }
     }
 
+    /// Names of the directories directly inside `dir`, relative to the
+    /// receiver's working directory; `""` lists the bundle root.
+    pub async fn list_bundle_dirs(&self, dir: &str) -> Result<Vec<String>> {
+        match self {
+            Receiver::ArchiveBytes(receiver) => receiver.list_bundle_dirs(dir).await,
+            Receiver::ArchiveFile(receiver) => receiver.list_bundle_dirs(dir).await,
+            Receiver::Directory(receiver) => receiver.list_bundle_dirs(dir),
+            _ => Err(eyre!(
+                "Bundle directory listing is only supported for archive and directory receivers"
+            )),
+        }
+    }
+
+    /// Stream a bundle text file line by line without loading it into memory.
+    /// A missing file fails before the stream is returned.
+    pub async fn read_bundle_lines(&self, path: &str) -> Result<BoxStream<'static, Result<String>>> {
+        match self {
+            Receiver::ArchiveBytes(receiver) => receiver.read_bundle_lines(path).await,
+            Receiver::ArchiveFile(receiver) => receiver.read_bundle_lines(path).await,
+            Receiver::Directory(receiver) => receiver.read_bundle_lines(path),
+            _ => Err(eyre!(
+                "Bundle file reads are only supported for archive and directory receivers"
+            )),
+        }
+    }
+
     fn set_source_application_from_manifest(&self, application: Option<Application>) -> Result<()> {
         let Some(application) = application else {
             return Ok(());
@@ -529,6 +598,117 @@ mod tests {
             let mut reader = std::io::BufReader::with_capacity(2, input.as_bytes());
             assert!(super::source_has_json(&mut reader).unwrap());
             assert!(serde_json::from_reader::<_, serde_json::Value>(reader).is_err());
+        }
+    }
+
+    fn eck_fixture_dir() -> std::path::PathBuf {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/archives/eck-diagnostics-synthetic")
+    }
+
+    /// Zip the ECK fixture beneath a single root folder, the layout a
+    /// re-packaged bundle commonly has.
+    fn zipped_eck_fixture() -> (tempfile::TempDir, std::path::PathBuf) {
+        use std::io::Write;
+        let tmp = tempfile::tempdir().expect("zip dir");
+        let zip_path = tmp.path().join("eck.zip");
+        let mut zip = zip::ZipWriter::new(std::fs::File::create(&zip_path).expect("create zip"));
+        let root = eck_fixture_dir();
+        let mut files = Vec::new();
+        let mut pending = vec![root.clone()];
+        while let Some(dir) = pending.pop() {
+            for entry in std::fs::read_dir(&dir).expect("read fixture dir") {
+                let path = entry.expect("fixture entry").path();
+                if path.is_dir() {
+                    pending.push(path);
+                } else {
+                    files.push(path);
+                }
+            }
+        }
+        files.sort_by_key(|path| (path.parent() != Some(root.as_path()), path.clone()));
+        for path in files {
+            let relative = path
+                .strip_prefix(&root)
+                .expect("relative")
+                .to_string_lossy()
+                .replace('\\', "/");
+            zip.start_file(format!("eck-root/{relative}"), zip::write::SimpleFileOptions::default())
+                .expect("start file");
+            zip.write_all(&std::fs::read(&path).expect("read fixture file"))
+                .expect("write file");
+        }
+        zip.finish().expect("finish zip");
+        (tmp, zip_path)
+    }
+
+    fn eck_fixture_receivers() -> (tempfile::TempDir, Vec<Receiver>) {
+        let (tmp, zip_path) = zipped_eck_fixture();
+        let receivers = vec![
+            Receiver::Directory(DirectoryReceiver::try_from(eck_fixture_dir()).expect("directory receiver")),
+            Receiver::ArchiveFile(super::ArchiveFileReceiver::try_from(zip_path.clone()).expect("archive receiver")),
+            Receiver::try_from(bytes::Bytes::from(std::fs::read(&zip_path).expect("zip bytes")))
+                .expect("bytes receiver"),
+        ];
+        (tmp, receivers)
+    }
+
+    #[tokio::test]
+    async fn bundle_dirs_list_namespaces_and_pods_for_every_bundle_receiver() {
+        let (_tmp, receivers) = eck_fixture_receivers();
+        for receiver in receivers {
+            assert_eq!(
+                receiver.list_bundle_dirs("").await.expect("root dirs"),
+                vec!["demo".to_string(), "elastic-system".to_string()],
+                "{receiver}"
+            );
+            assert_eq!(
+                receiver.list_bundle_dirs("elastic-system/pod").await.expect("pod dirs"),
+                vec!["elastic-operator-0".to_string()],
+                "{receiver}"
+            );
+            assert!(
+                receiver.list_bundle_dirs("absent").await.is_err(),
+                "{receiver} must report a missing directory"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn bundle_lines_stream_without_terminators_for_every_bundle_receiver() {
+        use futures::StreamExt;
+        let (_tmp, receivers) = eck_fixture_receivers();
+        for receiver in receivers {
+            let lines: Vec<String> = receiver
+                .read_bundle_lines("elastic-system/pod/elastic-operator-0/logs.txt")
+                .await
+                .expect("line stream")
+                .map(|line| line.expect("line"))
+                .collect()
+                .await;
+            assert_eq!(lines.len(), 10, "{receiver}");
+            assert!(lines[0].starts_with("==== START logs"), "{receiver}");
+            assert!(lines.iter().all(|line| !line.ends_with('\n') && !line.ends_with('\r')));
+
+            let missing = receiver.read_bundle_lines("elastic-system/pod/absent/logs.txt").await;
+            assert!(
+                missing.is_err_and(|err| err.chain().any(|cause| cause.is::<super::MissingSource>()
+                    || cause
+                        .downcast_ref::<std::io::Error>()
+                        .is_some_and(|err| err.kind() == std::io::ErrorKind::NotFound))),
+                "{receiver} must report a missing file as a missing source"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn empty_bundle_json_is_a_missing_source_for_every_bundle_receiver() {
+        let (_tmp, receivers) = eck_fixture_receivers();
+        for receiver in receivers {
+            let err = receiver
+                .read_bundle_json::<serde_json::Value>("podsecuritypolicies.json")
+                .await
+                .expect_err("empty file");
+            assert!(err.is::<super::MissingSource>(), "{receiver}: {err}");
         }
     }
 

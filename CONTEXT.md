@@ -174,8 +174,8 @@ _Avoid_: product (see below), service
 **Infrastructure data**:
 Host/OS-level data whose kind is *determined by the platform*, not an independent
 axis: `SelfManaged` yields Linux system calls (opt-in, and available under no other
-platform), `ECK` yields container metrics, and managed cloud (`ElasticCloudHosted`,
-`ECE`) yields none.
+platform), `ECK` yields Kubernetes node, pod, container, and volume state, and
+managed cloud (`ElasticCloudHosted`, `ECE`) yields none.
 _Avoid_: system data, local data, host layer (it is not a product layer)
 
 **Product** (legacy):

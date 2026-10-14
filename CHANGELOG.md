@@ -60,6 +60,8 @@ published release notes, maintenance branches, and tagged history.
 - Added drilldowns to the Index Detail, Data Stream Detail, and Alias Detail dashboards from the bulk and indexing rate charts on Daily Indexing Overview, the per-node operation charts on Index Operations Overview and Datastream Operations Overview, the per-node shard CPU time charts on Ingest Nodes Overview and Search Nodes Overview, and the rollover alias and newest indices panels on Index Settings Overview.
 - Added drilldowns to the Node Detail dashboard from every per-node chart and thread pool table on Ingest Nodes Overview and Search Nodes Overview.
 - Added a native Windows x86_64 release archive, `esdiag-VERSION-x86_64-pc-windows-msvc.zip`, that runs without the Visual C++ Redistributable.
+- Added processing for ECK diagnostic bundles, indexing operator settings and logs, ECK resources and nodeSets, and Kubernetes node, pod, container, volume, and event state alongside the included Elasticsearch diagnostics (#73).
+- Added the ECK Platform Overview dashboard, linked from processed ECK bundles in place of the Cluster Report (#73).
 
 ### Changed
 

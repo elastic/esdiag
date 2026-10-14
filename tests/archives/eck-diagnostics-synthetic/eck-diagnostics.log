@@ -1,0 +1,5 @@
+2026/01/15 10:00:00 ECK diagnostics with parameters: {DiagnosticImage:docker.elastic.co/eck-dev/support-diagnostics:9.1.0 ECKVersion: Kubeconfig: OperatorNamespaces:[elastic-system] ResourcesNamespaces:[demo] OutputDir: OutputName:eck-diagnostics-synthetic.zip RunStackDiagnostics:true RunAgentDiagnostics:false Verbose:false StackDiagnosticsTimeout:5m0s Filters:map[] LogFilters:map[]}
+2026/01/15 10:00:02 ECK version is 3.1.0
+2026/01/15 10:00:02 Extracting Kubernetes diagnostics from elastic-system
+2026/01/15 10:00:04 Extracting Kubernetes diagnostics from demo
+2026/01/15 10:00:20 Elasticsearch diagnostics extracted for demo/quickstart

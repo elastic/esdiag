@@ -1,0 +1,52 @@
+{
+  "apiVersion": "v1",
+  "kind": "List",
+  "metadata": {
+    "resourceVersion": ""
+  },
+  "items": [
+    {
+      "apiVersion": "v1",
+      "kind": "ConfigMap",
+      "metadata": {
+        "name": "elastic-operator",
+        "namespace": "elastic-system",
+        "annotations": {
+          "example.com/sentinel": "annotation-sentinel-value"
+        }
+      },
+      "data": {
+        "eck.yaml": "log-verbosity: 0\nmetrics-port: 0\ncontainer-registry: docker.elastic.co\nmax-concurrent-reconciles: 3\nca-cert-validity: 8760h\nca-cert-rotate-before: 24h\ncert-validity: 8760h\ncert-rotate-before: 24h\ndisable-config-watch: false\nexposed-node-labels: [topology.kubernetes.io/.*,failure-domain.beta.kubernetes.io/.*]\nset-default-security-context: auto-detect\nkube-client-timeout: 60s\nelasticsearch-client-timeout: 180s\ndisable-telemetry: false\ndistribution-channel: all-in-one\nvalidate-storage-class: true\nenable-webhook: true\nwebhook-name: elastic-webhook.k8s.elastic.co\nwebhook-port: 9443\noperator-namespace: elastic-system\nenable-leader-election: true\nelasticsearch-observation-interval: 10s\nubi-only: false\nnamespaces: [demo]\n"
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "ConfigMap",
+      "metadata": {
+        "name": "elastic-licensing",
+        "namespace": "elastic-system",
+        "labels": {
+          "common.k8s.elastic.co/type": "elastic-usage"
+        }
+      },
+      "data": {
+        "eck_license_level": "enterprise",
+        "enterprise_resource_units": "2",
+        "timestamp": "2026-01-15T09:58:00Z",
+        "total_managed_memory": "20.00GiB",
+        "total_managed_memory_bytes": "21474836480"
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "ConfigMap",
+      "metadata": {
+        "name": "kube-root-ca.crt",
+        "namespace": "elastic-system"
+      },
+      "data": {
+        "ca.crt": "-----BEGIN CERTIFICATE-----\nconfigmap-ca-sentinel\n-----END CERTIFICATE-----\n"
+      }
+    }
+  ]
+}

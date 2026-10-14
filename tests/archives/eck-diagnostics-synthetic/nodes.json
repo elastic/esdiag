@@ -1,0 +1,228 @@
+{
+  "apiVersion": "v1",
+  "kind": "List",
+  "metadata": {
+    "resourceVersion": ""
+  },
+  "items": [
+    {
+      "apiVersion": "v1",
+      "kind": "Node",
+      "metadata": {
+        "name": "worker-a",
+        "uid": "00000000-0000-0000-0000-00000000000a",
+        "creationTimestamp": "2025-12-01T00:00:00Z",
+        "labels": {
+          "kubernetes.io/hostname": "worker-a",
+          "topology.kubernetes.io/zone": "zone-a",
+          "node-role.kubernetes.io/worker": "",
+          "team": "label-sentinel"
+        },
+        "annotations": {
+          "example.com/sentinel": "annotation-sentinel-value"
+        },
+        "managedFields": [
+          {
+            "manager": "managedfields-sentinel",
+            "operation": "Update"
+          }
+        ]
+      },
+      "spec": {
+        "podCIDR": "10.0.0.0/24",
+        "providerID": "fake://worker-a"
+      },
+      "status": {
+        "addresses": [
+          {
+            "type": "InternalIP",
+            "address": "192.0.2.10"
+          }
+        ],
+        "allocatable": {
+          "cpu": "3900m",
+          "ephemeral-storage": "18230014742",
+          "hugepages-2Mi": "0",
+          "memory": "16278420Ki",
+          "pods": "110"
+        },
+        "capacity": {
+          "cpu": "4",
+          "ephemeral-storage": "19780832Ki",
+          "hugepages-2Mi": "0",
+          "memory": "16380820Ki",
+          "pods": "110"
+        },
+        "conditions": [
+          {
+            "type": "MemoryPressure",
+            "status": "False",
+            "reason": "KubeletHasSufficientMemory"
+          },
+          {
+            "type": "DiskPressure",
+            "status": "False",
+            "reason": "KubeletHasNoDiskPressure"
+          },
+          {
+            "type": "PIDPressure",
+            "status": "False",
+            "reason": "KubeletHasSufficientPID"
+          },
+          {
+            "type": "Ready",
+            "status": "True",
+            "reason": "KubeletReady"
+          }
+        ],
+        "images": [
+          {
+            "names": [
+              "registry.example/images-sentinel:1.0"
+            ],
+            "sizeBytes": 1000
+          }
+        ],
+        "nodeInfo": {
+          "architecture": "amd64",
+          "bootID": "boot-a",
+          "containerRuntimeVersion": "containerd://1.7.20",
+          "kernelVersion": "6.1.0",
+          "kubeProxyVersion": "v1.30.4",
+          "kubeletVersion": "v1.30.4",
+          "machineID": "machine-a",
+          "operatingSystem": "linux",
+          "osImage": "Example Linux 1.0",
+          "systemUUID": "system-a"
+        }
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Node",
+      "metadata": {
+        "name": "worker-b",
+        "uid": "00000000-0000-0000-0000-00000000000b",
+        "creationTimestamp": "2025-12-01T00:00:00Z",
+        "labels": {
+          "kubernetes.io/hostname": "worker-b",
+          "topology.kubernetes.io/zone": "zone-b",
+          "node-role.kubernetes.io/worker": ""
+        }
+      },
+      "spec": {
+        "podCIDR": "10.0.1.0/24",
+        "providerID": "fake://worker-b",
+        "taints": [
+          {
+            "key": "dedicated",
+            "value": "elastic",
+            "effect": "PreferNoSchedule"
+          }
+        ]
+      },
+      "status": {
+        "allocatable": {
+          "cpu": "3900m",
+          "ephemeral-storage": "18230014742",
+          "memory": "16278420Ki",
+          "pods": "110"
+        },
+        "capacity": {
+          "cpu": "4",
+          "ephemeral-storage": "19780832Ki",
+          "memory": "16380820Ki",
+          "pods": "110"
+        },
+        "conditions": [
+          {
+            "type": "MemoryPressure",
+            "status": "False"
+          },
+          {
+            "type": "DiskPressure",
+            "status": "False"
+          },
+          {
+            "type": "PIDPressure",
+            "status": "False"
+          },
+          {
+            "type": "Ready",
+            "status": "True"
+          }
+        ],
+        "nodeInfo": {
+          "architecture": "amd64",
+          "containerRuntimeVersion": "containerd://1.7.20",
+          "kernelVersion": "6.1.0",
+          "kubeProxyVersion": "v1.30.4",
+          "kubeletVersion": "v1.30.4",
+          "operatingSystem": "linux",
+          "osImage": "Example Linux 1.0"
+        }
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Node",
+      "metadata": {
+        "name": "worker-c",
+        "uid": "00000000-0000-0000-0000-00000000000c",
+        "creationTimestamp": "2025-12-01T00:00:00Z",
+        "labels": {
+          "kubernetes.io/hostname": "worker-c",
+          "topology.kubernetes.io/zone": "zone-c",
+          "node-role.kubernetes.io/worker": ""
+        }
+      },
+      "spec": {
+        "podCIDR": "10.0.2.0/24",
+        "providerID": "fake://worker-c",
+        "unschedulable": true
+      },
+      "status": {
+        "allocatable": {
+          "cpu": "1900m",
+          "ephemeral-storage": "18230014742",
+          "memory": "7Gi",
+          "pods": "110"
+        },
+        "capacity": {
+          "cpu": "2",
+          "ephemeral-storage": "19780832Ki",
+          "memory": "8Gi",
+          "pods": "110"
+        },
+        "conditions": [
+          {
+            "type": "MemoryPressure",
+            "status": "True",
+            "reason": "KubeletHasInsufficientMemory"
+          },
+          {
+            "type": "DiskPressure",
+            "status": "False"
+          },
+          {
+            "type": "PIDPressure",
+            "status": "False"
+          },
+          {
+            "type": "Ready",
+            "status": "True"
+          }
+        ],
+        "nodeInfo": {
+          "architecture": "arm64",
+          "containerRuntimeVersion": "containerd://1.7.20",
+          "kernelVersion": "6.1.0",
+          "kubeProxyVersion": "v1.29.8",
+          "kubeletVersion": "v1.29.8",
+          "operatingSystem": "linux",
+          "osImage": "Example Linux 1.0"
+        }
+      }
+    }
+  ]
+}

@@ -4,7 +4,7 @@
 The ECK diagnostic processor SHALL index the curated ECK platform files of a Loaded
 ECK bundle in addition to fanning out its included diagnostics. Platform documents
 SHALL carry `diagnostic.platform` = `ECK` and no `diagnostic.application`, and their
-`diagnostic.uuid` SHALL equal the `diagnostic.parent_id` of the bundle's included child
+`diagnostic.id` SHALL equal the `diagnostic.parent_id` of the bundle's included child
 diagnostics. Included child processing SHALL be unchanged.
 
 #### Scenario: ECK bundle produces platform and child documents
@@ -15,7 +15,7 @@ diagnostics. Included child processing SHALL be unchanged.
 
 #### Scenario: Parent and child documents are joinable
 - **WHEN** an ECK parent and its Elasticsearch child are processed
-- **THEN** every ECK platform document's `diagnostic.uuid` MUST equal the child documents' `diagnostic.parent_id`
+- **THEN** every ECK platform document's `diagnostic.id` MUST equal the child documents' `diagnostic.parent_id`
 
 #### Scenario: Platform documents have no application
 - **WHEN** an ECK platform document is emitted
@@ -281,3 +281,6 @@ an ECK parent diagnostic SHALL open that dashboard filtered to the parent's
 - **WHEN** an ECK parent diagnostic completes
 - **THEN** its Kibana link MUST target the ECK Platform Overview dashboard filtered by its `diagnostic.id`
 - **AND** each included Elasticsearch child link MUST still target the Elasticsearch Cluster Report
+
+
+[You have received this identical output 3 times. Re-reading '/Users/reno/Development/worktrees/esdiag/echo/esdiag/openspec/changes/add-eck-platform-processing/specs/eck-platform-processing/spec.md:raw' will not change it — use a narrower selector (path:A-B), or proceed with the edit.]

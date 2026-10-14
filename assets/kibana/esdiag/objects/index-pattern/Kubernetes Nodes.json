@@ -1,0 +1,18 @@
+{
+  "attributes": {
+    "allowHidden": false,
+    "fieldAttrs": {},
+    "fieldFormatMap": {},
+    "fields": "[]",
+    "name": "Kubernetes Nodes",
+    "runtimeFieldMap": "{}",
+    "sourceFilters": "[]",
+    "timeFieldName": "@timestamp",
+    "title": "metrics-kubernetes.node-esdiag"
+  },
+  "coreMigrationVersion": "8.8.0",
+  "id": "559c8baa-709a-50d7-be85-f3d5061229ff",
+  "references": [],
+  "type": "index-pattern",
+  "typeMigrationVersion": "8.0.0"
+}

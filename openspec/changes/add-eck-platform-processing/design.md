@@ -30,8 +30,8 @@ committed) the ECK-level files total under 3 MB while pod logs total ~95 MB and 
 included Stack diagnostics ~90 MB.
 
 Current state: `ElasticCloudKubernetesDiagnostic::process` is a no-op that warns;
-included children fan out through the generic `Processor` (children get
-`diagnostic.parent_id` = parent `uuid` and inherit `platform: ECK`). Kibana links are
+included children fan out through the generic `Processor` after the parent finishes
+(children get `diagnostic.parent_id` = parent `diagnostic.id` and inherit `platform: ECK`). Kibana links are
 hardcoded to the Elasticsearch Cluster Report. Existing Kubernetes dashboards group
 Elasticsearch nodes by the `node.attributes.k8s_node_name` node attribute.
 
@@ -60,8 +60,8 @@ no external binaries.
   and Logstash logs here are plain text rather than JSON. A future log-processing
   change can add them.
 - Enriching included child documents (for example adding the Kubernetes node or zone
-  to `metrics-node-esdiag`). Children run concurrently with the parent; joining at
-  query time on pod name / `k8s_node_name` avoids coupling processors.
+  to `metrics-node-esdiag`). Children are separate jobs; joining at query time on
+  pod name / `k8s_node_name` avoids coupling processors.
 - KubernetesPlatform (MKI) processing. The `kubernetes.*` stream names are chosen so
   it can reuse them later, but that processor is unchanged.
 - Triggering ECK bundle generation (ADR-0019 "delegated acquisition").
@@ -210,8 +210,10 @@ return `None` and omit the field.
 
 ### 8. Operator log shape
 
-ECK logs are ECS JSON lines with a resource-specific name key (`es_name`, `kibana_name`,
-`agent_name`, `ls_name`, `beat_name`, `apm_name`, `ent_name`, `ems_name`). The processor
+ECK logs are ECS JSON lines with a resource-specific name key (`es_name`, `kb_name`,
+`agent_name`, `logstash_name`, `beat_name`, `apm_name`, `ent_name`, `ems_name`;
+`kibana_name` and `ls_name` are also accepted). `took` is seconds as a float and
+`iteration` a string. `logs.txt` is wrapped in non-JSON `==== START/END logs ====` lines. The processor
 maps the present key to `eck.resource.{kind,name}` and keeps the ECS keys as-is
 (ADR-0013). Non-JSON lines (panic output, klog prefixes) are counted, not indexed.
 Operator pods are those labeled `control-plane: elastic-operator` in any collected
@@ -278,3 +280,6 @@ independently.
   `k8s_node_name` attribute users must configure?
 - Should Stack pod logs be processed in a follow-up log-ingestion change, and scoped by
   level (WARN+) to bound volume?
+
+
+[You have received this identical output 3 times. Re-reading '/Users/reno/Development/worktrees/esdiag/echo/esdiag/openspec/changes/add-eck-platform-processing/design.md:raw' will not change it — use a narrower selector (path:A-B), or proceed with the edit.]
