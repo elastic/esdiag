@@ -8,6 +8,7 @@ on:
       - "bin/esdiag-lite.*"
       - "crates/repo-tools/**"
       - "tests/bin/esdiag-lite.*"
+      - "tests/bin/fixtures/esdiag-lite-*"
   workflow_call:
 
 permissions:
