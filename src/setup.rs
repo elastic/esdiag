@@ -16,7 +16,7 @@ use kibana_sync::{
 use reqwest::{Method, StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::io::{Cursor, Read};
 use std::path::{Path, PathBuf};
 use url::Url;
@@ -176,17 +176,43 @@ fn provenance_alias_patches(mappings: &Value) -> Vec<(String, Value)> {
         .collect()
 }
 
-/// Existing aliases cannot accept writes, and unlinked concrete fields can split
-/// search results. Neither can be repaired by installing a new template.
-fn provenance_mapping_warnings(properties: &Value) -> Vec<String> {
-    let mut warnings = Vec::new();
+/// A provenance mapping that installing a new template cannot repair.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum ProvenanceIssue {
+    /// Aliases cannot accept values, so writers using this name are rejected.
+    QueryOnlyAlias(&'static str),
+    /// Both names are stored without reciprocal `copy_to`, so a search by one
+    /// name misses documents stored under the other.
+    Unlinked {
+        current: &'static str,
+        legacy: &'static str,
+    },
+}
+
+impl std::fmt::Display for ProvenanceIssue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::QueryOnlyAlias(name) => write!(
+                f,
+                "diagnostic.{name} is a query-only alias and rejects writers using that name; \
+                 roll over the data stream after setup before mixing writer versions"
+            ),
+            Self::Unlinked { current, legacy } => write!(
+                f,
+                "diagnostic.{current} and diagnostic.{legacy} are unlinked concrete fields; \
+                 historical search results may be split. Roll over for future writes and \
+                 reindex historical documents if both names must find them"
+            ),
+        }
+    }
+}
+
+fn provenance_mapping_issues(properties: &Value) -> Vec<ProvenanceIssue> {
+    let mut issues = Vec::new();
     for (current, legacy) in PROVENANCE_RENAMES {
         for name in [current, legacy] {
             if properties[name]["type"] == "alias" {
-                warnings.push(format!(
-                    "diagnostic.{name} is a query-only alias and rejects writers using that name; \
-                     roll over the data stream after setup before mixing writer versions"
-                ));
+                issues.push(ProvenanceIssue::QueryOnlyAlias(name));
             }
         }
         let concrete = |name: &str| properties[name]["type"].as_str().is_some_and(|kind| kind != "alias");
@@ -196,12 +222,80 @@ fn provenance_mapping_warnings(properties: &Value) -> Vec<String> {
             copy == &target || copy.as_array().is_some_and(|targets| targets.contains(&target))
         };
         if concrete(current) && concrete(legacy) && !(copies_to(current, legacy) && copies_to(legacy, current)) {
-            warnings.push(format!(
-                "diagnostic.{current} and diagnostic.{legacy} are unlinked concrete fields; \
-                 historical search results may be split. Roll over for future writes and \
-                 reindex historical documents if both names must find them"
-            ));
+            issues.push(ProvenanceIssue::Unlinked { current, legacy });
         }
+    }
+    issues
+}
+
+/// Backing indices behind each data stream's write index, mapped to their data
+/// stream, from a `GET _data_stream` response. Writers never reach these again.
+fn historical_backing_indices(data_streams: &Value) -> HashMap<String, String> {
+    let mut historical = HashMap::new();
+    for stream in data_streams["data_streams"].as_array().into_iter().flatten() {
+        let Some(name) = stream["name"].as_str() else {
+            continue;
+        };
+        let Some((_write_index, older)) = stream["indices"].as_array().and_then(|indices| indices.split_last()) else {
+            continue;
+        };
+        for index in older.iter().filter_map(|index| index["index_name"].as_str()) {
+            historical.insert(index.to_string(), name.to_string());
+        }
+    }
+    historical
+}
+
+/// Setup warnings for the provenance mappings in a `GET <pattern>/_mapping`
+/// response.
+///
+/// Indices that can still receive writes are reported one by one. Historical
+/// backing indices only matter for searches: their aliases never see a writer,
+/// and their unlinked fields are summarized once per data stream, because only a
+/// reindex changes them and repeating them on every setup buries real failures.
+fn provenance_mapping_warnings(mappings: &Value, historical: &HashMap<String, String>) -> Vec<String> {
+    let mut warnings = Vec::new();
+    let mut unlinked_by_stream: BTreeMap<&str, (usize, BTreeSet<ProvenanceIssue>)> = BTreeMap::new();
+    let mut indices: Vec<_> = mappings.as_object().into_iter().flatten().collect();
+    indices.sort_by_key(|(index, _)| index.as_str());
+    for (index, mapping) in indices {
+        let properties = mapping
+            .pointer("/mappings/properties/diagnostic/properties")
+            .unwrap_or(&Value::Null);
+        let issues = provenance_mapping_issues(properties);
+        match historical.get(index.as_str()) {
+            None => warnings.extend(issues.iter().map(|issue| format!("{index}: {issue}"))),
+            Some(stream) => {
+                let (unlinked, aliases): (Vec<_>, Vec<_>) = issues
+                    .into_iter()
+                    .partition(|issue| matches!(issue, ProvenanceIssue::Unlinked { .. }));
+                for alias in aliases {
+                    tracing::debug!("{index}: {alias}");
+                }
+                if !unlinked.is_empty() {
+                    let (count, pairs) = unlinked_by_stream.entry(stream.as_str()).or_default();
+                    *count += 1;
+                    pairs.extend(unlinked);
+                }
+            }
+        }
+    }
+    for (stream, (count, pairs)) in unlinked_by_stream {
+        let pairs = pairs
+            .iter()
+            .filter_map(|issue| match issue {
+                ProvenanceIssue::Unlinked { current, legacy } => {
+                    Some(format!("diagnostic.{current} and diagnostic.{legacy}"))
+                }
+                ProvenanceIssue::QueryOnlyAlias(_) => None,
+            })
+            .collect::<Vec<_>>()
+            .join("; ");
+        let indices = if count == 1 { "index stores" } else { "indices store" };
+        warnings.push(format!(
+            "{stream}: {count} older backing {indices} {pairs} as unlinked concrete fields, so searches by \
+             one name miss documents stored under the other. Reindex them if both names must find those documents"
+        ));
     }
     warnings
 }
@@ -226,15 +320,9 @@ async fn install_provenance_aliases(client: &Client) -> Result<Vec<String>> {
     }
 
     let mappings: Value = response.json().await?;
-    if let Some(indices) = mappings.as_object() {
-        for (index, mapping) in indices {
-            let properties = mapping
-                .pointer("/mappings/properties/diagnostic/properties")
-                .unwrap_or(&Value::Null);
-            for warning in provenance_mapping_warnings(properties) {
-                tracing::warn!("{index}: {warning}");
-            }
-        }
+    let historical = read_historical_backing_indices(client).await;
+    for warning in provenance_mapping_warnings(&mappings, &historical) {
+        tracing::warn!("{warning}");
     }
     let patches = provenance_alias_patches(&mappings);
     if patches.is_empty() {
@@ -243,6 +331,7 @@ async fn install_provenance_aliases(client: &Client) -> Result<Vec<String>> {
     }
 
     let mut failures = Vec::new();
+    let mut aliased_writable_indices = false;
     for (index, patch) in &patches {
         let body = serde_json::to_vec(patch)?;
         let result = client
@@ -251,6 +340,7 @@ async fn install_provenance_aliases(client: &Client) -> Result<Vec<String>> {
         match result {
             Ok(response) if response.status().is_success() => {
                 tracing::debug!("Aliased the current provenance names onto {index}");
+                aliased_writable_indices |= !historical.contains_key(index);
             }
             Ok(response) => {
                 failures.push(index.clone());
@@ -272,12 +362,36 @@ async fn install_provenance_aliases(client: &Client) -> Result<Vec<String>> {
         patches.len() - failures.len(),
         patches.len()
     );
-    if patches.len() > failures.len() {
+    if aliased_writable_indices {
         tracing::warn!(
             "Added query-only provenance aliases. Roll over the affected data streams after setup before mixing writer versions."
         );
     }
     Ok(failures)
+}
+
+/// Without the data stream listing every index is treated as writable, which
+/// only makes the provenance warnings more verbose.
+async fn read_historical_backing_indices(client: &Client) -> HashMap<String, String> {
+    let path = format!("/_data_stream/{ESDIAG_INDEX_PATTERN}");
+    let response = match client.request(Method::GET, &default_headers(), &path, None).await {
+        Ok(response) => response,
+        Err(err) => {
+            tracing::debug!("Could not list ESDiag data streams: {err}");
+            return HashMap::new();
+        }
+    };
+    if !response.status().is_success() {
+        tracing::debug!("Listing ESDiag data streams returned {}", response.status());
+        return HashMap::new();
+    }
+    match response.json::<Value>().await {
+        Ok(data_streams) => historical_backing_indices(&data_streams),
+        Err(err) => {
+            tracing::debug!("Could not read the ESDiag data stream listing: {err}");
+            HashMap::new()
+        }
+    }
 }
 
 fn should_skip_asset(asset: &Asset, security_enabled: bool) -> bool {
@@ -1515,7 +1629,7 @@ mod tests {
             assert_eq!(new_index[current]["type"], "keyword");
             assert_eq!(new_index[legacy]["type"], "keyword");
         }
-        assert!(provenance_mapping_warnings(&new_index).is_empty());
+        assert!(provenance_mapping_issues(&new_index).is_empty());
         assert!(
             provenance_alias_patch(&new_index).is_none(),
             "a new index needs no patch, so setup is idempotent"
@@ -1546,23 +1660,130 @@ mod tests {
     }
 
     #[test]
-    fn provenance_warnings_identify_aliases_and_unlinked_fields() {
+    fn provenance_issues_identify_aliases_and_unlinked_fields() {
         let old = pre_rename_diagnostic_properties();
-        assert!(provenance_mapping_warnings(&old).is_empty());
+        assert!(provenance_mapping_issues(&old).is_empty());
         let patch = provenance_alias_patch(&old).unwrap();
-        assert_eq!(provenance_mapping_warnings(&patched(&old, &patch)).len(), 2);
+        assert_eq!(
+            provenance_mapping_issues(&patched(&old, &patch)),
+            vec![
+                ProvenanceIssue::QueryOnlyAlias("application"),
+                ProvenanceIssue::QueryOnlyAlias("platform"),
+            ]
+        );
         let split = serde_json::json!({
             "application": {"type": "keyword"},
             "product": {"type": "keyword"}
         });
-        assert!(provenance_mapping_warnings(&split)[0].contains("unlinked concrete fields"));
+        let issues = provenance_mapping_issues(&split);
+        assert!(issues[0].to_string().contains("unlinked concrete fields"));
         assert!(provenance_alias_patch(&split).is_none());
         let alias = serde_json::json!({
             "application": {"type": "keyword"},
             "product": {"type": "alias", "path": "diagnostic.application"}
         });
-        assert!(provenance_mapping_warnings(&alias)[0].contains("diagnostic.product is a query-only alias"));
-        assert!(provenance_mapping_warnings(&Value::Null).is_empty());
+        assert!(
+            provenance_mapping_issues(&alias)[0]
+                .to_string()
+                .contains("diagnostic.product is a query-only alias")
+        );
+        assert!(provenance_mapping_issues(&Value::Null).is_empty());
+    }
+
+    #[test]
+    fn only_backing_indices_behind_the_write_index_are_historical() {
+        let data_streams = serde_json::json!({ "data_streams": [
+            { "name": "metrics-task-esdiag", "indices": [
+                { "index_name": ".ds-metrics-task-esdiag-2026.09.29-000223" },
+                { "index_name": ".ds-metrics-task-esdiag-2026.10.13-000231" },
+                { "index_name": ".ds-metrics-task-esdiag-2026.10.14-000232" },
+            ]},
+            { "name": "metrics-node-esdiag", "indices": [
+                { "index_name": ".ds-metrics-node-esdiag-2026.10.14-000001" },
+            ]},
+            { "name": "empty-esdiag", "indices": [] },
+        ]});
+        let historical = historical_backing_indices(&data_streams);
+        assert_eq!(
+            historical,
+            HashMap::from([
+                (
+                    ".ds-metrics-task-esdiag-2026.09.29-000223".to_string(),
+                    "metrics-task-esdiag".to_string()
+                ),
+                (
+                    ".ds-metrics-task-esdiag-2026.10.13-000231".to_string(),
+                    "metrics-task-esdiag".to_string()
+                ),
+            ])
+        );
+        assert!(historical_backing_indices(&Value::Null).is_empty());
+    }
+
+    #[test]
+    fn historical_provenance_warnings_collapse_to_one_line_per_data_stream() {
+        let index = |diagnostic: Value| serde_json::json!({ "mappings": { "properties": { "diagnostic": { "properties": diagnostic } } } });
+        let unlinked = serde_json::json!({
+            "application": {"type": "keyword"},
+            "product": {"type": "keyword"},
+            "platform": {"type": "keyword"},
+            "orchestration": {"type": "keyword"},
+        });
+        let aliased = serde_json::json!({
+            "product": {"type": "keyword"},
+            "application": {"type": "alias", "path": "diagnostic.product"},
+        });
+        let mappings = serde_json::json!({
+            ".ds-metrics-diagnostic-esdiag-2025.07.28-000004": index(aliased.clone()),
+            ".ds-metrics-diagnostic-esdiag-2026.07.29-000023": index(unlinked.clone()),
+            ".ds-metrics-diagnostic-esdiag-2026.09.27-000028": index(unlinked.clone()),
+            ".ds-metrics-diagnostic-esdiag-2026.10.14-000029": index(aliased),
+            ".ds-settings-ilm-esdiag-2026.10.12-000135": index(serde_json::json!({
+                "platform": {"type": "keyword"},
+                "orchestration": {"type": "keyword"},
+            })),
+            ".ds-metrics-node-esdiag-2026.10.14-000133": index(template_diagnostic_properties()),
+        });
+        let historical = HashMap::from([
+            (
+                ".ds-metrics-diagnostic-esdiag-2025.07.28-000004".to_string(),
+                "metrics-diagnostic-esdiag".to_string(),
+            ),
+            (
+                ".ds-metrics-diagnostic-esdiag-2026.07.29-000023".to_string(),
+                "metrics-diagnostic-esdiag".to_string(),
+            ),
+            (
+                ".ds-metrics-diagnostic-esdiag-2026.09.27-000028".to_string(),
+                "metrics-diagnostic-esdiag".to_string(),
+            ),
+            (
+                ".ds-settings-ilm-esdiag-2026.10.12-000135".to_string(),
+                "settings-ilm-esdiag".to_string(),
+            ),
+        ]);
+
+        let warnings = provenance_mapping_warnings(&mappings, &historical);
+
+        assert_eq!(warnings.len(), 3, "{warnings:#?}");
+        assert!(
+            warnings[0].starts_with(
+                ".ds-metrics-diagnostic-esdiag-2026.10.14-000029: diagnostic.application is a query-only alias"
+            ),
+            "the write index keeps its per-index warning: {}",
+            warnings[0]
+        );
+        assert!(warnings[1].starts_with(
+            "metrics-diagnostic-esdiag: 2 older backing indices store diagnostic.application and diagnostic.product; \
+             diagnostic.platform and diagnostic.orchestration as unlinked concrete fields"
+        ));
+        assert!(warnings[2].starts_with(
+            "settings-ilm-esdiag: 1 older backing index stores diagnostic.platform and diagnostic.orchestration"
+        ));
+        assert!(
+            !warnings.iter().any(|warning| warning.contains("2025.07.28")),
+            "historical aliases never see a writer"
+        );
     }
 
     #[test]
