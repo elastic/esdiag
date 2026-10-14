@@ -15,6 +15,10 @@ published release notes, maintenance branches, and tagged history.
 - Added `esdiag-lite.sh` and `esdiag-lite.ps1`, each with a SHA-256 checksum, to every GitHub release.
 - Added pull-request checks for the ESDiag Lite scripts, including the Windows PowerShell tests.
 
+### Fixed
+
+- Fixed index stats collection, including the Lite scripts, failing for every index on Elasticsearch 7.7.0 and later when the cluster has a closed index (#416).
+
 ## [0.17.0] - 2026-10-13
 
 ### Added
