@@ -46,6 +46,8 @@ Read only the target references required by the release:
   validation, dry-run, approved publication, and immutable-version recovery.
 - [Homebrew](references/homebrew.md): native assets, checksum contract,
   draft-release upload, Formula update, and tap PR.
+- [Windows](references/windows.md): native MSVC archive, static C runtime,
+  LF checkout, and checksum record.
 
 ## Shared Flow
 
@@ -70,8 +72,8 @@ Read only the target references required by the release:
 4. Commit and push all release-branch fixes before making a tag.
 5. Complete the GitHub workflow through the verified draft. Publish container
    manifests before creating `TAG` when the release includes images.
-6. Attach every Homebrew release asset to the draft before the GitHub release
-   becomes public. Never change those assets after publication.
+6. Attach every Homebrew and Windows release asset to the draft before the
+   GitHub release becomes public. Never change those assets after publication.
 7. Stop for explicit approval before publishing any crates.io package or
    changing a GitHub release from draft to public. A human publishes the
    GitHub release.
