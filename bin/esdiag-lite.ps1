@@ -348,7 +348,7 @@ function Get-ApiIndicesStats {
     return Invoke-Api '/_stats?level=shards&human' 'indices_stats.json'
   }
   elseif ((Test-VersionAtLeast 7 7 0)) {
-    return Invoke-Api '/_stats?level=shards&human&expand_wildcards=all' 'indices_stats.json'
+    return Invoke-Api '/_stats?level=shards&human&expand_wildcards=hidden,open' 'indices_stats.json'
   }
   else {
     Skip-Api 'indices_stats'

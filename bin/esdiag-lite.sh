@@ -551,7 +551,7 @@ get_api_indices_stats() {
   if version_at_least 0 9 0 && version_less_than 7 7 0; then
     get_api "/_stats?level=shards&human" "indices_stats.json"
   elif version_at_least 7 7 0; then
-    get_api "/_stats?level=shards&human&expand_wildcards=all" "indices_stats.json"
+    get_api "/_stats?level=shards&human&expand_wildcards=hidden,open" "indices_stats.json"
   else
     skip_api "indices_stats"
   fi
