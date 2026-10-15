@@ -285,8 +285,8 @@ async fn disabled_typed_consumers_keep_original_address_and_numeric_lexemes() {
 }
 
 #[tokio::test]
-async fn typed_value_consumers_apply_their_own_nesting_limit() {
-    let shallow = format!("{}0{}", "[".repeat(8), "]".repeat(8));
+async fn typed_value_consumers_keep_stricter_depth_limits_within_the_normalization_budget() {
+    let shallow = format!("{}0{}", "[".repeat(127), "]".repeat(127));
     let (_fixture, receivers) = receivers_for(&shallow).await;
     for receiver in receivers {
         let eager = receiver.get::<DepthDocument>().await.expect("shallow eager value");
@@ -303,7 +303,7 @@ async fn typed_value_consumers_apply_their_own_nesting_limit() {
         assert_eq!(entries, [eager.0]);
     }
 
-    let deep = format!("{}0{}", "[".repeat(129), "]".repeat(129));
+    let deep = format!("{}0{}", "[".repeat(128), "]".repeat(128));
     let (_fixture, receivers) = receivers_for(&deep).await;
     for receiver in receivers {
         assert!(receiver.get::<DepthDocument>().await.is_err());

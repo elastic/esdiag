@@ -37,3 +37,9 @@ Both actual CLI runs satisfy the documented ≤20% scrub-on target. End-to-end R
 ## Coherence
 
 One private field-scope walk owns decoded child-key and inherited-array scope. Two actual output adapters retain their separate interpretation policies; `normalize_value` is deleted. No new public interface, dependency, whole-payload typed allocation, retries or swallowed error. Nearby documentation now describes resource ownership and separates normalizer memory from Process memory; the memory commands use positional output correctly. CHANGELOG is intentionally unchanged for preserved behavior. Native strict OpenSpec validation passed; active-change merge-completion remains pending review/archival.
+
+## Inherited parent depth-budget correction
+
+The current parent explicitly limits enabled, supported normalization to 128 containers. Proposal, design and task language now treat that approved parent policy as the compatibility baseline rather than implying unlimited typed depth. Direct-reader bypasses remain unchanged; raw `Value` acceptance remains stricter and still rejects 128 containers.
+
+After propagation, all 49 receiver library tests and all six typed/streamed compatibility tests passed, as did formatting and strict validation. The consumer-depth case now accepts 127 containers and rejects 128 through file, memory and directory receivers, proving that a stricter `Value` consumer still governs inside the normalization budget. The inherited reader regressions separately prove `RawValue` acceptance at 128, early rejection at 129 for arrays and objects, and retained 512-level direct-reader acceptance. Historical RSS measurements above were not rerun and do not claim to measure this nesting-policy correction.
