@@ -214,22 +214,26 @@ async fn supported_raw_reads_reject_incomplete_invalid_and_out_of_range_json() {
 
 #[tokio::test]
 async fn supported_raw_reads_keep_the_value_deserializer_nesting_limit() {
-    let shallow = format!("{}0{}", "[".repeat(8), "]".repeat(8));
-    let (_fixture, receivers) = local_raw_receivers_with_content(true, &shallow).await;
-    for receiver in receivers {
-        let response = receiver.get_raw_response::<NodesSource>().await.unwrap();
-        assert_eq!(response.response_size_bytes, response.body.len() as u64);
-        assert_eq!(
-            serde_json::from_str::<Value>(&response.body).unwrap(),
-            serde_json::from_str::<Value>(&shallow).unwrap()
-        );
-        assert!(receiver.get_raw::<NodesSource>().await.is_ok());
+    for depth in [8, 127] {
+        let shallow = format!("{}0{}", "[".repeat(depth), "]".repeat(depth));
+        let (_fixture, receivers) = local_raw_receivers_with_content(true, &shallow).await;
+        for receiver in receivers {
+            let response = receiver.get_raw_response::<NodesSource>().await.unwrap();
+            assert_eq!(response.response_size_bytes, response.body.len() as u64);
+            assert_eq!(
+                serde_json::from_str::<Value>(&response.body).unwrap(),
+                serde_json::from_str::<Value>(&shallow).unwrap()
+            );
+            assert!(receiver.get_raw::<NodesSource>().await.is_ok());
+        }
     }
-    let deep = format!("{}0{}", "[".repeat(129), "]".repeat(129));
-    let (_fixture, receivers) = local_raw_receivers_with_content(true, &deep).await;
-    for receiver in receivers {
-        assert!(receiver.get_raw::<NodesSource>().await.is_err());
-        assert!(receiver.get_raw_response::<NodesSource>().await.is_err());
+    for depth in [128, 129] {
+        let deep = format!("{}0{}", "[".repeat(depth), "]".repeat(depth));
+        let (_fixture, receivers) = local_raw_receivers_with_content(true, &deep).await;
+        for receiver in receivers {
+            assert!(receiver.get_raw::<NodesSource>().await.is_err());
+            assert!(receiver.get_raw_response::<NodesSource>().await.is_err());
+        }
     }
 }
 
