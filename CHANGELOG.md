@@ -42,7 +42,7 @@ published release notes, maintenance branches, and tagged history.
 
 ### Security
 
-- Limited upload scrub-checkbox metadata to 64 bytes and rejected oversized values without retaining staged files.
+- Limited upload scrub-checkbox metadata to 64 bytes and rejected oversized or unreadable (invalid UTF-8) values without retaining staged files.
 
 ## [0.17.0] - 2026-10-13
 
