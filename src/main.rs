@@ -1917,12 +1917,20 @@ async fn run(cli: Cli, format: OutputFormat) -> Result<CommandResult> {
                 let mut context = esdiag::job::context::ExecutionContext::default();
                 let binding = esdiag::job::model::BindingKey::try_new("cli-process-input")?;
                 let live_application = match &input_uri {
-                    Uri::KnownHost(host) | Uri::ElasticCloudAdmin(host) | Uri::ElasticGovCloudAdmin(host) => Some(host.app()),
+                    Uri::KnownHost(host) | Uri::ElasticCloudAdmin(host) | Uri::ElasticGovCloudAdmin(host) => {
+                        Some(host.app())
+                    }
                     _ => None,
                 };
                 match &input_uri {
-                    Uri::File(path) => context.inputs.bind_bundle(binding.clone(), receiver, path.clone(), live_application.flatten()),
-                    _ => context.inputs.bind_receiver(binding.clone(), receiver, live_application.flatten()),
+                    Uri::File(path) => {
+                        context
+                            .inputs
+                            .bind_bundle(binding.clone(), receiver, path.clone(), live_application.flatten())
+                    }
+                    _ => context
+                        .inputs
+                        .bind_receiver(binding.clone(), receiver, live_application.flatten()),
                 };
                 let job_input = if live_application.is_some() {
                     esdiag::job::model::Input::CollectBinding {

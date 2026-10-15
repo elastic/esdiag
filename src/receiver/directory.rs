@@ -341,7 +341,3 @@ fn normalize_file_content_if_needed(logical_name: &str, scrubbed: bool, content:
     );
     Ok(transformed.content)
 }
-
-fn should_normalize_file(logical_name: &str, scrubbed: bool) -> bool {
-    scrubbed && supports_json_normalization(logical_name)
-}
