@@ -2,7 +2,7 @@
 
 ## Completeness
 
-All code-side cleanup and compatibility cases are exercised. The active change remains unarchived for draft PR review; post-PR330 rebasing, review completion and archival are not claimed complete.
+All code-side cleanup and compatibility cases are exercised. The corrected draft targets `elastic/esdiag:main` (`upstream/main`) in the coordinated four-PR stack. Joint review, re-verification and required archival remain before that merge batch; no later post-PR330 implementation phase is planned. The change remains active during draft review.
 
 ## Correctness
 
