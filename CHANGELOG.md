@@ -35,6 +35,7 @@ published release notes, maintenance branches, and tagged history.
 - CLI commands that need a saved secret from a locked keystore, such as `esdiag collect`, now prompt for the keystore password on an interactive terminal and continue instead of failing. Non-interactive runs still fail.
 - Updated workspace dependency requirements and the lockfile for the 0.18 development cycle, and regenerated third-party notices.
 - Standardized raw-bundle transfer terminology on `send`, including `esdiag send` and `collect --send`; `upload` now refers only to the Elastic Upload Service.
+- Kept concurrent upload status streams independent so starting another upload does not stop updates for an earlier one.
 
 ### Fixed
 
@@ -43,6 +44,10 @@ published release notes, maintenance branches, and tagged history.
 - Preserved the legacy `settings.json` bundle filename while keeping `IndicesSettings` as the explicit code and dispatch name.
 - Fixed ECK (`eck-diagnostics`) and Kubernetes Platform bundles failing with "Failed to parse version.json" because they were processed as Elasticsearch diagnostics. They are processed as platform bundles again, and their included Elasticsearch diagnostics are processed as children.
 - Fixed `esdiag setup` failing on Elasticsearch Serverless Kibana projects with "Failed to search Kibana space 'default' for ESDiag assets (400 Bad Request)". The check that keeps ESDiag assets in one Kibana space now works on Serverless.
+
+### Security
+
+- Limited upload scrub-checkbox metadata to 64 bytes and rejected oversized values without retaining staged files.
 
 ## [0.17.0] - 2026-10-13
 

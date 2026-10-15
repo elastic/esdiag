@@ -175,3 +175,13 @@ Note: Golden archive has no malformed scrubbed IPs; scrub path adds negligible R
 | Live customer scrubbed bundle smoke | **Recommended, not recorded** |
 
 **Not in scope for this run:** `cargo test --workspace` / `collection_tests` (requires local `elasticsearch-local` collect setup — classify pre-existing env-gated failures separately).
+
+## Native PR436 review corrections
+
+The historical measurements above remain unchanged. The following observations cover the native review fixes, not a repeat of the historical live-ingest or memory benchmark.
+
+- The oversized upload-control regression failed before the fix: a 65-byte `scrubbed` field returned 200 instead of 400. It now rejects cumulatively oversized chunks before or after file staging, records one rejection, queues no Job, and leaves no staged file. A 64-byte value remains accepted. The reader uses a fixed 64-byte buffer and case-insensitive comparisons without a lowercase allocation.
+- Parent checks passed: 173 server library tests, 44 receiver library tests, and 10 raw/normalization/Logstash integration tests. Workspace clippy reported zero errors and four unchanged warnings outside the changed implementation.
+- Actual HTTP rejected 65-byte metadata both before and after the file part with status 400 and zero staged files. A 64-byte control was accepted, retained one queued file, completed through the actual upload runner, and removed that file. The actual browser upload completed with 487 documents and no staged file remaining.
+- A Chromium harness using the bundled Datastar client reproduced two requests to `/upload/process`: automatic cancellation left the first card pending while the second completed. With cancellation disabled, both cards received completion updates. The independent-stream option is retained on the generated upload card and all main, advanced, and saved-job upload entry points. No source-text or forwarding assertion was added as a permanent test.
+- The actual CLI confirmed that `-o` means opportunity, not output. The corrected macOS positional-output commands exported 487 documents with zero failures in each scrub mode, even with an unreachable network output configured in the environment. Linux timing wrappers were not executed on macOS; no new RSS comparison is claimed.
