@@ -1,0 +1,228 @@
+# Code validation gates — normalize-malformed-scrubbed-ips
+
+**Original measurement date:** 2026-06-02  
+**Host:** WSL2 (Linux)  
+**Branch:** `asa/normalize-malformed-ips-openspec`  
+**Repo:** `/home/asa/repos/test-esdiag/esdiag`  
+**Env file:** `/home/asa/repos/ya-esdiag/esdiag/.env` (`ESDIAG_OUTPUT_URL=http://localhost:9201`)
+
+**Current-checkout clarification (2026-09-18):** Recorded test counts, live-ingest outcomes, and memory measurements below are historical, not rerun results for the current branch. Current fixture and field-scope references are updated below; use `docs/scrubbed-diagnostics.md` for the current deterministic commands. The historical debug-log wording test has been removed in favor of behavioral coverage.
+
+---
+
+## 1. One-time setup
+
+| Step | Result |
+|------|--------|
+| `cargo build --release` | **Pass** (1m 54s) |
+| `jq` | Present (`/usr/bin/jq`) — apt install skipped |
+| `time` | Present (shell builtin / `/usr/bin/time`) — apt install skipped |
+| ES reachability | **Pass** — `curl http://localhost:9201` → **401** (host up; auth required) |
+| Pre-commit credential scan | **Pass** — `git diff --cached \| grep …` → clean |
+
+---
+
+## 2. Deterministic gates (CI-safe)
+
+### Historical commands and results
+
+| Command | Result |
+|---------|--------|
+| `cargo test --lib scrub` | **15 passed**, 0 failed |
+| `cargo test --test scrubbed_normalization_tests` | **6 passed**, 0 failed |
+| `cargo test --test scrub_debug_log_tests` | **1 passed**, 0 failed |
+| `cargo clippy --workspace --all-targets` | **Pass** (exit 0); 1 pre-existing `type_complexity` warning in `src/server/mod.rs:298`; 1 non-blocking `collapsible_if` in `tests/scrub_normalization_assertions.rs` |
+| `npx openspec validate normalize-malformed-scrubbed-ips` | **Pass** — change is valid |
+
+**Total deterministic scrub gates:** **22 tests** (15 unit + 6 integration + 1 debug-log).
+
+### Unit test coverage (`cargo test --lib scrub`)
+
+| Area | Tests |
+|------|-------|
+| Scrub engine (`receiver/archive/scrub.rs`) | Valid IPv4 pass-through; allowlisted fields only; `publish_host` / `bind_host`; `tasks.json`; other diagnostic JSON files; excluded manifest/version |
+| Archive receiver (`receiver/archive/file.rs`) | Scrubbed zip normalizes `nodes.json`; non-scrubbed golden archive unchanged |
+| Scrub mode resolution (`receiver/mod.rs`) | Auto (filename contains `scrubbed`); explicit true; explicit false |
+| Upload checkbox parsing (`server/file_upload.rs`) | Truthy (`true`, `1`, `on`); falsy values |
+| Node rename (`nodes/lookup.rs`) | 19-char lowercase hex → tier + last-4 suffix |
+
+### Integration test coverage (`cargo test --test scrubbed_normalization_tests`)
+
+Current integration tests inject synthetic malformed IPs at runtime from `tests/archives/elasticsearch-api-diagnostics-9.3.3.zip`; **no committed customer scrubbed bundle**. The original June measurements used the now-retired `elasticsearch-api-diagnostics-9.1.3.zip` fixture and must not be read as measurements of the current fixture.
+
+| Test | What it proves |
+|------|----------------|
+| `archive_export_normalizes_ips_with_stable_node_mapping` | Zip input + explicit scrub → directory export; **two-node** fixture; per-`node.id` IP mapping across **10 NDJSON streams** |
+| `directory_export_normalizes_ips_with_stable_node_mapping` | **Extracted folder** input + explicit scrub → same mapping assertions |
+| `directory_auto_detect_enables_scrub_when_path_contains_scrubbed` | Folder path containing `scrubbed` enables normalization without `--scrubbed true` |
+| `directory_with_scrub_disabled_preserves_malformed_ips` | `--scrubbed false` regression — malformed IPs pass through |
+| `processes_non_scrubbed_golden_archive_without_error` | Golden archive with scrub off — no mangling |
+| `distinct_malformed_ips_normalize_to_distinct_valid_ips` (assertions module) | Modulo transform produces distinct valid IPv4 per node index |
+
+Shared assertions (`tests/scrub_normalization_assertions.rs`) verify:
+
+- `node.host`, `node.ip`, `node.transport_address` on every applicable export line
+- `node.settings.network.publish_host` on `settings-node-esdiag.ndjson` when value is a dotted quad
+- Each `node.id` maps to **exactly one** normalized IP across streams (≥2 nodes, distinct expected IPs)
+
+### Implementation scope validated by tests
+
+| Surface | Covered |
+|---------|---------|
+| Input types | Archive (zip) **and** directory (extracted folder) |
+| Scrub activation | CLI explicit flag, path auto-detect, upload filename hint (unit-tested); directory auto-detect (integration) |
+| JSON files | All `*.json` except `diagnostic_manifest.json` and `version.json` |
+| Address fields | `ip`, `host`, `publish_host`, `bind_host`, `transport_address`, `publish_address`, `bound_address`, `local_address`, `remote_address`, `x_forwarded_for` |
+| Identifier pass-through (current behavior) | `http.clients[].id` is a non-address identifier; raw and streaming tests require its original value and JSON type to remain unchanged |
+| Non-goals | No rewrite of hyphenated K8s hostnames (`ip-10-36-…`); no global free-text replace |
+
+Operator reference: `docs/scrubbed-diagnostics.md`.
+
+---
+
+## 3. Live ingest (env-gated, manual)
+
+Deterministic coverage (no live ES): `cargo test --test scrubbed_normalization_tests` — builds synthetic malformed-IP zip from golden archive at runtime, exports to a temp directory, and asserts cross-stream node IP mapping.
+
+Optional live Elasticsearch check (recorded 2026-06-02):
+
+```bash
+cd /home/asa/repos/test-esdiag/esdiag
+cargo build --release
+set -a && source /home/asa/repos/ya-esdiag/esdiag/.env && set +a
+
+# Use ./target/release/esdiag from this branch (not a global install without --scrubbed).
+# Enable scrub via --scrubbed true OR a filename/path containing "scrubbed" (auto mode).
+./target/release/esdiag process /path/to/local-archive.zip --scrubbed true --debug
+
+jq '.diagnostic | {doc_errors: .docs.errors, created: .docs.created, node_metrics: .processor.stats["metrics-node-esdiag"]}' \
+  ~/.esdiag/last_run/report.json
+```
+
+Recorded run used a **local synthetic zip** (not committed; same golden→malformed transform as the integration test). Scrub was enabled via **auto-detect** (filename contained `scrubbed`); `--scrubbed true` would work without that.
+
+**Result: PASS**
+
+| Check | Outcome |
+|-------|---------|
+| `esdiag process` exit code | **0** |
+| Bulk error artifact (`~/.esdiag/last_run/bulk_errors.ndjson`) | **empty / absent** |
+| Scrub mode | **Enabled** (auto-detect from filename on recorded run) |
+| `nodes.json` normalization | **5** address fields |
+| `nodes_stats.json` normalization | **133** address fields (stream) |
+| `diagnostic.docs.errors` | **0** |
+| `metrics-node-esdiag` docs | **371** |
+| Total documents created | **375** |
+| Process runtime | **0.141 s** |
+| Diagnostic ID | `esdiag-cluster@2025-09-18~2784` |
+| Cluster / version | `esdiag-cluster` / 9.1.3 |
+| esdiag version | `0.15.0-SNAPSHOT` |
+
+Debug log excerpts:
+
+```
+Unscrubbed 5 address fields in api-diagnostics-20250918-001807/nodes.json
+Unscrubbed 133 address fields in stream file api-diagnostics-20250918-001807/nodes_stats.json
+Processor: metrics-node-esdiag  parsed: true  371 docs  0 errors
+Created 375 documents for Elasticsearch diagnostic: esdiag-cluster@2025-09-18~2784
+```
+
+Full log: `/tmp/esdiag-live-ingest-validation-20260602.log`
+
+Notes:
+
+- Missing APIs in the minimal synthetic fixture produce expected `File not found in archive` warnings; they do not fail ingest.
+- No committed scrubbed zip or shell helpers in this change.
+- **Recommended before merge (not yet recorded here):** one manual run against a **local customer scrubbed API zip** with `--scrubbed true`, then spot-check exports for zero malformed octets in `node.ip`, `node.host`, `transport_address`, and `settings.network.publish_host`.
+
+---
+
+## 4. Memory spot-check (WSL / Linux)
+
+Current reproduction commands use the available `tests/archives/elasticsearch-api-diagnostics-9.3.3.zip` fixture and positional directory output. The measurements below remain the original June results from the retired 9.1.3 fixture; these updated commands have not been re-measured here.
+
+```bash
+/usr/bin/time -v ./target/release/esdiag process \
+  tests/archives/elasticsearch-api-diagnostics-9.3.3.zip \
+  /tmp/esdiag-out-base --scrubbed false 2>&1 | tee /tmp/esdiag-mem-base.txt
+
+/usr/bin/time -v ./target/release/esdiag process \
+  tests/archives/elasticsearch-api-diagnostics-9.3.3.zip \
+  /tmp/esdiag-out-scrub --scrubbed true 2>&1 | tee /tmp/esdiag-mem-scrub.txt
+```
+
+| Run | Maximum resident set size |
+|-----|---------------------------|
+| Baseline (`--scrubbed false`) | **125,556 kB** (~123 MiB) |
+| Scrub enabled (`--scrubbed true`) | **124,188 kB** (~121 MiB) |
+
+**Ratio:** scrub / baseline = **98.9%** (target ≤ **120%**) → **PASS**
+
+Logs: `/tmp/esdiag-mem-base.txt`, `/tmp/esdiag-mem-scrub.txt`
+
+Note: Golden archive has no malformed scrubbed IPs; scrub path adds negligible RSS on that fixture. Heavier normalization work is exercised by `scrubbed_normalization_tests` (runtime synthetic zip from golden, two-node mapping).
+
+---
+
+## Summary
+
+| Gate category | Status |
+|---------------|--------|
+| Setup + ES reachability | **Pass** |
+| Deterministic tests (22) + clippy + openspec | **Pass** |
+| Live synthetic ingest | **Pass** |
+| Memory RSS ≤ 120% baseline | **Pass** (98.9%) |
+| Live customer scrubbed bundle smoke | **Recommended, not recorded** |
+
+**Not in scope for this run:** `cargo test --workspace` / `collection_tests` (requires local `elasticsearch-local` collect setup — classify pre-existing env-gated failures separately).
+
+## Native PR436 review corrections
+
+The historical measurements above remain unchanged. The following observations cover the native review fixes, not a repeat of the historical live-ingest or memory benchmark.
+
+- The oversized upload-control regression failed before the fix: a 65-byte `scrubbed` field returned 200 instead of 400. It now rejects cumulatively oversized chunks before or after file staging, records one rejection, queues no Job, and leaves no staged file. A 64-byte value remains accepted. The reader uses a fixed 64-byte buffer and case-insensitive comparisons without a lowercase allocation.
+- Parent checks passed: 173 server library tests, 44 receiver library tests, and 10 raw/normalization/Logstash integration tests. Workspace clippy reported zero errors and four unchanged warnings outside the changed implementation.
+- Actual HTTP rejected 65-byte metadata both before and after the file part with status 400 and zero staged files. A 64-byte control was accepted, retained one queued file, completed through the actual upload runner, and removed that file. The actual browser upload completed with 487 documents and no staged file remaining.
+- A Chromium harness using the bundled Datastar client reproduced two requests to `/upload/process`: automatic cancellation left the first card pending while the second completed. With cancellation disabled, both cards received completion updates. The independent-stream option is retained on the generated upload card and all main, advanced, and saved-job upload entry points. No source-text or forwarding assertion was added as a permanent test.
+- The actual CLI confirmed that `-o` means opportunity, not output. The corrected macOS positional-output commands exported 487 documents with zero failures in each scrub mode, even with an unreachable network output configured in the environment. Linux timing wrappers were not executed on macOS; no new RSS comparison is claimed.
+
+### Unreadable upload control correction
+
+An actual HTTP replay with byte `0xff` in the scrub-control field reproduced acceptance with status 200 in both field orders. Processing the accepted synthetic scrubbed archive preserved its original malformed node addresses, proving that the unreadable value disabled filename-triggered normalization.
+
+The decoder now rejects invalid UTF-8 through the existing malformed-upload cleanup path. The same two HTTP replays returned 400 with zero staged files. A valid 64-byte control still queued its file, completed processing, removed the staged file, and exported both nodes with their expected normalized addresses and preserved identity/port semantics. All 16 parent upload-module tests passed, including the raw-byte regression through chunked multipart input. The main spec and security documentation explicitly retain this rejection behavior.
+
+### Review-summary findings
+
+- The normalized-reader regression accepted a root JSON string missing its closing quote before the fix. The reader now rejects EOF in ordinary strings, after a trailing backslash, and after an escaped quote; a complete escaped string remains valid. The permanent regression passes, and a throwaway executable using the actual reader confirmed all three errors plus valid address normalization with identifier preservation.
+- Advanced and Job Builder now expose the same optional scrub checkbox as the main Process page. Actual Chromium uploads of `diagnostic.zip` (no auto-detection token) completed with 487 documents per run. On both pages, checked controls exported `node.ip = 2.3.4.5` and `node.transport_address = 2.3.4.5:9300` with the original node ID. Unchecked controls retained the malformed address. Screenshot capture timed out in both the browser helper and native fallback; rendered DOM and completed processing/export outcomes were observed.
+- Moved this change's normalization, receiver, enrichment, upload-rejection, and filename-escaping notes from the published 0.17.0 section to Unreleased. The published tag's upload handler still interpolates filenames without escaping, so the previous security release attribution was incorrect.
+- Parent verification passed: 45 receiver library tests, 16 upload-module tests, a binary build, workspace formatting, and strict validation of all 57 main specifications. These results do not replace the historical live-ingest or memory measurements above.
+
+### Export-address assertion correction
+
+A throwaway executable confirmed that the export assertions previously accepted a port-bearing `node.ip`, a missing transport port, and a changed transport port. The assertions now compare pure-IP fields without stripping anything and require the synthetic fixture's exact transport port (`9300`). All three invalid-export probes are rejected, all seven normalization integration tests pass, and workspace formatting passes. This changes regression coverage only; production behavior, operator documentation and changelog remain unchanged.
+
+### Approved normalization depth budget
+
+The normalization contract now limits enabled, supported reads to 128 nested JSON objects or arrays, counting the outermost container as one. This is an explicit compatibility change: the previous reader and a `RawValue` consumer accepted artificial 512-level input. Disabled normalization and excluded/unsupported direct readers retain their existing consumer-controlled depth acceptance. A consumer's stricter limit still applies.
+
+Before choosing the budget, a temporary Rust survey validated and measured all 12 checked-in API diagnostic archives: 337 valid JSON files, one empty JSON file, and no invalid JSON files. These are captures from local test containers, not a representative production/customer corpus. Every Elasticsearch maximum occurred in `cluster_state.json`; excluding manifest/version files did not change the maxima.
+
+| Version | Elasticsearch maximum | Kibana maximum | Logstash maximum |
+|---------|-----------------------|----------------|------------------|
+| 6.8.23 | 22 | 5 | 7 |
+| 7.17.29 | 23 | 7 | 7 |
+| 8.19.3 | 25 | 6 | 8 |
+| 9.3.3 | 27 | 6 | 8 |
+
+- The permanent array/object boundary regression failed before the fix by accepting 129 containers. Afterward, a `RawValue` consumer accepts 128; the 129th opening delimiter fails before allocating another traversal context or consuming the remaining payload. Separate coverage retains 512-level acceptance for disabled, manifest, version, and unsupported direct readers.
+- A throwaway executable using the actual reader confirmed both array/object boundaries. A valid 2,000,001-byte input with one million nested arrays failed after consuming 129 bytes, rather than traversing the whole payload.
+- The actual CLI processed the unmodified golden ZIP with 487 documents, zero document-write failures and complete outcome. With an over-budget field inserted into `nodes.json`, that source read failed, the persisted diagnostic recorded a `nodes` error event, and the remaining sources completed with a partial outcome (486 documents, zero document-write failures). Whole-Job abort behavior was not changed.
+- Parent verification passed: 47 receiver library tests, seven normalization integration tests, binary build, workspace formatting, zero clippy errors/four unchanged warnings, and strict validation of all 57 main specifications. The budget is a nesting limit, not a general archive, decompression, string-length, or total-memory limit.
+
+### Missing-upload regression isolation
+
+A combined server run exposed a failure in the old missing-upload regression after 177 other tests passed. Its user-mode fixture could consult process-global local-output/keystore settings before reaching the intended missing-request branch. The replacement uses the existing service-mode policy pattern, asserts a targeted error card and decoded processing/upload reset, and verifies exactly one rejected Job with no success or active Job. It no longer pins English error wording; the redundant helper-only reset test was removed.
+
+All 173 parent server tests, workspace formatting and clippy passed (zero errors, four unchanged warnings). An actual service-mode HTTP `/upload/process` request for absent Job 42 returned the `#job-42` failure card, then `processing=false`, `file_upload.job_id=0` and counters `total=1`, `failed=1`, `success=0`, `active=0`. This is a test-isolation correction, not a production policy or behavior change.

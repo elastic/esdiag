@@ -14,14 +14,29 @@ published release notes, maintenance branches, and tagged history.
 
 - Added `esdiag-lite.sh` and `esdiag-lite.ps1`, each with a SHA-256 checksum, to every GitHub release.
 - Added pull-request checks for the ESDiag Lite scripts, including the Windows PowerShell tests.
+- Added receiver-stage normalization for malformed IPv4 values in scrubbed diagnostics, with `--scrubbed` CLI flag and upload checkboxes on the main, Advanced, and Job Builder pages.
 
 ### Changed
 
 - Updated workspace dependency requirements and the lockfile for the 0.18 development cycle, and regenerated third-party notices.
+- Kept concurrent upload status streams independent so starting another upload does not stop updates for an earlier one.
+- Enabled raw-response reads for file archives, in-memory archives, and directories through the shared receiver API.
+- Normalized malformed IPv4 octets larger than machine integer limits without numeric overflow.
+- Buffered scrub normalization output to avoid per-byte temporary-file writes.
+- Changed uploads to reject malformed multipart data and discard staged files rather than silently selecting a scrub override.
+- Limited node-name fallback enrichment to unambiguous matches, preserving exact node-ID precedence.
+- Preserved HTTP-client identifiers unchanged during scrub normalization.
+- Rejected unterminated JSON strings during scrubbed diagnostic reads instead of silently supplying a missing closing quote.
 
 ### Fixed
 
 - Fixed `esdiag setup` repeating provenance field warnings for every older data stream backing index on each run. It now warns per index only for indices that can still receive writes, summarizes older backing indices with unlinked provenance fields in one line per data stream, and only asks for a rollover after adding an alias to a writable index.
+
+### Security
+
+- Limited upload scrub-checkbox metadata to 64 bytes and rejected oversized or unreadable (invalid UTF-8) values without retaining staged files.
+- Escaped uploaded filenames in HTML responses to prevent markup and script injection.
+- Limited scrub normalization to 128 nested JSON objects or arrays, rejecting deeper input before further traversal-context allocation; disabled normalization and excluded files retain their existing consumer limits.
 
 ## [0.17.0] - 2026-10-13
 
