@@ -44,7 +44,7 @@ Identifiers, including `http.clients[].id`, retain their original values and JSO
 
 Scrub normalization does not repair truncated JSON strings. A missing closing quote, including after a backslash or escaped quote at end of input, fails the read rather than silently completing the string.
 
-Enabled normalization accepts at most **128 nested JSON objects or arrays**, counting the outermost container as one. The traversal fails before allocating a 129th context or handing partial normalized content to a consumer. This deliberately rejects deeper input even when a `RawValue` consumer would otherwise accept it; consumers may still impose stricter limits. Disabled normalization and excluded or unsupported files retain direct-reader behavior. The budget limits nesting, not archive size, document count, or string length.
+Enabled normalization accepts at most **128 nested JSON objects or arrays**, counting the outermost container as one. The traversal fails before allocating a 129th context or handing partial normalized content to a consumer. This deliberately rejects deeper input even when a `RawValue` consumer would otherwise accept it; consumers may still impose stricter limits. Raw reads retain the stricter `serde_json::Value` recursion limit and enforce it during syntax validation, before parsing the remaining payload. Disabled normalization and excluded or unsupported files retain direct-reader behavior. The budget limits nesting, not archive size, document count, or string length.
 
 ## Normalization rules
 
