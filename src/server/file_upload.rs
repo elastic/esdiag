@@ -3,8 +3,8 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::{
-    ServerEvent, ServerState, UploadProcessSignals, job_runner, receiver_stream, replace_job_event, signal_event,
-    template,
+    CleanupMode, ServerEvent, ServerState, UploadProcessSignals, cleanup_input_path, job_runner, receiver_stream,
+    replace_job_event, signal_event, template,
 };
 use crate::processor::new_job_id;
 use axum::{
@@ -59,15 +59,7 @@ pub async fn submit(
         match field.name() {
             Some("file") => {
                 if let Some((_filename, temp_upload_path)) = staged_upload.take() {
-                    if let Err(remove_err) = tokio::fs::remove_file(&temp_upload_path).await
-                        && remove_err.kind() != std::io::ErrorKind::NotFound
-                    {
-                        tracing::debug!(
-                            "Failed to remove duplicate upload {}: {}",
-                            temp_upload_path.display(),
-                            remove_err
-                        );
-                    }
+                    cleanup_input_path(&temp_upload_path, CleanupMode::FileOnly, "duplicate upload").await;
                     state.record_job_rejected().await;
                     return (
                         StatusCode::BAD_REQUEST,
@@ -110,15 +102,7 @@ pub async fn submit(
                 match stage_upload_field(field, &temp_upload_path).await {
                     Ok(()) => staged_upload = Some((filename, temp_upload_path)),
                     Err(e) => {
-                        if let Err(remove_err) = tokio::fs::remove_file(&temp_upload_path).await
-                            && remove_err.kind() != std::io::ErrorKind::NotFound
-                        {
-                            tracing::debug!(
-                                "Failed to remove partial upload {}: {}",
-                                temp_upload_path.display(),
-                                remove_err
-                            );
-                        }
+                        cleanup_input_path(&temp_upload_path, CleanupMode::FileOnly, "partial upload").await;
                         let error_msg = format!("Failed to stage upload data: {}", e);
                         tracing::error!("{}", error_msg);
                         state.record_job_rejected().await;
@@ -221,15 +205,8 @@ async fn reject_malformed_upload(
     err: impl std::fmt::Display,
 ) -> (StatusCode, Html<String>) {
     tracing::warn!("Malformed upload request: {}", err);
-    if let Some((_filename, temp_upload_path)) = staged_upload
-        && let Err(remove_err) = tokio::fs::remove_file(&temp_upload_path).await
-        && remove_err.kind() != std::io::ErrorKind::NotFound
-    {
-        tracing::debug!(
-            "Failed to remove malformed upload {}: {}",
-            temp_upload_path.display(),
-            remove_err
-        );
+    if let Some((_filename, temp_upload_path)) = staged_upload {
+        cleanup_input_path(&temp_upload_path, CleanupMode::FileOnly, "malformed upload").await;
     }
     state.record_job_rejected().await;
     (
