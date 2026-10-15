@@ -291,7 +291,6 @@ fn assert_normalized_address_field(
     expected_ip: &str,
     expectations: &ScrubFixtureExpectations,
 ) {
-    let normalized_field = strip_port(raw).to_string();
     assert!(
         is_valid_ipv4(raw),
         "{stream} line {line_no} {field_path}={raw:?} is not valid IPv4"
@@ -302,10 +301,18 @@ fn assert_normalized_address_field(
             "{stream} line {line_no} {field_path} still contains malformed IP {malformed}"
         );
     }
-    assert_eq!(
-        &normalized_field, expected_ip,
-        "{stream} line {line_no} {field_path} mismatch"
-    );
+    if field_path == "node.transport_address" {
+        assert_eq!(
+            raw.rsplit_once(':'),
+            Some((expected_ip, "9300")),
+            "{stream} line {line_no} {field_path} must preserve the fixture transport port"
+        );
+    } else {
+        assert_eq!(
+            raw, expected_ip,
+            "{stream} line {line_no} {field_path} must contain only the normalized IP"
+        );
+    }
 }
 
 pub fn assert_malformed_ips_preserved_in_node_metrics(output_dir: &Path, malformed: &str) {
