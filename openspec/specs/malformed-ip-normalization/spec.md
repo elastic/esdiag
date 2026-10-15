@@ -65,6 +65,12 @@ The system SHALL treat CLI process flow and UI upload flow as either/or channels
 - **THEN** the upload SHALL be rejected without enqueuing a Job
 - **AND** any staged upload file SHALL be removed before responding
 
+#### Scenario: Unreadable upload scrub control
+- **WHEN** the upload `scrubbed` field is not valid UTF-8
+- **THEN** the upload SHALL be rejected without enqueuing a Job
+- **AND** any staged upload file SHALL be removed before responding
+- **AND** the invalid field SHALL NOT disable scrub mode
+
 ### Requirement: Deterministic malformed IPv4 normalization
 The system SHALL normalize malformed scrubbed IPv4 octets using deterministic per-octet modulo transformation (`octet % 255`).
 
