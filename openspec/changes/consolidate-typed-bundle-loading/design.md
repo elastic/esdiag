@@ -27,6 +27,8 @@ Use the existing concrete `ZipArchive<R>` shape, generic over its current `Read 
 
 The implementation must not add a whole-entry String, `serde_json::Value`, runtime-dispatched storage trait, or a new allocation solely for delegation. Preserve the existing reader route through `with_normalized_json_reader`. Adapter-specific entry-opening errors remain mapped as they are today through a narrow private error-mapping choice; do not erase the distinction merely to obtain identical code.
 
+The reader route inherits the parent's approved 128-container normalization budget. Preserve early over-budget failure before typed deserialization, existing direct reads for disabled/excluded content, and stricter consumer limits. The shared loader must not replace that budget with an adapter-specific policy.
+
 **Alternative rejected:** a new public storage interface implemented by file, memory, and directory adapters. It widens the interface and mixes different path/error semantics to remove a much smaller duplicated implementation. Two archive adapters already make the internal seam real; they do not justify a new external seam.
 
 ### Preserve candidate and failure transitions exactly

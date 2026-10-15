@@ -20,6 +20,8 @@ None. This is an internal refactor, not a new capability.
 
 None. Existing behavior in `malformed-ip-normalization`, `streaming-deserialization`, `version-dependent-sources`, and `included-diagnostic-jobs` remains unchanged. Metadata declares `skip_specs: true`; compatibility cases live in the design rather than a fabricated requirement delta.
 
+The immediate-parent contract includes the approved 128-container limit for enabled, supported scrub normalization. This refactor preserves that limit, direct-reader bypasses, and any stricter consumer limits; it introduces no additional depth policy.
+
 ## Impact
 
 - **Products:** all application diagnostics supported by the existing archive adapters; Elasticsearch scrubbed diagnostics are the primary changed-path fixture. Product coverage does not expand.

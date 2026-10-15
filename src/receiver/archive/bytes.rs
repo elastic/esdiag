@@ -5,7 +5,7 @@
 use super::{ArchiveOpeningError, IndexedArchive, get_from_archive, normalize_supported_content, resolve_archive_path};
 use crate::{
     processor::{DataSource, SourceContext, StreamingDataSource},
-    receiver::{Receive, ReceiveMultiple, ReceiveRaw},
+    receiver::{MissingSource, Receive, ReceiveMultiple, ReceiveRaw},
 };
 use bytes::Bytes;
 use eyre::{Result, eyre};
