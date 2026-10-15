@@ -109,7 +109,7 @@ Keep existing Load → Process → Export assertions for normalized node address
 - **[Candidate handling accidentally changes]** → Exercise valid-first, empty-first, malformed-first, all-missing and no-candidates outcomes through both adapters.
 - **[Generic sharing becomes a shallow public module]** → Keep the shared implementation private to archive loading and keep the Receiver interface unchanged.
 - **[Lifetime/lock behavior regresses]** → Retain existing lock scope and normalized-file ownership; run actual CLI processing on both scrub-enabled and disabled synthetic archive inputs.
-- **[Sibling changes touch the same archive files later]** → This change depends only on PR330. Rebase locally when another sibling lands, preserving its normalization implementation rather than introducing a dependency or duplicate helper.
+- **[Higher layers touch archive loading]** → This is layer 2 above scrubbing; scrub traversal and upload cleanup are successive descendants. Propagate lower-layer changes upward with a cascading stack rebase and preserve the shared normalization interface instead of duplicating implementation.
 
 ## Migration Plan
 
@@ -118,6 +118,6 @@ Keep existing Load → Process → Export assertions for normalized node address
 3. Delete the duplicated implementation; preserve the existing raw/streaming routes and caller interface.
 4. Run targeted tests, lint, and a CLI archive-processing smoke; compare exported node identity/address outcomes with the fixture expectations.
 5. Inspect nearby implementation docs for architectural wording that needs updating. Behavior-only operator docs and changelog remain unchanged unless an actual observable correction is separately identified and approved.
-6. Keep this change active during implementation and PR review. After verified implementation, archive it with the declared no-delta rationale; do not invent a main-spec edit. Apply the PR330 replay rule recorded in the proposal before merge to `main`.
+6. Keep this change active during implementation and PR review. After verified implementation, archive it with the declared no-delta rationale; do not invent a main-spec edit. Re-verify the linear native stack and required gates before a top-layer merge into `main`.
 
 No persisted data or user configuration migration is required. Rollback is a normal revert of the child implementation commit; it does not alter PR330's behavior or history.

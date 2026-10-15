@@ -2,7 +2,7 @@
 
 ## Completeness
 
-Tasks 1.1–4.2 are complete (12/13): implementation and design verification passed, and the corrected draft targets `elastic/esdiag:main` (`upstream/main`). Task 4.3 remains pending for joint stack review, re-verification and archival before the coordinated four-PR merge batch, not until a later post-PR330 implementation phase. The change is not archived or merge-ready.
+Tasks 1.1–4.2 are complete (12/13). The native replacement is layer 2, PR437, with head `elastic/esdiag:stack/pr330-typed-loading` and base `stack/pr330-scrubbing` (PR436), not main. The source implementation is unchanged by stack migration; the standalone evidence below is retained. Task 4.3 remains pending for final stack review, re-verification and required archival before native stack merge.
 
 ## Correctness
 

@@ -30,10 +30,10 @@ None. Existing behavior in `malformed-ip-normalization`, `streaming-deserializat
 
 ## Branch and PR Dependency
 
-- Branch: `feature/consolidate-typed-bundle-loading`.
+- Native branch: `stack/pr330-typed-loading` in `elastic/esdiag`; replaces fork branch `feature/consolidate-typed-bundle-loading`.
 - Starting commit: `33357cf976b2881bbdf2002b3c6e3de7e244fa25`, the locally reviewed PR330 tip.
-- PR target: `elastic/esdiag:main` (`upstream/main`); dependency: [elastic/esdiag PR330](https://github.com/elastic/esdiag/pull/330). Review and merge PR330 plus all three simplifications as one coordinated four-PR batch.
-- This is a sibling of `feature/unify-scrub-json-traversal` and `feature/consolidate-upload-input-cleanup`; neither sibling is a prerequisite.
-- Before PR330 merges, comparison with `main` includes its inherited commits. Review this proposal's own delta against the recorded PR330 base.
-- Complete stack review, verification and required archival before the coordinated merge batch; do not postpone the simplifications until a later release. Preserve parent ancestry where possible. If merging PR330 rewrites its commits, replay only this branch's child commits using the recorded parent cut point and re-verify within the same merge batch.
+- Layer 2: [PR437](https://github.com/elastic/esdiag/pull/437) targets `stack/pr330-scrubbing`, the head branch of [PR436](https://github.com/elastic/esdiag/pull/436). Only the bottom scrubbing PR targets `main`.
+- Native chain: `main` ← scrubbing ← typed loading ← scrub traversal ← upload cleanup. Higher layers include this layer's commits; these are not sibling PRs against main.
+- Review this layer against its immediate predecessor, so its PR diff excludes inherited scrubbing changes. All four head branches live in `elastic/esdiag`, as native stacks do not support forks.
+- Carry lower-layer fixes upward with `gh stack rebase --upstack --remote upstream`. Complete review, verification and required archival before merging; a native direct merge of the top PR can atomically land all four layers. Do not defer the simplifications to a later release.
 - Planning only: do not implement, open a PR, synchronize specs, or archive this change during proposal creation. Keep it active through later implementation and review; synchronize applicable specs and archive only after implementation verification.
