@@ -20,5 +20,5 @@
 ## 4. Review and complete the child change
 
 - [x] 4.1 Run `OPENSPEC_TELEMETRY=0 openspec validate consolidate-typed-bundle-loading --strict` and review implementation against the design's compatibility cases; verify the active planning artifacts remain valid with `skip_specs: true` and no invented main-spec delta.
-- [ ] 4.2 Prepare the future PR to `main` on the origin fork, declaring the public PR330 dependency and reviewing only child changes against recorded parent commit `33357cf976b2881bbdf2002b3c6e3de7e244fa25`; verify it has no dependency on either sibling and keep this change active through implementation review.
+- [x] 4.2 Prepare the future PR to `main` on the origin fork, declaring the public PR330 dependency and reviewing only child changes against recorded parent commit `33357cf976b2881bbdf2002b3c6e3de7e244fa25`; verify it has no dependency on either sibling and keep this change active through implementation review.
 - [ ] 4.3 After PR330 lands and implementation review is resolved, replay only child commits onto `main`, re-verify the resulting implementation, then archive this no-delta change with artifacts preserved; verify native OpenSpec validation and the associated repository completion gate on the merge-ready head. Do not replay inherited PR330 commits after a squash/rebase merge or archive an unimplemented proposal.

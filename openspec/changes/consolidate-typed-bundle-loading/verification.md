@@ -2,7 +2,7 @@
 
 ## Completeness
 
-Implementation tasks 1.1–3.4 and design verification 4.1 are exercised. Draft publication (4.2) follows this verification. Task 4.3 remains pending until PR330 merges and implementation review completes; this change is not archived or merge-ready.
+Tasks 1.1–4.2 are complete (12/13): implementation and design verification passed before the independent draft was published to origin/main. Task 4.3 remains pending until PR330 merges and implementation review completes. This is a required before-archive lifecycle step, not a completed task; the change is not archived or merge-ready.
 
 ## Correctness
 
