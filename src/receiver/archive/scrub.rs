@@ -557,6 +557,20 @@ mod tests {
     }
 
     #[test]
+    fn raw_duplicate_counts_only_surviving_decoded_keys_and_subtrees() {
+        let input = r#"{"ip":"512.768.1024.1280","\u0069p":"192.0.2.10","host":"512.768.1024.1280","host":"513.769.1025.1281:9300","nested":{"ip":"512.768.1024.1280"},"nested":{"name":"café","ip":"192.0.2.11"},"bound_address":["512.768.1024.1280:9300",{"ip":"512.768.1024.1280"}]}"#;
+        let result = normalize_supported_content("nodes.json", input.into()).expect("raw normalization");
+        assert_eq!(result.transformed_fields, 3);
+        let parsed: Value = serde_json::from_str(&result.content).unwrap();
+        assert_eq!(parsed["ip"], "192.0.2.10");
+        assert_eq!(parsed["host"], "3.4.5.6");
+        assert_eq!(parsed["nested"]["ip"], "192.0.2.11");
+        assert_eq!(
+            parsed["bound_address"],
+            serde_json::json!(["2.3.4.5:9300", {"ip":"2.3.4.5"}])
+        );
+    }
+    #[test]
     fn raw_and_streaming_normalization_preserve_field_scope_through_arrays() {
         let input = serde_json::json!({
             "bound_address": [
