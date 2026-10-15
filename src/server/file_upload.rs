@@ -364,8 +364,10 @@ pub(super) async fn run_upload_job(
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_scrubbed_checkbox_value, run_upload_job, send_terminal_signal, submit};
-    use crate::server::{JobInput, ServerEvent, ServerState, UploadProcessSignals, test_server_state};
+    use super::{parse_scrubbed_checkbox_value, run_upload_job, submit};
+    use crate::server::{
+        JobInput, RuntimeMode, ServerEvent, ServerPolicy, ServerState, UploadProcessSignals, test_server_state,
+    };
     use axum::{
         body::{Body, to_bytes},
         extract::{FromRequest, Multipart, State},
@@ -640,51 +642,48 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn run_upload_job_missing_upload_emits_failure_and_terminal_signal() {
-        let state = test_server_state();
+    async fn missing_upload_runner_targets_failure_and_resets_processing_state() {
+        let mut state = test_server_state();
+        let settings = Arc::get_mut(&mut state).expect("unique server state");
+        settings.runtime_mode = RuntimeMode::Service;
+        settings.server_policy = ServerPolicy::defaults(RuntimeMode::Service);
         let signals = UploadProcessSignals::default();
         let (tx, mut rx) = mpsc::channel(8);
 
-        run_upload_job(state, signals, 42, "Anonymous".to_string(), tx).await;
+        run_upload_job(state.clone(), signals, 42, "Anonymous".to_string(), tx).await;
 
         let mut saw_failure = false;
         let mut saw_terminal = false;
         while let Some(event) = rx.recv().await {
             match event {
-                ServerEvent::Template { html, .. } if html.contains("Failed to submit file") => {
+                ServerEvent::ReplaceSelector { selector, html, .. } => {
+                    assert_eq!(selector, "#job-42");
+                    assert!(html.contains("status-error"), "missing upload receives a failure card");
                     saw_failure = true;
                 }
-                ServerEvent::ReplaceSelector { selector, html, .. }
-                    if selector == "#job-42" && html.contains("Failed to submit file") =>
-                {
-                    saw_failure = true;
-                }
-                ServerEvent::Signals { payload, .. } if payload.contains(r#""processing":false"#) => {
-                    saw_terminal = true;
+                ServerEvent::Signals { payload, .. } => {
+                    let signals: serde_json::Value = serde_json::from_str(&payload).expect("signal JSON");
+                    if signals.get("processing").and_then(serde_json::Value::as_bool) == Some(false) {
+                        assert_eq!(
+                            signals
+                                .pointer("/file_upload/job_id")
+                                .and_then(serde_json::Value::as_u64),
+                            Some(0),
+                        );
+                        saw_terminal = true;
+                    }
                 }
                 _ => {}
             }
         }
 
-        assert!(saw_failure, "expected job failure template event");
-        assert!(saw_terminal, "expected terminal processing=false signal");
-    }
-
-    #[tokio::test]
-    async fn terminal_signal_includes_file_upload_reset() {
-        let state = test_server_state();
-        let (tx, mut rx) = mpsc::channel(4);
-
-        send_terminal_signal(&tx, &state).await;
-        drop(tx);
-
-        let event = rx.recv().await.expect("expected one terminal signal");
-        match event {
-            ServerEvent::Signals { payload, .. } => {
-                assert!(payload.contains(r#""file_upload":{"job_id":0}"#));
-            }
-            _ => panic!("expected terminal signal payload"),
-        }
+        assert!(saw_failure, "missing upload receives a targeted failure");
+        assert!(saw_terminal, "missing upload resets processing and upload selection");
+        let stats = state.get_stats().await;
+        assert_eq!(stats.jobs.total, 1);
+        assert_eq!(stats.jobs.failed, 1);
+        assert_eq!(stats.jobs.success, 0);
+        assert_eq!(stats.jobs.active, 0);
     }
 
     #[tokio::test]
