@@ -32,8 +32,8 @@ None. Existing behavior in `malformed-ip-normalization`, `streaming-deserializat
 
 - Branch: `feature/consolidate-typed-bundle-loading`.
 - Starting commit: `33357cf976b2881bbdf2002b3c6e3de7e244fa25`, the locally reviewed PR330 tip.
-- Future PR target: `main`; dependency: [elastic/esdiag PR330](https://github.com/elastic/esdiag/pull/330).
+- PR target: `elastic/esdiag:main` (`upstream/main`); dependency: [elastic/esdiag PR330](https://github.com/elastic/esdiag/pull/330). Review and merge PR330 plus all three simplifications as one coordinated four-PR batch.
 - This is a sibling of `feature/unify-scrub-json-traversal` and `feature/consolidate-upload-input-cleanup`; neither sibling is a prerequisite.
 - Before PR330 merges, comparison with `main` includes its inherited commits. Review this proposal's own delta against the recorded PR330 base.
-- After PR330 lands, replay only this branch's child commits onto the resulting `main`. If PR330 was squash- or rebase-merged, use the recorded original parent commit as the cut point instead of replaying PR330 itself.
+- Complete stack review, verification and required archival before the coordinated merge batch; do not postpone the simplifications until a later release. Preserve parent ancestry where possible. If merging PR330 rewrites its commits, replay only this branch's child commits using the recorded parent cut point and re-verify within the same merge batch.
 - Planning only: do not implement, open a PR, synchronize specs, or archive this change during proposal creation. Keep it active through later implementation and review; synchronize applicable specs and archive only after implementation verification.

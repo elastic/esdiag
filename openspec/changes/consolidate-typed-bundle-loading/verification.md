@@ -2,7 +2,7 @@
 
 ## Completeness
 
-Tasks 1.1–4.2 are complete (12/13): implementation and design verification passed before the independent draft was published to origin/main. Task 4.3 remains pending until PR330 merges and implementation review completes. This is a required before-archive lifecycle step, not a completed task; the change is not archived or merge-ready.
+Tasks 1.1–4.2 are complete (12/13): implementation and design verification passed, and the corrected draft targets `elastic/esdiag:main` (`upstream/main`). Task 4.3 remains pending for joint stack review, re-verification and archival before the coordinated four-PR merge batch, not until a later post-PR330 implementation phase. The change is not archived or merge-ready.
 
 ## Correctness
 
