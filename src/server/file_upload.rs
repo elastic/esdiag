@@ -20,8 +20,8 @@ use tokio::{fs::File, io::AsyncWriteExt};
 use uuid::Uuid;
 
 fn parse_scrubbed_checkbox_value(value: &str) -> bool {
-    let normalized = value.trim().to_ascii_lowercase();
-    matches!(normalized.as_str(), "true" | "1" | "on")
+    let value = value.trim();
+    value == "1" || value.eq_ignore_ascii_case("true") || value.eq_ignore_ascii_case("on")
 }
 
 pub async fn submit(
@@ -133,10 +133,34 @@ pub async fn submit(
                     }
                 }
             }
-            Some("scrubbed") => match field.text().await {
-                Ok(value) => scrubbed_override = Some(parse_scrubbed_checkbox_value(&value)),
-                Err(err) => return reject_malformed_upload(&state, job_id, staged_upload, err).await,
-            },
+            Some("scrubbed") => {
+                let mut field = field;
+                let mut value = [0_u8; 64];
+                let mut length = 0;
+                loop {
+                    let chunk = match field.chunk().await {
+                        Ok(Some(chunk)) => chunk,
+                        Ok(None) => break,
+                        Err(err) => return reject_malformed_upload(&state, job_id, staged_upload, err).await,
+                    };
+                    if chunk.len() > value.len() - length {
+                        return reject_malformed_upload(
+                            &state,
+                            job_id,
+                            staged_upload,
+                            "scrubbed field exceeds 64 bytes",
+                        )
+                        .await;
+                    }
+                    value[length..length + chunk.len()].copy_from_slice(&chunk);
+                    length += chunk.len();
+                }
+                scrubbed_override = Some(
+                    std::str::from_utf8(&value[..length])
+                        .map(parse_scrubbed_checkbox_value)
+                        .unwrap_or(false),
+                );
+            }
             _ => {}
         }
     }
@@ -145,7 +169,7 @@ pub async fn submit(
         let upload_file_element = format!(
             r#"<div id="job-{job_id}"
                 class="status-box history-item status-processing"
-                data-init="$loading=false; $file_upload.job_id={job_id}; if ({can_use_keystore} && $keystore.locked && $output.secure) {{ $_pending_job_action = 'upload-process'; $message = 'Unlock keystore to continue...'; @get('/keystore/modal/process', {{filterSignals: {{exclude: /.*/}}}}); }} else {{ @post('/upload/process', {{openWhenHidden: true, filterSignals: {{include: /^(metadata|archive|job|file_upload)(\.|$)/}}}}); }}"
+                data-init="$loading=false; $file_upload.job_id={job_id}; if ({can_use_keystore} && $keystore.locked && $output.secure) {{ $_pending_job_action = 'upload-process'; $message = 'Unlock keystore to continue...'; @get('/keystore/modal/process', {{filterSignals: {{exclude: /.*/}}}}); }} else {{ @post('/upload/process', {{openWhenHidden: true, requestCancellation: 'disabled', filterSignals: {{include: /^(metadata|archive|job|file_upload)(\.|$)/}}}}); }}"
             >
                 <div class="spinner"></div>
                 <span>Processing diagnostic</span>
@@ -195,7 +219,7 @@ async fn reject_malformed_upload(
     state: &ServerState,
     job_id: u64,
     staged_upload: Option<(String, std::path::PathBuf)>,
-    err: axum::extract::multipart::MultipartError,
+    err: impl std::fmt::Display,
 ) -> (StatusCode, Html<String>) {
     tracing::warn!("Malformed upload request: {}", err);
     if let Some((_filename, temp_upload_path)) = staged_upload
@@ -378,17 +402,22 @@ mod tests {
     );
 
     async fn submit_multipart(body: &str) -> (Arc<ServerState>, StatusCode, u64, String) {
-        let state = test_server_state();
+        submit_request(test_server_state(), Body::from(body.to_owned()), HeaderMap::new()).await
+    }
+
+    async fn submit_request(
+        state: Arc<ServerState>,
+        body: Body,
+        headers: HeaderMap,
+    ) -> (Arc<ServerState>, StatusCode, u64, String) {
         let request = Request::builder()
             .header("content-type", "multipart/form-data; boundary=upload-boundary")
-            .body(Body::from(body.to_owned()))
+            .body(body)
             .expect("multipart request");
         let multipart = Multipart::from_request(request, &state)
             .await
             .expect("multipart extractor");
-        let response = submit(State(state.clone()), HeaderMap::new(), multipart)
-            .await
-            .into_response();
+        let response = submit(State(state.clone()), headers, multipart).await.into_response();
         let status = response.status();
         let html = to_bytes(response.into_body(), 1024 * 1024)
             .await
@@ -423,6 +452,69 @@ mod tests {
                 "rejected upload left staged file {}",
                 entry.path().display()
             );
+        }
+    }
+
+    #[tokio::test]
+    async fn scrubbed_field_accepts_value_at_byte_limit() {
+        let value = format!("{}1", " ".repeat(63));
+        let body = format!(
+            "{FILE_PART}--upload-boundary\r\nContent-Disposition: form-data; name=\"scrubbed\"\r\n\r\n{value}\r\n--upload-boundary--\r\n"
+        );
+        let (state, status, job_id, _) = submit_multipart(&body).await;
+        let job = state.pop_job_request(job_id).await.expect("accepted upload");
+        let JobInput::LocalArchive {
+            path,
+            scrubbed_override,
+            ..
+        } = &job.input
+        else {
+            panic!("expected local archive");
+        };
+        let bytes = tokio::fs::read(path).await.expect("queued staged bytes");
+        job.cleanup().await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(*scrubbed_override, Some(true));
+        assert_eq!(bytes, b"zip-bytes");
+        assert!(!path.exists());
+    }
+
+    #[tokio::test]
+    async fn scrubbed_field_rejects_oversized_chunks_before_or_after_staging() {
+        for file_first in [true, false] {
+            let value = format!("{}1", " ".repeat(64));
+            let checkbox =
+                format!("--upload-boundary\r\nContent-Disposition: form-data; name=\"scrubbed\"\r\n\r\n{value}\r\n");
+            let body = if file_first {
+                format!("{FILE_PART}{checkbox}--upload-boundary--\r\n")
+            } else {
+                format!("{checkbox}{FILE_PART}--upload-boundary--\r\n")
+            };
+            let bytes = bytes::Bytes::from(body);
+            let chunks = (0..bytes.len())
+                .step_by(8)
+                .map(move |start| Ok::<_, std::io::Error>(bytes.slice(start..(start + 8).min(bytes.len()))));
+            let (state, status, job_id, html) = submit_request(
+                test_server_state(),
+                Body::from_stream(futures::stream::iter(chunks)),
+                HeaderMap::new(),
+            )
+            .await;
+            if status != StatusCode::BAD_REQUEST {
+                state.discard_job_request(job_id).await;
+            }
+            assert_eq!(status, StatusCode::BAD_REQUEST);
+            assert!(html.contains("Invalid multipart upload data"));
+            assert!(state.job_requests.read().await.is_empty());
+            let stats = state.get_stats().await;
+            assert_eq!((stats.jobs.total, stats.jobs.failed), (1, 1));
+            let prefix = format!("esdiag-upload-{job_id}-");
+            let mut entries = tokio::fs::read_dir(std::env::temp_dir())
+                .await
+                .expect("staging directory");
+            while let Some(entry) = entries.next_entry().await.expect("staging entry") {
+                assert!(!entry.file_name().to_string_lossy().starts_with(&prefix));
+            }
         }
     }
 

@@ -18,10 +18,15 @@ published release notes, maintenance branches, and tagged history.
 ### Changed
 
 - Updated workspace dependency requirements and the lockfile for the 0.18 development cycle, and regenerated third-party notices.
+- Kept concurrent upload status streams independent so starting another upload does not stop updates for an earlier one.
 
 ### Fixed
 
 - Fixed `esdiag setup` repeating provenance field warnings for every older data stream backing index on each run. It now warns per index only for indices that can still receive writes, summarizes older backing indices with unlinked provenance fields in one line per data stream, and only asks for a rollover after adding an alias to a writable index.
+
+### Security
+
+- Limited upload scrub-checkbox metadata to 64 bytes and rejected oversized values without retaining staged files.
 
 ## [0.17.0] - 2026-10-13
 

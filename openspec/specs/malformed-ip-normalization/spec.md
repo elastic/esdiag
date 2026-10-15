@@ -60,6 +60,11 @@ The system SHALL treat CLI process flow and UI upload flow as either/or channels
 - **WHEN** operator uses upload UI flow
 - **THEN** scrub behavior SHALL be controlled by checkbox or auto mode within UI flow
 
+#### Scenario: Oversized upload scrub control
+- **WHEN** the upload `scrubbed` field exceeds 64 bytes, including across multiple chunks
+- **THEN** the upload SHALL be rejected without enqueuing a Job
+- **AND** any staged upload file SHALL be removed before responding
+
 ### Requirement: Deterministic malformed IPv4 normalization
 The system SHALL normalize malformed scrubbed IPv4 octets using deterministic per-octet modulo transformation (`octet % 255`).
 

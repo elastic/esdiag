@@ -25,6 +25,8 @@ Precedence is **channel-local**:
 - CLI `--scrubbed false` disables normalization even for `*scrubbed*.zip` inputs.
 - Checking the upload checkbox explicitly enables scrub mode. When unchecked, the field is omitted and the uploaded filename controls auto-detection. API clients may send other explicit values to disable scrub mode. Malformed multipart data or unreadable fields reject the upload and remove any staged file; they never select a scrub override.
 
+The upload `scrubbed` field is limited to 64 bytes and consumed incrementally. Oversized values reject the upload and remove any staged file. Starting another upload does not cancel status updates for an upload already being processed.
+
 CLI and UI are independent execution channels; one does not override the other.
 
 Uploaded filenames are displayed as literal text, not HTML. Escaping affects only the response; the original filename is retained for scrub auto-detection and processing.
@@ -98,15 +100,15 @@ Compare RSS for the same archive with scrub mode off vs on. Target: **≤ 20% RS
 Linux:
 
 ```bash
-/usr/bin/time -v ./target/release/esdiag process tests/archives/elasticsearch-api-diagnostics-9.3.3.zip --scrubbed false -o /tmp/esdiag-out-base
-/usr/bin/time -v ./target/release/esdiag process tests/archives/elasticsearch-api-diagnostics-9.3.3.zip --scrubbed true -o /tmp/esdiag-out-scrub
+/usr/bin/time -v ./target/release/esdiag process tests/archives/elasticsearch-api-diagnostics-9.3.3.zip /tmp/esdiag-out-base --scrubbed false
+/usr/bin/time -v ./target/release/esdiag process tests/archives/elasticsearch-api-diagnostics-9.3.3.zip /tmp/esdiag-out-scrub --scrubbed true
 ```
 
 macOS:
 
 ```bash
-/usr/bin/time -l ./target/release/esdiag process tests/archives/elasticsearch-api-diagnostics-9.3.3.zip --scrubbed false -o /tmp/esdiag-out-base
-/usr/bin/time -l ./target/release/esdiag process tests/archives/elasticsearch-api-diagnostics-9.3.3.zip --scrubbed true -o /tmp/esdiag-out-scrub
+/usr/bin/time -l ./target/release/esdiag process tests/archives/elasticsearch-api-diagnostics-9.3.3.zip /tmp/esdiag-out-base --scrubbed false
+/usr/bin/time -l ./target/release/esdiag process tests/archives/elasticsearch-api-diagnostics-9.3.3.zip /tmp/esdiag-out-scrub --scrubbed true
 ```
 
 Use the `Maximum resident set size` line from each run.
