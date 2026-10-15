@@ -3,7 +3,13 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use eyre::Result;
+use serde::{
+    Deserialize,
+    de::{IgnoredAny, MapAccess, SeqAccess, Visitor},
+};
+#[cfg(test)]
 use serde_json::Value;
+use std::collections::HashMap;
 use std::io::{BufRead, BufReader, BufWriter, Seek, SeekFrom, Write};
 use std::path::Path;
 
@@ -72,15 +78,71 @@ pub fn normalize_supported_content(path: &str, input: String) -> Result<Transfor
         });
     }
 
-    let mut json: Value = serde_json::from_str(&input)?;
-    let mut transformed = 0usize;
-    normalize_value(&mut json, None, &mut transformed);
+    // Validate completely without a Value tree, retaining Value's recursion limit.
+    {
+        let mut validator = serde_json::Deserializer::from_str(&input);
+        RawJsonValidation::deserialize(&mut validator)?;
+        validator.end()?;
+    }
 
+    let mut output = RawOutput::default();
+    walk_json_fields(input.as_bytes(), &mut output)?;
+    let (content, transformed_fields) = output.finish()?;
     Ok(TransformResult {
-        content: serde_json::to_string(&json)?,
-        transformed_fields: transformed,
+        content,
+        transformed_fields,
         supported: true,
     })
+}
+
+struct RawJsonValidation;
+
+impl<'de> Deserialize<'de> for RawJsonValidation {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> std::result::Result<Self, D::Error> {
+        deserializer.deserialize_any(Self)
+    }
+}
+
+impl<'de> Visitor<'de> for RawJsonValidation {
+    type Value = Self;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("a JSON value")
+    }
+
+    fn visit_unit<E>(self) -> std::result::Result<Self, E> {
+        Ok(Self)
+    }
+
+    fn visit_bool<E>(self, _: bool) -> std::result::Result<Self, E> {
+        Ok(Self)
+    }
+
+    fn visit_i64<E>(self, _: i64) -> std::result::Result<Self, E> {
+        Ok(Self)
+    }
+
+    fn visit_u64<E>(self, _: u64) -> std::result::Result<Self, E> {
+        Ok(Self)
+    }
+
+    fn visit_f64<E>(self, _: f64) -> std::result::Result<Self, E> {
+        Ok(Self)
+    }
+
+    fn visit_str<E>(self, _: &str) -> std::result::Result<Self, E> {
+        Ok(Self)
+    }
+
+    fn visit_seq<A: SeqAccess<'de>>(self, mut sequence: A) -> std::result::Result<Self, A::Error> {
+        while sequence.next_element::<Self>()?.is_some() {}
+        Ok(Self)
+    }
+
+    fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> std::result::Result<Self, A::Error> {
+        while map.next_entry::<IgnoredAny, Self>()?.is_some() {}
+        Ok(Self)
+    }
 }
 
 pub fn normalize_supported_reader_to_temp<R: BufRead>(path: &str, mut reader: R) -> Result<TempTransformResult> {
@@ -94,24 +156,245 @@ pub fn normalize_supported_reader_to_temp<R: BufRead>(path: &str, mut reader: R)
         });
     }
 
-    let mut transformed = 0usize;
+    let transformed_fields;
     {
         let mut writer = BufWriter::new(file.as_file_mut());
-        normalize_json_stream(reader, &mut writer, &mut transformed)?;
+        let mut output = TempOutput {
+            writer: &mut writer,
+            transformed_fields: 0,
+        };
+        walk_json_fields(reader, &mut output)?;
+        transformed_fields = output.transformed_fields;
         writer.flush()?;
     }
     file.as_file_mut().seek(SeekFrom::Start(0))?;
 
     Ok(TempTransformResult {
         file,
-        transformed_fields: transformed,
+        transformed_fields,
     })
 }
 
-fn normalize_json_stream<R: BufRead, W: Write>(reader: R, writer: &mut W, transformed: &mut usize) -> Result<()> {
+// Only output and acceptance differ; decoded field scope belongs to the walk.
+trait JsonOutput {
+    fn whitespace(&mut self, byte: u8) -> Result<()>;
+    fn key(&mut self, raw: &str, decoded: &str) -> Result<()>;
+    fn string(&mut self, raw: &str, updated: Option<&str>) -> Result<()>;
+    fn literal_byte(&mut self, byte: u8) -> Result<()>;
+    fn literal_end(&mut self) -> Result<()>;
+    fn begin_object(&mut self) -> Result<()>;
+    fn begin_array(&mut self) -> Result<()>;
+    fn end_object(&mut self) -> Result<()>;
+    fn end_array(&mut self) -> Result<()>;
+    fn punctuation(&mut self, byte: u8) -> Result<()>;
+}
+
+struct TempOutput<'a, W: Write> {
+    writer: &'a mut W,
+    transformed_fields: usize,
+}
+
+impl<W: Write> JsonOutput for TempOutput<'_, W> {
+    fn whitespace(&mut self, byte: u8) -> Result<()> {
+        self.writer.write_all(&[byte])?;
+        Ok(())
+    }
+    fn key(&mut self, raw: &str, _decoded: &str) -> Result<()> {
+        write!(self.writer, "\"{raw}\"")?;
+        Ok(())
+    }
+    fn string(&mut self, raw: &str, updated: Option<&str>) -> Result<()> {
+        if let Some(updated) = updated {
+            serde_json::to_writer(&mut self.writer, updated)?;
+            self.transformed_fields += 1;
+        } else {
+            write!(self.writer, "\"{raw}\"")?;
+        }
+        Ok(())
+    }
+    fn literal_byte(&mut self, byte: u8) -> Result<()> {
+        self.writer.write_all(&[byte])?;
+        Ok(())
+    }
+    fn literal_end(&mut self) -> Result<()> {
+        Ok(())
+    }
+    fn begin_object(&mut self) -> Result<()> {
+        self.punctuation(b'{')
+    }
+    fn begin_array(&mut self) -> Result<()> {
+        self.punctuation(b'[')
+    }
+    fn end_object(&mut self) -> Result<()> {
+        self.punctuation(b'}')
+    }
+    fn end_array(&mut self) -> Result<()> {
+        self.punctuation(b']')
+    }
+    fn punctuation(&mut self, byte: u8) -> Result<()> {
+        self.writer.write_all(&[byte])?;
+        Ok(())
+    }
+}
+
+// Fragments move into their parent; duplicate keys drop overwritten subtrees.
+#[derive(Default)]
+struct RawOutput {
+    stack: Vec<RawContainer>,
+    root: Option<RawFragment>,
+    literal: Vec<u8>,
+}
+
+enum RawContainer {
+    Object {
+        entries: Vec<(String, RawFragment)>,
+        indexes: HashMap<String, usize>,
+        pending_key: Option<String>,
+    },
+    Array(Vec<RawFragment>),
+}
+
+enum RawFragment {
+    Text { content: String, transformed: bool },
+    Object(Vec<(String, RawFragment)>),
+    Array(Vec<RawFragment>),
+}
+
+impl RawOutput {
+    fn push(&mut self, fragment: RawFragment) {
+        match self.stack.last_mut() {
+            Some(RawContainer::Array(items)) => items.push(fragment),
+            Some(RawContainer::Object {
+                entries,
+                indexes,
+                pending_key,
+            }) => {
+                let key = pending_key.take().expect("validated object has a key");
+                if let Some(&index) = indexes.get(&key) {
+                    entries[index].1 = fragment;
+                } else {
+                    indexes.insert(key.clone(), entries.len());
+                    entries.push((key, fragment));
+                }
+            }
+            None => self.root = Some(fragment),
+        }
+    }
+    fn finish(self) -> Result<(String, usize)> {
+        let root = self.root.ok_or_else(|| eyre::eyre!("missing JSON value"))?;
+        let mut content = String::new();
+        let mut transformed_fields = 0;
+        root.append_to(&mut content, &mut transformed_fields)?;
+        Ok((content, transformed_fields))
+    }
+}
+
+impl RawFragment {
+    fn append_to(self, output: &mut String, transformed: &mut usize) -> Result<()> {
+        match self {
+            Self::Text {
+                content,
+                transformed: changed,
+            } => {
+                output.push_str(&content);
+                *transformed += usize::from(changed);
+            }
+            Self::Array(items) => {
+                output.push('[');
+                for (index, item) in items.into_iter().enumerate() {
+                    if index > 0 {
+                        output.push(',');
+                    }
+                    item.append_to(output, transformed)?;
+                }
+                output.push(']');
+            }
+            Self::Object(entries) => {
+                output.push('{');
+                for (index, (key, value)) in entries.into_iter().enumerate() {
+                    if index > 0 {
+                        output.push(',');
+                    }
+                    output.push_str(&serde_json::to_string(&key)?);
+                    output.push(':');
+                    value.append_to(output, transformed)?;
+                }
+                output.push('}');
+            }
+        }
+        Ok(())
+    }
+}
+
+impl JsonOutput for RawOutput {
+    fn whitespace(&mut self, _byte: u8) -> Result<()> {
+        Ok(())
+    }
+    fn key(&mut self, _raw: &str, decoded: &str) -> Result<()> {
+        if let Some(RawContainer::Object { pending_key, .. }) = self.stack.last_mut() {
+            *pending_key = Some(decoded.to_owned());
+        }
+        Ok(())
+    }
+    fn string(&mut self, raw: &str, updated: Option<&str>) -> Result<()> {
+        self.push(RawFragment::Text {
+            content: match updated {
+                Some(value) => serde_json::to_string(value)?,
+                None => format!("\"{raw}\""),
+            },
+            transformed: updated.is_some(),
+        });
+        Ok(())
+    }
+    fn literal_byte(&mut self, byte: u8) -> Result<()> {
+        self.literal.push(byte);
+        Ok(())
+    }
+    fn literal_end(&mut self) -> Result<()> {
+        let raw = String::from_utf8(std::mem::take(&mut self.literal))?;
+        let content = if raw.as_bytes()[0] == b'-' || raw.as_bytes()[0].is_ascii_digit() {
+            serde_json::from_str::<serde_json::Number>(&raw)?.to_string()
+        } else {
+            raw
+        };
+        self.push(RawFragment::Text {
+            content,
+            transformed: false,
+        });
+        Ok(())
+    }
+    fn begin_object(&mut self) -> Result<()> {
+        self.stack.push(RawContainer::Object {
+            entries: Vec::new(),
+            indexes: HashMap::new(),
+            pending_key: None,
+        });
+        Ok(())
+    }
+    fn begin_array(&mut self) -> Result<()> {
+        self.stack.push(RawContainer::Array(Vec::new()));
+        Ok(())
+    }
+    fn end_object(&mut self) -> Result<()> {
+        if let Some(RawContainer::Object { entries, .. }) = self.stack.pop() {
+            self.push(RawFragment::Object(entries));
+        }
+        Ok(())
+    }
+    fn end_array(&mut self) -> Result<()> {
+        if let Some(RawContainer::Array(items)) = self.stack.pop() {
+            self.push(RawFragment::Array(items));
+        }
+        Ok(())
+    }
+    fn punctuation(&mut self, _byte: u8) -> Result<()> {
+        Ok(())
+    }
+}
+
+fn walk_json_fields<R: BufRead, O: JsonOutput>(reader: R, output: &mut O) -> Result<()> {
     let mut bytes = reader.bytes().peekable();
     let mut stack = Vec::<JsonContext>::new();
-
     while let Some(byte) = bytes.next() {
         let byte = byte?;
         match byte {
@@ -122,24 +405,19 @@ fn normalize_json_stream<R: BufRead, W: Write>(reader: R, writer: &mut W, transf
                 let raw = read_json_string_body(&mut bytes)?;
                 if is_object_key_context(&stack) {
                     let key = serde_json::from_str::<String>(&format!("\"{raw}\""))?;
-                    write!(writer, "\"{raw}\"")?;
+                    output.key(&raw, &key)?;
                     if let Some(JsonContext::Object { pending_key, .. }) = stack.last_mut() {
                         *pending_key = Some(key);
                     }
                 } else {
                     let value = serde_json::from_str::<String>(&format!("\"{raw}\""))?;
-                    match normalize_string_for_field(field_for_value(&stack), &value) {
-                        Some(updated) if updated != value => {
-                            serde_json::to_writer(&mut *writer, &updated)?;
-                            *transformed += 1;
-                        }
-                        _ => write!(writer, "\"{raw}\"")?,
-                    }
+                    let updated = normalize_string_for_field(field_for_value(&stack), &value).filter(|s| *s != value);
+                    output.string(&raw, updated.as_deref())?;
                     mark_value_written(&mut stack);
                 }
             }
             b'{' => {
-                writer.write_all(b"{")?;
+                output.begin_object()?;
                 stack.push(JsonContext::Object {
                     pending_key: None,
                     expecting_key: true,
@@ -151,20 +429,24 @@ fn normalize_json_stream<R: BufRead, W: Write>(reader: R, writer: &mut W, transf
                     Some(JsonContext::Array { field }) => field.clone(),
                     None => None,
                 };
-                writer.write_all(b"[")?;
+                output.begin_array()?;
                 stack.push(JsonContext::Array { field });
             }
-            b'}' | b']' => {
-                writer.write_all(&[byte])?;
+            b'}' => {
+                output.end_object()?;
+                stack.pop();
+                mark_value_written(&mut stack);
+            }
+            b']' => {
+                output.end_array()?;
                 stack.pop();
                 mark_value_written(&mut stack);
             }
             b',' => {
-                writer.write_all(b",")?;
+                output.punctuation(b',')?;
                 if let Some(JsonContext::Object {
                     pending_key,
                     expecting_key,
-                    ..
                 }) = stack.last_mut()
                 {
                     *pending_key = None;
@@ -172,20 +454,20 @@ fn normalize_json_stream<R: BufRead, W: Write>(reader: R, writer: &mut W, transf
                 }
             }
             b':' => {
-                writer.write_all(b":")?;
+                output.punctuation(b':')?;
                 if let Some(JsonContext::Object { expecting_key, .. }) = stack.last_mut() {
                     *expecting_key = false;
                 }
             }
-            byte if byte.is_ascii_whitespace() => writer.write_all(&[byte])?,
+            byte if byte.is_ascii_whitespace() => output.whitespace(byte)?,
             byte => {
-                writer.write_all(&[byte])?;
-                copy_literal_tail(&mut bytes, writer)?;
+                output.literal_byte(byte)?;
+                copy_literal_tail(&mut bytes, output)?;
+                output.literal_end()?;
                 mark_value_written(&mut stack);
             }
         }
     }
-
     Ok(())
 }
 
@@ -250,7 +532,6 @@ fn field_for_value(stack: &[JsonContext]) -> Option<&str> {
         JsonContext::Array { field } => field.as_deref(),
     }
 }
-
 fn normalize_string_for_field(field: Option<&str>, raw: &str) -> Option<String> {
     let key = field?;
     if PURE_IP_FIELDS.contains(&key) {
@@ -262,10 +543,10 @@ fn normalize_string_for_field(field: Option<&str>, raw: &str) -> Option<String> 
     }
 }
 
-fn copy_literal_tail<I, W>(bytes: &mut std::iter::Peekable<I>, writer: &mut W) -> Result<()>
+fn copy_literal_tail<I, O>(bytes: &mut std::iter::Peekable<I>, output: &mut O) -> Result<()>
 where
     I: Iterator<Item = std::io::Result<u8>>,
-    W: Write,
+    O: JsonOutput,
 {
     while let Some(byte) = bytes.peek() {
         let byte = match byte {
@@ -275,34 +556,9 @@ where
         if byte == b',' || byte == b'}' || byte == b']' || byte.is_ascii_whitespace() {
             break;
         }
-        let byte = bytes.next().transpose()?.expect("peeked byte");
-        writer.write_all(&[byte])?;
+        output.literal_byte(bytes.next().transpose()?.expect("peeked byte"))?;
     }
     Ok(())
-}
-
-fn normalize_value(value: &mut Value, field: Option<&str>, transformed: &mut usize) {
-    match value {
-        Value::Object(object) => {
-            for (key, child) in object.iter_mut() {
-                normalize_value(child, Some(key), transformed);
-            }
-        }
-        Value::Array(array) => {
-            for child in array.iter_mut() {
-                normalize_value(child, field, transformed);
-            }
-        }
-        Value::String(raw) => {
-            if let Some(updated) = normalize_string_for_field(field, raw)
-                && updated != *raw
-            {
-                *raw = updated;
-                *transformed += 1;
-            }
-        }
-        _ => {}
-    }
 }
 
 fn normalize_pure_ip(value: &str) -> Option<String> {
@@ -402,7 +658,7 @@ pub(super) mod synthetic_vectors {
 mod tests {
     use super::synthetic_vectors as v;
     use super::*;
-    use std::io::Read;
+    use std::io::{BufReader, Read};
 
     #[test]
     fn normalized_reader_bounds_container_depth_before_consuming_the_payload() {
@@ -556,6 +812,36 @@ mod tests {
         );
     }
 
+    #[test]
+    fn reader_errors_propagate_without_consuming_partial_temp_output() {
+        struct FailingReader;
+        impl Read for FailingReader {
+            fn read(&mut self, _buffer: &mut [u8]) -> std::io::Result<usize> {
+                Err(std::io::Error::other("synthetic read failure"))
+            }
+        }
+        let prefix = std::io::Cursor::new(br#"{"ip":"512.768.1024.1280"}"#);
+        let reader = BufReader::new(prefix.chain(FailingReader));
+        let result = with_normalized_json_reader("nodes.json", reader, true, |_reader| -> Result<()> {
+            panic!("a partial temporary file must not reach the consumer")
+        });
+        assert!(result.unwrap_err().to_string().contains("synthetic read failure"));
+    }
+
+    #[test]
+    fn raw_duplicate_counts_only_surviving_decoded_keys_and_subtrees() {
+        let input = r#"{"ip":"512.768.1024.1280","\u0069p":"192.0.2.10","host":"512.768.1024.1280","host":"513.769.1025.1281:9300","nested":{"ip":"512.768.1024.1280"},"nested":{"name":"café","ip":"192.0.2.11"},"bound_address":["512.768.1024.1280:9300",{"ip":"512.768.1024.1280"}]}"#;
+        let result = normalize_supported_content("nodes.json", input.into()).expect("raw normalization");
+        assert_eq!(result.transformed_fields, 3);
+        let parsed: Value = serde_json::from_str(&result.content).unwrap();
+        assert_eq!(parsed["ip"], "192.0.2.10");
+        assert_eq!(parsed["host"], "3.4.5.6");
+        assert_eq!(parsed["nested"]["ip"], "192.0.2.11");
+        assert_eq!(
+            parsed["bound_address"],
+            serde_json::json!(["2.3.4.5:9300", {"ip":"2.3.4.5"}])
+        );
+    }
     #[test]
     fn raw_and_streaming_normalization_preserve_field_scope_through_arrays() {
         let input = serde_json::json!({
