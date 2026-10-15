@@ -202,3 +202,21 @@ The decoder now rejects invalid UTF-8 through the existing malformed-upload clea
 ### Export-address assertion correction
 
 A throwaway executable confirmed that the export assertions previously accepted a port-bearing `node.ip`, a missing transport port, and a changed transport port. The assertions now compare pure-IP fields without stripping anything and require the synthetic fixture's exact transport port (`9300`). All three invalid-export probes are rejected, all seven normalization integration tests pass, and workspace formatting passes. This changes regression coverage only; production behavior, operator documentation and changelog remain unchanged.
+
+### Approved normalization depth budget
+
+The normalization contract now limits enabled, supported reads to 128 nested JSON objects or arrays, counting the outermost container as one. This is an explicit compatibility change: the previous reader and a `RawValue` consumer accepted artificial 512-level input. Disabled normalization and excluded/unsupported direct readers retain their existing consumer-controlled depth acceptance. A consumer's stricter limit still applies.
+
+Before choosing the budget, a temporary Rust survey validated and measured all 12 checked-in API diagnostic archives: 337 valid JSON files, one empty JSON file, and no invalid JSON files. These are captures from local test containers, not a representative production/customer corpus. Every Elasticsearch maximum occurred in `cluster_state.json`; excluding manifest/version files did not change the maxima.
+
+| Version | Elasticsearch maximum | Kibana maximum | Logstash maximum |
+|---------|-----------------------|----------------|------------------|
+| 6.8.23 | 22 | 5 | 7 |
+| 7.17.29 | 23 | 7 | 7 |
+| 8.19.3 | 25 | 6 | 8 |
+| 9.3.3 | 27 | 6 | 8 |
+
+- The permanent array/object boundary regression failed before the fix by accepting 129 containers. Afterward, a `RawValue` consumer accepts 128; the 129th opening delimiter fails before allocating another traversal context or consuming the remaining payload. Separate coverage retains 512-level acceptance for disabled, manifest, version, and unsupported direct readers.
+- A throwaway executable using the actual reader confirmed both array/object boundaries. A valid 2,000,001-byte input with one million nested arrays failed after consuming 129 bytes, rather than traversing the whole payload.
+- The actual CLI processed the unmodified golden ZIP with 487 documents, zero document-write failures and complete outcome. With an over-budget field inserted into `nodes.json`, that source read failed, the persisted diagnostic recorded a `nodes` error event, and the remaining sources completed with a partial outcome (486 documents, zero document-write failures). Whole-Job abort behavior was not changed.
+- Parent verification passed: 47 receiver library tests, seven normalization integration tests, binary build, workspace formatting, zero clippy errors/four unchanged warnings, and strict validation of all 57 main specifications. The budget is a nesting limit, not a general archive, decompression, string-length, or total-memory limit.
