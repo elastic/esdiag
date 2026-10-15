@@ -51,8 +51,11 @@ test_skill_routes_to_native_commands() {
     rg -Fq 'references/onboarding.md' "${source_skill}/SKILL.md" || fail "onboarding guide is unreachable"
     rg -Fq 'esdiag init' "${source_skill}/references/onboarding.md" ||
         fail "canonical skill does not hand off first-run setup"
-    rg -Fq 'esdiag agent skills' "${source_skill}/references/esdiag-cli.md" ||
+    rg -Fq 'esdiag setup skills' "${source_skill}/references/esdiag-cli.md" ||
         fail "canonical skill does not document offline installation"
+    if rg -Fq 'esdiag agent skills' "${source_skill}/references/esdiag-cli.md"; then
+        fail "canonical skill documents the removed esdiag agent skills command"
+    fi
     rg -Fq 'esdiag agent ask' "${source_skill}/references/esdiag-cli.md" ||
         fail "canonical skill does not invoke native Agent Builder ask"
     [[ -f "${source_skill}/references/onboarding.md" ]] ||

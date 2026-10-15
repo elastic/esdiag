@@ -2,7 +2,7 @@
 
 Collect, process, and analyze Elastic Stack diagnostics from Claude Code, Codex, or OpenCode.
 
-The analysis itself runs on **your** Elastic deployment, through the diagnostic skill that `esdiag setup` installs into Agent Builder. Your local agent orchestrates and presents; the cluster reasons. Every analysis and follow-up is saved as a normal Kibana Agent Builder conversation, so you can continue the same thread from Kibana later.
+The analysis itself runs on **your** Elastic deployment, through the diagnostic skill that `esdiag setup output` installs into Agent Builder. Your local agent orchestrates and presents; the cluster reasons. Every analysis and follow-up is saved as a normal Kibana Agent Builder conversation, so you can continue the same thread from Kibana later.
 
 - The analysis always reflects the assets actually installed on that cluster, so it cannot drift from what Kibana would tell you.
 - The token cost lands on the deployment's inference connector rather than your Claude quota. A measured analysis consumes roughly 110,000 input tokens on the cluster and returns about 1,100 tokens of markdown. Follow-up questions cost almost nothing locally because the conversation lives on the cluster.
@@ -27,10 +27,10 @@ OpenCode discovers the same canonical skill directly at `.agents/skills/esdiag/`
 Any installed `esdiag` binary can instead install its matching offline skill in a supported user scope:
 
 ```sh
-esdiag agent skills
+esdiag setup skills
 ```
 
-Use `--target claude`, `--target codex`, or `--target opencode` for an explicit target. Existing locally modified skills are protected unless the user explicitly chooses `--force`.
+Name `claude`, `codex`, or `opencode` to pick specific agents, as in `esdiag setup skills claude`. Existing locally modified skills are protected unless the user explicitly chooses `--force`.
 
 ## Two setups, not one
 
@@ -38,7 +38,7 @@ These are separate problems with separate prerequisites and separate failure mod
 
 ### Provisioning a cluster (once per deployment, often already done)
 
-An Elastic deployment with the ESDiag assets installed (`esdiag setup`), a suitable subscription, and **model access**.
+An Elastic deployment with the ESDiag assets installed (`esdiag setup output`), a suitable subscription, and **model access**.
 
 Model access is a deployment prerequisite that no `esdiag` command provisions. Satisfy it by activating the Elastic Inference Service through Cloud Connect with an Elastic Cloud account, or by configuring your own LLM provider and connector.
 

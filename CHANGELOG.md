@@ -12,11 +12,21 @@ published release notes, maintenance branches, and tagged history.
 
 ### Added
 
+- Added `esdiag setup completions <shell>` to install bash, zsh, fish, and PowerShell completion scripts for the running binary, or print them with `--print`.
+- Added `esdiag setup env [--env-file <path>]` to install assets into the deployment that `ESDIAG_OUTPUT_*`, `ESDIAG_KIBANA_URL`, and `ESDIAG_KIBANA_SPACE` declare, and `esdiag setup context [name]` to install assets into the services an Elastic CLI `.elasticrc` context defines. Both set up whichever of Elasticsearch and Kibana the source declares (#431).
+- Added `--activate-trial` and `ESDIAG_SETUP_ACTIVATE_TRIAL` to start a 30-day Elasticsearch trial license during setup, a trial checkbox to the web onboarding output setup, and `--activate-trial=true|false` to `esdiag local` and `esdiag-local` (#431).
 - Added `esdiag-lite.sh` and `esdiag-lite.ps1`, each with a SHA-256 checksum, to every GitHub release.
 - Added pull-request checks for the ESDiag Lite scripts, including the Windows PowerShell tests.
 
 ### Changed
 
+- **Breaking:** `esdiag setup` now requires a subcommand (#431):
+  - `esdiag setup <output>` becomes `esdiag setup output <output>`, which installs Elasticsearch assets and the assets of the output's linked Kibana viewer.
+  - `esdiag setup <elasticsearch-host>` and `esdiag setup <kibana-host>` become `esdiag setup elasticsearch <host>` and `esdiag setup kibana <host>`. Each installs only that service's assets and rejects a saved host of the other app.
+  - `esdiag setup` without a host becomes `esdiag setup env` for `ESDIAG_OUTPUT_*` deployments, or `esdiag setup output` for the saved default output. `setup output`, `setup elasticsearch`, and `setup kibana` no longer read `ESDIAG_OUTPUT_*`.
+  - `esdiag agent skills --target <agent>` becomes `esdiag setup skills [agent]...`.
+- **Breaking:** Setup no longer starts a trial license on its own. `esdiag setup`, `esdiag init` for an existing output, and web onboarding leave an unlicensed cluster's license alone unless you opt in; without the opt-in they install the Elasticsearch assets, skip the Kibana Agent Builder assets, and report a `partial` outcome. `esdiag init` asks before starting a trial. A new `esdiag local` stack still starts a trial on its first setup (#431).
+- Setup failures without an HTTP response now report the `setup_failed` outcome category.
 - Updated workspace dependency requirements and the lockfile for the 0.18 development cycle, and regenerated third-party notices.
 
 ### Fixed

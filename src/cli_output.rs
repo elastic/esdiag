@@ -158,6 +158,11 @@ pub enum CliOutcome {
         runtime_mode: String,
         output: String,
     },
+    CompletionInstalled {
+        shell: String,
+        path: String,
+        instruction: String,
+    },
 }
 
 #[derive(Debug, Serialize)]

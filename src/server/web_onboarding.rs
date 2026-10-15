@@ -61,6 +61,11 @@ pub(crate) struct ReplaceForm {
     replace: Option<String>,
 }
 
+#[derive(Deserialize)]
+pub(crate) struct OutputAssetsForm {
+    activate_trial: Option<String>,
+}
+
 pub(crate) async fn page(State(state): State<Arc<ServerState>>, headers: HeaderMap) -> Response {
     match render_page(&state, &headers, String::new()).await {
         Ok(html) => Html(html).into_response(),
@@ -163,8 +168,11 @@ pub(crate) async fn save_output(State(state): State<Arc<ServerState>>, Form(form
     refresh(&state, result.err().unwrap_or_default()).await
 }
 
-pub(crate) async fn install_output_assets(State(state): State<Arc<ServerState>>) -> Response {
-    let result = install_output_assets_stage().await;
+pub(crate) async fn install_output_assets(
+    State(state): State<Arc<ServerState>>,
+    Form(form): Form<OutputAssetsForm>,
+) -> Response {
+    let result = install_output_assets_stage(form.activate_trial.is_some()).await;
     refresh(&state, result.err().unwrap_or_default()).await
 }
 
@@ -773,24 +781,44 @@ async fn save_output_stage(state: &Arc<ServerState>, form: OutputForm, keystore_
     Ok(())
 }
 
-async fn install_output_assets_stage() -> Result<(), String> {
+const WEB_TRIAL_OPT_IN_WARNING: &str = "Kibana assets were skipped because the Elasticsearch license does not include \
+     Agent Builder. Select \"Start an Elasticsearch trial license\" and install again, or install an Enterprise license.";
+
+async fn install_output_assets_stage(activate_trial: bool) -> Result<(), String> {
     let deployment = OutputDeployment::resolve(None, true).map_err(|err| err.to_string())?;
     let kibana = deployment
         .kibana
         .ok_or_else(|| "The environment output does not provide a Kibana endpoint.".to_string())?;
     let output_client = Client::try_from(Uri::try_from(deployment.elasticsearch).map_err(|err| err.to_string())?)
         .map_err(|err| err.to_string())?;
-    let viewer_client =
-        Client::try_from(Uri::try_from(kibana).map_err(|err| err.to_string())?).map_err(|err| err.to_string())?;
-    crate::setup::assets(&output_client)
+    let declared_space = std::env::var("ESDIAG_KIBANA_SPACE").ok();
+    let viewer = crate::setup::pipeline::KibanaTarget::from_host(kibana, declared_space.as_deref())
+        .map_err(|err| err.to_string())?;
+    let targets = crate::setup::pipeline::StackTargets {
+        elasticsearch: Some(output_client),
+        kibana: Some(viewer),
+    };
+    let setup = crate::setup::pipeline::stack(&targets, activate_trial)
         .await
         .map_err(|err| err.to_string())?;
-    crate::setup::ensure_agent_builder_license(&output_client)
-        .await
-        .map_err(|err| err.to_string())?;
-    crate::setup::assets(&viewer_client)
-        .await
-        .map_err(|err| err.to_string())
+    if setup.report.is_complete() {
+        Ok(())
+    } else {
+        Err(setup
+            .report
+            .failed_indices
+            .iter()
+            .map(|index| format!("Could not update {index}."))
+            .chain(setup.report.warnings.into_iter().map(|warning| {
+                if warning == crate::setup::pipeline::TRIAL_OPT_IN_WARNING {
+                    WEB_TRIAL_OPT_IN_WARNING.to_string()
+                } else {
+                    warning
+                }
+            }))
+            .collect::<Vec<_>>()
+            .join(" "))
+    }
 }
 
 async fn save_collection_stage(form: CollectionForm, keystore_password: &str) -> Result<(), String> {
@@ -1202,6 +1230,81 @@ mod tests {
         assert!(remote_section.contains(r#"class="neutral">Unknown</badge>"#));
         assert!(!remote_section.contains(r#"class="success">Installed</badge>"#));
         assert!(!remote_section.contains("Re-install Assets"));
+
+        let setup_action = html.find("/welcome/output/setup").expect("asset setup form");
+        let setup_end = setup_action + html[setup_action..].find("</form>").expect("asset setup form end");
+        let setup_form = &html[setup_action..setup_end];
+        assert!(
+            setup_form.contains(r#"<input name="activate_trial" type="checkbox" />"#),
+            "{setup_form}"
+        );
+        assert!(!setup_form.contains("checked"));
+    }
+
+    /// Elasticsearch on a basic license, accepting every asset; records `METHOD path`.
+    async fn basic_license_cluster() -> (String, std::sync::Arc<parking_lot::Mutex<Vec<String>>>) {
+        use axum::{Router, body::Body, http::Request, response::IntoResponse};
+        let paths = std::sync::Arc::new(parking_lot::Mutex::new(Vec::new()));
+        let requests = paths.clone();
+        let app = Router::new().fallback(move |request: Request<Body>| {
+            let requests = requests.clone();
+            async move {
+                let path = request.uri().path().to_string();
+                requests.lock().push(format!("{} {path}", request.method()));
+                let started = requests.lock().iter().any(|p| p == "POST /_license/start_trial");
+                let body = match path.as_str() {
+                    "/" => r#"{"version":{"build_flavor":"default"}}"#.to_string(),
+                    "/_xpack/usage" => r#"{"security":{"enabled":false}}"#.to_string(),
+                    "/_license" => format!(
+                        r#"{{"license":{{"status":"active","type":"{}"}}}}"#,
+                        if started { "trial" } else { "basic" }
+                    ),
+                    path if path.ends_with("/_mapping") => "{}".to_string(),
+                    _ => r#"{"acknowledged":true}"#.to_string(),
+                };
+                (
+                    axum::http::StatusCode::OK,
+                    [
+                        ("content-type", "application/json"),
+                        ("x-elastic-product", "Elasticsearch"),
+                    ],
+                    body,
+                )
+                    .into_response()
+            }
+        });
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        (url, paths)
+    }
+
+    #[tokio::test]
+    async fn asset_stage_starts_a_trial_only_when_the_box_is_checked() {
+        let mut env = crate::TestEnv::new();
+        let (es_url, es_paths) = basic_license_cluster().await;
+        env.set("ESDIAG_OUTPUT_URL", &es_url);
+        env.set("ESDIAG_OUTPUT_APIKEY", "test-key");
+        // An unreachable Kibana ends the Kibana stage as soon as it is attempted.
+        env.set("ESDIAG_KIBANA_URL", "http://127.0.0.1:9");
+        env.remove("ESDIAG_OUTPUT_USERNAME");
+        env.remove("ESDIAG_OUTPUT_PASSWORD");
+        env.remove("ESDIAG_SETUP_ACTIVATE_TRIAL");
+
+        let unchecked = super::install_output_assets_stage(false)
+            .await
+            .expect_err("Kibana is skipped");
+        assert!(
+            unchecked.contains("Start an Elasticsearch trial license"),
+            "{unchecked}"
+        );
+        assert!(!es_paths.lock().iter().any(|p| p.contains("start_trial")));
+
+        let checked = super::install_output_assets_stage(true)
+            .await
+            .expect_err("Kibana is unreachable");
+        assert!(!checked.contains("Start an Elasticsearch trial license"), "{checked}");
+        assert!(es_paths.lock().iter().any(|p| p == "POST /_license/start_trial"));
     }
 
     #[test]

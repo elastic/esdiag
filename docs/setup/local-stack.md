@@ -160,6 +160,13 @@ documents, tickets, or chat.
 You need an Enterprise license or trial and a configured inference model before
 you can ask Agent Builder questions.
 
+The first `esdiag local up` starts a 30-day Elasticsearch trial license, so a
+new stack can install the Agent Builder assets. Later runs see that the cluster
+already had a trial and leave its license alone. To control this yourself, pass
+`--activate-trial=true` or `--activate-trial=false` to `up`, `setup`, or
+`upgrade`, or set `ESDIAG_SETUP_ACTIVATE_TRIAL`. With `false` on an unlicensed
+stack, setup installs the Elasticsearch assets and skips the Kibana ones.
+
 For Elastic Inference Service:
 
 1. Sign in to `http://localhost:5601/s/esdiag`.

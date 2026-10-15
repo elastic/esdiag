@@ -54,14 +54,14 @@ shown in [Use a remote cluster](remote-cluster.md#container).
 ## Install assets
 
 ```sh
-esdiag setup diagnostics-project
+esdiag setup output diagnostics-project
 ```
 
 For the container:
 
 ```sh
 docker run --rm --env-file esdiag.env \
-  docker.elastic.co/esdiag/esdiag:<version> setup
+  docker.elastic.co/esdiag/esdiag:<version> setup env
 ```
 
 On Serverless, `setup` changes its behavior:
@@ -73,13 +73,14 @@ On Serverless, `setup` changes its behavior:
   manage roles, setup logs a warning and continues. Ask a project administrator
   to create the role.
 - The ESDiag Kibana space uses the project's solution and feature visibility.
-- Guided setup skips the stateful trial-license API. Agent Builder access
-  depends on the project's feature tier.
+- Setup skips the stateful license APIs and always continues to Kibana, even
+  with `--activate-trial`. Agent Builder access depends on the project's
+  feature tier.
 
 Serverless security is always enabled. A `410 Gone` response from the security
 usage API also reports security as enabled.
 
-Run `esdiag setup` against the saved Kibana host to install the Kibana assets
+Run `esdiag setup kibana <saved-kibana-host>` to install the Kibana assets
 separately. To choose the Kibana space, see
 [Kibana space](remote-cluster.md#kibana-space).
 

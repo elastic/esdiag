@@ -147,6 +147,10 @@
                     </cluster-endpoints>
                     {% if elasticsearch_ready && kibana_ready %}
                     <form data-on:submit__prevent="@post('/welcome/output/setup', {contentType: 'form'})">
+                        <label>
+                            <input name="activate_trial" type="checkbox" />
+                            Start an Elasticsearch trial license for Agent Builder if the cluster is not licensed
+                        </label>
                         <button class="button" type="submit">
                             {% if assets_installed %}Re-install Assets{% else %}Install Assets{% endif %}
                         </button>
@@ -246,6 +250,10 @@
                         </form>
                         {% else if elasticsearch_ready && kibana_ready %}
                         <form data-on:submit__prevent="@post('/welcome/output/setup', {contentType: 'form'})">
+                            <label>
+                                <input name="activate_trial" type="checkbox" />
+                                Start an Elasticsearch trial license for Agent Builder if the cluster is not licensed
+                            </label>
                             <button class="button" type="submit">
                                 {% if assets_installed %}Re-install Assets{% else %}Install Assets{% endif %}
                             </button>
@@ -316,6 +324,10 @@
                         </status-list>
                         {% if output_location == "remote" && !output_name.is_empty() && elasticsearch_ready && kibana_ready %}
                         <form data-on:submit__prevent="@post('/welcome/output/setup', {contentType: 'form'})">
+                            <label>
+                                <input name="activate_trial" type="checkbox" />
+                                Start an Elasticsearch trial license for Agent Builder if the cluster is not licensed
+                            </label>
                             <button class="button" type="submit">
                                 {% if assets_installed %}Re-install Assets{% else %}Install Assets{% endif %}
                             </button>

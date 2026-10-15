@@ -20,11 +20,9 @@ use esdiag::server::{AuthProvider, RuntimeMode, Server, ServerStartOptions};
 use esdiag::setup;
 #[cfg(feature = "agent")]
 use esdiag::{
-    agent::{
-        builder::{AgentBuilderClient, AgentBuilderLocation, AgentFailure, AgentProgress, AgentRequest},
-        skills::{EmbeddedSkill, SkillEnvironment, SkillTarget, detected_targets, install},
-    },
+    agent::builder::{AgentBuilderClient, AgentBuilderLocation, AgentFailure, AgentProgress, AgentRequest},
     client::KibanaClient,
+    setup::skills::{EmbeddedSkill, SkillEnvironment, SkillTarget, detected_targets, install},
 };
 use esdiag::{
     client::Client,
@@ -262,17 +260,14 @@ enum Commands {
         )]
         api_url: String,
     },
-    #[cfg(feature = "setup")]
-    /// Import assets (templates, ingest pipelines, etc.) to a known Elasticsearch host
+    /// Configure external systems for ESDiag: Elastic Stack assets, agent skills, and shell completions
+    #[command(subcommand_required = true, arg_required_else_help = true)]
     Setup {
-        /// Known Elasticsearch host to import assets into; if omitted the ESDIAG_OUTPUT_URL, ESDIAG_OUTPUT_APIKEY, ESDIAG_OUTPUT_USERNAME, ESDIAG_OUTPUT_PASSWORD variables will be checked.
-        #[arg(
-            help = "Known Elasticsearch host to import assets into; if omitted the ESDIAG_OUTPUT_URL, ESDIAG_OUTPUT_APIKEY, ESDIAG_OUTPUT_USERNAME, ESDIAG_OUTPUT_PASSWORD variables will be checked."
-        )]
-        host: Option<String>,
+        #[command(subcommand)]
+        command: SetupCommands,
     },
     #[cfg(feature = "agent")]
-    /// Ask Kibana Agent Builder or install the local ESDiag skill
+    /// Ask Kibana Agent Builder about diagnostics
     Agent {
         #[command(subcommand)]
         command: AgentCommands,
@@ -283,6 +278,77 @@ enum Commands {
         #[command(subcommand)]
         command: JobCommands,
     },
+}
+
+#[derive(Debug, Subcommand)]
+enum SetupCommands {
+    /// Install Elasticsearch assets into a saved Elasticsearch host
+    #[cfg(feature = "setup")]
+    Elasticsearch {
+        /// Saved Elasticsearch host; defaults to the persisted output
+        host: Option<String>,
+    },
+    /// Install Kibana assets into a saved Kibana host
+    #[cfg(feature = "setup")]
+    Kibana {
+        /// Saved Kibana host; defaults to the persisted output's viewer
+        host: Option<String>,
+    },
+    /// Install assets into a saved output and its linked Kibana viewer
+    #[cfg(feature = "setup")]
+    Output {
+        /// Saved output host with role `send`; defaults to the persisted output
+        name: Option<String>,
+        #[command(flatten)]
+        trial: TrialArgs,
+    },
+    /// Install assets into the deployment declared by ESDIAG_OUTPUT_* and ESDIAG_KIBANA_* variables
+    #[cfg(feature = "setup")]
+    Env {
+        /// Read the variables from this file; the process environment takes precedence
+        #[arg(long, value_name = "PATH")]
+        env_file: Option<PathBuf>,
+        #[command(flatten)]
+        trial: TrialArgs,
+    },
+    /// Install assets into the services of an Elastic CLI (.elasticrc.yml) context
+    #[cfg(feature = "setup")]
+    Context {
+        /// Context name; defaults to the current context
+        name: Option<String>,
+        /// Elastic CLI configuration file; defaults to ELASTIC_CLI_CONFIG_FILE, then home discovery
+        #[arg(long, value_name = "PATH")]
+        config: Option<PathBuf>,
+        #[command(flatten)]
+        trial: TrialArgs,
+    },
+    /// Install the embedded ESDiag skill into coding agents
+    #[cfg(feature = "agent")]
+    Skills {
+        /// Coding agents to install into; defaults to every detected agent
+        #[arg(value_enum)]
+        agents: Vec<AgentSkillTarget>,
+        /// Replace locally modified or unrecognized ESDiag skill directories
+        #[arg(long)]
+        force: bool,
+    },
+    /// Install a shell completion script without editing shell rc files
+    Completions {
+        /// Shell to install completions for
+        #[arg(value_enum)]
+        shell: esdiag::setup::completions::CompletionShell,
+        /// Print the script to stdout instead of installing it
+        #[arg(long)]
+        print: bool,
+    },
+}
+
+#[cfg(feature = "setup")]
+#[derive(Debug, clap::Args)]
+struct TrialArgs {
+    /// Start an Elasticsearch trial license when Agent Builder is not licensed (or set ESDIAG_SETUP_ACTIVATE_TRIAL=true)
+    #[arg(long)]
+    activate_trial: bool,
 }
 
 #[cfg(feature = "agent")]
@@ -301,15 +367,6 @@ enum AgentCommands {
         /// Explicitly start a new Kibana Agent Builder conversation
         #[arg(long, conflicts_with = "conversation")]
         new: bool,
-    },
-    /// Install the embedded ESDiag skill into supported coding agents
-    Skills {
-        /// Install into this user-scoped coding agent target
-        #[arg(long, value_enum)]
-        target: Vec<AgentSkillTarget>,
-        /// Replace locally modified or unrecognized ESDiag skill directories
-        #[arg(long)]
-        force: bool,
     },
 }
 
@@ -591,6 +648,7 @@ async fn async_main() -> Result<ExitCode> {
     clear_last_run_files()?;
 
     let format = cli.format;
+    let setup_command = matches!(cli.command, Some(Commands::Setup { .. }));
     match run(cli, format).await {
         Ok(result) => {
             if let Some(outcome) = result.outcome {
@@ -601,7 +659,7 @@ async fn async_main() -> Result<ExitCode> {
         Err(e) => {
             tracing::error!("{}", e);
             if !stdout_owned && !no_command {
-                let failure = structured_failure(&e);
+                let failure = command_failure(&e, setup_command);
                 write_terminal_outcome(format, &failure)?;
                 return Ok(ExitCode::FAILURE);
             }
@@ -718,7 +776,13 @@ fn command_owns_stdout(cli: &Cli) -> bool {
                 .map(|command| matches!(command, "help" | "--help" | "-h" | "version" | "--version" | "secrets"))
                 .unwrap_or(true)
     );
-    direct_process_stream || saved_job_stream || local_raw_stdout
+    let completions_script_stdout = matches!(
+        &cli.command,
+        Some(Commands::Setup {
+            command: SetupCommands::Completions { print: true, .. }
+        })
+    );
+    direct_process_stream || saved_job_stream || local_raw_stdout || completions_script_stdout
 }
 
 fn resolve_tracing_filter(cli: &Cli) -> EnvFilter {
@@ -877,6 +941,18 @@ fn http_response_details(error: &eyre::Report) -> Option<HttpResponseDetails> {
         }
     }
     None
+}
+
+/// `esdiag setup` reports `setup_failed` unless an HTTP response or skill installation supplies the category.
+fn command_failure(error: &eyre::Report, setup_command: bool) -> CliFailure {
+    #[cfg(feature = "agent")]
+    let skill_failure = error.downcast_ref::<SkillInstallationFailure>().is_some();
+    #[cfg(not(feature = "agent"))]
+    let skill_failure = false;
+    if setup_command && !skill_failure && http_response_details(error).is_none() {
+        return CliFailure::new(CliFailureCategory::SetupFailed, "setup failed");
+    }
+    structured_failure(error)
 }
 
 fn structured_failure(error: &eyre::Report) -> CliFailure {
@@ -1336,7 +1412,6 @@ async fn run(cli: Cli, format: OutputFormat) -> Result<CommandResult> {
                     let _ = new;
                     run_agent_ask(prompt, agent_id, conversation).await
                 }
-                AgentCommands::Skills { target, force } => run_agent_skills(target, force),
             },
             Commands::Host { command } => match command {
                 HostCommands::Add {
@@ -1702,37 +1777,7 @@ async fn run(cli: Cli, format: OutputFormat) -> Result<CommandResult> {
                     destination: format!("{}/g/{}", api_url.trim_end_matches('/'), response.slug),
                 }))
             }
-            #[cfg(feature = "setup")]
-            Commands::Setup { host } => {
-                if let Some(host) = host {
-                    let uri = Uri::try_from(host)?;
-                    let client = Client::try_from(uri)?;
-                    tracing::info!("Setting up assets in {client}");
-                    let report = setup::assets_report(&client).await?;
-                    Ok(CommandResult::outcome(setup_outcome(vec![client.to_string()], report)))
-                } else {
-                    tracing::debug!("Setting up assets with the resolved output deployment");
-                    let deployment = OutputDeployment::resolve(None, true)?;
-                    let es_uri = Uri::try_from(deployment.elasticsearch)?;
-                    let es_client = Client::try_from(es_uri)?;
-                    tracing::info!("Setting up assets in {es_client}");
-                    let mut report = setup::assets_report(&es_client).await?;
-                    setup::ensure_agent_builder_license(&es_client).await?;
-                    let kibana = deployment
-                        .kibana
-                        .ok_or_else(|| eyre!("Resolved output deployment is missing a Kibana viewer"))?;
-                    let kb_uri = Uri::try_from(kibana)?;
-                    let kb_client = Client::try_from(kb_uri)?;
-                    tracing::info!("Setting up Kibana assets in {kb_client}");
-                    let kb_report = setup::assets_report(&kb_client).await?;
-                    report.failed_indices.extend(kb_report.failed_indices);
-                    report.warnings.extend(kb_report.warnings);
-                    Ok(CommandResult::outcome(setup_outcome(
-                        vec![es_client.to_string(), kb_client.to_string()],
-                        report,
-                    )))
-                }
-            }
+            Commands::Setup { command } => run_setup(command).await,
             #[cfg(feature = "keystore")]
             Commands::Job { command } => match command {
                 JobCommands::List => {
@@ -2459,6 +2504,8 @@ async fn run_init_wizard() -> Result<CommandResult> {
             };
             output_name_for_defaults = Some(output_name.clone());
             output_url_for_defaults = Some(output_url.to_string());
+            #[cfg(feature = "setup")]
+            let viewer_space = esdiag::env::kibana_space_setting(process_kibana_space().as_deref());
             save_output_deployment(
                 OutputDeploymentInput {
                     output_name,
@@ -2481,14 +2528,42 @@ async fn run_init_wizard() -> Result<CommandResult> {
             if started_local_stack {
                 output_config.output.assets_version = Some(env!("CARGO_PKG_VERSION").to_string());
             } else if run_output_setup {
+                let output_name = output_config
+                    .output
+                    .default
+                    .clone()
+                    .unwrap_or_else(|| "diagnostics".to_string());
+                let activate_trial = setup::agent_builder_license_status(&output_client).await?
+                    == setup::AgentBuilderLicense::Inactive
+                    && prompt_confirm(&format!(
+                        "Start a 30-day Elasticsearch trial license on {output_name} for Agent Builder? [y/N]: "
+                    ))?;
                 eprintln!("Installing ESDiag assets...");
-                setup::assets(&output_client).await?;
-                setup::ensure_agent_builder_license(&output_client).await?;
-                setup::assets(&viewer_client).await?;
-                output_config.output.assets_version = Some(env!("CARGO_PKG_VERSION").to_string());
+                let targets = setup::pipeline::StackTargets {
+                    elasticsearch: Some(output_client),
+                    kibana: Some(setup::pipeline::KibanaTarget {
+                        client: viewer_client,
+                        space: viewer_space,
+                    }),
+                };
+                let report = setup::pipeline::stack(&targets, activate_trial).await?.report;
+                if report.is_complete() {
+                    output_config.output.assets_version = Some(env!("CARGO_PKG_VERSION").to_string());
+                } else {
+                    let rerun = output_setup_rerun_command(&output_name, &report);
+                    for warning in report
+                        .failed_indices
+                        .iter()
+                        .map(|index| format!("Could not update {index}."))
+                        .chain(report.warnings)
+                    {
+                        eprintln!("{warning}");
+                    }
+                    eprintln!("Rerun `{rerun}` to finish installing ESDiag assets.");
+                }
             } else {
                 eprintln!(
-                    "ESDiag assets were not installed. Processing and Agent Builder are unavailable until you run `esdiag setup {}`.",
+                    "ESDiag assets were not installed. Processing and Agent Builder are unavailable until you run `esdiag setup output {}`.",
                     output_config.output.default.as_deref().unwrap_or("diagnostics")
                 );
             }
@@ -2871,7 +2946,7 @@ fn initialization_skill_installation() -> Result<Option<AgentSkillsResult>> {
 fn run_optional_agent_skill_stage() -> Result<AgentSkillsResult> {
     let environment = SkillEnvironment::current();
     let detected = detected_targets(&environment);
-    let recovery_command = "esdiag agent skills [--target <claude|codex|opencode>]...";
+    let recovery_command = "esdiag setup skills [claude|codex|opencode]...";
     let detected_names = detected.iter().map(ToString::to_string).collect::<Vec<_>>().join(", ");
     let prompt = if detected_names.is_empty() {
         "No supported coding-agent home was detected. Install the embedded ESDiag skill now? [y/N]: ".to_string()
@@ -3665,12 +3740,173 @@ fn resolve_serve_exporter(output: Option<String>) -> Result<Exporter> {
 
 #[cfg(feature = "setup")]
 fn setup_outcome(targets: Vec<String>, report: setup::SetupReport) -> CliOutcome {
+    let outcome = if report.is_complete() { "complete" } else { "partial" }.to_string();
     CliOutcome::SetupCompleted {
         targets,
-        outcome: if report.is_complete() { "complete" } else { "partial" }.to_string(),
+        outcome,
         failed_indices: report.failed_indices,
-        warnings: report.warnings,
+        warnings: report.warnings.into_iter().chain(report.notices).collect(),
     }
+}
+
+async fn run_setup(command: SetupCommands) -> Result<CommandResult> {
+    match command {
+        #[cfg(feature = "setup")]
+        SetupCommands::Elasticsearch { host } => {
+            let host = setup_service_host(host.as_deref(), Application::Elasticsearch)?;
+            let client = Client::try_from(Uri::try_from(host)?)?;
+            tracing::info!("Setting up assets in {client}");
+            let report = setup::assets_report(&client).await?;
+            Ok(CommandResult::outcome(setup_outcome(vec![client.to_string()], report)))
+        }
+        #[cfg(feature = "setup")]
+        SetupCommands::Kibana { host } => {
+            let host = setup_service_host(host.as_deref(), Application::Kibana)?;
+            let kibana = setup::pipeline::KibanaTarget::from_host(host, process_kibana_space().as_deref())?;
+            tracing::info!("Setting up Kibana assets in {}", kibana.client);
+            let report = setup::kibana_assets_report(&kibana.client, kibana.space).await?;
+            Ok(CommandResult::outcome(setup_outcome(
+                vec![kibana.client.to_string()],
+                report,
+            )))
+        }
+        #[cfg(feature = "setup")]
+        SetupCommands::Output { name, trial } => {
+            let activate_trial = trial.resolve(None)?;
+            let deployment = OutputDeployment::resolve_saved(name.as_deref())?;
+            let output_name = name
+                .or_else(|| esdiag::data::ApplicationConfig::load().ok()?.output.default)
+                .unwrap_or_else(|| "output".to_string());
+            let kibana = deployment
+                .kibana
+                .map(|host| setup::pipeline::KibanaTarget::from_host(host, process_kibana_space().as_deref()))
+                .transpose()?;
+            let notice = kibana.is_none().then(|| {
+                format!("Kibana setup was skipped because output '{output_name}' has no linked Kibana viewer.")
+            });
+            let targets = setup::pipeline::StackTargets {
+                elasticsearch: Some(Client::try_from(Uri::try_from(deployment.elasticsearch)?)?),
+                kibana,
+            };
+            run_stack_setup(targets, notice.into_iter().collect(), activate_trial).await
+        }
+        #[cfg(feature = "setup")]
+        SetupCommands::Env { env_file, trial } => {
+            let declared = setup::env::EnvSetup::load(env_file.as_deref())?;
+            let activate_trial = trial.resolve(declared.activate_trial.as_deref())?;
+            run_stack_setup(declared.targets, declared.notices, activate_trial).await
+        }
+        #[cfg(feature = "setup")]
+        SetupCommands::Context { name, config, trial } => {
+            let activate_trial = trial.resolve(None)?;
+            let declared = setup::context::ContextSetup::load(name.as_deref(), config.as_deref())?;
+            run_stack_setup(declared.targets, declared.notices, activate_trial).await
+        }
+        #[cfg(feature = "agent")]
+        SetupCommands::Skills { agents, force } => run_agent_skills(agents, force),
+        SetupCommands::Completions { shell, print } => {
+            use clap::CommandFactory;
+            use esdiag::setup::completions::{install_completion, user_home, write_completion_script};
+
+            let mut cmd = Cli::command();
+            if print {
+                let mut stdout = std::io::stdout().lock();
+                write_completion_script(shell, &mut cmd, &mut stdout)?;
+                return Ok(CommandResult::stream());
+            }
+            let home = user_home()?;
+            let (path, instruction) = install_completion(shell, &mut cmd, &home)?;
+            Ok(CommandResult::outcome(CliOutcome::CompletionInstalled {
+                shell: shell.as_str().to_string(),
+                path: path.display().to_string(),
+                instruction,
+            }))
+        }
+    }
+}
+
+#[cfg(feature = "setup")]
+impl TrialArgs {
+    /// The flag wins; otherwise the process environment, then a value declared by the setup source.
+    fn resolve(&self, declared: Option<&str>) -> Result<bool> {
+        if self.activate_trial {
+            return Ok(true);
+        }
+        match std::env::var("ESDIAG_SETUP_ACTIVATE_TRIAL")
+            .ok()
+            .as_deref()
+            .or(declared)
+        {
+            None => Ok(false),
+            Some(value) => match value.trim().to_ascii_lowercase().as_str() {
+                "1" | "true" | "yes" | "y" | "on" => Ok(true),
+                "0" | "false" | "no" | "n" | "off" | "" => Ok(false),
+                _ => Err(eyre!(
+                    "ESDIAG_SETUP_ACTIVATE_TRIAL must be true or false, got {value:?}"
+                )),
+            },
+        }
+    }
+}
+
+/// The command that finishes an incomplete `esdiag init` asset setup, opting into the trial when the license blocked Kibana.
+#[cfg(feature = "setup")]
+fn output_setup_rerun_command(output_name: &str, report: &setup::SetupReport) -> String {
+    let needs_trial = report
+        .warnings
+        .iter()
+        .any(|warning| warning == setup::pipeline::TRIAL_OPT_IN_WARNING);
+    let flag = if needs_trial { " --activate-trial" } else { "" };
+    format!("esdiag setup output {output_name}{flag}")
+}
+
+#[cfg(feature = "setup")]
+fn process_kibana_space() -> Option<String> {
+    std::env::var("ESDIAG_KIBANA_SPACE").ok()
+}
+
+/// A saved host for single-service setup, or the persisted output's matching service.
+#[cfg(feature = "setup")]
+fn setup_service_host(name: Option<&str>, app: Application) -> Result<KnownHost> {
+    let subcommand = app.to_string().to_ascii_lowercase();
+    let Some(name) = name else {
+        let deployment = OutputDeployment::resolve_saved(None)?;
+        return match app {
+            Application::Kibana => deployment.kibana.ok_or_else(|| {
+                eyre!(
+                    "The persisted output has no linked Kibana viewer. Run `esdiag setup kibana <HOST>` with a saved Kibana host."
+                )
+            }),
+            _ => Ok(deployment.elasticsearch),
+        };
+    };
+    let host = KnownHost::get_known(&name.to_string()).ok_or_else(|| {
+        eyre!("No saved host is named '{name}'. Add it with `esdiag host add`, then run `esdiag setup {subcommand} {name}`.")
+    })?;
+    match host.app() {
+        Some(found) if found == app => Ok(host),
+        Some(found @ (Application::Elasticsearch | Application::Kibana)) => Err(eyre!(
+            "Saved host '{name}' is a {found} host, not {app}. Run `esdiag setup {} {name}`.",
+            found.to_string().to_ascii_lowercase()
+        )),
+        Some(found) => Err(eyre!(
+            "Saved host '{name}' is a {found} host; `esdiag setup {subcommand}` needs a {app} host."
+        )),
+        None => Err(eyre!(
+            "Saved host '{name}' has no application; `esdiag setup {subcommand}` needs a {app} host."
+        )),
+    }
+}
+
+#[cfg(feature = "setup")]
+async fn run_stack_setup(
+    targets: setup::pipeline::StackTargets,
+    notices: Vec<String>,
+    activate_trial: bool,
+) -> Result<CommandResult> {
+    let mut setup = setup::pipeline::stack(&targets, activate_trial).await?;
+    setup.report.notices.extend(notices);
+    Ok(CommandResult::outcome(setup_outcome(setup.targets, setup.report)))
 }
 
 fn safe_output_display(uri: &Uri) -> String {
@@ -3782,19 +4018,22 @@ mod tests {
             esdiag::setup::SetupReport {
                 failed_indices: vec!["metrics-test-esdiag".into()],
                 warnings: vec!["Raise index.mapping.total_fields.limit".into()],
+                notices: Vec::new(),
             },
         );
         let value = serde_json::to_value(outcome).unwrap();
         assert_eq!(value["outcome"], "partial");
         assert_eq!(value["failed_indices"][0], "metrics-test-esdiag");
     }
+    #[cfg(feature = "setup")]
+    use super::TrialArgs;
     #[cfg(feature = "agent")]
     use super::{
         AgentCommands, AgentSkillTarget, SkillInstallationFailure, agent_builder_space, agent_failure_report,
         install_skill_targets, process_ask_prompt, readable_agent_name,
     };
     use super::{
-        Cli, Commands, ConfiguredDefaultJob, HostCommands, KeystoreCommands, classify_failure,
+        Cli, Commands, ConfiguredDefaultJob, HostCommands, KeystoreCommands, SetupCommands, classify_failure,
         colorize_keystore_lock_status, command_owns_stdout, configured_default_job, default_diagnostic_user_from,
         detected_esdiag_local_preset, ensure_output_deployment_valid, format_keystore_lock_status,
         format_keystore_lock_status_at, format_remaining_duration_from, host_connection_uses_receiver, is_agent_mode,
@@ -3816,11 +4055,9 @@ mod tests {
     use esdiag::server::RuntimeMode;
     #[cfg(feature = "agent")]
     use esdiag::{
-        agent::{
-            builder::AgentFailure,
-            skills::{SkillEnvironment, SkillTarget},
-        },
+        agent::builder::AgentFailure,
         cli_output::{AgentSkillTargetResult, AgentSkillsFailureContext},
+        setup::skills::{SkillEnvironment, SkillTarget},
     };
     use esdiag::{
         cli_output::{CliFailureCategory, OutputFormat},
@@ -4116,19 +4353,229 @@ mod tests {
 
     #[cfg(feature = "agent")]
     #[test]
-    fn agent_skills_allows_repeatable_explicit_targets() {
-        let cli = Cli::parse_from([
-            "esdiag", "agent", "skills", "--target", "claude", "--target", "opencode", "--force",
-        ]);
+    fn setup_skills_allows_repeatable_positional_agents() {
+        let cli = Cli::parse_from(["esdiag", "setup", "skills", "claude", "opencode", "--force"]);
         assert!(matches!(
             cli.command,
-            Some(Commands::Agent {
-                command: AgentCommands::Skills {
-                    target,
+            Some(Commands::Setup {
+                command: SetupCommands::Skills {
+                    agents,
                     force: true,
                 }
-            }) if matches!(target.as_slice(), [AgentSkillTarget::Claude, AgentSkillTarget::OpenCode])
+            }) if matches!(agents.as_slice(), [AgentSkillTarget::Claude, AgentSkillTarget::OpenCode])
         ));
+    }
+
+    #[test]
+    fn setup_requires_a_subcommand() {
+        let error = Cli::try_parse_from(["esdiag", "setup"]).unwrap_err();
+        assert_eq!(
+            error.kind(),
+            clap::error::ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand
+        );
+        assert_ne!(error.exit_code(), 0);
+        let help = error.to_string();
+        for subcommand in ["completions"] {
+            assert!(help.contains(subcommand), "{help}");
+        }
+        #[cfg(feature = "setup")]
+        for subcommand in ["elasticsearch", "kibana", "output", "env", "context"] {
+            assert!(help.contains(subcommand), "{help}");
+        }
+        #[cfg(feature = "agent")]
+        assert!(help.contains("skills"), "{help}");
+    }
+
+    #[test]
+    fn removed_setup_spellings_are_usage_errors() {
+        for args in [
+            &["esdiag", "setup", "diagnostics-output"][..],
+            &["esdiag", "agent", "skills"],
+            &["esdiag", "completions", "zsh"],
+            &["esdiag", "completions", "install", "zsh"],
+            &["esdiag", "setup", "completions", "install", "zsh"],
+        ] {
+            assert!(Cli::try_parse_from(args).is_err(), "{args:?}");
+        }
+    }
+
+    #[test]
+    fn setup_completions_prints_only_with_the_flag() {
+        let cli = Cli::parse_from(["esdiag", "setup", "completions", "zsh", "--print"]);
+        assert!(command_owns_stdout(&cli));
+        let cli = Cli::parse_from(["esdiag", "setup", "completions", "zsh"]);
+        assert!(!command_owns_stdout(&cli));
+    }
+
+    #[test]
+    fn generated_completions_cover_the_setup_tree() {
+        use clap::CommandFactory;
+        let mut script = Vec::new();
+        esdiag::setup::completions::write_completion_script(
+            esdiag::setup::completions::CompletionShell::Zsh,
+            &mut Cli::command(),
+            &mut script,
+        )
+        .unwrap();
+        let script = String::from_utf8(script).unwrap();
+        let root = Cli::command();
+        let setup = root.find_subcommand("setup").expect("setup command");
+        for subcommand in setup.get_subcommands().map(|command| command.get_name()) {
+            assert!(script.contains(&format!("'{subcommand}:")), "{subcommand}");
+        }
+        assert!(root.find_subcommand("completions").is_none());
+        #[cfg(feature = "agent")]
+        assert!(
+            root.find_subcommand("agent")
+                .expect("agent command")
+                .find_subcommand("skills")
+                .is_none()
+        );
+    }
+
+    #[cfg(feature = "setup")]
+    #[test]
+    fn setup_service_and_stack_forms_parse() {
+        let parse = |args: &[&str]| Cli::try_parse_from(args).map(|cli| cli.command);
+        assert!(matches!(
+            parse(&["esdiag", "setup", "kibana", "kibana"]).unwrap(),
+            Some(Commands::Setup { command: SetupCommands::Kibana { host: Some(host) } }) if host == "kibana"
+        ));
+        assert!(matches!(
+            parse(&["esdiag", "setup", "elasticsearch"]).unwrap(),
+            Some(Commands::Setup {
+                command: SetupCommands::Elasticsearch { host: None }
+            })
+        ));
+        assert!(matches!(
+            parse(&["esdiag", "setup", "output", "prod", "--activate-trial"]).unwrap(),
+            Some(Commands::Setup {
+                command: SetupCommands::Output { name: Some(name), trial: TrialArgs { activate_trial: true } }
+            }) if name == "prod"
+        ));
+        assert!(matches!(
+            parse(&["esdiag", "setup", "env", "--env-file", "deploy.env"]).unwrap(),
+            Some(Commands::Setup {
+                command: SetupCommands::Env { env_file: Some(path), trial: TrialArgs { activate_trial: false } }
+            }) if path == std::path::Path::new("deploy.env")
+        ));
+        assert!(matches!(
+            parse(&["esdiag", "setup", "context", "prod", "--config", "rc.yml"]).unwrap(),
+            Some(Commands::Setup {
+                command: SetupCommands::Context {
+                    name: Some(_),
+                    config: Some(_),
+                    ..
+                }
+            })
+        ));
+        for single in ["elasticsearch", "kibana"] {
+            assert!(
+                parse(&["esdiag", "setup", single, "--activate-trial"]).is_err(),
+                "{single}"
+            );
+        }
+    }
+
+    #[cfg(feature = "setup")]
+    #[test]
+    fn trial_opt_in_prefers_the_flag_then_the_process_environment() {
+        let mut env = TestEnv::new();
+        env.remove("ESDIAG_SETUP_ACTIVATE_TRIAL");
+        let off = TrialArgs { activate_trial: false };
+        assert!(!off.resolve(None).unwrap());
+        assert!(off.resolve(Some("true")).unwrap());
+        assert!(TrialArgs { activate_trial: true }.resolve(Some("false")).unwrap());
+        env.set("ESDIAG_SETUP_ACTIVATE_TRIAL", "false");
+        assert!(!off.resolve(Some("true")).unwrap());
+        env.set("ESDIAG_SETUP_ACTIVATE_TRIAL", "sometimes");
+        assert!(off.resolve(None).is_err());
+    }
+
+    #[cfg(feature = "setup")]
+    #[test]
+    fn setup_service_host_checks_the_saved_application() {
+        let _env = TestEnv::new();
+        let kibana = esdiag::data::KnownHostBuilder::new(Url::parse("https://kb.example:5601").unwrap())
+            .application(Application::Kibana)
+            .roles(vec![esdiag::data::HostRole::View])
+            .build()
+            .unwrap();
+        KnownHost::write_hosts_yml(&std::collections::BTreeMap::from([(
+            "diagnostics-kb".to_string(),
+            kibana,
+        )]))
+        .unwrap();
+        let error = super::setup_service_host(Some("diagnostics-kb"), Application::Elasticsearch)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("esdiag setup kibana diagnostics-kb"), "{error}");
+        assert!(super::setup_service_host(Some("diagnostics-kb"), Application::Kibana).is_ok());
+        assert!(super::setup_service_host(Some("missing"), Application::Kibana).is_err());
+    }
+
+    #[cfg(feature = "setup")]
+    #[test]
+    fn setup_kibana_fails_when_the_persisted_output_has_no_viewer() {
+        let _env = TestEnv::new();
+        let output = esdiag::data::KnownHostBuilder::new(Url::parse("https://es.example:9200").unwrap())
+            .application(Application::Elasticsearch)
+            .roles(vec![esdiag::data::HostRole::Send])
+            .build()
+            .unwrap();
+        KnownHost::write_hosts_yml(&std::collections::BTreeMap::from([("out".to_string(), output)])).unwrap();
+        let mut config = esdiag::data::ApplicationConfig::new();
+        config.output.default = Some("out".to_string());
+        config.save().unwrap();
+
+        let error = super::setup_service_host(None, Application::Kibana)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("no linked Kibana viewer"), "{error}");
+        assert!(super::setup_service_host(None, Application::Elasticsearch).is_ok());
+    }
+
+    #[cfg(feature = "setup")]
+    #[test]
+    fn init_rerun_hint_opts_into_the_trial_only_when_the_license_blocked_kibana() {
+        let mut report = esdiag::setup::SetupReport::default();
+        report.failed_indices.push("logs-esdiag".to_string());
+        assert_eq!(
+            super::output_setup_rerun_command("diagnostics", &report),
+            "esdiag setup output diagnostics"
+        );
+        report
+            .warnings
+            .push(esdiag::setup::pipeline::TRIAL_OPT_IN_WARNING.to_string());
+        assert_eq!(
+            super::output_setup_rerun_command("diagnostics", &report),
+            "esdiag setup output diagnostics --activate-trial"
+        );
+    }
+
+    #[cfg(not(feature = "setup"))]
+    #[test]
+    fn stack_setup_subcommands_require_the_setup_feature() {
+        assert!(Cli::try_parse_from(["esdiag", "setup", "completions", "bash", "--print"]).is_ok());
+        for subcommand in ["elasticsearch", "kibana", "output", "env", "context"] {
+            assert!(
+                Cli::try_parse_from(["esdiag", "setup", subcommand]).is_err(),
+                "{subcommand}"
+            );
+        }
+    }
+
+    #[cfg(not(feature = "agent"))]
+    #[test]
+    fn setup_skills_requires_the_agent_feature() {
+        assert!(Cli::try_parse_from(["esdiag", "setup", "skills"]).is_err());
+    }
+
+    #[test]
+    fn setup_errors_report_the_setup_failed_category() {
+        let error = eyre::eyre!("Context 'missing' was not found");
+        assert_eq!(super::command_failure(&error, true).category, "setup_failed");
+        assert_eq!(super::command_failure(&error, false).category, "not_found");
     }
 
     #[cfg(feature = "agent")]

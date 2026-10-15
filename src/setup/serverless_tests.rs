@@ -2,8 +2,13 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use super::*;
+use super::{elasticsearch::*, install::*, kibana::*, license::*};
+use crate::{client::Client, data::Application, embeds::Assets};
+use eyre::Result;
+use reqwest::Method;
+use serde_json::Value;
 use std::collections::BTreeSet;
+use std::path::PathBuf;
 
 #[test]
 fn kibana_setup_targets_default_and_named_spaces_without_losing_assets() {
@@ -268,7 +273,7 @@ async fn live_serverless_asset_audit() -> Result<()> {
     })?;
     assert!(es.is_serverless().await?);
     assert!(kb.is_serverless().await?);
-    ensure_agent_builder_license(&es).await?;
+    assert_eq!(agent_builder_license_status(&es).await?, AgentBuilderLicense::Managed);
     let store = EmbeddedAssets::new()?;
     let assets = parse_assets_yml(Application::Elasticsearch, &store)?;
     let mut installed = 0;

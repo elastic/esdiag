@@ -13,7 +13,10 @@ async fn live_serverless_elasticsearch_setup() {
     // Serverless versions roll continuously. Probe deployment flavor and test
     // API acceptance instead of asserting a fixed version.number.
     esdiag::setup::assets(&client).await.unwrap();
-    esdiag::setup::ensure_agent_builder_license(&client).await.unwrap();
+    assert_eq!(
+        esdiag::setup::agent_builder_license_status(&client).await.unwrap(),
+        esdiag::setup::AgentBuilderLicense::Managed
+    );
 }
 
 fn asset(path: &str) -> Value {

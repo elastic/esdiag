@@ -183,7 +183,7 @@ strict schema rejects the obsolete field. Both reference and inline links
 panels remain supported.
 
 An Elasticsearch asset rejection is recorded in the setup report's `warnings`.
-The combined `esdiag setup` command continues to Kibana and reports a partial
+A combined setup command such as `esdiag setup output` continues to Kibana and reports a partial
 outcome if asset installation or mapping updates remain incomplete. Errors
 that prevent probing a deployment, or a separate Kibana setup error, still
 fail the command.
@@ -229,8 +229,8 @@ Serverless test project. These setup commands install or update ESDiag assets:
 
 ```sh
 cargo build --bin esdiag
-target/debug/esdiag setup esdiag-less
-target/debug/esdiag setup esdiag-less-kb
+target/debug/esdiag setup elasticsearch esdiag-less
+target/debug/esdiag setup kibana esdiag-less-kb
 ```
 
 The explicit live test reads installed assets, simulates composed templates

@@ -23,6 +23,7 @@ use esdiag::{
 use url::Url;
 
 const STATE_SCHEMA_VERSION: &str = "3";
+const AGENT_BUILDER_SKIPPED: &str = "Kibana Agent Builder assets were skipped because the local cluster has no Enterprise or trial license. Run `esdiag local setup --activate-trial=true` to start a trial.";
 const ELASTIC_VERSION: &str = "9.5.5";
 
 #[cfg(windows)]
@@ -60,6 +61,7 @@ pub async fn run(args: &[OsString]) -> Result<CliOutcome> {
     let mut state = LocalState::load(options.state_dir.clone())?;
     state.open_browser = options.open_browser;
     state.copy_password = options.copy_password;
+    state.activate_trial = options.activate_trial;
 
     match command {
         "up" => state.up(options).await?,
@@ -118,6 +120,7 @@ struct LocalOptions {
     stack: StackMode,
     open_browser: bool,
     copy_password: Option<bool>,
+    activate_trial: Option<bool>,
     start_native_service: bool,
     persist_onboarding_output: bool,
     /// Not a command-line option; `upgrade` clears it after its own pull.
@@ -135,6 +138,7 @@ impl LocalOptions {
             stack: StackMode::Auto,
             open_browser: true,
             copy_password: None,
+            activate_trial: None,
             start_native_service: true,
             persist_onboarding_output: false,
             pull_images: true,
@@ -173,6 +177,8 @@ impl LocalOptions {
                 "--open-browser=true" => options.open_browser = true,
                 "--copy-password=false" => options.copy_password = Some(false),
                 "--copy-password=true" => options.copy_password = Some(true),
+                "--activate-trial=false" => options.activate_trial = Some(false),
+                "--activate-trial=true" => options.activate_trial = Some(true),
                 "--start-native-service=false" => options.start_native_service = false,
                 "--start-native-service=true" => options.start_native_service = true,
                 "--persist-onboarding-output" => options.persist_onboarding_output = true,
@@ -212,6 +218,8 @@ struct LocalState {
     open_browser: bool,
     /// `None` asks at an interactive terminal and skips copying otherwise.
     copy_password: Option<bool>,
+    /// `None` activates a trial only when the cluster has never had one.
+    activate_trial: Option<bool>,
     has_existing_state: bool,
     /// Resolved from the host on each start and never written to `.env`,
     /// where Compose would interpolate `$` in the value.
@@ -233,6 +241,7 @@ impl LocalState {
             runtime: None,
             open_browser: true,
             copy_password: None,
+            activate_trial: None,
             has_existing_state,
             user: None,
         })
@@ -256,6 +265,7 @@ impl LocalState {
         self.runtime = Some(detect_runtime(options.runtime)?);
         self.open_browser = options.open_browser;
         self.copy_password = options.copy_password;
+        self.activate_trial = options.activate_trial;
         self.validate_state_coupling()?;
         fs::create_dir_all(self.dir.join("logs"))?;
         secure_dir(&self.dir)?;
@@ -582,9 +592,10 @@ impl LocalState {
         let compose = format!(
             "name: esdiag-local\nservices:\n  elasticsearch:\n    image: ${{ELASTICSEARCH_IMAGE}}\n    environment:\n      discovery.type: single-node\n      xpack.security.enabled: \"true\"\n      xpack.security.http.ssl.enabled: \"false\"\n      ELASTIC_PASSWORD: ${{ELASTIC_PASSWORD}}\n    ports: [\"127.0.0.1:${{ESDIAG_ELASTICSEARCH_PORT}}:9200\"]\n    volumes: [\"elasticsearch-data:/usr/share/elasticsearch/data\"]\n  kibana:\n    image: ${{KIBANA_IMAGE}}\n    environment:\n      ELASTICSEARCH_HOSTS: http://elasticsearch:9200\n      ELASTICSEARCH_USERNAME: kibana_system\n      ELASTICSEARCH_PASSWORD: ${{KIBANA_SYSTEM_PASSWORD}}\n      XPACK_ENCRYPTEDSAVEDOBJECTS_ENCRYPTIONKEY: ${{KIBANA_ENCRYPTION_KEY}}\n    ports: [\"127.0.0.1:${{ESDIAG_KIBANA_PORT}}:5601\"]\n    volumes: [\"kibana-data:/usr/share/kibana/data\"]\n{full_services}volumes:\n  elasticsearch-data:\n  kibana-data:\n{full_volume}",
             full_services = if full {
-                "  setup:\n    image: ${ESDIAG_IMAGE}\n    profiles: [\"setup\"]\n    environment:\n      ESDIAG_OUTPUT_URL: http://elasticsearch:9200\n      ESDIAG_OUTPUT_APIKEY: ${ESDIAG_OUTPUT_APIKEY}\n      ESDIAG_KIBANA_SPACE: ${ESDIAG_KIBANA_SPACE}\n      ESDIAG_KIBANA_URL: http://kibana:5601\n    command: [\"setup\"]\n  esdiag:\n    image: ${ESDIAG_IMAGE}\n    environment:\n      ESDIAG_MODE: user\n      ESDIAG_CONTAINER_LOCAL_STACK: full\n      ESDIAG_OUTPUT_URL: http://elasticsearch:9200\n      ESDIAG_OUTPUT_APIKEY: ${ESDIAG_OUTPUT_APIKEY}\n      ESDIAG_KIBANA_SPACE: ${ESDIAG_KIBANA_SPACE}\n      ESDIAG_KIBANA_URL: http://kibana:5601\n      ESDIAG_KIBANA_INTERNAL_URL: http://kibana:5601\n      ESDIAG_KIBANA_PUBLIC_URL: ${ESDIAG_KIBANA_PUBLIC_URL}\n      ESDIAG_USER: ${ESDIAG_USER:-}\n    command: [\"serve\"]\n    ports: [\"127.0.0.1:${ESDIAG_PORT}:2501\"]\n    volumes: [\"esdiag-data:/root/.esdiag\"]\n"
+                "  setup:\n    image: ${ESDIAG_IMAGE}\n    profiles: [\"setup\"]\n    environment:\n      ESDIAG_OUTPUT_URL: http://elasticsearch:9200\n      ESDIAG_OUTPUT_APIKEY: ${ESDIAG_OUTPUT_APIKEY}\n      ESDIAG_KIBANA_SPACE: ${ESDIAG_KIBANA_SPACE}\n      ESDIAG_KIBANA_URL: http://kibana:5601\n    command: {setup_command}\n  esdiag:\n    image: ${ESDIAG_IMAGE}\n    environment:\n      ESDIAG_MODE: user\n      ESDIAG_CONTAINER_LOCAL_STACK: full\n      ESDIAG_OUTPUT_URL: http://elasticsearch:9200\n      ESDIAG_OUTPUT_APIKEY: ${ESDIAG_OUTPUT_APIKEY}\n      ESDIAG_KIBANA_SPACE: ${ESDIAG_KIBANA_SPACE}\n      ESDIAG_KIBANA_URL: http://kibana:5601\n      ESDIAG_KIBANA_INTERNAL_URL: http://kibana:5601\n      ESDIAG_KIBANA_PUBLIC_URL: ${ESDIAG_KIBANA_PUBLIC_URL}\n      ESDIAG_USER: ${ESDIAG_USER:-}\n    command: [\"serve\"]\n    ports: [\"127.0.0.1:${ESDIAG_PORT}:2501\"]\n    volumes: [\"esdiag-data:/root/.esdiag\"]\n"
+                    .replace("{setup_command}", setup_command_for_image(self.values.get("ESDIAG_IMAGE").map(String::as_str).unwrap_or_default()))
             } else {
-                ""
+                String::new()
             },
             full_volume = if full { "  esdiag-data:\n" } else { "" }
         );
@@ -637,41 +648,118 @@ impl LocalState {
     }
 
     async fn setup_mode(&mut self, mode: StackMode) -> Result<()> {
+        let activate_trial =
+            match trial_preference(self.activate_trial, std::env::var("ESDIAG_SETUP_ACTIVATE_TRIAL").ok()) {
+                Some(value) => value,
+                None => self.trial_eligible().await,
+            };
         if mode == StackMode::Full {
+            let trial = format!("ESDIAG_SETUP_ACTIVATE_TRIAL={activate_trial}");
             self.compose_logged(
                 "Installing ESDiag assets",
-                &["--profile", "setup", "run", "--rm", "--no-deps", "setup"],
-            )
+                &["--profile", "setup", "run", "--rm", "--no-deps", "-e", &trial, "setup"],
+            )?;
+            if !activate_trial && !self.agent_builder_licensed().await {
+                eprintln!("{AGENT_BUILDER_SKIPPED}");
+            }
+            Ok(())
         } else {
             progress("Installing ESDiag assets");
-            self.native_setup().await
+            self.native_setup(activate_trial).await
         }
     }
 
+    async fn elasticsearch_get(&self, path: &str) -> Result<serde_json::Value> {
+        Ok(reqwest::Client::builder()
+            .timeout(Duration::from_secs(5))
+            .build()?
+            .get(format!("{}/{path}", self.elasticsearch_url()))
+            .basic_auth("elastic", Some(self.required("ELASTIC_PASSWORD")?))
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?)
+    }
+
+    /// Whether the local cluster has an active Enterprise or trial license; `true` when that cannot be read.
+    async fn agent_builder_licensed(&self) -> bool {
+        match self.elasticsearch_get("_license").await {
+            Ok(response) => {
+                response["license"]["status"] == "active"
+                    && matches!(response["license"]["type"].as_str(), Some("trial" | "enterprise"))
+            }
+            Err(error) => {
+                tracing::warn!("Could not read the Elasticsearch license: {error}");
+                true
+            }
+        }
+    }
+
+    /// Whether the local cluster has never started a trial; `false` when that cannot be read.
+    async fn trial_eligible(&self) -> bool {
+        let result = self
+            .elasticsearch_get("_license/trial_status")
+            .await
+            .map(|response| response["eligible_to_start_trial"].as_bool() == Some(true));
+        result.unwrap_or_else(|error| {
+            tracing::warn!("Could not read the Elasticsearch trial status: {error}");
+            eprintln!(
+                "Could not read the Elasticsearch trial status, so no trial license will be started. Run `esdiag local setup --activate-trial=true` to start one."
+            );
+            false
+        })
+    }
+
     #[cfg(not(feature = "setup"))]
-    async fn native_setup(&self) -> Result<()> {
+    async fn native_setup(&self, _activate_trial: bool) -> Result<()> {
         Err(eyre!(
             "Native local-stack setup requires an ESDiag binary built with the setup feature."
         ))
     }
 
     #[cfg(feature = "setup")]
-    async fn native_setup(&self) -> Result<()> {
+    async fn native_setup(&self, activate_trial: bool) -> Result<()> {
+        use setup::pipeline::{KibanaTarget, StackTargets, TRIAL_OPT_IN_WARNING};
+
         let apikey = self.required("ESDIAG_OUTPUT_APIKEY")?.to_string();
         let elasticsearch = KnownHostBuilder::new(Url::parse(&self.elasticsearch_url())?)
             .application(Application::Elasticsearch)
             .apikey(Some(apikey.clone()))
             .build()?;
-        let elasticsearch = Client::try_from(Uri::KnownHost(elasticsearch))?;
-        setup::assets(&elasticsearch).await?;
-        setup::ensure_agent_builder_license(&elasticsearch).await?;
-
         let kibana = KnownHostBuilder::new(Url::parse(&self.kibana_url())?)
             .application(Application::Kibana)
             .apikey(Some(apikey))
             .build()?;
-        let kibana = Client::try_from(Uri::KnownHost(kibana))?;
-        setup::assets(&kibana).await
+        let targets = StackTargets {
+            elasticsearch: Some(Client::try_from(Uri::KnownHost(elasticsearch))?),
+            kibana: Some(KibanaTarget::from_host(
+                kibana,
+                self.values.get("ESDIAG_KIBANA_SPACE").map(String::as_str),
+            )?),
+        };
+        let mut report = setup::pipeline::stack(&targets, activate_trial).await?.report;
+        report.warnings.retain(|warning| {
+            let skipped = warning == TRIAL_OPT_IN_WARNING;
+            if skipped {
+                eprintln!("{AGENT_BUILDER_SKIPPED}");
+            }
+            !skipped
+        });
+        if report.is_complete() {
+            Ok(())
+        } else {
+            Err(eyre!(
+                "Asset installation was partial. {}",
+                report
+                    .failed_indices
+                    .iter()
+                    .map(|index| format!("Could not update {index}."))
+                    .chain(report.warnings)
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            ))
+        }
     }
 
     fn persist_onboarding_output(&self) -> Result<()> {
@@ -1142,6 +1230,30 @@ fn kibana_image() -> String {
     format!("docker.elastic.co/kibana/kibana:{ELASTIC_VERSION}")
 }
 
+/// An explicit option wins; otherwise a boolish `ESDIAG_SETUP_ACTIVATE_TRIAL`; `None` means auto.
+fn trial_preference(option: Option<bool>, environment: Option<String>) -> Option<bool> {
+    option.or_else(|| match environment?.trim().to_ascii_lowercase().as_str() {
+        "1" | "true" | "yes" | "y" | "on" => Some(true),
+        "0" | "false" | "no" | "n" | "off" | "" => Some(false),
+        other => {
+            eprintln!("Ignoring ESDIAG_SETUP_ACTIVATE_TRIAL={other:?}; expected true or false.");
+            None
+        }
+    })
+}
+
+/// ESDiag images before 0.18 only accept bare `setup`; later images need `setup env`.
+fn setup_command_for_image(image: &str) -> &'static str {
+    let tag = image
+        .rsplit_once(':')
+        .map(|(_, tag)| tag)
+        .filter(|tag| !tag.contains('/'));
+    match tag.and_then(|tag| semver::Version::parse(tag).ok()) {
+        Some(version) if (version.major, version.minor) < (0, 18) => r#"["setup"]"#,
+        _ => r#"["setup", "env"]"#,
+    }
+}
+
 fn esdiag_image() -> String {
     format!("docker.elastic.co/esdiag/esdiag:{}", env!("CARGO_PKG_VERSION"))
 }
@@ -1369,10 +1481,66 @@ mod tests {
             runtime: None,
             open_browser: false,
             copy_password: Some(false),
+            activate_trial: None,
             has_existing_state: false,
             user: None,
         };
         (directory, state)
+    }
+
+    #[test]
+    fn setup_command_follows_the_pinned_image_version() {
+        for (tag, command) in [
+            ("0.17.0", r#"["setup"]"#),
+            ("0.17.9", r#"["setup"]"#),
+            ("0.18.0", r#"["setup", "env"]"#),
+            ("0.18.0-SNAPSHOT", r#"["setup", "env"]"#),
+            ("0.19.1", r#"["setup", "env"]"#),
+            ("dev", r#"["setup", "env"]"#),
+        ] {
+            let image = format!("docker.elastic.co/esdiag/esdiag:{tag}");
+            assert_eq!(super::setup_command_for_image(&image), command, "{tag}");
+        }
+        assert_eq!(
+            super::setup_command_for_image("localhost:5000/esdiag"),
+            r#"["setup", "env"]"#
+        );
+    }
+
+    #[test]
+    fn compose_setup_command_matches_the_recorded_image() {
+        let (_directory, mut state) = state();
+        state
+            .values
+            .insert("ESDIAG_IMAGE".into(), "docker.elastic.co/esdiag/esdiag:0.17.2".into());
+        state.write_compose(super::StackMode::Full).expect("compose");
+        let compose = fs::read_to_string(state.dir.join("compose.yml")).expect("compose file");
+        assert!(compose.contains("    command: [\"setup\"]\n"));
+        assert!(!compose.contains("ESDIAG_SETUP_ACTIVATE_TRIAL"));
+
+        state.values.insert("ESDIAG_IMAGE".into(), super::esdiag_image());
+        state.write_compose(super::StackMode::Full).expect("compose");
+        let compose = fs::read_to_string(state.dir.join("compose.yml")).expect("compose file");
+        assert!(compose.contains("    command: [\"setup\", \"env\"]\n"));
+    }
+
+    #[test]
+    fn trial_preference_prefers_the_option_then_the_environment() {
+        use super::trial_preference;
+        assert_eq!(trial_preference(None, None), None);
+        assert_eq!(trial_preference(Some(false), Some("true".into())), Some(false));
+        assert_eq!(trial_preference(Some(true), None), Some(true));
+        assert_eq!(trial_preference(None, Some("TRUE".into())), Some(true));
+        assert_eq!(trial_preference(None, Some("0".into())), Some(false));
+        assert_eq!(trial_preference(None, Some("maybe".into())), None);
+    }
+
+    #[test]
+    fn activate_trial_option_parses_explicit_values_only() {
+        let parse = |arg: &str| super::LocalOptions::parse(&[arg.into()]).map(|options| options.activate_trial);
+        assert_eq!(parse("--activate-trial=true").unwrap(), Some(true));
+        assert_eq!(parse("--activate-trial=false").unwrap(), Some(false));
+        assert!(parse("--activate-trial").is_err());
     }
 
     #[test]
@@ -1694,6 +1862,72 @@ mod onboarding_recovery_tests {
         .unwrap()
         .unwrap();
         server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn trial_and_license_checks_read_the_local_cluster() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let responses = [
+            ("200 OK", r#"{"eligible_to_start_trial":true}"#),
+            ("200 OK", r#"{"eligible_to_start_trial":false}"#),
+            ("500 Internal Server Error", "{}"),
+            ("200 OK", r#"{"license":{"type":"basic","status":"active"}}"#),
+            ("200 OK", r#"{"license":{"type":"trial","status":"active"}}"#),
+            ("500 Internal Server Error", "{}"),
+        ];
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = tokio::spawn(async move {
+            let mut paths = Vec::new();
+            for (status, body) in responses {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let mut buffer = [0; 4096];
+                let read = socket.read(&mut buffer).await.unwrap();
+                let request = String::from_utf8_lossy(&buffer[..read]).to_string();
+                paths.push(request.split_whitespace().nth(1).unwrap_or_default().to_string());
+                socket
+                    .write_all(
+                        format!(
+                            "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                            body.len()
+                        )
+                        .as_bytes(),
+                    )
+                    .await
+                    .unwrap();
+            }
+            paths
+        });
+        let dir = tempfile::tempdir().unwrap();
+        let mut state = LocalState::load(dir.path().into()).unwrap();
+        state
+            .values
+            .insert("ESDIAG_ELASTICSEARCH_PORT".into(), port.to_string());
+        state.values.insert("ELASTIC_PASSWORD".into(), "test-password".into());
+
+        assert!(state.trial_eligible().await);
+        assert!(!state.trial_eligible().await);
+        assert!(
+            !state.trial_eligible().await,
+            "a failed trial_status request must not start a trial"
+        );
+        assert!(!state.agent_builder_licensed().await);
+        assert!(state.agent_builder_licensed().await);
+        assert!(
+            state.agent_builder_licensed().await,
+            "an unreadable license must not print the skip message"
+        );
+        assert_eq!(
+            server.await.unwrap(),
+            [
+                "/_license/trial_status",
+                "/_license/trial_status",
+                "/_license/trial_status",
+                "/_license",
+                "/_license",
+                "/_license",
+            ]
+        );
     }
 
     #[cfg(unix)]

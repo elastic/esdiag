@@ -47,7 +47,7 @@ cat >"$fake_bin/esdiag" <<'EOF'
 #!/usr/bin/env bash
 case "$1" in
   --version) printf 'esdiag %s\n' "${FAKE_ESDIAG_VERSION:-0.18.0-SNAPSHOT}" ;;
-  setup) printf 'setup\n' >>"${FAKE_ESDIAG_LOG}" ;;
+  setup) printf '%s trial=%s\n' "$*" "${ESDIAG_SETUP_ACTIVATE_TRIAL:-unset}" >>"${FAKE_ESDIAG_LOG}" ;;
   serve) printf 'serve %s\n' "$*" >>"${FAKE_ESDIAG_LOG}"; while :; do sleep 60; done ;;
 esac
 EOF
@@ -61,6 +61,14 @@ if [[ -n "$output" && "$url" == *'/esdiag-local.sha256' ]]; then cp "$FAKE_CHECK
 if [[ -n "$output" && "$url" == *'/esdiag-local' ]]; then
   [[ "${FAKE_CURL_FAIL:-false}" == true ]] && exit 22
   cp "$FAKE_CANDIDATE" "$output"; exit
+fi
+if [[ "$url" == *'_license/trial_status' ]]; then
+  case "${FAKE_TRIAL_STATUS:-eligible}" in
+    eligible) printf '%s' '{"eligible_to_start_trial":true}' ;;
+    ineligible) printf '%s' '{"eligible_to_start_trial":false}' ;;
+    *) exit 22 ;;
+  esac
+  exit
 fi
 if [[ "$url" == *'_security/api_key' ]]; then printf '%s' '{"encoded":"fixture-api-key"}'; else printf '%s' '{}'; fi
 EOF
@@ -119,6 +127,16 @@ assert_contains "$tmp/secure/compose.yml" '  esdiag-data:'
 [[ "$(grep -c "LOG_LEVEL: \${LOG_LEVEL}" "$tmp/secure/compose.yml")" == 2 ]] || fail 'log level is not passed to ESDiag services'
 assert_contains "$tmp/secure/.env" 'LOG_LEVEL=info'
 [[ "$(grep -c "image: \${ESDIAG_IMAGE}" "$tmp/secure/compose.yml")" == 2 ]] || fail 'setup/service image mismatch'
+assert_contains "$tmp/secure/compose.yml" 'command: ["setup", "env"]'
+assert_contains "$FAKE_LOG" 'run --rm --no-deps -e ESDIAG_SETUP_ACTIVATE_TRIAL=true setup'
+assert_not_contains "$tmp/secure/compose.yml" 'ESDIAG_SETUP_ACTIVATE_TRIAL'
+assert_not_contains "$tmp/secure/.env" 'ESDIAG_SETUP_ACTIVATE_TRIAL'
+
+# A state pinned to a pre-0.18 image keeps the bare setup command that image understands.
+run_local up --runtime podman --state-dir "$tmp/pinned" --pull never --open-browser=false --esdiag-version 0.17.2 >/dev/null 2>&1
+assert_contains "$tmp/pinned/.env" 'esdiag:0.17.2'
+assert_contains "$tmp/pinned/compose.yml" 'command: ["setup"]'
+assert_not_contains "$tmp/pinned/compose.yml" '"setup", "env"'
 
 # Matching native binaries select core mode, omit ESDiag containers, and own the web service.
 : >"$FAKE_LOG"; : >"$FAKE_ESDIAG_LOG"
@@ -130,8 +148,27 @@ assert_not_contains "$tmp/core/compose.yml" 'esdiag-data:'
 assert_not_contains "$FAKE_LOG" 'esdiag/esdiag:'
 core_project_id=$(printf '%s' "$tmp/core" | cksum | cut -d' ' -f1)
 [[ ! -f "$tmp/volumes/esdiag-local-${core_project_id}_esdiag-data" ]] || fail 'core created ESDiag volume'
-assert_contains "$FAKE_ESDIAG_LOG" 'setup'
+assert_contains "$FAKE_ESDIAG_LOG" 'setup env trial=true'
 assert_contains "$FAKE_ESDIAG_LOG" 'serve'
+
+# Trial activation: option, then ESDIAG_SETUP_ACTIVATE_TRIAL, then the cluster's trial eligibility.
+core_setup_trial() {
+    : >"$FAKE_ESDIAG_LOG"
+    PATH="$fake_bin:$PATH" ESDIAG_LOCAL_BINARY="$fake_bin/esdiag" "$script" setup --runtime podman --state-dir "$tmp/core" "$@" 2>"$tmp/trial.err"
+    grep -o 'setup env trial=[a-z]*' "$FAKE_ESDIAG_LOG" | cut -d= -f2
+}
+[[ "$(core_setup_trial)" == true ]] || fail 'auto trial on an eligible cluster'
+[[ "$(FAKE_TRIAL_STATUS=ineligible core_setup_trial)" == false ]] || fail 'auto trial on a cluster that already had one'
+[[ "$(FAKE_TRIAL_STATUS=fail core_setup_trial)" == false ]] || fail 'auto trial when trial_status fails'
+assert_contains "$tmp/trial.err" '--activate-trial=true'
+[[ "$(core_setup_trial --activate-trial=false)" == false ]] || fail '--activate-trial=false on an eligible cluster'
+[[ "$(FAKE_TRIAL_STATUS=ineligible core_setup_trial --activate-trial=true)" == true ]] || fail '--activate-trial=true'
+[[ "$(ESDIAG_SETUP_ACTIVATE_TRIAL=false core_setup_trial)" == false ]] || fail 'env var false overrides eligibility'
+[[ "$(FAKE_TRIAL_STATUS=ineligible ESDIAG_SETUP_ACTIVATE_TRIAL=true core_setup_trial)" == true ]] || fail 'env var true'
+[[ "$(ESDIAG_SETUP_ACTIVATE_TRIAL=true core_setup_trial --activate-trial=false)" == false ]] || fail 'option overrides env var'
+if ESDIAG_SETUP_ACTIVATE_TRIAL=maybe core_setup_trial >/dev/null; then fail 'invalid ESDIAG_SETUP_ACTIVATE_TRIAL was accepted'; fi
+assert_not_contains "$tmp/core/.env" 'ESDIAG_SETUP_ACTIVATE_TRIAL'
+assert_not_contains "$tmp/core/compose.yml" 'ESDIAG_SETUP_ACTIVATE_TRIAL'
 PATH="$fake_bin:$PATH" ESDIAG_LOCAL_BINARY="$fake_bin/esdiag" "$script" restart esdiag --runtime podman --state-dir "$tmp/core"
 PATH="$fake_bin:$PATH" ESDIAG_LOCAL_BINARY="$fake_bin/esdiag" "$script" down --runtime podman --state-dir "$tmp/core"
 PATH="$fake_bin:$PATH" ESDIAG_LOCAL_BINARY="$fake_bin/esdiag" "$script" reset --runtime podman --state-dir "$tmp/core" --force

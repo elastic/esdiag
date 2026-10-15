@@ -97,19 +97,26 @@ install them.
 Native:
 
 ```sh
-esdiag setup diagnostics-output
+esdiag setup output diagnostics-output
 ```
 
 Container:
 
 ```sh
 docker run --rm --env-file esdiag.env \
-  docker.elastic.co/esdiag/esdiag:<version> setup
+  docker.elastic.co/esdiag/esdiag:<version> setup env
 ```
 
-`esdiag setup <saved-host>` prepares Elasticsearch. Run `esdiag setup` against
-the saved Kibana host to install the Kibana assets separately, or let
-`esdiag init` install both.
+`esdiag setup output <saved-output>` prepares Elasticsearch and the output's
+linked Kibana viewer. `esdiag setup elasticsearch <saved-host>` and
+`esdiag setup kibana <saved-kibana-host>` install one service's assets.
+`esdiag init` can also install both.
+
+Agent Builder assets need an active trial or Enterprise license. Setup does not
+change a cluster's license unless you ask: add `--activate-trial` to start a
+30-day trial on a cluster that has never had one. Without it, setup on an
+unlicensed cluster installs the Elasticsearch assets, skips Kibana, and reports
+a `partial` outcome.
 
 If normal ingestion uses a less-privileged credential, replace the saved secret
 after setup:
@@ -125,7 +132,7 @@ Kibana assets install into the `esdiag` space unless `ESDIAG_KIBANA_SPACE`
 selects another one. To install into Kibana's default space:
 
 ```sh
-ESDIAG_KIBANA_SPACE=_default esdiag setup <saved-kibana-host>
+ESDIAG_KIBANA_SPACE=_default esdiag setup kibana <saved-kibana-host>
 ```
 
 `_default` skips space creation and omits `/s/{space}` from asset requests and

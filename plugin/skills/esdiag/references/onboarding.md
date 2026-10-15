@@ -1,7 +1,7 @@
 # First-run setup
 
-Ask one question first: will the user only collect and share diagnostics, or
-will they also process them?
+Ask one workflow question first: will the user only collect new diagnostics,
+process existing diagnostics, or do both?
 
 Then check for a native binary:
 

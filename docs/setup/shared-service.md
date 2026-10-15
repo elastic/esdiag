@@ -47,8 +47,8 @@ behind a proxy on another host.
 
 Before you publish the URL:
 
-1. Run `esdiag setup` against the output cluster with a credential that can
-   install assets.
+1. Run `esdiag setup output <saved-output>` with a credential that can install
+   assets.
 2. Put the service behind your identity-aware proxy. Set `--identity-header`
    when it does not use `X-Goog-Authenticated-User-Email`. The proxy must remove
    client-supplied values before it sets the trusted identity header.

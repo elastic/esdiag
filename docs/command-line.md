@@ -27,8 +27,8 @@ esdiag <command> --help
 | `keystore` | Manages encrypted credentials. |
 | `process` | Processes an archive, directory, saved host, or upload URL. |
 | `upload` | Sends a raw archive to Elastic Upload Service. |
-| `setup` | Installs ESDiag assets in Elasticsearch and Kibana. |
-| `agent` | Asks Kibana Agent Builder or installs the ESDiag Skill. |
+| `setup` | Installs ESDiag assets, agent skills, and shell completions. |
+| `agent` | Asks Kibana Agent Builder about diagnostics. |
 | `job` | Runs, lists, and deletes saved jobs. |
 
 ## Global behavior
@@ -47,8 +47,10 @@ redirected to a failure store. `output` identifies the resolved
 destination, including a saved default deployment. A `setup_completed` result
 has an `outcome` of `complete` or `partial`; partial mapping updates include
 `failed_indices` and recovery advice in `warnings`. Rejected setup assets also
-appear in `warnings`; they do not prevent the combined setup command from
-attempting Kibana installation.
+appear in `warnings`; they do not prevent a combined setup command from
+attempting Kibana installation. A Kibana stage skipped for licensing also makes
+the outcome `partial`. A service the source does not declare is noted in
+`warnings` without making the outcome `partial`.
 
 Process results use the output host's linked Kibana viewer. An output with no
 linked viewer omits `kibana_url` unless its URL matches `ESDIAG_OUTPUT_URL`,
@@ -61,8 +63,9 @@ When a command fails after it starts, stdout contains a `command_failed` result
 and the command exits non-zero.
 
 `process ... -` writes only NDJSON documents to stdout. It never appends a YAML
-or JSON result. `serve` writes one readiness result after it binds unless its
-exporter owns stdout.
+or JSON result. `esdiag setup completions <shell> --print` writes only a shell
+script to stdout. `serve` writes one readiness result after it binds unless its output
+owns stdout.
 
 ## Local state and environment
 
@@ -80,8 +83,8 @@ By default, ESDiag stores user state in `~/.esdiag`:
 `ESDIAG_HOSTS` and `ESDIAG_KEYSTORE` override the paths to `hosts.yml` and
 `secrets.yml`.
 
-These environment variables define an output when a command does not receive
-one:
+These environment variables define an output when `process` or `serve` does
+not receive one, and the deployment for `esdiag setup env`:
 
 - `ESDIAG_OUTPUT_URL`
 - `ESDIAG_OUTPUT_APIKEY`
@@ -203,6 +206,11 @@ assets; declining returns to remote output setup. After a terminal setup that
 started a stack, `init` asks whether to open the web interface. The default is
 no.
 
+When you approve asset setup for an existing output whose license does not
+include Agent Builder, `init` asks whether to start a 30-day trial license. The
+default is no; declining installs the Elasticsearch assets and skips Kibana's
+Agent Builder assets. A new local stack starts its trial without asking.
+
 See [Set up ESDiag](setup/index.md) for the guided setup in each journey.
 
 ## `local`
@@ -231,7 +239,11 @@ esdiag local logs
 esdiag local down
 ```
 
-`up` accepts `--stack=auto|core|full`.
+`up` accepts `--stack=auto|core|full`. `up`, `setup`, and `upgrade` accept
+`--activate-trial=true|false`, or read `ESDIAG_SETUP_ACTIVATE_TRIAL`. Without
+either, they start an Elasticsearch trial license only when the local cluster
+has never had one, so a new stack gets Agent Builder and later runs leave the
+license alone.
 
 - `auto` defaults to core.
 - `core` runs Elasticsearch and Kibana in containers and starts native
@@ -256,18 +268,113 @@ option.
 
 ## `setup`
 
-`esdiag setup [HOST]` installs or updates ESDiag templates and ingest pipelines.
-With a saved host, it uses that host. Without one, it uses `ESDIAG_OUTPUT_*`.
-Kibana setup also needs `ESDIAG_KIBANA_URL`.
+`esdiag setup` configures external systems for ESDiag. It requires a
+subcommand; `esdiag setup` alone prints help and exits non-zero.
+
+| Command | Configures |
+|---|---|
+| `setup output [NAME] [--activate-trial]` | A saved output and its linked Kibana viewer |
+| `setup elasticsearch [HOST]` | Elasticsearch assets on one saved host |
+| `setup kibana [HOST]` | Kibana assets on one saved host |
+| `setup env [--env-file PATH] [--activate-trial]` | The deployment declared by `ESDIAG_OUTPUT_*` and `ESDIAG_KIBANA_*` |
+| `setup context [NAME] [--config PATH] [--activate-trial]` | The services of an Elastic CLI `.elasticrc.yml` context |
+| `setup skills [AGENT]... [--force]` | The embedded ESDiag skill in coding agents |
+| `setup completions <SHELL> [--print]` | Shell completions |
+
+Run asset setup before the first ingest and after an upgrade that changes
+assets. You can rerun it safely; existing Kibana workflows and other managed
+assets are updated to the bundled definitions. The credential needs permission
+to install them.
+
+### Elastic Stack assets
+
+`setup output` uses the named saved output, or the persisted default output
+when `NAME` is omitted. The host must have the `send` role. It installs
+Elasticsearch assets, then Kibana assets into the linked viewer. Without a
+linked viewer it installs Elasticsearch assets only and says so.
 
 ```sh
-esdiag setup diagnostics-output
+esdiag setup output diagnostics-output
 ```
 
-Run setup before the first ingest and after an upgrade that changes assets.
-You can rerun setup safely; existing Kibana workflows and other managed assets
-are updated to the bundled definitions.
-The credential needs permission to install them.
+`setup elasticsearch` and `setup kibana` install one service's assets into a
+saved host whose `app` matches the subcommand. Without `HOST`, they use the
+persisted default output or its viewer. A saved host may share the subcommand's
+name, as in `esdiag setup kibana kibana`. Kibana assets go to the space in a
+`/s/<space>` URL path, otherwise `ESDIAG_KIBANA_SPACE`.
+
+None of these saved-host commands read `ESDIAG_OUTPUT_*`. Use `setup env` for
+an environment-declared deployment, such as a container or CI job:
+
+```sh
+esdiag setup env
+esdiag setup env --env-file deploy.env
+```
+
+`setup env` reads `ESDIAG_OUTPUT_URL`, `ESDIAG_OUTPUT_APIKEY`,
+`ESDIAG_OUTPUT_USERNAME`, `ESDIAG_OUTPUT_PASSWORD`, `ESDIAG_KIBANA_URL`,
+`ESDIAG_KIBANA_SPACE`, and `ESDIAG_SETUP_ACTIVATE_TRIAL`. With `--env-file`,
+values missing from the process environment come from that file; the process
+environment wins, and other keys in the file are ignored. It never reads a
+`.env` file unless you pass one. It sets up Elasticsearch when
+`ESDIAG_OUTPUT_URL` is declared and Kibana when `ESDIAG_KIBANA_URL` is
+declared.
+
+`setup context` loads the Elastic CLI configuration from `--config`, then
+`ELASTIC_CLI_CONFIG_FILE`, then your home directory. It uses the named context,
+or the current context, and sets up whichever of its `elasticsearch` and
+`kibana` services are defined. Credentials, including resolver values, stay in
+memory and are never written to `hosts.yml` or the keystore.
+
+### Trial license
+
+Kibana's Agent Builder assets need an Enterprise or trial license. Setup never
+changes a cluster's license on its own. When `setup output`, `setup env`, or
+`setup context` installs both services and the license does not include Agent
+Builder, it installs the Elasticsearch assets, skips Kibana, and reports a
+`partial` outcome with a warning. To start a 30-day trial instead, pass
+`--activate-trial` or set `ESDIAG_SETUP_ACTIVATE_TRIAL=true`:
+
+```sh
+esdiag setup output --activate-trial
+```
+
+A cluster can start only one trial. Serverless projects have no license to
+change, so setup always continues to Kibana there. `setup elasticsearch` and
+`setup kibana` never read or change the license.
+
+### Agent skills
+
+```sh
+esdiag setup skills
+esdiag setup skills claude codex
+```
+
+`setup skills` installs the embedded skill for detected coding agents, or for
+the named `claude`, `codex`, and `opencode` agents. `--force` replaces locally
+modified skill directories. Restart the agent after installation.
+
+### Shell completions
+
+```sh
+esdiag setup completions zsh
+esdiag setup completions zsh --print
+```
+
+By default, `setup completions` writes a conventional file under your home
+directory and emits one `completion_installed` result with `shell`, `path`, and
+`instruction`. It does not edit shell startup files. `--print` writes the raw
+script to stdout instead and emits no YAML or JSON result.
+
+| Shell | Install path | Follow-up |
+|---|---|---|
+| bash | `~/.local/share/bash-completion/completions/esdiag` | Needs bash-completion enabled, or source the file from `~/.bashrc` |
+| zsh | `~/.zfunc/_esdiag` | Add the printed `fpath` / `compinit` line to `~/.zshrc` if missing |
+| fish | `~/.config/fish/completions/esdiag.fish` | Open a new fish shell |
+| powershell | `~/.config/powershell/Completions/esdiag.ps1` | Dot-source from your PowerShell profile; PowerShell does not autoload this path |
+
+Completions cover subcommands and flags only. Saved host and job names are not
+completed dynamically.
 
 ## `collect`
 
@@ -366,15 +473,11 @@ the service base URL.
 
 ```sh
 esdiag agent ask "Analyze diagnostic <diagnostic-id>: <question>"
-esdiag agent skills
 ```
 
 `agent ask` sends one prompt to the Agent Builder agent linked to the configured
-output. It returns a message, conversation ID, and Kibana URL.
-
-`agent skills` installs the embedded skill for supported coding agents.
-Use `--target claude`, `--target codex`, or `--target opencode` when needed.
-Restart the agent after installation.
+output. It returns a message, conversation ID, and Kibana URL. To install the
+coding-agent skill, use [`esdiag setup skills`](#agent-skills).
 
 ## `job`
 

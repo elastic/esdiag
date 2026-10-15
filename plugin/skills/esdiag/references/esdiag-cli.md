@@ -12,10 +12,26 @@ their terminal. Keep credentials out of the conversation.
 
 ## Install the skill
 
-When asked to install this skill for a coding agent, run `esdiag agent skills`.
-It installs the running binary's embedded skill offline. Use `--target` when
-agent detection needs an explicit target; preserve modified installations
-unless the user requests replacement.
+When asked to install this skill for a coding agent, run `esdiag setup skills`.
+It installs the running binary's embedded skill offline. Name agents
+(`esdiag setup skills claude codex`) when detection needs an explicit target;
+preserve modified installations unless the user requests replacement.
+
+## Set up a deployment
+
+`esdiag setup` requires a subcommand naming what to configure:
+
+```sh
+esdiag setup output [name]           # saved output and its linked Kibana
+esdiag setup elasticsearch [host]    # one saved Elasticsearch host
+esdiag setup kibana [host]           # one saved Kibana host
+esdiag setup env [--env-file <path>] # ESDIAG_OUTPUT_* and ESDIAG_KIBANA_*
+esdiag setup context [name]          # an Elastic CLI .elasticrc.yml context
+```
+
+Setup never starts an Elasticsearch trial license unless the user asks. When a
+combined setup reports that Kibana assets were skipped for licensing, ask the
+user before rerunning with `--activate-trial`; it changes the cluster's license.
 
 ## Collect
 
@@ -113,12 +129,14 @@ terminal, not this conversation.
 |---|---|
 | State paths | `ESDIAG_HOME`, `ESDIAG_HOSTS`, `ESDIAG_KEYSTORE` |
 | Output | `ESDIAG_OUTPUT_URL`, `ESDIAG_OUTPUT_APIKEY`, `ESDIAG_OUTPUT_USERNAME`, `ESDIAG_OUTPUT_PASSWORD`, `ESDIAG_KIBANA_URL`, `ESDIAG_KIBANA_SPACE` |
+| Setup | `ESDIAG_SETUP_ACTIVATE_TRIAL` |
 | Keystore | `ESDIAG_KEYSTORE_PASSWORD` |
 | Report metadata | `ESDIAG_USER` |
 | Server | `ESDIAG_MODE`, `ESDIAG_PORT` |
 | Export tuning | `ESDIAG_ES_BULK_SIZE`, `ESDIAG_ES_BULK_BYTES`, `ESDIAG_ES_WORKERS`, `ESDIAG_OUTPUT_TASK_LIMIT`, `ESDIAG_REQUEST_TIMEOUT_MS`, `ESDIAG_EXPORT_RETRY_MAX`, `ESDIAG_EXPORT_RETRY_INITIAL_MS`, `ESDIAG_EXPORT_RETRY_MAX_MS` |
 | Logging | `LOG_LEVEL` |
 
-`ESDIAG_OUTPUT_*` configures `process`, `setup`, and `serve` when a saved
-output host is absent. `ESDIAG_KIBANA_URL` is also required for Kibana setup
-and Agent Builder with an environment-backed output.
+`ESDIAG_OUTPUT_*` configures `process` and `serve` when a saved output host is
+absent. `ESDIAG_KIBANA_URL` is also required for Agent Builder with an
+environment-backed output. Of the setup commands, only `esdiag setup env` reads
+these variables.

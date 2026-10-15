@@ -29,7 +29,6 @@ pub mod receiver;
 #[cfg(feature = "server")]
 pub mod server;
 /// Send pre-built assets (index templates, etc) to Elasticsearch
-#[cfg(feature = "setup")]
 pub mod setup;
 /// Host desktop browser and clipboard integration, including WSL.
 pub mod system_integration;

@@ -4,4 +4,3 @@
 //! Native integrations with local coding agents and Kibana Agent Builder.
 
 pub mod builder;
-pub mod skills;

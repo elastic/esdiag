@@ -24,21 +24,21 @@ terminal; the agent only refers to them by name.
 ## Install the skill
 
 ```sh
-esdiag agent skills
+esdiag setup skills
 ```
 
 ESDiag installs its embedded skill for every coding agent it detects in your
-home directory. To pick agents yourself, pass one or more targets:
+home directory. To pick agents yourself, name one or more:
 
 ```sh
-esdiag agent skills --target claude --target codex
+esdiag setup skills claude codex
 ```
 
-The targets are `claude`, `codex`, and `opencode`. Restart the agent so it
+The agents are `claude`, `codex`, and `opencode`. Restart the agent so it
 loads the skill.
 
 `esdiag init` also offers to install the skill at the end of setup. Run
-`esdiag agent skills` again after you upgrade ESDiag to install the matching
+`esdiag setup skills` again after you upgrade ESDiag to install the matching
 skill version. If you edited an installed copy, ESDiag leaves it alone unless
 you add `--force`.
 

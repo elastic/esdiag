@@ -43,6 +43,15 @@ esdiag --version
 esdiag --help
 ```
 
+Optional shell completions for bash, zsh, fish, and PowerShell:
+
+```sh
+esdiag setup completions zsh
+# Follow the printed instruction; setup does not edit shell startup files.
+```
+
+See [Command-line interface reference](../command-line.md#shell-completions).
+
 For a user-scoped archive installation:
 
 ```sh
@@ -119,11 +128,11 @@ The skill calls the installed `esdiag` binary. It is not a separate runtime.
 Install the binary first, then install its embedded skill:
 
 ```sh
-esdiag agent skills
+esdiag setup skills
 ```
 
-Use `--target claude`, `--target codex`, or `--target opencode` to install the
-skill for a specific agent. Restart the agent to reload the skill.
+Name `claude`, `codex`, or `opencode` to install the skill for specific agents,
+as in `esdiag setup skills claude`. Restart the agent to reload the skill.
 
 After a person has run `esdiag init`, the skill can run saved jobs, process
 archives, and ask Agent Builder questions. It checks the keystore before
