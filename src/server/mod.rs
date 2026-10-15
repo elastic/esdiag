@@ -60,7 +60,7 @@ use std::{
     convert::Infallible,
     fmt,
     net::SocketAddr,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::Arc,
 };
 use tokio::sync::{Mutex, RwLock, broadcast, mpsc, watch};
@@ -1548,6 +1548,27 @@ pub struct ArchiveSignals {
 
 pub use crate::data::{CollectMode, CollectSource, JobSignals, ProcessMode, SendMode};
 
+enum CleanupMode {
+    FileOnly,
+    FileOrDirectory,
+}
+
+async fn cleanup_input_path(path: &Path, mode: CleanupMode, description: &str) {
+    let result = match mode {
+        CleanupMode::FileOnly => tokio::fs::remove_file(path).await,
+        CleanupMode::FileOrDirectory => match tokio::fs::metadata(path).await {
+            Ok(metadata) if metadata.is_dir() => tokio::fs::remove_dir_all(path).await,
+            Ok(_) => tokio::fs::remove_file(path).await,
+            Err(err) => Err(err),
+        },
+    };
+    if let Err(err) = result
+        && err.kind() != std::io::ErrorKind::NotFound
+    {
+        tracing::debug!("Failed to clean {} {}: {}", description, path.display(), err);
+    }
+}
+
 #[derive(Clone)]
 pub struct JobRequest {
     pub owner: Owner,
@@ -1600,16 +1621,7 @@ impl JobInput {
             ..
         } = self
         {
-            let metadata = tokio::fs::metadata(path).await;
-            let result = match metadata {
-                Ok(metadata) if metadata.is_dir() => tokio::fs::remove_dir_all(path).await,
-                Ok(_) => tokio::fs::remove_file(path).await,
-                Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
-                Err(err) => Err(err),
-            };
-            if let Err(err) = result {
-                tracing::debug!("Failed to clean job input {}: {}", path.display(), err);
-            }
+            cleanup_input_path(path, CleanupMode::FileOrDirectory, "job input").await;
         }
     }
 }
