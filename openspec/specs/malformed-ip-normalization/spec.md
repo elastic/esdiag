@@ -16,6 +16,10 @@ The system SHALL normalize scrubbed archive payloads in the receiver read path b
 - **WHEN** an archive input is classified as non-scrubbed
 - **THEN** receiver returns original content unchanged
 
+#### Scenario: Unterminated scrubbed JSON string
+- **WHEN** a scrubbed typed or streaming read encounters an unterminated JSON string, including a trailing backslash or escaped quote at end of input
+- **THEN** the read SHALL fail rather than supply a missing closing quote
+
 ### Requirement: Normalization is bounded to supported files
 The system SHALL apply receiver-stage normalization only to supported JSON/text diagnostic files that contain node address and node identity surfaces.
 
@@ -59,6 +63,7 @@ The system SHALL treat CLI process flow and UI upload flow as either/or channels
 #### Scenario: UI channel
 - **WHEN** operator uses upload UI flow
 - **THEN** scrub behavior SHALL be controlled by checkbox or auto mode within UI flow
+- **AND** the main Process page, Advanced, and Job Builder SHALL each expose the upload checkbox
 
 #### Scenario: Oversized upload scrub control
 - **WHEN** the upload `scrubbed` field exceeds 64 bytes, including across multiple chunks

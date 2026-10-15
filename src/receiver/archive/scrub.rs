@@ -210,12 +210,12 @@ where
             raw.push(byte);
             escaped = true;
         } else if byte == b'"' {
-            break;
+            return Ok(String::from_utf8(raw)?);
         } else {
             raw.push(byte);
         }
     }
-    Ok(String::from_utf8(raw)?)
+    eyre::bail!("Unterminated JSON string")
 }
 
 fn is_object_key_context(stack: &[JsonContext]) -> bool {
@@ -399,6 +399,22 @@ mod tests {
     use super::synthetic_vectors as v;
     use super::*;
     use std::io::Read;
+
+    #[test]
+    fn normalized_reader_rejects_unterminated_strings() {
+        for input in [b"\"truncated".as_slice(), b"\"trailing\\", b"\"escaped\\\""] {
+            let result = with_normalized_json_reader("nodes.json", input, true, |reader| {
+                serde_json::from_reader::<_, String>(reader).map_err(Into::into)
+            });
+            assert!(result.is_err(), "accepted truncated JSON: {input:?}");
+        }
+
+        let result = with_normalized_json_reader("nodes.json", br#""complete\"string""#.as_slice(), true, |reader| {
+            serde_json::from_reader::<_, String>(reader).map_err(Into::into)
+        })
+        .unwrap();
+        assert_eq!(result, "complete\"string");
+    }
 
     #[test]
     fn normalizes_supported_ip_fields_only() {
