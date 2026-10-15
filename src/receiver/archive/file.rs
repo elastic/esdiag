@@ -2,12 +2,12 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use super::{normalize_supported_content, resolve_archive_path, with_normalized_json_reader};
+use super::{ArchiveOpeningError, get_from_archive, normalize_supported_content, resolve_archive_path};
 use crate::{
     processor::{DataSource, SourceContext, StreamingDataSource},
     receiver::{MissingSource, RawResponse, Receive, ReceiveMultiple, ReceiveRaw},
 };
-use eyre::{Result, WrapErr, eyre};
+use eyre::{Result, eyre};
 use futures::stream::BoxStream;
 use serde::de::DeserializeOwned;
 use std::{
@@ -86,45 +86,13 @@ impl Receive for ArchiveFileReceiver {
     {
         let mut archive = self.archive.write().await;
         let ctx = self.source_context()?;
-        let source_paths = T::candidate_source_file_paths(&ctx)?;
-        let mut last_resolve_error = None;
-
-        for source_path in source_paths {
-            match resolve_archive_path(self.subdir.as_ref(), &mut *archive, &source_path) {
-                Ok(filename) => {
-                    if self.scrubbed {
-                        tracing::debug!("Reading {} (scrubbed mode)", filename);
-                    } else {
-                        tracing::debug!("Reading {}", filename);
-                    }
-                    let file = archive.by_name(&filename)?;
-                    let mut reader = BufReader::new(file);
-                    if !crate::receiver::source_has_json(&mut reader)? {
-                        last_resolve_error = Some(
-                            MissingSource::Empty {
-                                path: filename.to_string(),
-                            }
-                            .into(),
-                        );
-                        continue;
-                    }
-                    let data: T = with_normalized_json_reader(&filename, reader, self.scrubbed, |reader| {
-                        Ok(serde_json::from_reader(reader)?)
-                    })
-                    .wrap_err_with(|| format!("Failed to parse {filename} for {}", T::name()))?;
-                    return Ok(data);
-                }
-                Err(e) => {
-                    last_resolve_error = Some(e);
-                    continue;
-                }
-            }
-        }
-
-        match last_resolve_error {
-            Some(e) => Err(e),
-            None => Err(MissingSource::NoCandidates { source: T::name() }.into()),
-        }
+        get_from_archive::<File, T>(
+            &mut archive,
+            self.subdir.as_ref(),
+            &ctx,
+            self.scrubbed,
+            ArchiveOpeningError::Zip,
+        )
     }
 
     async fn get_stream<T>(&self) -> Result<BoxStream<'static, Result<T::Item>>>
