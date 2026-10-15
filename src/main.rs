@@ -283,6 +283,29 @@ enum Commands {
         #[command(subcommand)]
         command: JobCommands,
     },
+    /// Generate or install shell completion scripts
+    Completions {
+        #[command(subcommand)]
+        command: CompletionsCommands,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum CompletionsCommands {
+    /// Print bash completion script to stdout
+    Bash,
+    /// Print zsh completion script to stdout
+    Zsh,
+    /// Print fish completion script to stdout
+    Fish,
+    /// Print PowerShell completion script to stdout
+    Powershell,
+    /// Install a completion script for the given shell without editing shell rc files
+    Install {
+        /// Shell to install completions for
+        #[arg(value_enum)]
+        shell: esdiag::completions::CompletionShell,
+    },
 }
 
 #[cfg(feature = "agent")]
@@ -718,7 +741,16 @@ fn command_owns_stdout(cli: &Cli) -> bool {
                 .map(|command| matches!(command, "help" | "--help" | "-h" | "version" | "--version" | "secrets"))
                 .unwrap_or(true)
     );
-    direct_process_stream || saved_job_stream || local_raw_stdout
+    let completions_script_stdout = matches!(
+        &cli.command,
+        Some(Commands::Completions {
+            command: CompletionsCommands::Bash
+                | CompletionsCommands::Zsh
+                | CompletionsCommands::Fish
+                | CompletionsCommands::Powershell
+        })
+    );
+    direct_process_stream || saved_job_stream || local_raw_stdout || completions_script_stdout
 }
 
 fn resolve_tracing_filter(cli: &Cli) -> EnvFilter {
@@ -1759,6 +1791,36 @@ async fn run(cli: Cli, format: OutputFormat) -> Result<CommandResult> {
                     Ok(CommandResult::outcome(CliOutcome::JobDeleted { name }))
                 }
             },
+            Commands::Completions { command } => {
+                use clap::CommandFactory;
+                use esdiag::completions::{CompletionShell, install_completion, user_home, write_completion_script};
+
+                match command {
+                    CompletionsCommands::Install { shell } => {
+                        let home = user_home()?;
+                        let mut cmd = Cli::command();
+                        let (path, instruction) = install_completion(shell, &mut cmd, &home)?;
+                        Ok(CommandResult::outcome(CliOutcome::CompletionInstalled {
+                            shell: shell.as_str().to_string(),
+                            path: path.display().to_string(),
+                            instruction,
+                        }))
+                    }
+                    print_shell => {
+                        let shell = match print_shell {
+                            CompletionsCommands::Bash => CompletionShell::Bash,
+                            CompletionsCommands::Zsh => CompletionShell::Zsh,
+                            CompletionsCommands::Fish => CompletionShell::Fish,
+                            CompletionsCommands::Powershell => CompletionShell::Powershell,
+                            CompletionsCommands::Install { .. } => unreachable!("install handled above"),
+                        };
+                        let mut cmd = Cli::command();
+                        let mut stdout = std::io::stdout().lock();
+                        write_completion_script(shell, &mut cmd, &mut stdout)?;
+                        Ok(CommandResult::stream())
+                    }
+                }
+            }
         }
     } else {
         #[cfg(all(feature = "server", feature = "desktop"))]

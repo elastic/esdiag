@@ -30,6 +30,7 @@ esdiag <command> --help
 | `setup` | Installs ESDiag assets in Elasticsearch and Kibana. |
 | `agent` | Asks Kibana Agent Builder or installs the ESDiag Skill. |
 | `job` | Runs, lists, and deletes saved jobs. |
+| `completions` | Prints or installs shell completion scripts. |
 
 ## Global behavior
 
@@ -61,8 +62,9 @@ When a command fails after it starts, stdout contains a `command_failed` result
 and the command exits non-zero.
 
 `process ... -` writes only NDJSON documents to stdout. It never appends a YAML
-or JSON result. `serve` writes one readiness result after it binds unless its
-exporter owns stdout.
+or JSON result. `esdiag completions <shell>` writes only a shell script to
+stdout. `serve` writes one readiness result after it binds unless its output
+owns stdout.
 
 ## Local state and environment
 
@@ -385,3 +387,25 @@ esdiag job delete <NAME>
 ```
 
 Saved jobs refer to hosts and secrets by name. They do not store credentials.
+
+## `completions`
+
+```sh
+esdiag completions bash|zsh|fish|powershell
+esdiag completions install <shell>
+```
+
+Print writes a raw shell script to stdout and does not emit a YAML or JSON
+result. Install writes a conventional file under your home directory and emits
+one `completion_installed` result with `shell`, `path`, and `instruction`.
+Install does not edit shell startup files.
+
+| Shell | Install path | Follow-up |
+|---|---|---|
+| bash | `$XDG_DATA_HOME/bash-completion/completions/esdiag` when `XDG_DATA_HOME` is an absolute path; otherwise `~/.local/share/bash-completion/completions/esdiag` | Needs bash-completion enabled, or source the file from `~/.bashrc` |
+| zsh | `~/.zfunc/_esdiag` | Add the printed `fpath` / `compinit` line to `~/.zshrc` if missing |
+| fish | `$XDG_CONFIG_HOME/fish/completions/esdiag.fish` when `XDG_CONFIG_HOME` is an absolute path; otherwise `~/.config/fish/completions/esdiag.fish` | Open a new fish shell |
+| powershell | `~/.config/powershell/Completions/esdiag.ps1` | Dot-source from your PowerShell profile; PowerShell does not autoload this path |
+
+Completions cover subcommands and flags only. Saved host and job names are not
+completed dynamically.

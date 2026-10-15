@@ -9,6 +9,8 @@ pub mod agent;
 pub mod cli_output;
 /// Shared client libraries for remote connections
 pub mod client;
+/// Shell completion script generation and install helpers
+pub mod completions;
 /// Data structures and types for serializing and deserializing
 pub mod data;
 /// Embedded assets

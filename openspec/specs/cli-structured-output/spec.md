@@ -110,6 +110,25 @@ After a finite command begins execution, a terminal failure SHALL emit one struc
 - **THEN** its normal human-readable usage behavior is preserved
 - **AND** the CLI does not claim that usage text is a command outcome
 
+### Requirement: Shell Completion Scripts Own Stdout
+When the user runs `esdiag completions bash`, `esdiag completions zsh`,
+`esdiag completions fish`, or `esdiag completions powershell`, stdout SHALL
+contain only the generated shell completion script. The CLI MUST NOT append a
+YAML or JSON terminal outcome to that stream. `esdiag completions install
+<shell>` remains a finite command and SHALL emit one typed
+`completion_installed` outcome.
+
+#### Scenario: Print completions writes a raw script
+- **WHEN** the user runs `esdiag completions zsh`
+- **THEN** stdout contains a shell completion script for `esdiag`
+- **AND** no YAML or JSON terminal outcome is appended
+
+#### Scenario: Install completions emits a typed outcome
+- **WHEN** the user runs `esdiag completions install zsh`
+- **THEN** stdout contains one YAML or JSON `completion_installed` result
+- **AND** the result includes `shell`, `path`, and `instruction`
+- **AND** the command does not edit shell startup files
+
 ### Requirement: Structured Streams Remain Single-Purpose
 When a command intentionally assigns stdout to processed-document streaming, stdout SHALL retain only the existing NDJSON document schema. The CLI MUST NOT append a YAML, JSON, or prose completion result to that stream, regardless of the selected default format.
 
