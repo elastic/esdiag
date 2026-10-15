@@ -2,8 +2,11 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use eyre::{Result, bail};
-use serde::Deserialize;
+use eyre::Result;
+use serde::{
+    Deserialize,
+    de::{IgnoredAny, MapAccess, SeqAccess, Visitor},
+};
 #[cfg(test)]
 use serde_json::Value;
 use std::collections::HashMap;
@@ -75,10 +78,12 @@ pub fn normalize_supported_content(path: &str, input: String) -> Result<Transfor
         });
     }
 
-    // Validate the complete input without materializing a Value tree.
-    let mut validator = serde_json::Deserializer::from_str(&input);
-    serde::de::IgnoredAny::deserialize(&mut validator)?;
-    validator.end()?;
+    // Validate completely without a Value tree, retaining Value's recursion limit.
+    {
+        let mut validator = serde_json::Deserializer::from_str(&input);
+        RawJsonValidation::deserialize(&mut validator)?;
+        validator.end()?;
+    }
 
     let mut output = RawOutput::default();
     walk_json_fields(input.as_bytes(), &mut output)?;
@@ -88,6 +93,56 @@ pub fn normalize_supported_content(path: &str, input: String) -> Result<Transfor
         transformed_fields,
         supported: true,
     })
+}
+
+struct RawJsonValidation;
+
+impl<'de> Deserialize<'de> for RawJsonValidation {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> std::result::Result<Self, D::Error> {
+        deserializer.deserialize_any(Self)
+    }
+}
+
+impl<'de> Visitor<'de> for RawJsonValidation {
+    type Value = Self;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("a JSON value")
+    }
+
+    fn visit_unit<E>(self) -> std::result::Result<Self, E> {
+        Ok(Self)
+    }
+
+    fn visit_bool<E>(self, _: bool) -> std::result::Result<Self, E> {
+        Ok(Self)
+    }
+
+    fn visit_i64<E>(self, _: i64) -> std::result::Result<Self, E> {
+        Ok(Self)
+    }
+
+    fn visit_u64<E>(self, _: u64) -> std::result::Result<Self, E> {
+        Ok(Self)
+    }
+
+    fn visit_f64<E>(self, _: f64) -> std::result::Result<Self, E> {
+        Ok(Self)
+    }
+
+    fn visit_str<E>(self, _: &str) -> std::result::Result<Self, E> {
+        Ok(Self)
+    }
+
+    fn visit_seq<A: SeqAccess<'de>>(self, mut sequence: A) -> std::result::Result<Self, A::Error> {
+        while sequence.next_element::<Self>()?.is_some() {}
+        Ok(Self)
+    }
+
+    fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> std::result::Result<Self, A::Error> {
+        while map.next_entry::<IgnoredAny, Self>()?.is_some() {}
+        Ok(Self)
+    }
 }
 
 pub fn normalize_supported_reader_to_temp<R: BufRead>(path: &str, mut reader: R) -> Result<TempTransformResult> {
@@ -225,14 +280,6 @@ impl RawOutput {
             None => self.root = Some(fragment),
         }
     }
-    fn begin_container(&mut self, container: RawContainer) -> Result<()> {
-        // serde_json::Value rejects the 128th nested container.
-        if self.stack.len() >= 127 {
-            bail!("recursion limit exceeded");
-        }
-        self.stack.push(container);
-        Ok(())
-    }
     fn finish(self) -> Result<(String, usize)> {
         let root = self.root.ok_or_else(|| eyre::eyre!("missing JSON value"))?;
         let mut content = String::new();
@@ -317,14 +364,16 @@ impl JsonOutput for RawOutput {
         Ok(())
     }
     fn begin_object(&mut self) -> Result<()> {
-        self.begin_container(RawContainer::Object {
+        self.stack.push(RawContainer::Object {
             entries: Vec::new(),
             indexes: HashMap::new(),
             pending_key: None,
-        })
+        });
+        Ok(())
     }
     fn begin_array(&mut self) -> Result<()> {
-        self.begin_container(RawContainer::Array(Vec::new()))
+        self.stack.push(RawContainer::Array(Vec::new()));
+        Ok(())
     }
     fn end_object(&mut self) -> Result<()> {
         if let Some(RawContainer::Object { entries, .. }) = self.stack.pop() {
