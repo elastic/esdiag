@@ -2,7 +2,7 @@
 
 ## Completeness
 
-All nine implementation tasks are exercised. The change remains active for draft PR review; synchronization/archival and post-PR330 replay are not claimed complete. Specs are intentionally skipped (`skip_specs: true`): existing malformed-IP and streaming specs plus all six design scenarios remain the compatibility contracts.
+All nine implementation tasks are exercised. The corrected draft targets `elastic/esdiag:main` (`upstream/main`) as part of the coordinated four-PR stack. Joint review, re-verification and required archival remain before that merge batch; the simplification is not postponed until after PR330 lands. Specs are intentionally skipped (`skip_specs: true`): existing malformed-IP and streaming specs plus all six design scenarios remain the compatibility contracts.
 
 ## Correctness
 
