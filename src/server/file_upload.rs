@@ -815,18 +815,60 @@ mod tests {
             _ => panic!("expected staged upload"),
         };
         tokio::task::yield_now().await;
-        assert!(
-            state
-                .pop_job_request_for_owner(job_id, "bob@example.com")
-                .await
-                .is_none(),
-            "another owner cannot claim the staged upload"
-        );
+        let (bob_tx, mut bob_rx) = mpsc::channel(8);
+        run_upload_job(
+            state.clone(),
+            UploadProcessSignals::default(),
+            job_id,
+            "bob@example.com".to_string(),
+            bob_tx,
+        )
+        .await;
+        let job_selector = format!("#job-{job_id}");
+        let mut saw_failure = false;
+        let mut saw_terminal = false;
+        while let Some(event) = bob_rx.recv().await {
+            match event {
+                ServerEvent::ReplaceSelector { selector, html, .. } => {
+                    assert_eq!(selector, job_selector, "wrong owner targets only the requested Job");
+                    assert!(html.contains("status-error"), "wrong owner receives a failure card");
+                    saw_failure = true;
+                }
+                ServerEvent::Signals { payload, .. } => {
+                    let signals: serde_json::Value = serde_json::from_str(&payload).expect("signal JSON");
+                    if signals.get("processing").and_then(serde_json::Value::as_bool) == Some(false) {
+                        assert_eq!(
+                            signals
+                                .pointer("/file_upload/job_id")
+                                .and_then(serde_json::Value::as_u64),
+                            Some(0),
+                        );
+                        saw_terminal = true;
+                    }
+                }
+                _ => {}
+            }
+        }
+        assert!(saw_failure, "wrong owner receives a Job failure");
+        assert!(saw_terminal, "wrong owner receives a terminal reset");
         assert_eq!(
             tokio::fs::read(&path).await.expect("wrong owner left file"),
             b"zip-bytes"
         );
+        match state.job_requests.read().await.get(&job_id) {
+            Some(request) => {
+                assert_eq!(request.owner, "alice@example.com");
+                assert!(matches!(
+                    &request.input,
+                    JobInput::LocalArchive { path: queued_path, .. } if *queued_path == path
+                ));
+            }
+            None => panic!("wrong owner consumed the queued upload"),
+        }
         assert_eq!(state.job_requests.read().await.len(), 1);
+        let stats = state.get_stats().await;
+        assert_eq!(stats.jobs.total, 1, "wrong-owner runner rejection");
+        assert_eq!(stats.jobs.failed, 1);
         let job = state
             .pop_job_request_for_owner(job_id, "alice@example.com")
             .await
@@ -857,8 +899,8 @@ mod tests {
         .await;
         assert!(!path.exists(), "runner validation rejection removes claimed input");
         let stats = state.get_stats().await;
-        assert_eq!(stats.jobs.total, 1, "runner validation rejection alone");
-        assert_eq!(stats.jobs.failed, 1);
+        assert_eq!(stats.jobs.total, 2, "wrong-owner and runner validation rejections");
+        assert_eq!(stats.jobs.failed, 2);
     }
 
     #[tokio::test(start_paused = true)]
