@@ -238,6 +238,33 @@ async fn supported_raw_reads_keep_the_value_deserializer_nesting_limit() {
 }
 
 #[tokio::test]
+async fn raw_nesting_errors_precede_later_payload_syntax_errors() {
+    for (open, close) in [("[", "]"), ("{\"child\":", "}")] {
+        let input = format!(
+            "{}\"{}\"{} trailing",
+            open.repeat(128),
+            "x".repeat(64 * 1024),
+            close.repeat(128)
+        );
+        let (_fixture, receivers) = local_raw_receivers_with_content(true, &input).await;
+        for receiver in receivers {
+            let error = receiver
+                .get_raw_response::<NodesSource>()
+                .await
+                .expect_err("excessive nesting must fail before the later payload error");
+            let syntax = error
+                .downcast_ref::<serde_json::Error>()
+                .expect("raw validation retains the JSON syntax error");
+            assert!(syntax.is_syntax());
+            assert!(
+                syntax.column() <= open.len() * 128,
+                "validation traversed beyond the over-budget opening delimiter: {syntax}"
+            );
+        }
+    }
+}
+
+#[tokio::test]
 async fn disabled_and_unsupported_raw_reads_return_original_bytes_even_if_invalid_json() {
     let invalid = " \n{\"ip\":\"512.768.1024.1280\"} trailing café\n";
     let excluded_or_non_json = " \nnot valid JSON, café\n";
