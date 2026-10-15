@@ -42,7 +42,7 @@ Keep parsing all fields before enqueue, at most one file, `BAD_REQUEST` and curr
 
 - [Risk] Moving path deletion can accidentally clean a successfully enqueued/claimed Job's file, or omit partially created files → Keep transfer at successful queue insertion only; verify real file and queue states through multipart/owner tests, including trailing malformed parts and partially written files.
 - [Risk] Unifying cleanup could change error status, double-count rejection, or alter HTML/filename/scrub precedence → Keep parsing and rejection branches in place; compare response status/body, stats delta, queue contents, original filename, and staged bytes using observable tests rather than logging or source-text assertions.
-- [Risk] Shared `src/server/` files overlap sibling work or PR330 lineage → Resolve integration conflicts against upstream/main and the reviewed PR330 rebase during joint stack review, then rerun native strict OpenSpec validation and implementation checks before the coordinated four-PR merge batch. Preserve parent ancestry where possible; if a squash/rebase merge requires replay, replay only child commits and re-verify within that batch. Do not invent a sibling dependency or postpone this simplification to a later release.
+- [Risk] Lower-layer fixes can invalidate the top layer → This PR is based on scrub traversal and includes typed archive loading plus scrubbing. Propagate fixes upward with the native stack's cascading rebase, then rerun upload/owner tests, receiver contracts and the actual combined server/CLI smoke before merge. Verify predecessor bases and GitHub stack metadata; sibling PRs against main are not a substitute for this linear stack.
 
 ## Migration Plan
 
