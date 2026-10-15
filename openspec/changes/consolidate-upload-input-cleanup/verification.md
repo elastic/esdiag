@@ -2,7 +2,7 @@
 
 ## Completeness
 
-All code-side cleanup and compatibility cases are exercised. The corrected draft targets `elastic/esdiag:main` (`upstream/main`) in the coordinated four-PR stack. Joint review, re-verification and required archival remain before that merge batch; no later post-PR330 implementation phase is planned. The change remains active during draft review.
+All code-side cleanup and compatibility cases are exercised. Native top layer 4, PR439, has head `elastic/esdiag:stack/pr330-upload-cleanup` and base `stack/pr330-scrub-traversal` (PR438), not main. It inherits the full implementation of all lower layers. The standalone evidence below is retained from before migration; final combined verification is required on this top head. The change remains active until stack review and required archival are complete.
 
 ## Correctness
 
