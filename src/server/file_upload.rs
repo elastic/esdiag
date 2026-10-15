@@ -155,11 +155,10 @@ pub async fn submit(
                     value[length..length + chunk.len()].copy_from_slice(&chunk);
                     length += chunk.len();
                 }
-                scrubbed_override = Some(
-                    std::str::from_utf8(&value[..length])
-                        .map(parse_scrubbed_checkbox_value)
-                        .unwrap_or(false),
-                );
+                match std::str::from_utf8(&value[..length]) {
+                    Ok(value) => scrubbed_override = Some(parse_scrubbed_checkbox_value(value)),
+                    Err(err) => return reject_malformed_upload(&state, job_id, staged_upload, err).await,
+                }
             }
             _ => {}
         }
@@ -494,7 +493,7 @@ mod tests {
             let chunks = (0..bytes.len())
                 .step_by(8)
                 .map(move |start| Ok::<_, std::io::Error>(bytes.slice(start..(start + 8).min(bytes.len()))));
-            let (state, status, job_id, html) = submit_request(
+            let (state, status, job_id, _) = submit_request(
                 test_server_state(),
                 Body::from_stream(futures::stream::iter(chunks)),
                 HeaderMap::new(),
@@ -504,7 +503,53 @@ mod tests {
                 state.discard_job_request(job_id).await;
             }
             assert_eq!(status, StatusCode::BAD_REQUEST);
-            assert!(html.contains("Invalid multipart upload data"));
+            assert!(state.job_requests.read().await.is_empty());
+            let stats = state.get_stats().await;
+            assert_eq!((stats.jobs.total, stats.jobs.failed), (1, 1));
+            let prefix = format!("esdiag-upload-{job_id}-");
+            let mut entries = tokio::fs::read_dir(std::env::temp_dir())
+                .await
+                .expect("staging directory");
+            while let Some(entry) = entries.next_entry().await.expect("staging entry") {
+                assert!(!entry.file_name().to_string_lossy().starts_with(&prefix));
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn scrubbed_field_rejects_invalid_utf8_before_or_after_staging() {
+        for file_first in [true, false] {
+            let checkbox_head = b"--upload-boundary\r\nContent-Disposition: form-data; name=\"scrubbed\"\r\n\r\n";
+            let parts: [&'static [u8]; 5] = if file_first {
+                [
+                    FILE_PART.as_bytes(),
+                    checkbox_head,
+                    b"\xff",
+                    b"\r\n",
+                    b"--upload-boundary--\r\n",
+                ]
+            } else {
+                [
+                    checkbox_head,
+                    b"\xff",
+                    b"\r\n",
+                    FILE_PART.as_bytes(),
+                    b"--upload-boundary--\r\n",
+                ]
+            };
+            let chunks = parts
+                .into_iter()
+                .map(|part| Ok::<_, std::io::Error>(bytes::Bytes::from_static(part)));
+            let (state, status, job_id, _) = submit_request(
+                test_server_state(),
+                Body::from_stream(futures::stream::iter(chunks)),
+                HeaderMap::new(),
+            )
+            .await;
+            if status != StatusCode::BAD_REQUEST {
+                state.discard_job_request(job_id).await;
+            }
+            assert_eq!(status, StatusCode::BAD_REQUEST);
             assert!(state.job_requests.read().await.is_empty());
             let stats = state.get_stats().await;
             assert_eq!((stats.jobs.total, stats.jobs.failed), (1, 1));
