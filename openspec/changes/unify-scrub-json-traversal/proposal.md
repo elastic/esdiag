@@ -19,6 +19,8 @@ None. This is a behavior-preserving implementation refactor (`skip_specs: true`)
 
 None. Existing `malformed-ip-normalization` and `streaming-deserialization` requirements remain authoritative and unchanged; the implementation and verification cases in the design preserve them rather than adding a delta spec.
 
+The compatibility baseline is the current parent contract, including its approved 128-container budget for enabled, supported normalization. This refactor preserves that budget and any stricter raw/typed consumer limits; disabled and excluded direct reads retain consumer-controlled depth.
+
 ## Impact
 
 - Target: Elasticsearch diagnostic JSON in local Bundle Load. The affected interface is the receiver path used by CLI `process` and Web UI upload; no CLI flags, upload controls, processor behavior, public receiver interfaces, or Job executor transitions change.
