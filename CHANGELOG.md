@@ -36,6 +36,7 @@ published release notes, maintenance branches, and tagged history.
 
 - Limited upload scrub-checkbox metadata to 64 bytes and rejected oversized or unreadable (invalid UTF-8) values without retaining staged files.
 - Escaped uploaded filenames in HTML responses to prevent markup and script injection.
+- Limited scrub normalization to 128 nested JSON objects or arrays, rejecting deeper input before further traversal-context allocation; disabled normalization and excluded files retain their existing consumer limits.
 
 ## [0.17.0] - 2026-10-13
 

@@ -20,6 +20,24 @@ The system SHALL normalize scrubbed archive payloads in the receiver read path b
 - **WHEN** a scrubbed typed or streaming read encounters an unterminated JSON string, including a trailing backslash or escaped quote at end of input
 - **THEN** the read SHALL fail rather than supply a missing closing quote
 
+### Requirement: Scrub normalization bounds container nesting
+Enabled normalization of supported files SHALL limit traversal to 128 nested JSON objects or arrays, counting the outermost container as one. It SHALL fail before allocating a context beyond that budget or passing partial normalized content to its consumer. This budget SHALL NOT weaken a consumer's stricter parsing limits.
+
+#### Scenario: Consumer accepts the normalization depth boundary
+- **WHEN** a typed or streaming consumer accepts input with exactly 128 nested containers
+- **AND** the supported input is read with scrub normalization enabled
+- **THEN** normalization SHALL preserve the accepted input within that budget
+
+#### Scenario: Excessive array or object nesting
+- **WHEN** enabled normalization encounters a 129th nested array or object
+- **THEN** the read SHALL fail at that opening delimiter before growing the traversal stack
+- **AND** the remaining payload SHALL NOT be traversed or supplied as partial normalized output
+
+#### Scenario: Direct readers retain consumer-controlled depth
+- **WHEN** normalization is disabled or the file is excluded or unsupported
+- **THEN** the normalization depth budget SHALL NOT apply
+- **AND** the existing consumer SHALL retain its own depth acceptance and errors
+
 ### Requirement: Normalization is bounded to supported files
 The system SHALL apply receiver-stage normalization only to supported JSON/text diagnostic files that contain node address and node identity surfaces.
 
