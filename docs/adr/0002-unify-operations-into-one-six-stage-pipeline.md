@@ -20,7 +20,7 @@ point in that one space, and the two-type `Collector`/`Processor` split plus the
 ## The six stages
 
 - **Collect** — call live product APIs for a *new* diagnostic
-- **Load** — read an *existing* diagnostic (CLI `process` input, UI upload, service download)
+- **Load** — read an *existing* diagnostic (CLI `process` input, UI submission, service download)
 - **Save** — write raw collected APIs to a directory/bundle (`Save` ⟸ `Collect`)
 - **Process** — transform diagnostic data into documents
 - **Export** — write *processed* documents to a remote/local destination (`Export` ⟸ `Process`)
@@ -57,9 +57,9 @@ point in that one space, and the two-type `Collector`/`Processor` split plus the
   `BundleExporter`/`DocumentExporter` direction) makes the invalid pairings —
   processed-docs-to-bundle, raw-to-cluster — unrepresentable.
 - **UI verbs stay a presentation-layer translation.** `collect`/`process`/`send`
-  and the `JobSignals*` types are UI-only and do not map 1:1 to stages (UI *upload*
+  and the `JobSignals*` types are UI-only and do not map 1:1 to stages (UI *submission*
   is inbound `Load`; UI *send* is `Export` or the `Send` stage). The backend aligns
   on the six stages; `CONTEXT.md` records the translation.
-- **Naming collisions resolved by the stage set.** There is no "upload" stage
+- **Naming collisions resolved by the stage set.** There is no separate transfer stage
   (inbound is `Load`, outbound is `Send`) and no "forward" (streaming is `Process`
   without `Save`).

@@ -12,16 +12,19 @@ published release notes, maintenance branches, and tagged history.
 
 ### Added
 
+- Added an experimental `elastic diag` profile with context-backed collection, named output contexts, saved symbolic context references, and explicit Cloud-admin deployment targets (#339).
 - Added `esdiag-lite.sh` and `esdiag-lite.ps1`, each with a SHA-256 checksum, to every GitHub release.
 - Added pull-request checks for the ESDiag Lite scripts, including the Windows PowerShell tests.
 
 ### Changed
 
 - Updated workspace dependency requirements and the lockfile for the 0.18 development cycle, and regenerated third-party notices.
+- Standardized raw-bundle transfer terminology on `send`, including `esdiag send` and `collect --send`; `upload` now refers only to the Elastic Upload Service.
 
 ### Fixed
 
 - Fixed `esdiag setup` repeating provenance field warnings for every older data stream backing index on each run. It now warns per index only for indices that can still receive writes, summarizes older backing indices with unlinked provenance fields in one line per data stream, and only asks for a rollover after adding an alias to a writable index.
+- Preserved the legacy `settings.json` bundle filename while keeping `IndicesSettings` as the explicit code and dispatch name.
 
 ## [0.17.0] - 2026-10-13
 

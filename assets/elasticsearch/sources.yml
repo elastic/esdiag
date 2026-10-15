@@ -387,6 +387,7 @@ segments:
     ">= 0.9.0": "/_segments?human"
 
 indices_settings:
+  filename: settings.json
   source_weight: 3
   processable: true
   required: false

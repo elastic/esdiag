@@ -91,10 +91,10 @@ Collect a diagnostic from my prod cluster and upload it to <UPLOAD_ID>.
 The agent runs a command like this one:
 
 ```sh
-esdiag collect prod "$HOME/diagnostics" --upload '<UPLOAD_ID>'
+esdiag collect prod "$HOME/diagnostics" --send '<UPLOAD_ID>'
 ```
 
-ESDiag keeps the archive on disk and reports its path and the upload result.
+ESDiag keeps the archive on disk and reports its path and the send result.
 Name an output directory in the prompt if you want the archive somewhere
 specific. Ask for a `minimal`, `light`, or `support` diagnostic to change the
 collection level from the default `standard`.

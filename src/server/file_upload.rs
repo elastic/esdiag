@@ -29,7 +29,7 @@ pub async fn submit(
     let identity = match state.resolve_identity(&headers) {
         Ok(identity) => identity,
         Err(err) => {
-            tracing::warn!("Upload submit denied: {}", err);
+            tracing::warn!("Diagnostic submission denied: {}", err);
             state.record_job_rejected().await;
             let (status, label) = super::identity_failure(&err);
             return (
@@ -98,7 +98,7 @@ pub async fn submit(
                         if let Some(job) = state_clone.pop_job_request(job_id).await {
                             job.cleanup().await;
                             tracing::warn!(
-                                "Upload job {} was never processed and was removed from state to clean up the staged upload",
+                                "Submission job {} was never processed and was removed from state to clean up the staged file",
                                 job_id
                             );
                         }
@@ -109,12 +109,12 @@ pub async fn submit(
                         && remove_err.kind() != std::io::ErrorKind::NotFound
                     {
                         tracing::debug!(
-                            "Failed to remove partial upload {}: {}",
+                            "Failed to remove partial submission {}: {}",
                             temp_upload_path.display(),
                             remove_err
                         );
                     }
-                    let error_msg = format!("Failed to stage upload data: {}", e);
+                    let error_msg = format!("Failed to stage submitted data: {}", e);
                     tracing::error!("{}", error_msg);
                     state.record_job_rejected().await;
                     return (
@@ -192,7 +192,7 @@ pub async fn process(
                         template::JobFailed {
                             job_id,
                             error: &format!("{}: {err}", super::identity_failure(&err).1),
-                            source: "User upload",
+                            source: "User submission",
                         },
                     ),
                 )
@@ -256,8 +256,8 @@ pub(super) async fn run_upload_job(
                     job_id,
                     template::JobFailed {
                         job_id,
-                        error: "Failed to upload file",
-                        source: "User upload",
+                        error: "Failed to submit file",
+                        source: "User submission",
                     },
                 ),
             )
@@ -288,11 +288,11 @@ mod tests {
         let mut saw_terminal = false;
         while let Some(event) = rx.recv().await {
             match event {
-                ServerEvent::Template { html, .. } if html.contains("Failed to upload file") => {
+                ServerEvent::Template { html, .. } if html.contains("Failed to submit file") => {
                     saw_failure = true;
                 }
                 ServerEvent::ReplaceSelector { selector, html, .. }
-                    if selector == "#job-42" && html.contains("Failed to upload file") =>
+                    if selector == "#job-42" && html.contains("Failed to submit file") =>
                 {
                     saw_failure = true;
                 }
@@ -344,7 +344,7 @@ mod tests {
         let mut saw_failure = false;
         while let Some(event) = rx.recv().await {
             match event {
-                ServerEvent::ReplaceSelector { html, .. } if html.contains("Failed to upload file") => {
+                ServerEvent::ReplaceSelector { html, .. } if html.contains("Failed to submit file") => {
                     saw_failure = true;
                 }
                 _ => {}

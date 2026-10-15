@@ -12,7 +12,7 @@
     <p><b>Product:</b> {{ product }}</p>
     <p><b>Outcome:</b> {{ outcome }}</p>
     <p><b>Ingested:</b> {{ docs_created }} documents in {{ duration }} seconds</p>
-    {% if let Some(destination) = upload_destination %}
+    {% if let Some(destination) = send_destination %}
     <p><b>Raw bundle:</b> <a target="_blank" rel="noopener noreferrer" href="{{ destination }}">{{ destination }}</a></p>
     {% endif %}
     {% if let Some(error) = execution_error %}

@@ -461,8 +461,7 @@ fn saved_viewer_kibana_base_url(host: &KnownHost) -> Option<String> {
 }
 
 fn kibana_base_url_from_env() -> Option<String> {
-    std::env::var("ESDIAG_KIBANA_URL")
-        .ok()
+    crate::env::get_optional_string_with_fallback("ESDIAG_KIBANA_URL", "ELASTIC_KIBANA_URL")
         .filter(|url| !url.trim().is_empty())
         .map(|url| crate::env::append_kibana_space(&url))
 }
@@ -473,7 +472,7 @@ fn kibana_base_url_for_output(host: &KnownHost) -> Option<String> {
     }
     // Environment endpoints belong to one deployment. Do not attach its viewer
     // to a different saved output when that host has no viewer of its own.
-    let output = std::env::var("ESDIAG_OUTPUT_URL").ok()?;
+    let output = crate::env::get_optional_string_with_fallback("ESDIAG_OUTPUT_URL", "ELASTIC_ES_URL")?;
     let output = Url::parse(&output).ok()?;
     (host.concrete_url() == Some(&output))
         .then(kibana_base_url_from_env)
@@ -737,6 +736,7 @@ mod tests {
         );
         KnownHost::write_hosts_yml(&hosts).expect("write hosts");
         env.set("ESDIAG_KIBANA_URL", "https://env-kb.example:5601");
+        env.remove("ELASTIC_KIBANA_URL");
         env.remove("ESDIAG_KIBANA_SPACE");
 
         let exporter = Exporter::try_from(Uri::try_from("send-host").expect("host uri")).expect("exporter");
@@ -752,11 +752,59 @@ mod tests {
     fn kibana_link_is_omitted_for_non_cluster_outputs() {
         let mut env = crate::TestEnv::new();
         env.set("ESDIAG_KIBANA_URL", "https://env-kb.example:5601");
+        env.remove("ELASTIC_KIBANA_URL");
         env.set("ESDIAG_KIBANA_SPACE", "ops");
 
         let stream = Exporter::default();
         let directory = Exporter::try_from(Uri::Directory(env.tmp.path().to_path_buf())).expect("directory exporter");
         assert!(stream.kibana_link("diag-123", 1_700_000_000_000).is_none());
         assert!(directory.kibana_link("diag-123", 1_700_000_000_000).is_none());
+    }
+
+    #[test]
+    fn kibana_link_falls_back_to_elastic_kibana_env() {
+        let mut env = crate::TestEnv::new();
+        env.remove("ESDIAG_OUTPUT_URL");
+        env.set("ELASTIC_ES_URL", "https://es.example:9200");
+        env.remove("ESDIAG_KIBANA_URL");
+        env.set("ELASTIC_KIBANA_URL", "https://elastic-kb.example:5601");
+        env.set("ESDIAG_KIBANA_SPACE", "ops");
+
+        let exporter = Exporter::try_from(Uri::KnownHost(
+            KnownHostBuilder::new(Url::parse("https://es.example:9200").expect("es url"))
+                .application(Application::Elasticsearch)
+                .roles(vec![HostRole::Send])
+                .build()
+                .expect("send host"),
+        ))
+        .expect("cluster exporter");
+        let kibana_link = exporter
+            .kibana_link("diag-123", 1_700_000_000_000)
+            .expect("kibana link");
+
+        assert!(kibana_link.starts_with("https://elastic-kb.example:5601/s/ops/app/dashboards#/view/"));
+    }
+
+    #[test]
+    fn kibana_link_omits_space_when_explicitly_empty() {
+        let mut env = crate::TestEnv::new();
+        env.set("ESDIAG_OUTPUT_URL", "https://es.example:9200");
+        env.set("ESDIAG_KIBANA_URL", "https://env-kb.example:5601");
+        env.remove("ELASTIC_KIBANA_URL");
+        env.set("ESDIAG_KIBANA_SPACE", "");
+
+        let exporter = Exporter::try_from(Uri::KnownHost(
+            KnownHostBuilder::new(Url::parse("https://es.example:9200").expect("es url"))
+                .application(Application::Elasticsearch)
+                .roles(vec![HostRole::Send])
+                .build()
+                .expect("send host"),
+        ))
+        .expect("cluster exporter");
+        let kibana_link = exporter
+            .kibana_link("diag-123", 1_700_000_000_000)
+            .expect("kibana link");
+
+        assert!(kibana_link.starts_with("https://env-kb.example:5601/app/dashboards#/view/"));
     }
 }

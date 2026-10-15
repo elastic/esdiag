@@ -25,19 +25,19 @@ Every finite `esdiag` command execution SHALL emit exactly one typed result docu
 - **AND** an empty persisted collection is represented by an empty sequence rather than a table or empty-state sentence
 
 ### Requirement: All Finite Command Families Have Explicit Outcomes
-The CLI SHALL define explicit compact outcomes for successful collect, process, upload, setup, host, keystore, and saved-job command families. Each outcome MUST expose the durable facts a caller needs to identify what changed or what artifact was produced, and MUST NOT serialize an entire internal processor state or diagnostic report.
+The CLI SHALL define explicit compact outcomes for successful collect, process, send, setup, host, keystore, and saved-job command families. Each outcome MUST expose the durable facts a caller needs to identify what changed or what artifact was produced, and MUST NOT serialize an entire internal processor state or diagnostic report.
 
 #### Scenario: Collect outcome identifies its artifact
 - **WHEN** collection completes successfully
 - **THEN** the result contains the resolved archive or diagnostic path and successful and total file counts
-- **AND** it contains upload destination metadata when the invocation also uploaded the archive
+- **AND** it contains send destination metadata when the invocation also sent the archive
 
 #### Scenario: Job run preserves every completed stage result
 - **WHEN** `esdiag job run <name>` completes
 - **THEN** the result identifies the completed job
 - **AND** includes a save result when the job retained a newly collected archive
 - **AND** includes a process result when the job processed a diagnostic
-- **AND** includes a send result when the job uploaded a bundle
+- **AND** includes a send result when the job sent a bundle
 - **AND** may contain all three results when the selected stages produced them in one run
 
 #### Scenario: Keystore status exposes facts without prose parsing

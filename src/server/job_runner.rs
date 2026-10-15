@@ -327,10 +327,10 @@ async fn execute_unified_web_job(
         }
         started.store(false, Ordering::SeqCst);
         let product = report.diagnostic.display_label();
-        let upload_destination = outcome
-            .upload
+        let send_destination = outcome
+            .send
             .as_ref()
-            .map(|upload| format!("https://upload.elastic.co/g/{}", upload.slug));
+            .map(|send| format!("https://upload.elastic.co/g/{}", send.slug));
         let (status_class, heading) = if execution_error.is_some() {
             ("status-error", "⚠️ Diagnostic completed with output failures")
         } else {
@@ -356,7 +356,7 @@ async fn execute_unified_web_job(
                     kibana_link: report.diagnostic.kibana_link.as_deref().unwrap_or(""),
                     product: &product,
                     outcome: diagnostic_outcome.as_str(),
-                    upload_destination: upload_destination.as_deref(),
+                    send_destination: send_destination.as_deref(),
                     execution_error: execution_error.as_deref(),
                     recorded_failures,
                 },
@@ -368,10 +368,10 @@ async fn execute_unified_web_job(
     }
 
     if let Some(mut error) = execution_error {
-        if let Some(upload) = outcome.upload.as_ref() {
+        if let Some(send) = outcome.send.as_ref() {
             error.push_str(&format!(
-                "; raw bundle uploaded successfully: https://upload.elastic.co/g/{}",
-                upload.slug
+                "; raw bundle sent successfully to Elastic Upload Service: https://upload.elastic.co/g/{}",
+                send.slug
             ));
         }
         return Err(eyre!(error));
@@ -379,8 +379,8 @@ async fn execute_unified_web_job(
 
     state.record_success(owner, 0, 0).await;
     started.store(false, Ordering::SeqCst);
-    if let Some(upload) = outcome.upload {
-        let destination = format!("https://upload.elastic.co/g/{}", upload.slug);
+    if let Some(send) = outcome.send {
+        let destination = format!("https://upload.elastic.co/g/{}", send.slug);
         send_event(
             tx,
             terminal_job_event(
@@ -566,7 +566,7 @@ async fn render_child_diagnostic_events(
                             kibana_link: &kibana_link,
                             product: &product,
                             outcome: outcome.as_str(),
-                            upload_destination: None,
+                            send_destination: None,
                             execution_error: execution_error.as_deref(),
                             recorded_failures,
                         },
@@ -777,7 +777,7 @@ async fn validate_job_request(state: &ServerState, signals: &JobRunSignals, job:
             ) && !signals.job.collect.save
             {
                 return Err(eyre!(
-                    "Forward + Local for uploaded archives requires a save-capable collect source"
+                    "Forward + Local for submitted archives requires a save-capable collect source"
                 ));
             }
         }
@@ -864,7 +864,9 @@ async fn download_service_link_to_path(uri: &Uri, path: &Path) -> Result<()> {
     }
     file.flush().await?;
     if !wrote_bytes {
-        return Err(eyre!("Downloaded empty file, check upload link expiration"));
+        return Err(eyre!(
+            "Downloaded empty file; check Elastic Upload Service link expiration"
+        ));
     }
     Ok(())
 }

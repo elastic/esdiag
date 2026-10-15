@@ -73,7 +73,7 @@ src/
 ├── main.rs
 ├── onboarding.rs
 ├── setup.rs
-└── uploader.rs
+└── elastic_upload_service.rs
 ```
 
 ### Directories
@@ -82,15 +82,19 @@ src/
 - `src/data/`: Shared domain types, configuration models, known host handling, keystore support, settings, and workflow data structures.
 - `src/exporter/`: Output adapters that write processed data to Elasticsearch, files, directories, archives, or stdout.
 - `src/processor/`: Diagnostic collection and transformation pipeline that turns raw inputs into normalized reports and exported documents.
-- `src/receiver/`: Input adapters that read diagnostics from local archives, directories, remote services, and upload links.
-- `src/server/`: Axum-based HTTP server and web UI runtime for uploads, settings, docs, Advanced page, and related browser-facing features.
+- `src/receiver/`: Input adapters that read diagnostics from local archives,
+  directories, remote services, and Elastic Upload Service links.
+- `src/server/`: Axum-based HTTP server and web UI runtime for archive
+  submissions, settings, docs, Advanced page, and related browser-facing
+  features.
 
 ### Root Files
 
 - `src/lib.rs`: Library module declarations and shared exports used by the binary and tests.
 - `src/main.rs`: Main CLI entrypoint, command definitions, and runtime orchestration.
 - `src/setup.rs`: Asset installation logic for Elasticsearch and Kibana setup flows.
-- `src/uploader.rs`: Upload logic for sending collected archives to the Elastic Upload Service.
+- `src/elastic_upload_service.rs`: Elastic Upload Service adapter used by the
+  generic Send stage.
 - `src/job.rs`: Saved job execution and management helpers.
 - `src/onboarding.rs`: Flow-neutral first-run configuration, persistence, and readiness operations shared by terminal and future GUI flows.
 - `src/env.rs`: Environment-variable defaults and lookup helpers.

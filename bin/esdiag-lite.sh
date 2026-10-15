@@ -2,7 +2,7 @@
 
 # ESDiag Lite is a collection-only Elasticsearch diagnostic utility. It saves
 # raw API responses for later processing with `esdiag process`. It can
-# optionally upload the generated ZIP archive to Elastic Upload Service; it
+# optionally send the generated ZIP archive to Elastic Upload Service; it
 # does not process, analyze, transform, export, or visualize diagnostics.
 #
 # Runtime requirements: Bash 3.2+, curl, and standard POSIX utilities. ZIP
@@ -81,12 +81,12 @@ help() {
   printf '\n'
   printf '  %s - Collect diagnostics periodically based on WAIT_SECONDS and COLLECTION_COUNT.\n' "$(green watch)"
   printf '  %s - Collect a single diagnostic immediately.\n' "$(green collect)"
-  printf '  %s - Upload an existing ZIP archive; uses UPLOAD_ID when id is omitted.\n' "$(green 'upload <filename> [id]')"
+  printf '  %s - Send an existing ZIP archive to Elastic Upload Service; uses UPLOAD_ID when id is omitted.\n' "$(green 'send <filename> [id]')"
   printf '\n'
   white 'Options:'
   printf '\n'
   printf '  %s - Output format; zip is the default and none preserves the directory.\n' "$(green --archive=zip\|none)"
-  printf '  %s - Upload the generated ZIP archive to an Elastic Upload Service id.\n' "$(green --upload=UPLOAD_ID)"
+  printf '  %s - Send the generated ZIP archive to an Elastic Upload Service ID.\n' "$(green --send=UPLOAD_ID)"
   printf '\n'
   white 'Environment:'
   printf '\n'
@@ -95,7 +95,7 @@ help() {
   printf '  %s - Username for HTTP basic authentication.\n' "$(green ELASTIC_ES_USERNAME)"
   printf '  %s - Password for HTTP basic authentication.\n' "$(green ELASTIC_ES_PASSWORD)"
   printf '  %s - Elastic Upload Service base URL; defaults to https://upload.elastic.co.\n' "$(green UPLOAD_HOST)"
-  printf '  %s - Elastic Upload Service id used by upload when [id] is omitted.\n' "$(green UPLOAD_ID)"
+  printf '  %s - Elastic Upload Service ID used by send when [id] is omitted.\n' "$(green UPLOAD_ID)"
   printf '\n'
   white 'ESDiag Lite collects raw diagnostic API responses and can forward its ZIP output. Process its ZIP or directory output with esdiag process.'
   printf '\n'
@@ -111,11 +111,11 @@ parse_arguments() {
       COMMAND=$1
       shift
       ;;
-    upload)
-      COMMAND=upload
+    send)
+      COMMAND=send
       shift
       if [[ $# -lt 1 || $# -gt 2 ]]; then
-        log_error 'upload requires a filename and accepts an optional upload id'
+        log_error 'send requires a filename and accepts an optional Elastic Upload Service ID'
         help
         return 1
       fi
@@ -146,10 +146,10 @@ parse_arguments() {
         help
         return 1
         ;;
-      --upload=*)
-        UPLOAD_ID=${1#--upload=}
+      --send=*)
+        UPLOAD_ID=${1#--send=}
         if [[ -z $UPLOAD_ID ]]; then
-          log_error 'upload id must not be empty'
+          log_error 'Elastic Upload Service ID must not be empty'
           return 1
         fi
         UPLOAD_REQUESTED=true
@@ -190,7 +190,7 @@ validate_dependencies() {
     return 1
   fi
 
-  if [[ $COMMAND != upload && $ARCHIVE_FORMAT == zip ]] && ! command -v zip >/dev/null 2>&1; then
+  if [[ $COMMAND != send && $ARCHIVE_FORMAT == zip ]] && ! command -v zip >/dev/null 2>&1; then
     printf '%s\n' 'No zip executable found, run with --archive=none to skip archive creation' >&2
     return 1
   fi
@@ -201,7 +201,7 @@ validate_dependencies() {
       return 1
     fi
     if ! command -v split >/dev/null 2>&1; then
-      log_error 'missing required command split for uploads'
+      log_error 'missing required command split for Elastic Upload Service sends'
       return 1
     fi
   fi
@@ -209,11 +209,11 @@ validate_dependencies() {
 
 validate_upload_configuration() {
   if [[ -z $UPLOAD_ID ]]; then
-    log_error 'upload id must be provided as [id] or UPLOAD_ID'
+    log_error 'Elastic Upload Service ID must be provided as [id] or UPLOAD_ID'
     return 1
   fi
   if [[ ! -f $UPLOAD_FILE ]]; then
-    log_error "upload file does not exist: $UPLOAD_FILE"
+    log_error "send file does not exist: $UPLOAD_FILE"
     return 1
   fi
 }
@@ -269,7 +269,7 @@ create_upload_temp_dir() {
   local temp_dir
 
   while [[ $attempt -lt 100 ]]; do
-    temp_dir="$base_dir/esdiag-lite-upload-$$-$attempt"
+    temp_dir="$base_dir/esdiag-lite-send-$$-$attempt"
     if (umask 077 && mkdir "$temp_dir") >/dev/null 2>&1; then
       printf '%s\n' "$temp_dir"
       return 0
@@ -279,7 +279,7 @@ create_upload_temp_dir() {
   return 1
 }
 
-upload_diagnostic() (
+send_diagnostic() (
   local upload_id
   local upload_host
   local temp_dir
@@ -304,24 +304,24 @@ upload_diagnostic() (
     return 1
   }
   temp_dir=$(create_upload_temp_dir) || {
-    log_error 'failed to create temporary upload directory'
+    log_error 'failed to create temporary send directory'
     return 1
   }
   trap 'rm -rf "$temp_dir"' EXIT HUP INT TERM
 
   if [[ $file_size -lt $part_size ]]; then
     cp "$UPLOAD_FILE" "$temp_dir/part-aa" || {
-      log_error "failed to create upload part"
+      log_error "failed to create Elastic Upload Service part"
       return 1
     }
   else
     split -b "$part_size" "$UPLOAD_FILE" "$temp_dir/part-" || {
-      log_error "failed to split $UPLOAD_FILE for upload"
+      log_error "failed to split $UPLOAD_FILE for Elastic Upload Service"
       return 1
     }
   fi
 
-  log_info "$(green uploading) $(gray "$UPLOAD_FILE") to $(blue "$upload_host")"
+  log_info "$(green sending) $(gray "$UPLOAD_FILE") to Elastic Upload Service at $(blue "$upload_host")"
   for part in "$temp_dir"/part-*; do
     part_digest=$(file_digest "$part") || {
       log_error "failed to calculate SHA-256 for $part"
@@ -329,13 +329,13 @@ upload_diagnostic() (
     }
     if curl --fail --silent --show-error --output /dev/null --head \
       "$upload_host/api/uploads/$upload_id/$file_digest_value/$part_digest"; then
-      log_info "$(yellow skipping) uploaded part $(cyan "$part_number")"
+      log_info "$(yellow skipping) existing Elastic Upload Service part $(cyan "$part_number")"
     elif curl --fail --silent --show-error --request PUT \
       "$upload_host/api/uploads/$upload_id?part_number=$part_number&part_digest=$part_digest&file_digest=$file_digest_value&filename=$file_name" \
       --data-binary "@$part"; then
-      log_info "$(green uploaded) part $(cyan "$part_number")"
+      log_info "$(green sent) part $(cyan "$part_number")"
     else
-      log_error "failed to upload part $part_number"
+      log_error "Elastic Upload Service rejected part $part_number"
       return 1
     fi
     part_number=$((part_number + 1))
@@ -343,10 +343,10 @@ upload_diagnostic() (
 
   if curl --fail --silent --show-error --request POST \
     "$upload_host/api/uploads/$upload_id/$file_digest_value/_finalize"; then
-    log_info "$(green uploaded) $(gray "$UPLOAD_FILE")"
+    log_info "$(green sent) $(gray "$UPLOAD_FILE") to Elastic Upload Service"
     return 0
   fi
-  log_error "failed to finalize upload for $UPLOAD_FILE"
+  log_error "failed to finalize Elastic Upload Service send for $UPLOAD_FILE"
   return 1
 )
 
@@ -539,9 +539,9 @@ get_api_ilm_policies() {
 
 get_api_indices_settings() {
   if version_at_least 0 9 0 && version_less_than 7 7 0; then
-    get_api "/_settings?human" "indices_settings.json"
+    get_api "/_settings?human" "settings.json"
   elif version_at_least 7 7 0; then
-    get_api "/_settings?human&expand_wildcards=all" "indices_settings.json"
+    get_api "/_settings?human&expand_wildcards=all" "settings.json"
   else
     skip_api "indices_settings"
   fi
@@ -682,7 +682,7 @@ collect_diag() {
     return 1
   fi
   if [[ $UPLOAD_REQUESTED == true ]]; then
-    upload_diagnostic
+    send_diagnostic
   fi
 }
 
@@ -723,15 +723,15 @@ main() {
     help
     return 0
   fi
-  if [[ $COMMAND == upload ]]; then
+  if [[ $COMMAND == send ]]; then
     if ! validate_upload_configuration || ! validate_dependencies; then
       return 1
     fi
-    upload_diagnostic
+    send_diagnostic
     return $?
   fi
   if [[ $UPLOAD_REQUESTED == true && $ARCHIVE_FORMAT != zip ]]; then
-    log_error 'uploads require --archive=zip'
+    log_error 'Elastic Upload Service sends require --archive=zip'
     return 1
   fi
   if ! validate_configuration || ! validate_dependencies; then

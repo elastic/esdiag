@@ -7,7 +7,7 @@ tags: [setup, containers, local, agent-builder]
 
 # Run a local stack
 
-Use this guide when you want dashboards, browser uploads, and Agent Builder on
+Use this guide when you want dashboards, browser submissions, and Agent Builder on
 your own machine. ESDiag starts Elasticsearch and Kibana in containers and
 keeps every processed diagnostic on the machine.
 
@@ -213,7 +213,8 @@ esdiag job run <NAME>
 ```
 
 To keep the raw archive, collect first and pass the reported path to `process`.
-ESDiag only uploads when you run `upload` or use `collect --upload`.
+ESDiag sends to Elastic Upload Service only when you run `send` or use
+`collect --send`.
 
 ## Operate the stack
 

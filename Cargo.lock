@@ -1545,6 +1545,7 @@ dependencies = [
  "chrono",
  "clap",
  "datastar",
+ "elasticrc",
  "elasticsearch",
  "eyre",
  "flate2",

@@ -57,7 +57,7 @@ container. See [Install ESDiag](installation.md) for every install method.
 - `esdiag init` saves an interactive setup. `esdiag setup` installs or updates
   assets in a diagnostic cluster.
 
-Collection does not process or upload an archive. Processing does not upload
+Collection does not process or send an archive. Processing does not send
 the raw archive. Run the command for each destination you need. See
 [Hosts and keystore](../hosts-keystore.md) for how saved hosts and credentials
 work.

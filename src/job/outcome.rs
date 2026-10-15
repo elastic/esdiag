@@ -40,7 +40,7 @@ pub struct StageOutcome {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct UploadResult {
+pub struct SendResult {
     pub slug: String,
 }
 
@@ -112,7 +112,7 @@ pub struct ExecutionOutcome {
     pub report: Option<DiagnosticReport>,
     pub children: Vec<ChildExecutionOutcome>,
     pub retained_bundle: Option<PathBuf>,
-    pub upload: Option<UploadResult>,
+    pub send: Option<SendResult>,
 }
 
 impl ExecutionOutcome {
@@ -124,7 +124,7 @@ impl ExecutionOutcome {
             report: None,
             children: Vec::new(),
             retained_bundle: None,
-            upload: None,
+            send: None,
         }
     }
 

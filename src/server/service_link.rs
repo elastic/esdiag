@@ -27,7 +27,7 @@ pub async fn form(
     ReadSignals(signals): ReadSignals<ServiceLinkFormSignals>,
 ) -> impl IntoResponse {
     tracing::info!(
-        "Received Elastic upload service request for: {}",
+        "Received Elastic Upload Service request for: {}",
         signals.service_link.url
     );
 
@@ -140,7 +140,7 @@ pub(super) async fn run_service_link_form(
                 &tx,
                 template_event(template::Error {
                     id: "error-url",
-                    error: "Upload Service",
+                    error: "Elastic Upload Service",
                     message: "Failed to set username in URL",
                 }),
             )
@@ -161,7 +161,7 @@ pub(super) async fn run_service_link_form(
                 &tx,
                 template_event(template::Error {
                     id: "error-url",
-                    error: "Upload Service",
+                    error: "Elastic Upload Service",
                     message: "Failed to set token in URL",
                 }),
             )
@@ -185,7 +185,7 @@ pub(super) async fn run_service_link_form(
             &tx,
             template_event(template::Error {
                 id: "error-url",
-                error: "Upload Service",
+                error: "Elastic Upload Service",
                 message: &error_msg,
             }),
         )

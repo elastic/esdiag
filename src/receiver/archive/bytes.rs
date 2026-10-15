@@ -30,7 +30,7 @@ pub struct ArchiveBytesReceiver {
     source_product: Arc<OnceLock<&'static str>>,
 }
 
-/// A receiver for the Elastic Uploader service (https://upload.elastic.co).
+/// A receiver for the Elastic Upload Service (https://upload.elastic.co).
 /// This will download the archive on first use and cache it in memory.
 impl Receive for ArchiveBytesReceiver {
     async fn collection_date(&self) -> String {

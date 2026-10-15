@@ -60,7 +60,9 @@ pub fn handle_job_list() -> Result<()> {
 
     for (name, job) in &jobs {
         let collect_target = job.collect_host();
-        let stale = !collect_target.is_empty() && !hosts.contains_key(collect_target);
+        let stale = matches!(job.input(), Input::Collect { .. })
+            && !collect_target.is_empty()
+            && !hosts.contains_key(&collect_target);
         let collect_display = if stale && use_color {
             format!("\x1b[31m{collect_target}\x1b[0m")
         } else {
@@ -136,6 +138,9 @@ pub fn validate_saved_job_name(name: &str) -> Result<()> {
 pub async fn run_job(job: SavedJob) -> Result<JobOutcome> {
     match job.input() {
         Input::Collect { host, .. } => tracing::info!("Running saved collect job against {host}"),
+        Input::CollectContext { target, .. } => {
+            tracing::info!("Running saved collect job against Elastic CLI context target {target}")
+        }
         Input::Load { uri } => tracing::info!("Running saved load job from {uri}"),
         Input::CollectBinding { binding, .. } | Input::LoadBinding { binding } => {
             return Err(eyre!(

@@ -14,7 +14,7 @@ The project SHALL provide `bin/esdiag-lite.ps1` as a self-contained, version-awa
 - **THEN** the script collects a processable Elasticsearch API diagnostic directory without invoking external Unix utilities
 
 ### Requirement: Equivalent Collection Configuration and Commands
-The PowerShell script SHALL provide the `collect`, `watch`, and help commands; support `--archive=zip|none` and `--upload=<id>`; and use `ELASTIC_ES_URL`, `ELASTIC_ES_API_KEY`, `ELASTIC_ES_USERNAME`, and `ELASTIC_ES_PASSWORD` with the same API-key precedence rules as `esdiag-lite.sh`. It SHALL support `UPLOAD_HOST`, `UPLOAD_ID`, and `upload <filename> [id]` with the same explicit-upload semantics as the Bash collector.
+The PowerShell script SHALL provide the `collect`, `watch`, `send`, and help commands; support `--archive=zip|none` and `--send=<id>`; and use `ELASTIC_ES_URL`, `ELASTIC_ES_API_KEY`, `ELASTIC_ES_USERNAME`, and `ELASTIC_ES_PASSWORD` with the same API-key precedence rules as `esdiag-lite.sh`. It SHALL support `UPLOAD_HOST`, `UPLOAD_ID`, and `send <filename> [id]` with the same explicit-Send semantics as the Bash collector.
 
 #### Scenario: API key takes precedence on Windows
 - **GIVEN** `ELASTIC_ES_URL`, `ELASTIC_ES_API_KEY`, `ELASTIC_ES_USERNAME`, and `ELASTIC_ES_PASSWORD` are non-empty
@@ -22,11 +22,11 @@ The PowerShell script SHALL provide the `collect`, `watch`, and help commands; s
 - **THEN** it uses API-key authentication
 - **AND** it does not use the username or password
 
-#### Scenario: Upload an existing archive
+#### Scenario: Send an existing archive
 - **GIVEN** `UPLOAD_ID` is non-empty
 - **AND** an existing ZIP diagnostic archive is supplied as the filename argument
-- **WHEN** the operator runs `upload <filename>`
-- **THEN** the script uploads that archive using the environment upload ID
+- **WHEN** the operator runs `send <filename>`
+- **THEN** the script sends that archive using the environment Elastic Upload Service ID
 
 ### Requirement: Generated Version-Aware Lite APIs
 The repository generator SHALL render named PowerShell API functions and the ordered collection sequence from the `lite`-tagged Elasticsearch source definitions. The rendered functions SHALL select exactly one API endpoint for a detected supported version, delegate HTTP execution to shared handwritten PowerShell request code, and skip unsupported APIs without failing the remaining collection.
@@ -43,8 +43,8 @@ The repository generator SHALL render named PowerShell API functions and the ord
 - **WHEN** the repository generation check runs
 - **THEN** it fails and identifies the PowerShell artifact as stale
 
-### Requirement: Processable Archive and Upload Output
-The PowerShell collector SHALL create the same `api-diagnostics-<timestamp>` directory and `diagnostic_manifest.json` layout as the Bash collector. ZIP mode SHALL create `api-diagnostics-<timestamp>.zip` with files at the archive root; none mode SHALL retain the directory. An explicitly requested upload SHALL transfer the completed ZIP archive using SHA-256 digests, 50,000,000-byte parts, resumable existing-part checks, and finalization.
+### Requirement: Processable Archive and Send Output
+The PowerShell collector SHALL create the same `api-diagnostics-<timestamp>` directory and `diagnostic_manifest.json` layout as the Bash collector. ZIP mode SHALL create `api-diagnostics-<timestamp>.zip` with files at the archive root; none mode SHALL retain the directory. An explicitly requested Send SHALL transfer the completed ZIP archive to Elastic Upload Service using SHA-256 digests, 50,000,000-byte parts, resumable existing-part checks, and finalization.
 
 #### Scenario: Archive a successful PowerShell collection
 - **GIVEN** ZIP output is selected and PowerShell ZIP support is available
