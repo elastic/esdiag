@@ -18,6 +18,7 @@ const IP_OR_PORT_FIELDS: &[&str] = &[
     "x_forwarded_for",
 ];
 const EXCLUDED_JSON_FILES: &[&str] = &["diagnostic_manifest.json", "version.json"];
+const MAX_NORMALIZATION_DEPTH: usize = 128;
 
 pub struct TransformResult {
     pub content: String,
@@ -114,6 +115,9 @@ fn normalize_json_stream<R: BufRead, W: Write>(reader: R, writer: &mut W, transf
     while let Some(byte) = bytes.next() {
         let byte = byte?;
         match byte {
+            b'{' | b'[' if stack.len() >= MAX_NORMALIZATION_DEPTH => {
+                eyre::bail!("Scrub normalization exceeds the {MAX_NORMALIZATION_DEPTH}-container nesting limit");
+            }
             b'"' => {
                 let raw = read_json_string_body(&mut bytes)?;
                 if is_object_key_context(&stack) {
@@ -399,6 +403,46 @@ mod tests {
     use super::synthetic_vectors as v;
     use super::*;
     use std::io::Read;
+
+    #[test]
+    fn normalized_reader_bounds_container_depth_before_consuming_the_payload() {
+        for (open, close) in [("[", "]"), ("{\"child\":", "}")] {
+            let input = format!("{}0{}", open.repeat(128), close.repeat(128));
+            let result = with_normalized_json_reader("nodes.json", input.as_bytes(), true, |reader| {
+                serde_json::from_reader::<_, Box<serde_json::value::RawValue>>(reader).map_err(Into::into)
+            })
+            .expect("128 containers remain supported for a RawValue consumer");
+            assert_eq!(result.get(), input);
+
+            let input = format!("{}0{}", open.repeat(129), close.repeat(129));
+            let mut reader = std::io::Cursor::new(input.as_bytes());
+            let result = with_normalized_json_reader("nodes.json", &mut reader, true, |reader| {
+                serde_json::from_reader::<_, Box<serde_json::value::RawValue>>(reader).map_err(Into::into)
+            });
+            assert!(result.is_err(), "accepted more than 128 containers");
+            assert!(
+                reader.position() <= (open.len() * 129) as u64,
+                "read the payload beyond the first over-budget container"
+            );
+        }
+    }
+
+    #[test]
+    fn normalization_depth_budget_does_not_limit_direct_readers() {
+        let input = format!("{}0{}", "[".repeat(512), "]".repeat(512));
+        for (path, scrubbed) in [
+            ("nodes.json", false),
+            ("version.json", true),
+            ("diagnostic_manifest.json", true),
+            ("tasks.txt", true),
+        ] {
+            let result = with_normalized_json_reader(path, input.as_bytes(), scrubbed, |reader| {
+                serde_json::from_reader::<_, Box<serde_json::value::RawValue>>(reader).map_err(Into::into)
+            })
+            .expect("direct reader retains its consumer's depth acceptance");
+            assert_eq!(result.get(), input);
+        }
+    }
 
     #[test]
     fn normalized_reader_rejects_unterminated_strings() {
