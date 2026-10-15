@@ -2,7 +2,7 @@
 
 ## Completeness
 
-All nine implementation tasks are exercised. The corrected draft targets `elastic/esdiag:main` (`upstream/main`) as part of the coordinated four-PR stack. Joint review, re-verification and required archival remain before that merge batch; the simplification is not postponed until after PR330 lands. Specs are intentionally skipped (`skip_specs: true`): existing malformed-IP and streaming specs plus all six design scenarios remain the compatibility contracts.
+All nine implementation tasks are exercised. Native layer 3, PR438, has head `elastic/esdiag:stack/pr330-scrub-traversal` and base `stack/pr330-typed-loading` (PR437), not main. It includes the typed loader layer; the standalone evidence below is retained from before migration. Joint review, combined verification and required archival remain before native stack merge. Specs are intentionally skipped (`skip_specs: true`); the existing malformed-IP and streaming contracts remain authoritative.
 
 ## Correctness
 
