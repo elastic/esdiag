@@ -57,6 +57,13 @@ Scrubbed 19-character lowercase hex node names are humanized during node lookup 
 
 Node-stat enrichment first matches the node ID. When that ID is absent from the lookup, a name fallback is used only if exactly one node has that name. Duplicate names remain unresolved rather than attaching another node's identity, address, tier, or CPU allocation.
 
+## Receiver normalization implementation
+
+Raw, typed and streamed reads share one private field-scope traversal. The raw adapter validates the complete JSON input, retains last-key-wins decoded keys and surviving-field counts, and preserves Serde numeric and nesting acceptance. Its returned String and key/fragment bookkeeping scale with output size.
+
+The typed/streamed adapter writes unchanged tokens incrementally to a buffered temporary file and rewrites only selected address strings. It flushes and rewinds before deserialization and keeps the file alive until consumption finishes. Normalizer memory scales with nesting, largest token and fixed buffers, not total payload size; downstream processing has its own memory costs. Typed consumers retain their existing numeric, duplicate-key and syntax interpretation.
+
+
 ## Customer diagnostics policy
 
 **Never commit customer scrubbed API bundles to this repository.**
