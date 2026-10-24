@@ -21,6 +21,8 @@ published release notes, maintenance branches, and tagged history.
 - Added processing for ECK diagnostic bundles, indexing operator settings and logs, ECK resources and nodeSets, and Kubernetes node, pod, container, volume, and event state alongside the included Elasticsearch diagnostics (#73).
 - Added the ECK Platform Overview dashboard, linked from processed ECK bundles in place of the Cluster Report (#73).
 - Added processing for Kibana diagnostic bundles, including status, settings, security, Fleet, alerting, spaces, monitoring, synthetics, and detection-engine data.
+- Added Kibana Host Health and Kibana Task Manager dashboards for processed Kibana diagnostics.
+- Added one document per Kibana Task Manager task type in `metrics-kibana.task_manager.task_type-esdiag`.
 
 ### Changed
 

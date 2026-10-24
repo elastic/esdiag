@@ -3,11 +3,7 @@
     "description": "ESDiag Kibana metrics"
   },
   "index_patterns": ["metrics-kibana.*-esdiag*"],
-  "composed_of": [
-    "esdiag@mappings",
-    "esdiag@metadata",
-    "esdiag@settings"
-  ],
+  "composed_of": ["esdiag@mappings", "esdiag@metadata", "esdiag@settings"],
   "allow_auto_create": true,
   "data_stream": {
     "hidden": false,
@@ -25,30 +21,116 @@
         "data_stream": {
           "type": "object",
           "properties": {
-            "dataset": {
-              "type": "constant_keyword"
-            },
-            "type": {
-              "type": "constant_keyword",
-              "value": "metrics"
-            }
+            "dataset": { "type": "constant_keyword" },
+            "type": { "type": "constant_keyword", "value": "metrics" }
           }
         },
         "node": {
           "type": "object",
           "properties": {
-            "id": {
-              "type": "keyword"
-            },
-            "name": {
-              "type": "keyword"
-            },
+            "id": { "type": "keyword" },
+            "name": { "type": "keyword" },
             "version": {
               "type": "object",
               "properties": {
-                "number": {
-                  "type": "version"
+                "number": { "type": "version" }
+              }
+            },
+            "concurrent_connections": { "type": "long" },
+            "elasticsearch_client": {
+              "properties": {
+                "total_active_sockets": { "type": "long" },
+                "total_idle_sockets": { "type": "long" },
+                "total_queued_requests": { "type": "long" }
+              }
+            },
+            "os": {
+              "properties": {
+                "platform": { "type": "keyword" },
+                "platform_release": { "type": "keyword" },
+                "distro": { "type": "keyword" },
+                "distro_release": { "type": "keyword" },
+                "load": {
+                  "properties": {
+                    "1m": { "type": "double" },
+                    "5m": { "type": "double" },
+                    "15m": { "type": "double" }
+                  }
+                },
+                "memory": {
+                  "properties": {
+                    "total_bytes": { "type": "long" },
+                    "free_bytes": { "type": "long" },
+                    "used_bytes": { "type": "long" }
+                  }
+                },
+                "cpu": {
+                  "properties": {
+                    "cfs_quota_micros": { "type": "long" },
+                    "cfs_period_micros": { "type": "long" },
+                    "stat": {
+                      "properties": {
+                        "number_of_elapsed_periods": { "type": "long" },
+                        "number_of_times_throttled": { "type": "long" },
+                        "time_throttled_nanos": { "type": "long" }
+                      }
+                    }
+                  }
+                },
+                "cgroup_memory": {
+                  "properties": {
+                    "current_bytes": { "type": "long" },
+                    "swap_current_bytes": { "type": "long" }
+                  }
                 }
+              }
+            },
+            "process": {
+              "properties": {
+                "uptime_ms": { "type": "double" },
+                "event_loop_delay": { "type": "double" },
+                "event_loop_delay_histogram": {
+                  "properties": {
+                    "percentiles": {
+                      "properties": {
+                        "50": { "type": "double" },
+                        "75": { "type": "double" },
+                        "90": { "type": "double" },
+                        "95": { "type": "double" },
+                        "99": { "type": "double" }
+                      }
+                    }
+                  }
+                },
+                "event_loop_utilization": {
+                  "properties": {
+                    "utilization": { "type": "double" }
+                  }
+                },
+                "memory": {
+                  "properties": {
+                    "resident_set_size_bytes": { "type": "long" },
+                    "heap": {
+                      "properties": {
+                        "total_bytes": { "type": "long" },
+                        "used_bytes": { "type": "long" },
+                        "size_limit": { "type": "long" }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "requests": {
+              "properties": {
+                "total": { "type": "long" },
+                "disconnects": { "type": "long" }
+              }
+            },
+            "response_times": {
+              "properties": {
+                "avg_ms": { "type": "double" },
+                "max_ms": { "type": "double" }
               }
             }
           }

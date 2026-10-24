@@ -369,6 +369,52 @@ fn kibana_metrics_template_maps_dashboard_metadata_and_keeps_payload_dynamic() {
     );
 }
 
+/// Kibana dashboard fields stay chartable: explicit properties must override the
+/// shared `skip_histograms` dynamic template, and every Kibana template that
+/// outranks `metrics-kibana.json` must keep its streams' metadata mappings.
+#[test]
+fn kibana_dashboard_templates_keep_dashboard_fields_aggregatable() {
+    let base = index_template("metrics-kibana.json");
+    let percentiles = &base["template"]["mappings"]["properties"]["node"]["properties"]["process"]["properties"]["event_loop_delay_histogram"]
+        ["properties"]["percentiles"]["properties"];
+    for percentile in ["50", "95", "99"] {
+        assert_eq!(percentiles[percentile]["type"], "double", "event loop p{percentile}");
+    }
+
+    for (file_name, streams) in [
+        (
+            "metrics-kibana.task_manager.json",
+            &[
+                "metrics-kibana.task_manager-esdiag",
+                "metrics-kibana.task_manager.task_type-esdiag",
+            ][..],
+        ),
+        ("metrics-kibana.status.json", &["metrics-kibana.status-esdiag"][..]),
+    ] {
+        let template = index_template(file_name);
+        assert!(
+            template["priority"].as_u64() > base["priority"].as_u64(),
+            "{file_name} priority"
+        );
+        assert_eq!(template["composed_of"], base["composed_of"], "{file_name} components");
+        let pattern = template["index_patterns"][0].as_str().expect("index pattern");
+        for stream in streams {
+            assert!(wildcard_matches(pattern, stream), "{file_name} must match {stream}");
+        }
+        let properties = &template["template"]["mappings"]["properties"];
+        for field in ["@timestamp", "data_stream"] {
+            assert_eq!(
+                properties[field], base["template"]["mappings"]["properties"][field],
+                "{file_name} {field}"
+            );
+        }
+        assert_eq!(
+            properties["node"]["properties"]["name"]["type"], "keyword",
+            "{file_name} node.name"
+        );
+    }
+}
+
 #[test]
 fn stream_template_drift_check_reports_injected_drift() {
     let streams = BTreeSet::from(["metrics-node-esdiag".to_string(), "metrics-missing-esdiag".to_string()]);
