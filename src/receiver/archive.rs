@@ -3,8 +3,8 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use crate::processor::{DataSource, SourceContext, StreamingDataSource};
-use crate::receiver::MissingSource;
-use eyre::Result;
+use crate::receiver::{MissingSource, source_has_json};
+use eyre::{Result, WrapErr, eyre};
 use futures::stream::{self, BoxStream};
 use serde::de::DeserializeOwned;
 use std::{
@@ -23,6 +23,60 @@ pub use bytes::*;
 pub use file::*;
 pub(crate) use scrub::with_normalized_json_reader;
 pub use scrub::{normalize_supported_content, supports_json_normalization};
+
+#[derive(Clone, Copy)]
+enum ArchiveOpeningError {
+    Zip,
+    MemoryContext,
+}
+
+fn get_from_archive<R, T>(
+    archive: &mut ZipArchive<R>,
+    subdir: Option<&PathBuf>,
+    ctx: &SourceContext,
+    scrubbed: bool,
+    opening_error: ArchiveOpeningError,
+) -> Result<T>
+where
+    R: Read + Seek,
+    T: DeserializeOwned + DataSource,
+{
+    let source_paths = T::candidate_source_file_paths(ctx)?;
+    let mut last_resolve_error = None;
+
+    for source_path in source_paths {
+        let filename = match resolve_archive_path(subdir, archive, &source_path) {
+            Ok(filename) => filename,
+            Err(error) => {
+                last_resolve_error = Some(error);
+                continue;
+            }
+        };
+        if scrubbed {
+            tracing::debug!("Reading {} (scrubbed mode)", filename);
+        } else {
+            tracing::debug!("Reading {}", filename);
+        }
+        let file = archive.by_name(&filename).map_err(|error| match opening_error {
+            ArchiveOpeningError::Zip => eyre::Report::from(error),
+            ArchiveOpeningError::MemoryContext => eyre!("Failed to read file {filename} from archive"),
+        })?;
+        let mut reader = BufReader::new(file);
+        if !source_has_json(&mut reader)? {
+            last_resolve_error = Some(MissingSource::Empty { path: filename }.into());
+            continue;
+        }
+        return with_normalized_json_reader(&filename, reader, scrubbed, |reader| {
+            Ok(serde_json::from_reader(reader)?)
+        })
+        .wrap_err_with(|| format!("Failed to parse {filename} for {}", T::name()));
+    }
+
+    match last_resolve_error {
+        Some(error) => Err(error),
+        None => Err(MissingSource::NoCandidates { source: T::name() }.into()),
+    }
+}
 
 pub async fn get_stream_from_archive<R, T>(
     archive: Arc<RwLock<ZipArchive<R>>>,
