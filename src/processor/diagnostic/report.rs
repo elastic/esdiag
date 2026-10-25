@@ -27,6 +27,15 @@ impl DiagnosticReportBuilder {
         DiagnosticReport::try_from(self)
     }
 
+    /// Carry the manifest's failed requested APIs into the report, for
+    /// builders created from already-resolved `DiagnosticMetadata`.
+    pub fn collection_events_from(self, manifest: &DiagnosticManifest) -> Self {
+        Self {
+            collection_events: manifest_collection_events(manifest),
+            ..self
+        }
+    }
+
     pub fn application(self, application: Application) -> Self {
         Self {
             application: Some(application),
@@ -67,24 +76,7 @@ impl TryFrom<DiagnosticManifest> for DiagnosticReportBuilder {
 
     fn try_from(manifest: DiagnosticManifest) -> Result<Self> {
         let application = manifest.application();
-        // Collection failures recorded at collect time persist as report
-        // events (ADR-0016): a non-2xx request is a warning with its source.
-        let collection_events = manifest
-            .requested_apis
-            .as_ref()
-            .map(|apis| {
-                apis.iter()
-                    .filter(|(_, api)| !api.status.is_some_and(|status| (200..300).contains(&status)))
-                    .map(|(name, api)| {
-                        let reason = match api.status {
-                            Some(status) => format!("collection failed with HTTP {status}"),
-                            None => "collection failed without an HTTP response".to_string(),
-                        };
-                        DiagnosticEvent::warning(name.clone(), reason)
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
+        let collection_events = manifest_collection_events(&manifest);
         let metadata = DiagnosticMetadata::try_from(manifest)?;
         Ok(Self {
             cluster: None,
@@ -95,6 +87,27 @@ impl TryFrom<DiagnosticManifest> for DiagnosticReportBuilder {
             collection_events,
         })
     }
+}
+
+/// Collection failures recorded at collect time persist as report events
+/// (ADR-0016): a non-2xx request is a warning with its source.
+fn manifest_collection_events(manifest: &DiagnosticManifest) -> Vec<DiagnosticEvent> {
+    manifest
+        .requested_apis
+        .as_ref()
+        .map(|apis| {
+            apis.iter()
+                .filter(|(_, api)| !api.status.is_some_and(|status| (200..300).contains(&status)))
+                .map(|(name, api)| {
+                    let reason = match api.status {
+                        Some(status) => format!("collection failed with HTTP {status}"),
+                        None => "collection failed without an HTTP response".to_string(),
+                    };
+                    DiagnosticEvent::warning(name.clone(), reason)
+                })
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// Identifiers associated with a diagnostic report
@@ -1108,6 +1121,7 @@ mod tests {
             id: "test".to_string(),
             collection_date: 0,
             runner: "test".to_string(),
+            version: None,
             uuid: "test".to_string(),
         };
         let mut report =
@@ -1132,6 +1146,7 @@ mod tests {
             id: "test".to_string(),
             collection_date: 0,
             runner: "test".to_string(),
+            version: None,
             uuid: "test".to_string(),
         };
         let mut report =
@@ -1272,6 +1287,7 @@ user: ada
             id: "test".into(),
             collection_date: 0,
             runner: "test".into(),
+            version: None,
             uuid: "test".into(),
         };
         let mut report =
@@ -1293,6 +1309,7 @@ user: ada
             id: "test".to_string(),
             collection_date: 0,
             runner: "test".to_string(),
+            version: None,
             uuid: "test".to_string(),
         };
         let mut report =
@@ -1327,6 +1344,7 @@ user: ada
             id: "test".to_string(),
             collection_date: 0,
             runner: "test".to_string(),
+            version: None,
             uuid: "test".to_string(),
         };
         let mut report =
@@ -1528,6 +1546,7 @@ user: ada
             id: "test".to_string(),
             collection_date: 0,
             runner: "test".to_string(),
+            version: None,
             uuid: "test".to_string(),
         };
         let mut report =

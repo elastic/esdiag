@@ -3,14 +3,14 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::super::processor::{DataSource, SourceContext, StreamingDataSource};
-use super::{MissingSource, RawResponse, Receive, ReceiveMultiple, ReceiveRaw};
+use super::{MissingSource, RawResponse, Receive, ReceiveMultiple, ReceiveRaw, SourceInstance};
 use eyre::{Result, WrapErr, eyre};
 use futures::stream::{self, BoxStream};
 use serde::de::DeserializeOwned;
 use std::{
     fs::File,
     io::{BufReader, Read},
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::Arc,
     sync::OnceLock,
     time::SystemTime,
@@ -205,6 +205,36 @@ impl std::fmt::Display for DirectoryReceiver {
 }
 
 impl DirectoryReceiver {
+    pub async fn get_all<T>(&self) -> Result<Vec<SourceInstance<T>>>
+    where
+        T: DataSource + DeserializeOwned,
+    {
+        let ctx = self.source_context()?;
+        let candidates = T::candidate_source_file_paths(&ctx)?;
+        let root = self.path.join(&self.work_dir);
+        let mut filenames = Vec::new();
+        let mut errors = Vec::new();
+        collect_source_files(&root, &root, &candidates, &mut filenames, &mut errors)?;
+        filenames.sort();
+
+        if filenames.is_empty() && errors.is_empty() {
+            return Err(MissingSource::NoCandidates { source: T::name() }.into());
+        }
+
+        Ok(filenames
+            .into_iter()
+            .map(|(filename, path)| SourceInstance {
+                data: read_directory_source(&filename),
+                path,
+            })
+            .chain(
+                errors
+                    .into_iter()
+                    .map(|(path, error)| SourceInstance { path, data: Err(error) }),
+            )
+            .collect())
+    }
+
     pub(crate) fn clone_for_subdir(&self, work_dir: &str) -> Self {
         Self {
             path: self.path.clone(),
@@ -257,4 +287,58 @@ impl DirectoryReceiver {
     pub fn source_context(&self) -> Result<SourceContext> {
         Ok(SourceContext::new(self.source_product()?, None))
     }
+}
+
+fn read_directory_source<T>(filename: &Path) -> Result<T>
+where
+    T: DataSource + DeserializeOwned,
+{
+    let file =
+        File::open(filename).wrap_err_with(|| format!("Failed to read {} for {}", filename.display(), T::name()))?;
+    let mut contents = String::new();
+    BufReader::new(file)
+        .read_to_string(&mut contents)
+        .wrap_err_with(|| format!("Failed to read {} for {}", filename.display(), T::name()))?;
+    if contents.trim().is_empty() {
+        return Err(MissingSource::Empty {
+            path: filename.display().to_string(),
+        }
+        .into());
+    }
+    serde_json::from_str(&contents)
+        .wrap_err_with(|| format!("Failed to parse {} for {}", filename.display(), T::name()))
+}
+
+/// Collects matching source files as `(absolute path, path relative to root)` pairs.
+///
+/// A subtree that cannot be read is recorded in `errors` by its relative path
+/// so the files discovered elsewhere are still processed.
+fn collect_source_files(
+    root: &Path,
+    directory: &Path,
+    candidates: &[String],
+    filenames: &mut Vec<(PathBuf, String)>,
+    errors: &mut Vec<(String, eyre::Report)>,
+) -> Result<()> {
+    for entry in std::fs::read_dir(directory)? {
+        let entry = entry?;
+        let file_type = entry.file_type()?;
+        let path = entry.path();
+        let relative = path
+            .strip_prefix(root)
+            .map_err(|_| eyre!("Source path escaped diagnostic root: {}", path.display()))?
+            .to_string_lossy()
+            .into_owned();
+        if file_type.is_dir() && super::may_contain_source_instance(&relative, candidates) {
+            if let Err(error) = collect_source_files(root, &path, candidates, filenames, errors) {
+                errors.push((
+                    relative,
+                    error.wrap_err(format!("Failed to read directory {}", path.display())),
+                ));
+            }
+        } else if file_type.is_file() && super::is_source_instance_path(&relative, candidates) {
+            filenames.push((path, relative));
+        }
+    }
+    Ok(())
 }
