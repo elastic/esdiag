@@ -44,7 +44,7 @@ Identifiers, including `http.clients[].id`, retain their original values and JSO
 
 Scrub normalization does not repair truncated JSON strings. A missing closing quote, including after a backslash or escaped quote at end of input, fails the read rather than silently completing the string.
 
-Enabled normalization accepts at most **128 nested JSON objects or arrays**, counting the outermost container as one. The traversal fails before allocating a 129th context or handing partial normalized content to a consumer. This deliberately rejects deeper input even when a `RawValue` consumer would otherwise accept it; consumers may still impose stricter limits. Disabled normalization and excluded or unsupported files retain direct-reader behavior. The budget limits nesting, not archive size, document count, or string length.
+Enabled normalization accepts at most **128 nested JSON objects or arrays**, counting the outermost container as one. The traversal fails before allocating a 129th context or handing partial normalized content to a consumer. This deliberately rejects deeper input even when a `RawValue` consumer would otherwise accept it; consumers may still impose stricter limits. Raw reads retain the stricter `serde_json::Value` recursion limit and enforce it during syntax validation, before parsing the remaining payload. Disabled normalization and excluded or unsupported files retain direct-reader behavior. The budget limits nesting, not archive size, document count, or string length.
 
 ## Normalization rules
 
@@ -56,6 +56,13 @@ Enabled normalization accepts at most **128 nested JSON objects or arrays**, cou
 Scrubbed 19-character lowercase hex node names are humanized during node lookup processing (for example `aaaabbbbccccddddee0` → `hot-dee0`).
 
 Node-stat enrichment first matches the node ID. When that ID is absent from the lookup, a name fallback is used only if exactly one node has that name. Duplicate names remain unresolved rather than attaching another node's identity, address, tier, or CPU allocation.
+
+## Receiver normalization implementation
+
+Raw, typed and streamed reads share one private field-scope traversal. The raw adapter validates the complete JSON input, retains last-key-wins decoded keys and surviving-field counts, and preserves Serde numeric and nesting acceptance. Its returned String and key/fragment bookkeeping scale with output size.
+
+The typed/streamed adapter writes unchanged tokens incrementally to a buffered temporary file and rewrites only selected address strings. It flushes and rewinds before deserialization and keeps the file alive until consumption finishes. Normalizer memory scales with nesting, largest token and fixed buffers, not total payload size; downstream processing has its own memory costs. Typed consumers retain their existing numeric, duplicate-key and syntax interpretation.
+
 
 ## Customer diagnostics policy
 
