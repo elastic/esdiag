@@ -244,6 +244,9 @@ enum Commands {
         /// The file must match the active product or the command fails before processing.
         #[arg(long)]
         sources: Option<String>,
+        /// Force scrubbed archive mode on/off; when omitted auto-detects by filename containing 'scrubbed'
+        #[arg(long)]
+        scrubbed: Option<bool>,
         /// Save the effective invocation as a named job before continuing execution
         #[cfg(feature = "keystore")]
         #[arg(long = "save-job", value_name = "NAME")]
@@ -1861,6 +1864,7 @@ async fn run(cli: Cli, format: OutputFormat) -> Result<CommandResult> {
                 opportunity,
                 user,
                 sources,
+                scrubbed,
                 #[cfg(feature = "keystore")]
                 save_job,
             } => {
@@ -1911,22 +1915,27 @@ async fn run(cli: Cli, format: OutputFormat) -> Result<CommandResult> {
                 }
                 tracing::info!("input: {}", input_uri);
 
-                let receiver = Receiver::try_from(input_uri.clone())?;
+                let receiver = Receiver::try_from_with_scrub(input_uri.clone(), scrubbed, None)?;
                 if let Some(sources) = sources {
                     let application = detect_sources_application_for_process(&input_uri, &receiver).await?;
                     esdiag::processor::init_sources(sources_application_key(application)?, sources)?;
                 }
                 let identifiers = Identifiers::new(account, case, receiver.filename(), opportunity, user);
                 let mut context = esdiag::job::context::ExecutionContext::default();
+                let binding = esdiag::job::model::BindingKey::try_new("cli-process-input")?;
+                let application = match &input_uri {
+                    Uri::KnownHost(host) | Uri::ElasticCloudAdmin(host) | Uri::ElasticGovCloudAdmin(host) => host.app(),
+                    _ => None,
+                };
+                match &input_uri {
+                    Uri::File(path) => {
+                        context
+                            .inputs
+                            .bind_bundle(binding.clone(), receiver, path.clone(), application);
+                    }
+                    _ => context.inputs.bind_receiver(binding.clone(), receiver, application),
+                };
                 let job_input = if input_context_target.is_some() {
-                    let binding = esdiag::job::model::BindingKey::try_new("cli-process-input")?;
-                    let application = match &input_uri {
-                        Uri::KnownHost(host) | Uri::ElasticCloudAdmin(host) | Uri::ElasticGovCloudAdmin(host) => {
-                            host.app()
-                        }
-                        _ => None,
-                    };
-                    context.inputs.bind_receiver(binding.clone(), receiver, application);
                     esdiag::job::model::Input::CollectBinding {
                         binding,
                         diagnostic_type: "standard".to_string(),
@@ -1934,20 +1943,7 @@ async fn run(cli: Cli, format: OutputFormat) -> Result<CommandResult> {
                         exclude: None,
                     }
                 } else {
-                    match &input_uri {
-                        Uri::File(_) | Uri::Directory(_) => esdiag::job::model::Input::Load { uri: input_uri.clone() },
-                        _ => {
-                            let binding = esdiag::job::model::BindingKey::try_new("cli-process-input")?;
-                            let application = match &input_uri {
-                                Uri::KnownHost(host)
-                                | Uri::ElasticCloudAdmin(host)
-                                | Uri::ElasticGovCloudAdmin(host) => host.app(),
-                                _ => None,
-                            };
-                            context.inputs.bind_receiver(binding.clone(), receiver, application);
-                            esdiag::job::model::Input::LoadBinding { binding }
-                        }
-                    }
+                    esdiag::job::model::Input::LoadBinding { binding }
                 };
                 let export_target = match (&output_context_target, &output, &output_uri) {
                     (Some(_), _, Uri::KnownHost(_)) | (None, Some(_), Uri::KnownHost(_)) => {
@@ -5880,6 +5876,23 @@ mod tests {
         match cli.command.expect("command") {
             Commands::Process { save_job, .. } => {
                 assert_eq!(save_job.as_deref(), Some("process-prod"));
+            }
+            _ => panic!("expected process command"),
+        }
+    }
+
+    #[test]
+    fn process_cli_parses_scrubbed_bool_override() {
+        let cli = Cli::parse_from([
+            "esdiag",
+            "process",
+            "local-diagnostics-scrubbed.zip",
+            "--scrubbed",
+            "true",
+        ]);
+        match cli.command.expect("command") {
+            Commands::Process { scrubbed, .. } => {
+                assert_eq!(scrubbed, Some(true));
             }
             _ => panic!("expected process command"),
         }

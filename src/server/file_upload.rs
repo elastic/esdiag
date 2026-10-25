@@ -19,6 +19,11 @@ use tokio::sync::mpsc;
 use tokio::{fs::File, io::AsyncWriteExt};
 use uuid::Uuid;
 
+fn parse_scrubbed_checkbox_value(value: &str) -> bool {
+    let value = value.trim();
+    value == "1" || value.eq_ignore_ascii_case("true") || value.eq_ignore_ascii_case("on")
+}
+
 pub async fn submit(
     State(state): State<Arc<ServerState>>,
     headers: HeaderMap,
@@ -42,113 +47,201 @@ pub async fn submit(
             );
         }
     };
+    let mut scrubbed_override: Option<bool> = None;
+    let mut staged_upload: Option<(String, std::path::PathBuf)> = None;
 
-    // Process the multipart form
-    if let Ok(Some(field)) = multipart.next_field().await {
-        if field.name() == Some("file") {
-            // Check if the file has a valid filename
-            let filename = match field.file_name() {
-                Some(filename) if !filename.ends_with(".zip") => {
-                    return (
-                        StatusCode::BAD_REQUEST,
-                        Html(format!(
-                            r#"<div id="job-{job_id}" class="status-box history-item status-error">
-                        🛑 Invalid file type, only .zip files are allowed.
-                    </div>"#
-                        )),
-                    );
-                }
-                Some(filename) => filename.to_string(),
-                None => {
-                    return (
-                        StatusCode::BAD_REQUEST,
-                        Html(format!(
-                            r#"<div id="job-{job_id}" class="status-box history-item status-error">
-                            🛑 Missing file name
-                        </div>"#
-                        )),
-                    );
-                }
-            };
-
-            // The first processing patch replaces this card and removes data-init.
-            // Keep its SSE request alive until the terminal card and signals arrive.
-            let upload_file_element = format!(
-                r#"<div id="job-{job_id}"
-                    class="status-box history-item status-processing"
-                    data-init="$loading=false; $file_upload.job_id={job_id}; if ({can_use_keystore} && $keystore.locked && $output.secure) {{ $_pending_job_action = 'upload-process'; $message = 'Unlock keystore to continue...'; @get('/keystore/modal/process', {{filterSignals: {{exclude: /.*/}}}}); }} else {{ @post('/upload/process', {{requestCancellation: 'disabled', openWhenHidden: true, filterSignals: {{include: /^(metadata|archive|job|file_upload)(\.|$)/}}}}); }}"
-                >
-                    <div class="spinner"></div>
-                    <span>Processing diagnostic</span>
-                    <p><b>Filename:</b> {filename}</p>
-                </div>"#
-            );
-
-            let temp_upload_path = std::env::temp_dir().join(format!("esdiag-upload-{job_id}-{}.zip", Uuid::new_v4()));
-            match stage_upload_field(field, &temp_upload_path).await {
-                Ok(()) => {
-                    state
-                        .push_upload(job_id, identity.user, identity.account, filename, temp_upload_path)
-                        .await;
-
-                    // Add a cleanup task to remove abandoned staged uploads.
-                    let state_clone = state.clone();
-                    tokio::spawn(async move {
-                        tokio::time::sleep(tokio::time::Duration::from_secs(300)).await;
-                        if let Some(job) = state_clone.pop_job_request(job_id).await {
-                            job.cleanup().await;
-                            tracing::warn!(
-                                "Submission job {} was never processed and was removed from state to clean up the staged file",
-                                job_id
-                            );
-                        }
-                    });
-                }
-                Err(e) => {
+    loop {
+        let field = match multipart.next_field().await {
+            Ok(Some(field)) => field,
+            Ok(None) => break,
+            Err(err) => return reject_malformed_upload(&state, job_id, staged_upload, err).await,
+        };
+        match field.name() {
+            Some("file") => {
+                if let Some((_filename, temp_upload_path)) = staged_upload.take() {
                     if let Err(remove_err) = tokio::fs::remove_file(&temp_upload_path).await
                         && remove_err.kind() != std::io::ErrorKind::NotFound
                     {
                         tracing::debug!(
-                            "Failed to remove partial submission {}: {}",
+                            "Failed to remove duplicate upload {}: {}",
                             temp_upload_path.display(),
                             remove_err
                         );
                     }
-                    let error_msg = format!("Failed to stage submitted data: {}", e);
-                    tracing::error!("{}", error_msg);
                     state.record_job_rejected().await;
                     return (
                         StatusCode::BAD_REQUEST,
                         Html(format!(
                             r#"<div id="job-{job_id}" class="status-box history-item status-error">
-                            🛑 Error {error_msg}
-                        </div>"#
+                                🛑 Multiple upload files are not supported
+                            </div>"#
                         )),
                     );
                 }
-            };
 
-            (StatusCode::OK, Html(upload_file_element))
-        } else {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Html(format!(
-                    r#"<div id="job-{job_id}" class="status-box history-item status-error">
-                        🛑 Upload Failed
-                    </div>"#
-                )),
-            )
+                let filename = match field.file_name() {
+                    Some(filename) if !filename.ends_with(".zip") => {
+                        state.record_job_rejected().await;
+                        return (
+                            StatusCode::BAD_REQUEST,
+                            Html(format!(
+                                r#"<div id="job-{job_id}" class="status-box history-item status-error">
+                            🛑 Invalid file type, only .zip files are allowed.
+                        </div>"#
+                            )),
+                        );
+                    }
+                    Some(filename) => filename.to_string(),
+                    None => {
+                        state.record_job_rejected().await;
+                        return (
+                            StatusCode::BAD_REQUEST,
+                            Html(format!(
+                                r#"<div id="job-{job_id}" class="status-box history-item status-error">
+                                🛑 Missing file name
+                            </div>"#
+                            )),
+                        );
+                    }
+                };
+
+                let temp_upload_path =
+                    std::env::temp_dir().join(format!("esdiag-upload-{job_id}-{}.zip", Uuid::new_v4()));
+                match stage_upload_field(field, &temp_upload_path).await {
+                    Ok(()) => staged_upload = Some((filename, temp_upload_path)),
+                    Err(e) => {
+                        if let Err(remove_err) = tokio::fs::remove_file(&temp_upload_path).await
+                            && remove_err.kind() != std::io::ErrorKind::NotFound
+                        {
+                            tracing::debug!(
+                                "Failed to remove partial upload {}: {}",
+                                temp_upload_path.display(),
+                                remove_err
+                            );
+                        }
+                        let error_msg = format!("Failed to stage upload data: {}", e);
+                        tracing::error!("{}", error_msg);
+                        state.record_job_rejected().await;
+                        return (
+                            StatusCode::BAD_REQUEST,
+                            Html(format!(
+                                r#"<div id="job-{job_id}" class="status-box history-item status-error">
+                                🛑 Error {error_msg}
+                            </div>"#
+                            )),
+                        );
+                    }
+                }
+            }
+            Some("scrubbed") => {
+                let mut field = field;
+                let mut value = [0_u8; 64];
+                let mut length = 0;
+                loop {
+                    let chunk = match field.chunk().await {
+                        Ok(Some(chunk)) => chunk,
+                        Ok(None) => break,
+                        Err(err) => return reject_malformed_upload(&state, job_id, staged_upload, err).await,
+                    };
+                    if chunk.len() > value.len() - length {
+                        return reject_malformed_upload(
+                            &state,
+                            job_id,
+                            staged_upload,
+                            "scrubbed field exceeds 64 bytes",
+                        )
+                        .await;
+                    }
+                    value[length..length + chunk.len()].copy_from_slice(&chunk);
+                    length += chunk.len();
+                }
+                match std::str::from_utf8(&value[..length]) {
+                    Ok(value) => scrubbed_override = Some(parse_scrubbed_checkbox_value(value)),
+                    Err(err) => return reject_malformed_upload(&state, job_id, staged_upload, err).await,
+                }
+            }
+            _ => {}
         }
+    }
+
+    if let Some((filename, temp_upload_path)) = staged_upload {
+        // The first processing patch replaces this card and removes data-init.
+        // Keep its SSE request alive until the terminal card and signals arrive.
+        let upload_file_element = format!(
+            r#"<div id="job-{job_id}"
+                class="status-box history-item status-processing"
+                data-init="$loading=false; $file_upload.job_id={job_id}; if ({can_use_keystore} && $keystore.locked && $output.secure) {{ $_pending_job_action = 'upload-process'; $message = 'Unlock keystore to continue...'; @get('/keystore/modal/process', {{filterSignals: {{exclude: /.*/}}}}); }} else {{ @post('/upload/process', {{openWhenHidden: true, requestCancellation: 'disabled', filterSignals: {{include: /^(metadata|archive|job|file_upload)(\.|$)/}}}}); }}"
+            >
+                <div class="spinner"></div>
+                <span>Processing diagnostic</span>
+                <p><b>Filename:</b> {filename}</p>
+            </div>"#,
+            filename = askama::filters::escape(&filename, askama::filters::Html).expect("HTML escaping is infallible"),
+        );
+
+        state
+            .push_upload(
+                job_id,
+                identity.user,
+                identity.account,
+                filename,
+                temp_upload_path,
+                scrubbed_override,
+            )
+            .await;
+
+        let state_clone = state.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(tokio::time::Duration::from_secs(300)).await;
+            if let Some(job) = state_clone.pop_job_request(job_id).await {
+                job.cleanup().await;
+                tracing::warn!(
+                    "Upload job {} was never processed and was removed from state to clean up the staged upload",
+                    job_id
+                );
+            }
+        });
+
+        (StatusCode::OK, Html(upload_file_element))
     } else {
+        state.record_job_rejected().await;
         (
-            StatusCode::INTERNAL_SERVER_ERROR,
+            StatusCode::BAD_REQUEST,
             Html(format!(
                 r#"<div id="job-{job_id}" class="status-box history-item status-error">
-                    🛑 Upload Failed
+                    🛑 Missing upload file
                 </div>"#
             )),
         )
     }
+}
+
+async fn reject_malformed_upload(
+    state: &ServerState,
+    job_id: u64,
+    staged_upload: Option<(String, std::path::PathBuf)>,
+    err: impl std::fmt::Display,
+) -> (StatusCode, Html<String>) {
+    tracing::warn!("Malformed upload request: {}", err);
+    if let Some((_filename, temp_upload_path)) = staged_upload
+        && let Err(remove_err) = tokio::fs::remove_file(&temp_upload_path).await
+        && remove_err.kind() != std::io::ErrorKind::NotFound
+    {
+        tracing::debug!(
+            "Failed to remove malformed upload {}: {}",
+            temp_upload_path.display(),
+            remove_err
+        );
+    }
+    state.record_job_rejected().await;
+    (
+        StatusCode::BAD_REQUEST,
+        Html(format!(
+            r#"<div id="job-{job_id}" class="status-box history-item status-error">
+                Invalid multipart upload data
+            </div>"#
+        )),
+    )
 }
 
 async fn stage_upload_field(
@@ -271,57 +364,326 @@ pub(super) async fn run_upload_job(
 
 #[cfg(test)]
 mod tests {
-    use super::{run_upload_job, send_terminal_signal};
-    use crate::server::{ServerEvent, UploadProcessSignals, test_server_state};
-    use std::path::PathBuf;
+    use super::{parse_scrubbed_checkbox_value, run_upload_job, submit};
+    use crate::server::{
+        JobInput, RuntimeMode, ServerEvent, ServerPolicy, ServerState, UploadProcessSignals, test_server_state,
+    };
+    use axum::{
+        body::{Body, to_bytes},
+        extract::{FromRequest, Multipart, State},
+        http::{HeaderMap, Request, StatusCode},
+        response::IntoResponse,
+    };
+    use std::{path::PathBuf, sync::Arc};
     use tokio::sync::mpsc;
 
+    #[test]
+    fn parse_scrubbed_checkbox_value_accepts_truthy_values() {
+        for value in ["true", "TRUE", " True ", "1", " on "] {
+            assert!(
+                parse_scrubbed_checkbox_value(value),
+                "expected {value:?} to enable scrub mode"
+            );
+        }
+    }
+
+    #[test]
+    fn parse_scrubbed_checkbox_value_rejects_falsy_or_unknown_values() {
+        for value in ["", "false", "0", "off", "yes", "scrubbed"] {
+            assert!(
+                !parse_scrubbed_checkbox_value(value),
+                "expected {value:?} to disable scrub mode"
+            );
+        }
+    }
+
+    const FILE_PART: &str = concat!(
+        "--upload-boundary\r\n",
+        "Content-Disposition: form-data; name=\"file\"; filename=\"diagnostic.zip\"\r\n",
+        "Content-Type: application/zip\r\n\r\n",
+        "zip-bytes\r\n",
+    );
+
+    async fn submit_multipart(body: &str) -> (Arc<ServerState>, StatusCode, u64, String) {
+        submit_request(test_server_state(), Body::from(body.to_owned()), HeaderMap::new()).await
+    }
+
+    async fn submit_request(
+        state: Arc<ServerState>,
+        body: Body,
+        headers: HeaderMap,
+    ) -> (Arc<ServerState>, StatusCode, u64, String) {
+        let request = Request::builder()
+            .header("content-type", "multipart/form-data; boundary=upload-boundary")
+            .body(body)
+            .expect("multipart request");
+        let multipart = Multipart::from_request(request, &state)
+            .await
+            .expect("multipart extractor");
+        let response = submit(State(state.clone()), headers, multipart).await.into_response();
+        let status = response.status();
+        let html = to_bytes(response.into_body(), 1024 * 1024)
+            .await
+            .expect("response body");
+        let html = std::str::from_utf8(&html).expect("response HTML");
+        let job_id = html
+            .split_once("id=\"job-")
+            .expect("job response element")
+            .1
+            .split_once('"')
+            .expect("job element identifier")
+            .0
+            .parse()
+            .expect("job ID");
+        (state, status, job_id, html.to_owned())
+    }
+
+    async fn assert_rejected_upload(body: &str) {
+        let (state, status, job_id, _) = submit_multipart(body).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(
+            state.job_requests.read().await.is_empty(),
+            "rejected upload must not be queued"
+        );
+        let prefix = format!("esdiag-upload-{job_id}-");
+        let mut entries = tokio::fs::read_dir(std::env::temp_dir())
+            .await
+            .expect("upload staging directory");
+        while let Some(entry) = entries.next_entry().await.expect("staging directory entry") {
+            assert!(
+                !entry.file_name().to_string_lossy().starts_with(&prefix),
+                "rejected upload left staged file {}",
+                entry.path().display()
+            );
+        }
+    }
+
     #[tokio::test]
-    async fn run_upload_job_missing_upload_emits_failure_and_terminal_signal() {
-        let state = test_server_state();
+    async fn scrubbed_field_accepts_value_at_byte_limit() {
+        let value = format!("{}1", " ".repeat(63));
+        let body = format!(
+            "{FILE_PART}--upload-boundary\r\nContent-Disposition: form-data; name=\"scrubbed\"\r\n\r\n{value}\r\n--upload-boundary--\r\n"
+        );
+        let (state, status, job_id, _) = submit_multipart(&body).await;
+        let job = state.pop_job_request(job_id).await.expect("accepted upload");
+        let JobInput::LocalArchive {
+            path,
+            scrubbed_override,
+            ..
+        } = &job.input
+        else {
+            panic!("expected local archive");
+        };
+        let bytes = tokio::fs::read(path).await.expect("queued staged bytes");
+        job.cleanup().await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(*scrubbed_override, Some(true));
+        assert_eq!(bytes, b"zip-bytes");
+        assert!(!path.exists());
+    }
+
+    #[tokio::test]
+    async fn scrubbed_field_rejects_oversized_chunks_before_or_after_staging() {
+        for file_first in [true, false] {
+            let value = format!("{}1", " ".repeat(64));
+            let checkbox =
+                format!("--upload-boundary\r\nContent-Disposition: form-data; name=\"scrubbed\"\r\n\r\n{value}\r\n");
+            let body = if file_first {
+                format!("{FILE_PART}{checkbox}--upload-boundary--\r\n")
+            } else {
+                format!("{checkbox}{FILE_PART}--upload-boundary--\r\n")
+            };
+            let bytes = bytes::Bytes::from(body);
+            let chunks = (0..bytes.len())
+                .step_by(8)
+                .map(move |start| Ok::<_, std::io::Error>(bytes.slice(start..(start + 8).min(bytes.len()))));
+            let (state, status, job_id, _) = submit_request(
+                test_server_state(),
+                Body::from_stream(futures::stream::iter(chunks)),
+                HeaderMap::new(),
+            )
+            .await;
+            if status != StatusCode::BAD_REQUEST {
+                state.discard_job_request(job_id).await;
+            }
+            assert_eq!(status, StatusCode::BAD_REQUEST);
+            assert!(state.job_requests.read().await.is_empty());
+            let stats = state.get_stats().await;
+            assert_eq!((stats.jobs.total, stats.jobs.failed), (1, 1));
+            let prefix = format!("esdiag-upload-{job_id}-");
+            let mut entries = tokio::fs::read_dir(std::env::temp_dir())
+                .await
+                .expect("staging directory");
+            while let Some(entry) = entries.next_entry().await.expect("staging entry") {
+                assert!(!entry.file_name().to_string_lossy().starts_with(&prefix));
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn scrubbed_field_rejects_invalid_utf8_before_or_after_staging() {
+        for file_first in [true, false] {
+            let checkbox_head = b"--upload-boundary\r\nContent-Disposition: form-data; name=\"scrubbed\"\r\n\r\n";
+            let parts: [&'static [u8]; 5] = if file_first {
+                [
+                    FILE_PART.as_bytes(),
+                    checkbox_head,
+                    b"\xff",
+                    b"\r\n",
+                    b"--upload-boundary--\r\n",
+                ]
+            } else {
+                [
+                    checkbox_head,
+                    b"\xff",
+                    b"\r\n",
+                    FILE_PART.as_bytes(),
+                    b"--upload-boundary--\r\n",
+                ]
+            };
+            let chunks = parts
+                .into_iter()
+                .map(|part| Ok::<_, std::io::Error>(bytes::Bytes::from_static(part)));
+            let (state, status, job_id, _) = submit_request(
+                test_server_state(),
+                Body::from_stream(futures::stream::iter(chunks)),
+                HeaderMap::new(),
+            )
+            .await;
+            if status != StatusCode::BAD_REQUEST {
+                state.discard_job_request(job_id).await;
+            }
+            assert_eq!(status, StatusCode::BAD_REQUEST);
+            assert!(state.job_requests.read().await.is_empty());
+            let stats = state.get_stats().await;
+            assert_eq!((stats.jobs.total, stats.jobs.failed), (1, 1));
+            let prefix = format!("esdiag-upload-{job_id}-");
+            let mut entries = tokio::fs::read_dir(std::env::temp_dir())
+                .await
+                .expect("staging directory");
+            while let Some(entry) = entries.next_entry().await.expect("staging entry") {
+                assert!(!entry.file_name().to_string_lossy().starts_with(&prefix));
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn submit_rejects_truncated_scrubbed_field_and_cleans_staged_file() {
+        let body =
+            format!("{FILE_PART}--upload-boundary\r\nContent-Disposition: form-data; name=\"scrubbed\"\r\n\r\nfalse");
+        assert_rejected_upload(&body).await;
+    }
+
+    #[tokio::test]
+    async fn submit_rejects_malformed_trailing_part_and_cleans_staged_file() {
+        let body = format!("{FILE_PART}--upload-boundary\r\ninvalid-header\r\n\r\nvalue\r\n--upload-boundary--\r\n");
+        assert_rejected_upload(&body).await;
+    }
+
+    #[tokio::test]
+    async fn submit_rejects_truncated_ignored_field_and_cleans_staged_file() {
+        let body =
+            format!("{FILE_PART}--upload-boundary\r\nContent-Disposition: form-data; name=\"other\"\r\n\r\nvalue");
+        assert_rejected_upload(&body).await;
+    }
+
+    #[tokio::test]
+    async fn submit_rejects_truncated_file_body_and_cleans_partial_file() {
+        assert_rejected_upload(FILE_PART).await;
+    }
+
+    #[tokio::test]
+    async fn submit_rejects_duplicate_files_and_cleans_staged_file() {
+        let body = format!("{FILE_PART}{FILE_PART}--upload-boundary--\r\n");
+        assert_rejected_upload(&body).await;
+    }
+
+    #[tokio::test]
+    async fn submit_stages_valid_upload_with_explicit_false_override() {
+        let body = format!(
+            "{FILE_PART}--upload-boundary\r\nContent-Disposition: form-data; name=\"scrubbed\"\r\n\r\nfalse\r\n--upload-boundary--\r\n"
+        );
+        let (state, status, job_id, _) = submit_multipart(&body).await;
+        assert_eq!(status, StatusCode::OK);
+        let job = state.pop_job_request(job_id).await.expect("staged upload");
+        let JobInput::LocalArchive {
+            path,
+            scrubbed_override,
+            ..
+        } = &job.input
+        else {
+            panic!("expected local upload archive");
+        };
+        assert_eq!(*scrubbed_override, Some(false));
+        assert_eq!(tokio::fs::read(path).await.expect("staged file"), b"zip-bytes");
+        job.cleanup().await;
+    }
+
+    #[tokio::test]
+    async fn submit_escapes_filename_html_without_changing_staged_name() {
+        let filename = "<img src=x onerror=alert(1)>&'scrubbed.zip";
+        let body = format!(
+            "{}--upload-boundary--\r\n",
+            FILE_PART.replace("diagnostic.zip", filename)
+        );
+        let (state, status, job_id, html) = submit_multipart(&body).await;
+        assert_eq!(status, StatusCode::OK);
+        let job = state.pop_job_request(job_id).await.expect("staged upload");
+        job.cleanup().await;
+        let JobInput::LocalArchive {
+            filename: staged_name, ..
+        } = &job.input
+        else {
+            panic!("expected local upload archive");
+        };
+        assert_eq!(staged_name, filename);
+        assert!(!html.contains("<img"), "filename must not create an HTML element");
+        assert!(html.contains("&#60;img src=x onerror=alert(1)&#62;&#38;&#39;scrubbed.zip"));
+    }
+
+    #[tokio::test]
+    async fn missing_upload_runner_targets_failure_and_resets_processing_state() {
+        let mut state = test_server_state();
+        let settings = Arc::get_mut(&mut state).expect("unique server state");
+        settings.runtime_mode = RuntimeMode::Service;
+        settings.server_policy = ServerPolicy::defaults(RuntimeMode::Service);
         let signals = UploadProcessSignals::default();
         let (tx, mut rx) = mpsc::channel(8);
 
-        run_upload_job(state, signals, 42, "Anonymous".to_string(), tx).await;
+        run_upload_job(state.clone(), signals, 42, "Anonymous".to_string(), tx).await;
 
         let mut saw_failure = false;
         let mut saw_terminal = false;
         while let Some(event) = rx.recv().await {
             match event {
-                ServerEvent::Template { html, .. } if html.contains("Failed to submit file") => {
+                ServerEvent::ReplaceSelector { selector, html, .. } => {
+                    assert_eq!(selector, "#job-42");
+                    assert!(html.contains("status-error"), "missing upload receives a failure card");
                     saw_failure = true;
                 }
-                ServerEvent::ReplaceSelector { selector, html, .. }
-                    if selector == "#job-42" && html.contains("Failed to submit file") =>
-                {
-                    saw_failure = true;
-                }
-                ServerEvent::Signals { payload, .. } if payload.contains(r#""processing":false"#) => {
-                    saw_terminal = true;
+                ServerEvent::Signals { payload, .. } => {
+                    let signals: serde_json::Value = serde_json::from_str(&payload).expect("signal JSON");
+                    if signals.get("processing").and_then(serde_json::Value::as_bool) == Some(false) {
+                        assert_eq!(
+                            signals
+                                .pointer("/file_upload/job_id")
+                                .and_then(serde_json::Value::as_u64),
+                            Some(0),
+                        );
+                        saw_terminal = true;
+                    }
                 }
                 _ => {}
             }
         }
 
-        assert!(saw_failure, "expected job failure template event");
-        assert!(saw_terminal, "expected terminal processing=false signal");
-    }
-
-    #[tokio::test]
-    async fn terminal_signal_includes_file_upload_reset() {
-        let state = test_server_state();
-        let (tx, mut rx) = mpsc::channel(4);
-
-        send_terminal_signal(&tx, &state).await;
-        drop(tx);
-
-        let event = rx.recv().await.expect("expected one terminal signal");
-        match event {
-            ServerEvent::Signals { payload, .. } => {
-                assert!(payload.contains(r#""file_upload":{"job_id":0}"#));
-            }
-            _ => panic!("expected terminal signal payload"),
-        }
+        assert!(saw_failure, "missing upload receives a targeted failure");
+        assert!(saw_terminal, "missing upload resets processing and upload selection");
+        let stats = state.get_stats().await;
+        assert_eq!(stats.jobs.total, 1);
+        assert_eq!(stats.jobs.failed, 1);
+        assert_eq!(stats.jobs.success, 0);
+        assert_eq!(stats.jobs.active, 0);
     }
 
     #[tokio::test]
@@ -334,6 +696,7 @@ mod tests {
                 Some("accounts.google.com".to_string()),
                 "upload.zip".to_string(),
                 PathBuf::from("/tmp/nonexistent-upload.zip"),
+                None,
             )
             .await;
         let signals = UploadProcessSignals::default();
