@@ -53,9 +53,11 @@ Kubernetes server version (`gitVersion`, `major`, `minor`), the operator and res
 namespaces, the parsed operator configuration from the `elastic-operator` ConfigMap
 `eck.yaml` key, the ECK licensing values from the `elastic-licensing` ConfigMap
 (license level, enterprise resource units, total managed memory in bytes, timestamp),
-and the contents of `eck-diagnostic-errors.txt` when non-empty. The ECK version SHALL
-be read from `eck-diagnostics.log` and SHALL fall back to the operator container image
-tag when the log does not state it.
+and the contents of `eck-diagnostic-errors.txt` when non-empty. Both ConfigMaps SHALL
+be read only from operator namespaces: those `eck-diagnostics.log` names, or, when the
+log names none, namespaces holding a StatefulSet labeled `control-plane: elastic-operator`.
+The ECK version SHALL be read from `eck-diagnostics.log` and SHALL fall back to the
+operator container image tag when the log does not state it.
 
 #### Scenario: Licensing values are numeric
 - **GIVEN** the `elastic-licensing` ConfigMap stores `enterprise_resource_units` and `total_managed_memory_bytes` as strings
@@ -73,15 +75,23 @@ tag when the log does not state it.
 - **WHEN** the operator document is emitted
 - **THEN** the document MUST omit the licensing fields rather than failing
 
+#### Scenario: Operator-named ConfigMap in a workload namespace
+- **GIVEN** a workload namespace contains a user ConfigMap named `elastic-operator`
+- **AND** `eck-diagnostics.log` names a different operator namespace
+- **WHEN** the operator document is emitted
+- **THEN** the document MUST NOT contain that ConfigMap's data
+
 ### Requirement: ECK custom resource documents
 The processor SHALL emit one `settings-eck.resource-esdiag` document per item in each
 ECK custom resource list (`elasticsearch.json`, `kibana.json`, `agent.json`,
 `logstash.json`, `beat.json`, `apmserver.json`, `enterprisesearch.json`,
 `elasticmapsserver.json`, and any additional ECK resource list the processor
 recognizes). Each document SHALL contain the resource kind, name, namespace,
-`spec.version`, `metadata.generation`, and the full `status` object as reported by the
-operator (health, phase, expected/available nodes, association statuses,
-`observedGeneration`, conditions). It SHALL also contain `generation_lag` =
+`spec.version`, `metadata.generation`, and the allowlisted scalar `status` fields
+written by the operator: health, phase, version, expected/available nodes,
+`observedGeneration`, condition type/status/reason/message/transition time,
+association statuses, and in-progress operation node states. Other status fields,
+and values nested inside allowlisted ones, SHALL be dropped. It SHALL also contain `generation_lag` =
 `metadata.generation - status.observedGeneration` when both are present.
 
 #### Scenario: Unhealthy Elasticsearch resource is visible
@@ -281,6 +291,3 @@ an ECK parent diagnostic SHALL open that dashboard filtered to the parent's
 - **WHEN** an ECK parent diagnostic completes
 - **THEN** its Kibana link MUST target the ECK Platform Overview dashboard filtered by its `diagnostic.id`
 - **AND** each included Elasticsearch child link MUST still target the Elasticsearch Cluster Report
-
-
-[You have received this identical output 3 times. Re-reading '/Users/reno/Development/worktrees/esdiag/echo/esdiag/openspec/changes/add-eck-platform-processing/specs/eck-platform-processing/spec.md:raw' will not change it — use a narrower selector (path:A-B), or proceed with the edit.]

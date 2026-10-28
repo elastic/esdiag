@@ -368,7 +368,7 @@ pub struct EckResource {
     pub kind: Option<String>,
     pub metadata: ObjectMeta,
     pub spec: EckSpec,
-    /// Operator-written status, indexed as reported.
+    /// Operator-written status, reduced to an allowlist before indexing.
     pub status: Option<Value>,
 }
 

@@ -14,7 +14,7 @@ use super::{
 };
 use crate::exporter::Exporter;
 use serde::Serialize;
-use serde_json::Value;
+use serde_json::{Map, Value};
 
 const ELASTICSEARCH_CONTAINER: &str = "elasticsearch";
 
@@ -28,7 +28,7 @@ struct ResourceDoc<'a> {
     spec: Option<SpecFields<'a>>,
     metadata: MetadataFields,
     #[serde(skip_serializing_if = "Option::is_none")]
-    status: Option<&'a Value>,
+    status: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     generation_lag: Option<i64>,
 }
@@ -58,13 +58,101 @@ fn resource_doc(resource: &InNamespace<EckResource>) -> ResourceDoc<'_> {
         metadata: MetadataFields {
             generation: item.metadata.generation,
         },
-        status: item.status.as_ref(),
+        status: item.status.as_ref().and_then(allowed_status),
         generation_lag: item
             .metadata
             .generation
             .zip(observed)
             .map(|(generation, observed)| generation - observed),
     }
+}
+
+/// Operator-written status fields kept on resource documents. Values are
+/// copied only when they are scalars, so nothing nested in an unexpected
+/// field reaches the index.
+const STATUS_FIELDS: [&str; 6] = [
+    "health",
+    "phase",
+    "version",
+    "availableNodes",
+    "expectedNodes",
+    "observedGeneration",
+];
+const CONDITION_FIELDS: [&str; 5] = ["type", "status", "reason", "message", "lastTransitionTime"];
+const OPERATIONS: [&str; 3] = ["downscaleOperation", "upgradeOperation", "upscaleOperation"];
+const OPERATION_FIELDS: [&str; 2] = ["lastUpdatedTime", "stalled"];
+const OPERATION_NODE_FIELDS: [&str; 7] = [
+    "name",
+    "status",
+    "state",
+    "shutdownStatus",
+    "predicate",
+    "message",
+    "explanation",
+];
+
+fn scalars(object: &Map<String, Value>, keys: &[&str]) -> Map<String, Value> {
+    keys.iter()
+        .filter_map(|key| {
+            let value = object.get(*key)?;
+            (value.is_string() || value.is_number() || value.is_boolean()).then(|| (key.to_string(), value.clone()))
+        })
+        .collect()
+}
+
+fn scalar_list(value: Option<&Value>, keys: &[&str]) -> Option<Value> {
+    let items: Vec<Value> = value
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_object)
+        .map(|item| Value::Object(scalars(item, keys)))
+        .collect();
+    (!items.is_empty()).then_some(Value::Array(items))
+}
+
+fn allowed_status(status: &Value) -> Option<Value> {
+    let status = status.as_object()?;
+    let mut allowed = scalars(status, &STATUS_FIELDS);
+    if let Some(conditions) = scalar_list(status.get("conditions"), &CONDITION_FIELDS) {
+        allowed.insert("conditions".to_string(), conditions);
+    }
+    if let Some(operations) = status.get("inProgressOperations").and_then(Value::as_object) {
+        let operations: Map<String, Value> = OPERATIONS
+            .iter()
+            .filter_map(|key| {
+                let operation = operations.get(*key)?.as_object()?;
+                let mut fields = scalars(operation, &OPERATION_FIELDS);
+                if let Some(nodes) = scalar_list(operation.get("nodes"), &OPERATION_NODE_FIELDS) {
+                    fields.insert("nodes".to_string(), nodes);
+                }
+                Some((key.to_string(), Value::Object(fields)))
+            })
+            .collect();
+        if !operations.is_empty() {
+            allowed.insert("inProgressOperations".to_string(), Value::Object(operations));
+        }
+    }
+    // `associationStatus`, `kibanaAssociationStatus`, and the per-reference
+    // `elasticsearchAssociationsStatus` map.
+    for (key, value) in status {
+        let key_lower = key.to_ascii_lowercase();
+        if key_lower.ends_with("associationstatus") && value.is_string() {
+            allowed.insert(key.clone(), value.clone());
+        } else if key_lower.ends_with("associationsstatus")
+            && let Some(statuses) = value.as_object()
+        {
+            let statuses: Map<String, Value> = statuses
+                .iter()
+                .filter(|(_, status)| status.is_string())
+                .map(|(name, status)| (name.clone(), status.clone()))
+                .collect();
+            if !statuses.is_empty() {
+                allowed.insert(key.clone(), Value::Object(statuses));
+            }
+        }
+    }
+    (!allowed.is_empty()).then_some(Value::Object(allowed))
 }
 
 impl DocumentExporter<EckLookups, EckMetadata> for Resources<'_> {
@@ -279,6 +367,39 @@ mod tests {
         assert_eq!(doc["status"]["health"], "yellow");
         assert_eq!(doc["eck"]["resource"]["kind"], "Elasticsearch");
         assert_eq!(doc["kubernetes"]["namespace"], "demo");
+    }
+
+    #[test]
+    fn status_keeps_only_allowlisted_scalars() {
+        let status = allowed_status(&json!({
+            "health": "green",
+            "availableNodes": 3,
+            "annotations": {"secret": "annotation-sentinel"},
+            "env": [{"name": "PASSWORD", "value": "env-sentinel"}],
+            "conditions": [{"type": "ReconciliationComplete", "status": "True", "extra": {"value": "nested-sentinel"}}],
+            "inProgressOperations": {
+                "upgradeOperation": {"lastUpdatedTime": "t", "nodes": [{"name": "es-0", "status": "PENDING", "spec": {}}]},
+                "otherOperation": {"value": "operation-sentinel"}
+            },
+            "kibanaAssociationStatus": "Established",
+            "elasticsearchAssociationsStatus": {"demo/quickstart": "Established", "demo/other": {"value": "map-sentinel"}},
+            "message": {"nested": "message-sentinel"}
+        }))
+        .unwrap();
+        assert_eq!(
+            status,
+            json!({
+                "health": "green",
+                "availableNodes": 3,
+                "conditions": [{"type": "ReconciliationComplete", "status": "True"}],
+                "inProgressOperations": {
+                    "upgradeOperation": {"lastUpdatedTime": "t", "nodes": [{"name": "es-0", "status": "PENDING"}]}
+                },
+                "kibanaAssociationStatus": "Established",
+                "elasticsearchAssociationsStatus": {"demo/quickstart": "Established"}
+            })
+        );
+        assert_eq!(allowed_status(&json!({"unknown": 1})), None);
     }
 
     #[test]

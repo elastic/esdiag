@@ -77,11 +77,15 @@ fn event_doc(event: InNamespace<Event>, collection_date: u64) -> EventDoc {
         count: item.count,
         first_timestamp: item.first_timestamp,
         last_timestamp: item.last_timestamp,
-        source: item
-            .reporting_component
-            .filter(|component| !component.is_empty())
-            .or(item.source.component)
-            .map(|component| SourceFields { component }),
+        source: [
+            item.reporting_component,
+            item.reporting_controller,
+            item.source.component,
+        ]
+        .into_iter()
+        .flatten()
+        .find(|component| !component.is_empty())
+        .map(|component| SourceFields { component }),
         involved_object: item.involved_object,
     }
 }
@@ -138,5 +142,21 @@ mod tests {
         assert_eq!(doc["kubernetes"]["pod"]["name"], "quickstart-es-data-1");
         assert_eq!(doc["involved_object"]["field_path"], "spec");
         assert_eq!(doc["reason"], "FailedScheduling");
+    }
+
+    #[test]
+    fn reporter_falls_back_from_component_to_controller_to_source() {
+        let reporter =
+            |value: Value| serde_json::to_value(event_doc(event(value), 7)).unwrap()["source"]["component"].clone();
+        assert_eq!(
+            reporter(json!({"reportingComponent": "a", "reportingController": "b", "source": {"component": "c"}})),
+            "a"
+        );
+        assert_eq!(
+            reporter(json!({"reportingComponent": "", "reportingController": "kibana-controller"})),
+            "kibana-controller"
+        );
+        assert_eq!(reporter(json!({"source": {"component": "kubelet"}})), "kubelet");
+        assert_eq!(reporter(json!({})), Value::Null);
     }
 }

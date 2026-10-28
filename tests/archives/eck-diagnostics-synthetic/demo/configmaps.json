@@ -30,6 +30,28 @@
       "data": {
         "readiness-probe-script.sh": "#!/usr/bin/env bash\necho configmap-script-sentinel\n"
       }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "ConfigMap",
+      "metadata": {
+        "name": "elastic-operator",
+        "namespace": "demo"
+      },
+      "data": {
+        "eck.yaml": "password: decoy-operator-sentinel\n"
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "ConfigMap",
+      "metadata": {
+        "name": "elastic-licensing",
+        "namespace": "demo"
+      },
+      "data": {
+        "eck_license_level": "decoy-license-sentinel"
+      }
     }
   ]
 }

@@ -20,9 +20,10 @@ const ECK_STREAMS: [(&str, usize); 9] = [
 ];
 
 /// Values planted in the fixture outside the allowlist: env vars, ConfigMap
-/// data, secrets, annotations, managedFields, unparsed log payloads, and the
-/// operator's own image list.
-const SENTINELS: [&str; 15] = [
+/// data, secrets, annotations, managedFields, unparsed log payloads, the
+/// operator's own image list, operator-named ConfigMaps in a workload
+/// namespace, and fields nested in resource status.
+const SENTINELS: [&str; 18] = [
     "env-plaintext-sentinel",
     "DEMO_PASSWORD",
     "podtemplate-env-sentinel",
@@ -38,6 +39,9 @@ const SENTINELS: [&str; 15] = [
     "stack-trace-sentinel",
     "stack-log-sentinel",
     "images-sentinel",
+    "decoy-operator-sentinel",
+    "decoy-license-sentinel",
+    "status-sentinel",
 ];
 
 fn fixture_dir() -> PathBuf {

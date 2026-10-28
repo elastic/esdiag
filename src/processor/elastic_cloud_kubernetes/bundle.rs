@@ -394,7 +394,7 @@ impl EckBundle<Discovered> {
                 status.entry(CONFIG_MAPS.key).or_default(),
             )
             .await;
-            config_maps.extend(items);
+            config_maps.extend(tag(namespace, items));
             // `persistentvolumes.json` is cluster-wide, repeated per namespace.
             let items: Vec<PersistentVolume> =
                 read_list(receiver, &path(&VOLUMES), status.entry(VOLUMES.key).or_default()).await;
@@ -444,7 +444,7 @@ impl EckBundle<Discovered> {
         lookups: &EckLookups,
         statefulsets: &[InNamespace<StatefulSet>],
         pods: &[InNamespace<Pod>],
-        config_maps: Vec<ConfigMap>,
+        config_maps: Vec<InNamespace<ConfigMap>>,
         status: &mut HashMap<&'static str, SourceStatus>,
     ) -> Operator {
         let receiver = self.receiver.as_ref();
@@ -467,6 +467,7 @@ impl EckBundle<Discovered> {
             .record(COLLECTION_ERRORS.file, &errors);
         let errors = errors.ok().flatten().and_then(|text| logs::collection_errors(&text));
 
+        let config_maps = operator_config_maps(config_maps, &tool_log.operator_namespaces, statefulsets);
         let operator_images = operator_images(statefulsets, pods, lookups);
         let eck_version = logs::eck_version(&tool_log, operator_images.iter().map(String::as_str));
 
@@ -481,6 +482,33 @@ impl EckBundle<Discovered> {
             config_maps,
         )
     }
+}
+
+/// ConfigMaps from the operator's own namespaces: those the tool log names, or
+/// failing that, those holding an operator-labeled StatefulSet. A workload
+/// namespace may own an unrelated ConfigMap named `elastic-operator`.
+fn operator_config_maps(
+    config_maps: Vec<InNamespace<ConfigMap>>,
+    logged_namespaces: &[String],
+    statefulsets: &[InNamespace<StatefulSet>],
+) -> Vec<ConfigMap> {
+    let labeled_namespaces: Vec<&str> = statefulsets
+        .iter()
+        .filter(|statefulset| labels::is_operator(&statefulset.item.metadata.labels))
+        .map(|statefulset| statefulset.namespace.as_str())
+        .collect();
+    let is_operator_namespace = |namespace: &str| {
+        if logged_namespaces.is_empty() {
+            labeled_namespaces.contains(&namespace)
+        } else {
+            logged_namespaces.iter().any(|logged| logged == namespace)
+        }
+    };
+    config_maps
+        .into_iter()
+        .filter(|config_map| is_operator_namespace(&config_map.namespace))
+        .map(|config_map| config_map.item)
+        .collect()
 }
 
 /// Operator container images: the operator StatefulSet template first, then
@@ -781,6 +809,49 @@ fn pod_effective(pod: &Pod, resource: &str) -> (Option<f64>, Option<f64>) {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn operator_config_comes_only_from_operator_namespaces() {
+        let config_map = |namespace: &str, yaml: &str| InNamespace {
+            namespace: namespace.to_string(),
+            item: serde_json::from_value::<ConfigMap>(json!({
+                "metadata": {"name": "elastic-operator"},
+                "data": {"eck.yaml": yaml}
+            }))
+            .unwrap(),
+        };
+        let config_maps = || {
+            vec![
+                config_map("demo", "decoy: true"),
+                config_map("elastic-system", "real: true"),
+            ]
+        };
+        let configs =
+            |maps: Vec<ConfigMap>| -> Vec<String> { maps.into_iter().filter_map(|map| map.operator_config).collect() };
+
+        let logged = vec!["elastic-system".to_string()];
+        assert_eq!(
+            configs(operator_config_maps(config_maps(), &logged, &[])),
+            vec!["real: true"]
+        );
+
+        let operator = InNamespace {
+            namespace: "elastic-system".to_string(),
+            item: serde_json::from_value::<StatefulSet>(json!({
+                "metadata": {"name": "elastic-operator", "labels": {"control-plane": "elastic-operator"}}
+            }))
+            .unwrap(),
+        };
+        assert_eq!(
+            configs(operator_config_maps(
+                config_maps(),
+                &[],
+                std::slice::from_ref(&operator)
+            )),
+            vec!["real: true"]
+        );
+        assert!(configs(operator_config_maps(config_maps(), &[], &[])).is_empty());
+    }
 
     #[test]
     fn source_table_streams_are_the_nine_eck_streams() {

@@ -280,6 +280,3 @@ independently.
   `k8s_node_name` attribute users must configure?
 - Should Stack pod logs be processed in a follow-up log-ingestion change, and scoped by
   level (WARN+) to bound volume?
-
-
-[You have received this identical output 3 times. Re-reading '/Users/reno/Development/worktrees/esdiag/echo/esdiag/openspec/changes/add-eck-platform-processing/design.md:raw' will not change it — use a narrower selector (path:A-B), or proceed with the edit.]

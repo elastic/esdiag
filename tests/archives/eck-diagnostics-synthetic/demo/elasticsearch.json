@@ -182,7 +182,10 @@
         },
         "observedGeneration": 4,
         "phase": "ApplyingChanges",
-        "version": "9.3.3"
+        "version": "9.3.3",
+        "annotations": {
+          "example.com/note": "status-sentinel"
+        }
       }
     }
   ]

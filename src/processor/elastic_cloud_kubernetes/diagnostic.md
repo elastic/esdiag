@@ -63,6 +63,7 @@ One document per bundle.
 + `eck.diagnostics.errors` from `eck-diagnostic-errors.txt` (collection errors are data, not a failed outcome)
 + `eck.operator.config.*` parsed from the `elastic-operator` ConfigMap's `eck.yaml`
 + `eck.license.{level,enterprise_resource_units,total_managed_memory_bytes,timestamp}` from the `elastic-licensing` ConfigMap, as numbers
++ Reads both ConfigMaps only from operator namespaces (named in `eck-diagnostics.log`, or else holding an operator-labeled StatefulSet)
 - Every other ConfigMap and key
 
 #### \<ns\>/{elasticsearch,kibana,...}.json
@@ -70,7 +71,7 @@ One document per bundle.
 **Datastream:** `settings-eck.resource-esdiag`
 
 One document per ECK custom resource.
-+ `eck.resource.{kind,name}`, `spec.version`, `metadata.generation`, raw `status.*`
++ `eck.resource.{kind,name}`, `spec.version`, `metadata.generation`, allowlisted scalar `status.*` (health, phase, version, node counts, `observedGeneration`, conditions, association statuses, in-progress operations)
 + Calculates `generation_lag` (`metadata.generation - status.observedGeneration`)
 - Extracts `spec` beyond `version`
 

@@ -229,28 +229,24 @@ pub fn resolve_archive_path<A: Read + Seek>(
         path.replace('\\', "/")
     }
 
-    let path = if let Some(dir) = subdir {
-        let mut workdir = PathBuf::from(archive.by_index(0)?.name().to_string());
-        trim_to_working_directory(&mut workdir);
-        let path = normalize_archive_separators(workdir.join(dir).join(filename).to_string_lossy().as_ref());
-        if archive.by_name(&path).is_ok() {
-            return Ok(path);
-        } else {
-            // Fall back to double slash for ECK bundles with faulty paths
-            let base = normalize_archive_separators(workdir.join(dir).to_string_lossy().as_ref());
-            format!("{base}//{filename}")
-        }
-    } else {
-        let mut path = PathBuf::from(archive.by_index(0)?.name().to_string());
-        trim_to_working_directory(&mut path);
-        normalize_archive_separators(path.join(filename).to_string_lossy().as_ref())
-    };
-
-    if archive.by_name(&path).is_ok() {
-        Ok(path)
-    } else {
-        Err(MissingSource::ArchiveEntry { path }.into())
+    let mut workdir = PathBuf::from(archive.by_index(0)?.name().to_string());
+    trim_to_working_directory(&mut workdir);
+    if let Some(dir) = subdir {
+        workdir.push(dir);
     }
+    let path = normalize_archive_separators(workdir.join(filename).to_string_lossy().as_ref());
+    if archive.by_name(&path).is_ok() {
+        return Ok(path);
+    }
+
+    // ECK writes some entries as `name//file`. Match on the same components
+    // `list_archive_dirs` discovers, so every listed directory can be read.
+    let wanted = path_components(&path);
+    let found = archive
+        .file_names()
+        .find(|name| !name.ends_with(['/', '\\']) && path_components(name) == wanted)
+        .map(str::to_string);
+    found.ok_or_else(|| MissingSource::ArchiveEntry { path }.into())
 }
 
 #[cfg(test)]
@@ -309,6 +305,27 @@ mod tests {
         let result = resolve_archive_path(Some(&subdir), &mut archive, "version.json").unwrap();
 
         assert_eq!(result, "namespace/elasticsearch/cluster-one//version.json");
+    }
+
+    #[test]
+    fn every_listed_directory_resolves_through_double_slash_entries() {
+        let mut buf = Vec::new();
+        {
+            let mut zip = ZipWriter::new(Cursor::new(&mut buf));
+            zip.start_file("version.json", SimpleFileOptions::default()).unwrap();
+            zip.write_all(b"{}").unwrap();
+            zip.start_file("demo//pods.json", SimpleFileOptions::default()).unwrap();
+            zip.write_all(b"{}").unwrap();
+            zip.finish().unwrap();
+        }
+        let mut archive = ZipArchive::new(Cursor::new(buf)).unwrap();
+
+        assert_eq!(list_archive_dirs(None, &mut archive, "").unwrap(), vec!["demo"]);
+        assert_eq!(
+            resolve_archive_path(None, &mut archive, "demo/pods.json").unwrap(),
+            "demo//pods.json"
+        );
+        assert!(resolve_archive_path(None, &mut archive, "demo/events.json").is_err());
     }
 
     #[test]
