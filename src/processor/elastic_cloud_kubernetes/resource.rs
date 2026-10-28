@@ -79,7 +79,8 @@ const STATUS_FIELDS: [&str; 6] = [
     "observedGeneration",
 ];
 const CONDITION_FIELDS: [&str; 5] = ["type", "status", "reason", "message", "lastTransitionTime"];
-const OPERATIONS: [&str; 3] = ["downscaleOperation", "upgradeOperation", "upscaleOperation"];
+/// ECK serializes in-progress operations as `downscale`, `upgrade`, and `upscale`.
+const OPERATIONS: [&str; 3] = ["downscale", "upgrade", "upscale"];
 const OPERATION_FIELDS: [&str; 2] = ["lastUpdatedTime", "stalled"];
 const OPERATION_NODE_FIELDS: [&str; 7] = [
     "name",
@@ -378,8 +379,8 @@ mod tests {
             "env": [{"name": "PASSWORD", "value": "env-sentinel"}],
             "conditions": [{"type": "ReconciliationComplete", "status": "True", "extra": {"value": "nested-sentinel"}}],
             "inProgressOperations": {
-                "upgradeOperation": {"lastUpdatedTime": "t", "nodes": [{"name": "es-0", "status": "PENDING", "spec": {}}]},
-                "otherOperation": {"value": "operation-sentinel"}
+                "upgrade": {"lastUpdatedTime": "t", "nodes": [{"name": "es-0", "status": "PENDING", "spec": {}}]},
+                "upgradeOperation": {"value": "operation-sentinel"}
             },
             "kibanaAssociationStatus": "Established",
             "elasticsearchAssociationsStatus": {"demo/quickstart": "Established", "demo/other": {"value": "map-sentinel"}},
@@ -393,7 +394,7 @@ mod tests {
                 "availableNodes": 3,
                 "conditions": [{"type": "ReconciliationComplete", "status": "True"}],
                 "inProgressOperations": {
-                    "upgradeOperation": {"lastUpdatedTime": "t", "nodes": [{"name": "es-0", "status": "PENDING"}]}
+                    "upgrade": {"lastUpdatedTime": "t", "nodes": [{"name": "es-0", "status": "PENDING"}]}
                 },
                 "kibanaAssociationStatus": "Established",
                 "elasticsearchAssociationsStatus": {"demo/quickstart": "Established"}

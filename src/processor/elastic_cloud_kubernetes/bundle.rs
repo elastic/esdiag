@@ -484,6 +484,18 @@ impl EckBundle<Discovered> {
     }
 }
 
+/// Whether `name` is a valid Kubernetes object name (a DNS-1123 subdomain).
+/// Pod names from the bundle become file paths, so anything else, such as a
+/// crafted `../outside`, is never read.
+fn is_object_name(name: &str) -> bool {
+    let alphanumeric = |c: char| c.is_ascii_lowercase() || c.is_ascii_digit();
+    (1..=253).contains(&name.len())
+        && name.starts_with(alphanumeric)
+        && name.ends_with(alphanumeric)
+        && name.chars().all(|c| alphanumeric(c) || c == '-' || c == '.')
+        && !name.contains("..")
+}
+
 /// ConfigMaps from the operator's own namespaces: those the tool log names, or
 /// failing that, those holding an operator-labeled StatefulSet. A workload
 /// namespace may own an unrelated ConfigMap named `elastic-operator`.
@@ -605,6 +617,7 @@ impl EckBundle<Indexed> {
             pods: lookups
                 .operator_pods
                 .iter()
+                .filter(|(_, pod)| is_object_name(pod))
                 .map(|(namespace, pod)| {
                     let path = OPERATOR_LOGS.path(namespace).replace("{pod}", pod);
                     (namespace.clone(), pod.clone(), path)
@@ -809,6 +822,27 @@ fn pod_effective(pod: &Pod, resource: &str) -> (Option<f64>, Option<f64>) {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn only_kubernetes_object_names_become_pod_log_paths() {
+        for name in ["elastic-operator-0", "a", "operator.v1-0"] {
+            assert!(is_object_name(name), "{name}");
+        }
+        for name in [
+            "",
+            "../outside",
+            "../../../outside",
+            "a/b",
+            "a\\b",
+            "..",
+            "-a",
+            "a-",
+            "A",
+            "a..b",
+        ] {
+            assert!(!is_object_name(name), "{name}");
+        }
+    }
 
     #[test]
     fn operator_config_comes_only_from_operator_namespaces() {

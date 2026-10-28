@@ -701,6 +701,31 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn bundle_paths_cannot_leave_the_bundle_for_any_receiver() {
+        let (_tmp, receivers) = eck_fixture_receivers();
+        // Resolves back into the fixture on disk, so only the guard rejects it.
+        let escape = "../eck-diagnostics-synthetic/elastic-system/pod/elastic-operator-0/logs.txt";
+        for receiver in receivers {
+            assert!(receiver.read_bundle_lines(escape).await.is_err(), "{receiver}");
+            assert!(
+                receiver
+                    .read_bundle_json::<serde_json::Value>("../eck-diagnostics-synthetic/version.json")
+                    .await
+                    .is_err(),
+                "{receiver}"
+            );
+            assert!(
+                receiver.list_bundle_dirs("../eck-diagnostics-synthetic").await.is_err(),
+                "{receiver}"
+            );
+            assert!(
+                !receiver.has_bundle_dir("../eck-diagnostics-synthetic/demo").await,
+                "{receiver}"
+            );
+        }
+    }
+
+    #[tokio::test]
     async fn empty_bundle_json_is_a_missing_source_for_every_bundle_receiver() {
         let (_tmp, receivers) = eck_fixture_receivers();
         for receiver in receivers {

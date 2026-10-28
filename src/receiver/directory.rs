@@ -10,7 +10,7 @@ use serde::de::DeserializeOwned;
 use std::{
     fs::File,
     io::{BufReader, Read},
-    path::PathBuf,
+    path::{Component, Path, PathBuf},
     sync::Arc,
     sync::OnceLock,
     time::SystemTime,
@@ -214,11 +214,23 @@ impl DirectoryReceiver {
         }
     }
 
+    /// `relative` beneath the working directory. Bundle paths are built from
+    /// names inside the bundle, so they must not climb out of it.
+    fn bundle_path(&self, relative: &str) -> Result<PathBuf> {
+        let escapes = Path::new(relative)
+            .components()
+            .any(|component| !matches!(component, Component::Normal(_) | Component::CurDir));
+        if escapes {
+            return Err(eyre!("Bundle path leaves the diagnostic directory: {relative}"));
+        }
+        Ok(self.path.join(&self.work_dir).join(relative))
+    }
+
     pub async fn read_bundle_json<T>(&self, filename: &str) -> Result<T>
     where
         T: DeserializeOwned,
     {
-        let path = self.path.join(&self.work_dir).join(filename);
+        let path = self.bundle_path(filename)?;
         tracing::debug!("Reading bundle file: {}", path.display());
         let file = File::open(&path)?;
         let mut reader = BufReader::new(file);
@@ -232,7 +244,7 @@ impl DirectoryReceiver {
     }
 
     pub fn list_bundle_dirs(&self, dir: &str) -> Result<Vec<String>> {
-        let path = self.path.join(&self.work_dir).join(dir);
+        let path = self.bundle_path(dir)?;
         let mut dirs = Vec::new();
         for entry in std::fs::read_dir(&path)? {
             let entry = entry?;
@@ -245,7 +257,7 @@ impl DirectoryReceiver {
     }
 
     pub fn read_bundle_lines(&self, filename: &str) -> Result<BoxStream<'static, Result<String>>> {
-        let path = self.path.join(&self.work_dir).join(filename);
+        let path = self.bundle_path(filename)?;
         tracing::debug!("Streaming bundle lines: {}", path.display());
         let file = File::open(&path)?;
         let (tx, rx) = mpsc::channel(256);
@@ -260,7 +272,7 @@ impl DirectoryReceiver {
     /// working subdirectory. Used for platform indicators such as the
     /// `syscalls` folder.
     pub fn has_bundle_dir(&self, dir: &str) -> bool {
-        self.path.join(&self.work_dir).join(dir).is_dir()
+        self.bundle_path(dir).is_ok_and(|path| path.is_dir())
     }
 
     pub fn set_source_product(&self, product: &'static str) -> Result<()> {

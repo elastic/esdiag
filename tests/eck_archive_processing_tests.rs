@@ -199,6 +199,12 @@ fn eck_bundle_emits_the_platform_streams_joined_to_the_child() {
     assert_eq!(find(nodesets, "/nodeset/name", "data")["rollout_in_progress"], true);
     assert_eq!(find(nodesets, "/nodeset/name", "master")["rollout_in_progress"], false);
 
+    let resources = &run.streams["settings-eck.resource-esdiag"];
+    let elasticsearch = find(resources, "/eck/resource/kind", "Elasticsearch");
+    let upgrade = &elasticsearch["status"]["inProgressOperations"]["upgrade"];
+    assert_eq!(upgrade["nodes"][0]["name"], "quickstart-es-data-1");
+    assert_eq!(upgrade["nodes"][0]["status"], "PENDING");
+
     let volumes = &run.streams["metrics-kubernetes.volume-esdiag"];
     let resizing = find(volumes, "/claim/name", "elasticsearch-data-quickstart-es-data-0");
     assert_eq!(resizing["resize_pending"], true);
