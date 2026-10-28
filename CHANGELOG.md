@@ -18,6 +18,8 @@ published release notes, maintenance branches, and tagged history.
 - Added an experimental `elastic diag` profile with context-backed collection, named output contexts, saved symbolic context references, and explicit Cloud-admin deployment targets (#339).
 - Added `esdiag-lite.sh` and `esdiag-lite.ps1`, each with a SHA-256 checksum, to every GitHub release.
 - Added pull-request checks for the ESDiag Lite scripts, including the Windows PowerShell tests.
+- Added processing for ECK diagnostic bundles, indexing operator settings and logs, ECK resources and nodeSets, and Kubernetes node, pod, container, volume, and event state alongside the included Elasticsearch diagnostics (#73).
+- Added the ECK Platform Overview dashboard, linked from processed ECK bundles in place of the Cluster Report (#73).
 
 ### Changed
 
@@ -60,8 +62,6 @@ published release notes, maintenance branches, and tagged history.
 - Added drilldowns to the Index Detail, Data Stream Detail, and Alias Detail dashboards from the bulk and indexing rate charts on Daily Indexing Overview, the per-node operation charts on Index Operations Overview and Datastream Operations Overview, the per-node shard CPU time charts on Ingest Nodes Overview and Search Nodes Overview, and the rollover alias and newest indices panels on Index Settings Overview.
 - Added drilldowns to the Node Detail dashboard from every per-node chart and thread pool table on Ingest Nodes Overview and Search Nodes Overview.
 - Added a native Windows x86_64 release archive, `esdiag-VERSION-x86_64-pc-windows-msvc.zip`, that runs without the Visual C++ Redistributable.
-- Added processing for ECK diagnostic bundles, indexing operator settings and logs, ECK resources and nodeSets, and Kubernetes node, pod, container, volume, and event state alongside the included Elasticsearch diagnostics (#73).
-- Added the ECK Platform Overview dashboard, linked from processed ECK bundles in place of the Cluster Report (#73).
 
 ### Changed
 
@@ -173,8 +173,6 @@ published release notes, maintenance branches, and tagged history.
 - Fixed repeated `esdiag setup` runs failing when a bundled Kibana workflow already exists.
 - Fixed incomplete Kibana setup summaries omitting assets installed before a later failure.
 - Fixed HTTP 409 failures reporting the `invalid_input` category instead of `conflict`.
-- Fixed the ECK Platform Overview Warning events panel aggregating on `message.keyword`, Operator errors by controller so reconciler errors without a resource name still appear, and Lens column order on Pods per node by ECK type and Operator errors by controller so those breakdown charts render.
-- Fixed ECK index mappings so sparse dashboard fields such as `status.expectedNodes`, `nodeset.roles`, `zone`, and `last_terminated.reason` exist before any document writes them.
 - Fixed unresolved saved hosts displaying the wrong application while editing.
 - Avoided buffering an extra copy of each JSON source when processing diagnostic directories and archives.
 

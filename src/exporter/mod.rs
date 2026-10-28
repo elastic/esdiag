@@ -923,7 +923,11 @@ mod tests {
         ))
         .expect("cluster exporter");
 
-        assert!(exporter.kibana_link("diag-123", 1_700_000_000_000).is_none());
+        assert!(
+            exporter
+                .kibana_link(super::KibanaLinkTarget::ClusterReport, "diag-123", 1_700_000_000_000)
+                .is_none()
+        );
     }
 
     #[test]
@@ -935,7 +939,7 @@ mod tests {
 
         let exporter = Exporter::try_from(Uri::try_from_output_env().expect("output env")).expect("cluster exporter");
         let kibana_link = exporter
-            .kibana_link("diag-123", 1_700_000_000_000)
+            .kibana_link(super::KibanaLinkTarget::ClusterReport, "diag-123", 1_700_000_000_000)
             .expect("kibana link");
 
         assert!(kibana_link.starts_with("https://env-kb.example:5601/app/dashboards#/view/"));
@@ -956,7 +960,11 @@ mod tests {
         ))
         .expect("cluster exporter");
 
-        assert!(exporter.kibana_link("diag-123", 1_700_000_000_000).is_none());
+        assert!(
+            exporter
+                .kibana_link(super::KibanaLinkTarget::ClusterReport, "diag-123", 1_700_000_000_000)
+                .is_none()
+        );
     }
 
     #[test]
@@ -968,7 +976,7 @@ mod tests {
 
         let exporter = Exporter::try_from(Uri::try_from_output_env().expect("output env")).expect("cluster exporter");
         let kibana_link = exporter
-            .kibana_link("diag-123", 1_700_000_000_000)
+            .kibana_link(super::KibanaLinkTarget::ClusterReport, "diag-123", 1_700_000_000_000)
             .expect("kibana link");
 
         assert!(
