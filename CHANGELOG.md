@@ -173,6 +173,8 @@ published release notes, maintenance branches, and tagged history.
 - Fixed repeated `esdiag setup` runs failing when a bundled Kibana workflow already exists.
 - Fixed incomplete Kibana setup summaries omitting assets installed before a later failure.
 - Fixed HTTP 409 failures reporting the `invalid_input` category instead of `conflict`.
+- Fixed the ECK Platform Overview Warning events panel aggregating on `message.keyword`, Operator errors by controller so reconciler errors without a resource name still appear, and Lens column order on Pods per node by ECK type and Operator errors by controller so those breakdown charts render.
+- Fixed ECK index mappings so sparse dashboard fields such as `status.expectedNodes`, `nodeset.roles`, `zone`, and `last_terminated.reason` exist before any document writes them.
 - Fixed unresolved saved hosts displaying the wrong application while editing.
 - Avoided buffering an extra copy of each JSON source when processing diagnostic directories and archives.
 

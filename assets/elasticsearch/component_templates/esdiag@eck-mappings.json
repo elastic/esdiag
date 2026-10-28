@@ -142,12 +142,30 @@
             },
             "start_time": {
               "type": "date"
+            },
+            "health": {
+              "type": "keyword",
+              "ignore_above": 1024
+            },
+            "phase": {
+              "type": "keyword",
+              "ignore_above": 1024
+            },
+            "availableNodes": {
+              "type": "long"
+            },
+            "expectedNodes": {
+              "type": "long"
             }
           }
         },
         "container": {
           "type": "object",
           "properties": {
+            "name": {
+              "type": "keyword",
+              "ignore_above": 1024
+            },
             "restart_count": {
               "type": "long"
             },
@@ -162,20 +180,21 @@
             }
           }
         },
-        "state": {
-          "type": "object",
-          "properties": {
-            "exit_code": {
-              "type": "long"
-            },
-            "started_at": {
-              "type": "date"
-            }
-          }
+        "zone": {
+          "type": "keyword",
+          "ignore_above": 1024
+        },
+        "controller": {
+          "type": "keyword",
+          "ignore_above": 1024
         },
         "last_terminated": {
           "type": "object",
           "properties": {
+            "reason": {
+              "type": "keyword",
+              "ignore_above": 1024
+            },
             "exit_code": {
               "type": "long"
             },
@@ -184,11 +203,85 @@
             }
           }
         },
+        "state": {
+          "type": "object",
+          "properties": {
+            "current": {
+              "type": "keyword",
+              "ignore_above": 1024
+            },
+            "reason": {
+              "type": "keyword",
+              "ignore_above": 1024
+            },
+            "exit_code": {
+              "type": "long"
+            },
+            "started_at": {
+              "type": "date"
+            }
+          }
+        },
         "nodeset": {
           "type": "object",
           "properties": {
+            "name": {
+              "type": "keyword",
+              "ignore_above": 1024
+            },
             "count": {
               "type": "long"
+            },
+            "roles": {
+              "type": "keyword",
+              "ignore_above": 1024
+            }
+          }
+        },
+        "resources": {
+          "type": "object",
+          "properties": {
+            "limits": {
+              "type": "object",
+              "properties": {
+                "cpu": {
+                  "type": "double"
+                },
+                "memory": {
+                  "type": "double"
+                }
+              }
+            },
+            "requests": {
+              "type": "object",
+              "properties": {
+                "cpu": {
+                  "type": "double"
+                },
+                "memory": {
+                  "type": "double"
+                }
+              }
+            }
+          }
+        },
+        "storage_class": {
+          "type": "object",
+          "properties": {
+            "provisioner": {
+              "type": "keyword",
+              "ignore_above": 1024
+            },
+            "allow_volume_expansion": {
+              "type": "boolean"
+            },
+            "volume_binding_mode": {
+              "type": "keyword",
+              "ignore_above": 1024
+            },
+            "reclaim_policy": {
+              "type": "keyword",
+              "ignore_above": 1024
             }
           }
         },
@@ -233,6 +326,23 @@
         "eck": {
           "type": "object",
           "properties": {
+            "type": {
+              "type": "keyword",
+              "ignore_above": 1024
+            },
+            "resource": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "keyword",
+                  "ignore_above": 1024
+                },
+                "name": {
+                  "type": "keyword",
+                  "ignore_above": 1024
+                }
+              }
+            },
             "operator": {
               "type": "object",
               "properties": {
@@ -244,6 +354,10 @@
             "license": {
               "type": "object",
               "properties": {
+                "level": {
+                  "type": "keyword",
+                  "ignore_above": 1024
+                },
                 "enterprise_resource_units": {
                   "type": "double"
                 },
@@ -258,6 +372,10 @@
             "diagnostics": {
               "type": "object",
               "properties": {
+                "version": {
+                  "type": "keyword",
+                  "ignore_above": 1024
+                },
                 "errors": {
                   "type": "match_only_text"
                 }
@@ -268,5 +386,5 @@
       }
     }
   },
-  "version": 1
+  "version": 2
 }

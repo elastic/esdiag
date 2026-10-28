@@ -1951,8 +1951,8 @@
                     "74983f98-b8bc-5492-9ef2-34dee6f69914": {
                       "columnOrder": [
                         "2449bcc9-43d6-5e15-adb2-0126b909f1bf",
-                        "c09a36bc-510f-5d07-9c02-eac1527b45ed",
-                        "b48fc51a-245d-5dd2-85da-1c210a63bad5"
+                        "b48fc51a-245d-5dd2-85da-1c210a63bad5",
+                        "c09a36bc-510f-5d07-9c02-eac1527b45ed"
                       ],
                       "columns": {
                         "2449bcc9-43d6-5e15-adb2-0126b909f1bf": {
@@ -2004,12 +2004,12 @@
                             "excludeIsRegex": false,
                             "include": [],
                             "includeIsRegex": false,
-                            "missingBucket": false,
+                            "missingBucket": true,
                             "orderBy": {
-                              "fallback": true,
-                              "type": "alphabetical"
+                              "columnId": "c09a36bc-510f-5d07-9c02-eac1527b45ed",
+                              "type": "column"
                             },
-                            "orderDirection": "asc",
+                            "orderDirection": "desc",
                             "otherBucket": false,
                             "parentFormat": {
                               "id": "terms"
@@ -2495,7 +2495,7 @@
                           "dataType": "string",
                           "filter": {
                             "language": "kuery",
-                            "query": "\"message\": *"
+                            "query": "\"message.keyword\": *"
                           },
                           "isBucketed": false,
                           "label": "Message",
@@ -2505,7 +2505,7 @@
                             "sortField": "@timestamp"
                           },
                           "scale": "ordinal",
-                          "sourceField": "message"
+                          "sourceField": "message.keyword"
                         },
                         "d342949c-b006-5885-9aee-7685173b3447": {
                           "customLabel": true,
@@ -2622,8 +2622,8 @@
                     "75076e83-e8cd-5bad-85c2-ccc2b6f84965": {
                       "columnOrder": [
                         "006e469b-b24b-5d50-9f7b-f856c53ee831",
-                        "444beeb4-8f4b-5db2-893f-afe93f65782e",
-                        "fe127681-8bf1-54f3-b755-e7107d3224c8"
+                        "fe127681-8bf1-54f3-b755-e7107d3224c8",
+                        "444beeb4-8f4b-5db2-893f-afe93f65782e"
                       ],
                       "columns": {
                         "006e469b-b24b-5d50-9f7b-f856c53ee831": {
@@ -2655,19 +2655,19 @@
                           "customLabel": true,
                           "dataType": "string",
                           "isBucketed": true,
-                          "label": "Resource",
+                          "label": "Controller",
                           "operationType": "terms",
                           "params": {
                             "exclude": [],
                             "excludeIsRegex": false,
                             "include": [],
                             "includeIsRegex": false,
-                            "missingBucket": false,
+                            "missingBucket": true,
                             "orderBy": {
-                              "fallback": true,
-                              "type": "alphabetical"
+                              "columnId": "444beeb4-8f4b-5db2-893f-afe93f65782e",
+                              "type": "column"
                             },
-                            "orderDirection": "asc",
+                            "orderDirection": "desc",
                             "otherBucket": false,
                             "parentFormat": {
                               "id": "terms"
@@ -2675,7 +2675,7 @@
                             "size": 10
                           },
                           "scale": "ordinal",
-                          "sourceField": "eck.resource.name"
+                          "sourceField": "controller"
                         }
                       },
                       "ignoreGlobalFilters": false,
@@ -2736,7 +2736,7 @@
           "i": "12ff48da-4a40-52bf-9b20-ea31551f7313"
         },
         "panelIndex": "12ff48da-4a40-52bf-9b20-ea31551f7313",
-        "title": "Operator errors by resource",
+        "title": "Operator errors by controller",
         "type": "lens"
       },
       {
