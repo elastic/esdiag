@@ -1,0 +1,390 @@
+{
+  "_meta": {
+    "managed": false,
+    "description": "ESDiag ECK platform and Kubernetes mappings. Kubernetes quantities are cores or bytes. scheduled.* sums only the pods collected in the bundle's namespaces, so it is a lower bound of what the node has scheduled."
+  },
+  "template": {
+    "mappings": {
+      "_routing": {
+        "required": false
+      },
+      "date_detection": false,
+      "numeric_detection": false,
+      "dynamic_date_formats": [
+        "strict_date_optional_time",
+        "yyyy/MM/dd HH:mm:ss Z||yyyy/MM/dd Z"
+      ],
+      "dynamic": true,
+      "dynamic_templates": [
+        {
+          "quantities": {
+            "match_pattern": "regex",
+            "path_match": "^(capacity|allocatable|(resources|scheduled)\\.(requests|limits))\\.[^.]+$",
+            "mapping": {
+              "type": "double"
+            }
+          }
+        },
+        {
+          "conditions_by_type": {
+            "path_match": "condition.*",
+            "mapping": {
+              "type": "keyword"
+            }
+          }
+        },
+        {
+          "strings_as_keywords": {
+            "mapping": {
+              "type": "keyword",
+              "ignore_above": 1024
+            },
+            "match_mapping_type": "string"
+          }
+        }
+      ],
+      "properties": {
+        "data_stream": {
+          "type": "object",
+          "properties": {
+            "namespace": {
+              "type": "constant_keyword",
+              "value": "esdiag"
+            }
+          }
+        },
+        "message": {
+          "type": "match_only_text",
+          "fields": {
+            "keyword": {
+              "type": "keyword",
+              "ignore_above": 1024
+            }
+          }
+        },
+        "error": {
+          "type": "match_only_text"
+        },
+        "took": {
+          "type": "double"
+        },
+        "iteration": {
+          "type": "long"
+        },
+        "count": {
+          "type": "long"
+        },
+        "first_timestamp": {
+          "type": "date"
+        },
+        "last_timestamp": {
+          "type": "date"
+        },
+        "generation_lag": {
+          "type": "long"
+        },
+        "restart_count": {
+          "type": "long"
+        },
+        "not_ready_containers": {
+          "type": "long"
+        },
+        "requested_bytes": {
+          "type": "double"
+        },
+        "capacity_bytes": {
+          "type": "double"
+        },
+        "resize_pending": {
+          "type": "boolean"
+        },
+        "rollout_in_progress": {
+          "type": "boolean"
+        },
+        "unschedulable": {
+          "type": "boolean"
+        },
+        "scheduled": {
+          "type": "object",
+          "properties": {
+            "pods": {
+              "type": "long"
+            }
+          }
+        },
+        "conditions": {
+          "type": "object",
+          "properties": {
+            "message": {
+              "type": "match_only_text"
+            },
+            "last_transition_time": {
+              "type": "date"
+            }
+          }
+        },
+        "status": {
+          "type": "object",
+          "properties": {
+            "inProgressOperations": {
+              "type": "flattened"
+            },
+            "elasticsearchAssociationsStatus": {
+              "type": "flattened"
+            },
+            "conditions": {
+              "type": "object",
+              "properties": {
+                "message": {
+                  "type": "match_only_text"
+                }
+              }
+            },
+            "start_time": {
+              "type": "date"
+            },
+            "health": {
+              "type": "keyword",
+              "ignore_above": 1024
+            },
+            "phase": {
+              "type": "keyword",
+              "ignore_above": 1024
+            },
+            "availableNodes": {
+              "type": "long"
+            },
+            "expectedNodes": {
+              "type": "long"
+            }
+          }
+        },
+        "container": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "keyword",
+              "ignore_above": 1024
+            },
+            "restart_count": {
+              "type": "long"
+            },
+            "ready": {
+              "type": "boolean"
+            },
+            "started": {
+              "type": "boolean"
+            },
+            "init": {
+              "type": "boolean"
+            }
+          }
+        },
+        "zone": {
+          "type": "keyword",
+          "ignore_above": 1024
+        },
+        "controller": {
+          "type": "keyword",
+          "ignore_above": 1024
+        },
+        "last_terminated": {
+          "type": "object",
+          "properties": {
+            "reason": {
+              "type": "keyword",
+              "ignore_above": 1024
+            },
+            "exit_code": {
+              "type": "long"
+            },
+            "finished_at": {
+              "type": "date"
+            }
+          }
+        },
+        "state": {
+          "type": "object",
+          "properties": {
+            "current": {
+              "type": "keyword",
+              "ignore_above": 1024
+            },
+            "reason": {
+              "type": "keyword",
+              "ignore_above": 1024
+            },
+            "exit_code": {
+              "type": "long"
+            },
+            "started_at": {
+              "type": "date"
+            }
+          }
+        },
+        "nodeset": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "keyword",
+              "ignore_above": 1024
+            },
+            "count": {
+              "type": "long"
+            },
+            "roles": {
+              "type": "keyword",
+              "ignore_above": 1024
+            }
+          }
+        },
+        "resources": {
+          "type": "object",
+          "properties": {
+            "limits": {
+              "type": "object",
+              "properties": {
+                "cpu": {
+                  "type": "double"
+                },
+                "memory": {
+                  "type": "double"
+                }
+              }
+            },
+            "requests": {
+              "type": "object",
+              "properties": {
+                "cpu": {
+                  "type": "double"
+                },
+                "memory": {
+                  "type": "double"
+                }
+              }
+            }
+          }
+        },
+        "storage_class": {
+          "type": "object",
+          "properties": {
+            "provisioner": {
+              "type": "keyword",
+              "ignore_above": 1024
+            },
+            "allow_volume_expansion": {
+              "type": "boolean"
+            },
+            "volume_binding_mode": {
+              "type": "keyword",
+              "ignore_above": 1024
+            },
+            "reclaim_policy": {
+              "type": "keyword",
+              "ignore_above": 1024
+            }
+          }
+        },
+        "jvm": {
+          "type": "object",
+          "properties": {
+            "heap": {
+              "type": "object",
+              "properties": {
+                "min_bytes": {
+                  "type": "double"
+                },
+                "max_bytes": {
+                  "type": "double"
+                }
+              }
+            }
+          }
+        },
+        "volume_claims": {
+          "type": "object",
+          "properties": {
+            "storage_bytes": {
+              "type": "double"
+            }
+          }
+        },
+        "statefulset": {
+          "type": "object",
+          "properties": {
+            "replicas": {
+              "type": "long"
+            },
+            "ready_replicas": {
+              "type": "long"
+            },
+            "updated_replicas": {
+              "type": "long"
+            }
+          }
+        },
+        "eck": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "keyword",
+              "ignore_above": 1024
+            },
+            "resource": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "keyword",
+                  "ignore_above": 1024
+                },
+                "name": {
+                  "type": "keyword",
+                  "ignore_above": 1024
+                }
+              }
+            },
+            "operator": {
+              "type": "object",
+              "properties": {
+                "config": {
+                  "type": "flattened"
+                }
+              }
+            },
+            "license": {
+              "type": "object",
+              "properties": {
+                "level": {
+                  "type": "keyword",
+                  "ignore_above": 1024
+                },
+                "enterprise_resource_units": {
+                  "type": "double"
+                },
+                "total_managed_memory_bytes": {
+                  "type": "double"
+                },
+                "timestamp": {
+                  "type": "date"
+                }
+              }
+            },
+            "diagnostics": {
+              "type": "object",
+              "properties": {
+                "version": {
+                  "type": "keyword",
+                  "ignore_above": 1024
+                },
+                "errors": {
+                  "type": "match_only_text"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "version": 2
+}

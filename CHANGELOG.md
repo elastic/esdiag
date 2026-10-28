@@ -18,6 +18,8 @@ published release notes, maintenance branches, and tagged history.
 - Added an experimental `elastic diag` profile with context-backed collection, named output contexts, saved symbolic context references, and explicit Cloud-admin deployment targets (#339).
 - Added `esdiag-lite.sh` and `esdiag-lite.ps1`, each with a SHA-256 checksum, to every GitHub release.
 - Added pull-request checks for the ESDiag Lite scripts, including the Windows PowerShell tests.
+- Added processing for ECK diagnostic bundles, indexing operator settings and logs, ECK resources and nodeSets, and Kubernetes node, pod, container, volume, and event state alongside the included Elasticsearch diagnostics (#73).
+- Added the ECK Platform Overview dashboard, linked from processed ECK bundles in place of the Cluster Report (#73).
 
 ### Changed
 

@@ -1,0 +1,57 @@
+{
+  "apiVersion": "v1",
+  "kind": "List",
+  "metadata": {
+    "resourceVersion": ""
+  },
+  "items": [
+    {
+      "apiVersion": "v1",
+      "kind": "ConfigMap",
+      "metadata": {
+        "name": "demo-pipelines",
+        "namespace": "demo"
+      },
+      "data": {
+        "orders.conf": "output { elasticsearch { password => \"configmap-data-sentinel\" } }"
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "ConfigMap",
+      "metadata": {
+        "name": "quickstart-es-scripts",
+        "namespace": "demo",
+        "labels": {
+          "common.k8s.elastic.co/type": "elasticsearch",
+          "elasticsearch.k8s.elastic.co/cluster-name": "quickstart"
+        }
+      },
+      "data": {
+        "readiness-probe-script.sh": "#!/usr/bin/env bash\necho configmap-script-sentinel\n"
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "ConfigMap",
+      "metadata": {
+        "name": "elastic-operator",
+        "namespace": "demo"
+      },
+      "data": {
+        "eck.yaml": "password: decoy-operator-sentinel\n"
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "ConfigMap",
+      "metadata": {
+        "name": "elastic-licensing",
+        "namespace": "demo"
+      },
+      "data": {
+        "eck_license_level": "decoy-license-sentinel"
+      }
+    }
+  ]
+}

@@ -33,7 +33,7 @@ pub use elasticsearch::Cluster as ElasticsearchCluster;
 pub use crate::processor::diagnostic::data_source::StreamingDataSource;
 use crate::{
     data::{self, Application, Platform},
-    exporter::{DocumentExporter as StageDocumentExporter, Exporter},
+    exporter::{DocumentExporter as StageDocumentExporter, Exporter, KibanaLinkTarget},
     receiver::Receiver,
 };
 use api::ProcessSelection;
@@ -781,9 +781,12 @@ impl Processor<Processing> {
             report.diagnostic.metadata.id,
         );
 
+        let link_target =
+            KibanaLinkTarget::for_diagnostic(identifiers.platform.unwrap_or_default(), report.diagnostic.application);
         if let Some(kibana_link) = self
             .exporter
             .resolved_kibana_link(
+                link_target,
                 &report.diagnostic.metadata.id,
                 report.diagnostic.metadata.collection_date,
             )

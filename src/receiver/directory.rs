@@ -10,7 +10,7 @@ use serde::de::DeserializeOwned;
 use std::{
     fs::File,
     io::{BufReader, Read},
-    path::PathBuf,
+    path::{Component, Path, PathBuf},
     sync::Arc,
     sync::OnceLock,
     time::SystemTime,
@@ -214,22 +214,65 @@ impl DirectoryReceiver {
         }
     }
 
+    /// `relative` beneath the working directory. Bundle paths are built from
+    /// names inside the bundle, so they must not climb out of it.
+    fn bundle_path(&self, relative: &str) -> Result<PathBuf> {
+        let escapes = Path::new(relative)
+            .components()
+            .any(|component| !matches!(component, Component::Normal(_) | Component::CurDir));
+        if escapes {
+            return Err(eyre!("Bundle path leaves the diagnostic directory: {relative}"));
+        }
+        Ok(self.path.join(&self.work_dir).join(relative))
+    }
+
     pub async fn read_bundle_json<T>(&self, filename: &str) -> Result<T>
     where
         T: DeserializeOwned,
     {
-        let path = self.path.join(&self.work_dir).join(filename);
+        let path = self.bundle_path(filename)?;
         tracing::debug!("Reading bundle file: {}", path.display());
-        let file = File::open(path)?;
-        let reader = BufReader::new(file);
+        let file = File::open(&path)?;
+        let mut reader = BufReader::new(file);
+        if !crate::receiver::source_has_json(&mut reader)? {
+            return Err(MissingSource::Empty {
+                path: path.display().to_string(),
+            }
+            .into());
+        }
         serde_json::from_reader(reader).map_err(Into::into)
+    }
+
+    pub fn list_bundle_dirs(&self, dir: &str) -> Result<Vec<String>> {
+        let path = self.bundle_path(dir)?;
+        let mut dirs = Vec::new();
+        for entry in std::fs::read_dir(&path)? {
+            let entry = entry?;
+            if entry.file_type()?.is_dir() {
+                dirs.push(entry.file_name().to_string_lossy().into_owned());
+            }
+        }
+        dirs.sort();
+        Ok(dirs)
+    }
+
+    pub fn read_bundle_lines(&self, filename: &str) -> Result<BoxStream<'static, Result<String>>> {
+        let path = self.bundle_path(filename)?;
+        tracing::debug!("Streaming bundle lines: {}", path.display());
+        let file = File::open(&path)?;
+        let (tx, rx) = mpsc::channel(256);
+        let producer_tx = tx.clone();
+        let handle = tokio::task::spawn_blocking(move || {
+            crate::receiver::send_bundle_lines(BufReader::new(file), &producer_tx);
+        });
+        Ok(crate::receiver::bundle_line_stream(rx, handle, tx))
     }
 
     /// Whether the bundle contains `dir` as a directory within the receiver's
     /// working subdirectory. Used for platform indicators such as the
     /// `syscalls` folder.
     pub fn has_bundle_dir(&self, dir: &str) -> bool {
-        self.path.join(&self.work_dir).join(dir).is_dir()
+        self.bundle_path(dir).is_ok_and(|path| path.is_dir())
     }
 
     pub fn set_source_product(&self, product: &'static str) -> Result<()> {

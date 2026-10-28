@@ -1,0 +1,115 @@
+{
+  "apiVersion": "v1",
+  "kind": "List",
+  "metadata": {
+    "resourceVersion": ""
+  },
+  "items": [
+    {
+      "apiVersion": "v1",
+      "kind": "Pod",
+      "metadata": {
+        "name": "elastic-operator-0",
+        "namespace": "elastic-system",
+        "uid": "10000000-0000-0000-0000-000000000001",
+        "creationTimestamp": "2026-01-10T00:00:00Z",
+        "labels": {
+          "control-plane": "elastic-operator",
+          "controller-revision-hash": "elastic-operator-7c9f8d6b5",
+          "statefulset.kubernetes.io/pod-name": "elastic-operator-0"
+        },
+        "annotations": {
+          "example.com/sentinel": "annotation-sentinel-value"
+        },
+        "ownerReferences": [
+          {
+            "apiVersion": "apps/v1",
+            "kind": "StatefulSet",
+            "name": "elastic-operator",
+            "controller": true
+          }
+        ]
+      },
+      "spec": {
+        "nodeName": "worker-a",
+        "serviceAccountName": "elastic-operator",
+        "containers": [
+          {
+            "name": "manager",
+            "image": "docker.elastic.co/eck/eck-operator:3.1.0",
+            "args": [
+              "manager",
+              "--config=/conf/eck.yaml"
+            ],
+            "env": [
+              {
+                "name": "OPERATOR_NAMESPACE",
+                "valueFrom": {
+                  "fieldRef": {
+                    "fieldPath": "metadata.namespace"
+                  }
+                }
+              },
+              {
+                "name": "WEBHOOK_SECRET",
+                "value": "webhook-env-sentinel"
+              }
+            ],
+            "resources": {
+              "limits": {
+                "cpu": "1",
+                "memory": "1Gi"
+              },
+              "requests": {
+                "cpu": "100m",
+                "memory": "150Mi"
+              }
+            }
+          }
+        ]
+      },
+      "status": {
+        "phase": "Running",
+        "qosClass": "Burstable",
+        "hostIP": "192.0.2.10",
+        "podIP": "10.0.0.5",
+        "startTime": "2026-01-10T00:00:05Z",
+        "conditions": [
+          {
+            "type": "Initialized",
+            "status": "True"
+          },
+          {
+            "type": "Ready",
+            "status": "True"
+          },
+          {
+            "type": "ContainersReady",
+            "status": "True"
+          },
+          {
+            "type": "PodScheduled",
+            "status": "True"
+          }
+        ],
+        "containerStatuses": [
+          {
+            "name": "manager",
+            "image": "docker.elastic.co/eck/eck-operator:3.1.0",
+            "imageID": "docker.elastic.co/eck/eck-operator@sha256:0000",
+            "containerID": "containerd://operator",
+            "ready": true,
+            "started": true,
+            "restartCount": 0,
+            "lastState": {},
+            "state": {
+              "running": {
+                "startedAt": "2026-01-10T00:00:10Z"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

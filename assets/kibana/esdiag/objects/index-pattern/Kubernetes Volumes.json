@@ -1,0 +1,18 @@
+{
+  "attributes": {
+    "allowHidden": false,
+    "fieldAttrs": {},
+    "fieldFormatMap": {},
+    "fields": "[]",
+    "name": "Kubernetes Volumes",
+    "runtimeFieldMap": "{}",
+    "sourceFilters": "[]",
+    "timeFieldName": "@timestamp",
+    "title": "metrics-kubernetes.volume-esdiag"
+  },
+  "coreMigrationVersion": "8.8.0",
+  "id": "6cfea39b-6b28-585b-a3d3-4b1912c94478",
+  "references": [],
+  "type": "index-pattern",
+  "typeMigrationVersion": "8.0.0"
+}

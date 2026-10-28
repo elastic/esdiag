@@ -80,6 +80,79 @@ where
     })))
 }
 
+/// Stream the lines of one archive entry. The archive stays locked while the
+/// stream is being read, so consumers must drain it before issuing other reads
+/// on the same receiver.
+pub async fn read_lines_from_archive<R>(
+    archive: Arc<RwLock<ZipArchive<R>>>,
+    subdir: Option<PathBuf>,
+    filename: &str,
+) -> Result<BoxStream<'static, Result<String>>>
+where
+    R: Read + Seek + Send + Sync + 'static,
+{
+    let path = {
+        let mut guard = archive.write().await;
+        resolve_archive_path(subdir.as_ref(), &mut *guard, filename)?
+    };
+    tracing::debug!("Streaming lines from archive: {}", path);
+    let (tx, rx) = mpsc::channel(256);
+    let producer_tx = tx.clone();
+    let handle = tokio::task::spawn_blocking(move || {
+        let mut guard = archive.blocking_write();
+        match guard.by_name(&path) {
+            Ok(file) => crate::receiver::send_bundle_lines(BufReader::new(file), &producer_tx),
+            Err(err) => {
+                let _ = producer_tx.blocking_send(Err(eyre::eyre!(err)));
+            }
+        }
+    });
+    Ok(crate::receiver::bundle_line_stream(rx, handle, tx))
+}
+
+fn path_components(path: &str) -> Vec<String> {
+    path.split(['/', '\\'])
+        .filter(|component| !component.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+/// Directory names directly beneath `dir`, resolved against the same bundle
+/// root and working subdirectory as [`resolve_archive_path`]. Empty path
+/// components are ignored so ECK's `name//file` entries list correctly.
+pub fn list_archive_dirs<A: Read + Seek>(
+    subdir: Option<&PathBuf>,
+    archive: &mut ZipArchive<A>,
+    dir: &str,
+) -> Result<Vec<String>> {
+    let mut root = PathBuf::from(archive.by_index(0)?.name().to_string());
+    trim_to_working_directory(&mut root);
+    let mut prefix = path_components(&root.to_string_lossy());
+    if let Some(subdir) = subdir {
+        prefix.extend(path_components(&subdir.to_string_lossy()));
+    }
+    prefix.extend(path_components(dir));
+
+    let mut found_prefix = false;
+    let mut dirs = std::collections::BTreeSet::new();
+    for name in archive.file_names() {
+        let explicit_dir_entry = name.ends_with('/') || name.ends_with('\\');
+        let components = path_components(name);
+        if components.len() <= prefix.len() || components[..prefix.len()] != prefix[..] {
+            continue;
+        }
+        found_prefix = true;
+        if components.len() > prefix.len() + 1 || explicit_dir_entry {
+            dirs.insert(components[prefix.len()].clone());
+        }
+    }
+
+    if !found_prefix && !prefix.is_empty() {
+        return Err(MissingSource::ArchiveEntry { path: prefix.join("/") }.into());
+    }
+    Ok(dirs.into_iter().collect())
+}
+
 pub fn trim_to_working_directory(path: &mut PathBuf) {
     // Drop any filename
     if path.extension().is_some() {
@@ -156,28 +229,24 @@ pub fn resolve_archive_path<A: Read + Seek>(
         path.replace('\\', "/")
     }
 
-    let path = if let Some(dir) = subdir {
-        let mut workdir = PathBuf::from(archive.by_index(0)?.name().to_string());
-        trim_to_working_directory(&mut workdir);
-        let path = normalize_archive_separators(workdir.join(dir).join(filename).to_string_lossy().as_ref());
-        if archive.by_name(&path).is_ok() {
-            return Ok(path);
-        } else {
-            // Fall back to double slash for ECK bundles with faulty paths
-            let base = normalize_archive_separators(workdir.join(dir).to_string_lossy().as_ref());
-            format!("{base}//{filename}")
-        }
-    } else {
-        let mut path = PathBuf::from(archive.by_index(0)?.name().to_string());
-        trim_to_working_directory(&mut path);
-        normalize_archive_separators(path.join(filename).to_string_lossy().as_ref())
-    };
-
-    if archive.by_name(&path).is_ok() {
-        Ok(path)
-    } else {
-        Err(MissingSource::ArchiveEntry { path }.into())
+    let mut workdir = PathBuf::from(archive.by_index(0)?.name().to_string());
+    trim_to_working_directory(&mut workdir);
+    if let Some(dir) = subdir {
+        workdir.push(dir);
     }
+    let path = normalize_archive_separators(workdir.join(filename).to_string_lossy().as_ref());
+    let components = path_components(&path);
+    let exact = components.join("/");
+    // ECK writes some entries as `name//file`, which `list_archive_dirs`
+    // lists as `name`. Probing each single doubled separator through the
+    // archive's name index keeps lookups of absent files constant-time.
+    let found = std::iter::once(exact)
+        .chain(
+            (1..components.len())
+                .map(|split| format!("{}//{}", components[..split].join("/"), components[split..].join("/"))),
+        )
+        .find(|candidate| archive.index_for_name(candidate).is_some());
+    found.ok_or_else(|| MissingSource::ArchiveEntry { path }.into())
 }
 
 #[cfg(test)]
@@ -236,6 +305,27 @@ mod tests {
         let result = resolve_archive_path(Some(&subdir), &mut archive, "version.json").unwrap();
 
         assert_eq!(result, "namespace/elasticsearch/cluster-one//version.json");
+    }
+
+    #[test]
+    fn every_listed_directory_resolves_through_double_slash_entries() {
+        let mut buf = Vec::new();
+        {
+            let mut zip = ZipWriter::new(Cursor::new(&mut buf));
+            zip.start_file("version.json", SimpleFileOptions::default()).unwrap();
+            zip.write_all(b"{}").unwrap();
+            zip.start_file("demo//pods.json", SimpleFileOptions::default()).unwrap();
+            zip.write_all(b"{}").unwrap();
+            zip.finish().unwrap();
+        }
+        let mut archive = ZipArchive::new(Cursor::new(buf)).unwrap();
+
+        assert_eq!(list_archive_dirs(None, &mut archive, "").unwrap(), vec!["demo"]);
+        assert_eq!(
+            resolve_archive_path(None, &mut archive, "demo/pods.json").unwrap(),
+            "demo//pods.json"
+        );
+        assert!(resolve_archive_path(None, &mut archive, "demo/events.json").is_err());
     }
 
     #[test]
