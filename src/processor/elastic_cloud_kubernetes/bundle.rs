@@ -794,22 +794,32 @@ fn pod_effective(pod: &Pod, resource: &str) -> (Option<f64>, Option<f64>) {
             .and_then(|value| super::quantity::parse(value))
     };
     let effective = |pick: fn(&super::resources::ResourceRequirements) -> Option<&BTreeMap<String, String>>| {
-        let app: Vec<f64> = pod
+        let add = |total: Option<f64>, value: f64| Some(total.unwrap_or_default() + value);
+        // Native sidecars (`restartPolicy: Always`) keep running beside later
+        // init containers and the app containers; one-shot inits run alone
+        // with the sidecars started before them.
+        let mut sidecars = None;
+        let mut init = None;
+        for container in &pod.spec.init_containers {
+            let Some(value) = quantity(pick(&container.resources)) else {
+                continue;
+            };
+            if container.restart_policy.as_deref() == Some("Always") {
+                sidecars = add(sidecars, value);
+            } else {
+                let peak = sidecars.unwrap_or_default() + value;
+                init = Some(init.map_or(peak, |init: f64| init.max(peak)));
+            }
+        }
+        let running = pod
             .spec
             .containers
             .iter()
             .filter_map(|container| quantity(pick(&container.resources)))
-            .collect();
-        let init = pod
-            .spec
-            .init_containers
-            .iter()
-            .filter_map(|container| quantity(pick(&container.resources)))
-            .reduce(f64::max);
-        let app = (!app.is_empty()).then(|| app.iter().sum::<f64>());
-        match (app, init) {
-            (Some(app), Some(init)) => Some(app.max(init)),
-            (app, init) => app.or(init),
+            .fold(sidecars, add);
+        match (running, init) {
+            (Some(running), Some(init)) => Some(running.max(init)),
+            (running, init) => running.or(init),
         }
     };
     (
@@ -938,5 +948,30 @@ mod tests {
             pod_effective(&pod, "memory"),
             (Some(1_073_741_824.0), Some(2_147_483_648.0))
         );
+    }
+
+    #[test]
+    fn pod_effective_adds_native_sidecars_to_running_containers() {
+        let pod: Pod = serde_json::from_value(json!({
+            "spec": {
+                "initContainers": [
+                    {"restartPolicy": "Always", "resources": {"requests": {"cpu": "1"}}},
+                    {"resources": {"requests": {"cpu": "2500m"}}}
+                ],
+                "containers": [{"resources": {"requests": {"cpu": "2"}}}]
+            }
+        }))
+        .unwrap();
+        // Running: 1 sidecar + 2 app = 3. The one-shot init peaks at 1 + 2.5.
+        assert_eq!(pod_effective(&pod, "cpu"), (Some(3.5), None));
+
+        let sidecar_only: Pod = serde_json::from_value(json!({
+            "spec": {
+                "initContainers": [{"restartPolicy": "Always", "resources": {"requests": {"cpu": "1"}}}],
+                "containers": [{"resources": {"requests": {"cpu": "2"}}}]
+            }
+        }))
+        .unwrap();
+        assert_eq!(pod_effective(&sidecar_only, "cpu"), (Some(3.0), None));
     }
 }

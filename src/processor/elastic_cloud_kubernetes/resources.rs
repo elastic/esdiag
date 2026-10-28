@@ -146,6 +146,9 @@ pub struct Container {
     pub name: Option<String>,
     pub image: Option<String>,
     pub resources: ResourceRequirements,
+    /// `Always` on an init container marks a native sidecar.
+    #[serde(rename = "restartPolicy")]
+    pub restart_policy: Option<String>,
 }
 
 #[derive(Default, Deserialize)]

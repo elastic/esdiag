@@ -235,17 +235,17 @@ pub fn resolve_archive_path<A: Read + Seek>(
         workdir.push(dir);
     }
     let path = normalize_archive_separators(workdir.join(filename).to_string_lossy().as_ref());
-    if archive.by_name(&path).is_ok() {
-        return Ok(path);
-    }
-
-    // ECK writes some entries as `name//file`. Match on the same components
-    // `list_archive_dirs` discovers, so every listed directory can be read.
-    let wanted = path_components(&path);
-    let found = archive
-        .file_names()
-        .find(|name| !name.ends_with(['/', '\\']) && path_components(name) == wanted)
-        .map(str::to_string);
+    let components = path_components(&path);
+    let exact = components.join("/");
+    // ECK writes some entries as `name//file`, which `list_archive_dirs`
+    // lists as `name`. Probing each single doubled separator through the
+    // archive's name index keeps lookups of absent files constant-time.
+    let found = std::iter::once(exact)
+        .chain(
+            (1..components.len())
+                .map(|split| format!("{}//{}", components[..split].join("/"), components[split..].join("/"))),
+        )
+        .find(|candidate| archive.index_for_name(candidate).is_some());
     found.ok_or_else(|| MissingSource::ArchiveEntry { path }.into())
 }
 

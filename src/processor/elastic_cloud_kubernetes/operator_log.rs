@@ -75,6 +75,7 @@ impl DocumentExporter<EckLookups, EckMetadata> for OperatorLogs {
     async fn documents_export(self, exporter: &Exporter, _: &EckLookups, metadata: &EckMetadata) -> ProcessorSummary {
         let mut summary = ProcessorSummary::new(OPERATOR_LOG_STREAM.to_string());
         let mut found = false;
+        let mut read_failed = false;
         for (namespace, pod, path) in &self.pods {
             let mut lines = match self.receiver.read_bundle_lines(path).await {
                 Ok(lines) => lines,
@@ -84,6 +85,7 @@ impl DocumentExporter<EckLookups, EckMetadata> for OperatorLogs {
                 }
                 Err(err) => {
                     summary = summary.with_error(format!("{path}: {err:#}"));
+                    read_failed = true;
                     continue;
                 }
             };
@@ -112,13 +114,20 @@ impl DocumentExporter<EckLookups, EckMetadata> for OperatorLogs {
             send_batch(exporter, &mut summary, batch).await;
         }
 
-        if found {
-            summary.was_parsed()
-        } else if self.pods.is_empty() {
-            ProcessorSummary::missing(OPERATOR_LOG_STREAM.to_string())
-        } else {
-            summary
-        }
+        verdict(summary, found, read_failed)
+    }
+}
+
+/// Parsed when any operator log was read. When none was, the stream is
+/// missing unless a log existed but could not be opened: absent logs, or no
+/// operator pods at all, leave a partial bundle's outcome unchanged.
+fn verdict(summary: ProcessorSummary, found: bool, read_failed: bool) -> ProcessorSummary {
+    if found {
+        summary.was_parsed()
+    } else if read_failed {
+        summary
+    } else {
+        ProcessorSummary::missing(OPERATOR_LOG_STREAM.to_string())
     }
 }
 
@@ -149,5 +158,18 @@ mod tests {
         assert_eq!(doc["kubernetes"]["namespace"], "demo");
         assert_eq!(doc["took"], 2.25);
         assert!(doc.get("resource").is_none());
+    }
+
+    #[test]
+    fn absent_operator_logs_are_a_missing_stream() {
+        let summary = || ProcessorSummary::new(OPERATOR_LOG_STREAM.to_string());
+        let absent = verdict(summary(), false, false);
+        assert!(absent.source.missing && !absent.source.parsed);
+
+        let unreadable = verdict(summary().with_error("logs.txt: permission denied"), false, true);
+        assert!(!unreadable.source.missing && !unreadable.source.parsed);
+
+        let read = verdict(summary(), true, true);
+        assert!(read.source.parsed);
     }
 }
