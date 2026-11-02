@@ -2,7 +2,7 @@
   "name": "esdiag",
   "displayName": "ESDiag",
   "description": "Load the portable ESDiag Agent Skill for Elastic diagnostics. Analysis is saved in your deployment's Kibana Agent Builder conversation history.",
-  "version": "0.17.0",
+  "version": "0.17.1",
   "author": {
     "name": "Elastic"
   },
