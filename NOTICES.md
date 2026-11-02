@@ -6207,7 +6207,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 Elastic License 2.0
 
 #### Used by
-- [esdiag]( https://github.com/elastic/esdiag ) 0.17.0
+- [esdiag]( https://github.com/elastic/esdiag ) 0.17.1
 
 #### License
 ```

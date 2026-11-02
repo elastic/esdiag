@@ -1,6 +1,6 @@
 {
   "name": "esdiag",
-  "version": "0.17.0",
+  "version": "0.17.1",
   "description": "Collect, process, and analyze Elastic Stack diagnostics while preserving analysis in Kibana Agent Builder history.",
   "author": {
     "name": "Elastic",

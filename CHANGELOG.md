@@ -10,6 +10,8 @@ published release notes, maintenance branches, and tagged history.
 
 ## [Unreleased]
 
+## [0.17.1] - 2026-11-02
+
 ### Added
 
 - Added `esdiag-lite.sh` and `esdiag-lite.ps1`, each with a SHA-256 checksum, to every GitHub release.
@@ -427,7 +429,8 @@ published release notes, maintenance branches, and tagged history.
   fail on invalid zip paths (#177).
 - Fixed ECK diagnostic path handling for correctly structured archives (#179).
 
-[Unreleased]: https://github.com/elastic/esdiag/compare/0.17.0...main
+[Unreleased]: https://github.com/elastic/esdiag/compare/0.17.1...0.17
+[0.17.1]: https://github.com/elastic/esdiag/compare/0.17.0...0.17.1
 [0.17.0]: https://github.com/elastic/esdiag/compare/0.16.5...0.17.0
 [0.16.5]: https://github.com/elastic/esdiag/compare/0.16.4...0.16.5
 [0.16.4]: https://github.com/elastic/esdiag/compare/0.16.2...0.16.4
