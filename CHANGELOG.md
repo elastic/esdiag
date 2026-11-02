@@ -19,6 +19,7 @@ published release notes, maintenance branches, and tagged history.
 
 - Fixed index stats collection, including the Lite scripts, failing for every index on Elasticsearch 7.7.0 and later when the cluster has a closed index (#416).
 - Fixed `esdiag setup` repeating provenance field warnings for every older data stream backing index on each run. It now warns per index only for indices that can still receive writes, summarizes older backing indices with unlinked provenance fields in one line per data stream, and only asks for a rollover after adding an alias to a writable index.
+- Fixed ECK (`eck-diagnostics`) and Kubernetes Platform bundles failing with "Failed to parse version.json" because they were processed as Elasticsearch diagnostics. They are processed as platform bundles again, and their included Elasticsearch diagnostics are processed as children.
 
 ## [0.17.0] - 2026-10-13
 

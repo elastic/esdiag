@@ -14,7 +14,7 @@ use std::str::FromStr;
 ///
 /// Do not use this type for runtime dispatch or saved-host classification.
 /// Those domains use [`Application`] and [`Platform`] independently.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 #[allow(clippy::upper_case_acronyms)]
 pub(super) enum ManifestProduct {
@@ -22,7 +22,6 @@ pub(super) enum ManifestProduct {
     ECE,
     ECK,
     ElasticCloudHosted,
-    #[default]
     Elasticsearch,
     Kibana,
     KubernetesPlatform,
@@ -117,8 +116,10 @@ pub struct Manifest {
     pub diag_type: Option<String>,
     pub diagnostic_inputs: Option<String>,
     pub diag_version: Option<String>,
-    #[serde(default)]
-    pub(super) product: ManifestProduct,
+    /// Absent in support-diagnostics and platform collector (ECK, Kubernetes
+    /// Platform) manifests; classification is inferred at conversion time.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) product: Option<ManifestProduct>,
     #[serde(rename = "Product Version")]
     pub product_version: Option<ProductVersion>,
     pub runner: Option<String>,
@@ -131,7 +132,7 @@ pub struct ManifestBuilder {
     diag_type: Option<String>,
     diagnostic_inputs: Option<String>,
     diag_version: Option<String>,
-    product: ManifestProduct,
+    product: Option<ManifestProduct>,
     product_version: Option<ProductVersion>,
     runner: Option<String>,
     collection_date: String,
@@ -150,7 +151,7 @@ impl ManifestBuilder {
             diag_type: None,
             diagnostic_inputs: None,
             diag_version: None,
-            product: ManifestProduct::Elasticsearch,
+            product: Some(ManifestProduct::Elasticsearch),
             product_version: None,
             runner: None,
             collection_date: chrono::Utc::now().to_rfc3339(),
@@ -237,7 +238,7 @@ impl TryFrom<elasticsearch::Cluster> for Manifest {
             diag_type: None,
             diagnostic_inputs: None,
             diag_version: None,
-            product: ManifestProduct::Elasticsearch,
+            product: Some(ManifestProduct::Elasticsearch),
             product_version: Some(ProductVersion::from(cluster.version)),
             runner: None,
             collection_date: chrono::Utc::now().to_rfc3339(),
@@ -279,5 +280,18 @@ mod tests {
                 "product wire value changed for {product}"
             );
         }
+    }
+
+    #[test]
+    fn absent_manifest_product_stays_absent() {
+        let manifest: Manifest = serde_json::from_value(serde_json::json!({
+            "diagType": "eck-diagnostics",
+            "collectionDate": "2026-04-25T20:52:09.948Z"
+        }))
+        .expect("platform collector manifest should deserialize");
+
+        assert!(manifest.product.is_none());
+        let serialized = serde_json::to_value(&manifest).expect("serialize manifest");
+        assert!(serialized.get("product").is_none());
     }
 }
