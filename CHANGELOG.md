@@ -38,6 +38,7 @@ published release notes, maintenance branches, and tagged history.
 - Fixed `esdiag setup` repeating provenance field warnings for every older data stream backing index on each run. It now warns per index only for indices that can still receive writes, summarizes older backing indices with unlinked provenance fields in one line per data stream, and only asks for a rollover after adding an alias to a writable index.
 - Fixed `.elasticrc.yml` errors exposing secrets. A malformed `$(...)` expression no longer echoes the field's value, and invalid service URL errors show the configured URL with its userinfo redacted instead of the resolved URL.
 - Preserved the legacy `settings.json` bundle filename while keeping `IndicesSettings` as the explicit code and dispatch name.
+- Fixed ECK (`eck-diagnostics`) and Kubernetes Platform bundles failing with "Failed to parse version.json" because they were processed as Elasticsearch diagnostics. They are processed as platform bundles again, and their included Elasticsearch diagnostics are processed as children.
 
 ## [0.17.0] - 2026-10-13
 

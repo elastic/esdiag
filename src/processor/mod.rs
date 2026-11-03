@@ -21,7 +21,7 @@ mod logstash;
 pub(crate) use collector::{CollectOptions, collect_bundle};
 pub use collector::{CollectionResult, default_collect_archive_name};
 pub use diagnostic::{
-    DataSource, DiagnosticManifest, DiagnosticReport, Manifest, RequestedApi, SourceContext,
+    BundleOrigin, DataSource, DiagnosticManifest, DiagnosticReport, Manifest, RequestedApi, SourceContext,
     data_source::init_sources,
     manifest::ManifestBuilder,
     report::{
@@ -547,7 +547,11 @@ impl Processor<Ready> {
     }
 
     pub(crate) fn included_diagnostics(&self) -> Vec<diagnostic::DiagPath> {
-        self.state.manifest.included_diagnostics.clone().unwrap_or_default()
+        self.state
+            .manifest
+            .child_diagnostics()
+            .map(<[_]>::to_vec)
+            .unwrap_or_default()
     }
 
     /// Try creating a processor with the receiver, exporter and identifiers.
@@ -577,7 +581,7 @@ impl Processor<Ready> {
         // inherit it through the identifiers passed to `spawn_sub_processors`.
         let identifiers = self.state.identifiers.clone();
 
-        if let Some(included_diagnostics) = self.state.manifest.included_diagnostics.clone() {
+        if let Some(included_diagnostics) = self.state.manifest.child_diagnostics().map(<[_]>::to_vec) {
             let (diagnostic, report) = match Diagnostic::try_new(
                 self.receiver.clone(),
                 self.exporter.clone(),
@@ -896,34 +900,30 @@ impl Diagnostic {
                 manifest.type_key()
             ));
         }
-        match manifest.application() {
-            Some(Application::Elasticsearch) => {
+        match manifest.bundle_origin() {
+            BundleOrigin::Platform(Platform::ECK) => {
+                let (diagnostic, report) =
+                    ElasticCloudKubernetesDiagnostic::try_new(receiver, exporter, manifest, process_selection).await?;
+                Ok((Self::ElasticCloudKubernetes(diagnostic), report))
+            }
+            BundleOrigin::Platform(Platform::KubernetesPlatform) => {
+                let (diagnostic, report) =
+                    KubernetesPlatformDiagnostic::try_new(receiver, exporter, manifest, process_selection).await?;
+                Ok((Self::KubernetesPlatform(diagnostic), report))
+            }
+            BundleOrigin::Application(Application::Elasticsearch) => {
                 let (diagnostic, report) =
                     ElasticsearchDiagnostic::try_new(receiver, exporter, manifest, process_selection).await?;
                 Ok((Self::Elasticsearch(diagnostic), report))
             }
-            Some(Application::Logstash) => {
+            BundleOrigin::Application(Application::Logstash) => {
                 let (diagnostic, report) =
                     LogstashDiagnostic::try_new(receiver, exporter, manifest, process_selection).await?;
                 Ok((Self::Logstash(diagnostic), report))
             }
-            Some(Application::Kibana) => Err(eyre!(KIBANA_PROCESSING_NOT_IMPLEMENTED)),
-            Some(Application::Agent) => Err(eyre!(AGENT_PROCESSING_NOT_IMPLEMENTED)),
-            // A platform-only diagnostic: dispatch on the platform axis.
-            None => match manifest.platform() {
-                Platform::ECK => {
-                    let (diagnostic, report) =
-                        ElasticCloudKubernetesDiagnostic::try_new(receiver, exporter, manifest, process_selection)
-                            .await?;
-                    Ok((Self::ElasticCloudKubernetes(diagnostic), report))
-                }
-                Platform::KubernetesPlatform => {
-                    let (diagnostic, report) =
-                        KubernetesPlatformDiagnostic::try_new(receiver, exporter, manifest, process_selection).await?;
-                    Ok((Self::KubernetesPlatform(diagnostic), report))
-                }
-                _ => Err(eyre!(UNSUPPORTED_PRODUCT_OR_DIAGNOSTIC_BUNDLE)),
-            },
+            BundleOrigin::Application(Application::Kibana) => Err(eyre!(KIBANA_PROCESSING_NOT_IMPLEMENTED)),
+            BundleOrigin::Application(Application::Agent) => Err(eyre!(AGENT_PROCESSING_NOT_IMPLEMENTED)),
+            BundleOrigin::Platform(_) | BundleOrigin::Unknown => Err(eyre!(UNSUPPORTED_PRODUCT_OR_DIAGNOSTIC_BUNDLE)),
         }
     }
 
@@ -1095,6 +1095,64 @@ mod tests {
             assert_eq!(report.diagnostic.identifiers.platform, Some(Platform::ECK));
             assert_eq!(report.diagnostic.platform(), Platform::ECK);
             assert_eq!(report.diagnostic.display_label(), "Elasticsearch");
+        }
+    }
+
+    /// Platform collectors write a legacy `manifest.json` with no `product`,
+    /// next to a root `version.json` that describes the collector, not a cluster.
+    fn write_collector_parent_manifest(root: &Path, diag_type: &str, included_diagnostics: &[(&str, &str)]) {
+        let included: Vec<_> = included_diagnostics
+            .iter()
+            .map(|(path, archive)| {
+                extract_archive(archive, &root.join(path));
+                json!({"diagType": "elasticsearch", "diagPath": path})
+            })
+            .collect();
+        let manifest = json!({
+            "diagType": diag_type,
+            "diagVersion": "1.0.0 (abc1234)",
+            "collectionDate": "2026-01-01T00:00:00.1234567-05:00",
+            "includedDiagnostics": included
+        });
+        std::fs::write(
+            root.join(Manifest::FILENAME),
+            serde_json::to_vec(&manifest).expect("serialize collector manifest"),
+        )
+        .expect("write collector manifest");
+        let version = json!({
+            "DiagnosticsVersion": {"Version": "1.0.0 (abc1234)", "Hash": "abc1234"},
+            "ServerVersion": {"major": "1", "minor": "30", "gitVersion": "v1.30.0"}
+        });
+        std::fs::write(
+            root.join("version.json"),
+            serde_json::to_vec(&version).expect("serialize collector version"),
+        )
+        .expect("write collector version");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn platform_collector_manifest_without_product_processes_children() {
+        for (diag_type, platform) in [
+            ("eck-diagnostics", Platform::ECK),
+            ("k8s-platform-diagnostics", Platform::KubernetesPlatform),
+        ] {
+            let root = tempfile::tempdir().expect("parent dir");
+            write_collector_parent_manifest(
+                root.path(),
+                diag_type,
+                &[("ns/elasticsearch/cluster", "elasticsearch-api-diagnostics-9.3.3.zip")],
+            );
+
+            let completed = process_parent_bundle(root.path()).await;
+
+            assert_eq!(completed.state.report.diagnostic.application, None, "{diag_type}");
+            assert_eq!(completed.state.report.diagnostic.platform(), platform, "{diag_type}");
+            assert_eq!(completed.state.included_diagnostics.len(), 1, "{diag_type}");
+            let child = &completed.state.included_diagnostics[0];
+            assert_eq!(child.outcome, DiagnosticOutcome::Complete, "{diag_type}");
+            let report = child.report.as_ref().expect("completed child carries its report");
+            assert_eq!(report.diagnostic.application, Some(Application::Elasticsearch));
+            assert_eq!(report.diagnostic.platform(), platform);
         }
     }
 

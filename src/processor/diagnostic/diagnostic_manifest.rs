@@ -81,6 +81,30 @@ fn unknown_product() -> ManifestProduct {
     ManifestProduct::Unknown
 }
 
+/// What produced a diagnostic bundle, which decides how it is processed.
+///
+/// This is distinct from the deployment [`Platform`]: an Elasticsearch bundle
+/// included in an ECK bundle inherits `Platform::ECK`, yet its origin is still
+/// `Application(Elasticsearch)`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BundleOrigin {
+    /// A platform-level bundle; any included diagnostics are processed as children
+    Platform(Platform),
+    /// A single application's bundle, processed by that application's processor
+    Application(Application),
+    Unknown,
+}
+
+/// Diagnostic types written by platform collectors (eck-diagnostics and the
+/// Kubernetes Platform collector). These bundles never describe an application.
+fn platform_collector_type(diag_type: Option<&str>) -> Option<Platform> {
+    match diag_type {
+        Some("eck-diagnostics") => Some(Platform::ECK),
+        Some("k8s-platform-diagnostics") => Some(Platform::KubernetesPlatform),
+        _ => None,
+    }
+}
+
 impl Clone for DiagnosticManifest {
     fn clone(&self) -> Self {
         let diagnostic_id = if let Ok(id) = self.diagnostic_id.read() {
@@ -203,6 +227,30 @@ impl DiagnosticManifest {
         self.platform.is_some()
     }
 
+    /// What produced this bundle. A platform collector type wins over any
+    /// application, then the application, then a known platform.
+    pub fn bundle_origin(&self) -> BundleOrigin {
+        if let Some(platform) = platform_collector_type(self.r#type.as_deref()) {
+            return BundleOrigin::Platform(platform);
+        }
+        if let Some(application) = self.application() {
+            return BundleOrigin::Application(application);
+        }
+        match self.platform() {
+            Platform::Unknown => BundleOrigin::Unknown,
+            platform => BundleOrigin::Platform(platform),
+        }
+    }
+
+    /// Included diagnostics to process as children. Only platform bundles
+    /// spawn children; application bundles run their own processor instead.
+    pub fn child_diagnostics(&self) -> Option<&[DiagPath]> {
+        match self.bundle_origin() {
+            BundleOrigin::Platform(_) => self.included_diagnostics.as_deref(),
+            BundleOrigin::Application(_) | BundleOrigin::Unknown => None,
+        }
+    }
+
     /// The stable key naming this diagnostic's type: the application key when
     /// present, else the platform key (the display-label rule of ADR-0001).
     pub fn type_key(&self) -> String {
@@ -225,10 +273,8 @@ impl DiagnosticManifest {
                 _ => {}
             }
         }
-        match self.r#type.as_deref() {
-            Some("eck-diagnostics") => return Platform::ECK,
-            Some("k8s-platform-diagnostics") => return Platform::KubernetesPlatform,
-            _ => {}
+        if let Some(platform) = platform_collector_type(self.r#type.as_deref()) {
+            return platform;
         }
         let (platform, _) = self.product.split();
         platform
@@ -311,11 +357,11 @@ impl DiagnosticManifest {
 
 impl From<Manifest> for DiagnosticManifest {
     fn from(manifest: Manifest) -> Self {
-        let (legacy_platform, legacy_application) = manifest.product.split();
-        let platform = match manifest.diag_type.as_deref() {
-            Some("eck-diagnostics") => Platform::ECK,
-            Some("k8s-platform-diagnostics") => Platform::KubernetesPlatform,
-            _ => legacy_platform,
+        // support-diagnostics manifests omit `product` and are Elasticsearch
+        // bundles; platform collector manifests omit it too but have no application.
+        let (platform, application) = match platform_collector_type(manifest.diag_type.as_deref()) {
+            Some(platform) => (platform, None),
+            None => manifest.product.unwrap_or(ManifestProduct::Elasticsearch).split(),
         };
         let mut diagnostic = DiagnosticManifest::new(
             manifest.collection_date,
@@ -323,7 +369,7 @@ impl From<Manifest> for DiagnosticManifest {
             manifest.diagnostic_inputs,
             manifest.included_diagnostics,
             Some("compatible".to_string()),
-            legacy_application,
+            application,
             manifest.diag_type,
             manifest.runner,
             manifest
@@ -339,7 +385,7 @@ impl From<Manifest> for DiagnosticManifest {
 
 #[cfg(test)]
 mod tests {
-    use super::{DiagnosticManifest, Manifest, RequestedApi};
+    use super::{BundleOrigin, DiagnosticManifest, Manifest, RequestedApi};
     use crate::data::{Application, Platform};
     use std::collections::BTreeMap;
 
@@ -527,6 +573,73 @@ mod tests {
 
             assert_eq!(manifest.application(), application);
         }
+    }
+
+    #[test]
+    fn platform_collector_manifest_without_product_is_a_platform_bundle() {
+        for (diag_type, platform) in [
+            ("eck-diagnostics", Platform::ECK),
+            ("k8s-platform-diagnostics", Platform::KubernetesPlatform),
+        ] {
+            let manifest: Manifest = serde_json::from_value(serde_json::json!({
+                "diagType": diag_type,
+                "diagVersion": "1.0.0",
+                "collectionDate": "2025-03-24T14:25:08.1452884-05:00",
+                "includedDiagnostics": [
+                    {"diagType": "kibana", "diagPath": "ns/kibana/kb"},
+                    {"diagType": "elasticsearch", "diagPath": "ns/elasticsearch/es"}
+                ]
+            }))
+            .expect("platform collector manifest should deserialize");
+
+            let manifest = DiagnosticManifest::from(manifest);
+            assert_eq!(manifest.platform(), platform, "platform for {diag_type}");
+            assert_eq!(manifest.application(), None, "application for {diag_type}");
+            assert_eq!(manifest.bundle_origin(), BundleOrigin::Platform(platform));
+            assert_eq!(manifest.child_diagnostics().map(<[_]>::len), Some(2));
+        }
+    }
+
+    #[test]
+    fn manifest_without_product_or_collector_type_stays_elasticsearch() {
+        let manifest: Manifest = serde_json::from_value(serde_json::json!({
+            "diagType": "elasticsearch_diagnostic",
+            "collectionDate": "2025-03-24T19:25:39.821Z"
+        }))
+        .expect("support-diagnostics manifest should deserialize");
+
+        let manifest = DiagnosticManifest::from(manifest);
+        assert_eq!(
+            manifest.bundle_origin(),
+            BundleOrigin::Application(Application::Elasticsearch)
+        );
+    }
+
+    #[test]
+    fn application_bundle_on_a_platform_keeps_application_origin() {
+        let mut manifest = manifest_with(
+            Some(Application::Elasticsearch),
+            None,
+            Some("elasticsearch_diagnostic"),
+            Some("cli"),
+        );
+        manifest.included_diagnostics = Some(vec![super::DiagPath::default()]);
+        manifest.set_platform(Platform::ECK);
+
+        assert_eq!(
+            manifest.bundle_origin(),
+            BundleOrigin::Application(Application::Elasticsearch)
+        );
+        assert!(manifest.child_diagnostics().is_none());
+    }
+
+    #[test]
+    fn platform_only_bundle_without_collector_type_is_a_platform_origin() {
+        let manifest = manifest_with(None, Some(Platform::ECE), Some("diagnostic"), Some("ece"));
+        assert_eq!(manifest.bundle_origin(), BundleOrigin::Platform(Platform::ECE));
+
+        let unknown = manifest_with(None, None, Some("diagnostic"), Some("unknown"));
+        assert_eq!(unknown.bundle_origin(), BundleOrigin::Unknown);
     }
 
     #[test]
