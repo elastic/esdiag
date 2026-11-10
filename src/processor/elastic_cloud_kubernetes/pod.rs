@@ -60,11 +60,6 @@ struct PodStatusFields<'a> {
 fn pod_doc(pod: &InNamespace<Pod>) -> PodDoc<'_> {
     let item = &pod.item;
     let status = &item.status;
-    let ready = status
-        .container_statuses
-        .iter()
-        .filter(|container| container.ready == Some(true))
-        .count();
     let roles = labels::elasticsearch_roles(&item.metadata.labels);
     PodDoc {
         kubernetes: kubernetes_ref(pod),
@@ -83,13 +78,32 @@ fn pod_doc(pod: &InNamespace<Pod>) -> PodDoc<'_> {
             .chain(&status.container_statuses)
             .filter_map(|container| container.restart_count)
             .sum(),
-        not_ready_containers: item
-            .spec
-            .containers
-            .len()
-            .max(status.container_statuses.len())
-            .saturating_sub(ready),
+        not_ready_containers: not_ready_containers(item),
     }
+}
+
+/// App containers plus native sidecars (`restartPolicy: Always` init
+/// containers) that are not ready; both gate pod readiness, one-shot init
+/// containers do not.
+fn not_ready_containers(pod: &Pod) -> usize {
+    let is_ready = |container: &&ContainerStatus| container.ready == Some(true);
+    let app_ready = pod.status.container_statuses.iter().filter(is_ready).count();
+    let app = pod.spec.containers.len().max(pod.status.container_statuses.len());
+    let sidecars: Vec<&str> = pod
+        .spec
+        .init_containers
+        .iter()
+        .filter(|container| container.restart_policy.as_deref() == Some("Always"))
+        .filter_map(|container| container.name.as_deref())
+        .collect();
+    let sidecars_ready = pod
+        .status
+        .init_container_statuses
+        .iter()
+        .filter(is_ready)
+        .filter(|container| container.name.as_deref().is_some_and(|name| sidecars.contains(&name)))
+        .count();
+    (app + sidecars.len()).saturating_sub(app_ready + sidecars_ready)
 }
 
 impl DocumentExporter<EckLookups, EckMetadata> for Pods<'_> {
@@ -239,5 +253,35 @@ impl DocumentExporter<EckLookups, EckMetadata> for Containers<'_> {
             .map(|(pod, status, init)| metadata.document(CONTAINER_STREAM, container_doc(pod, status, init)))
             .collect();
         send(exporter, CONTAINER_STREAM, docs).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn unready_native_sidecars_count_and_one_shot_inits_do_not() {
+        let pod: Pod = serde_json::from_value(json!({
+            "spec": {
+                "initContainers": [
+                    {"name": "setup"},
+                    {"name": "proxy", "restartPolicy": "Always"},
+                    {"name": "shipper", "restartPolicy": "Always"}
+                ],
+                "containers": [{"name": "app"}]
+            },
+            "status": {
+                "initContainerStatuses": [
+                    {"name": "setup", "ready": false},
+                    {"name": "proxy", "ready": false},
+                    {"name": "shipper", "ready": true}
+                ],
+                "containerStatuses": [{"name": "app", "ready": true}]
+            }
+        }))
+        .unwrap();
+        assert_eq!(not_ready_containers(&pod), 1);
     }
 }

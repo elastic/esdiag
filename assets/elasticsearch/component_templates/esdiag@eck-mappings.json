@@ -109,6 +109,16 @@
           "properties": {
             "pods": {
               "type": "long"
+            },
+            "requests": {
+              "properties": {
+                "cpu": {
+                  "type": "double"
+                },
+                "memory": {
+                  "type": "double"
+                }
+              }
             }
           }
         },
@@ -380,11 +390,113 @@
                   "type": "match_only_text"
                 }
               }
+            },
+            "version": {
+              "type": "keyword",
+              "ignore_above": 1024
+            }
+          }
+        },
+        "condition": {
+          "properties": {
+            "Ready": {
+              "type": "keyword"
+            },
+            "PodScheduled": {
+              "type": "keyword"
+            },
+            "DiskPressure": {
+              "type": "keyword"
+            },
+            "MemoryPressure": {
+              "type": "keyword"
+            }
+          }
+        },
+        "allocatable": {
+          "properties": {
+            "cpu": {
+              "type": "double"
+            },
+            "memory": {
+              "type": "double"
+            }
+          }
+        },
+        "claim": {
+          "properties": {
+            "name": {
+              "type": "keyword",
+              "ignore_above": 1024
+            },
+            "phase": {
+              "type": "keyword",
+              "ignore_above": 1024
+            }
+          }
+        },
+        "volume": {
+          "properties": {
+            "reclaim_policy": {
+              "type": "keyword",
+              "ignore_above": 1024
+            }
+          }
+        },
+        "log": {
+          "properties": {
+            "level": {
+              "type": "keyword",
+              "ignore_above": 1024
+            }
+          }
+        },
+        "elasticsearch": {
+          "properties": {
+            "name": {
+              "type": "keyword",
+              "ignore_above": 1024
+            }
+          }
+        },
+        "kubernetes": {
+          "properties": {
+            "version": {
+              "properties": {
+                "git_version": {
+                  "type": "keyword",
+                  "ignore_above": 1024
+                }
+              }
+            }
+          }
+        },
+        "involved_object": {
+          "properties": {
+            "name": {
+              "type": "keyword",
+              "ignore_above": 1024
+            }
+          }
+        },
+        "reason": {
+          "type": "keyword",
+          "ignore_above": 1024
+        },
+        "type": {
+          "type": "keyword",
+          "ignore_above": 1024
+        },
+        "spec": {
+          "properties": {
+            "version": {
+              "type": "keyword",
+              "ignore_above": 1024
             }
           }
         }
       }
     }
   },
-  "version": 2
+  "version": 3
 }

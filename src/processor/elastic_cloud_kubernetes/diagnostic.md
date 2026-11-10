@@ -112,7 +112,7 @@ One document per Kubernetes node.
 
 One document per pod.
 + `status.{phase,qos_class,start_time}`, `conditions[]`, `condition.*`
-+ `restart_count`, `not_ready_containers`
++ `restart_count`, `not_ready_containers` (app containers and native sidecars)
 + `eck.resource`, `eck.type` from owner labels; `elasticsearch.roles` from node-role labels
 - Labels outside the ECK and topology allowlist
 
