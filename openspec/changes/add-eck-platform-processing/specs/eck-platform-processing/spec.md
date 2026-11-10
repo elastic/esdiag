@@ -58,7 +58,9 @@ and the contents of `eck-diagnostic-errors.txt` when non-empty. Both ConfigMaps 
 be read only from operator namespaces: those `eck-diagnostics.log` names, or, when the
 log names none, namespaces holding a StatefulSet labeled `control-plane: elastic-operator`.
 The ECK version SHALL be read from `eck-diagnostics.log` and SHALL fall back to the
-operator container image tag when the log does not state it.
+operator container image tag when the log does not state it. The operator container is
+the one named `manager` or running an `eck-operator*` image; other containers in the
+operator pod, such as injected sidecars, SHALL NOT supply the version.
 
 #### Scenario: Licensing values are numeric
 - **GIVEN** the `elastic-licensing` ConfigMap stores `enterprise_resource_units` and `total_managed_memory_bytes` as strings

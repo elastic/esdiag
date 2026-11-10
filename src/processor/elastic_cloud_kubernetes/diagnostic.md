@@ -62,7 +62,7 @@ missing, because its one document is written even when every input is absent.
 
 One document per bundle.
 + `kubernetes.version.{git_version,major,minor}` and `eck.diagnostics.version` from `version.json`
-+ `eck.version`, `eck.operator.namespaces`, `eck.resources.namespaces` from `eck-diagnostics.log`, with the operator StatefulSet image tag as the version fallback
++ `eck.version`, `eck.operator.namespaces`, `eck.resources.namespaces` from `eck-diagnostics.log`, with the operator container's image tag (`manager` or an `eck-operator*` image, never a sidecar) as the version fallback
 + `eck.diagnostics.errors` from `eck-diagnostic-errors.txt` (collection errors are data, not a failed outcome)
 + `eck.operator.config.*` parsed from the `elastic-operator` ConfigMap's `eck.yaml`
 + `eck.license.{level,enterprise_resource_units,total_managed_memory_bytes,timestamp}` from the `elastic-licensing` ConfigMap, as numbers

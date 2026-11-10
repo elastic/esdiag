@@ -535,6 +535,18 @@ fn operator_config_maps(
 
 /// Operator container images: the operator StatefulSet template first, then
 /// the running operator pods.
+/// The operator's own container: ECK names it `manager` and ships it as an
+/// `eck-operator*` image. Other containers, such as injected sidecars, carry
+/// unrelated version tags.
+fn is_operator_container(container: &super::resources::Container) -> bool {
+    container.name.as_deref() == Some("manager")
+        || container
+            .image
+            .as_deref()
+            .and_then(|image| image.rsplit('/').next())
+            .is_some_and(|name| name.starts_with("eck-operator"))
+}
+
 fn operator_images(
     statefulsets: &[InNamespace<StatefulSet>],
     pods: &[InNamespace<Pod>],
@@ -547,11 +559,13 @@ fn operator_images(
                 || statefulset.item.metadata.name() == "elastic-operator"
         })
         .flat_map(|statefulset| statefulset.item.spec.template.spec.containers.iter())
+        .filter(|container| is_operator_container(container))
         .filter_map(|container| container.image.clone());
     let pod_images = pods
         .iter()
         .filter(|pod| lookups.is_operator_pod(&pod.namespace, pod.item.metadata.name()))
         .flat_map(|pod| pod.item.spec.containers.iter())
+        .filter(|container| is_operator_container(container))
         .filter_map(|container| container.image.clone());
     template_images.chain(pod_images).collect()
 }
@@ -962,6 +976,25 @@ mod tests {
                 .source
                 .missing
         );
+    }
+
+    #[test]
+    fn operator_images_skip_sidecar_containers() {
+        let container = |name: &str, image: &str| -> super::super::resources::Container {
+            serde_json::from_value(json!({"name": name, "image": image})).unwrap()
+        };
+        assert!(!is_operator_container(&container(
+            "istio-proxy",
+            "docker.io/istio/proxyv2:1.20.0"
+        )));
+        assert!(is_operator_container(&container(
+            "manager",
+            "registry.local/operator:3.1.0"
+        )));
+        assert!(is_operator_container(&container(
+            "operator",
+            "docker.elastic.co/eck/eck-operator-ubi:3.1.0"
+        )));
     }
 
     #[test]
