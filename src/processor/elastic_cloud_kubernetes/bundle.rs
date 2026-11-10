@@ -226,7 +226,7 @@ pub fn sources() -> Vec<EckSource> {
 }
 
 /// Whether a source's file was found and parsed, tracked per output stream.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct SourceStatus {
     found: bool,
     errors: Vec<String>,
@@ -244,6 +244,16 @@ impl SourceStatus {
     fn merge(&mut self, other: &SourceStatus) {
         self.found |= other.found;
         self.errors.extend(other.errors.iter().cloned());
+    }
+
+    /// Takes an enrichment source's read errors without its presence: a
+    /// stream whose own files are all absent stays missing.
+    fn with_enrichment(&self, enrichments: &[&SourceStatus]) -> SourceStatus {
+        let mut status = self.clone();
+        for enrichment in enrichments {
+            status.errors.extend(enrichment.errors.iter().cloned());
+        }
+        status
     }
 
     /// The final summary for `stream`: parsed when any file was found,
@@ -565,10 +575,17 @@ impl EckBundle<Indexed> {
             status,
         } = self.state;
         let status_of = |key: &str| status.get(key).unwrap_or(&EMPTY_STATUS);
-        let mut operator_status = SourceStatus::default();
-        for source in [TOOL_LOG, VERSION, COLLECTION_ERRORS, CONFIG_MAPS] {
+        // The operator document is written even when every input is absent.
+        let mut operator_status = SourceStatus {
+            found: true,
+            errors: Vec::new(),
+        };
+        for source in [TOOL_LOG, VERSION, COLLECTION_ERRORS, CONFIG_MAPS, STATEFULSETS] {
             operator_status.merge(status_of(source.key));
         }
+        let nodeset_status = status_of(NODE_SETS.key).with_enrichment(&[status_of(STATEFULSETS.key)]);
+        let volume_status =
+            status_of(CLAIMS.key).with_enrichment(&[status_of(VOLUMES.key), status_of(STORAGE_CLASSES.key)]);
 
         let summaries = [
             operator_status.summarize(
@@ -581,7 +598,7 @@ impl EckBundle<Indexed> {
                     .documents_export(exporter, &lookups, metadata)
                     .await,
             ),
-            status_of(NODE_SETS.key).summarize(
+            nodeset_status.summarize(
                 NODE_SETS.stream(),
                 NodeSets(&resources)
                     .documents_export(exporter, &lookups, metadata)
@@ -599,7 +616,7 @@ impl EckBundle<Indexed> {
                 CONTAINERS.stream(),
                 Containers(&pods).documents_export(exporter, &lookups, metadata).await,
             ),
-            status_of(CLAIMS.key).summarize(
+            volume_status.summarize(
                 CLAIMS.stream(),
                 Volumes(claims).documents_export(exporter, &lookups, metadata).await,
             ),
@@ -921,6 +938,30 @@ mod tests {
         keys.sort_unstable();
         keys.dedup();
         assert_eq!(keys.len(), count, "source keys must be unique");
+    }
+
+    #[test]
+    fn enrichment_errors_reach_the_stream_without_making_it_present() {
+        let summary = |status: &SourceStatus| {
+            status.summarize(CLAIMS.stream(), ProcessorSummary::new(CLAIMS.stream().to_string()))
+        };
+        let unreadable = SourceStatus {
+            found: false,
+            errors: vec!["storageclasses.json: invalid".to_string()],
+        };
+        let status = SourceStatus::default().with_enrichment(&[&unreadable]);
+        assert_eq!(status.errors, unreadable.errors);
+        assert!(!summary(&status).source.missing);
+
+        let present = SourceStatus {
+            found: true,
+            errors: Vec::new(),
+        };
+        assert!(
+            summary(&SourceStatus::default().with_enrichment(&[&present]))
+                .source
+                .missing
+        );
     }
 
     #[test]

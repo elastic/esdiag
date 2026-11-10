@@ -39,7 +39,7 @@
 - [x] 5.2 Add an allowlist test asserting no emitted document contains the fixture's env var name/value, user ConfigMap data, annotations, `managedFields`, or any `secrets.json` content
 - [x] 5.3 Add a Kibana link test asserting ECK parents target the ECK dashboard and Elasticsearch children target the Cluster Report
 - [x] 5.4 Run `cargo clippy --all-targets --all-features -- -D warnings` and `cargo test`, including the stream/template drift and saved-object data view tests
-- [ ] 5.5 Smoke run `esdiag process` on the fixture into a local stack (`esdiag setup` first), open the ECK parent's Kibana link, and confirm every dashboard panel renders fixture data
+- [x] 5.5 Smoke run `esdiag process` on the fixture into a local stack (`esdiag setup` first), open the ECK parent's Kibana link, and confirm every dashboard panel renders fixture data
 - [x] 5.6 Smoke run `esdiag process` on a real ECK bundle locally without committing or recording any of its data or path, and confirm the parent and child jobs complete and every Elasticsearch pod name matches a node name in its included diagnostic
 
 ## 6. Docs

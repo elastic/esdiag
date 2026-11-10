@@ -860,6 +860,7 @@
                   "layers": {
                     "63be8ef5-d2aa-5d68-95d0-5b6d1921232d": {
                       "columnOrder": [
+                        "30b59680-fb5e-5cd3-872c-1c8bd7c28cb2",
                         "3250bcf4-d91b-5ee0-be5c-e9522fe9c080",
                         "4a9af108-e90d-5a85-8c41-5de51fd83ee0",
                         "27f645aa-b10f-5950-b0ca-31907c539c5a",
@@ -1047,6 +1048,32 @@
                           },
                           "scale": "ordinal",
                           "sourceField": "rollout_in_progress"
+                        },
+                        "30b59680-fb5e-5cd3-872c-1c8bd7c28cb2": {
+                          "customLabel": true,
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Namespace",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "fallback": true,
+                              "type": "alphabetical"
+                            },
+                            "orderDirection": "asc",
+                            "otherBucket": false,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "size": 100
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "kubernetes.namespace"
                         }
                       },
                       "ignoreGlobalFilters": false,
@@ -1071,6 +1098,10 @@
               },
               "visualization": {
                 "columns": [
+                  {
+                    "columnId": "30b59680-fb5e-5cd3-872c-1c8bd7c28cb2",
+                    "isTransposed": false
+                  },
                   {
                     "columnId": "3250bcf4-d91b-5ee0-be5c-e9522fe9c080",
                     "isTransposed": false
@@ -1335,7 +1366,7 @@
               "internalReferences": [],
               "query": {
                 "language": "kuery",
-                "query": "not status.phase : \"Running\" or condition.Ready : \"False\""
+                "query": "not status.phase : \"Running\" or not condition.Ready : \"True\""
               },
               "visualization": {
                 "columns": [
@@ -1419,6 +1450,7 @@
                   "layers": {
                     "42bcb9bd-b79e-5395-8144-4097c240e630": {
                       "columnOrder": [
+                        "721f9525-f102-52d6-be39-6b31a0f2325a",
                         "3cf72e09-5c23-5782-a730-b4cb6963b9f7",
                         "bb811064-f2d9-5f0c-9deb-5f5d5b510573",
                         "80788ed0-575a-588d-8eae-3544b1cfb193",
@@ -1536,6 +1568,32 @@
                           },
                           "scale": "ordinal",
                           "sourceField": "state.current"
+                        },
+                        "721f9525-f102-52d6-be39-6b31a0f2325a": {
+                          "customLabel": true,
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Namespace",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "fallback": true,
+                              "type": "alphabetical"
+                            },
+                            "orderDirection": "asc",
+                            "otherBucket": false,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "size": 100
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "kubernetes.namespace"
                         }
                       },
                       "ignoreGlobalFilters": false,
@@ -1560,6 +1618,10 @@
               },
               "visualization": {
                 "columns": [
+                  {
+                    "columnId": "721f9525-f102-52d6-be39-6b31a0f2325a",
+                    "isTransposed": false
+                  },
                   {
                     "columnId": "3cf72e09-5c23-5782-a730-b4cb6963b9f7",
                     "isTransposed": false
@@ -2757,6 +2819,7 @@
                   "layers": {
                     "a086ee82-b2fc-5459-a6ad-426cbc668c47": {
                       "columnOrder": [
+                        "520c9c77-9f88-55ca-b933-824e140e9228",
                         "a58f6d12-2a87-5048-a47d-b4c9abbe6766",
                         "ba3b7298-53a7-5040-beaa-90f6d2ddd572",
                         "2267879d-bdee-5ded-b159-33e9606cd54f",
@@ -2864,6 +2927,32 @@
                           },
                           "scale": "ratio",
                           "sourceField": "took"
+                        },
+                        "520c9c77-9f88-55ca-b933-824e140e9228": {
+                          "customLabel": true,
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Namespace",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "fallback": true,
+                              "type": "alphabetical"
+                            },
+                            "orderDirection": "asc",
+                            "otherBucket": false,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "size": 100
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "kubernetes.namespace"
                         }
                       },
                       "ignoreGlobalFilters": false,
@@ -2888,6 +2977,10 @@
               },
               "visualization": {
                 "columns": [
+                  {
+                    "columnId": "520c9c77-9f88-55ca-b933-824e140e9228",
+                    "isTransposed": false
+                  },
                   {
                     "columnId": "a58f6d12-2a87-5048-a47d-b4c9abbe6766",
                     "isTransposed": false

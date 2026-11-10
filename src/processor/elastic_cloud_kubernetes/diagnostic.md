@@ -37,6 +37,9 @@ Legend: ✅ processed into a stream · 🔗 enrichment/metadata only · ❌ not 
 Namespaces are the bundle's top-level directories, not the namespaces named in
 `eck-diagnostics.log`, so a partial collection still processes what it captured.
 A missing file is recorded in the report's processor stats and never fails the job.
+An unreadable enrichment file (StatefulSets, PersistentVolumes, StorageClasses) is
+reported as an error on each stream it enriches. The operator stream is never
+missing, because its one document is written even when every input is absent.
 
 #### Not read
 
