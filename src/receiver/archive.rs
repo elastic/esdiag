@@ -8,7 +8,9 @@ use eyre::Result;
 use futures::stream::{self, BoxStream};
 use serde::de::DeserializeOwned;
 use std::{
+    collections::HashMap,
     io::{BufReader, Read, Seek},
+    ops::{Deref, DerefMut},
     path::PathBuf,
     sync::Arc,
 };
@@ -21,8 +23,45 @@ mod file;
 pub use bytes::*;
 pub use file::*;
 
+/// A ZIP archive with its irregular entry names indexed once at open. ECK
+/// writes entries such as `name//file`; the index maps each one's
+/// normalized path to the stored name, so lookups match what
+/// [`list_archive_dirs`] discovers without scanning the archive per read.
+pub struct IndexedArchive<R> {
+    zip: ZipArchive<R>,
+    irregular: HashMap<String, String>,
+}
+
+impl<R: Read + Seek> IndexedArchive<R> {
+    pub fn new(zip: ZipArchive<R>) -> Self {
+        let irregular = zip
+            .file_names()
+            .filter(|name| !name.ends_with(['/', '\\']))
+            .filter_map(|name| {
+                let normalized = path_components(name).join("/");
+                (normalized != name).then(|| (normalized, name.to_string()))
+            })
+            .collect();
+        Self { zip, irregular }
+    }
+}
+
+impl<R> Deref for IndexedArchive<R> {
+    type Target = ZipArchive<R>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.zip
+    }
+}
+
+impl<R> DerefMut for IndexedArchive<R> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.zip
+    }
+}
+
 pub async fn get_stream_from_archive<R, T>(
-    archive: Arc<RwLock<ZipArchive<R>>>,
+    archive: Arc<RwLock<IndexedArchive<R>>>,
     subdir: Option<PathBuf>,
     ctx: SourceContext,
 ) -> Result<BoxStream<'static, Result<T::Item>>>
@@ -84,7 +123,7 @@ where
 /// stream is being read, so consumers must drain it before issuing other reads
 /// on the same receiver.
 pub async fn read_lines_from_archive<R>(
-    archive: Arc<RwLock<ZipArchive<R>>>,
+    archive: Arc<RwLock<IndexedArchive<R>>>,
     subdir: Option<PathBuf>,
     filename: &str,
 ) -> Result<BoxStream<'static, Result<String>>>
@@ -122,7 +161,7 @@ fn path_components(path: &str) -> Vec<String> {
 /// components are ignored so ECK's `name//file` entries list correctly.
 pub fn list_archive_dirs<A: Read + Seek>(
     subdir: Option<&PathBuf>,
-    archive: &mut ZipArchive<A>,
+    archive: &mut IndexedArchive<A>,
     dir: &str,
 ) -> Result<Vec<String>> {
     let mut root = PathBuf::from(archive.by_index(0)?.name().to_string());
@@ -222,7 +261,7 @@ pub(crate) fn archive_has_dir<'a>(
 
 pub fn resolve_archive_path<A: Read + Seek>(
     subdir: Option<&PathBuf>,
-    archive: &mut ZipArchive<A>,
+    archive: &mut IndexedArchive<A>,
     filename: &str,
 ) -> Result<String> {
     fn normalize_archive_separators(path: &str) -> String {
@@ -235,18 +274,14 @@ pub fn resolve_archive_path<A: Read + Seek>(
         workdir.push(dir);
     }
     let path = normalize_archive_separators(workdir.join(filename).to_string_lossy().as_ref());
-    let components = path_components(&path);
-    let exact = components.join("/");
-    // ECK writes some entries as `name//file`, which `list_archive_dirs`
-    // lists as `name`. Probing each single doubled separator through the
-    // archive's name index keeps lookups of absent files constant-time.
-    let found = std::iter::once(exact)
-        .chain(
-            (1..components.len())
-                .map(|split| format!("{}//{}", components[..split].join("/"), components[split..].join("/"))),
-        )
-        .find(|candidate| archive.index_for_name(candidate).is_some());
-    found.ok_or_else(|| MissingSource::ArchiveEntry { path }.into())
+    let normalized = path_components(&path).join("/");
+    if archive.index_for_name(&normalized).is_some() {
+        return Ok(normalized);
+    }
+    match archive.irregular.get(&normalized) {
+        Some(name) => Ok(name.clone()),
+        None => Err(MissingSource::ArchiveEntry { path }.into()),
+    }
 }
 
 #[cfg(test)]
@@ -299,7 +334,7 @@ mod tests {
     #[test]
     fn resolve_archive_path_with_double_slash_returns_ok() {
         let archive_data = create_test_archive_with_double_slash();
-        let mut archive = ZipArchive::new(Cursor::new(archive_data)).unwrap();
+        let mut archive = IndexedArchive::new(ZipArchive::new(Cursor::new(archive_data)).unwrap());
 
         let subdir = PathBuf::from("namespace/elasticsearch/cluster-one");
         let result = resolve_archive_path(Some(&subdir), &mut archive, "version.json").unwrap();
@@ -316,11 +351,22 @@ mod tests {
             zip.write_all(b"{}").unwrap();
             zip.start_file("demo//pods.json", SimpleFileOptions::default()).unwrap();
             zip.write_all(b"{}").unwrap();
+            zip.start_file("ops//pod//operator-0//logs.txt", SimpleFileOptions::default())
+                .unwrap();
+            zip.write_all(b"line").unwrap();
             zip.finish().unwrap();
         }
-        let mut archive = ZipArchive::new(Cursor::new(buf)).unwrap();
+        let mut archive = IndexedArchive::new(ZipArchive::new(Cursor::new(buf)).unwrap());
 
-        assert_eq!(list_archive_dirs(None, &mut archive, "").unwrap(), vec!["demo"]);
+        assert_eq!(list_archive_dirs(None, &mut archive, "").unwrap(), vec!["demo", "ops"]);
+        assert_eq!(
+            list_archive_dirs(None, &mut archive, "ops/pod").unwrap(),
+            vec!["operator-0"]
+        );
+        assert_eq!(
+            resolve_archive_path(None, &mut archive, "ops/pod/operator-0/logs.txt").unwrap(),
+            "ops//pod//operator-0//logs.txt"
+        );
         assert_eq!(
             resolve_archive_path(None, &mut archive, "demo/pods.json").unwrap(),
             "demo//pods.json"
@@ -331,7 +377,7 @@ mod tests {
     #[test]
     fn resolve_archive_path_with_single_slash_returns_ok() {
         let archive_data = create_test_archive_with_single_slash();
-        let mut archive = ZipArchive::new(Cursor::new(archive_data)).unwrap();
+        let mut archive = IndexedArchive::new(ZipArchive::new(Cursor::new(archive_data)).unwrap());
 
         let subdir = PathBuf::from("namespace/elasticsearch/cluster-two");
         let result = resolve_archive_path(Some(&subdir), &mut archive, "version.json").unwrap();
@@ -345,7 +391,7 @@ mod tests {
     #[test]
     fn resolve_archive_path_with_windows_style_subdir_returns_ok() {
         let archive_data = create_test_archive_with_single_slash();
-        let mut archive = ZipArchive::new(Cursor::new(archive_data)).unwrap();
+        let mut archive = IndexedArchive::new(ZipArchive::new(Cursor::new(archive_data)).unwrap());
 
         // Simulates subdir values built on Windows.
         let subdir = PathBuf::from(r"namespace\elasticsearch\cluster-two");
@@ -370,7 +416,7 @@ mod tests {
             zip.finish().unwrap();
         }
 
-        let mut archive = ZipArchive::new(Cursor::new(buf)).unwrap();
+        let mut archive = IndexedArchive::new(ZipArchive::new(Cursor::new(buf)).unwrap());
         let result = resolve_archive_path(None, &mut archive, "file.json").unwrap();
 
         // Should derive path from first entry in archive
@@ -380,7 +426,7 @@ mod tests {
     #[test]
     fn missing_file_returns_err() {
         let archive_data = create_test_archive_with_single_slash();
-        let mut archive = ZipArchive::new(Cursor::new(archive_data)).unwrap();
+        let mut archive = IndexedArchive::new(ZipArchive::new(Cursor::new(archive_data)).unwrap());
         let result = resolve_archive_path(None, &mut archive, "missing.json");
         assert!(result.unwrap_err().to_string().contains("File not found"));
     }

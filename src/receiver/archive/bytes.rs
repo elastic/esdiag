@@ -2,7 +2,7 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use super::resolve_archive_path;
+use super::{IndexedArchive, resolve_archive_path};
 use crate::{
     processor::{DataSource, SourceContext, StreamingDataSource},
     receiver::{MissingSource, Receive, ReceiveMultiple},
@@ -20,7 +20,7 @@ use std::{
 use tokio::sync::RwLock;
 use zip::ZipArchive;
 
-type ArchiveCursor = ZipArchive<BufReader<Cursor<Bytes>>>;
+type ArchiveCursor = IndexedArchive<BufReader<Cursor<Bytes>>>;
 type ArchivePointer = Arc<RwLock<ArchiveCursor>>;
 
 #[derive(Clone)]
@@ -116,7 +116,7 @@ impl TryFrom<Bytes> for ArchiveBytesReceiver {
         tracing::debug!("Using in-memory archive");
         let archive = ZipArchive::new(BufReader::new(Cursor::new(bytes)))?;
         Ok(Self {
-            archive: Arc::new(RwLock::new(archive)),
+            archive: Arc::new(RwLock::new(IndexedArchive::new(archive))),
             subdir: None,
             source_product: Arc::new(OnceLock::new()),
         })

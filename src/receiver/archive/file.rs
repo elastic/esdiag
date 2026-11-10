@@ -2,7 +2,7 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use super::resolve_archive_path;
+use super::{IndexedArchive, resolve_archive_path};
 use crate::{
     processor::{DataSource, SourceContext, StreamingDataSource},
     receiver::{MissingSource, RawResponse, Receive, ReceiveMultiple, ReceiveRaw},
@@ -23,7 +23,7 @@ use zip::ZipArchive;
 
 #[derive(Clone)]
 pub struct ArchiveFileReceiver {
-    archive: Arc<RwLock<ZipArchive<File>>>,
+    archive: Arc<RwLock<IndexedArchive<File>>>,
     filename: String,
     subdir: Option<PathBuf>,
     modified_date: SystemTime,
@@ -42,7 +42,7 @@ impl TryFrom<PathBuf> for ArchiveFileReceiver {
                 let modified_date = file.metadata()?.modified()?;
                 let archive = ZipArchive::new(file)?;
                 Ok(Self {
-                    archive: Arc::new(RwLock::new(archive)),
+                    archive: Arc::new(RwLock::new(IndexedArchive::new(archive))),
                     modified_date,
                     filename,
                     subdir: None,
