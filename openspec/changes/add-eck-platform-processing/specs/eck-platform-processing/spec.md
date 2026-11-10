@@ -3,7 +3,7 @@
 ### Requirement: ECK platform data is processed alongside included diagnostics
 The ECK diagnostic processor SHALL index the curated ECK platform files of a Loaded
 ECK bundle in addition to fanning out its included diagnostics. Platform documents
-SHALL carry `diagnostic.platform` = `ECK` and no `diagnostic.application`, and their
+SHALL carry `diagnostic.platform` = `elastic-cloud-kubernetes` and no `diagnostic.application`, and their
 `diagnostic.id` SHALL equal the `diagnostic.parent_id` of the bundle's included child
 diagnostics. Included child processing SHALL be unchanged.
 
@@ -19,12 +19,13 @@ diagnostics. Included child processing SHALL be unchanged.
 
 #### Scenario: Platform documents have no application
 - **WHEN** an ECK platform document is emitted
-- **THEN** `diagnostic.platform` MUST be `ECK`
+- **THEN** `diagnostic.platform` MUST be `elastic-cloud-kubernetes`
 - **AND** `diagnostic.application` MUST be absent
 
 ### Requirement: Bundle layout is discovered, not assumed
 The processor SHALL treat root-level files as cluster-scoped and each root-level
-directory containing at least one recognized namespaced resource file as a namespace.
+directory as a candidate namespace, reading only known namespaced file names from it;
+a directory holding none of them SHALL yield no documents.
 Nested Stack diagnostic directories (`<namespace>/elasticsearch/*`,
 `<namespace>/kibana/*`, and other included diagnostic paths) SHALL NOT be read by the
 platform processor. A missing file, a file whose list is empty, or a namespace with no

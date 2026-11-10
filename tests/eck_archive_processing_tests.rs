@@ -191,9 +191,24 @@ fn eck_bundle_emits_the_platform_streams_joined_to_the_child() {
     assert_eq!(oom["last_terminated"]["exit_code"], 137);
     assert_eq!(oom["container"]["restart_count"], 3);
 
+    let master = find(containers, "/kubernetes/pod/name", "quickstart-es-master-0");
+    assert_eq!(master["kubernetes"]["namespace"], "demo");
+    assert_eq!(master["kubernetes"]["node"]["name"], "worker-a");
+
     let pods = &run.streams["metrics-kubernetes.pod-esdiag"];
     let pending = find(pods, "/status/phase", "Pending");
     assert!(pending["kubernetes"]["node"].is_null(), "a Pending pod is unscheduled");
+    let operator = find(pods, "/kubernetes/pod/name", "elastic-operator-0");
+    assert_eq!(operator["kubernetes"]["namespace"], "elastic-system");
+
+    let nodes = &run.streams["metrics-kubernetes.node-esdiag"];
+    assert_eq!(
+        find(nodes, "/kubernetes/node/name", "worker-c")["condition"]["MemoryPressure"],
+        "True"
+    );
+    let worker_b = find(nodes, "/kubernetes/node/name", "worker-b");
+    assert_eq!(worker_b["scheduled"]["pods"], 2);
+    assert_eq!(worker_b["scheduled"]["requests"]["cpu"], 2.5);
 
     let nodesets = &run.streams["settings-eck.nodeset-esdiag"];
     assert_eq!(find(nodesets, "/nodeset/name", "data")["rollout_in_progress"], true);

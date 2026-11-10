@@ -148,7 +148,12 @@ Each source deserializes into hand-written structs containing only allowlisted f
 ConfigMap/Secret data never reach a document. Labels deserialize to a map and are
 filtered by an Elastic-owned key predicate before output. ConfigMaps deserialize
 `metadata.name` plus `data` only for the two allowlisted names (a custom `Deserialize`
-that skips `data` otherwise).
+that skips `data` otherwise), and only those from the operator's namespaces (from
+`eck-diagnostics.log`, else namespaces holding an operator-labeled StatefulSet) feed the
+operator document, since a workload namespace may own an unrelated ConfigMap of the
+same name. ECK resource `status` varies by kind, so it is the one source kept as a JSON
+value; it is reduced to named scalar keys, condition fields, and the
+`inProgressOperations` keys ECK writes (`downscale`, `upgrade`, `upscale`) before indexing.
 *Alternative*: the `k8s-openapi` crate. Rejected: it is heavy, feature-gated per
 Kubernetes version, and deserializes every field, so the allowlist would be a second
 filtering step that is easy to bypass.
@@ -160,7 +165,7 @@ Inside `process`, the ECK bundle moves through explicit states:
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Discovered: list root dirs, keep dirs holding a recognized resource file
+    [*] --> Discovered: list root dirs as candidate namespaces
     Discovered --> Indexed: load cluster-scoped files + per-namespace pods, statefulsets, PVCs, PVs, configmaps
     Indexed --> Exported: emit docs per source using lookups
     Exported --> [*]
@@ -195,7 +200,9 @@ is deserialized once per namespace and reused for pod, container, and node-sum o
 
 ### 6. Namespace discovery from the bundle, not the log
 
-Namespaces are root directories that contain a recognized namespaced resource file.
+Every root directory is a candidate namespace. Only known file names are read from it,
+so a directory without any (such as an unrelated folder) yields no documents; filtering
+up front would need a file-existence probe on every receiver for no change in output.
 `eck-diagnostics.log` is free-form text (a Go `%+v` struct), so parsing it is used only
 to populate `eck.operator.namespaces` / `eck.resources.namespaces` in the operator doc,
 with failure leaving them unset. Included diagnostic paths from the manifest are
@@ -244,10 +251,10 @@ recording it would mark most healthy bundles Partial.
 2. Resource health table: kind, name, version, health, phase, available/expected, generation lag.
 3. NodeSet sizing table: count, roles, CPU/memory limits, heap, storage, rollout in progress.
 4. Pods not Running/Ready, and top containers by restarts with last terminated reason.
-5. Kubernetes nodes: pressure conditions, allocatable vs scheduled requests, Elastic pods per node and per zone.
+5. Kubernetes nodes: pressure conditions, allocatable vs scheduled requests, and pods per node broken down by ECK type.
 6. Volumes: requested vs provisioned, resize pending, non-expandable class, `Delete` reclaim policy.
 7. Warning events table.
-8. Operator log: errors over time by resource; `took` percentiles by resource kind.
+8. Operator log: errors over time by controller; `took` percentiles by resource.
 
 ## Risks / Trade-offs
 
