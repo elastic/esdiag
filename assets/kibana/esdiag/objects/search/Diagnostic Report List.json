@@ -1,64 +1,6 @@
 {
   "attributes": {
-    "columns": [
-      "diagnostic.product",
-      "diagnostic.id",
-      "diagnostic.docs.total",
-      "diagnostic.docs.errors",
-      "diagnostic.processor.count",
-      "diagnostic.processor.errors",
-      "diagnostic.processor.failures",
-      "diagnostic.origin.path",
-      "diagnostic.collection_date",
-      "event.ingested"
-    ],
     "description": "List of all diagnostic reports.",
-    "grid": {
-      "columns": {
-        "diagnostic.collection_date": {
-          "width": 232
-        },
-        "diagnostic.doc_errors": {
-          "width": 109
-        },
-        "diagnostic.docs_total": {
-          "width": 118
-        },
-        "diagnostic.id": {
-          "width": 244
-        },
-        "diagnostic.origin.path": {
-          "width": 264
-        },
-        "diagnostic.processor.errors": {
-          "width": 169
-        },
-        "diagnostic.processor.failures": {
-          "width": 220
-        },
-        "diagnostic.product": {
-          "width": 133
-        }
-      }
-    },
-    "hideChart": false,
-    "isTextBasedQuery": false,
-    "kibanaSavedObjectMeta": {
-      "searchSourceJSON": {
-        "filter": [],
-        "indexRefName": "kibanaSavedObjectMeta.searchSourceJSON.index",
-        "query": {
-          "language": "kuery",
-          "query": ""
-        }
-      }
-    },
-    "sort": [
-      [
-        "diagnostic.origin.path",
-        "desc"
-      ]
-    ],
     "tabs": [
       {
         "attributes": {
@@ -119,7 +61,6 @@
         "label": "Untitled"
       }
     ],
-    "timeRestore": false,
     "title": "Diagnostic Report List"
   },
   "coreMigrationVersion": "8.8.0",
@@ -137,5 +78,5 @@
     }
   ],
   "type": "search",
-  "typeMigrationVersion": "10.11.0"
+  "typeMigrationVersion": "10.13.0"
 }
