@@ -818,7 +818,8 @@ fn add(sums: &mut BTreeMap<String, f64>, resource: &str, value: Option<f64>) {
 
 /// A pod's effective request and limit for `resource`, as the scheduler
 /// computes it: the larger of the app container sum and the largest init
-/// container.
+/// container, plus any RuntimeClass overhead. Overhead always adds to the
+/// request but only to a nonzero limit.
 fn pod_effective(pod: &Pod, resource: &str) -> (Option<f64>, Option<f64>) {
     let quantity = |raw: Option<&BTreeMap<String, String>>| {
         raw.and_then(|raw| raw.get(resource))
@@ -853,10 +854,15 @@ fn pod_effective(pod: &Pod, resource: &str) -> (Option<f64>, Option<f64>) {
             (running, init) => running.or(init),
         }
     };
-    (
-        effective(|resources| resources.requests.as_ref()),
-        effective(|resources| resources.limits.as_ref()),
-    )
+    let requests = effective(|resources| resources.requests.as_ref());
+    let limits = effective(|resources| resources.limits.as_ref());
+    match quantity(pod.spec.overhead.as_ref()) {
+        Some(overhead) => (
+            Some(requests.unwrap_or_default() + overhead),
+            limits.map(|limit| if limit > 0.0 { limit + overhead } else { limit }),
+        ),
+        None => (requests, limits),
+    }
 }
 
 #[cfg(test)]
@@ -1047,5 +1053,21 @@ mod tests {
         }))
         .unwrap();
         assert_eq!(pod_effective(&sidecar_only, "cpu"), (Some(3.0), None));
+    }
+
+    #[test]
+    fn pod_effective_adds_runtime_class_overhead() {
+        let pod: Pod = serde_json::from_value(json!({
+            "spec": {
+                "overhead": {"cpu": "100m", "memory": "64Mi"},
+                "containers": [
+                    {"resources": {"requests": {"cpu": "500m"}, "limits": {"cpu": "1", "memory": "0"}}}
+                ]
+            }
+        }))
+        .unwrap();
+        assert_eq!(pod_effective(&pod, "cpu"), (Some(0.6), Some(1.1)));
+        // No memory request still reserves the overhead; a zero limit stays zero.
+        assert_eq!(pod_effective(&pod, "memory"), (Some(67_108_864.0), Some(0.0)));
     }
 }

@@ -104,7 +104,7 @@ One document per JSON log line from pods labelled `control-plane: elastic-operat
 One document per Kubernetes node.
 + `capacity.*`, `allocatable.*` parsed from Kubernetes quantities
 + `conditions[]`, `condition.*`, `taints[]`, `unschedulable`, `zone`, `roles`, `node_info.*`
-+ Calculates `scheduled.{pods,requests.*,limits.*}` from the bundle's non-terminal pods
++ Calculates `scheduled.{pods,requests.*,limits.*}` from the bundle's non-terminal pods, including RuntimeClass `spec.overhead`
 
 #### \<ns\>/pods.json
 

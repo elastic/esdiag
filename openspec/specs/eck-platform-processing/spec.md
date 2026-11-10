@@ -140,7 +140,9 @@ memory, ephemeral storage (bytes) and pods, each `status.conditions` type/status
 `node-role.kubernetes.io/*` labels, and `status.nodeInfo` versions. It SHALL add
 `scheduled.pods`, `scheduled.requests.cpu`, `scheduled.requests.memory`,
 `scheduled.limits.cpu`, and `scheduled.limits.memory` summed over the collected pods
-bound to that node. Node `images` and `addresses` SHALL NOT be indexed.
+bound to that node. Each pod's RuntimeClass `spec.overhead` SHALL be added to its
+requests, and to its limit for a resource only when that limit is nonzero. Node
+`images` and `addresses` SHALL NOT be indexed.
 
 #### Scenario: Memory pressure is queryable
 - **GIVEN** a node whose `MemoryPressure` condition is `True`
@@ -151,6 +153,11 @@ bound to that node. Node `images` and `addresses` SHALL NOT be indexed.
 - **GIVEN** two collected pods on node N requesting `2` and `500m` CPU
 - **WHEN** node N's document is emitted
 - **THEN** `scheduled.requests.cpu` MUST be `2.5` and `scheduled.pods` MUST be `2`
+
+#### Scenario: RuntimeClass overhead is reserved
+- **GIVEN** a collected pod on node N requesting `500m` CPU with a `100m` CPU `spec.overhead`
+- **WHEN** node N's document is emitted
+- **THEN** that pod MUST contribute `0.6` to `scheduled.requests.cpu`
 
 ### Requirement: Kubernetes pod and container documents
 The processor SHALL emit one `metrics-kubernetes.pod-esdiag` document per pod in each

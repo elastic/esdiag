@@ -138,6 +138,8 @@ pub struct PodSpec {
     pub init_containers: Vec<Container>,
     pub containers: Vec<Container>,
     pub volumes: Vec<Volume>,
+    /// RuntimeClass overhead the scheduler reserves on top of the containers.
+    pub overhead: Option<BTreeMap<String, String>>,
 }
 
 #[derive(Clone, Default, Deserialize)]
