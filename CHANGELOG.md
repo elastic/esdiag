@@ -10,6 +10,10 @@ published release notes, maintenance branches, and tagged history.
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed `esdiag setup` failing on Elasticsearch Serverless Kibana projects with "Failed to search Kibana space 'default' for ESDiag assets (400 Bad Request)". The check that keeps ESDiag assets in one Kibana space now works on Serverless.
+
 ## [0.17.1] - 2026-11-02
 
 ### Added

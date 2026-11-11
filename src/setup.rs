@@ -1092,12 +1092,14 @@ fn bundled_dashboard_ids(bundle: &SyncBundle) -> HashSet<String> {
 
 async fn space_has_esdiag_dashboards(client: &Client, space: &str, dashboard_ids: &HashSet<String>) -> Result<bool> {
     const PER_PAGE: u64 = 1000;
+    // Serverless Kibana only serves saved object `_find` to internal-origin requests.
+    let headers = HashMap::from([("X-Elastic-Internal-Origin".to_string(), "Kibana".to_string())]);
     for page in 1.. {
         let path = kibana_space_path(
             space,
             &format!("api/saved_objects/_find?type=dashboard&fields=title&per_page={PER_PAGE}&page={page}"),
         );
-        let response = client.request(Method::GET, &HashMap::new(), &path, None).await?;
+        let response = client.request(Method::GET, &headers, &path, None).await?;
         let status = response.status();
         if !status.is_success() {
             return Err(eyre!(
@@ -2222,5 +2224,67 @@ mod tests {
             .unwrap_or_else(|| panic!("{label}.visState.params.spec should be a string"));
         serde_json::from_str::<Value>(spec)
             .unwrap_or_else(|err| panic!("{label}.visState.params.spec should parse as JSON: {err}"));
+    }
+
+    #[tokio::test]
+    async fn single_space_guard_searches_serverless_kibana_spaces() {
+        use crate::data::{Application, KnownHostBuilder, Uri};
+        use axum::{
+            Json, Router,
+            http::{HeaderMap, StatusCode as AxumStatus},
+            routing::get,
+        };
+
+        // Serverless Kibana rejects saved object `_find` unless the request is internal-origin.
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let router = Router::new()
+            .route(
+                "/api/spaces/space",
+                get(|| async { Json(serde_json::json!([{"id": "default"}, {"id": "esdiag"}])) }),
+            )
+            .route(
+                "/api/saved_objects/_find",
+                get(|headers: HeaderMap| async move {
+                    if headers.get("x-elastic-internal-origin").is_none() {
+                        return (
+                            AxumStatus::BAD_REQUEST,
+                            Json(serde_json::json!({
+                                "statusCode": 400,
+                                "message": "uri [/api/saved_objects/_find] with method [get] exists but is not available with the current configuration"
+                            })),
+                        );
+                    }
+                    (
+                        AxumStatus::OK,
+                        Json(serde_json::json!({
+                            "total": 1,
+                            "saved_objects": [{"type": "dashboard", "id": "copied", "originId": "allocation-overview"}]
+                        })),
+                    )
+                }),
+            );
+        let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+        let host = KnownHostBuilder::new(url::Url::parse(&base).unwrap())
+            .application(Application::Kibana)
+            .build()
+            .unwrap();
+        let client = Client::try_from(Uri::KnownHost(host)).unwrap();
+        let bundle = kibana_bundle(&EmbeddedAssets::new().unwrap())
+            .unwrap()
+            .read_all()
+            .unwrap();
+
+        let error = ensure_single_kibana_space(&client, &bundle, "esdiag")
+            .await
+            .expect_err("ESDiag dashboards in the default space should block a second install");
+
+        assert!(
+            error
+                .to_string()
+                .contains("ESDiag Kibana assets are already installed in the 'default' space"),
+            "{error}"
+        );
+        server.abort();
     }
 }
