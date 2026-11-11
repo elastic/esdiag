@@ -111,12 +111,14 @@ pub(super) async fn space_has_esdiag_dashboards(
     dashboard_ids: &HashSet<String>,
 ) -> Result<bool> {
     const PER_PAGE: u64 = 1000;
+    // Serverless Kibana only serves saved object `_find` to internal-origin requests.
+    let headers = HashMap::from([("X-Elastic-Internal-Origin".to_string(), "Kibana".to_string())]);
     for page in 1.. {
         let path = kibana_space_path(
             space,
             &format!("api/saved_objects/_find?type=dashboard&fields=title&per_page={PER_PAGE}&page={page}"),
         );
-        let response = client.request(Method::GET, &HashMap::new(), &path, None).await?;
+        let response = client.request(Method::GET, &headers, &path, None).await?;
         let status = response.status();
         if !status.is_success() {
             return Err(eyre!(
