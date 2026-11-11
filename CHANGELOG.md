@@ -10,6 +10,8 @@ published release notes, maintenance branches, and tagged history.
 
 ## [Unreleased]
 
+## [0.17.2] - 2026-11-11
+
 ### Fixed
 
 - Fixed `esdiag setup` failing on Elasticsearch Serverless Kibana projects with "Failed to search Kibana space 'default' for ESDiag assets (400 Bad Request)". The check that keeps ESDiag assets in one Kibana space now works on Serverless.
@@ -433,7 +435,8 @@ published release notes, maintenance branches, and tagged history.
   fail on invalid zip paths (#177).
 - Fixed ECK diagnostic path handling for correctly structured archives (#179).
 
-[Unreleased]: https://github.com/elastic/esdiag/compare/0.17.1...0.17
+[Unreleased]: https://github.com/elastic/esdiag/compare/0.17.2...0.17
+[0.17.2]: https://github.com/elastic/esdiag/compare/0.17.1...0.17.2
 [0.17.1]: https://github.com/elastic/esdiag/compare/0.17.0...0.17.1
 [0.17.0]: https://github.com/elastic/esdiag/compare/0.16.5...0.17.0
 [0.16.5]: https://github.com/elastic/esdiag/compare/0.16.4...0.16.5

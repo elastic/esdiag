@@ -23,7 +23,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           # Set this on a release branch when the previous release tag is not
           # an ancestor of the tagged commit.
-          RELEASE_NOTES_START_TAG: "0.17.0"
+          RELEASE_NOTES_START_TAG: "0.17.1"
         run: |
           previous_tag="$RELEASE_NOTES_START_TAG"
           if [ -z "$previous_tag" ]; then
