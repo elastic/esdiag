@@ -1,91 +1,6 @@
 {
   "attributes": {
-    "columns": [
-      "node.name",
-      "node.role",
-      "node.version",
-      "node.jvm.uptime_in_millis",
-      "node.os.allocated_processors",
-      "node.jvm.mem.heap_max_in_bytes",
-      "node.os.mem.total_in_bytes",
-      "node.fs.total.total_in_bytes",
-      "node.attributes.instance_configuration",
-      "node.os.arch",
-      "node.os.pretty_name",
-      "node.host",
-      "node.ip"
-    ],
     "description": "Detailed list of a node's hardware configuration and software versions.",
-    "grid": {
-      "columns": {
-        "@timestamp": {
-          "width": 50
-        },
-        "event.ingested": {
-          "width": 263
-        },
-        "node.attributes.instance_configuration": {
-          "width": 251
-        },
-        "node.fs.total.total_in_bytes": {
-          "width": 134
-        },
-        "node.host": {
-          "width": 190
-        },
-        "node.ip": {
-          "width": 149
-        },
-        "node.jvm.mem.heap_max_in_bytes": {
-          "width": 119
-        },
-        "node.jvm.uptime_in_millis": {
-          "width": 98
-        },
-        "node.name": {
-          "width": 288
-        },
-        "node.os.arch": {
-          "width": 92
-        },
-        "node.os.mem.total_in_bytes": {
-          "width": 115
-        },
-        "node.os.pretty_name": {
-          "width": 171
-        },
-        "node.role": {
-          "width": 102
-        },
-        "node.version": {
-          "width": 96
-        }
-      }
-    },
-    "headerRowHeight": 0,
-    "hideChart": true,
-    "isTextBasedQuery": false,
-    "kibanaSavedObjectMeta": {
-      "searchSourceJSON": {
-        "filter": [],
-        "indexRefName": "kibanaSavedObjectMeta.searchSourceJSON.index",
-        "query": {
-          "language": "kuery",
-          "query": ""
-        }
-      }
-    },
-    "rowHeight": 0,
-    "sort": [
-      [
-        "node.role",
-        "asc"
-      ],
-      [
-        "node.name",
-        "asc"
-      ]
-    ],
     "tabs": [
       {
         "attributes": {
@@ -174,9 +89,7 @@
         "label": "Untitled"
       }
     ],
-    "timeRestore": false,
-    "title": "Node List",
-    "viewMode": "documents"
+    "title": "Node List"
   },
   "coreMigrationVersion": "8.8.0",
   "id": "9dfd5b05-c0e3-4ca0-8ae0-9fc193f53b2b",
@@ -198,5 +111,5 @@
     }
   ],
   "type": "search",
-  "typeMigrationVersion": "10.11.0"
+  "typeMigrationVersion": "10.13.0"
 }

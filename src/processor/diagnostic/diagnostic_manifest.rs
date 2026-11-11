@@ -426,6 +426,17 @@ mod tests {
     }
 
     #[test]
+    fn eck_manifest_json_without_product_is_platform_only() {
+        let manifest: Manifest = serde_json::from_str(
+            r#"{"diagType": "eck-diagnostics", "collectionDate": "2026-01-15T10:00:00.000000000Z"}"#,
+        )
+        .expect("eck manifest.json");
+        let manifest = DiagnosticManifest::from(manifest);
+        assert_eq!(manifest.platform(), Platform::ECK);
+        assert_eq!(manifest.application(), None);
+    }
+
+    #[test]
     fn detects_kubernetes_platform_from_diag_type_indicator() {
         let manifest = manifest_with(None, None, Some("k8s-platform-diagnostics"), Some("unknown"));
         assert_eq!(manifest.platform(), Platform::KubernetesPlatform);

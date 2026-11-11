@@ -1,88 +1,6 @@
 {
   "attributes": {
-    "columns": [
-      "node.name",
-      "node.ip",
-      "node.jvm.uptime_in_millis",
-      "node.fs.io_stats.total.io_time_in_millis",
-      "node.fs.io_stats.total.read_operations",
-      "node.fs.io_stats.total.read_kilobytes",
-      "node.fs.io_stats.total.write_operations",
-      "node.fs.io_stats.total.write_kilobytes",
-      "event.ingested"
-    ],
     "description": "Read and write totals for node io_stats",
-    "grid": {
-      "columns": {
-        "event.ingested": {
-          "width": 246
-        },
-        "node.fs.io_stats.total.io_time_in_millis": {
-          "width": 117
-        },
-        "node.fs.io_stats.total.read_kilobytes": {
-          "width": 116
-        },
-        "node.fs.io_stats.total.read_operations": {
-          "width": 125
-        },
-        "node.fs.io_stats.total.write_kilobytes": {
-          "width": 120
-        },
-        "node.fs.io_stats.total.write_operations": {
-          "width": 124
-        },
-        "node.ip": {
-          "width": 159
-        },
-        "node.jvm.uptime_in_millis": {
-          "width": 118
-        },
-        "node.name": {
-          "width": 315
-        }
-      }
-    },
-    "hideChart": false,
-    "isTextBasedQuery": false,
-    "kibanaSavedObjectMeta": {
-      "searchSourceJSON": {
-        "filter": [
-          {
-            "$state": {
-              "store": "appState"
-            },
-            "meta": {
-              "alias": null,
-              "disabled": false,
-              "indexRefName": "kibanaSavedObjectMeta.searchSourceJSON.filter[0].meta.index",
-              "key": "diagnostic.id",
-              "negate": false,
-              "params": {
-                "query": "elasticsearch@2024-10-22T16:34:59Z#f6db"
-              },
-              "type": "phrase"
-            },
-            "query": {
-              "match_phrase": {
-                "diagnostic.id": "elasticsearch@2024-10-22T16:34:59Z#f6db"
-              }
-            }
-          }
-        ],
-        "indexRefName": "kibanaSavedObjectMeta.searchSourceJSON.index",
-        "query": {
-          "language": "kuery",
-          "query": ""
-        }
-      }
-    },
-    "sort": [
-      [
-        "node.fs.io_stats.total.io_time_in_millis",
-        "desc"
-      ]
-    ],
     "tabs": [
       {
         "attributes": {
@@ -145,7 +63,6 @@
         "label": "Untitled"
       }
     ],
-    "timeRestore": false,
     "title": "Node io_stats table"
   },
   "coreMigrationVersion": "8.8.0",
@@ -173,5 +90,5 @@
     }
   ],
   "type": "search",
-  "typeMigrationVersion": "10.11.0"
+  "typeMigrationVersion": "10.13.0"
 }

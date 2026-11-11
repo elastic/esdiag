@@ -14,6 +14,7 @@ deployment. For an Elasticsearch Serverless project, see
 
 ## What you need
 
+- Elasticsearch and Kibana 9.5 or later.
 - Network access to the Elasticsearch endpoint.
 - A credential that can write `*-esdiag` indices.
 - An administrator credential to install ESDiag assets when they are missing.

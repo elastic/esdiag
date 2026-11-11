@@ -1,0 +1,67 @@
+{
+  "apiVersion": "v1",
+  "kind": "List",
+  "metadata": {
+    "resourceVersion": ""
+  },
+  "items": [
+    {
+      "apiVersion": "apps/v1",
+      "kind": "StatefulSet",
+      "metadata": {
+        "name": "quickstart-es-master",
+        "namespace": "demo",
+        "generation": 3,
+        "labels": {
+          "common.k8s.elastic.co/type": "elasticsearch",
+          "elasticsearch.k8s.elastic.co/cluster-name": "quickstart",
+          "elasticsearch.k8s.elastic.co/statefulset-name": "quickstart-es-master"
+        }
+      },
+      "spec": {
+        "replicas": 1,
+        "serviceName": "quickstart-es-master"
+      },
+      "status": {
+        "availableReplicas": 1,
+        "collisionCount": 0,
+        "currentReplicas": 1,
+        "currentRevision": "quickstart-es-master-6b7c8d9f0",
+        "observedGeneration": 3,
+        "readyReplicas": 1,
+        "replicas": 1,
+        "updateRevision": "quickstart-es-master-6b7c8d9f0",
+        "updatedReplicas": 1
+      }
+    },
+    {
+      "apiVersion": "apps/v1",
+      "kind": "StatefulSet",
+      "metadata": {
+        "name": "quickstart-es-data",
+        "namespace": "demo",
+        "generation": 4,
+        "labels": {
+          "common.k8s.elastic.co/type": "elasticsearch",
+          "elasticsearch.k8s.elastic.co/cluster-name": "quickstart",
+          "elasticsearch.k8s.elastic.co/statefulset-name": "quickstart-es-data"
+        }
+      },
+      "spec": {
+        "replicas": 2,
+        "serviceName": "quickstart-es-data"
+      },
+      "status": {
+        "availableReplicas": 1,
+        "collisionCount": 0,
+        "currentReplicas": 1,
+        "currentRevision": "quickstart-es-data-5a6b7c8d9",
+        "observedGeneration": 4,
+        "readyReplicas": 1,
+        "replicas": 2,
+        "updateRevision": "quickstart-es-data-7e8f9a0b1",
+        "updatedReplicas": 1
+      }
+    }
+  ]
+}
