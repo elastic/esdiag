@@ -19,9 +19,12 @@ use zip::ZipArchive;
 
 mod bytes;
 mod file;
+mod scrub;
 
 pub use bytes::*;
 pub use file::*;
+pub(crate) use scrub::with_normalized_json_reader;
+pub use scrub::{normalize_supported_content, supports_json_normalization};
 
 /// A ZIP archive with its irregular entry names indexed once at open. ECK
 /// writes entries such as `name//file`; the index maps each one's
@@ -64,6 +67,7 @@ pub async fn get_stream_from_archive<R, T>(
     archive: Arc<RwLock<IndexedArchive<R>>>,
     subdir: Option<PathBuf>,
     ctx: SourceContext,
+    scrubbed: bool,
 ) -> Result<BoxStream<'static, Result<T::Item>>>
 where
     R: Read + Seek + Send + Sync + 'static,
@@ -92,11 +96,10 @@ where
 
         tracing::debug!("Streaming from archive: {}", filename);
         let stream_result = match archive_guard.by_name(&filename) {
-            Ok(file) => {
-                let reader = BufReader::new(file);
+            Ok(file) => with_normalized_json_reader(&filename, BufReader::new(file), scrubbed, |reader| {
                 let mut deserializer = serde_json::Deserializer::from_reader(reader);
                 T::deserialize_stream(&mut deserializer, tx.clone()).map_err(|e| eyre::eyre!(e.to_string()))
-            }
+            }),
             Err(e) => Err(eyre::eyre!(e)),
         };
 

@@ -1222,6 +1222,7 @@ impl ServerState {
         account: Option<String>,
         filename: String,
         path: PathBuf,
+        scrubbed_override: Option<bool>,
     ) -> Option<JobRequest> {
         tracing::debug!("Pushing file upload id: {id}");
         let identifiers = Identifiers {
@@ -1239,6 +1240,7 @@ impl ServerState {
                     filename,
                     path: path.clone(),
                     cleanup_path: Some(path),
+                    scrubbed_override,
                 },
             },
         )
@@ -1570,6 +1572,7 @@ pub enum JobInput {
         filename: String,
         path: PathBuf,
         cleanup_path: Option<PathBuf>,
+        scrubbed_override: Option<bool>,
     },
     FromServiceLink {
         source: String,
