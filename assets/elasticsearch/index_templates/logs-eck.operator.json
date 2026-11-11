@@ -1,0 +1,37 @@
+{
+  "_meta": {
+    "description": "ESDiag ECK operator log lines (JSON lines only; non-JSON lines are counted in the processor summary)"
+  },
+  "index_patterns": ["logs-eck.operator-esdiag*"],
+  "composed_of": [
+    "esdiag@eck-mappings",
+    "esdiag@eck-metadata",
+    "esdiag@settings"
+  ],
+  "allow_auto_create": true,
+  "data_stream": {
+    "hidden": false,
+    "allow_custom_routing": false
+  },
+  "priority": 300,
+  "template": {
+    "mappings": {
+      "properties": {
+        "data_stream": {
+          "type": "object",
+          "properties": {
+            "dataset": {
+              "type": "constant_keyword",
+              "value": "eck.operator"
+            },
+            "type": {
+              "type": "constant_keyword",
+              "value": "logs"
+            }
+          }
+        }
+      }
+    }
+  },
+  "version": 1
+}

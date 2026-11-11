@@ -2,7 +2,7 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use super::resolve_archive_path;
+use super::{IndexedArchive, resolve_archive_path};
 use crate::{
     processor::{DataSource, SourceContext, StreamingDataSource},
     receiver::{MissingSource, Receive, ReceiveMultiple},
@@ -20,7 +20,7 @@ use std::{
 use tokio::sync::RwLock;
 use zip::ZipArchive;
 
-type ArchiveCursor = ZipArchive<BufReader<Cursor<Bytes>>>;
+type ArchiveCursor = IndexedArchive<BufReader<Cursor<Bytes>>>;
 type ArchivePointer = Arc<RwLock<ArchiveCursor>>;
 
 #[derive(Clone)]
@@ -116,7 +116,7 @@ impl TryFrom<Bytes> for ArchiveBytesReceiver {
         tracing::debug!("Using in-memory archive");
         let archive = ZipArchive::new(BufReader::new(Cursor::new(bytes)))?;
         Ok(Self {
-            archive: Arc::new(RwLock::new(archive)),
+            archive: Arc::new(RwLock::new(IndexedArchive::new(archive))),
             subdir: None,
             source_product: Arc::new(OnceLock::new()),
         })
@@ -149,8 +149,20 @@ impl ArchiveBytesReceiver {
             Ok(file) => file,
             Err(_) => return Err(eyre!("Failed to read file {filename} from archive")),
         };
-        let reader = BufReader::new(file);
+        let mut reader = BufReader::new(file);
+        if !crate::receiver::source_has_json(&mut reader)? {
+            return Err(MissingSource::Empty { path: filename }.into());
+        }
         serde_json::from_reader(reader).map_err(Into::into)
+    }
+
+    pub async fn list_bundle_dirs(&self, dir: &str) -> Result<Vec<String>> {
+        let mut archive = self.archive.write().await;
+        super::list_archive_dirs(self.subdir.as_ref(), &mut *archive, dir)
+    }
+
+    pub async fn read_bundle_lines(&self, filename: &str) -> Result<BoxStream<'static, Result<String>>> {
+        super::read_lines_from_archive(self.archive.clone(), self.subdir.clone(), filename).await
     }
 
     /// Whether the bundle contains `dir` as a directory component within the

@@ -1,0 +1,458 @@
+{
+  "apiVersion": "v1",
+  "kind": "List",
+  "metadata": {
+    "resourceVersion": ""
+  },
+  "items": [
+    {
+      "apiVersion": "v1",
+      "kind": "Pod",
+      "metadata": {
+        "name": "quickstart-es-master-0",
+        "namespace": "demo",
+        "uid": "30000000-0000-0000-0000-000000000001",
+        "creationTimestamp": "2026-01-01T00:00:00Z",
+        "labels": {
+          "common.k8s.elastic.co/type": "elasticsearch",
+          "controller-revision-hash": "quickstart-es-master-6b7c8d9f0",
+          "elasticsearch.k8s.elastic.co/cluster-name": "quickstart",
+          "elasticsearch.k8s.elastic.co/node-data": "false",
+          "elasticsearch.k8s.elastic.co/node-ingest": "false",
+          "elasticsearch.k8s.elastic.co/node-master": "true",
+          "elasticsearch.k8s.elastic.co/node-ml": "false",
+          "elasticsearch.k8s.elastic.co/statefulset-name": "quickstart-es-master",
+          "elasticsearch.k8s.elastic.co/version": "9.3.3",
+          "statefulset.kubernetes.io/pod-name": "quickstart-es-master-0",
+          "team": "label-sentinel"
+        },
+        "annotations": {
+          "example.com/sentinel": "annotation-sentinel-value"
+        },
+        "managedFields": [
+          {
+            "manager": "managedfields-sentinel",
+            "operation": "Update"
+          }
+        ]
+      },
+      "spec": {
+        "nodeName": "worker-a",
+        "initContainers": [
+          {
+            "name": "elastic-internal-init-filesystem",
+            "image": "docker.elastic.co/elasticsearch/elasticsearch:9.3.3",
+            "resources": {
+              "limits": {
+                "cpu": "100m",
+                "memory": "50Mi"
+              },
+              "requests": {
+                "cpu": "100m",
+                "memory": "50Mi"
+              }
+            }
+          }
+        ],
+        "containers": [
+          {
+            "name": "elasticsearch",
+            "image": "docker.elastic.co/elasticsearch/elasticsearch:9.3.3",
+            "env": [
+              {
+                "name": "ES_JAVA_OPTS",
+                "value": "-Xms1g -Xmx1g"
+              },
+              {
+                "name": "DEMO_TOKEN",
+                "value": "podtemplate-env-sentinel"
+              }
+            ],
+            "resources": {
+              "limits": {
+                "cpu": "1",
+                "memory": "2Gi"
+              },
+              "requests": {
+                "cpu": "500m",
+                "memory": "2Gi"
+              }
+            }
+          }
+        ],
+        "volumes": [
+          {
+            "name": "elasticsearch-data",
+            "persistentVolumeClaim": {
+              "claimName": "elasticsearch-data-quickstart-es-master-0"
+            }
+          }
+        ]
+      },
+      "status": {
+        "phase": "Running",
+        "qosClass": "Guaranteed",
+        "startTime": "2026-01-01T00:00:10Z",
+        "conditions": [
+          {
+            "type": "Initialized",
+            "status": "True"
+          },
+          {
+            "type": "Ready",
+            "status": "True"
+          },
+          {
+            "type": "ContainersReady",
+            "status": "True"
+          },
+          {
+            "type": "PodScheduled",
+            "status": "True"
+          }
+        ],
+        "initContainerStatuses": [
+          {
+            "name": "elastic-internal-init-filesystem",
+            "image": "docker.elastic.co/elasticsearch/elasticsearch:9.3.3",
+            "ready": true,
+            "restartCount": 0,
+            "lastState": {},
+            "state": {
+              "terminated": {
+                "exitCode": 0,
+                "reason": "Completed",
+                "finishedAt": "2026-01-01T00:00:20Z"
+              }
+            }
+          }
+        ],
+        "containerStatuses": [
+          {
+            "name": "elasticsearch",
+            "image": "docker.elastic.co/elasticsearch/elasticsearch:9.3.3",
+            "ready": true,
+            "started": true,
+            "restartCount": 0,
+            "lastState": {},
+            "state": {
+              "running": {
+                "startedAt": "2026-01-01T00:00:30Z"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Pod",
+      "metadata": {
+        "name": "quickstart-es-data-0",
+        "namespace": "demo",
+        "uid": "30000000-0000-0000-0000-000000000002",
+        "creationTimestamp": "2026-01-01T00:00:00Z",
+        "labels": {
+          "common.k8s.elastic.co/type": "elasticsearch",
+          "controller-revision-hash": "quickstart-es-data-7e8f9a0b1",
+          "elasticsearch.k8s.elastic.co/cluster-name": "quickstart",
+          "elasticsearch.k8s.elastic.co/node-data": "true",
+          "elasticsearch.k8s.elastic.co/node-ingest": "true",
+          "elasticsearch.k8s.elastic.co/node-master": "false",
+          "elasticsearch.k8s.elastic.co/statefulset-name": "quickstart-es-data",
+          "statefulset.kubernetes.io/pod-name": "quickstart-es-data-0"
+        }
+      },
+      "spec": {
+        "nodeName": "worker-b",
+        "containers": [
+          {
+            "name": "elasticsearch",
+            "image": "docker.elastic.co/elasticsearch/elasticsearch:9.3.3",
+            "resources": {
+              "limits": {
+                "cpu": "not-a-quantity",
+                "memory": "4Gi"
+              },
+              "requests": {
+                "cpu": "2",
+                "memory": "4Gi"
+              }
+            }
+          }
+        ],
+        "volumes": [
+          {
+            "name": "elasticsearch-data",
+            "persistentVolumeClaim": {
+              "claimName": "elasticsearch-data-quickstart-es-data-0"
+            }
+          }
+        ]
+      },
+      "status": {
+        "phase": "Running",
+        "qosClass": "Burstable",
+        "startTime": "2026-01-15T09:50:00Z",
+        "conditions": [
+          {
+            "type": "Initialized",
+            "status": "True"
+          },
+          {
+            "type": "Ready",
+            "status": "False",
+            "reason": "ContainersNotReady"
+          },
+          {
+            "type": "ContainersReady",
+            "status": "False",
+            "reason": "ContainersNotReady"
+          },
+          {
+            "type": "PodScheduled",
+            "status": "True"
+          }
+        ],
+        "containerStatuses": [
+          {
+            "name": "elasticsearch",
+            "image": "docker.elastic.co/elasticsearch/elasticsearch:9.3.3",
+            "ready": false,
+            "started": true,
+            "restartCount": 3,
+            "lastState": {
+              "terminated": {
+                "exitCode": 137,
+                "reason": "OOMKilled",
+                "startedAt": "2026-01-15T09:52:00Z",
+                "finishedAt": "2026-01-15T09:54:00Z"
+              }
+            },
+            "state": {
+              "running": {
+                "startedAt": "2026-01-15T09:54:30Z"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Pod",
+      "metadata": {
+        "name": "quickstart-es-data-1",
+        "namespace": "demo",
+        "uid": "30000000-0000-0000-0000-000000000003",
+        "creationTimestamp": "2026-01-15T09:50:00Z",
+        "labels": {
+          "common.k8s.elastic.co/type": "elasticsearch",
+          "elasticsearch.k8s.elastic.co/cluster-name": "quickstart",
+          "elasticsearch.k8s.elastic.co/node-data": "true",
+          "elasticsearch.k8s.elastic.co/node-ingest": "true",
+          "elasticsearch.k8s.elastic.co/node-master": "false",
+          "elasticsearch.k8s.elastic.co/statefulset-name": "quickstart-es-data",
+          "statefulset.kubernetes.io/pod-name": "quickstart-es-data-1"
+        }
+      },
+      "spec": {
+        "containers": [
+          {
+            "name": "elasticsearch",
+            "image": "docker.elastic.co/elasticsearch/elasticsearch:9.3.3",
+            "resources": {
+              "limits": {
+                "cpu": "2",
+                "memory": "4Gi"
+              },
+              "requests": {
+                "cpu": "2",
+                "memory": "4Gi"
+              }
+            }
+          }
+        ],
+        "volumes": [
+          {
+            "name": "elasticsearch-data",
+            "persistentVolumeClaim": {
+              "claimName": "elasticsearch-data-quickstart-es-data-1"
+            }
+          }
+        ]
+      },
+      "status": {
+        "phase": "Pending",
+        "qosClass": "Guaranteed",
+        "conditions": [
+          {
+            "type": "PodScheduled",
+            "status": "False",
+            "reason": "Unschedulable",
+            "message": "0/3 nodes are available: 1 node(s) had untolerated taint, 2 Insufficient memory."
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Pod",
+      "metadata": {
+        "name": "quickstart-kb-5d8f9c7b6-abcde",
+        "namespace": "demo",
+        "uid": "30000000-0000-0000-0000-000000000004",
+        "creationTimestamp": "2026-01-02T00:00:00Z",
+        "labels": {
+          "common.k8s.elastic.co/type": "kibana",
+          "kibana.k8s.elastic.co/name": "quickstart",
+          "kibana.k8s.elastic.co/version": "9.3.3",
+          "pod-template-hash": "5d8f9c7b6"
+        },
+        "ownerReferences": [
+          {
+            "apiVersion": "apps/v1",
+            "kind": "ReplicaSet",
+            "name": "quickstart-kb-5d8f9c7b6",
+            "controller": true
+          }
+        ]
+      },
+      "spec": {
+        "nodeName": "worker-a",
+        "containers": [
+          {
+            "name": "kibana",
+            "image": "docker.elastic.co/kibana/kibana:9.3.3",
+            "env": [
+              {
+                "name": "DEMO_PASSWORD",
+                "value": "env-plaintext-sentinel"
+              }
+            ],
+            "resources": {
+              "limits": {
+                "memory": "1Gi"
+              },
+              "requests": {
+                "cpu": "500m",
+                "memory": "1Gi"
+              }
+            }
+          }
+        ]
+      },
+      "status": {
+        "phase": "Running",
+        "qosClass": "Burstable",
+        "startTime": "2026-01-02T00:00:05Z",
+        "conditions": [
+          {
+            "type": "Initialized",
+            "status": "True"
+          },
+          {
+            "type": "Ready",
+            "status": "True"
+          },
+          {
+            "type": "ContainersReady",
+            "status": "True"
+          },
+          {
+            "type": "PodScheduled",
+            "status": "True"
+          }
+        ],
+        "containerStatuses": [
+          {
+            "name": "kibana",
+            "image": "docker.elastic.co/kibana/kibana:9.3.3",
+            "ready": true,
+            "started": true,
+            "restartCount": 0,
+            "lastState": {},
+            "state": {
+              "running": {
+                "startedAt": "2026-01-02T00:00:10Z"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Pod",
+      "metadata": {
+        "name": "fleet-server-agent-7f6d5c4b3-fghij",
+        "namespace": "demo",
+        "uid": "30000000-0000-0000-0000-000000000005",
+        "creationTimestamp": "2026-01-03T00:00:00Z",
+        "labels": {
+          "agent.k8s.elastic.co/name": "fleet-server",
+          "agent.k8s.elastic.co/version": "9.3.3",
+          "common.k8s.elastic.co/type": "agent",
+          "pod-template-hash": "7f6d5c4b3"
+        }
+      },
+      "spec": {
+        "nodeName": "worker-b",
+        "containers": [
+          {
+            "name": "agent",
+            "image": "docker.elastic.co/elastic-agent/elastic-agent:9.3.3",
+            "resources": {
+              "limits": {
+                "cpu": "1",
+                "memory": "1Gi"
+              },
+              "requests": {
+                "cpu": "500m",
+                "memory": "512Mi"
+              }
+            }
+          }
+        ]
+      },
+      "status": {
+        "phase": "Running",
+        "qosClass": "Burstable",
+        "startTime": "2026-01-03T00:00:05Z",
+        "conditions": [
+          {
+            "type": "Initialized",
+            "status": "True"
+          },
+          {
+            "type": "Ready",
+            "status": "True"
+          },
+          {
+            "type": "ContainersReady",
+            "status": "True"
+          },
+          {
+            "type": "PodScheduled",
+            "status": "True"
+          }
+        ],
+        "containerStatuses": [
+          {
+            "name": "agent",
+            "image": "docker.elastic.co/elastic-agent/elastic-agent:9.3.3",
+            "ready": true,
+            "started": true,
+            "restartCount": 0,
+            "lastState": {},
+            "state": {
+              "running": {
+                "startedAt": "2026-01-03T00:00:10Z"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -186,6 +186,7 @@ fn metadata_templates_accept_both_writer_generations() {
     let templates = [
         diagnostic_properties(&component_template("esdiag@metadata.json")).clone(),
         diagnostic_properties(&component_template("esdiag@ls-metadata.json")).clone(),
+        diagnostic_properties(&component_template("esdiag@eck-metadata.json")).clone(),
         diagnostic_properties(&index_template("metrics-diagnostic.json")).clone(),
     ];
     for properties in templates {

@@ -18,6 +18,8 @@ published release notes, maintenance branches, and tagged history.
 - Added an experimental `elastic diag` profile with context-backed collection, named output contexts, saved symbolic context references, and explicit Cloud-admin deployment targets (#339).
 - Added `esdiag-lite.sh` and `esdiag-lite.ps1`, each with a SHA-256 checksum, to every GitHub release.
 - Added pull-request checks for the ESDiag Lite scripts, including the Windows PowerShell tests.
+- Added processing for ECK diagnostic bundles, indexing operator settings and logs, ECK resources and nodeSets, and Kubernetes node, pod, container, volume, and event state alongside the included Elasticsearch diagnostics (#73).
+- Added the ECK Platform Overview dashboard, linked from processed ECK bundles in place of the Cluster Report (#73).
 
 ### Changed
 
@@ -28,6 +30,7 @@ published release notes, maintenance branches, and tagged history.
   - `esdiag setup` without a host becomes `esdiag setup env` for `ESDIAG_OUTPUT_*` deployments, or `esdiag setup output` for the saved default output. `setup output`, `setup elasticsearch`, and `setup kibana` no longer read `ESDIAG_OUTPUT_*`.
   - `esdiag agent skills --target <agent>` becomes `esdiag setup skills [agent]...`.
 - **Breaking:** Setup no longer starts a trial license on its own. `esdiag setup`, `esdiag init` for an existing output, and web onboarding leave an unlicensed cluster's license alone unless you opt in; without the opt-in they install the Elasticsearch assets, skip the Kibana Agent Builder assets, and report a `partial` outcome. `esdiag init` asks before starting a trial. A new `esdiag local` stack still starts a trial on its first setup (#431).
+- **Breaking:** ESDiag's Kibana assets now require Elasticsearch and Kibana 9.5 or later. The bundled saved searches use the Kibana 9.5 format, which Kibana 9.4 cannot import.
 - Setup failures without an HTTP response now report the `setup_failed` outcome category.
 - CLI commands that need a saved secret from a locked keystore, such as `esdiag collect`, now prompt for the keystore password on an interactive terminal and continue instead of failing. Non-interactive runs still fail.
 - Updated workspace dependency requirements and the lockfile for the 0.18 development cycle, and regenerated third-party notices.

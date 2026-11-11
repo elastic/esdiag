@@ -2,7 +2,7 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use super::resolve_archive_path;
+use super::{IndexedArchive, resolve_archive_path};
 use crate::{
     processor::{DataSource, SourceContext, StreamingDataSource},
     receiver::{MissingSource, RawResponse, Receive, ReceiveMultiple, ReceiveRaw},
@@ -23,7 +23,7 @@ use zip::ZipArchive;
 
 #[derive(Clone)]
 pub struct ArchiveFileReceiver {
-    archive: Arc<RwLock<ZipArchive<File>>>,
+    archive: Arc<RwLock<IndexedArchive<File>>>,
     filename: String,
     subdir: Option<PathBuf>,
     modified_date: SystemTime,
@@ -42,7 +42,7 @@ impl TryFrom<PathBuf> for ArchiveFileReceiver {
                 let modified_date = file.metadata()?.modified()?;
                 let archive = ZipArchive::new(file)?;
                 Ok(Self {
-                    archive: Arc::new(RwLock::new(archive)),
+                    archive: Arc::new(RwLock::new(IndexedArchive::new(archive))),
                     modified_date,
                     filename,
                     subdir: None,
@@ -209,8 +209,20 @@ impl ArchiveFileReceiver {
         let filename = resolve_archive_path(self.subdir.as_ref(), &mut *archive, filename)?;
         tracing::debug!("Reading bundle file {}", filename);
         let file = archive.by_name(&filename)?;
-        let reader = BufReader::new(file);
+        let mut reader = BufReader::new(file);
+        if !crate::receiver::source_has_json(&mut reader)? {
+            return Err(MissingSource::Empty { path: filename }.into());
+        }
         serde_json::from_reader(reader).map_err(Into::into)
+    }
+
+    pub async fn list_bundle_dirs(&self, dir: &str) -> Result<Vec<String>> {
+        let mut archive = self.archive.write().await;
+        super::list_archive_dirs(self.subdir.as_ref(), &mut *archive, dir)
+    }
+
+    pub async fn read_bundle_lines(&self, filename: &str) -> Result<BoxStream<'static, Result<String>>> {
+        super::read_lines_from_archive(self.archive.clone(), self.subdir.clone(), filename).await
     }
 
     /// Whether the bundle contains `dir` as a directory component within the
