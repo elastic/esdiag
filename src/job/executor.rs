@@ -11,7 +11,7 @@
 //! per the design's landing strategy — the model and executor land first,
 //! the legacy types retire once every surface drives this path.
 
-use super::model::{ExecutionMode, Input, Job, Process};
+use super::model::{ExecutionMode, Input, Job, Process, SaveTarget};
 use super::{
     context::{ExecutionContext, ExecutionIdentity, RetentionPolicy},
     outcome::{ChildExecutionOutcome, ExecutionEvent, ExecutionOutcome, Lifecycle, SendResult, Stage, StageStatus},
@@ -206,7 +206,9 @@ pub async fn execute_with_context(job: Job, context: ExecutionContext) -> Execut
         Ok(None)
     };
 
-    if job.execution_mode() == ExecutionMode::Streaming {
+    let stage_live_collection =
+        job.execution_mode() == ExecutionMode::Streaming && requires_staged_collection(resolved.application.as_ref());
+    if job.execution_mode() == ExecutionMode::Streaming && !stage_live_collection {
         record_stage(&context, &mut outcome, Stage::Collect, StageStatus::Succeeded);
         let Some(process) = job.process() else {
             record_blocked_outputs(&context, &job, &mut outcome, "Streaming execution requires Process");
@@ -239,7 +241,11 @@ pub async fn execute_with_context(job: Job, context: ExecutionContext) -> Execut
 
     let mut staging_cleanup = None;
     if job.input().is_collect() {
-        let Some(save) = job.save() else {
+        let Some(save) = job
+            .save()
+            .cloned()
+            .or_else(|| stage_live_collection.then(SaveTarget::temporary))
+        else {
             record_stage(
                 &context,
                 &mut outcome,
@@ -694,6 +700,13 @@ fn record_blocked_outputs(context: &ExecutionContext, job: &Job, outcome: &mut E
     }
 }
 
+/// Live Kibana receivers return one response per API; page and space
+/// enumeration only happens in the Kibana collector, so processing must read
+/// a collected bundle.
+fn requires_staged_collection(application: Option<&Application>) -> bool {
+    matches!(application, Some(Application::Kibana))
+}
+
 fn collect_diagnostic_type(input: &Input) -> &str {
     match input {
         Input::Collect { diagnostic_type, .. } | Input::CollectBinding { diagnostic_type, .. } => diagnostic_type,
@@ -730,6 +743,7 @@ fn collect_process_selection(
 ) -> Result<Option<ProcessSelection>> {
     let product = match application {
         Application::Elasticsearch => "elasticsearch",
+        Application::Kibana => "kibana",
         Application::Logstash => "logstash",
         _ => return Ok(None),
     };
@@ -794,6 +808,14 @@ mod tests {
     }
 
     impl std::error::Error for SourceError {}
+
+    #[test]
+    fn only_kibana_collection_is_staged_before_processing() {
+        assert!(requires_staged_collection(Some(&Application::Kibana)));
+        assert!(!requires_staged_collection(Some(&Application::Elasticsearch)));
+        assert!(!requires_staged_collection(Some(&Application::Logstash)));
+        assert!(!requires_staged_collection(None));
+    }
 
     fn fixture_archive(name: &str) -> PathBuf {
         PathBuf::from(format!("{}/tests/archives/{name}", env!("CARGO_MANIFEST_DIR")))
@@ -1152,7 +1174,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn child_processing_gap_remains_a_typed_skip() {
+    async fn kibana_child_processing_completes_through_staged_executor() {
         let bundle = parent_with_children(&[("kibana-child", "kibana-api-diagnostics-9.3.3.zip")]);
         let output = tempfile::tempdir().expect("output");
         let job = Job::try_new(
@@ -1175,15 +1197,12 @@ mod tests {
 
         assert!(outcome.succeeded());
         let child = outcome.children.first().expect("child outcome");
-        assert_eq!(
-            child.diagnostic_outcome,
-            DiagnosticOutcome::Skipped(crate::processor::SkipKind::NotImplemented)
-        );
+        assert_eq!(child.diagnostic_outcome, DiagnosticOutcome::Partial);
         assert_eq!(child.application(), Some(Application::Kibana));
-        assert_eq!(
-            child.execution_error(),
-            Some("Kibana processing is not yet implemented")
-        );
+        assert_eq!(child.execution.stage(Stage::Process), Some(&StageStatus::Succeeded));
+        assert_eq!(child.execution.stage(Stage::Export), Some(&StageStatus::Succeeded));
+        assert!(child.report().is_some_and(|report| report.diagnostic.docs.created > 0));
+        assert_eq!(child.execution_error(), None);
     }
 
     #[tokio::test(flavor = "multi_thread")]

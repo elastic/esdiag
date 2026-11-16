@@ -712,6 +712,7 @@ mod tests {
             id: "report-save-test".to_string(),
             collection_date: 0,
             runner: "test".to_string(),
+            version: None,
             uuid: "report-save-test".to_string(),
         };
         DiagnosticReport::try_from(
@@ -773,6 +774,7 @@ mod tests {
             id: "test".into(),
             collection_date: 0,
             runner: "test".into(),
+            version: None,
             uuid: "test".into(),
         };
         let mut report =
