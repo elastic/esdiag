@@ -7,7 +7,8 @@ tags: [kibana, dashboards, data-streams]
 
 # Kibana dashboards
 
-`esdiag setup` installs these dashboards in the `esdiag` Kibana space. They are
+`esdiag setup output <saved-output>` installs these dashboards in the `esdiag`
+Kibana space, together with the required Elasticsearch templates. They are
 tagged `Kibana`, `ESDiag`, and `Beta`. The `Kibana Overviews` links panel at
 the top of each dashboard keeps the current time range and filters when you
 switch dashboards, so a `diagnostic.id` or `node.name` filter follows you.
