@@ -1,0 +1,15 @@
+{
+  "attributes": {
+    "allowHidden": false,
+    "fields": "[]",
+    "name": "Kibana Node Stats",
+    "sourceFilters": "[]",
+    "timeFieldName": "@timestamp",
+    "title": "metrics-kibana.node-esdiag*"
+  },
+  "coreMigrationVersion": "8.8.0",
+  "id": "0729e524-c1dc-5729-b0a3-4c5de8e4bbe8",
+  "references": [],
+  "type": "index-pattern",
+  "typeMigrationVersion": "8.0.0"
+}

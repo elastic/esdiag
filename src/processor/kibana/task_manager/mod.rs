@@ -6,6 +6,7 @@
 //!
 //! Inputs:
 //! - `kibana_task_manager_health.json` (`/api/task_manager/_health`) -> `metrics-kibana.task_manager-esdiag`
+//!   and one document per task type -> `metrics-kibana.task_manager.task_type-esdiag`
 
 mod data;
 mod processor;

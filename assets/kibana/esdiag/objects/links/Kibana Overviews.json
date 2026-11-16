@@ -1,0 +1,58 @@
+{
+  "attributes": {
+    "description": "Navigation links for Kibana overview dashboards",
+    "layout": "horizontal",
+    "links": [
+      {
+        "destinationRefName": "link_b3b77f56-d5d2-5ee6-8336-b58036436f1a_dashboard",
+        "id": "b3b77f56-d5d2-5ee6-8336-b58036436f1a",
+        "label": "Host Health",
+        "options": {
+          "openInNewTab": false,
+          "useCurrentDateRange": true,
+          "useCurrentFilters": true
+        },
+        "order": 0,
+        "type": "dashboardLink"
+      },
+      {
+        "destinationRefName": "link_2d0f4305-4750-59aa-a712-d5b7d5a7932c_dashboard",
+        "id": "2d0f4305-4750-59aa-a712-d5b7d5a7932c",
+        "label": "Task Manager",
+        "options": {
+          "openInNewTab": false,
+          "useCurrentDateRange": true,
+          "useCurrentFilters": true
+        },
+        "order": 1,
+        "type": "dashboardLink"
+      }
+    ],
+    "title": "Kibana Overviews"
+  },
+  "coreMigrationVersion": "8.8.0",
+  "id": "d4f90b10-5d7b-5742-acc1-3bf40b4ee5b6",
+  "references": [
+    {
+      "id": "kibana-host-health",
+      "name": "link_b3b77f56-d5d2-5ee6-8336-b58036436f1a_dashboard",
+      "type": "dashboard"
+    },
+    {
+      "id": "kibana-task-manager",
+      "name": "link_2d0f4305-4750-59aa-a712-d5b7d5a7932c_dashboard",
+      "type": "dashboard"
+    },
+    {
+      "id": "5e05b9ee-3e49-4efd-8a16-94de208ebb83",
+      "name": "tag-ref-5e05b9ee-3e49-4efd-8a16-94de208ebb83",
+      "type": "tag"
+    },
+    {
+      "id": "8228e4fe-7cfb-4bba-9123-70608082c624",
+      "name": "tag-ref-8228e4fe-7cfb-4bba-9123-70608082c624",
+      "type": "tag"
+    }
+  ],
+  "type": "links"
+}

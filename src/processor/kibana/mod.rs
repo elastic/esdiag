@@ -66,7 +66,10 @@ use settings::{FleetSettings, UptimeSettings};
 use spaces::Spaces;
 use stack_monitoring::StackMonitoringHealth;
 use status::Status;
-use std::{collections::HashSet, sync::Arc};
+use std::{
+    collections::HashSet,
+    sync::{Arc, LazyLock},
+};
 use synthetics_uptime::{SyntheticsFilters, UptimeLocations};
 use task_manager::TaskManagerHealth;
 use tokio::sync::mpsc;
@@ -199,20 +202,17 @@ fn datasource_name<T: DataSource>() -> String {
 }
 
 fn validate_kibana_dispatch_registry() -> Result<()> {
-    static VALIDATED: std::sync::OnceLock<std::result::Result<(), String>> = std::sync::OnceLock::new();
-    VALIDATED
-        .get_or_init(|| {
-            let claims = KIBANA_DISPATCH
-                .iter()
-                .map(|entry| ProcessableClaim {
-                    key: entry.key,
-                    datasource_name: (entry.datasource_name)(),
-                })
-                .collect::<Vec<_>>();
-            validate_processable_registry("kibana", &claims).map_err(|error| error.to_string())
-        })
-        .clone()
-        .map_err(|error| eyre!(error))
+    static VALIDATED: LazyLock<std::result::Result<(), String>> = LazyLock::new(|| {
+        let claims = KIBANA_DISPATCH
+            .iter()
+            .map(|entry| ProcessableClaim {
+                key: entry.key,
+                datasource_name: (entry.datasource_name)(),
+            })
+            .collect::<Vec<_>>();
+        validate_processable_registry("kibana", &claims).map_err(|error| error.to_string())
+    });
+    VALIDATED.clone().map_err(|error| eyre!(error))
 }
 
 #[derive(Serialize)]
@@ -906,7 +906,75 @@ mod tests {
             read_stream(output.path(), "metrics-kibana.stack_monitoring-esdiag").len(),
             1
         );
+        assert!(
+            !output
+                .path()
+                .join("metrics-kibana.task_manager.task_type-esdiag.ndjson")
+                .exists()
+        );
         assert_eq!(report.outcome(), DiagnosticOutcome::Complete);
+    }
+
+    #[tokio::test]
+    async fn task_manager_health_exports_one_document_per_task_type() {
+        let (output, report) = run_bundle(
+            vec![(
+                "kibana_task_manager_health.json",
+                include_str!("task_manager/tests/kibana_task_manager_health.json").to_string(),
+            )],
+            Some(vec!["kibana_status", "kibana_task_manager_health"]),
+        )
+        .await;
+
+        let summary = read_stream(output.path(), "metrics-kibana.task_manager-esdiag");
+        assert_eq!(summary.len(), 1);
+        assert!(summary[0]["stats"]["workload"]["value"].get("task_types").is_none());
+        assert_eq!(summary[0]["stats"]["configuration"]["value"]["claim_strategy"], "mget");
+        assert_shared_metadata(&summary[0]);
+
+        let task_types = read_stream(output.path(), "metrics-kibana.task_manager.task_type-esdiag");
+        assert_eq!(task_types.len(), 4);
+        let burn_rate = task_types
+            .iter()
+            .find(|doc| doc["task_type"]["name"] == "alerting:slo.rules.burnRate")
+            .expect("burn rate task type");
+        assert_eq!(burn_rate["task_type"]["workload"]["count"], 1);
+        assert_eq!(burn_rate["task_type"]["drift"]["p99"], 516);
+        assert!(burn_rate["task_type"]["duration"]["p99"].is_number());
+        assert!(burn_rate["task_type"]["result_frequency"]["Failed"].is_number());
+        assert_eq!(burn_rate["data_stream"]["dataset"], "kibana.task_manager.task_type");
+        assert_shared_metadata(burn_rate);
+
+        let fleet = task_types
+            .iter()
+            .find(|doc| doc["task_type"]["name"] == "Fleet-Metrics-Task")
+            .expect("fleet task type");
+        assert!(fleet["task_type"].get("drift").is_none());
+        assert!(
+            report
+                .events()
+                .iter()
+                .any(|event| event.source == "metrics-kibana.task_manager.task_type-esdiag")
+        );
+        assert_eq!(report.outcome(), DiagnosticOutcome::Complete);
+    }
+
+    #[tokio::test]
+    async fn node_stats_fixture_keeps_connections_and_container_metrics() {
+        let (output, _report) = run_bundle(
+            vec![(
+                "kibana_stats.json",
+                include_str!("node_stats/tests/kibana_stats.json").to_string(),
+            )],
+            Some(vec!["kibana_status", "kibana_stats"]),
+        )
+        .await;
+
+        let node = read_stream(output.path(), "metrics-kibana.node-esdiag");
+        assert_eq!(node[0]["node"]["concurrent_connections"], 12);
+        assert_eq!(node[0]["node"]["os"]["cgroup_memory"]["current_bytes"], 1448198144_u64);
+        assert_eq!(node[0]["node"]["elasticsearch_client"]["total_active_sockets"], 91);
+        assert!(node[0]["node"]["process"]["event_loop_delay_histogram"]["percentiles"]["99"].is_number());
     }
 
     #[tokio::test]
